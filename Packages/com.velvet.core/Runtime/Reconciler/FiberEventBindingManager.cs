@@ -87,9 +87,26 @@ namespace Velvet
         // tests of binding registration): the discrete flag is still bracketed, but no synchronous flush runs.
         private readonly FiberBatchScheduler? _batchScheduler;
 
-        internal FiberEventBindingManager(FiberBatchScheduler? batchScheduler = null)
+        // Answers whether an element is on the logical chain of an event's target. Null in isolated unit tests of
+        // binding registration, where no element is off a chain.
+        private readonly Func<VisualElement, VisualElement, bool>? _isOnLogicalChain;
+
+        internal FiberEventBindingManager(FiberBatchScheduler? batchScheduler = null,
+            Func<VisualElement, VisualElement, bool>? isOnLogicalChain = null)
         {
             _batchScheduler = batchScheduler;
+            _isOnLogicalChain = isOnLogicalChain;
+        }
+
+        // Whether native dispatch is about to run element's handler for an event the React tree would not carry
+        // to it: element is on the target's physical path and off its logical chain, as the element a portal
+        // renders into and its physical ancestors are. Synthetic invocation never asks, since it walks the chain.
+        // The answer costs a chain walk per handler, so a manager holding no bridge skips it.
+        private bool OffLogicalChain(VisualElement element, EventBase evt)
+        {
+            if (_isOnLogicalChain == null || _bridges.Count == 0) return false;
+            if (evt.target is not VisualElement target) return false;
+            return !_isOnLogicalChain(element, target);
         }
 
         // Skips re-registration if the same delegate is already registered for the same kind of binding in the
@@ -601,8 +618,13 @@ namespace Velvet
                 BindBubbleCallback(actions, element, handler);
                 return;
             }
-            element.RegisterCallback(handler, TrickleDown.TrickleDown);
-            actions.Add(() => element.UnregisterCallback(handler, TrickleDown.TrickleDown));
+            EventCallback<T> wrapped = evt =>
+            {
+                if (OffLogicalChain(element, evt)) return;
+                handler?.Invoke(evt);
+            };
+            element.RegisterCallback(wrapped, TrickleDown.TrickleDown);
+            actions.Add(() => element.UnregisterCallback(wrapped, TrickleDown.TrickleDown));
         }
 
         private void BindBubbleCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler)
@@ -610,6 +632,7 @@ namespace Velvet
         {
             EventCallback<T> wrapped = evt =>
             {
+                if (OffLogicalChain(element, evt)) return;
                 if (StoppedByBubblePrelude(element, evt)) return;
                 handler?.Invoke(evt);
             };
@@ -648,6 +671,7 @@ namespace Velvet
             var phase = capture ? TrickleDown.TrickleDown : bubblePhase;
             EventCallback<T> wrapped = evt =>
             {
+                if (OffLogicalChain(element, evt)) return;
                 if (!capture && StoppedByBubblePrelude(element, evt)) return;
                 RunDiscrete(() => handler?.Invoke(evt));
             };
@@ -660,7 +684,12 @@ namespace Velvet
         // synchronously at the handler's end. Collapses the per-T ChangeEventBinding<T> cases.
         private void BindDiscreteValueChanged<T>(List<Action> actions, INotifyValueChanged<T> field, Action<T>? handler)
         {
-            var callback = new EventCallback<ChangeEvent<T>>(evt => RunDiscrete(() => handler?.Invoke(evt.newValue)));
+            var element = (VisualElement)field;
+            var callback = new EventCallback<ChangeEvent<T>>(evt =>
+            {
+                if (OffLogicalChain(element, evt)) return;
+                RunDiscrete(() => handler?.Invoke(evt.newValue));
+            });
             field.RegisterValueChangedCallback(callback);
             actions.Add(() => field.UnregisterValueChangedCallback(callback));
         }

@@ -79,10 +79,12 @@ The boundary behaves the same in all four forms:
   rather than the DOM). Pointer `Enter`/`Leave` bindings (`PointerEnterBinding`,
   `PointerLeaveBinding`) are not carried to a logical ancestor. A `Button`'s `onClick`
   (`ClickedBinding`) answers a click raised inside the portal, and a field's `onValueChanged`
-  (`ChangeEventBinding<T>`) a value change of that type, the way React's `onClick` and `onChange` bubble out of a portal. For `V.Portal(targetId:)` the target's
-  physical ancestors already receive the event through ordinary native bubbling and the bridge adds
-  the LOGICAL chain on top, so a physical ancestor of the target that is no logical ancestor of the
-  call site receives it as well, which React does not do; an element that is both — a physical
+  (`ChangeEventBinding<T>`) a value change of that type, the way React's `onClick` and `onChange` bubble out of a portal. Native dispatch also
+  reaches the target's physical ancestors; an element that is one but no logical ancestor of the
+  call site, the element the portal renders into included, runs none of its `events:` handlers for an
+  event raised in the content, in either phase, as the container of a React portal never sees them. A
+  `Button`'s `onClick` is the exception: it rides the button's own click handling rather than the
+  event dispatch, and that suppression does not reach it. An element that is both — a physical
   ancestor of the target AND a logical ancestor of the call site — still fires exactly once, and so
   does a logical ancestor reached through portals nested in each other's content. A portal's child
   need not be a component: an element written straight into the portal bubbles the same way. `FocusEvent`/`BlurEvent` do not

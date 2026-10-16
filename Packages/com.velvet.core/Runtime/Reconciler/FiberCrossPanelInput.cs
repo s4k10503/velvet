@@ -44,7 +44,9 @@ namespace Velvet
     // everywhere except at a portal boundary. The bridge supplies the rest: the logical ancestors of the
     // event's target that are not its physical ancestors, walked the way React walks a portal child's
     // return path — a portal's child answers to the position its placeholder holds (see LogicalParent) —
-    // in capture as the event trickles through the anchor, and in bubble as it comes back up.
+    // in capture as the event trickles through the anchor, and in bubble as it comes back up. The other
+    // half of the disagreement is the physical ancestors that are off that path: native dispatch reaches
+    // them, and FiberEventBindingManager.OffLogicalChain keeps their handlers from running.
     internal static class FiberCrossPanelEventDispatcher
     {
         // Each event the bridge carries, registered on bridgeAnchor TrickleDown and, where it bubbles,
@@ -251,6 +253,30 @@ namespace Velvet
                 if (ReferenceEquals(element, candidate)) return true;
             }
             return false;
+        }
+
+        // Whether element is target or an element a React event raised at target visits. A step that
+        // RelocatedParent does not name takes hierarchy.parent, the one native dispatch takes, so every element
+        // on target's physical path outside a relocated span is met.
+        internal static bool IsOnLogicalChain(VisualElement element, VisualElement target, ReconcilerContext ctx)
+        {
+            for (var current = target; current != null; current = RelocatedParent(current, ctx) ?? current.hierarchy.parent)
+            {
+                if (ReferenceEquals(current, element)) return true;
+            }
+            return false;
+        }
+
+        // The element LogicalParent names for an element that answers to a placeholder rather than to the
+        // element it is mounted under, and null for any other.
+        private static VisualElement? RelocatedParent(VisualElement element, ReconcilerContext ctx)
+        {
+            var slot = ctx.ZLayerMembers.TryGetValue(element, out var member) ? member.Placeholder : element;
+            var parent = slot.parent;
+            if (parent == null) return null;
+            var placeholder = ctx.PortalHoldingRow(slot, parent);
+            if (placeholder != null) return LogicalParent(placeholder, ctx);
+            return ReferenceEquals(slot, element) ? null : parent;
         }
 
         // A portal's child answers to the placeholder standing at the portal's call site, whatever element it
