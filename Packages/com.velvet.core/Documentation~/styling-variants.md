@@ -460,6 +460,8 @@ these to the box:
 - borders, including the line style (`border`, `border-*`, `border-solid` / `-dashed` / `-dotted`);
 - radius (`rounded`, `rounded-*`) and padding (`p-*`, `px-*`, `py-*`, `pt-*` … `pe-*`);
 - `shadow-*`, `ring-*` and `outline-*`;
+- the filter utilities, `drop-shadow-*` and `filter-[…]` among them
+  ([styling-filters.md](styling-filters.md));
 - the caret and selection colours, `caret-*`, `selection:bg-*` and `selection:text-*`.
 
 **A text input's caret and selection colours follow CSS and Tailwind.**
