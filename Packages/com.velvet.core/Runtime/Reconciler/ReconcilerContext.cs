@@ -1906,7 +1906,7 @@ namespace Velvet
             System.Action? cleanup = null;
             try
             {
-                cleanup = callback(element);
+                cleanup = InOwnersFrame(owner, callback, element);
             }
             catch (System.Exception exception)
             {
@@ -1922,12 +1922,41 @@ namespace Velvet
                 // what keeps a setup that acquires a resource from leaking it.
                 try
                 {
-                    cleanup();
+                    InOwnersFrame(owner, cleanup);
                 }
                 catch (System.Exception exception)
                 {
                     ContainUserCallbackFailure(owner, exception);
                 }
+            }
+        }
+
+        // A ref callback runs with its owner on the ambient stack, as it did when the pass attached it, so a hook
+        // called from it is refused by name (HookGuard.ThrowIfNotRendering) rather than as an anonymous component.
+        private static System.Action? InOwnersFrame(
+            ComponentFiber? owner, System.Func<VisualElement, System.Action> callback, VisualElement element)
+        {
+            if (owner != null) FiberAmbientStack.Push(owner);
+            try
+            {
+                return callback(element);
+            }
+            finally
+            {
+                if (owner != null) FiberAmbientStack.Pop();
+            }
+        }
+
+        private static void InOwnersFrame(ComponentFiber? owner, System.Action cleanup)
+        {
+            if (owner != null) FiberAmbientStack.Push(owner);
+            try
+            {
+                cleanup();
+            }
+            finally
+            {
+                if (owner != null) FiberAmbientStack.Pop();
             }
         }
 
@@ -1951,7 +1980,7 @@ namespace Velvet
                 // Its failure goes where a setup's does, and the setup still runs.
                 try
                 {
-                    replaced();
+                    InOwnersFrame(owner, replaced);
                 }
                 catch (System.Exception exception)
                 {
