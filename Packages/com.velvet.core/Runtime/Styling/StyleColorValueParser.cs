@@ -76,7 +76,7 @@ namespace Velvet
         // Index of the color-opacity-modifier '/' — the first '/' at bracket depth 0 (i.e. not inside a
         // [...] arbitrary value), scanning from start. Returns -1 when there is no such separator, so an
         // in-bracket '/' (aspect-[4/3], bg-[rgb(1/2)]) is never mistaken for the modifier separator.
-        private static int ColorModifierSlashIndex(string s, int start)
+        internal static int ColorModifierSlashIndex(string s, int start)
         {
             var depth = 0;
             for (var i = start; i < s.Length; i++)

@@ -182,6 +182,12 @@ namespace Velvet.Tests
         private string ProbeInlineWrites(ArbitraryProperty property)
         {
             var probe = new VisualElement();
+            // A drop-shadow colour writes the filter only beside a size, as Tailwind's colour rule writes no filter.
+            if (property == ArbitraryProperty.FilterDropShadowColor)
+            {
+                StyleArbitraryValueResolver.Apply(probe, ProbeValue(ArbitraryProperty.FilterDropShadow));
+                probe.style.filter = StyleKeyword.Null;
+            }
             StyleArbitraryValueResolver.Apply(probe, ProbeValue(property));
             var style = probe.style;
             return Join(s_inlineSlots
@@ -212,7 +218,12 @@ namespace Velvet.Tests
                 return new ArbitraryStyle(property,
                     new CustomFilterValue("probe", definition, new[] { new FilterParameter(0.5f) }));
             }
-            return MotionPropertyClassParser.IsColor(property)
+            if (property == ArbitraryProperty.FilterDropShadow)
+            {
+                return new ArbitraryStyle(property, new DropShadowValue(
+                    new[] { new DropShadowLayer(1f, 2f, 3f, Color.black) }, literal: false, alpha: null));
+            }
+            return MotionPropertyClassParser.IsColor(property) || property == ArbitraryProperty.FilterDropShadowColor
                 ? new ArbitraryStyle(property, Color.red)
                 : new ArbitraryStyle(property, 7f, LengthUnit.Pixel);
         }

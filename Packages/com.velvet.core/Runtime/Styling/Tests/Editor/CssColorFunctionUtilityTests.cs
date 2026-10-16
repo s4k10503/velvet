@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Velvet.Tests
 {
@@ -119,13 +120,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADropShadowColorFunction_When_Extracted_Then_TheShadowTakesIt()
+        public void Given_ADropShadowColorFunction_When_Applied_Then_TheShadowTakesIt()
         {
-            // Act
-            var ok = StyleShadowClass.TryExtract(new[] { "drop-shadow-[0_4px_8px_" + Hsl + "]" }, out var spec);
+            // Arrange
+            var element = new VisualElement();
 
-            // Assert
-            Assert.That(ok ? Channels(spec.Color) : Unresolved, Is.EqualTo(Expected).Within(Tolerance));
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(element, "drop-shadow-[0_4px_8px_" + Hsl + "]",
+                StyleLayerPriority.Base, addToClassListFallback: false);
+            var filter = element.style.filter.value;
+
+            // Assert — the colour is the drop-shadow function's fourth parameter.
+            Assert.That(filter is { Count: 1 } ? Channels(filter[0].GetParameter(3).colorValue) : Unresolved,
+                Is.EqualTo(Expected).Within(Tolerance));
         }
     }
 }

@@ -47,7 +47,7 @@ namespace Velvet
         /// <param name="name">Filter name as written inside the class brackets. Must be non-empty and
         /// must not contain whitespace, <c>:</c>, <c>[</c> or <c>]</c> (they would break the class token);
         /// the built-in filter family names (blur, brightness, contrast, grayscale, hue-rotate, invert,
-        /// saturate, sepia) are reserved case-insensitively. Invalid names are rejected with a warning.</param>
+        /// saturate, sepia, drop-shadow) are reserved case-insensitively. Invalid names are rejected with a warning.</param>
         /// <param name="definition">The custom filter definition applied when the class resolves.
         /// Null (or a destroyed asset) is rejected with a warning, as is a definition declaring more than
         /// the 4 parameters a filter function can carry.</param>
