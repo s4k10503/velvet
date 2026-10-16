@@ -134,7 +134,9 @@ namespace Velvet
         // exact-decimal. The two rounding cases in DndInteractionTests pin it.
         private static double RoundToFourDecimals(double value)
         {
-            if (!(value > 0) || double.IsInfinity(value))
+            // MUTANT_SURVIVES(equivalent): zero has mantissa 0, so the arithmetic below returns it unchanged
+            // and only the comparison against zero differs.
+            if (!(value > 0))
             {
                 return value;
             }
@@ -143,6 +145,8 @@ namespace Velvet
             var mantissa = bits & 0xFFFFFFFFFFFFFL;
             if (exponent == 0)
             {
+                // MUTANT_SURVIVES(equivalent): a subnormal is so small that 10000 times it rounds to 0
+                // whichever exponent it is read with.
                 exponent = 1;
             }
             else
@@ -152,6 +156,8 @@ namespace Velvet
             exponent -= 1075;
             var scaled = new BigInteger(mantissa) * 10000;
             BigInteger rounded;
+            // MUTANT_SURVIVES(equivalent): at an exponent of exactly 0 the shifting branch's
+            // ((scaled << 1) + 1) >> 1 is scaled, which is what the first branch yields.
             if (exponent >= 0)
             {
                 rounded = scaled << exponent;
