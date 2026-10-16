@@ -278,14 +278,13 @@ new StyleTransitionConfig
 ## Driven channels (Spring and Bezier)
 
 Both non-CSS drivers write inline styles every tick. A play reads its targets from the swapped-in
-classes and the element's classes left in place. A slot that a Velvet
-play or a native transition is moving starts from the value on screen: the running play's current frame, or the
-transition's displayed value sampled before cancellation or the class swap. An idle slot starts from the
-swapped-out value when the swapped-out classes name one; otherwise, on a mounted element, the start is the
-current inline value, or the resolved value when no inline value is set.
-A transition on another property does not change this slot's starting value.
-If the native activity lookup is missing or cannot be invoked, the play uses the ordinary inline or
-resolved start described above.
+classes and the element's classes left in place. A slot that a Velvet play or a native transition is
+moving starts from the value on screen: the running play's current frame, or the transition's displayed
+value sampled before cancellation or the class swap. An idle slot starts from the swapped-out value when
+the swapped-out classes name one; otherwise, on a mounted element, the start is the current inline value,
+or the resolved value when no inline value is set. A transition on another property does not change this
+slot's starting value. If the native activity lookup is missing or cannot be invoked, the play uses the
+ordinary inline or resolved start described above.
 
 - **The transform quartet.** `opacity` and the `translate` / `scale` / `rotate` trio the transform
   utilities write. Naming one on one side of the delta is enough. When only the from-side names
@@ -314,11 +313,12 @@ resolved start described above.
   from — so a `text-sm` → `text-2xl` delta lands instantly while `text-[14px]` → `text-[24px]`
   animates. Reach for the bracket form when you want the size to move.
 - **The to-side must name a color or length.** A swapped-out value in the target's unit supplies
-  the start unless a running play or a native transition is moving the slot; otherwise a mounted element supplies its current inline or displayed value. Width and
-  height, including their min/max forms, can convert between pixels and percentages through the
-  parent's content box. Other mixed-unit pairs, or an off-panel target with no matching-unit start,
-  land instantly. A color or length with no compatible effective to-side target lands instantly;
-  classes left in place can provide that target when the swap removes a from-side class.
+  the start unless a running play or a native transition is moving the slot; otherwise a mounted
+  element supplies its current inline or displayed value. Width and height, including their min/max
+  forms, can convert between pixels and percentages through the parent's content box. Other mixed-unit
+  pairs, or an off-panel target with no matching-unit start, land instantly. A color or length with no
+  compatible effective to-side target lands instantly; classes left in place can provide that target when
+  the swap removes a from-side class.
 - **Classes on one side that write the same slot resolve as the cascade resolves them.** A shorthand
   is read slot by slot — `p-8` as four edges, `size-*` as a width and a height, `rounded-*` as four
   corners, `border-*` as four widths — and each slot animates toward whichever class holds it at
