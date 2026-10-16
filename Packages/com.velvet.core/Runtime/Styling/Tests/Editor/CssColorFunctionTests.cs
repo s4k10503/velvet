@@ -231,6 +231,22 @@ namespace Velvet.Tests
             Assert.That(color, Is.EqualTo(new[] { r, g, b, a }).Within(Tolerance));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads no Lab-family function, so a component past float's range has
+        // no reading to match Chromium's, and an implementation of the family has to decide that reading.
+        [TestCase("lab(50_10_0)")]
+        [TestCase("lab(50_1e200_0)")]
+        [TestCase("lch(50_1e999_0)")]
+        [TestCase("oklab(0.5_1e200_0)")]
+        [TestCase("oklch(0.5_1e999_0)")]
+        public void Given_ALabFamilyFunction_When_Parsed_Then_ItIsDeclinedWhateverItsMagnitude(string value)
+        {
+            // Act
+            var parsed = Parses(value);
+
+            // Assert
+            Assert.That(parsed, Is.False);
+        }
+
         [Test]
         public void Given_SpaceSyntaxHsl_When_Parsed_Then_ItIsTheSpecificationsSrgb()
         {

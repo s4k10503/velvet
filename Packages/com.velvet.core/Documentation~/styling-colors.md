@@ -19,6 +19,8 @@ space: `bg-[rgb(255_0_0_/_50%)]` is `rgb(255 0 0 / 50%)`.
 | `hsl()` / `hsla()`, space syntax | `text-[hsl(210_40%_50%_/_0.8)]` |
 | `hwb()` | `border-[hwb(150_20%_10%)]` |
 
+`lab()`, `lch()`, `oklab()` and `oklch()` are not read, whatever their components: the class declines.
+
 The functions follow CSS Color 4:
 
 - **The space syntax** separates the three components with spaces and takes an optional alpha after a `/`,
