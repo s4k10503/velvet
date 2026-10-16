@@ -103,10 +103,11 @@ SHARD_SIZE = {"EditMode": 6, "PlayMode": 1}
 MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
 # charges one on its platform, after the longest measured setup and, where the platform is narrowed,
-# the reach run, fit that platform's shard job's timeout in mutation.yml; `ShardCeilingTests` holds
-# each pair together. The charge is not a worst case, so a full shard can still outrun the
+# the reach run, fit that platform's step timeout in mutation.yml's `mutation-shard` job; the PlayMode
+# figure is the most EditMode survivors one shard's job measures after its own EditMode pass.
+# `ShardCeilingTests` holds each pair together. The charge is not a worst case, so a full shard can still outrun the
 # job, and the mutants it had not reached are then recorded by no shard.
-SHARD_CEILING = {"EditMode": 10, "PlayMode": 10}
+SHARD_CEILING = {"EditMode": 10, "PlayMode": 7}
 # What `deal` charges a mutant, in seconds, so that every shard is given about the same total. Only the
 # ratio of the figures matters to the deal. The narrowed figure is 145, the median over shards of a shard's
 # seconds a mutant on EditMode, which already includes the mutants that took the whole suite; the whole-suite
@@ -5179,6 +5180,17 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
     """The second pass's plan: the shards its platform needs for the first pass's survivors."""
     print(coverage)
     per = SHARD_CEILING[args.platform]
+    if args.survivors_shard is not None:
+        # One job measures them all, after its own first pass.
+        if len(chosen) > per:
+            print("{} mutants of this shard survived the {} suite, more than the {} one job can measure on "
+                  "{} after it.\nWrite the tests they ask for, or split the pull request."
+                  .format(len(chosen), first, per, args.platform))
+            return CEILING_REFUSAL
+        print("{} of {} mutant(s) survived the {} suite in this shard and are measured on {}".format(
+            len(chosen), len(mutants), first, args.platform))
+        print("mutants={}".format(len(chosen)))
+        return 0
     if len(chosen) > MAX_SHARDS * per:
         print("{} mutants survived the {} suite, more than {} shards of {} can measure on {} inside "
               "the shard job's timeout.\nWrite the tests they ask for, or split the pull request."
@@ -5191,6 +5203,24 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
     print("mutants={}".format(len(chosen)))
     print("shards={}".format(json.dumps(list(range(count)))))
     return 0
+
+
+def unreported_survivor_shards(first_chosen, survivors, first, mutants, project):
+    """{first-pass shard K: the survivors it left} for the second-pass groups `--collect` found no
+    record from, and the first pass's shard count.
+
+    The second pass runs in the job of each first-pass shard, over that shard's survivors, so a group
+    is named by the shard it belongs to. Named only where none of its survivors has a verdict, as
+    `unreported_shards` names a shard.
+    """
+    count = shard_count(len(first_chosen), first)
+    named = {}
+    for shard in range(count):
+        dealt = [index for index in sharded(first_chosen, (shard, count), mutants, project, first)
+                 if index in survivors]
+        if dealt and all(mutants[index - 1].verdict == UNRECORDED for index in dealt):
+            named[shard] = dealt
+    return named, count
 
 
 def report_shard(mutants, selected, shard):
@@ -5269,6 +5299,9 @@ def main():
                         help="take each mutant's verdict from the run on the other platform that "
                              "recorded it in these directories, and measure, plan or collect on "
                              "--platform only the mutants that run left surviving")
+    parser.add_argument("--survivors-shard", type=parse_shard, metavar="K/N",
+                        help="with --survivors-of, take only the mutants the other platform's shard K of N "
+                             "was dealt, so a job measures the survivors of its own first-pass shard")
     parser.add_argument("--reuse-from", metavar="DIR",
                         help="with --plan, read the ledgers of earlier campaigns in DIR and decide "
                              "which of this diff's mutants are killed already: a kill is reused when "
@@ -5295,6 +5328,8 @@ def main():
         parser.error("--emit-ledger records a decision; it goes with --collect")
     if (args.reuse_from is not None or args.reuse is not None) and args.files:
         parser.error("a reused kill is of a diff's mutants; --files names none")
+    if args.survivors_shard is not None and args.survivors_of is None:
+        parser.error("--survivors-shard narrows what --survivors-of reads; it goes with it")
     if args.shard is not None and args.collect is not None:
         parser.error("--shard measures and --collect decides; a run does one of them")
     if args.survivors_of is not None:
@@ -5581,6 +5616,8 @@ def main():
         first = OTHER_PLATFORM[args.platform]
         earlier = scope_digest(base, targets, project, first)
         first_chosen = chosen
+        if args.survivors_shard is not None:
+            first_chosen = sharded(chosen, args.survivors_shard, mutants, project, first)
         for index in first_chosen:
             mutant = mutants[index - 1]
             mutant.verdict, mutant.detail = collected(args.survivors_of, index, earlier, mutant,
@@ -5677,7 +5714,10 @@ def main():
                                                                              args.platform))
         print("Re-run only the failed jobs; the verdict job then decides again over every record.")
     elif args.collect is not None:
-        named, count = unreported_shards(chosen, args.platform, mutants, project)
+        if first is not None:
+            named, count = unreported_survivor_shards(first_chosen, set(chosen), first, mutants, project)
+        else:
+            named, count = unreported_shards(chosen, args.platform, mutants, project)
         if named:
             # Not a survivor and not a stale declaration: the shard never reached the mutants, so
             # nothing is known about them. Re-running the failed jobs of the run records them.

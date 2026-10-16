@@ -6727,8 +6727,8 @@ class TwoPlatformCampaign(StubbedCampaign):
 
 class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
     """Twelve mutants the EditMode suite never kills and the PlayMode suite always does, dealt to two
-    EditMode shards and ten PlayMode shards: the shape the workflow's verdict job
-    collects."""
+    EditMode shards, each followed in its job by a PlayMode pass over its own survivors: the shape the
+    workflow's verdict job collects."""
 
     def run_suite(self, _unity, _project, platform, _scope, results, log, _timeout, _holder=None):
         mutant = Path(results).name != "baseline.xml"
@@ -6740,9 +6740,11 @@ class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
         return self.shard(spec, directory)
 
     def play_shard(self, number, edit_directories, directory):
+        # As the shard job's PlayMode step runs it: the survivors of EditMode shard `number` of two.
         return self.run_over_diff("--platform", "PlayMode", "--survivors-of",
                                   *(str(self.project / name) for name in edit_directories),
-                                  "--shard", "{}/10".format(number), "--output", str(self.project / directory))
+                                  "--survivors-shard", "{}/2".format(number), "--shard", "0/1",
+                                  "--output", str(self.project / directory))
 
     def collect_both(self, edit_directories, play_directories):
         return self.run_over_diff("--platform", "PlayMode", "--survivors-of",
@@ -6799,7 +6801,7 @@ class DeadShardReportingTests(unittest.TestCase):
                           "PlayMode shard(s) recorded nothing" in campaign.printed), (True, False))
 
     def test_Given_EveryEditModeShardAndNoPlayModeShard_When_BothPassesAreCollected_Then_ThePlayModeShardsAreNamed(self):
-        # Arrange -- the control: the PlayMode pass was owed, and none of its ten shards reported.
+        # Arrange -- the control: the PlayMode pass was owed, and none of its two groups reported.
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
         campaign.edit_shard("1/2", "edit1")
@@ -6808,7 +6810,7 @@ class DeadShardReportingTests(unittest.TestCase):
         campaign.collect_both(["edit0", "edit1"], ["play"])
 
         # Assert
-        self.assertEqual((self.HEADING.format(10, 10, "PlayMode") in campaign.printed,
+        self.assertEqual((self.HEADING.format(2, 2, "PlayMode") in campaign.printed,
                           "EditMode shard(s) recorded nothing" in campaign.printed), (True, False))
 
     def test_Given_EveryEditModeShardAndOneDeadPlayModeShard_When_BothPassesAreCollected_Then_OnlyThatShardIsNamed(self):
@@ -6816,15 +6818,43 @@ class DeadShardReportingTests(unittest.TestCase):
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
         campaign.edit_shard("1/2", "edit1")
-        for number in range(9):
-            campaign.play_shard(number, ["edit0", "edit1"], "play{}".format(number))
+        campaign.play_shard(0, ["edit0", "edit1"], "play0")
 
         # Act
-        campaign.collect_both(["edit0", "edit1"], ["play{}".format(number) for number in range(9)])
+        campaign.collect_both(["edit0", "edit1"], ["play0"])
+
+        # Assert -- named by the EditMode shard whose job did not reach the PlayMode pass.
+        self.assertEqual((self.HEADING.format(1, 2, "PlayMode") in campaign.printed,
+                          "shard 1 of 2 was dealt 6 mutant(s)" in campaign.printed), (True, True))
+
+    def test_Given_AnEditModeShardsSurvivors_When_ItsPlayModePassRuns_Then_OnlyThoseAreMeasured(self):
+        # Arrange -- both EditMode shards recorded, six survivors each.
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+        campaign.edit_shard("1/2", "edit1")
+
+        # Act
+        campaign.play_shard(0, ["edit0", "edit1"], "play0")
 
         # Assert
-        self.assertEqual((self.HEADING.format(1, 10, "PlayMode") in campaign.printed,
-                          "shard 9 of 10 was dealt 1 mutant(s)" in campaign.printed), (True, True))
+        self.assertEqual(sorted(path.name for path in (campaign.project / "play0").glob("mutant-*.json")),
+                         ["mutant-001.json", "mutant-003.json", "mutant-005.json", "mutant-007.json",
+                          "mutant-009.json", "mutant-011.json"])
+
+    def test_Given_MoreSurvivorsInAShardThanOneJobMeasures_When_ItsPlayModePassIsPlanned_Then_ItRefuses(self):
+        # Arrange -- the shard's six survivors against a PlayMode ceiling of five.
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+        campaign.edit_shard("1/2", "edit1")
+
+        # Act
+        with mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 16, "PlayMode": 5}):
+            code = campaign.run_over_diff("--platform", "PlayMode", "--survivors-of",
+                                          str(campaign.project / "edit0"), str(campaign.project / "edit1"),
+                                          "--survivors-shard", "0/2", "--plan")
+
+        # Assert
+        self.assertEqual((code, "mutants=" in campaign.printed), (mutation_check.CEILING_REFUSAL, False))
 
 
 class HangingTwoPlatformCampaign(TwoPlatformCampaign):
@@ -7966,10 +7996,12 @@ class ShardCeilingTests(unittest.TestCase):
     # survivor under `Runtime/`: the session's whole suite and then the launch of the fixtures reading IL;
     # "failed" the same with a reach run that never finishes, every mutant taking the whole suite; "small"
     # a shard that takes main's path, which is main's charge: every area's baseline and the whole shard.
-    def fits(self, job, platform, mutant, setup, arm="reach", count=None, fallback_areas=0):
+    def fits(self, job, platform, mutant, setup, arm="reach", count=None):
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
-        found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
-                          re.MULTILINE)
+        # Both platforms' measuring steps sit in `mutation-shard`, each with a timeout of its own under the
+        # job's, which must hold both and the steps around them.
+        found = re.search(r"^      - name: Measure {}\n        timeout-minutes: (\d+)$".format(platform),
+                          workflow.partition("\n  {}:".format(job))[2], re.MULTILINE)
         per = mutation_check.SHARD_CEILING.get(platform)
         count = per if count is None else count
         narrowed = platform in getattr(mutation_check, "NARROWED_PLATFORMS", ())
@@ -7978,7 +8010,6 @@ class ShardCeilingTests(unittest.TestCase):
             mutant = max(mutant, self.BASELINE + self.AREA_LAUNCH)
         if narrowed and arm == "reach" and per is not None:
             opening += self.GATE_SUITE_SECONDS / mutation_check.REACH_SHARE * count
-            opening += fallback_areas * self.AREA_LAUNCH
         if arm == "small":
             opening = self.areas() * self.AREA_LAUNCH
         return (per is not None and found is not None
@@ -8081,13 +8112,52 @@ class ShardCeilingTests(unittest.TestCase):
         # Assert
         self.assertEqual(within, (True, True))
 
+    def test_Given_TheShardJobsPlayModeStep_When_ItsCommandIsRead_Then_ItMeasuresItsOwnShardsSurvivorsInOneShard(self):
+        # Arrange — the pass runs in the EditMode shard's job, over the survivors of that shard alone: another
+        # shard's survivors would be measured twice, and no `--shard 0/1` would make the run decide the campaign.
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+        job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
+        step = job.partition("- name: Measure PlayMode")[2].partition("- if: always()")[0]
+
+        # Act
+        flags = re.findall(r"--(platform PlayMode|survivors-of|survivors-shard|shard 0/1)\b", step)
+
+        # Assert
+        self.assertEqual(sorted(flags), ["platform PlayMode", "shard 0/1", "survivors-of", "survivors-shard"])
+
+    def test_Given_ThePlayModeStepTimeout_When_TheMostSurvivorsFittingItAreCounted_Then_ItIsThePlayModeCeiling(self):
+        # Arrange — derived from the step timeout rather than read back from the constant.
+        mutant, setup = 934 + 100, 202 + 625 + 11 + 900
+        largest = max((count for count in range(1, 40)
+                       if self.fits("mutation-shard", "PlayMode", mutant, setup, count=count)), default=0)
+
+        # Act
+        stated = mutation_check.SHARD_CEILING["PlayMode"]
+
+        # Assert
+        self.assertEqual(stated, largest)
+
+    def test_Given_TheShardJobsTimeout_When_ComparedWithItsMeasuringSteps_Then_ItHoldsBothAndTheRest(self):
+        # Arrange — the job runs the EditMode step and then the PlayMode one on one runner; what is left
+        # after both is its checkout, restore and uploads, which the measured setup figures do not cover.
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+        job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
+        steps = [int(minutes) for minutes in re.findall(r"^        timeout-minutes: (\d+)$", job, re.MULTILINE)]
+        found = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
+
+        # Act
+        spare = int(found.group(1)) - sum(steps) if found else None
+
+        # Assert
+        self.assertEqual((len(steps), spare is not None and spare >= 15), (2, True))
+
     def test_Given_AFullPlayModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the 100 s are what its five bounded cases spend where a mutant stops the frame
         # driver, 5 x 20 s measured locally; and one mutant hanging at --timeout's 900 s besides.
         mutant, setup = 934 + 100, 202 + 625 + 11 + 900
 
         # Act
-        fits = self.fits("mutation-playmode-shard", "PlayMode", mutant, setup)
+        fits = self.fits("mutation-shard", "PlayMode", mutant, setup)
 
         # Assert
         self.assertTrue(fits)
