@@ -15,7 +15,7 @@ namespace Velvet
         {
             var navigate = Hooks.UseNavigate();
 
-            // The dependency list makes target and history-mode changes issue a new redirect.
+            // The dependency list makes a change to the target, the history mode, the state or the relative mode issue a new redirect.
             Hooks.UseEffect(() =>
             {
                 navigate(p.To, new NavigateOptions { Replace = p.Replace, State = p.State, Relative = p.Relative }).Forget();

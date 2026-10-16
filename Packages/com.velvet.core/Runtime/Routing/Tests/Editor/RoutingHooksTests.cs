@@ -320,6 +320,21 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_CapturedNavigate_When_InvokedWithANullPath_Then_NothingIsFound()
+        {
+            // Arrange
+            var router = new Router(new[] { Route("home", element: V.Component(StubA)) });
+            router.NavigateSync("/home");
+            using var mounted = MountAt(router);
+
+            // Act
+            var result = Capture.Navigate!((string)null!).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(result, Is.EqualTo(NavigationResult.NotFound));
+        }
+
+        [Test]
         public void Given_PatternMatchingLocation_When_UseMatch_Then_CapturesParam()
         {
             // Arrange
@@ -772,6 +787,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(router.CurrentLocation.State, Is.EqualTo("carried"));
+        }
+
+        [Test]
+        public void Given_NavigateElementWithPathRelativeRouting_When_Mounted_Then_DotDotDropsOneSegment()
+        {
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("/", children: new[] { Route("team/:id/settings"), Route("team/:id") }),
+            });
+            router.NavigateSync("/team/7/settings");
+
+            // Act
+            using var mounted = MountWith(router, V.Navigate("..", relative: RelativeRoutingType.Path, key: "nav"));
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/team/7"));
         }
 
         [Test]

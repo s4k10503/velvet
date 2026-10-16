@@ -1,10 +1,10 @@
 ### Added
 
 - `navigate(to, options)` takes `NavigateOptions`, as React Router's does: `Replace`, `State`, and `Relative`
-  (`RelativeRoutingType.Route` or `.Path`, where `..` drops a segment of the current URL path rather than a matched
+  (`RelativeRoutingType.Route` or `.Path`, where `..` drops a segment of the calling route's pathname rather than a matched
   route). `PreventScrollReset` is accepted and read by nothing, as the router has no scroll restoration.
   `navigate(-1)` and `navigate(n)` move `n` entries along the history, and a delta past either end lands on that end
-  entry. `flushSync` and `viewTransition` have nothing to act on in UI Toolkit and are not offered.
+  entry; a delta that does not move runs the current entry's loaders again. `flushSync` and `viewTransition` have nothing to act on in UI Toolkit and are not offered.
   `Router.NavigateAsync(path, options)` and `Router.NavigateAsync(delta)` are the same calls without a component.
 
 - `RouterLocation` gains `State`, `Key` and `Hash`, which `Hooks.UseLocation` returns. `Key` is `"default"` for the

@@ -3096,7 +3096,7 @@ namespace Velvet
         /// No element participates in layout while the <see cref="Router"/> the nearest
         /// <see cref="RouterProvider"/> publishes handles the target.
         /// </summary>
-        /// <remarks>Redirects on mount and again when <paramref name="to"/> or <paramref name="replace"/> changes.</remarks>
+        /// <remarks>Redirects on mount and again when <paramref name="to"/>, <paramref name="replace"/>, <paramref name="state"/> or <paramref name="relative"/> changes.</remarks>
         /// <param name="to">Absolute and route-relative targets follow <see cref="Hooks.UseNavigate"/>.</param>
         /// <param name="replace">When true, replaces the current history entry instead of pushing.</param>
         /// <param name="state">Stored on the new history entry, as <see cref="NavigateOptions.State"/>.</param>

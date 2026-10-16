@@ -15,7 +15,7 @@ namespace Velvet
         private readonly RouteTree _routeTree;
         private readonly RouteLoaderRunner _loaderRunner;
         private readonly List<HistoryEntry> _history = new();
-        private int _keyCounter;
+        private readonly System.Random _keyRandom = new();
         private readonly RouteBlockerManager _blockerManager = new();
         private int _historyIndex = -1;
         private Dictionary<string?, object> _loaderData = new();
@@ -240,7 +240,9 @@ namespace Velvet
         /// fifth is refused and the navigation ends with <see cref="NavigationResult.Error"/>.
         /// </summary>
         /// <param name="path">Target path to navigate to.</param>
-        /// <param name="mode">How the destination is recorded in the history stack. Defaults to <see cref="NavigationMode.Push"/>.</param>
+        /// <param name="mode">How the destination is recorded in the history stack. Defaults to <see cref="NavigationMode.Push"/>.
+        /// <see cref="NavigationMode.Back"/> and <see cref="NavigationMode.Forward"/> step onto the neighbouring
+        /// entry, whose own location is committed: <paramref name="path"/> is not read for them.</param>
         /// <param name="cancellationToken">Token forwarded to Loaders.</param>
         /// <returns>
         /// A <see cref="NavigationResult"/> indicating the outcome:
@@ -257,7 +259,9 @@ namespace Velvet
             string path,
             NavigationMode mode = NavigationMode.Push,
             CancellationToken cancellationToken = default) =>
-            Begin(ResolvePath(path), mode, cancellationToken, submission: null, visit: default);
+            IsStepMode(mode)
+                ? StepBy(mode == NavigationMode.Back ? -1 : 1, cancellationToken)
+                : Begin(ResolvePath(path), mode, cancellationToken, submission: null, visit: default);
 
         /// <summary>
         /// Navigates with relative resolution anchored to a specific matched-route level
@@ -271,7 +275,9 @@ namespace Velvet
             NavigationMode mode,
             int baseRouteIndex,
             CancellationToken cancellationToken = default) =>
-            Begin(ResolvePath(path, baseRouteIndex), mode, cancellationToken, submission: null, visit: default);
+            IsStepMode(mode)
+                ? StepBy(mode == NavigationMode.Back ? -1 : 1, cancellationToken)
+                : Begin(ResolvePath(path, baseRouteIndex), mode, cancellationToken, submission: null, visit: default);
 
         /// <summary>
         /// Navigates as React Router's <c>navigate(to, options)</c> does: <paramref name="options"/> chooses
@@ -297,7 +303,7 @@ namespace Velvet
                 options.Replace ? NavigationMode.Replace : NavigationMode.Push,
                 cancellationToken,
                 submission: null,
-                new Visit(options.State, delta: 0));
+                Visit.Push(options.State));
         }
 
         private static readonly NavigateOptions DefaultNavigateOptions = new();
@@ -308,31 +314,42 @@ namespace Velvet
         /// on the end entry as a memory history's <c>go</c> does. The entry keeps the
         /// <see cref="RouterLocation.State"/> and <see cref="RouterLocation.Key"/> it was created with.
         /// </summary>
-        /// <param name="delta">Entries to move by. Zero moves nowhere, where the browser's <c>go(0)</c> reloads.</param>
+        /// <param name="delta">Entries to move by. A delta that does not move, zero or one clamped at an end, lands
+        /// on the entry already current and runs its loaders again, as the router does for the pop a memory history's
+        /// <c>go</c> announces.</param>
         /// <param name="cancellationToken">Token forwarded to Loaders.</param>
         /// <returns>
         /// The outcome, as <see cref="NavigateAsync(string, NavigationMode, CancellationToken)"/> reports it;
-        /// <see cref="NavigationResult.Cancelled"/> when <paramref name="delta"/> is zero or the history has no
-        /// entry in its direction to move to.
+        /// <see cref="NavigationResult.Cancelled"/> when the history holds no entry.
         /// </returns>
         public VelvetTask<NavigationResult> NavigateAsync(int delta, CancellationToken cancellationToken = default)
         {
             // Clamped onto the stack as a memory history's go clamps its index, so an overshoot lands on the end
-            // entry; a step that would not move is refused, as GoBack and GoForward at the ends always were.
-            var landing = _history.Count == 0 ? -1 : Math.Clamp(_historyIndex + delta, 0, _history.Count - 1);
-            var step = landing - _historyIndex;
-            if (landing < 0 || step == 0)
-            {
-                return VelvetTask.FromResult(NavigationResult.Cancelled);
-            }
+            // entry, and a delta that does not move lands on the entry already current.
+            return _history.Count == 0
+                ? VelvetTask.FromResult(NavigationResult.Cancelled)
+                : LandOn(Math.Clamp(_historyIndex + delta, 0, _history.Count - 1), cancellationToken);
+        }
 
+        private static bool IsStepMode(NavigationMode mode) => mode == NavigationMode.Back || mode == NavigationMode.Forward;
+
+        // The step GoBack, GoForward and the Back and Forward modes make: one entry, refused at either end.
+        private VelvetTask<NavigationResult> StepBy(int step, CancellationToken cancellationToken) =>
+            HasEntryAt(_historyIndex + step)
+                ? LandOn(_historyIndex + step, cancellationToken)
+                : VelvetTask.FromResult(NavigationResult.Cancelled);
+
+        // The path, the state and the key of a step all come from the entry it lands on, so the visit names that
+        // entry by index and key, and the attempt is refused if the entry is no longer there when it starts.
+        private VelvetTask<NavigationResult> LandOn(int landing, CancellationToken cancellationToken)
+        {
             var entry = _history[landing];
             return Begin(
                 entry.Path + entry.Hash,
-                step < 0 ? NavigationMode.Back : NavigationMode.Forward,
+                landing < _historyIndex ? NavigationMode.Back : NavigationMode.Forward,
                 cancellationToken,
                 submission: null,
-                new Visit(state: null, step));
+                Visit.Step(landing, entry.Key));
         }
 
         /// <summary>
@@ -364,7 +381,13 @@ namespace Velvet
             CancellationToken cancellationToken)
         {
             options ??= DefaultSubmitOptions;
-            var action = SubmissionPath(string.IsNullOrEmpty(options.Action) ? null : options.Action, baseRouteIndex);
+            var named = !string.IsNullOrEmpty(options.Action);
+            var action = SplitHash(SubmissionPath(named ? options.Action : null, baseRouteIndex), out var hash);
+            // No action names the current location, fragment included, as normalizeTo does for a null target.
+            if (!named)
+            {
+                hash = CurrentLocation?.Hash ?? string.Empty;
+            }
             var submission = new Submission(
                 string.IsNullOrEmpty(options.Method) ? "get" : options.Method, action, formData, options.Replace);
             var path = action;
@@ -372,6 +395,7 @@ namespace Velvet
             {
                 path = RouteQuery.StripQuery(action) + RouteQuery.BuildQuery(submission.Query);
             }
+            path += hash;
             // React Router replaces on a mutation submitted to the location it is on, so the entry the form was
             // on is not left under the one it produced.
             var replace = options.Replace ?? (submission.IsMutation && action == CurrentLocation?.Path);
@@ -437,49 +461,48 @@ namespace Velvet
             return RouteQuery.BuildQuery(kept);
         }
 
-        // Refused here rather than inside the attempt, for the reason StepHasNoEntryToLandOn gives.
+        // Refused here rather than inside the attempt, for the reason EntryIsGone gives.
         private VelvetTask<NavigationResult> Begin(
             string? path, NavigationMode mode, CancellationToken cancellationToken, Submission? submission, Visit visit) =>
-            StepHasNoEntryToLandOn(mode, visit)
+            EntryIsGone(visit)
                 ? VelvetTask.FromResult(NavigationResult.Cancelled)
                 : NavigateInternalAsync(path, mode, cancellationToken, initiator: null, submission, visit);
 
         // Refusing the step before the navigation starts, rather than partway through it, is what makes
         // NavigateAsync and GoBack/GoForward agree on everything the refusal skips: no in-flight attempt
-        // cancelled out from under its caller, and no Navigation left to put back.
-        // The discard is what carries a mode outside the enum through to the commit, whose own switch
-        // answers it with ArgumentOutOfRangeException — the router's one report of such a cast, and the
-        // one RouterUnfinishedNavigationTests reaches the commit's unwind through. Naming these four arms
-        // would raise the cast here instead, before Navigation has anything to put back.
-        private bool StepHasNoEntryToLandOn(NavigationMode mode, Visit visit) => mode switch
-        {
-            NavigationMode.Back or NavigationMode.Forward => !HasEntryAt(_historyIndex + StepOf(mode, visit)),
-            _ => false,
-        };
+        // cancelled out from under its caller, and no Navigation left to put back. A step released by a Blocker
+        // is asked again here, when the history may have changed under it.
+        // No mode is named: one outside the enum has to reach the commit, whose own switch answers it with
+        // ArgumentOutOfRangeException, the router's one report of such a cast and the one
+        // RouterUnfinishedNavigationTests reaches the commit's unwind through.
+        private bool EntryIsGone(Visit visit) =>
+            visit.IsStep && !(HasEntryAt(visit.Landing) && _history[visit.Landing].Key == visit.LandingKey);
 
         private bool HasEntryAt(int index) => index >= 0 && index < _history.Count;
 
-        // A Back or Forward made through the mode alone moves one entry; NavigateAsync(int) names more.
-        private static int StepOf(NavigationMode mode, Visit visit) =>
-            visit.Delta != 0 ? visit.Delta : mode == NavigationMode.Back ? -1 : mode == NavigationMode.Forward ? 1 : 0;
-
         // What a navigation carries beyond where it goes and how it is recorded: the state its new entry stores
-        // and, for a step along the history, how far it steps.
+        // or, for a step along the history, the entry it lands on.
         private readonly struct Visit
         {
             internal readonly object? State;
-            internal readonly int Delta;
+            internal readonly int Landing;
+            internal readonly string? LandingKey;
             // Filled in by NavigateInternalAsync, which is what hands NavigateCore a mode and a visit as one.
             internal readonly NavigationMode Mode;
 
-            internal Visit(object? state, int delta, NavigationMode mode = NavigationMode.Push)
+            private Visit(object? state, int landing, string? landingKey, NavigationMode mode)
             {
                 State = state;
-                Delta = delta;
+                Landing = landing;
+                LandingKey = landingKey;
                 Mode = mode;
             }
 
-            internal Visit In(NavigationMode mode) => new(State, Delta, mode);
+            internal bool IsStep => LandingKey != null;
+
+            internal static Visit Push(object? state) => new(state, -1, null, NavigationMode.Push);
+            internal static Visit Step(int landing, string key) => new(null, landing, key, NavigationMode.Push);
+            internal Visit In(NavigationMode mode) => new(State, Landing, LandingKey, mode);
         }
 
         private readonly struct HistoryEntry
@@ -518,17 +541,19 @@ namespace Velvet
                 return null;
             }
 
-            // The fragment takes no part in resolution and is put back after it. A target that is only a
-            // fragment resolves to the current path, as React Router's resolveTo gives an empty pathname.
-            var hashAt = path.IndexOf('#');
-            if (hashAt < 0)
+            // A target with no pathname, only a search or a fragment, resolves from the current pathname rather
+            // than from a route and drops the current search, as resolveTo does when the target's pathname is
+            // null.
+            if (path.Length > 0 && (path[0] == '?' || path[0] == '#'))
             {
-                return ResolveWithoutHash(path, baseRouteIndex, relative);
+                return RouteQuery.StripQuery(CurrentLocation?.Path ?? "/") + path;
             }
-            var resolved = hashAt == 0
-                ? RouteQuery.StripQuery(CurrentLocation?.Path ?? "/")
-                : ResolveWithoutHash(path.Substring(0, hashAt), baseRouteIndex, relative);
-            return resolved + path.Substring(hashAt);
+
+            // The fragment takes no part in resolution and is put back after it.
+            var hashAt = path.IndexOf('#');
+            return hashAt < 0
+                ? ResolveWithoutHash(path, baseRouteIndex, relative)
+                : ResolveWithoutHash(path.Substring(0, hashAt), baseRouteIndex, relative) + path.Substring(hashAt);
         }
 
         private string ResolveWithoutHash(string path, int baseRouteIndex, RelativeRoutingType relative)
@@ -540,9 +565,20 @@ namespace Velvet
             }
 
             var matches = CurrentLocation?.Matches;
-            if (relative == RelativeRoutingType.Path || matches == null || matches.Count == 0)
+            if (matches == null || matches.Count == 0)
             {
                 return ResolvePathBySegments(path);
+            }
+
+            // Path-relative resolution drops one URL segment per .. from the pathname of the route the caller is
+            // rendered in, not from the URL, as resolveTo does with the matches cut at the calling route.
+            if (relative == RelativeRoutingType.Path)
+            {
+                return FoldSegments(
+                    new List<string>(matches[AnchorIndex(matches, baseRouteIndex)].PathnameBase
+                        .Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries)),
+                    path.Split('/', StringSplitOptions.RemoveEmptyEntries),
+                    0);
             }
 
             var targetParts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -596,8 +632,7 @@ namespace Velvet
 
         /// <summary>
         /// URL-segment-relative resolution: resolves a relative target against <see cref="CurrentLocation"/>'s
-        /// raw path by dropping/appending single URL segments. Used for <see cref="RelativeRoutingType.Path"/>
-        /// and before any route match exists.
+        /// raw path by dropping/appending single URL segments. Used before any route match exists.
         /// </summary>
         private string ResolvePathBySegments(string path)
         {
@@ -765,12 +800,25 @@ namespace Velvet
                         return NavigationResult.Cancelled;
                     }
                 }
-                pending = new PendingNavigation(sequence, CommitIndexFor(mode, visit), redirects: 0);
+                pending = new PendingNavigation(sequence, visit.IsStep ? visit.Landing : _historyIndex, redirects: 0);
             }
 
             // Built here rather than at the commit so the phases below have a destination to publish while
             // they run, and reused as the committed location so the two are one object.
-            var location = BuildLocation(path, hash, matches, mode, pending, visit);
+            var location = BuildLocation(path, hash, matches, visit);
+            // Only the fragment changes: nothing runs and nothing loads, as React Router's startNavigation completes
+            // a hash change at once. A redirect is never one, its target being the Guard's.
+            if (!initiator.HasValue && IsHashChangeOnly(path, hash, submission))
+            {
+                CommitHistoryEntry(location, mode, pending);
+                CurrentLocation = location;
+                CommitAction(matches, null);
+                _blockerManager.ResetAll();
+                PublishNavigation(NavigationLifecycle.Idle, null, null);
+                AnnounceLocation(location);
+                return NavigationResult.Success;
+            }
+
             // A redirect keeps its initiator's submission on show while it loads, as React Router's navigation
             // does while it follows a redirect out of an action.
             PublishNavigation(
@@ -887,14 +935,6 @@ namespace Velvet
             internal PendingNavigation Redirected() => new(Sequence, CommitIndex, Redirects + 1);
         }
 
-        // Same reason for the discard as StepHasNoEntryToLandOn: this runs before the commit, and the
-        // commit is where a mode outside the enum is reported.
-        private int CommitIndexFor(NavigationMode mode, Visit visit) => mode switch
-        {
-            NavigationMode.Back or NavigationMode.Forward => _historyIndex + StepOf(mode, visit),
-            _ => _historyIndex,
-        };
-
         private bool StillCurrent(PendingNavigation pending) =>
             pending.Sequence == _navigationSequence;
 
@@ -990,16 +1030,16 @@ namespace Velvet
         private bool Consult(string target, NavigationMode mode, Submission? submission, Visit visit)
         {
             var nextPath = SplitHash(target, out var nextHash);
+            var (state, key) = EntryIdentity(visit);
             var args = new BlockerFunctionArgs
             {
                 CurrentLocation = CurrentLocation,
-                // The key is empty: the attempt has not been given an entry yet.
                 NextLocation = new RouterLocation
                 {
                     Path = nextPath,
                     Hash = nextHash,
-                    State = visit.State,
-                    Key = string.Empty,
+                    State = state,
+                    Key = key,
                     Params = EmptyParams,
                 },
                 HistoryAction = mode,
@@ -1085,6 +1125,18 @@ namespace Velvet
             return current.Matches;
         }
 
+        // React Router's isHashChangeOnly: the same pathname and search, and a fragment that is new, changed, or
+        // kept, but not one removed. A mutation submission or a pending revalidation is never one.
+        private bool IsHashChangeOnly(string path, string hash, Submission? submission)
+        {
+            var current = CurrentLocation;
+            if (current?.Path != path || _revalidationRequired || submission?.IsMutation == true)
+            {
+                return false;
+            }
+            return current.Hash.Length == 0 ? hash.Length != 0 : current.Hash == hash || hash.Length != 0;
+        }
+
         private static string SearchOf(string path) => path.Substring(RouteQuery.StripQuery(path).Length);
 
         #endregion
@@ -1095,8 +1147,6 @@ namespace Velvet
             string path,
             string hash,
             IReadOnlyList<RouteMatch> matches,
-            NavigationMode mode,
-            PendingNavigation pending,
             Visit visit)
         {
             var allParams = new Dictionary<string, string>();
@@ -1108,23 +1158,50 @@ namespace Velvet
                 }
             }
 
-            // A step along the history lands on an entry that already has its key and state; anything else makes a
-            // new entry, and the first one the router ever holds is React Router's "default".
-            var stepsOntoEntry = (mode == NavigationMode.Back || mode == NavigationMode.Forward)
-                && HasEntryAt(pending.CommitIndex);
-            var entry = stepsOntoEntry ? _history[pending.CommitIndex] : default;
+            var (state, key) = EntryIdentity(visit);
             return new RouterLocation
             {
                 Path = path,
                 Hash = hash,
-                State = stepsOntoEntry ? entry.State : visit.State,
-                Key = stepsOntoEntry ? entry.Key : _history.Count == 0 ? "default" : NewKey(),
+                State = state,
+                Key = key,
                 Params = allParams,
                 Matches = matches,
             };
         }
 
-        private string NewKey() => (++_keyCounter).ToString("x");
+        // A step along the history lands on an entry that already has its key and state; anything else makes a
+        // new entry, and the first one the router ever holds is React Router's "default".
+        private (object? State, string Key) EntryIdentity(Visit visit)
+        {
+            if (visit.IsStep && HasEntryAt(visit.Landing))
+            {
+                var entry = _history[visit.Landing];
+                return (entry.State, entry.Key);
+            }
+            return (visit.State, _history.Count == 0 ? DefaultKey : NewKey());
+        }
+
+        private const string DefaultKey = "default";
+        private const string KeyAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+        // Eight base-36 characters, the shape of React Router's createKey, and never the default key or one an
+        // entry of this router already holds.
+        private string NewKey()
+        {
+            var chars = new char[8];
+            string key;
+            do
+            {
+                for (var i = 0; i < chars.Length; i++)
+                {
+                    chars[i] = KeyAlphabet[_keyRandom.Next(KeyAlphabet.Length)];
+                }
+                key = new string(chars);
+            }
+            while (key == DefaultKey || _history.Exists(entry => entry.Key == key));
+            return key;
+        }
 
         private void CommitHistoryEntry(RouterLocation location, NavigationMode mode, PendingNavigation pending)
         {
@@ -1210,7 +1287,7 @@ namespace Velvet
         /// <returns>The <see cref="NavigationResult"/> from the underlying <see cref="NavigateAsync"/>, or <see cref="NavigationResult.Cancelled"/> when the history has no previous entry.</returns>
         public VelvetTask<NavigationResult> GoBack(CancellationToken cancellationToken = default)
         {
-            return NavigateAsync(-1, cancellationToken);
+            return StepBy(-1, cancellationToken);
         }
 
         /// <summary>
@@ -1220,7 +1297,7 @@ namespace Velvet
         /// <returns>The <see cref="NavigationResult"/> from the underlying <see cref="NavigateAsync"/>, or <see cref="NavigationResult.Cancelled"/> when the history has no next entry.</returns>
         public VelvetTask<NavigationResult> GoForward(CancellationToken cancellationToken = default)
         {
-            return NavigateAsync(1, cancellationToken);
+            return StepBy(1, cancellationToken);
         }
 
         /// <summary>

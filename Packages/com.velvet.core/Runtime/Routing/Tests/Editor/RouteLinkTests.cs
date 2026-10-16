@@ -146,6 +146,40 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_LinkWithPathRelativeRouting_When_Clicked_Then_DotDotDropsOneSegment()
+        {
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("/", children: new[] { Route("team/:id/settings"), Route("team/:id") }),
+            });
+            using var mounted = MountUnder(router, "/team/7/settings",
+                V.Link(to: "..", text: "Up", relative: RelativeRoutingType.Path));
+            var button = FindButton(_root);
+
+            // Act
+            button!.SimulateClick();
+
+            // Assert
+            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/team/7"));
+        }
+
+        [Test]
+        public void Given_NavLinkWithPathRelativeRouting_When_TargetResolvesToTheLocation_Then_AppliesActiveClass()
+        {
+            // Arrange
+            var router = new Router(new[] { Route("/", children: new[] { Route("team/:id") }) });
+
+            // Act
+            using var mounted = MountUnder(router, "/team/7",
+                V.NavLink(to: "../7", activeClass: "is-active", text: "Me", end: true,
+                    relative: RelativeRoutingType.Path));
+
+            // Assert
+            Assert.That(FindButton(_root)!.ClassListContains("is-active"), Is.True);
+        }
+
+        [Test]
         public void Given_NavLink_When_LocationMatchesTarget_Then_AppliesActiveClass()
         {
             // Arrange

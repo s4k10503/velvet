@@ -370,6 +370,51 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AGetSubmissionToAnActionWithAFragment_When_Submitted_Then_TheQueryComesBeforeTheFragment()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var query = new SearchParams();
+            query.Append("q", "lamp");
+
+            // Act
+            Submit(router, query, new SubmitOptions { Action = "/items#results" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionToAnActionWithAFragment_When_Submitted_Then_TheHashHoldsTheFragment()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var query = new SearchParams();
+            query.Append("q", "lamp");
+
+            // Act
+            Submit(router, query, new SubmitOptions { Action = "/items#results" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Hash, Is.EqualTo("#results"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionNamingNoAction_When_Submitted_Then_TheCurrentFragmentIsKept()
+        {
+            // Arrange
+            var router = ItemsRouter("/items#here", Created);
+            var query = new SearchParams();
+            query.Append("q", "lamp");
+
+            // Act
+            Submit(router, query, new SubmitOptions());
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Hash, Is.EqualTo("#here"));
+        }
+
+        [Test]
         public void Given_AGetSubmissionOfAString_When_Submitted_Then_ItIsParsedAsAQueryStringTheWayUrlSearchParamsDoes()
         {
             // Arrange

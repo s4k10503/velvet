@@ -236,23 +236,33 @@ navigate(-1);
   location of its own.
 - `Relative` chooses what a relative target resolves against. `RelativeRoutingType.Route`, the default, drops one
   matched route for each `..`, anchored at the route level of the component that called the hook;
-  `RelativeRoutingType.Path` drops one segment of the current URL path for each, as React Router's
-  `relative: "path"` does. An absolute target ignores it.
+  `RelativeRoutingType.Path` drops one URL segment of the pathname of that same route for each, as React Router's
+  `relative: "path"` does: from the layout `users/:id` at `/users/7/edit`, `".."` is `/users`. An absolute target
+  ignores it.
 - `navigate(delta)` moves `delta` entries along the history, negative back and positive forward, and options passed
-  with it are ignored. A delta past either end lands on that end entry, as a memory history's `go` clamps its index.
-  It answers `NavigationResult.Cancelled` when there is no entry in that direction to move to, as `Router.GoBack` and
-  `Router.GoForward` do at the ends, and when the delta is zero.
-- `V.Link`, `V.NavLink` and `V.Navigate` take `state` and `relative` beside `replace`. `V.NavLink` resolves its target
+  with it are ignored. A delta past either end lands on that end entry, as a memory history's `go` clamps its index,
+  and a delta that does not move, zero or one clamped where it stands, lands on the entry already current and runs its
+  loaders again, as the router does for the pop a memory history announces. It answers `NavigationResult.Cancelled`
+  only when the history holds no entry. `Router.GoBack`, `Router.GoForward` and the `Back` and `Forward` modes of
+  `Router.NavigateAsync` step by one entry and answer `Cancelled` at either end instead; they commit the neighbouring
+  entry's own location.
+- `V.Link`, `V.NavLink` and `V.Navigate` take `state` and `relative` beside `replace`; `V.Navigate` redirects again
+  when either changes. `V.NavLink` resolves its target
   with the same `relative` to decide whether it is active, and ignores the fragment of the target for that.
 
 A target may end in a `#fragment`. `RouterLocation.Path` holds the path and its query without it, `RouterLocation.Hash`
-holds it with its `#` (the empty string when there is none), and it takes no part in matching, in which loaders run
-again, or in what a route sees. A target that is only a fragment keeps the current path and drops its query, as React
-Router resolves an empty pathname.
+holds it with its `#` (the empty string when there is none), and it takes no part in matching or in what a route sees.
+A navigation that changes only the fragment of the location it is on, adding one or replacing one but not removing it,
+runs no guard and no loader and keeps the loader data, as React Router's navigation start does. A target that is only
+a fragment, or only a search, resolves from the current pathname, since it has none of its own, and drops the current
+search. A `get` submission to an action ending in a fragment keeps the fragment after the query it builds, and a
+submission naming no action keeps the current one.
 
 `RouterLocation.Key` identifies the entry: `"default"` for the first the router holds, and a value unique within the
 router for every push or replace after it, replacing the first entry included. A step along the history brings back
 the key of the entry it lands on, so a key read from `Hooks.UseLocation` names the entry whichever way it was reached.
+A blocker asked about a step sees that entry as `NextLocation`, with its stored state and key; asked about a push, it
+sees the state of the call and a fresh key.
 
 ## Router state
 
@@ -307,10 +317,9 @@ counterpart and holds its own history stack, which grows without a bound as a me
 **Navigate options.** `NavigateOptions` offers `Replace`, `State`, `Relative` and `PreventScrollReset`. The last is read
 by nothing, because the router has no scroll restoration for it to configure; it is there so a call written against
 React Router's options compiles, and `V.Link` and `V.NavLink` do not take it. `flushSync` and `viewTransition` are not
-offered; they configure browser behaviours with no counterpart in this router. `navigate(0)` answers `Cancelled`
-where a browser's `go(0)` reloads the page. `State` is any object, held by reference and not cloned, where the browser
-clones it into the history entry. `Key` is a counter formatted in hexadecimal, where React Router's is a random string;
-only its being unique is specified.
+offered; they configure browser behaviours with no counterpart in this router. `State` is any object, held by
+reference and not cloned, where the browser clones it into the history entry. A delta resolved from the pathname of a
+splat route uses its `PathnameBase`, where React Router uses the leaf's full pathname.
 
 ## Also see
 

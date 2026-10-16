@@ -6,7 +6,7 @@ namespace Velvet
     {
         /// <summary>Against the route hierarchy: each <c>..</c> drops one matched route.</summary>
         Route,
-        /// <summary>Against the URL: each <c>..</c> drops one segment of the current path.</summary>
+        /// <summary>Against the pathname of the route the caller is rendered in: each <c>..</c> drops one URL segment of it.</summary>
         Path,
     }
 
@@ -37,17 +37,19 @@ namespace Velvet
     /// </summary>
     public readonly struct NavigateTarget
     {
-        internal NavigateTarget(string? to, int delta)
+        internal NavigateTarget(string? to, int delta, bool isDelta)
         {
             To = to;
             Delta = delta;
+            IsDelta = isDelta;
         }
 
         internal string? To { get; }
         internal int Delta { get; }
+        internal bool IsDelta { get; }
 
-        public static implicit operator NavigateTarget(string to) => new(to, 0);
-        public static implicit operator NavigateTarget(int delta) => new(null, delta);
+        public static implicit operator NavigateTarget(string to) => new(to, 0, false);
+        public static implicit operator NavigateTarget(int delta) => new(null, delta, true);
     }
 
     /// <summary>

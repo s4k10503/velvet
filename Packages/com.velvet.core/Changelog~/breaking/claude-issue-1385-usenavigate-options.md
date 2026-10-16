@@ -8,3 +8,7 @@
 
 - `RouterLocation.Path` no longer contains a `#fragment`. A target such as `/docs#intro` used to match no route; it
   now matches `/docs` and the fragment is `RouterLocation.Hash`.
+
+- `Router.NavigateAsync(path, NavigationMode.Back)` and `NavigationMode.Forward` commit the location of the entry they
+  step onto and no longer read `path`; before, the path the caller passed was committed on a stepped history index.
+  Pass a delta to `Router.NavigateAsync(int)` to move along the history.

@@ -796,8 +796,9 @@ namespace Velvet
         /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>). Relative targets
         /// resolve from the calling component's enclosing Outlet route level. Without one, the router uses
         /// the current leaf route level when matches exist; otherwise it uses the current URL path, or the
-        /// root before the first location. <see cref="NavigateOptions.Relative"/> resolves against the URL
-        /// path instead. Navigation is driven by the router <c>V.RouterProvider</c>
+        /// root before the first location. <see cref="NavigateOptions.Relative"/> set to
+        /// <see cref="RelativeRoutingType.Path"/> drops URL segments of that route's pathname instead of whole
+        /// routes. Navigation is driven by the router <c>V.RouterProvider</c>
         /// publishes above the caller.
         /// </summary>
         /// <returns>A stable delegate; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
@@ -809,9 +810,9 @@ namespace Velvet
             var router = UseRouterOrThrow("UseNavigate");
             var baseRouteIndex = UseBaseRouteIndex();
             return UseCallback<NavigateFunction>(
-                (to, options) => to.To == null
+                (to, options) => to.IsDelta
                     ? router.NavigateAsync(to.Delta)
-                    : router.NavigateAsync(to.To, options, baseRouteIndex),
+                    : router.NavigateAsync(to.To!, options, baseRouteIndex),
                 router, baseRouteIndex);
         }
 
