@@ -141,6 +141,12 @@ namespace Velvet
             ReconcilerContext? ctx, int declaration)
         {
             var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
+            // Resolved on the element into a payload of its own, which comes back through Apply.
+            if (StyleCustomPropertyClass.IsCustomPropertyToken(core))
+            {
+                StyleCustomProperties.Toggle(target, core, on, effectivePriority, declaration, ctx);
+                return false;
+            }
             // A payload's layer, class slot and gate slot are keyed by the rule as well as its rank, so a rule
             // turning off clears its own value and not that of another rule on the same rank (nth-1: beside
             // nth-2:), and two that hold at once order by the place StyleRuleOrder gave the rule's declaration.
@@ -192,7 +198,8 @@ namespace Velvet
             return TrackVariantGate(ctx, target, payload, key, declaration, on);
         }
 
-        // True when any token in classNames is a VARIANT whose payload is a gate token — the question "could
+        // True when any token in classNames is a VARIANT whose payload is a gate token, or reads a custom property
+        // (StyleCustomPropertyClass) — the question "could
         // a toggle on this element ever change what a class-driven pass builds", which the reconciler asks so
         // it can put the array aside for a re-sync that will have none of its own.
         //
@@ -225,6 +232,13 @@ namespace Velvet
                 }
                 var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
                 if (variant && IsVariantGateToken(core))
+                {
+                    return true;
+                }
+                // A custom-property reader is a payload of the element's own, toggled whenever what it reads moves.
+                // Asked of the reader rather than of what it resolves to, which the gate tests cannot read before it
+                // resolves: a reader writing an inline value tracks nothing, so the record costs it only its entry.
+                if (StyleCustomPropertyClass.Consumer(core) != null)
                 {
                     return true;
                 }

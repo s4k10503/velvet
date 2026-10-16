@@ -64,9 +64,10 @@ inside nested functions is declined sooner. `clamp(low, value, high)` is `max(lo
 `low` above `high` wins. What CSS rejects is declined and leaves the class inert: adding a number to a length
 (`calc(1px+2)`), multiplying two lengths, dividing by a length, a result that is a plain number (`calc(4)`)
 and `clamp()` without three arguments. Valid CSS that is not read here is declined too: any function other
-than these four (`var()`, `env()`, `round()`, …), and, as a deliberate deviation, a division by zero and a
+than these four (`env()`, `round()`, …), and, as a deliberate deviation, a division by zero and a
 length too large for a float, both of which CSS reads by clamping an infinite result to the range of lengths
-it supports.
+it supports. A `var()` is replaced by the custom property it reads before the bracket is read
+([styling-custom-properties.md](styling-custom-properties.md)).
 
 So `top-[calc(1rem+4px)]`, `gap-[min(2rem,24px)]`, `blur-[calc(2px*3)]`,
 `shadow-[calc(1rem+4px)_4px_8px_#101820]` and `w-[calc(100%/3)]` resolve as the plain length would.

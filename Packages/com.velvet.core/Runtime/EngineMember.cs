@@ -156,6 +156,37 @@ namespace Velvet
         internal static readonly EngineMember PanelDuringLayoutPhase = ReadProperty(UIElements,
             "UnityEngine.UIElements.BaseVisualElementPanel", "duringLayoutPhase", "System.Boolean");
 
+        // StyleCustomProperties' reading of the custom properties a stylesheet declares.
+        private const string VariableContextType = "UnityEngine.UIElements.StyleVariableContext";
+        private const string StyleVariableType = "UnityEngine.UIElements.StyleVariable";
+        private const string StyleValueHandleType = "UnityEngine.UIElements.StyleValueHandle";
+
+        internal static readonly EngineMember ElementVariableContext =
+            Field(UIElements, VisualElementType, "variableContext", VariableContextType);
+
+        internal static readonly EngineMember VariableContextVariables = ReadProperty(UIElements, VariableContextType,
+            "variables", "System.Collections.Generic.List`1[" + StyleVariableType + "]");
+
+        internal static readonly EngineMember StyleVariableName = Field(UIElements, StyleVariableType, "name", "System.String");
+
+        internal static readonly EngineMember StyleVariableSheet = Field(UIElements, StyleVariableType, "sheet", StyleSheetType);
+
+        internal static readonly EngineMember StyleVariableHandles =
+            Field(UIElements, StyleVariableType, "handles", StyleValueHandleType + "[]");
+
+        internal static readonly EngineMember StyleValueHandleKind = ReadProperty(UIElements, StyleValueHandleType,
+            "valueType", "enum:UnityEngine.UIElements.StyleValueType");
+
+        internal static readonly EngineMember StyleSheetReadAsString = Method(UIElements,
+            "UnityEngine.UIElements.StyleSheets.StyleSheetExtensions", "ReadAsString", "System.String", StyleSheetType,
+            StyleValueHandleType);
+
+        internal static readonly EngineMember StyleSheetReadColor =
+            Method(UIElements, StyleSheetType, "ReadColor", "UnityEngine.Color", StyleValueHandleType);
+
+        internal static readonly EngineMember StyleSheetReadFloat =
+            Method(UIElements, StyleSheetType, "ReadFloat", "System.Single", StyleValueHandleType);
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 

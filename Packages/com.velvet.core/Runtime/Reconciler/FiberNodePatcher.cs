@@ -1548,6 +1548,8 @@ namespace Velvet
                 // resolver (e.g. font-[..] by StyleFontResolver) and must not enter the USS class list.
                 StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority, addToClassListFallback: false);
             }
+            // A custom-property reader on the base layer shares it with the tokens just re-applied.
+            StyleCustomProperties.ReassertBase(element, affectedLonghands);
         }
 
         // The longhands the classes write whatever state the element is in: an inline-resolved token's arbitrary
@@ -1577,7 +1579,8 @@ namespace Velvet
         private static bool TryGetInlineResolvedCore(string rawCls, out string core, out bool important)
         {
             core = StyleArbitraryValueResolver.StripImportant(rawCls, out important);
-            return !IsEmptyOrVariantToken(rawCls) && StyleArbitraryValueResolver.IsInlineResolved(core);
+            return !IsEmptyOrVariantToken(rawCls) && StyleArbitraryValueResolver.IsInlineResolved(core)
+                && !StyleCustomPropertyClass.IsCustomPropertyToken(core);
         }
 
         private static bool IsEmptyOrVariantToken(string rawCls)
@@ -1745,6 +1748,13 @@ namespace Velvet
                 return true;
             }
 
+            // Custom-property tokens resolve on the element (ApplyCustomPropertyConfig) and never enter the class
+            // list.
+            if (StyleCustomPropertyClass.IsCustomPropertyToken(StyleArbitraryValueResolver.StripImportant(cls, out _)))
+            {
+                return true;
+            }
+
             // font-[...] arbitrary font classes are resolved from the whole class array by
             // StyleFontResolver and applied as inline style; like other arbitrary values they must not
             // enter the USS class list.
@@ -1798,7 +1808,7 @@ namespace Velvet
         // None of IsManipulatorOwnedClass's token families ever entered the class list (see AddClass), so
         // there is nothing here to remove for them; each family's applied payload is cleared elsewhere by
         // its own owning pass on the class change instead (the variant manipulator; the child-variant /
-        // structural / has-variant / attribute / supports config passes; StyleFontResolver; or
+        // structural / has-variant / attribute / supports / custom-property config passes; StyleFontResolver; or
         // StyleTextEffectResolver re-resolving) — never by this method.
         private static void RemoveClass(VisualElement element, string cls)
         {
@@ -2557,6 +2567,95 @@ namespace Velvet
             ApplyHasClassVariantConfig(element, classNames);
             ApplyAttributeVariantConfig(element, classNames);
             ApplySupportsVariantConfig(element, classNames);
+            ApplyCustomPropertyConfig(element, classNames);
+        }
+
+        // The element's own custom-property tokens (StyleCustomPropertyClass), applied as payloads at the base
+        // layer, or the important one for a token with the bang. Only the tokens that changed are toggled, the
+        // ones leaving first, since a declaration changing value leaves and arrives at the same layer.
+        private void ApplyCustomPropertyConfig(VisualElement element, string[] classNames)
+        {
+            List<(string Core, long Priority, int Declaration)>? tokens = null;
+            if (classNames != null)
+            {
+                for (var i = 0; i < classNames.Length; i++)
+                {
+                    var cls = classNames[i];
+                    if (IsEmptyOrVariantToken(cls))
+                    {
+                        continue;
+                    }
+                    var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
+                    if (!string.IsNullOrEmpty(core) && StyleCustomPropertyClass.IsCustomPropertyToken(core))
+                    {
+                        // A reader takes the layer the literal base utilities share, so it ranks against them as they
+                        // rank against each other; a declaration ranks only against declarations, by rule place.
+                        (tokens ??= new List<(string, long, int)>()).Add((core,
+                            important ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base) : StyleLayerPriority.Base,
+                            StyleCustomPropertyClass.TryDeclaration(core, out _, out _)
+                                ? StyleRuleOrder.OrdinalOf(classNames, i)
+                                : StyleVariantPayload.NoDeclaration));
+                    }
+                }
+            }
+            _ctx.CustomPropertyClasses.TryGetValue(element, out var previous);
+            if (previous == null && tokens == null)
+            {
+                return;
+            }
+            var leaving = new List<(string Core, long Priority, int Declaration)>();
+            var arriving = new List<(string Core, long Priority, int Declaration)>();
+            foreach (var token in previous ?? new List<(string, long, int)>())
+            {
+                if (tokens == null || !tokens.Contains(token))
+                {
+                    leaving.Add(token);
+                }
+            }
+            foreach (var token in tokens ?? new List<(string, long, int)>())
+            {
+                if (previous == null || !previous.Contains(token))
+                {
+                    arriving.Add(token);
+                }
+            }
+            if (tokens == null)
+            {
+                _ctx.CustomPropertyClasses.Remove(element);
+            }
+            else
+            {
+                _ctx.CustomPropertyClasses[element] = tokens;
+            }
+            // Recorded before a reader leaves, since what it hands its layer back to is this render's literals.
+            StyleCustomProperties.RecordClasses(element, classNames ?? Array.Empty<string>());
+            StyleCustomProperties.Hold();
+            try
+            {
+                ToggleCustomPropertyTokens(element, leaving, on: false);
+                ToggleCustomPropertyTokens(element, arriving, on: true);
+            }
+            finally
+            {
+                StyleCustomProperties.ReleaseHeld();
+            }
+        }
+
+        // Declarations before consumers, so a consumer arriving with the declaration it reads resolves once.
+        private void ToggleCustomPropertyTokens(VisualElement element,
+            List<(string Core, long Priority, int Declaration)> tokens, bool on)
+        {
+            for (var pass = 0; pass < 2; pass++)
+            {
+                foreach (var (core, priority, declaration) in tokens)
+                {
+                    if (StyleCustomPropertyClass.TryDeclaration(core, out _, out _) == (pass == 0))
+                    {
+                        StyleVariantPayload.Apply(element, new[] { core }, on, priority, _ctx,
+                            declarations: new[] { declaration });
+                    }
+                }
+            }
         }
 
         // Configures (creates / updates / removes) the element's StyleHasVariantManipulator from the
