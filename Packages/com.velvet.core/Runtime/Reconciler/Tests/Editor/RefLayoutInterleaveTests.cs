@@ -875,8 +875,24 @@ namespace Velvet.Tests
             {
                 s_lastWatchedTick = tick;
                 s_log.Add("attach");
-                return null;
+                return () => s_log.Add("ref-cleanup");
             });
+        }
+
+        // OwedHolder, logging the layout effect of the render the settle owes it.
+        [Component(Compiler = false)]
+        private static VNode OwedLoggedHolder()
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_log.Add("holder-layout");
+                return null;
+            }));
+            var (state, addOptimistic) = Hooks.UseOptimistic<string, string>(
+                "base",
+                (current, action) => current + "+" + action);
+            s_add = addOptimistic;
+            return V.Label(text: state);
         }
 
         [Component(Compiler = false)]
@@ -885,7 +901,7 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Component(OwedStarter, key: "starter"),
-                V.Component(OwedHolder, key: "holder"),
+                V.Component(OwedLoggedHolder, key: "holder"),
                 V.Component(OwedLoggedSibling, key: "sibling"),
             });
         }
@@ -927,6 +943,17 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.FindAll(entry => entry == "layout-cleanup" || entry == "attach"),
                 Is.EqualTo(new[] { "layout-cleanup", "attach" }), "recorded order: " + string.Join(",", log));
+        }
+
+        [Test]
+        public void Given_AFlushWhoseSettledTransitionOwesAnotherComponentARender_When_ThatRenderCommitsAheadOfIt_Then_TheFlushedComponentsReplacedRefIsNotDetachedByThatCommit()
+        {
+            // Act
+            var log = FlushTheOwedSiblingAndReadTheLog();
+
+            // Assert
+            Assert.That(log.FindAll(entry => entry == "holder-layout" || entry == "ref-cleanup"),
+                Is.EqualTo(new[] { "holder-layout", "ref-cleanup" }), "recorded order: " + string.Join(",", log));
         }
 
         // The presence mounts when the state is written, so its first render suppresses the enter of the Motion it

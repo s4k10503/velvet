@@ -64,7 +64,6 @@ namespace Velvet
             {
                 if (gaps.TryGetValue(slot, out var gap))
                 {
-                    // MUTANT_SURVIVES(equivalent, guard removed): the sort leaves a queue that is already in tree order as it is, and the guard spares its comparisons.
                     if (tree.HasPortalRows) SortByTreeOrder(gap, tree);
                     foreach (var entry in gap) steps.Add(new LayoutStep(entry));
                 }
@@ -82,10 +81,9 @@ namespace Velvet
             {
                 var entry = gap[i];
                 var at = i;
-                while (at > 0 && tree.Precedes(entry.Element, gap[at - 1].Element))
+                for (; at > 0 && tree.Precedes(entry.Element, gap[at - 1].Element); at--)
                 {
                     gap[at] = gap[at - 1];
-                    at--;
                 }
                 gap[at] = entry;
             }
@@ -227,6 +225,8 @@ namespace Velvet
         private static bool SiblingPrecedes(VisualElement a, VisualElement b)
         {
             var parent = a.hierarchy.parent;
+            // MUTANT_SURVIVES(equivalent, boundary): a and b are distinct branches under their lowest common ancestor,
+            // which the loop in Precedes stops at when the two chains differ, so their indices never tie.
             return parent.IndexOf(a) < parent.IndexOf(b);
         }
 
