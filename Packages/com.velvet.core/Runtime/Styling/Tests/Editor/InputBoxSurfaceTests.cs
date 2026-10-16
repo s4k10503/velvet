@@ -94,6 +94,42 @@ namespace Velvet.Tests
             Assert.That(Joined(classNames), Is.EqualTo(Scoped + token));
         }
 
+        [TestCase("opacity-50")]
+        [TestCase("text-red-500")]
+        [TestCase("text-[#ff0000]")]
+        [TestCase("translate-x-4")]
+        [TestCase("rotate-45")]
+        [TestCase("scale-105")]
+        [TestCase("origin-center")]
+        [TestCase("skew-x-6")]
+        [TestCase("animate-spin")]
+        [TestCase("animate-hue")]
+        [TestCase("hover:opacity-50")]
+        public void Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(
+            string token)
+        {
+            // Act
+            var classNames = V.TextField(className: token).ClassNames;
+
+            // Assert
+            Assert.That(Joined(classNames), Is.EqualTo(Scoped + token));
+        }
+
+        [TestCase("transition-all")]
+        [TestCase("transition-filter")]
+        [TestCase("duration-300")]
+        [TestCase("ease-out")]
+        [TestCase("hover:duration-300")]
+        public void Given_ATransitionUtilityOnATextField_When_TheNodeIsBuilt_Then_TheControlKeepsItAndTheInputBoxTakesIt(
+            string token)
+        {
+            // Act
+            var classNames = V.TextField(className: token).ClassNames;
+
+            // Assert
+            Assert.That(Joined(classNames), Is.EqualTo(token + "|" + Scoped + token));
+        }
+
         [Test]
         public void Given_SurfaceAndLayoutUtilities_When_TheNodeIsBuilt_Then_OnlyTheSurfaceOnesAreScoped()
         {
@@ -105,12 +141,12 @@ namespace Velvet.Tests
                 Is.EqualTo("w-64|" + Scoped + "bg-red-500|mt-2|" + Scoped + "rounded-lg"));
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves every one of these on the outer control. They are the
-        // utilities that are not surface ones, and the conditions the control itself decides, which
+        // GREEN_ON_BASE(characterization): the base leaves every one of these on the outer control, the font size too.
+        // They are the utilities that are not surface ones, and the conditions the control itself decides, which
         // StyleInputBoxSurface.DestinationFor redirects while the payload is applied and Route never rewrites.
         [TestCase("w-64")]
         [TestCase("mt-2")]
-        [TestCase("text-white")]
+        [TestCase("text-sm")]
         [TestCase("flex")]
         [TestCase("first:bg-red-500")]
         [TestCase("has-[:checked]:bg-red-500")]
@@ -618,6 +654,74 @@ namespace Velvet.Tests
             // Assert
             Assert.That((FilterTypes(Box(scope.Root[0])), FilterTypes(scope.Root[0])),
                 Is.EqualTo(("Custom", "none")));
+        }
+
+        [Test]
+        public void Given_AShadowBesideAFilterOnATextField_When_Reconciled_Then_TheInputBoxsShadowReservesItsBounds()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "shadow-lg blur-sm") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[Box(scope.Root[0])].WantSpacer, Is.True);
+        }
+
+        [Test]
+        public void Given_AnimateHueOnATextField_When_Reconciled_Then_TheInputBoxRunsTheMotion()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "animate-hue") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var motions = scope.Reconciler.Context.AnimationBindings;
+
+            // Assert
+            Assert.That((motions.ContainsKey(Box(scope.Root[0])), motions.ContainsKey(scope.Root[0])),
+                Is.EqualTo((true, false)));
+        }
+
+        #endregion
+
+        #region Label
+
+        [TestCase("opacity-50")]
+        [TestCase("text-red-500")]
+        [TestCase("rotate-45")]
+        public void Given_AUtilityOnALabelledTextField_When_Reconciled_Then_OnlyTheInputBoxTakesIt(string token)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: token, label: "Name") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var field = (TextField)scope.Root[0];
+
+            // Assert
+            Assert.That((Box(field).ClassListContains(token), field.ClassListContains(token)),
+                Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ATransitionOnATextField_When_Reconciled_Then_TheControlAndTheInputBoxBothTakeIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "transition-all") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(
+                (Box(scope.Root[0]).ClassListContains("transition-all"), scope.Root[0].ClassListContains("transition-all")),
+                Is.EqualTo((true, true)));
         }
 
         #endregion

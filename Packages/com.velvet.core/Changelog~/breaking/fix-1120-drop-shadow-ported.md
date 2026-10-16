@@ -6,9 +6,12 @@
   composes after the other built-in filter utilities and before `filter-[name]` customs, and it no longer shares
   a slot with `shadow-*`, so the two render together and neither one's `-none` removes the other. It was the
   painted box shadow on its own scale.
-- On a field control, the filter utilities (`blur-*`, `grayscale-*`, `filter-[…]` and the rest) land on the
-  input box, beside `drop-shadow-*` and the other surface utilities, as CSS's `filter` on an `<input>` filters
-  the input alone. They were on the outer control, where they also filtered a declared `label:`.
+- On a field control, the filter utilities (`blur-*`, `grayscale-*`, `filter-[…]` and the rest), the text
+  colour, `opacity-*`, the transforms (`translate-*`, `rotate-*`, `scale-*`, `skew-*`, `origin-*`) and
+  `animate-*` land on the input box, beside `drop-shadow-*` and the other surface utilities, as CSS applies
+  them to an `<input>` alone. They were on the outer control, where they also reached a declared `label:`.
+  The transition utilities (`transition-*`, `duration-*`, `ease-*`) land on both, so a change to a box's
+  background or filter tweens; they were on the control alone, which left the box's changes instant.
 - `drop-shadow` is a reserved name in `VelvetFilters.Register`.
 - The box-shadow shader is named `Velvet/BoxShadow`; it was `Velvet/DropShadow`. A shader opted out under
   **Project Settings ▸ Velvet** is saved by name, so an opt-out made under the old name has to be made again.
@@ -20,5 +23,7 @@
 
 ### Fixed
 
+- A `shadow-*` beside a filter utility on a field reserves room for its halo under the filter, as it does on
+  any other element.
 - Removing a named filter utility that shared a filter with a bracketed one, such as `blur-none` beside
   `blur-[2px]`, brings the bracketed value back instead of leaving no filter.

@@ -459,7 +459,12 @@ these to the box:
 - `shadow-*`, `ring-*` and `outline-*`;
 - the filter utilities, `drop-shadow-*` and `filter-[…]` among them
   ([styling-filters.md](styling-filters.md));
+- the text colour (`text-<color>`, `text-[<color>]`) and `opacity-*`;
+- the transforms (`translate-*`, `rotate-*`, `scale-*`, `skew-*`, `origin-*`) and `animate-*`;
 - the caret and selection colours, `caret-*`, `selection:bg-*` and `selection:text-*`.
+
+The transition utilities (`transition-*`, `duration-*`, `ease-*`) go to both, so a change on either element
+tweens.
 
 **A text input's caret and selection colours follow CSS and Tailwind.**
 - **Values:** each utility takes a palette colour, `white`, `black`, `transparent`, a bracketed value
