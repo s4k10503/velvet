@@ -16,13 +16,8 @@ namespace Velvet
     // between pure math (ComputeSegments) and the live-Painter2D stroke call (StrokeDashed).
     internal static class TextOverlinePainter
     {
-        // The rule sits this far below the FIRST line's top edge, as a fraction of font size. UI Toolkit
-        // exposes no public, synchronously-reachable ascent metric for an arbitrary Font/FontAsset (the
-        // per-glyph vertex hook, PostProcessTextVertices, runs job-dependent and out of sync with
-        // generateVisualContent), so this is a documented approximation rather than a measured ascent line:
-        // most fonts carry some internal leading above the ascender within their em-square, and CSS specifies
-        // overline at the ascent line, not the very top of the line box — nudging down by 15% of the font
-        // size lands near that ascent line for typical font metrics without needing per-font data.
+        // The rule sits this far below the FIRST line's top edge, as a fraction of font size: a fixed offset, not
+        // the font's ascent line, which the element's font asset carries (StyleFontUnits reads that asset).
         private const float TopOffsetFraction = 0.15f;
 
         // Typical browsers stroke an underline/overline at roughly 1/16th of the font size; floored at 1px
