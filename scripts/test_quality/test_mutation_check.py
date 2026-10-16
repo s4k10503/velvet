@@ -3126,7 +3126,10 @@ class StubbedCampaign:
         """)
 
     def __init__(self, body=None):
-        self.holder = tempfile.mkdtemp(prefix="mutation-check-")
+        # Reached through a link on every platform, as macOS reaches its temporary directory, so that a
+        # case resolving one path and not the one it compares against fails everywhere.
+        self.holder = tempfile.mkdtemp(prefix="mutation-check-") + "-link"
+        os.symlink(self.holder[:-len("-link")], self.holder)
         self.project = Path(self.holder)
         self.source = self.project / self.SOURCE
         self.source.parent.mkdir(parents=True, exist_ok=True)
@@ -10684,7 +10687,7 @@ class KillStandingTests(unittest.TestCase):
     def killed(self):
         """(campaign, the mutant, its ledger record) for a kill by the first fixture's case."""
         campaign = LedgerCampaign()
-        path = campaign.source.resolve()
+        path = campaign.source
         mutant = next(m for m in mutation_check.mutations_for(
             path, path.read_text(), {5}) if m.operator == "boundary")
         mutant.verdict, mutant.killers, mutant.platform = mutation_check.KILLED, (self.CASE,), "EditMode"
@@ -10801,7 +10804,7 @@ class ReuseDecisionTests(unittest.TestCase):
     """Which mutants a plan hands to the shards, given the ledgers of the branch's earlier campaigns."""
 
     def mutants_of(self, campaign):
-        path = campaign.source.resolve()
+        path = campaign.source
         return mutation_check.one_per_line(mutation_check.mutations_for(
             path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
 
@@ -10900,7 +10903,7 @@ class LedgerContextTests(unittest.TestCase):
                                                      "Support\n    {\n    }\n}\n")
         campaign.after_a_campaign()
         edit(campaign)
-        path = campaign.source.resolve()
+        path = campaign.source
         mutants = mutation_check.one_per_line(mutation_check.mutations_for(
             path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
         ledger = campaign.written_ledger() | {"run": "9001"}
