@@ -16,7 +16,6 @@ namespace Velvet
         // .text-<size> rules.
         public const int SlashRank = 1000;
 
-        // Rank is the place of the size's rule in _typography.uss, where the later rule wins the font size.
         // Line heights are the em multipliers Tailwind spells as calc(<rem> / <font-size rem>).
         private readonly struct SizeEntry
         {
@@ -48,6 +47,27 @@ namespace Velvet
             new("8xl", 96f, 1f),
             new("9xl", 128f, 1f),
         };
+
+        // The place of each size's rule in _typography.uss, where the later rule wins the font size. The sheet
+        // declares them in Tailwind's order, so the sizes sorted by StyleCandidateOrder; NamedTextSizeSheetTests
+        // reads the sheet against these ranks.
+        private static readonly int[] s_ranks = RankInTailwindOrder();
+
+        private static int[] RankInTailwindOrder()
+        {
+            var ascending = new int[s_sizes.Length];
+            for (var i = 0; i < ascending.Length; i++)
+            {
+                ascending[i] = i;
+            }
+            Array.Sort(ascending, (a, z) => StyleCandidateOrder.Compare(s_sizes[a].Name, s_sizes[z].Name));
+            var ranks = new int[ascending.Length];
+            for (var rank = 0; rank < ascending.Length; rank++)
+            {
+                ranks[ascending[rank]] = rank;
+            }
+            return ranks;
+        }
 
         // The pair of every named size, for the cache of their formatted tags.
         public static IEnumerable<LeadingValue> PairedLineHeights()
@@ -135,7 +155,7 @@ namespace Velvet
                 }
                 size = new ArbitraryStyle(ArbitraryProperty.FontSize, entry.FontSizePx, LengthUnit.Pixel);
                 pairedEm = entry.LineHeightEm;
-                rank = i;
+                rank = s_ranks[i];
                 suffixAt = slash == -1 ? -1 : slash + 1;
                 return true;
             }

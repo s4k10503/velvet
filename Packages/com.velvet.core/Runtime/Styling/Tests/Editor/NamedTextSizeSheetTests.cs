@@ -51,12 +51,18 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(construction): both sides here are the repository's own content.
-        // Swap the first two entries of `StyleNamedTextSize.s_sizes` and this reddens.
+        // Swap `.text-xs` and `.text-sm` in `_typography.uss` and this reddens.
         [Test]
-        public void Given_TheTypographySheet_When_ItsTextSizeRulesAreRead_Then_TheyComeInTheMirrorsOrder()
+        public void Given_TheTypographySheet_When_ItsTextSizeRulesAreRead_Then_TheyComeInTheMirrorsRankOrder()
         {
             // Arrange
-            var expected = Mirror().Select(entry => "text-" + entry.Name);
+            var expected = Mirror()
+                .Select(entry => "text-" + entry.Name)
+                .OrderBy(name =>
+                {
+                    StyleNamedTextSize.TryParseLineHeight(name, out _, out var rank);
+                    return rank;
+                });
 
             // Act
             var found = Regex.Matches(ReadSheet("_typography.uss"), @"\.(text-[0-9a-z]+)\s*\{\s*font-size\s*:")

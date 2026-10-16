@@ -650,7 +650,7 @@ namespace Velvet
         private static bool TryRank(string className, int index, out RankedToken token)
         {
             var core = StyleArbitraryValueResolver.StripImportant(className, out var important);
-            if (StyleArbitraryValueResolver.IsInlineResolved(core) && StyleArbitraryValueResolver.TryParse(core, out var inline))
+            if (StyleArbitraryValueResolver.IsInlineResolved(core) && StyleArbitraryValueResolver.TryParseLayer(core, out var inline))
             {
                 var perAxisScale = inline.Property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
                 token = new RankedToken

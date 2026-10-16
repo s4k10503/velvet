@@ -251,8 +251,8 @@ The pair is the size class's own line height, so it replaces one an ancestor's `
 inherits like any other leading (it shares the cascade-freshness caveat above). A bare size writes
 `line-height: var(--tw-leading, <pair>)` in Tailwind, so a `leading-*` on the same element beats it whichever
 class comes first and whether either carries `!`. When an element holds several sizes, the pair is the one of
-the size whose font size shows, which is the rule declared last in `_typography.uss`, or a slash form over any
-of them. `text-<size>/<leading>` takes the suffix of the matching `leading-*` utility, so `text-sm/6` is a 14px
+the size whose font size shows, which is the rule declared last in `_typography.uss` — the one Tailwind
+emits last, so `text-sm` over `text-lg` — or a slash form over any of them. `text-<size>/<leading>` takes the suffix of the matching `leading-*` utility, so `text-sm/6` is a 14px
 font with `leading-6`'s 24px line height, and `text-sm/loose` the 2 multiplier. The slash form is a
 direct `line-height`: an `!` one beats a plain `leading-*`, and otherwise the `leading-*` wins. A suffix that is
 no `leading-*` value leaves the class inert. A bracket size takes the slash too (`text-[14px]/6`,

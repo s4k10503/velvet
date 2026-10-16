@@ -24,8 +24,8 @@
 .opacity-100 { opacity: 1; }
 
 /* Visibility */
-.visible { visibility: visible; }
 .invisible { visibility: hidden; }
+.visible { visibility: visible; }
 
 /*
  * Cursor
@@ -43,11 +43,35 @@
  * is split into the independent `translate` / `scale` / `rotate` properties, so
  * those are what we enumerate here (see _transforms.uss for the plain utilities).
  * Listing `transform` would silently animate nothing.
+ *
+ * Each property utility bundles a default duration + curve (Tailwind ships
+ * transition-duration/timing-function inside every transition-* utility) so the class works
+ * standalone — UI Toolkit's initial transition-duration is 0s, which would otherwise snap.
+ * The default curve is ease-in-out: Tailwind's default is cubic-bezier(0.4, 0, 0.2, 1), which UI
+ * Toolkit (no cubic-bezier easing) approximates most closely with its ease-in-out keyword, not the
+ * fast-start ease-out. The explicit .duration-* / .ease-* classes in _state_variants.uss are declared later and override.
+ *
+ * The family runs in Tailwind's order, `transition-none` last because it writes `transition-property` alone.
+ * Of two of them, the one Tailwind emits later holds the property.
  */
-.transition-transform {
-    transition-property: translate, scale, rotate;
+.transition-all {
+    transition-property: all;
     transition-duration: var(--duration-normal);
-    /* ease-in-out: the closest UI Toolkit keyword to Tailwind's default cubic-bezier(0.4, 0, 0.2, 1). */
+    transition-timing-function: ease-in-out;
+}
+.transition-colors {
+    transition-property: background-color, border-color, color;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+.transition-colors-scale {
+    transition-property: background-color, border-color, color, scale;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+.transition-colors-scale-opacity {
+    transition-property: background-color, border-color, color, scale, opacity;
+    transition-duration: var(--duration-normal);
     transition-timing-function: ease-in-out;
 }
 
@@ -57,7 +81,7 @@
  * transition-property is pinned to `filter` so the entry that runs for filter is not an `all` the engine
  * animates the inline filter by; StyleFilterTransitionDriver says which lists the tween runs under.
  * Pinning one property also means this class transitions ONLY filter, and it does not combine with
- * another transition-* utility: they set the same property, so the later-declared one wins outright.
+ * another transition-* utility: they set the same property, so the one Tailwind emits later wins outright.
  * duration-* / ease-* still override, declared later.
  */
 .transition-filter {
@@ -65,6 +89,18 @@
     transition-duration: var(--duration-normal);
     transition-timing-function: ease-in-out;
 }
+.transition-opacity {
+    transition-property: opacity;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+.transition-transform {
+    transition-property: translate, scale, rotate;
+    transition-duration: var(--duration-normal);
+    /* ease-in-out: the closest UI Toolkit keyword to Tailwind's default cubic-bezier(0.4, 0, 0.2, 1). */
+    transition-timing-function: ease-in-out;
+}
+.transition-none { transition-property: none; }
 
 /* object-fit (Tailwind) — for an element showing an image as background-image. Mapped onto background-size
    (the modern, non-deprecated property; keywords match the Tailwind names). object-contain / object-cover

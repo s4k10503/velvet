@@ -175,7 +175,9 @@ question, and under one nearly everything survives. `--platform` is not one of t
 suite, just a different one — so it reads declarations, and the platform is part of the verdict
 records' key so that a kill a PlayMode run took is never kept for an EditMode one. `--survivors-of`
 takes a run on one platform as the first of two passes: the run on the other platform measures only
-that run's survivors and decides over both, which is the decision CI takes.
+that run's survivors and decides over both, which is the decision CI takes. `--survivors-shard K/N`
+narrows what is read to the mutants the first run's shard K of N was dealt, which is how a shard's job
+measures the survivors of its own mutants on the other platform.
 
 **A changed line is asked about once.** A line can generate several mutants — `a <= b && c` has a
 boundary flip, a logic flip and a clause removal — and the campaign keeps one of them, so its cost
@@ -225,7 +227,7 @@ base with the pull request's base, taking the readings `--list` takes, and stops
 changed, or because no operator reaches the lines that did. The second passes, where a local run
 refuses it: its job summary names the lines, and the pull request body says why the change is not
 something a mutation can ask about. Where a licence is configured, a diff of more mutants than ten
-shards of 16 can measure inside the shard job's timeout — not counting the kills reused from an
+shards of `SHARD_CEILING` can measure inside the shard job's timeout — not counting the kills reused from an
 earlier campaign, below — is refused at the plan and is split into smaller pull requests; without one no shard would run, and the plan passes as the Unity jobs skip.
 Otherwise,
 where a licence is configured, the mutants are measured in two passes, because a mutant is killed
@@ -238,12 +240,16 @@ not. `Mutation campaign ▸ mutation-shard` then measures every mutant in up to 
 test assemblies first where those are cheap, and against the whole EditMode suite wherever that did
 not kill it, which
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
-owns. Once every one of those jobs has passed, `Mutation campaign ▸ mutation-playmode-plan` counts
-the mutants they left surviving, and `Mutation campaign ▸ mutation-playmode-shard` measures only those
-against the whole
-PlayMode suite, in up to ten jobs of its own. That pass has a ceiling of its own, and over it the
-pass is refused: EditMode tests for the survivors bring the count under it, since the count is of
-EditMode survivors and no PlayMode test lowers it, and otherwise the pull request is split.
+owns. When a job's EditMode pass has ended, the same job counts the mutants it left surviving and
+measures only those against the whole PlayMode suite, on the same runner and licence: the PlayMode pass
+starts as soon as its own shard's EditMode pass ends, rather than after the slowest shard's, and adds no
+job. An account's concurrent hosted jobs are few, and a job added for the PlayMode pass would queue
+behind the EditMode shards and behind another pull request's campaign. That pass has a ceiling of its
+own, `SHARD_CEILING["PlayMode"]` survivors in one shard, and over it the job fails after uploading its
+EditMode records: EditMode tests for the survivors bring the count under it, since no PlayMode test
+lowers it, and otherwise the pull request is split. A PlayMode pass runs only where its job's EditMode
+pass passed. The job's 360 minutes, the most a hosted job runs, hold the EditMode step's 180, the PlayMode step's 165
+and 15 for the checkout, restore and uploads around them; `ShardCeilingTests` holds each step to its platform's ceiling.
 `Mutation campaign ▸ mutation-verdict` reads both passes' records and the kills the plan reused, and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
 a mutant nothing measured fails it, and a survivor of the EditMode pass that no PlayMode shard
 recorded is one nothing measured. Unlike a local run it takes every mutant rather than stopping at
@@ -300,7 +306,7 @@ record that cannot be read in full — a ledger that is missing, expired, listed
 is only a measurement owed. The plan's summary says how many verdicts were reused and, for each mutant it
 measures again, why. A reused kill reaches no shard: the plan writes its decision into the
 artifact that carries the mutant list, every later job hands it back with `--reuse`, and the shards, the
-PlayMode plan and the shard count are dealt over the mutants not reused, and the ceiling above counts
+shard count is dealt over the mutants not reused, and the ceiling above counts
 only those. A kill
 the PlayMode pass took is reused like an EditMode one, and neither pass is asked about it. The verdict
 job reads each reused kill against its own tree rather than trusting the plan's file, and a kill whose
@@ -363,14 +369,15 @@ for any campaign, and the merge run it dispatches is settle's. `refuse/merge_unp
 not read the citation, which a merge by hand therefore skips.
 
 **Every shard measures the plan's list, and a shard that did not report is not a survivor.**
-`mutation-plan` writes the mutant list it counted (`--emit-mutants`) and each shard, the PlayMode plan
-and the verdict job hand it back (`--mutants`): a tree that generates another list refuses to run, rather than dealing its
+`mutation-plan` writes the mutant list it counted (`--emit-mutants`) and each shard and the verdict job
+hand it back (`--mutants`): a tree that generates another list refuses to run, rather than dealing its
 indices to other mutants. A shard that died, was cancelled or timed its baseline out records nothing,
 and the verdict job names it under `not measured`, with the shard's number: that is neither a
 survivor nor a stale declaration, and a declaration over a mutant of such a shard is not reported
 stale. An EditMode shard that died is named the same way, with the heading `EditMode`; its mutants are
-in no PlayMode pass's list, and no PlayMode shard is named then, since that pass is skipped when an
-EditMode shard fails. The run still fails. Re-running only the failed jobs of the run completes it: the shard
+in no PlayMode pass's list, and no PlayMode shard is named then, since a job runs its PlayMode pass only
+after its EditMode pass passed. A PlayMode pass is named by the EditMode shard whose job ran it, and
+`Mutation PlayMode shard N` is that job's. The run still fails. Re-running only the failed jobs of the run completes it: the shard
 artifacts upload with `overwrite`, and the verdict job decides again over every record.
 
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
@@ -387,9 +394,9 @@ below were measured before sessions, over launches alone; how many mutants a dif
 measured in that section, against the window it names. A mutant's launch-compile-run measured
 100–118 s on a developer machine against a 94 s baseline. `--plan` makes one EditMode shard for every six mutants, as many as ten, and the deal
 sets how many each holds, up to `SHARD_CEILING`; it stops adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
-before its first mutant; a PlayMode shard takes one, since the pass waits on its slowest shard and
-each of its mutants costs more than twice an EditMode one measured on the same run, which pays a
-shard's pull, activation and baseline once a survivor rather than once a pair for a pass of up to ten. Measured over 121 EditMode shards of the 100 pull-request runs
+before its first mutant; the PlayMode pass of a shard's survivors pays its own activation and baseline in the same job, not an image pull, and each of its mutants costs more than twice an EditMode one measured on the same run.
+
+**Shard count under an account's concurrent-job cap.** GitHub Free runs 20 hosted jobs at once across the whole account, and one pull request's `Test` is about five of them while its campaign holds one for the plan, one for the Library and one per shard. With two pull requests open, `Test` takes about ten and leaves ten for both campaigns, fewer than the twenty shards they ask for. `MAX_SHARDS` stays at ten because the wall clock of a single pull request is what the count is set for: it has free jobs for ten shards, and a shard of fewer mutants pays the same pull, activation and baseline for less work. The cost falls on the second pull request. GitHub's queue has no priority per pull request, so shards one campaign has queued can start ahead of the other's `Test` jobs, and its aggregate with them, and `max-parallel` is not used to prevent that. Beyond what the timings below and the cap give, nothing here is measured: no run of two campaigns has been timed, thirteen is the most licence activations seen at once and not a limit, and two pull requests have run CI together without an activation failing, though the activations were not counted. A cap is a reason not to add a PlayMode job per survivor, which is why that pass runs in the shard's own job. Measured over 121 EditMode shards of the 100 pull-request runs
 completed on 2026-09-26 and 2026-09-27, before a mutant was narrowed, a shard spent a median of 98 s
 before activating, 82 s of it pulling the image, 36 s activating and 211 s on its baseline, and its
 645 mutants took a median of 190 s. Over the 461 EditMode baselines those runs uploaded, the
@@ -414,9 +421,9 @@ PlayMode, where 84 of the 115 mutants those shards held took a launch of their o
 PlayMode shard that finished spent 934 s a mutant, over two. The slowest EditMode shard spent 493 s a
 mutant over sixteen: the job's timeout cancelled it, so each launch it had not finished is taken at the
 mean of those it had; its session's confirmation under the unmutated program failed, and 15 of its
-16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these, and charges an EditMode session, before its first mutant, one reach run at twice the baseline's figure (the bound a run that never finishes is stopped at) and the opening runs of each mutant's covered cases at a tenth of the baseline's seconds each, in place of an area's own launch, which a session that runs the reach run does not take; a session that places fewer than `REACH_MIN_MUTANTS` or more than `REACH_MAX_MUTANTS` mutants, or declines one, runs none and takes the areas' launches, as before, which the small arm charges for the whole shard; a placed mutant whose reading does not stand launches on its own afterwards and takes its area's baseline, which the reach arm charges once for every area the shard touches, up to all of them, and `REACH_MAX_MUTANTS` is the most mutants for which that fits; no recording run has been timed, so those factors are allowances. A shard whose reach run never finishes is charged as one without the opening runs.
+16 mutants took launches of their own. `ShardCeilingTests` charges the slowest of the figures measured over the EditMode shards of the week of 2026-10-12 to 2026-10-16 (runs 38882765210 and 38865742861 among them): a baseline of 445 to 486 s, a launch of an area's own assemblies of 180 to 231 s, and about 561 s a mutant from the end of a shard's baseline to its last verdict, which is 486, 231 and 561. It charges an EditMode session, before its first mutant, one reach run at twice the baseline's figure (the bound a run that never finishes is stopped at) and the opening runs of each mutant's covered cases at a tenth of the baseline's seconds each, in place of an area's own launch, which a session that runs the reach run does not take, and charges each of its mutants as a survivor under `Runtime/`: the session's whole suite, then the launch of the fixtures reading IL that follows it, taken at an area's launch (no run has timed it). A session that places fewer than `REACH_MIN_MUTANTS` mutants, or declines one, runs no reach run and takes the areas' launches, as before, which the small arm charges for the whole shard. A placed mutant whose reading does not stand launches on the whole suite alone afterwards, since a session that made the reach run takes no area's baseline. `SHARD_CEILING` is the most mutants for which all three arms fit the job's timeout, 10 on EditMode, and the test derives it from the timeout rather than reading it back; no recording run has been timed, so the reach factors are allowances. A shard whose reach run never finishes is charged as one without the opening runs.
 
-**Mutants are dealt by expected cost, not by position.** `--plan` and every `--shard` job compute the same assignment from the mutant list alone: `deal` takes the mutants longest first and gives each to the shard charged least so far, ties going to the lower shard and then the lower index, and prints each shard's mutant count and expected seconds with the spread between the cheapest and the dearest. A mutant under `Runtime/<Area>/` on EditMode is charged `NARROWED_COST`, 145 s, and any other mutant 493 s on EditMode, or 934 s on PlayMode, where nothing is narrowed and the deal comes to an even count. The 145 s is the median, over the shards above, of a shard's seconds a mutant, and it already includes the mutants that took the whole suite; the 493 s is the one slowest shard, which the timeout cut and which is estimated. They are different statistics, so the ratio is rough, and 145 s is a proxy for a narrowed launch and not a measurement of one: the repo pins no narrowed-only figure. The plan has no baseline, so it cannot know which areas `narrowable` declines (those over a third of the baseline's test time) nor which narrowed mutants survive and take the whole suite as well, and a previous campaign's timings are not kept (the ledger holds verdicts, not seconds); a mutant dealt as narrowed may therefore cost more than its figure, which skews the balance and never the ceiling, since no mutant is charged above what the ceiling charges it. A shard is never given more than `SHARD_CEILING` mutants however cheap they are, so a shard of cheap mutants can hold 14 to 16 and takes the path of a shard above `REACH_MAX_MUTANTS`, which `ShardCeilingTests` charges. On a 149-mutant plan with every fifth mutant a whole-suite one, dealt by position the dearest shard was charged 2.33 times the mean and dealt by cost 1.02 times, by the same figures.
+**Mutants are dealt by expected cost, not by position.** `--plan` and every `--shard` job compute the same assignment from the mutant list alone: `deal` takes the mutants longest first and gives each to the shard charged least so far, ties going to the lower shard and then the lower index, and prints each shard's mutant count and expected seconds with the spread between the cheapest and the dearest. A mutant under `Runtime/<Area>/` on EditMode is charged `NARROWED_COST`, 145 s, and any other mutant 493 s on EditMode, or 934 s on PlayMode, where nothing is narrowed and the deal comes to an even count. The 145 s is the median, over the shards above, of a shard's seconds a mutant, and it already includes the mutants that took the whole suite; the 493 s is the one slowest shard, which the timeout cut and which is estimated; the ceiling charges the dearer 561 s, so no mutant is dealt dearer than it is charged. They are different statistics, so the ratio is rough, and 145 s is a proxy for a narrowed launch and not a measurement of one: the repo pins no narrowed-only figure. The plan has no baseline, so it cannot know which areas `narrowable` declines (those over a third of the baseline's test time) nor which narrowed mutants survive and take the whole suite as well, and a previous campaign's timings are not kept (the ledger holds verdicts, not seconds); a mutant dealt as narrowed may therefore cost more than its figure, which skews the balance and never the ceiling, since no mutant is charged above what the ceiling charges it. A shard is never given more than `SHARD_CEILING` mutants however cheap they are, so a shard of cheap mutants can hold as many as the ceiling, and makes the reach run like any shard of `REACH_MIN_MUTANTS` or more whose every mutant is placed, which `ShardCeilingTests` charges. A plan over ten shards of the ceiling is refused.
 
 `Test ▸ test-quality` holds the half that needs no editor: that the mutants can
 be generated at all, and that every declaration in the package is one the script would accept rather
@@ -479,6 +486,88 @@ is on the fixtures it names, because `--report` writes only the fixtures its run
 record from a narrowed sweep it would replace the rest with them, which is refused before the run
 rather than after. A floor catches a collapse, not a thinning — a record rewritten to eighteen
 fixtures of one line each still passes.
+
+**A pull request that only deletes tests is checked by comparing kills, not by the campaign.** Mutants are
+placed in package sources outside `Tests/` and `TestUtilities/`, so a pull request that touches nothing
+else has none: its campaign reports no mutable change and passes whatever it removed. What such a pull
+request claims is that every removed case was redundant, and that is a statement about two trees over the
+same production source: each mutant the base tree's tests killed is killed by what the head leaves.
+`.github/workflows/kill-set.yml` measures it. It is dispatched by hand, is required by nothing, and runs on
+no event, because every mutant it measures costs the whole suite on two trees.
+
+```bash
+gh workflow run kill-set.yml --ref main \
+  -f files="Packages/com.velvet.core/Runtime/Foo/Bar.cs Packages/com.velvet.core/Runtime/Foo/Baz.cs" \
+  -f lines="Packages/com.velvet.core/Runtime/Foo/Bar.cs:120-260 Packages/com.velvet.core/Runtime/Foo/Baz.cs:40-180" \
+  -f assemblies="Velvet.Tests.Foo.Editor" -f base=main -f head=my-pruning-branch -f platform=EditMode
+```
+
+`files` names the production sources whose mutants the removed cases could have been killing, each taken
+whole unless `lines` restricts it. `head` must leave them, and `Assets/MutantSchemata`, byte-identical to the merge base, or the plan
+refuses: the campaign's runner is tracked in the project and switches with the tree, so a pull request that
+changes it is not a pruning. The plan also refuses a path that is not a mutable package source, so a
+mistyped path fails the run rather than passing over nothing. `assemblies` is the test assemblies of the
+removed cases and of whatever is meant to keep killing what they killed: a kill by an assembly left out
+of it is not made on either tree, so a mutant the removed cases killed and only an omitted assembly would
+still kill reads as lost, and leaving it empty measures the whole suite. `base` is the branch the pull
+request merges into, resolved to its merge base with `head` by `scripts/ci/change_base.py`. The `scripts/`
+that run are the head's own on both trees, so a head cut before `kill-set.yml` landed has no such
+tooling. A run is one platform over one list of files: a pull request that needs more starts more runs.
+`lines` is optional: space-separated `PATH:FIRST-LAST` ranges of the named files, which keep only the mutants
+on those lines. The filter runs where the list is made, so the plan, every shard and both trees measure the
+same filtered list, and the capacity check below is on that count. The plan prints what each range keeps,
+what each file keeps of its own mutants, and the total. It fails for a range outside its file or reversed,
+for a path `files` did not name or skipped, for a file named in `files` that has no range, and for any
+single range that keeps no mutant. Choose the ranges from the members the deleted cases reach, and cover
+every member a deleted case can reach: a mutant left outside the ranges is one the comparison never asks
+about, and a removed case can have been the only one to kill it.
+Listing the mutants needs no editor:
+
+```bash
+python3 scripts/test_quality/mutation_check.py --files <the same paths> --list
+```
+
+The plan refuses a list over the campaign's own ceiling, `SHARD_CEILING` mutants a shard in at most
+`MAX_SHARDS` shards, because the sizing is the campaign's: each shard job measures one tree, as a
+`mutation-shard` job measures its step, and `ShardCeilingTests` charges both alike. The measuring step
+passes `--timeout` at three times the longest baseline measured, which `HANG_MARGIN` makes the least at which
+a hang reads as one.
+
+Each shard is measured on the head and on the base, in two jobs, by the default campaign: narrowed to an
+area or to the cases that ran the site first, and on the whole suite wherever that did not kill. The
+diff job, which runs only if every shard passed, runs `scripts/test_quality/kill_set_diff.py` over the two
+sets of records. It matches mutants by file, line, column and rewrite and never by index, and compares
+verdicts only. It fails, and names each one, when a mutant the base killed is not killed on the head — a
+survivor, or a verdict that measured nothing — and a mutant that outlived `--timeout` on the base is a kill
+the head has to match with a kill or a timeout. It cannot make the comparison, and says so, when a
+mutant has a record on one tree only, when a base verdict is neither a kill nor a survivor nor a
+non-mutant (an uncompilable mutant, for one), and when the base killed none and so proved nothing. A kill
+the head makes that the base did not is reported and passes.
+
+Say in the pull request body which `files` and `assemblies` were measured, the run's link, and the summary
+line the diff job prints (`N mutant(s); killed on the base: …, lost on the head: 0, …`), beside the
+deleted cases.
+
+Pruning trips two other checks as well:
+
+- **Adding or changing a line in a `[TestCase]` method poses it; deleting a row alone does not.** `base_red_check.py` poses a
+  case when a line the branch added or changed lands inside the case's span, which includes the
+  attribute lines above the method. A deleted row is a hunk with no added line (`changed_lines_by_file`
+  reads it as zero lines), so a pruning that only removes rows poses nothing. Where the same pull
+  request also adds or changes a line of the method, its body or an attribute line, and not only a comment, the method is posed to the base run, where
+  the remaining rows pass, and it needs a refactor declaration above it. Deleting a whole case poses
+  nothing either.
+- **A deleted case's lines in `scripts/test_quality/neuter_holes.txt` and
+  `scripts/test_quality/assume_gate_baseline.txt` have to go with it.** `Test ▸ test-quality` runs
+  `neuter_check.py --audit`, which fails an entry for a case its fixture no longer declares, and
+  `assume_gate_check.py`, which fails an entry the scan no longer finds. A case with no line in either
+  needs nothing there.
+
+A declaration for a method that is posed reads, above it:
+
+```csharp
+// GREEN_ON_BASE(refactor): the remaining rows are cases this method already ran.
+```
 
 ### Checking that a new test could have failed
 
@@ -1062,8 +1151,8 @@ the real jobs, and pass when every dependency is `success` **or** `skipped` — 
 fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
 
 The mutation campaign has no row: `.github/workflows/mutation.yml` starts on a dispatch alone, once a
-pull request carries the `automerge` label and its `Test` run has passed, and no branch-protection rule
-requires its check.
+pull request carries the `automerge` label, beside its `Test` run rather than after it, and no
+branch-protection rule requires its check.
 [Merging a pull request](#merging-a-pull-request) says what requires it instead.
 
 In `test.yml` and `generators.yml`, filtering therefore applies to `push` only, by branch as much as by path — so a pull
@@ -1216,31 +1305,31 @@ already carries this owned status, without creating one for an ordinary unlabell
 campaign still blocks that head.
 
 Adding the label hands the pull request off, and so do marking a labelled draft ready for review,
-reopening a labelled pull request, pushing to one, and a `pull_request` run of `Test` passing on a
-labelled one's head. `scripts/pr/automerge.py` then reads the head's
+reopening a labelled pull request and pushing to one. `scripts/pr/automerge.py` then reads the head's
 runs of `.github/workflows/mutation.yml` — the campaign is a run of that file, and a check of another
 workflow bearing a campaign job's name is not one. Where there is none, or the newest was cancelled,
-it dispatches one onto the head's branch once `Test` has passed there — the passing run hands the pull
-request off itself unless a newer `pull_request` run of `Test` on the head has started since, and a
-pull request event reads the head's newest such run, which passes only once it has concluded `success`
-or its `Required checks (Unity)` job has — since a campaign over a head whose suites then fail
-measured a change that cannot merge. Until then it dispatches nothing, and cancels a campaign still
-open on an older head of the branch. Where
-the newest is still running it leaves it to finish; and otherwise a hand-off from a pull request event
-dispatches the merge run, while one from a passing `Test` run leaves the merge to that run's own merge
-job. A failed campaign is a verdict about its head, which a push
+it dispatches one onto the head's branch at once, without waiting for `Test`: a head whose suites then
+fail has had a campaign measure a change that cannot merge, and that run is spent, which is what
+starting it beside `Test` costs. Its `library` job reads none of `Test`'s artifacts or caches, which `Test` saves under the pull request's own ref, so it has nothing to wait for. The merge needs both to pass on the same head, so the wasted campaign
+cannot merge anything: `settle.py` refuses a head whose `Test` run has not passed whatever the
+campaign concluded, and the campaign's own group cancels the run over an older head when a push
+dispatches the next. A `Test` run on a head that concludes `failure` ends that head's open campaign
+(`automerge.yml`'s `cancel-campaign` job), so a red head holds no runner for long; a cancelled campaign
+is dispatched again by the recovery below once `Test` passes on the head, or by adding the label
+again. Where the newest is still running it leaves it to finish; and otherwise it
+dispatches the merge run. A failed campaign is a verdict about its head, which a push
 or a re-run of its failed jobs asks again, and a cancelled one is asked again by adding the label
 again, with no push. The campaign reads the head against
 its merge base with the pull request's base, with the licence secrets, so it is dispatched onto a
 branch of this repository only: a head on a fork gets none, and settle refuses that head. A branch
 holds one campaign at a time — a dispatch for a newer head cancels the run measuring the one before
 it — and no `Test` run shares its concurrency group. Two hand-offs of one head close enough together
-that neither finds the other's run can still dispatch twice, and the second then cancels the first. A
+that neither finds the other's run can still dispatch twice, and the second then cancels the first;
+two quick pushes, or a push and then marking ready for review or reopening, are the likeliest pairs. A
 hand-off whose campaign dispatch fails names `settle.py update` for a branch that predates the
 workflow. One from a pull request event logs a failed reading or dispatch as a warning and still
 passes: its job is a check on the head, and a failed one would have settle and the hook refuse that
-head, a merge by hand without the label included. One from a passing `Test` run runs on the default
-branch's commit, so it fails as the merge job does.
+head, a merge by hand without the label included.
 
 `scripts/pr/campaign.py` owns what a merge requires of the campaign, and `settle.py merge`, the
 automerge runs through it, and `refuse/merge_unproven_head.py` all ask it: a head carrying the label
@@ -1259,18 +1348,18 @@ it, when a campaign on its head passes, when a hand-off finds the campaign alrea
 dispatched with its number (*Actions ▸ Automerge ▸ Run workflow*). It asks about the open pull
 requests carrying the label when `Test` or `Source generators` passes a push run on `main`, which is
 what clears a red base, and when a release
-dispatch of `UPM` passes, which is what clears an unpublished release. Each of those but a passing
-`pull_request` run of `Test`, whose own hand-off has it, dispatches the campaign rather than asking
-settle where a labelled head has none and the hand-off's reading of `Test` passes there, so the
-campaign does not rest on the two hand-offs' events alone. A refusal cleared by anything
+dispatch of `UPM` passes, which is what clears an unpublished release. Each of those dispatches the
+campaign rather than asking settle where a labelled head has none and its newest `pull_request` run of
+`Test` has passed (concluded `success`, or open with `Required checks (Unity)` passed), so the campaign does not rest
+on the hand-off's events alone and a recovery spends no runners on a head `Test` has not passed. A refusal cleared by anything
 else — a `Test` run dispatched by hand onto the head, for one — waits for the next of those events or
 for a manual dispatch.
 
 A completed run whose head is no longer the pull request's is left to the newer head's runs, and a head
 on a fork is refused, as `settle.py` refuses one by hand. A hand-off reaches a pull request based on a
 maintenance line only where that line holds the workflow: the pull request events run the workflow
-file the base branch holds, and the hand-off from a passing `Test` run asks the base for that file. A
-completed run's merge job reaches it either way. On a line without it, a labelled
+file the base branch holds, and a completed run's merge job asks the base for that file. It reaches
+the pull request either way. On a line without it, a labelled
 pull request gets no campaign and so no automerge: merge it by hand, without the label.
 
 The merge is made with the `AUTOMERGE_TOKEN` secret rather than the workflow's own token, because a

@@ -7,19 +7,18 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// A re-render that adds or removes <c>@container</c> on an ancestor re-points the responsive variants of
-    /// descendants that are already attached, the way a CSS container query re-evaluates when an ancestor
-    /// gains or loses <c>container-type</c>. The toggled scope sits inside a wider marked one — wider than md
-    /// where the toggled one is narrower — so which of the two a leaf reads is visible in whether its
-    /// <c>md:</c> payload is on. The outer scope stands in for the panel, so no case depends on the size
-    /// the host window is given.
+    /// A re-render that adds or removes <see cref="VelvetResponsive.ViewportClass"/> on an ancestor re-points the
+    /// viewport variants (<c>md:</c>) of descendants that are already attached. The toggled scope sits inside a
+    /// wider marked one — wider than md where the toggled one is narrower — so which of the two a leaf reads is
+    /// visible in whether its <c>md:</c> payload is on. The outer scope stands in for the panel, so no case
+    /// depends on the size the host window is given.
     /// </summary>
     [TestFixture]
     internal sealed class ResponsiveScopeToggleTests : PanelTestBase
     {
-        private const string OuterScope = "@container w-[900px] shrink-[0]";
+        private const string OuterScope = VelvetResponsive.ViewportClass + " w-[900px] shrink-[0]";
         private const string NarrowScope = "w-[500px] shrink-[0]";
-        private const string MarkedNarrowScope = "@container w-[500px] shrink-[0]";
+        private const string MarkedNarrowScope = VelvetResponsive.ViewportClass + " w-[500px] shrink-[0]";
 
         private readonly record struct ScopeState(string ScopeClass, string LeafClass);
 
@@ -64,7 +63,7 @@ namespace Velvet.Tests
         private void Settle(VisualElement leaf)
         {
             ForcePanelUpdate(leaf.panel);
-            var source = leaf.parent.ClassListContains(VelvetResponsive.ContainerClass)
+            var source = leaf.parent.ClassListContains(VelvetResponsive.ViewportClass)
                 ? leaf.parent
                 : leaf.parent.parent;
             using var evt = EventBase<GeometryChangedEvent>.GetPooled();

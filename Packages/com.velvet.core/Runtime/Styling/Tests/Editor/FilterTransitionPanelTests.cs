@@ -1049,14 +1049,16 @@ namespace Velvet.Tests
             Assert.That(PaintedFloat(element), Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(characterization): the base sheet already declares transition-opacity after transition-filter.
+        // What reddens it is the driver tweening on any live duration, which the assertion catches.
         [Test]
-        public void Given_TransitionColorsOverridingTheOptIn_When_FilterChanges_Then_InstantWrite()
+        public void Given_TransitionOpacityOverridingTheOptIn_When_FilterChanges_Then_InstantWrite()
         {
-            // Arrange — transition-colors is declared after transition-filter in the bundled sheet, so at equal
+            // Arrange — transition-opacity is declared after transition-filter in the bundled sheet, so at equal
             // specificity it wins transition-property while the opt-in class still registers a binding. The
             // resolved property names no filter, so this must stay a discrete change: guards the driver's probe
             // against matching any non-empty transition list.
-            var element = MountResolved("transition-filter transition-colors");
+            var element = MountResolved("transition-filter transition-opacity");
             Assume.That(_mounted.Root.Reconciler.Context.FilterTransitionBindings.ContainsKey(element), Is.True,
                 "Precondition: a binding is registered");
             Assume.That(element.resolvedStyle.transitionProperty.Select(p => p.ToString()), Does.Not.Contain("filter"),

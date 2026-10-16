@@ -3,9 +3,13 @@
  * All styles are imported from partials below.
  *
  * Utilities are single-class selectors, so two on one element tie on specificity and the later
- * declaration wins — across the @import list and within each partial. A utility must therefore be
- * declared before every narrower one its property set contains, or the narrower one can never win the
- * properties they share. BundledStyleSheetOrderTests enforces this and names the exemptions.
+ * declaration wins — across the @import list and within each partial. The utilities are therefore declared
+ * in the order Tailwind emits them (property order, then the candidate names), so of two that write one
+ * property the one Tailwind emits later wins whichever is written first. StyleSheetTailwindOrderTests
+ * enforces that for every pair of ungated utilities that share a longhand, the animation presets apart.
+ * A utility is also declared before every narrower one its property set contains, or the narrower one
+ * can never win the properties they share; BundledStyleSheetOrderTests enforces this and names the
+ * exemptions.
  */
 
 @import url("_preflight.uss");

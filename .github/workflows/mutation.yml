@@ -1,8 +1,8 @@
 name: Mutation campaign
 
 # The mutation campaign over a pull request's change, once per labelled head rather than on every push.
-# scripts/pr/automerge.py's hand-off dispatches it onto the head's branch once the head carries the
-# `automerge` label and its Test run has passed; CONTRIBUTING.md's continuous-integration section owns
+# scripts/pr/automerge.py's hand-off dispatches it onto the head's branch as soon as the head carries the
+# `automerge` label, beside its Test run rather than after it; CONTRIBUTING.md's continuous-integration section owns
 # when, what the label means and what a merge requires of this workflow's runs.
 #
 # The hand-off dispatches no head on another repository. The checkout is the branch's head rather than
@@ -60,11 +60,13 @@ jobs:
   #
   # Two passes, because a mutant is killed when either suite fails on it and the two suites hold
   # different tests. Every mutant runs against the EditMode suite; only the EditMode survivors run
-  # against the PlayMode suite, the slower of the two per mutant. Each pass is a plan and a
-  # matrix of shards: the plan counts the mutants, each shard measures the mutants dealt to it by expected
-  # cost and records their verdicts. The verdict job reads both passes' records and decides. The decision cannot be a
-  # shard's own, since a declaration above one line answers for survivors another shard may have
-  # measured.
+  # against the PlayMode suite, the slower of the two per mutant. Both passes run in one job per shard:
+  # the plan counts the mutants, each shard measures the mutants dealt to it by expected cost against
+  # EditMode and then, in the same job on the same runner, the survivors among them against PlayMode,
+  # and records their verdicts. The PlayMode pass starts as its own shard's EditMode pass ends and adds
+  # no job, which matters while an account's concurrent jobs are few. The verdict job reads both passes'
+  # records and decides. The decision cannot be a shard's own, since a declaration above one line
+  # answers for survivors another shard may have measured.
   #
   # A shard cannot run through game-ci/unity-test-runner, which launches one editor per step. It runs
   # mutation_check.py inside the image that action pulls for test.yml's unity-tests, and
@@ -208,7 +210,9 @@ jobs:
     needs: [license-check, mutation-plan, library]
     if: needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # The two measuring steps' timeouts and the checkout, restore and upload around them; ShardCeilingTests
+    # holds each step's timeout against its platform's ceiling.
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -236,7 +240,9 @@ jobs:
       - id: base
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
-      - env:
+      - name: Measure EditMode
+        timeout-minutes: 180
+        env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
@@ -268,102 +274,37 @@ jobs:
           # A re-run of the failed shards replaces what the first attempt left.
           overwrite: true
 
-  # Skipped where an EditMode shard failed: the campaign has failed already, and the PlayMode pass
-  # would spend a matrix on it. The verdict job still runs, and reports every EditMode survivor as a
-  # mutant no PlayMode shard recorded.
-  mutation-playmode-plan:
-    name: Mutation campaign (PlayMode plan)
-    needs: [license-check, mutation-plan, mutation-shard]
-    if: >-
-      needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
-      && needs.mutation-shard.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      shards: ${{ steps.plan.outputs.shards }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: Mutation EditMode shard *
-          path: Logs/mutation-shards
-          merge-multiple: true
-
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: Mutation mutant list
-          path: Logs/mutation-list
-
-      - id: base
-        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
-
-      - id: plan
+      # How many of this shard's own mutants the EditMode pass left surviving. Run where the EditMode step
+      # passed, so a shard that failed its pass runs no PlayMode pass, and the verdict job names it. More
+      # than one job can measure after its own EditMode pass fails here, with the EditMode records already
+      # uploaded.
+      - id: survivors
         env:
           BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
+          SHARDS: ${{ needs.mutation-plan.outputs.shards }}
         run: |
           set +e
-          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" --plan --mutants Logs/mutation-list/mutants.json \
-            --reuse Logs/mutation-list/reuse.json --platform PlayMode --survivors-of Logs/mutation-shards > plan.txt 2>&1
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" --plan \
+            --mutants Logs/mutation-list/mutants.json --reuse Logs/mutation-list/reuse.json \
+            --platform PlayMode --survivors-of Logs/mutation-shard \
+            --survivors-shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" > survivors.txt 2>&1
           status=$?
-          cat plan.txt
-          { echo '### Mutation campaign PlayMode plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          cat survivors.txt
           [ "$status" -eq 0 ] || exit "$status"
-          grep -E '^shards=' plan.txt >> "$GITHUB_OUTPUT"
+          grep -E '^mutants=' survivors.txt >> "$GITHUB_OUTPUT"
 
-  # --max is the EditMode plan's count, so this pass generates the same list of mutants and reads
-  # each one's EditMode record by its index.
-  mutation-playmode-shard:
-    name: Mutation campaign (PlayMode shard ${{ matrix.shard }})
-    needs: [license-check, mutation-plan, mutation-playmode-plan]
-    if: >-
-      needs.license-check.outputs.has_license == 'true' && needs.mutation-playmode-plan.result == 'success'
-      && needs.mutation-playmode-plan.outputs.shards != '[]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 205
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.mutation-playmode-plan.outputs.shards) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          lfs: true
-
-      # Restore only, for the reason the EditMode shard gives.
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: Library
-          key: Library-PlayMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
-          restore-keys: |
-            Library-PlayMode-
-
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: Mutation EditMode shard *
-          path: Logs/mutation-shards
-          merge-multiple: true
-
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: Mutation mutant list
-          path: Logs/mutation-list
-
-      - id: base
-        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
-
-      - env:
+      # The same launch as the EditMode step, on the runner and Library that step left.
+      - name: Measure PlayMode
+        timeout-minutes: 165
+        if: steps.survivors.outputs.mutants != '' && steps.survivors.outputs.mutants != '0'
+        env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
           BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
-          SHARDS: ${{ needs.mutation-playmode-plan.outputs.shards }}
-        # The EditMode shard's launch, for the same reasons.
+          SHARDS: ${{ needs.mutation-plan.outputs.shards }}
         run: |
           version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
           docker run --rm --init --workdir /github/workspace \
@@ -374,9 +315,18 @@ jobs:
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \
               --base "$BASE" --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
-              --reuse Logs/mutation-list/reuse.json --platform PlayMode --survivors-of Logs/mutation-shards \
-              --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
+              --reuse Logs/mutation-list/reuse.json --platform PlayMode --survivors-of Logs/mutation-shard \
+              --survivors-shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" --shard 0/1 \
               --output Logs/mutation-playmode-shard
+
+      # Uploaded whether or not the shard had survivors, so the verdict job's pattern always matches one.
+      # The docker steps run as root and leave Logs/mutation-playmode-shard owned by it, which the runner
+      # user cannot write a file into: the directory is handed back first.
+      - if: always()
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" Logs
+          mkdir -p Logs/mutation-playmode-shard
+          echo "shard ${{ matrix.shard }}" > Logs/mutation-playmode-shard/shard-${{ matrix.shard }}.txt
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
@@ -387,7 +337,7 @@ jobs:
 
   mutation-verdict:
     name: Mutation campaign (verdict)
-    needs: [license-check, mutation-plan, mutation-shard, mutation-playmode-plan, mutation-playmode-shard]
+    needs: [license-check, mutation-plan, mutation-shard]
     if: >-
       !cancelled() && needs.license-check.outputs.has_license == 'true'
       && needs.mutation-plan.result == 'success'
@@ -424,7 +374,7 @@ jobs:
           path: Logs/mutation-shards
           merge-multiple: true
 
-      - if: needs.mutation-plan.outputs.reused == '' && needs.mutation-playmode-shard.result != 'skipped'
+      - if: needs.mutation-plan.outputs.reused == '' && needs.mutation-shard.result != 'skipped'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: Mutation PlayMode shard *
@@ -495,14 +445,14 @@ jobs:
   campaign:
     name: Mutation campaign
     if: always()
-    needs: [license-check, mutation-plan, library, mutation-shard, mutation-playmode-plan, mutation-playmode-shard, mutation-verdict]
+    needs: [license-check, mutation-plan, library, mutation-shard, mutation-verdict]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: write
     steps:
       - env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.mutation-plan.result }} ${{ needs.library.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-playmode-plan.result }} ${{ needs.mutation-playmode-shard.result }} ${{ needs.mutation-verdict.result }}
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.mutation-plan.result }} ${{ needs.library.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-verdict.result }}
         run: |
           failed=0
           for result in $RESULTS; do

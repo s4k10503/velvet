@@ -1,11 +1,6 @@
-/* Typography Utilities - font-size, font-family/weight/style, text-align, text-color, white-space, text-overflow */
+/* Typography Utilities - font-size, font-family/weight/style, text-align, white-space, text-overflow (the text colours are in _palette.uss) */
 
 /* Font Size */
-.text-xs { font-size: var(--text-xs); }
-.text-sm { font-size: var(--text-sm); }
-.text-base { font-size: var(--text-base); }
-.text-lg { font-size: var(--text-lg); }
-.text-xl { font-size: var(--text-xl); }
 .text-2xl { font-size: var(--text-2xl); }
 .text-3xl { font-size: var(--text-3xl); }
 .text-4xl { font-size: var(--text-4xl); }
@@ -14,13 +9,11 @@
 .text-7xl { font-size: var(--text-7xl); }
 .text-8xl { font-size: var(--text-8xl); }
 .text-9xl { font-size: var(--text-9xl); }
-
-/* Text Color */
-.text-strong { color: var(--color-text); }
-.text-subtle { color: var(--color-text-subtle); }
-.text-accent { color: var(--color-accent-strong); }
-.text-white { color: rgb(255, 255, 255); }
-.text-black { color: rgb(0, 0, 0); }
+.text-base { font-size: var(--text-base); }
+.text-lg { font-size: var(--text-lg); }
+.text-sm { font-size: var(--text-sm); }
+.text-xl { font-size: var(--text-xl); }
+.text-xs { font-size: var(--text-xs); }
 
 /*
  * Font Family / Weight / Style
@@ -38,36 +31,32 @@
  * intentionally have no USS rule (a family needs a real Font Asset to take effect).
  */
 
-/* Weight scale (Tailwind: font-thin … font-black). Folds to the binary normal/bold axis. */
-.font-thin,
-.font-extralight,
-.font-light,
-.font-normal,
-.font-medium { -unity-font-style: normal; }
-.font-semibold,
-.font-bold,
-.font-extrabold,
+/* Weight scale (Tailwind: font-thin … font-black, folded to the binary normal/bold axis) and style
+   (Tailwind: italic / not-italic) write one property, so they run as one band in Tailwind's order.
+   `bold-italic` is the only rule that gives both: pure USS cannot compose two separate classes into one
+   `-unity-font-style` value; the StyleFontResolver inline layer composes `font-bold italic`. `font-italic`
+   is a deprecated alias of `italic` (non-standard name; kept for back-compat). */
+.bold-italic { -unity-font-style: bold-and-italic; }
 .font-black { -unity-font-style: bold; }
-
-/* Style (Tailwind: italic / not-italic) */
+.font-bold { -unity-font-style: bold; }
+.font-extrabold { -unity-font-style: bold; }
+.font-extralight { -unity-font-style: normal; }
+.font-italic { -unity-font-style: italic; }
+.font-light { -unity-font-style: normal; }
+.font-medium { -unity-font-style: normal; }
+.font-normal { -unity-font-style: normal; }
+.font-semibold { -unity-font-style: bold; }
+.font-thin { -unity-font-style: normal; }
 .italic { -unity-font-style: italic; }
 .not-italic { -unity-font-style: normal; }
 
-/* Combined bold + italic. Pure USS cannot compose two separate classes into one
-   `-unity-font-style` value; the StyleFontResolver inline layer composes `font-bold italic`. */
-.bold-italic { -unity-font-style: bold-and-italic; }
-
-/* Deprecated alias of `italic` (non-standard name; kept for back-compat). */
-.font-italic { -unity-font-style: italic; }
-
-/* Text Align */
+/* Text Align. The logical forms (Tailwind text-start/end) map to the LTR physical edges, since UI Toolkit
+   has no writing-direction: start = left, end = right. */
 .text-center { -unity-text-align: middle-center; }
+.text-end { -unity-text-align: middle-right; }
 .text-left { -unity-text-align: middle-left; }
 .text-right { -unity-text-align: middle-right; }
-/* Logical text-align (Tailwind text-start/end). UI Toolkit has no writing-direction, so they map to
-   the LTR physical edges: start = left, end = right. */
 .text-start { -unity-text-align: middle-left; }
-.text-end { -unity-text-align: middle-right; }
 .text-top-center { -unity-text-align: upper-center; }
 .text-top-left { -unity-text-align: upper-left; }
 
@@ -89,23 +78,18 @@
    send it CustomStyleResolvedEvent; see LeadingLengthProbe. */
 .velvet-leading-length { --velvet-leading-length: 1; }
 
-/* Text Overflow (Tailwind: truncate / text-ellipsis / text-clip).
-   `truncate` needs all three declarations together; the ellipsis only renders with hidden overflow and
-   no wrapping. `-unity-text-overflow-position` defaults to `end`, matching Tailwind's trailing ellipsis. */
-.truncate {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-.text-ellipsis { text-overflow: ellipsis; }
+/* Text Overflow (Tailwind: text-ellipsis / text-clip; `truncate` is declared in _layout.uss).
+   The ellipsis only renders with hidden overflow and no wrapping. `-unity-text-overflow-position`
+   defaults to `end`, matching Tailwind's trailing ellipsis. */
 .text-clip { text-overflow: clip; }
+.text-ellipsis { text-overflow: ellipsis; }
 
 /* Letter Spacing (Tailwind: tracking-*). USS letter-spacing has no `em` unit, so the em scale is
    baked at Tailwind's 16px root font (tighter -0.05em, tight -0.025em, wide 0.025em, wider 0.05em,
    widest 0.1em → the px values below), exact at the default text size (use tracking-[Npx] for others). */
-.tracking-tighter { letter-spacing: -0.8px; }
-.tracking-tight { letter-spacing: -0.4px; }
 .tracking-normal { letter-spacing: 0; }
+.tracking-tight { letter-spacing: -0.4px; }
+.tracking-tighter { letter-spacing: -0.8px; }
 .tracking-wide { letter-spacing: 0.4px; }
 .tracking-wider { letter-spacing: 0.8px; }
 .tracking-widest { letter-spacing: 1.6px; }

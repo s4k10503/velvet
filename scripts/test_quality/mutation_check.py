@@ -103,10 +103,11 @@ SHARD_SIZE = {"EditMode": 6, "PlayMode": 1}
 MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
 # charges one on its platform, after the longest measured setup and, where the platform is narrowed,
-# the reach run, fit that platform's shard job's timeout in mutation.yml; `ShardCeilingTests` holds
-# each pair together. The charge is not a worst case, so a full shard can still outrun the
+# the reach run, fit that platform's step timeout in mutation.yml's `mutation-shard` job; the PlayMode
+# figure is the most EditMode survivors one shard's job measures after its own EditMode pass.
+# `ShardCeilingTests` holds each pair together. The charge is not a worst case, so a full shard can still outrun the
 # job, and the mutants it had not reached are then recorded by no shard.
-SHARD_CEILING = {"EditMode": 16, "PlayMode": 10}
+SHARD_CEILING = {"EditMode": 10, "PlayMode": 7}
 # What `deal` charges a mutant, in seconds, so that every shard is given about the same total. Only the
 # ratio of the figures matters to the deal. The narrowed figure is 145, the median over shards of a shard's
 # seconds a mutant on EditMode, which already includes the mutants that took the whole suite; the whole-suite
@@ -140,21 +141,20 @@ NARROWED_PLATFORMS = ("EditMode",)
 # seconds, read off the reach run's cases, and not their number. A mutant whose cases would take more
 # than that takes the whole suite, as does every mutant of a session whose reach run does not stand. A
 # session that runs the reach run places every mutant it was assigned, so it takes no area's own baseline
-# in its opening; a placed mutant whose reading does not stand launches on its own afterwards, as on main.
+# in its opening, and a placed mutant whose reading does not stand takes none afterwards either (below).
+# A survivor under an assembly some fixture reads the IL of is the exception to "a survivor runs the whole
+# suite again": the session's whole-suite stage stands for every fixture but those, and only those run on
+# the mutant built alone.
 REACH_SHARE = 10
-# The reach run is made only for a session that places between this many and REACH_MAX_MUTANTS mutants and
-# places every mutant it was assigned, so that no mutant is launched on its own beside it. Any other
-# session takes the path it took before the reach run existed: the areas' own baselines in its opening,
-# then each mutant's area, then the whole suite, and a mutant launched on its own keeps its area-first
-# launches. The minimum is a decision, not a measured break-even. `deal` sizes a shard by its mutants'
-# costs, up to SHARD_CEILING, so the reach run fires for a shard that lands between the two bounds with
-# every mutant placed, and a shard of more than the maximum or fewer than the minimum takes the other path.
+# The reach run is made only for a session that places at least this many mutants and places every
+# mutant it was assigned. Any other session takes the path it took before the reach run existed: the
+# areas' own baselines in its opening, then each mutant's area, then the whole suite, and a mutant
+# launched on its own keeps its area-first launches. The minimum is a decision, not a measured
+# break-even. After a reach run, whether or not it stood, a placed mutant whose reading does not stand
+# launches straight on the whole suite and takes no area stage, and `ShardCeilingTests` charges no area
+# baseline for it. That is a decision taken to fit the job timeout: a mutant that only the area's
+# assemblies run alone would expose is not asked about in that order.
 REACH_MIN_MUTANTS = 6
-# The most mutants a session may place and still make the reach run: a placed mutant whose reading does
-# not stand launches on its own afterwards and takes its area's baseline, which the reach run's charge does
-# not hold, so the shard has to absorb one in every area it touches. `ShardCeilingTests` derives this
-# figure from the job timeout and holds it to the largest that fits.
-REACH_MAX_MUTANTS = 13
 # The reach run is stopped at this many times the baseline's wall clock, or --timeout if that is less,
 # so a run that does not finish costs what `ShardCeilingTests` charges it.
 REACH_BOUND = 2
@@ -554,6 +554,10 @@ WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 # changes the least about what the line does comes first: it is the one a test is least likely to
 # notice, so a line whose first mutant dies is taken to have been noticed, and one that survives is
 # the question worth asking. The order is a decision rather than a measurement.
+# The operators that take a statement or a clause, and so a call, out of a method. A woven component's IL
+# is read through the callees it reaches, so a fixture reading it can see that removal solo and not in a
+# session, where the guard keeps the call: their survivors are not narrowed to the fixtures reading IL.
+CALL_REMOVING = ("clause removed", "guard removed", "line removed")
 LINE_PRIORITY = ("boundary", "equality", "arithmetic", "clause removed", "logic", "literal",
                  "guard removed", "line removed")
 
@@ -3153,15 +3157,9 @@ QUOTED = re.compile(r'"([A-Za-z_][\w.]*)"')
 DECLARED_TYPE = re.compile(r"\b(?:class|struct|interface|enum|record)\s+([A-Za-z_]\w*)")
 
 
-def il_reading_assemblies(project, ran=None):
-    """The assemblies some fixture reads the IL of: those declaring a type whose `typeof(...).Assembly`
-    such a fixture takes, and those it names by a string equal to an assembly's name.
-
-    Derived as `text_reading_fixtures` is. A name counts whichever .asmdef in the project declares it,
-    test assemblies included, since what matters is only whether a mutated one is among them. Given
-    `ran`, the test assemblies a baseline ran, a fixture in none of them is not counted: a session on
-    that baseline's platform never runs it beside a mutant.
-    """
+def il_reader_files(project, ran=None):
+    """(path, text, the assemblies the project declares by name, each path's owning assembly) for each
+    `*Tests.cs` file reading compiled IL, restricted as `il_reading_assemblies` restricts them."""
     sources, asmdefs, owners = [], {}, {}
     for root, directories, files in os.walk(str(project)):
         directories[:] = [name for name in directories if name not in ("Library", "obj", "Logs", "Temp")]
@@ -3176,7 +3174,7 @@ def il_reading_assemblies(project, ran=None):
                 owners[path.parent] = declared
             elif name.endswith(".cs"):
                 sources.append(path)
-    types, names = set(), set()
+    readers = []
     for path in sources:
         if not path.name.endswith("Tests.cs"):
             continue
@@ -3185,8 +3183,34 @@ def il_reading_assemblies(project, ran=None):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         if IL_READ.search(text):
-            types.update(TYPEOF_ASSEMBLY.findall(text))
-            names.update(name for name in QUOTED.findall(text) if name in asmdefs)
+            readers.append((path, text))
+    return readers, sources, asmdefs
+
+
+def il_reading_fixtures(project, ran=None):
+    """The classes declared in a file that reads compiled IL, whichever assembly it reads.
+
+    A superset of the fixtures `il_reading_assemblies` has in mind, taken whole-file so that a fixture
+    reading an assembly by a route that function does not follow is still among them.
+    """
+    readers, _, _ = il_reader_files(project, ran)
+    return {name for _, text in readers for name in FIXTURE_CLASS.findall(text)}
+
+
+def il_reading_assemblies(project, ran=None):
+    """The assemblies some fixture reads the IL of: those declaring a type whose `typeof(...).Assembly`
+    such a fixture takes, and those it names by a string equal to an assembly's name.
+
+    Derived as `text_reading_fixtures` is. A name counts whichever .asmdef in the project declares it,
+    test assemblies included, since what matters is only whether a mutated one is among them. Given
+    `ran`, the test assemblies a baseline ran, a fixture in none of them is not counted: a session on
+    that baseline's platform never runs it beside a mutant.
+    """
+    readers, sources, asmdefs = il_reader_files(project, ran)
+    types, names = set(), set()
+    for _, text in readers:
+        types.update(TYPEOF_ASSEMBLY.findall(text))
+        names.update(name for name in QUOTED.findall(text) if name in asmdefs)
     if types:
         for path in sources:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -3903,8 +3927,9 @@ def area_attempts(baseline_results, mutants, indices, project, text_readers):
 def measure_in_session(args, project, holder, output, mutants, pending, baseline_results, baseline,
                        baseline_wall, text_readers, whole_scope, campaign, scope):
     """Measures in one editor every mutant of `pending` the rewriter can place, and returns index ->
-    (verdict, detail) for each whose reading stands, each recorded as `write_verdict` records it.
-    Every other mutant is left to its own launches."""
+    (verdict, detail) for each whose reading stands, each recorded as `write_verdict` records it, whether
+    the session made the reach run, and the mutants whose survival stands for every fixture but those that
+    read IL. Every other mutant is left to its own launches."""
     directory = output / "session"
     directory.mkdir(exist_ok=True)
     for stale in list(directory.glob("item-*.json")) + list(directory.glob("mutant-*.xml")):
@@ -3912,7 +3937,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     request, declined = schemata_request(project, mutants, pending)
     answer = rewrite_schemata(args.unity, project, request, directory) if request["files"] else None
     if answer is None:
-        return {}
+        return {}, False, set()
     placed = [index for index in answer["placed"] if index in pending and index not in declined]
     declined.update({int(key): value for key, value in answer["declined"].items()})
     for index in sorted(declined):
@@ -3920,7 +3945,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     if answer["fatal"]:
         print("the rewriter stopped: {}".format("; ".join(answer["fatal"])))
     if not placed:
-        return {}
+        return {}, False, set()
 
     ceiling = min(args.timeout, baseline_wall)
     expected = {"whole": baseline["total"]}
@@ -3931,7 +3956,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     holder.hold_files({path: (path.read_text(), text) for path, text in rewritten.items()},
                       "{} mutant(s) guarded for one session".format(len(placed)))
     started = time.time()
-    selection, uncovered = {}, []
+    selection, uncovered, reaching = {}, [], False
     plan, runs, lost, stopped = {"items": []}, {}, set(), None
     try:
         for path, text in rewritten.items():
@@ -3939,7 +3964,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
         # The reach run comes first and its plan second: which mutants are measured, and against what, is
         # read off it.
         reaching = (args.platform in NARROWED_PLATFORMS
-                    and REACH_MIN_MUTANTS <= len(placed) <= REACH_MAX_MUTANTS
+                    and REACH_MIN_MUTANTS <= len(placed)
                     and len(placed) == len(pending))
         standing = measure_reach(args, project, directory, whole_scope, baseline["total"], holder,
                                  REACH_BOUND * baseline_wall) if reaching else None
@@ -3967,7 +3992,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     print("session: {} mutant(s) in {:.0f}s{}".format(len(placed), time.time() - started,
                                                       "; " + stopped if stopped else ""))
     if not runs and not uncovered:
-        return {}
+        return {}, reaching, set()
 
     opening = {stage["name"]: stage for stage in (read_item(directory, SESSION_OPENING) or {}).get("stages", [])}
     for name, stage in opening.items():
@@ -3975,14 +4000,16 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
         expected[name] = counts["total"] if counts else None
     found = confirmations(plan, directory)
     il_read = il_reading_assemblies(project, set(assembly_seconds(baseline_results)[1]))
-    measured = {}
+    measured, il_only = {}, set()
     for index in uncovered:
         mutant = mutants[index - 1]
         if assembly_of(mutant.path) in il_read:
             # A fixture reading the assembly's IL sees what no case runs, and sees the guards of every
-            # mutant together, so only a launch of its own can say.
-            print("[{}] the reach run read no case running it, but a fixture reads its assembly's IL, so it "
-                  "takes its own launch".format(index))
+            # mutant together, so only a launch of its own can say -- of the fixtures that read IL.
+            print("[{}] the reach run read no case running it, but a fixture reads its assembly's IL, so the "
+                  "fixtures reading IL take their own launch".format(index))
+            if mutant.operator not in CALL_REMOVING:
+                il_only.add(index)
             continue
         mutant.verdict = UNCOVERED
         mutant.detail = "none of the {} cases of the unmutated run ran it".format(baseline["total"])
@@ -3999,10 +4026,15 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                                   confirmed_for(plan, position, runs, found), text_readers)
         if reading is not None and reading[0] in SURVIVING and assembly in il_read:
             # The session compiled every guard into the assembly, so a fixture reading its IL read the
-            # union of the mutants rather than this one.
+            # union of the mutants rather than this one. Every other fixture ran the mutant through its
+            # guard, so a plain survivor stands for them, and only the fixtures reading IL are run again.
+            if reading[0] == SURVIVED and mutant.operator not in CALL_REMOVING:
+                il_only.add(index)
             reading = None
         if reading is None:
-            print("[{}] the session's reading does not stand, so it takes its own launch".format(index))
+            print("[{}] the session's reading {}".format(index, "stands for every fixture but those reading IL, "
+                  "which take their own launch" if index in il_only else
+                  "does not stand, so it takes its own launch"))
             continue
         mutant.verdict, mutant.detail, killers = reading
         mutant.ran = cases_run(read_item(directory, index))
@@ -4010,7 +4042,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
             mutant.detail = "{}; {} other editor(s) were up".format(mutant.detail or "-", runs[position]["peak"])
         write_verdict(output, index, campaign, mutant, project, killers, scope)
         measured[index] = (mutant.verdict, mutant.detail)
-    return measured
+    return measured, reaching, il_only
 
 
 # --------------------------------------------------------------------------------------------------
@@ -4641,6 +4673,40 @@ def parse_shard(text):
     return int(match.group(1)), int(match.group(2))
 
 
+def line_ranges(specs, targets, named):
+    """[(path, first, last)] from `PATH:FIRST-LAST` specs, each over a file of `targets`, and every file of
+    `targets` must have one.
+
+    A mistyped range, a reversed one, one past the file's end, a file `--files` skipped or never named, and a
+    file left without a range are refused: each would otherwise shrink the list to less than was meant, with
+    the run still reporting.
+    """
+    found = []
+    for spec in specs:
+        match = re.fullmatch(r"(.+):(\d+)-(\d+)", spec)
+        if not match:
+            raise SystemExit("--lines takes PATH:FIRST-LAST, got {!r}".format(spec))
+        path, first, last = Path(match.group(1)).resolve(), int(match.group(2)), int(match.group(3))
+        if path not in targets:
+            raise SystemExit("--lines names {}, which --files {}".format(
+                match.group(1), "skipped as not a mutable package source" if path in named else "does not name"))
+        if first > last:
+            raise SystemExit("--lines range {} is reversed".format(spec))
+        size = len(path.read_text().splitlines())
+        if not 1 <= first or last > size:
+            raise SystemExit("--lines range {}-{} lies outside {}, which has {} line(s)".format(
+                first, last, match.group(1), size))
+        found.append((path, first, last))
+    for path in sorted(set(targets) - {path for path, _, _ in found}):
+        raise SystemExit("--files names {}, which --lines gives no range; its mutants would be dropped "
+                         "unasked".format(path))
+    return found
+
+
+def in_ranges(ranges, path, line):
+    return any(there == path and first <= line <= last for there, first, last in ranges)
+
+
 def shard_count(mutants, platform="EditMode"):
     return min(MAX_SHARDS, -(-mutants // SHARD_SIZE[platform]))
 
@@ -4817,6 +4883,51 @@ def answered(mutants, deferred, declared):
     return unanswered, stale
 
 
+# A fixture that takes arguments is run under names the class filter and the case count below do not follow.
+PARAMETERISED_FIXTURE = re.compile(r"\bTestFixtureSource\b|\bTestFixture(?:Attribute)?\s*\((?!\s*\))")
+
+
+def il_only_classes(project, ran, text_readers):
+    """The fixture classes `il_only_scope` selects, or None where a class filter cannot name their cases:
+    a reading file declaring a fixture with arguments, which includes a generic one, or a class some source
+    derives from -- whose cases run under another name."""
+    readers, sources, _ = il_reader_files(project, ran)
+    classes = {name for _, text in readers for name in FIXTURE_CLASS.findall(text)} - set(text_readers)
+    for _, text in readers:
+        if PARAMETERISED_FIXTURE.search(text):
+            return None
+    texts = [path.read_text(encoding="utf-8", errors="replace") for path in sources]
+    for name in classes:
+        pattern = re.compile(r"\bclass\s+\w+\s*(?:<[^>{;]*>)?\s*:[^{;]*\b" + re.escape(name) + r"\b")
+        if any(pattern.search(text) for text in texts):
+            return None
+    return classes
+
+
+def il_only_scope(project, baseline_results, text_readers, scope):
+    """(the scope that runs only the fixtures reading compiled IL, how many cases the baseline held for
+    them) or (None, 0) where those cannot be named.
+
+    A session survivor stands for every fixture that does not read IL, which ran the mutant through its
+    guard. The ones that do read IL saw every guard together, so they run again on the one mutant built
+    alone. The count is the baseline's for the same classes, so a filter that selects other cases than
+    these is noticed by the caller and the whole suite decides.
+    """
+    if scope:
+        return None, 0
+    classes = il_only_classes(project, set(assembly_seconds(baseline_results)[1]), text_readers)
+    if not classes:
+        return None, 0
+    patterns = [re.compile("[.+]{}$".format(name)) for name in sorted(classes)]
+    cases = sum(1 for case in ET.parse(str(baseline_results)).getroot().iter("test-case")
+                if any(pattern.search(case.get("classname", "")) for pattern in patterns))
+    if not cases:
+        return None, 0
+    chosen = excluding(["-testFilter", ";".join("[.+]{}$".format(name) for name in sorted(classes))],
+                       text_readers)
+    return chosen, cases
+
+
 def measure(args, project, holder, output, targets, mutants, scope, campaign, coverage, selected):
     """Waits for the machine, takes the baseline and gives each mutant whose index is in `selected`
     its verdict, recording each one under `output` as it is reached."""
@@ -4864,25 +4975,41 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # whose session reading does not stand -- takes its own launches below, as every mutant once did.
     # Not under --editor-arg: the runner starts each stage itself, so an argument meant for the test
     # framework would scope the baseline and the own launches and not the session's stages.
-    in_session = {}
+    in_session, reach_made, il_only = {}, False, set()
     if args.editor_arg and not args.launch_per_mutant:
         print("--editor-arg reaches no session stage, so every mutant takes its own launches")
     if not args.launch_per_mutant and not args.editor_arg:
         pending = [index for index in sorted(selected) if read_verdict(
             output, index, campaign, mutants[index - 1], project, scope) is None]
         if pending:
-            in_session = measure_in_session(args, project, holder, output, mutants, pending,
-                                            baseline_results, baseline, baseline_wall, text_readers,
-                                            excluding(scope, text_readers), campaign, scope)
+            in_session, reach_made, il_only = measure_in_session(
+                args, project, holder, output, mutants, pending, baseline_results, baseline, baseline_wall,
+                text_readers, excluding(scope, text_readers), campaign, scope)
     own = set(selected) - set(in_session)
+    il_scope, il_cases = il_only_scope(project, baseline_results, text_readers, scope) \
+        if il_only else (None, 0)
+    il_only = il_only if il_scope is not None else set()
+    if il_only:
+        # As an area's launch is: the fixtures must pass alone on the unmutated tree, or a failure of
+        # theirs on a mutant would not be the mutation's.
+        control = output / "baseline-il.xml"
+        if control.exists():
+            control.unlink()
+        _, control_timed_out, _ = run_suite(args.unity, project, args.platform, il_scope, control,
+                                            output / "baseline-il.log", min(args.timeout, baseline_wall), holder)
+        held = read_counts(control)
+        if control_timed_out or not held or held["failed"] or held["inconclusive"] or held["total"] != il_cases:
+            print("the fixtures reading IL did not pass alone on the unmutated tree, so their survivors "
+                  "run on the whole suite")
+            il_only = set()
 
     # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
     # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
     # built. Not taken under a scope the caller chose, which already asks a question of its own.
     attempts = {}
     ceiling = min(args.timeout, baseline_wall)
-    if not scope and args.platform in NARROWED_PLATFORMS:
-        areas = {area_of(mutants[index - 1].path, project) for index in own} - {None}
+    if not scope and args.platform in NARROWED_PLATFORMS and not reach_made:
+        areas = {area_of(mutants[index - 1].path, project) for index in own - il_only} - {None}
         for area, names in narrowable(baseline_results, areas).items():
             attempt = excluding(["-assemblyNames", ";".join(names)], text_readers) + args.editor_arg
             results = output / "baseline-{}.xml".format(area.name)
@@ -4955,8 +5082,10 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             mutant.path.write_text(mutated)
             written[mutant.path] = mutated
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
-            attempt, narrowed_to, narrow_bound, area_cases = attempts.get(
+            il_narrow = first_try and index in il_only
+            attempt, narrowed_to, narrow_bound, area_cases = (None, (), 0, 0) if il_narrow else attempts.get(
                 area_of(mutant.path, project), (None, (), 0, 0))
+            ran = []
             early, wall, neighbours, late, crashed = [], 0.0, 0, False, None
             if attempt is not None:
                 narrowed = output / "mutant-{:03d}-narrowed.xml".format(index)
@@ -4970,6 +5099,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                     timed_out, late = False, True
                 early = narrowed_kill(narrowed, narrowed_log, timed_out, dll, baseline_hashes,
                                       text_readers)
+                ran.append(("narrowed", (read_counts(narrowed) or {}).get("total")))
                 if not early:
                     crashed = mutant_crash(narrowed, narrowed_log, dll, baseline_hashes)
                 # A complete narrowed pass is no verdict, so the whole suite still runs.
@@ -4977,9 +5107,32 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             timed_out = False
             if not early and not crashed:
                 since = time.time()
-                spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
+                spent, timed_out, seen = run_suite(args.unity, project, args.platform,
+                                                   il_scope if il_narrow else launched,
                                                    results, log, args.timeout, holder)
                 wall, neighbours = wall + spent, max(neighbours, seen)
+                if il_narrow:
+                    held = read_counts(results)
+                    ran.append(("fixtures reading IL", held["total"] if held else None))
+                    # Only a launch that completed over the cases the baseline holds for these fixtures
+                    # stands for them -- or one that failed a case, which is a kill whatever it selected.
+                    # A build that stopped, a hang, no result and a different count each leave the whole
+                    # suite to decide.
+                    if timed_out or not held or build_error(log) or not (
+                            held["failed"] or held["total"] == il_cases):
+                        print("      the fixtures reading IL did not complete over their {} cases, so the "
+                              "whole suite runs".format(il_cases))
+                        for stale in (results, log):
+                            if stale.exists():
+                                stale.unlink()
+                        ran.pop()
+                        il_narrow = False
+                        since = time.time()
+                        spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
+                                                           results, log, args.timeout, holder)
+                        wall, neighbours = wall + spent, max(neighbours, seen)
+                if not il_narrow:
+                    ran.append(("whole", (read_counts(results) or {}).get("total")))
                 if timed_out and complete_result(results, since, baseline["total"]):
                     timed_out, late = False, True
                 crashed = mutant_crash(results, log, dll, baseline_hashes)
@@ -5083,12 +5236,13 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                     owner.detail = "{} stood for the line, {} did not compile: {}".format(
                         mutant.operator, owner.operator, mutant.detail or "-")
                     owner.stood = mutant.operator
+            owner.ran = tuple(ran)
             write_verdict(output, index, campaign, owner, project, killers, scope)
             measured += 1
             average = (time.time() - started) / measured
             left = sum(1 for later in selected if later > index)
-            print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
-                mutant.verdict, mutant.detail or "-", wall, average * left, average))
+            print("      {} ({}) in {:.0f}s; cases run: {}; {:.0f}s left at {:.0f}s each".format(
+                mutant.verdict, mutant.detail or "-", wall, describe_ran(ran) or "-", average * left, average))
     finally:
         holder.release()
         # Only a file still holding the mutation written to it: anything else is the original already,
@@ -5107,6 +5261,17 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
     """The second pass's plan: the shards its platform needs for the first pass's survivors."""
     print(coverage)
     per = SHARD_CEILING[args.platform]
+    if args.survivors_shard is not None:
+        # One job measures them all, after its own first pass.
+        if len(chosen) > per:
+            print("{} mutants of this shard survived the {} suite, more than the {} one job can measure on "
+                  "{} after it.\nWrite the tests they ask for, or split the pull request."
+                  .format(len(chosen), first, per, args.platform))
+            return CEILING_REFUSAL
+        print("{} of {} mutant(s) survived the {} suite in this shard and are measured on {}".format(
+            len(chosen), len(mutants), first, args.platform))
+        print("mutants={}".format(len(chosen)))
+        return 0
     if len(chosen) > MAX_SHARDS * per:
         print("{} mutants survived the {} suite, more than {} shards of {} can measure on {} inside "
               "the shard job's timeout.\nWrite the tests they ask for, or split the pull request."
@@ -5119,6 +5284,24 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
     print("mutants={}".format(len(chosen)))
     print("shards={}".format(json.dumps(list(range(count)))))
     return 0
+
+
+def unreported_survivor_shards(first_chosen, survivors, first, mutants, project):
+    """{first-pass shard K: the survivors it left} for the second-pass groups `--collect` found no
+    record from, and the first pass's shard count.
+
+    The second pass runs in the job of each first-pass shard, over that shard's survivors, so a group
+    is named by the shard it belongs to. Named only where none of its survivors has a verdict, as
+    `unreported_shards` names a shard.
+    """
+    count = shard_count(len(first_chosen), first)
+    named = {}
+    for shard in range(count):
+        dealt = [index for index in sharded(first_chosen, (shard, count), mutants, project, first)
+                 if index in survivors]
+        if dealt and all(mutants[index - 1].verdict == UNRECORDED for index in dealt):
+            named[shard] = dealt
+    return named, count
 
 
 def report_shard(mutants, selected, shard):
@@ -5141,6 +5324,9 @@ def main():
                         help="branch to diff against, read at refs/remotes/origin/BASE where "
                              "both that and refs/heads/BASE exist (default: main)")
     parser.add_argument("--files", nargs="*", help="mutate these files whole instead of a diff")
+    parser.add_argument("--lines", nargs="+", metavar="PATH:FIRST-LAST",
+                        help="with --files, keep only the mutants on these line ranges of the named files; "
+                             "the list every shard and tree hands back is the filtered one")
     parser.add_argument("--platform", default="EditMode", choices=["EditMode", "PlayMode"])
     parser.add_argument("--assemblies", help="comma-separated test assemblies; default is every one")
     parser.add_argument("--filter", help="fixture or test name, as -testFilter takes it. Narrowing to one "
@@ -5197,6 +5383,9 @@ def main():
                         help="take each mutant's verdict from the run on the other platform that "
                              "recorded it in these directories, and measure, plan or collect on "
                              "--platform only the mutants that run left surviving")
+    parser.add_argument("--survivors-shard", type=parse_shard, metavar="K/N",
+                        help="with --survivors-of, take only the mutants the other platform's shard K of N "
+                             "was dealt, so a job measures the survivors of its own first-pass shard")
     parser.add_argument("--reuse-from", metavar="DIR",
                         help="with --plan, read the ledgers of earlier campaigns in DIR and decide "
                              "which of this diff's mutants are killed already: a kill is reused when "
@@ -5223,6 +5412,10 @@ def main():
         parser.error("--emit-ledger records a decision; it goes with --collect")
     if (args.reuse_from is not None or args.reuse is not None) and args.files:
         parser.error("a reused kill is of a diff's mutants; --files names none")
+    if args.survivors_shard is not None and args.survivors_of is None:
+        parser.error("--survivors-shard narrows what --survivors-of reads; it goes with it")
+    if args.lines and not args.files:
+        parser.error("--lines narrows what --files names")
     if args.shard is not None and args.collect is not None:
         parser.error("--shard measures and --collect decides; a run does one of them")
     if args.survivors_of is not None:
@@ -5394,6 +5587,26 @@ def main():
         shared = declined_line_numbers(text, lines)
         if shared:
             declined[path] = shared
+    if args.lines:
+        ranges = line_ranges(args.lines, targets, {Path(name).resolve() for name in args.files})
+        every, before = len(mutants), mutants
+        for path, first, last in ranges:
+            kept = sum(1 for mutant in mutants if mutant.path == path and first <= mutant.line <= last)
+            print("lines: {}:{}-{} keeps {} mutant(s)".format(relative_to(path, project), first, last, kept))
+            if not kept:
+                raise SystemExit("no mutant of {} lies inside lines {}-{}".format(
+                    relative_to(path, project), first, last))
+        mutants = [mutant for mutant in mutants if in_ranges(ranges, mutant.path, mutant.line)]
+        unreached = {path: [number for number in numbers if in_ranges(ranges, path, number)]
+                     for path, numbers in unreached.items()}
+        declined = {path: [number for number in numbers if in_ranges(ranges, path, number)]
+                    for path, numbers in declined.items()}
+        body = [(path, number) for path, number in body if in_ranges(ranges, path, number)]
+        for path in sorted(targets):
+            print("lines: {} keeps {} of its {} mutant(s)".format(
+                relative_to(path, project), sum(1 for mutant in mutants if mutant.path == path),
+                sum(1 for mutant in before if mutant.path == path)))
+        print("lines: {} of {} mutant(s) lie inside the ranges".format(len(mutants), every))
     coverage = reach(mutants, unreached, project, declined)
 
     coverage = "\n".join((coverage, body_reach(mutants, body)))
@@ -5509,6 +5722,8 @@ def main():
         first = OTHER_PLATFORM[args.platform]
         earlier = scope_digest(base, targets, project, first)
         first_chosen = chosen
+        if args.survivors_shard is not None:
+            first_chosen = sharded(chosen, args.survivors_shard, mutants, project, first)
         for index in first_chosen:
             mutant = mutants[index - 1]
             mutant.verdict, mutant.detail = collected(args.survivors_of, index, earlier, mutant,
@@ -5605,7 +5820,10 @@ def main():
                                                                              args.platform))
         print("Re-run only the failed jobs; the verdict job then decides again over every record.")
     elif args.collect is not None:
-        named, count = unreported_shards(chosen, args.platform, mutants, project)
+        if first is not None:
+            named, count = unreported_survivor_shards(first_chosen, set(chosen), first, mutants, project)
+        else:
+            named, count = unreported_shards(chosen, args.platform, mutants, project)
         if named:
             # Not a survivor and not a stale declaration: the shard never reached the mutants, so
             # nothing is known about them. Re-running the failed jobs of the run records them.

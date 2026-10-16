@@ -81,27 +81,12 @@ namespace Velvet.SourceGenerators.Tests
                     || name.StartsWith("transition-", StringComparison.Ordinal)
                     || name.StartsWith("anim-", StringComparison.Ordinal)),
 
-            // The reference cascade emits overflow (layout) and whitespace (after textOverflow) on the same
-            // side of truncate, so moving truncate earlier would break parity rather than restore it.
+            // StyleRuleOrder sorts `.grid` as the display utility it stands for, and Tailwind emits flex ahead
+            // of grid, so the sheet declares `.flex` ahead of the `.grid` whose set contains it.
             new OrderExemption(
-                "truncate sits where the reference cascade puts it, after the overflow and white-space utilities it contains",
-                broad: name => name == "truncate",
-                narrow: name => name.StartsWith("overflow-", StringComparison.Ordinal)
-                    || name.StartsWith("whitespace-", StringComparison.Ordinal)),
-
-            // transition-none sits between transition-all and the property-specific utilities, so it precedes
-            // only these four of the six that contain it. Moving it ahead of transition-all to match the
-            // reference — which emits transitionProperty as none, all, DEFAULT, colors — would put it before
-            // transition-transform and transition-filter too, adding a fifth violation rather than removing
-            // four. The remaining deviation is that `transition-all transition-none` resolves to
-            // transition-none here and to transition-all on the web.
-            new OrderExemption(
-                "transition-none precedes these four, and moving it earlier would misorder it against the rest",
-                broad: name => name == "transition-opacity"
-                    || name == "transition-colors"
-                    || name == "transition-colors-scale"
-                    || name == "transition-colors-scale-opacity",
-                narrow: name => name == "transition-none"),
+                "flex precedes grid, the order Tailwind emits them in",
+                broad: name => name == "grid",
+                narrow: name => name == "flex"),
         };
 
         private static List<string> Misordered(

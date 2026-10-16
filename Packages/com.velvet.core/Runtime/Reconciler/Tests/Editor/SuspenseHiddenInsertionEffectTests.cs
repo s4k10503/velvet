@@ -9,8 +9,7 @@ namespace Velvet.Tests
     /// Pins what happens to the effects of a component a <c>V.Suspense</c> keeps hidden when its host renders it
     /// while the fallback shows. None of its insertion, layout or passive effects runs meanwhile, and the commit
     /// that reveals it runs once each insertion and passive effect such a render queued, those of a tree that
-    /// never showed included, and the layout effects all over again. An effect whose deps changed and changed back
-    /// while hidden runs at the reveal too, since the hidden children render at all.
+    /// never showed included, and the layout effects all over again.
     /// </summary>
     [TestFixture]
     internal sealed class SuspenseHiddenInsertionEffectTests

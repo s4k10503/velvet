@@ -95,6 +95,12 @@ namespace Velvet
             // Every old-leaf lookup of this walk goes through it; LogicalSlotCursor owns what it saves and when
             // it falls back.
             public LogicalSlotCursor OldSlots;
+            // What a presence's instant removals of this walk keep until the removals run: the retirement of the
+            // removed trees, applied once FinalizeGeneralCommit has removed their leaves, and the put-back of the
+            // presence's per-key records, applied where the walk throws or an abort skips the removals, since the
+            // next walk reads those records to find the leaves still on screen.
+            public List<Action>? AfterRemovals;
+            public List<Action>? PutBackRemovals;
         }
 
         internal readonly record struct CommittedLeaf(int OldIndex, bool Linear, ChildKey Key);
@@ -174,6 +180,7 @@ namespace Velvet
                 Placements = pool.RentPlacementList(),
             };
             var owner = _ctx.FiberStack.Current;
+            var removalsRan = false;
             try
             {
                 if (commit.OldKeys.Count == 0)
@@ -209,7 +216,10 @@ namespace Velvet
                     RestoreWhatTheSuspensesWrote(commit);
                     // A boundary above discards everything this walk rendered, so the components it mounted go
                     // too, where a suspended span keeps them for the retry.
-                    if (exception is BoundaryCaughtSignal) DisposeFibersMountedBy(oldFibers, newFibers);
+                    if (exception is BoundaryCaughtSignal signal)
+                    {
+                        DisposingFailedOutputOf(signal.Boundary, () => DisposeFibersMountedBy(oldFibers, newFibers));
+                    }
                     throw;
                 }
                 finally
@@ -228,11 +238,12 @@ namespace Velvet
                 // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
                 RunOrphanEffectCleanups(oldFibers, newFibers);
-                var removalsRan = !_ctx.IsAborted;
+                removalsRan = !_ctx.IsAborted;
                 if (removalsRan)
                 {
                     FinalizeGeneralCommit(commit);
                     ApplyOffscreenChanges(commit);
+                    if (commit.AfterRemovals != null) foreach (var retire in commit.AfterRemovals) retire();
                 }
                 else
                 {
@@ -246,6 +257,16 @@ namespace Velvet
             }
             finally
             {
+                // Whether the walk threw or an abort skipped the removals, a completion that waits on them has nothing
+                // to follow.
+                if (!removalsRan)
+                {
+                    _ctx.DropCompletionsRemovedBy(commit);
+                    if (commit.PutBackRemovals != null)
+                    {
+                        for (var i = commit.PutBackRemovals.Count - 1; i >= 0; i--) commit.PutBackRemovals[i]();
+                    }
+                }
                 pool.ReturnPlacementList(commit.Placements);
                 pool.Return(commit.OldKeyMap);
                 pool.ReturnOrphanedIndexSet(commit.UsedOldIndices);
@@ -310,6 +331,9 @@ namespace Velvet
         // the old side the removal pass reads.
         private void CommitLeaf(VNode? node, GeneralCommitState commit, ChildKey emittedKey)
         {
+            // A walk a catch on the aborting path stopped commits no further leaf: a leaf matched by slot would
+            // patch whatever the fallback's reconcile left at that slot.
+            if (_ctx.IsAborted) return;
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var key = emittedKey.OwnedBy(_ctx.FiberStack.Current);
@@ -1065,7 +1089,7 @@ namespace Velvet
             int preCount)
         {
             var commit = walk.Commit!;
-            var enterCompletionsBefore = _ctx.PendingEnterCompletions.Count;
+            var completionsBefore = _ctx.PendingCompletions.Count;
             var fibersBefore = _ctx.BufferPool.RentFiberSet();
             fibersBefore.UnionWith(walk.NewFibers);
             try
@@ -1087,9 +1111,11 @@ namespace Velvet
                 if (caught == null) return;
 
                 RollbackCommitTo(commit, preCount, fibersBefore, walk.NewFibers);
-                _ctx.PendingEnterCompletions.RemoveRange(
-                    enterCompletionsBefore, _ctx.PendingEnterCompletions.Count - enterCompletionsBefore);
-                DropFibersTheFailedOutputAdded(walk, fibersBefore);
+                _ctx.PendingCompletions.RemoveRange(
+                    completionsBefore, _ctx.PendingCompletions.Count - completionsBefore);
+                DisposingFailedOutputOf(boundary, () => DropFibersTheFailedOutputAdded(walk, fibersBefore));
+                // A boundary above that caught an error out of the disposal has replaced this one with its fallback.
+                if (boundary.IsDisposed) return;
                 ForgetOldRowsOf(commit, boundary);
                 // What the failed output recorded against the boundary itself, for an AnimatePresence or a
                 // Suspense it rendered directly; its descendants' records go with the fibers dropped above.
@@ -1129,6 +1155,24 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent): a set not handed back is never read again, and the next rent
                 // makes a new one.
                 _ctx.BufferPool.ReturnFiberSet(fibersBefore);
+            }
+        }
+
+        // An error out of the disposal of what a boundary's failed output mounted goes to the boundaries above it: the
+        // rows of the boundary that caught are being replaced, so it declines the error as it declines one out of its
+        // own fallback's content, and the abort a catch of it would raise would release the elements around it. That
+        // sets FallbackContentFailed, which both callers clear before they read it: ExpandBoundaryInline and
+        // FiberErrorBoundary.ShowCaughtFallback each set it false ahead of the fallback's render.
+        private static void DisposingFailedOutputOf(ComponentFiber boundary, Action dispose)
+        {
+            boundary.IsShowingFallback = true;
+            try
+            {
+                dispose();
+            }
+            finally
+            {
+                boundary.IsShowingFallback = false;
             }
         }
 
@@ -1374,9 +1418,10 @@ namespace Velvet
                 var fibersBefore = _ctx.BufferPool.RentFiberSet();
                 fibersBefore.UnionWith(newFibers);
                 var reportsBefore = _ctx.PendingCaughtErrorReports.Count;
+                List<SuspenseRender>? renders = null;
                 try
                 {
-                    suspended = ExpandSuspensePrimary(walk, suspense.Children, retains, primaryPosition);
+                    suspended = ExpandSuspensePrimary(walk, suspense.Children, retains, primaryPosition, out renders);
                     var primaryEnd = commit != null ? commit.NewElements.Count : result!.Count;
                     if (!suspended)
                     {
@@ -1384,6 +1429,8 @@ namespace Velvet
                             || AnyRowStillPending(walk, commit!, preCount, primaryEnd);
                     }
                     hides = suspended && retains;
+                    // A primary that suspends shows none of what its fibers rendered in this walk.
+                    _ctx.ResolveSuspenseRenders(renders, discard: suspended);
                     // Mark THIS Suspense's primary children (the fibers added during the children
                     // expansion) as offscreen iff suspended. The offscreen guard in FlushState defers
                     // their lane flush while suspended, to the render that reveals them. The
@@ -1433,8 +1480,11 @@ namespace Velvet
         }
 
         // Returns whether the primary suspended: at this expansion, or where HoldSuspendInPrimary held it.
-        private bool ExpandSuspensePrimary(InlineWalk walk, VNode?[]? children, bool retains, WalkPosition primaryPosition)
+        private bool ExpandSuspensePrimary(
+            InlineWalk walk, VNode?[]? children, bool retains, WalkPosition primaryPosition,
+            out List<SuspenseRender>? renders)
         {
+            renders = null;
             _ctx.OpenSuspensePrimary(retains);
             bool suspended;
             try
@@ -1449,7 +1499,7 @@ namespace Velvet
             }
             finally
             {
-                suspended = _ctx.CloseSuspensePrimary();
+                suspended = _ctx.CloseSuspensePrimary(out renders);
             }
             return suspended;
         }
@@ -1814,6 +1864,7 @@ namespace Velvet
             public int VisualIndex;
             public int AnimatedExitCount;
             public bool RemovedInstantThisRender;
+            public bool RemovedAMotionThisRender;
         }
 
         // One AnimatePresence boundary's expansion, as every per-entry step of it sees it: where the walk
@@ -2018,29 +2069,17 @@ namespace Velvet
                     RecordGivenKeys(state, givenKeyed);
                 }
 
-                // onExitComplete fires once the exiting children are gone. When every removed child
-                // had NO exit animation (all instant-removed above) no PlayExit callback runs to fire it, so fire it
-                // here — but only when no animated exit is still in flight (those fire it when the Exiting set drains).
-                // Contained the same way as RunExitComplete's animated-exit path above: a throwing callback
-                // must not skip the state.Committed bookkeeping that follows, or the next
-                // render reproduces a stale old side.
+                // onExitComplete completes once the exiting children are gone. When every removed child
+                // had NO exit animation (all instant-removed above) no PlayExit callback runs to complete it, so it
+                // completes here — but only when no animated exit is still in flight (those complete it when the
+                // Exiting set drains). Where a V.Motion child is among those removed, it is the Motion's completion.
+                // The removals are this walk's commit, which takes the completion back if they never run.
                 if (commit != null && tally.RemovedInstantThisRender && state.Exiting.Count == 0)
                 {
-                    try
-                    {
-                        presence.OnExitComplete?.Invoke();
-                    }
-                    catch (Exception ex)
-                    {
-                        ComponentBoundarySearch.PropagateException(boundaryFiber, ex);
-                    }
+                    _ctx.CompleteExitAfterThePass(
+                        presence.OnExitComplete, boundaryFiber, tally.RemovedAMotionThisRender, removedBy: commit);
                 }
 
-                // Unlike RunExitComplete above, nothing here needs an explicit boundaryFiber.IsDisposed
-                // guard even though the callback above can (via a cascading ancestor catch) dispose it:
-                // ComponentRegistry.UnregisterFiber synchronously prunes this boundary's PresenceStates
-                // entry as part of that same disposal, so `state` is already an orphaned, unreferenced
-                // object by the time control returns here — mutating it further is a no-op, not a hazard.
                 // 3) Commit the new composition for the next old-side reproduction. Exit-complete keys were
                 //    not re-emitted this render (their leaves are being removed), so drop them.
                 state.Committed.Clear();
@@ -2271,6 +2310,48 @@ namespace Velvet
             pass.NextCommitted.Add((key, node));
         }
 
+        // Whether key's child holds a V.Motion, its anchor or one below up to an inner presence's children, as any
+        // Motion under Framer Motion's PresenceChild registers for its exit whether or not it animates. Reads the
+        // elements as CollectDescendantExits does, which owns the roots and the Portals it follows.
+        private bool HoldsAMotion(ReconcilerContext.PresenceBoundaryState state, string key)
+        {
+            if (state.ChildRoots.TryGetValue(key, out var roots))
+            {
+                foreach (var root in roots)
+                {
+                    var owned = ReferenceEquals(_ctx.PresenceChildRoots.GetValueOrDefault(root).Roots, roots);
+                    if (owned && HoldsAMotionUnder(root, roots)) return true;
+                }
+            }
+            return false;
+        }
+
+        private bool HoldsAMotionUnder(VisualElement element, List<VisualElement> roots)
+        {
+            if (_ctx.ZLayerPlaceholders.TryGetValue(element, out var real)) element = real;
+            var owner = _ctx.PresenceChildRoots.GetValueOrDefault(element).Roots;
+            if (owner != null && !ReferenceEquals(owner, roots)) return false;
+            if (_ctx.PortalState.TryGetValue(element, out var portal)) return HoldsAMotionInPortal(portal, roots);
+            if (_ctx.MotionNodes.ContainsKey(element)) return true;
+            for (var i = 0; i < element.hierarchy.childCount; i++)
+            {
+                var child = element.hierarchy[i];
+                if (!FiberZLayerCoordinator.IsLayerContainer(child) && HoldsAMotionUnder(child, roots)) return true;
+            }
+            return false;
+        }
+
+        private bool HoldsAMotionInPortal(PortalSlotInfo portal, List<VisualElement> roots)
+        {
+            var target = portal.Target!;
+            for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength; slot++)
+            {
+                if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical)
+                    && HoldsAMotionUnder(target.hierarchy[physical], roots)) return true;
+            }
+            return false;
+        }
+
         private static (HashSet<ComponentFiber> Fibers, int Placements)? SnapshotEmission(InlineWalk walk)
             => (new HashSet<ComponentFiber>(walk.NewFibers), walk.Commit!.Placements.Count);
 
@@ -2292,11 +2373,50 @@ namespace Velvet
             var state = pass.State;
             state.Exiting.Remove(key);
             pass.Tally.RemovedInstantThisRender = true;
+            if (HoldsAMotion(state, key)) pass.Tally.RemovedAMotionThisRender = true;
+            // The new side of a walk is only ReconcileGeneral's, which gives it a commit; the structural walks that
+            // have none (ExpandInlineForReconcile) read the old side, which returns before it reaches a presence's
+            // children.
+            var commit = pass.Walk.Commit!;
+            NotePresenceRemovalPutBack(commit, state, key, node);
             // Same as the finished-exit drop: leave the committed set, then retire.
             RemovePresenceCommittedEntry(state.Committed, key);
             RetirePresenceKeyEntries(state, key);
-            FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), pass.BoundaryFiber);
+            // The removed tree is the baseline the next walk reproduces while the leaves are still on screen.
+            var boundary = pass.BoundaryFiber;
+            (commit.AfterRemovals ??= new List<Action>()).Add(
+                () => FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundary));
         }
+
+        // Records what RemoveGhostAtOnce is about to take from the presence's state, so a walk whose removals never
+        // run gives the next walk the committed child it still has on screen.
+        private static void NotePresenceRemovalPutBack(
+            GeneralCommitState commit, ReconcilerContext.PresenceBoundaryState state, string key, VNode node)
+        {
+            var index = state.Committed.FindIndex(entry => entry.key == key);
+            var records = new[]
+            {
+                KeepRecord(state.MotionElements, key),
+                KeepRecord(state.ChildRoots, key),
+                KeepRecord(state.ExitWaits, key),
+                KeepRecord(state.LeavingMounts, key),
+            };
+            (commit.PutBackRemovals ??= new List<Action>()).Add(() =>
+            {
+                if (index >= 0)
+                {
+                    state.Committed.Insert(Math.Min(index, state.Committed.Count), (key, node));
+                }
+                foreach (var record in records) record();
+            });
+        }
+
+        // Writes back what map held for key when this was taken, and nothing when it held none.
+        private static Action KeepRecord<T>(Dictionary<string, T> map, string key)
+            => map.TryGetValue(key, out var value) ? () => map[key] = value : static () => { };
+
+        private static Action KeepRecord(HashSet<string> set, string key)
+            => set.Contains(key) ? () => set.Add(key) : static () => { };
 
         // Whether removing key plays an exit at all: its anchor's, a descendant Motion's, or the removal of a
         // propagating presence inside it that still holds children, which is when Framer's inner presence
@@ -2540,32 +2660,11 @@ namespace Velvet
                 // the next render stops emitting this child and the diff removes its leaves.
                 capturedState.Exiting.Remove(capturedKey);
                 capturedState.ExitComplete.Add(capturedKey);
-                // onExitComplete fires once the exiting set drains (the last
-                // in-flight exit finished). Cancelled exits (key re-entered) remove from Exiting
-                // elsewhere and do not reach here, so they never trigger it. Contained: a
-                // throwing callback must not skip the ghost-drop re-render scheduled below,
-                // mirroring HookEffectExecutor's effect-exception containment.
-                if (capturedState.Exiting.Count == 0)
-                {
-                    // Framer's safeToRemove, which runs ahead of the presence's own onExitComplete.
-                    capturedState.Registration?.Complete();
-                    try
-                    {
-                        capturedOnExitComplete?.Invoke();
-                    }
-                    catch (Exception ex)
-                    {
-                        ComponentBoundarySearch.PropagateException(capturedBoundary, ex);
-                    }
-                }
                 if (capturedBoundary != null && capturedBoundary.IsDisposed)
                 {
-                    // The callback above threw and an ancestor boundary's fallback already
-                    // replaced capturedBoundary's whole subtree while handling it — there is no
-                    // ghost left to drop a re-render for, and ScheduleRerender has no disposed
-                    // guard of its own (unlike the public RequestRenderFromHook/
-                    // RequestTransitionRerender), so scheduling here would just pin a disposed
-                    // fiber dirty in the batch scheduler forever.
+                    // There is no ghost left to drop a re-render for, and ScheduleRerender has no disposed
+                    // guard of its own (unlike the public RequestRenderFromHook/RequestTransitionRerender), so
+                    // scheduling here would just pin a disposed fiber dirty in the batch scheduler forever.
                 }
                 else if (capturedBoundary != null)
                 {
@@ -2591,6 +2690,16 @@ namespace Velvet
                         "Exit completed but the presence has no owning component fiber to re-render, "
                         + "so the exited child cannot be removed. Mount AnimatePresence inside a "
                         + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
+                }
+                // onExitComplete completes once the exiting set drains (the last in-flight exit finished), after
+                // the re-render that drops the ghosts is asked for, as Framer Motion's AnimatePresence forces its
+                // render before calling it. Cancelled exits (key re-entered) remove from Exiting elsewhere and do
+                // not reach here, so they never trigger it. An exit that plays is a V.Motion's.
+                if (capturedState.Exiting.Count == 0)
+                {
+                    // Framer's safeToRemove, which runs ahead of the presence's own onExitComplete.
+                    capturedState.Registration?.Complete();
+                    _ctx.CompleteExitAfterThePass(capturedOnExitComplete, capturedBoundary, fromAMotion: true);
                 }
             }
             // The child is removed once its exits have played and each lead its layoutIds passed to has landed. A key
@@ -3038,11 +3147,9 @@ namespace Velvet
             }
         }
 
-        // The enter paths that fire the callback in-pass rather than handing it to
-        // StyleAnimationScheduler share this so the containment is written once, and it is the same
-        // containment RunExitComplete gives the other half of the pair: the emission this sits inside has
-        // bookkeeping still to do, and a user callback must not be what stops it.
-        internal static void InvokeEnterComplete(MotionNode motion, ComponentFiber? boundaryFiber)
+        // Contained so the emission or the pass end this runs inside keeps its bookkeeping, and uncaught as Framer
+        // Motion's onAnimationComplete is, which a promise calls.
+        internal static void InvokeEnterComplete(MotionNode motion)
         {
             try
             {
@@ -3050,7 +3157,21 @@ namespace Velvet
             }
             catch (Exception ex)
             {
-                ComponentBoundarySearch.PropagateException(boundaryFiber, ex);
+                ComponentBoundarySearch.ReportUncaught(ex);
+            }
+        }
+
+        // The routes ReconcilerContext.CompleteExitAfterThePass argues.
+        internal static void InvokeExitComplete(Action onExitComplete, ComponentFiber? owner, bool fromAMotion)
+        {
+            try
+            {
+                onExitComplete();
+            }
+            catch (Exception ex)
+            {
+                if (fromAMotion) ComponentBoundarySearch.ReportUncaught(ex);
+                else ComponentBoundarySearch.PropagateFromOwner(owner, ex);
             }
         }
 
@@ -3058,8 +3179,8 @@ namespace Velvet
         // duration is zero — StyleTransitionConfig.None is one — completes inside the Play* call that
         // starts it (StyleAnimationScheduler.ValidateDuration), and the enter dispatches make that call
         // from inside the pass.
-        internal static Action? ContainedEnterComplete(MotionNode motion, ComponentFiber? boundaryFiber)
-            => motion.OnEnterComplete == null ? null : () => InvokeEnterComplete(motion, boundaryFiber);
+        internal static Action? ContainedEnterComplete(MotionNode motion)
+            => motion.OnEnterComplete == null ? null : () => InvokeEnterComplete(motion);
 
         // A variant Motion (carrying variants and an animate label, its own or inherited) manages its resting state
         // through variant classes: variants[animate] is applied at mount and restored by CancelExit on an
@@ -3100,7 +3221,7 @@ namespace Velvet
                 var onSwap = _patcher.HoldInlineForEnter(motionElement!, motion.ClassNames, fromClasses!,
                     enterTransition);
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(motionElement, fromClasses, toClasses,
-                    enterTransition, ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec, onSwap,
+                    enterTransition, ContainedEnterComplete(motion), staggerDelaySec, onSwap,
                     playback: MotionVariantResolver.PlaybackForChildren(motion, stack.Get(MotionContext.Playback)));
             }
             else if (isVariantMotion)
@@ -3117,7 +3238,7 @@ namespace Velvet
                     _patcher.LandInlineHold(target);
                 }
                 _ctx.StyleAnimationScheduler.PlayEnter(target, motion.Transition,
-                    ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec);
+                    ContainedEnterComplete(motion), staggerDelaySec);
             }
         }
 
