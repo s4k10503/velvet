@@ -15,9 +15,10 @@ namespace Velvet
 
         private readonly struct Key : IEquatable<Key>
         {
-            private readonly int _w, _h, _ox, _oy, _blur, _spread, _tl, _tr, _br, _bl;
+            private readonly int _w, _h, _ox, _oy, _blur, _spread;
+            private readonly int _tl, _tr, _br, _bl;
 
-            public Key(int w, int h, Vector4 radii, ShadowSpec s)
+            public Key(int w, int h, in CornerRadii radii, ShadowSpec s)
             {
                 _w = w;
                 _h = h;
@@ -25,13 +26,15 @@ namespace Velvet
                 _oy = Q(s.OffsetY);
                 _blur = Q(s.Blur);
                 _spread = Q(s.Spread);
-                _tl = Q(radii.x);
-                _tr = Q(radii.y);
-                _br = Q(radii.z);
-                _bl = Q(radii.w);
+                _tl = Pack(radii.TopLeft);
+                _tr = Pack(radii.TopRight);
+                _br = Pack(radii.BottomRight);
+                _bl = Pack(radii.BottomLeft);
             }
 
             private static int Q(float v) => Mathf.RoundToInt(v * 16f);
+
+            private static int Pack(Vector2 r) => (Q(r.x) * 65536) ^ Q(r.y);
 
             public bool Equals(Key o) => _w == o._w && _h == o._h && _ox == o._ox && _oy == o._oy && _blur == o._blur
                 && _spread == o._spread && _tl == o._tl && _tr == o._tr && _br == o._br && _bl == o._bl;
@@ -59,7 +62,7 @@ namespace Velvet
 #endif
 
         // The bake for a padding box of width x height with these corner radii, or null for an empty box.
-        internal static Texture2D? Get(float width, float height, Vector4 radii, in ShadowSpec shadow)
+        internal static Texture2D? Get(float width, float height, in CornerRadii radii, in ShadowSpec shadow)
         {
             var w = Mathf.CeilToInt(width);
             var h = Mathf.CeilToInt(height);
@@ -87,12 +90,12 @@ namespace Velvet
 
         // The alpha at each pixel centre: coverage of the padding box times the blurred coverage of what lies outside
         // the hole. Row 0 is the bottom of the box, so the quad samples the top at v = 1.
-        private static Texture2D Bake(int w, int h, Vector4 radii, in ShadowSpec s)
+        private static Texture2D Bake(int w, int h, in CornerRadii radii, in ShadowSpec s)
         {
             var pixels = new Color32[w * h];
             var half = new Vector2(w * 0.5f, h * 0.5f);
             var holeHalf = new Vector2(Mathf.Max(0f, half.x - s.Spread), Mathf.Max(0f, half.y - s.Spread));
-            var holeRadii = RingBandShape.SpreadRadii(radii, -s.Spread);
+            var holeRadii = RingBandShape.Shrink(radii, s.Spread);
             var sigma = s.Blur * 0.5f;
             for (var y = 0; y < h; y++)
             {
@@ -116,14 +119,25 @@ namespace Velvet
             return texture;
         }
 
-        // Signed distance from p to a box of half-size half centred on the origin, rounded by the radius of the
-        // quadrant p lies in; negative inside.
-        internal static float RoundedBoxDistance(Vector2 p, Vector2 half, Vector4 radii)
+        // Signed distance from p to a box of half-size half centred on the origin, rounded by the corner of the
+        // quadrant p lies in; negative inside. Exact for a circular corner; an elliptical one's distance is
+        // approximated by scaling the corner to a circle of its smaller radius, which keeps the edge exact and the
+        // falloff a little off across the corner.
+        internal static float RoundedBoxDistance(Vector2 p, Vector2 half, in CornerRadii radii)
         {
-            var r = p.x < 0f ? (p.y < 0f ? radii.x : radii.w) : (p.y < 0f ? radii.y : radii.z);
-            r = Mathf.Min(r, Mathf.Min(half.x, half.y));
-            var q = new Vector2(Mathf.Abs(p.x) - half.x + r, Mathf.Abs(p.y) - half.y + r);
-            return new Vector2(Mathf.Max(q.x, 0f), Mathf.Max(q.y, 0f)).magnitude + Mathf.Min(Mathf.Max(q.x, q.y), 0f) - r;
+            var r = p.x < 0f ? (p.y < 0f ? radii.TopLeft : radii.BottomLeft) : (p.y < 0f ? radii.TopRight : radii.BottomRight);
+            if (r.x <= 0f || r.y <= 0f)
+            {
+                r = Vector2.zero;
+            }
+            r = Vector2.Min(r, half);
+            var q = new Vector2(Mathf.Abs(p.x) - half.x + r.x, Mathf.Abs(p.y) - half.y + r.y);
+            if (q.x > 0f && q.y > 0f && r.x > 0f)
+            {
+                var m = Mathf.Min(r.x, r.y);
+                return (new Vector2(q.x / r.x, q.y / r.y).magnitude - 1f) * m;
+            }
+            return Mathf.Max(q.x - r.x, q.y - r.y);
         }
 
         // The complementary error function, by Numerical Recipes' erfcc approximation.

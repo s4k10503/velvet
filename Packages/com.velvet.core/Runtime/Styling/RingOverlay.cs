@@ -458,8 +458,7 @@ namespace Velvet
                 return;
             }
             var outer = RingBandShape.Fit(ResolveRadii(element, binding, width, height), width, height);
-            var radii = new Vector4(Mathf.Max(0f, outer.x - Mathf.Max(left, top)), Mathf.Max(0f, outer.y - Mathf.Max(right, top)),
-                Mathf.Max(0f, outer.z - Mathf.Max(right, bottom)), Mathf.Max(0f, outer.w - Mathf.Max(left, bottom)));
+            var radii = RingBandShape.PaddingRadii(outer, left, top, right, bottom);
 
             var spec = binding.Spec;
             var painter = mgc.painter2D;
@@ -476,18 +475,18 @@ namespace Velvet
         }
 
         // An inset box-shadow band with no blur: the padding box less the padding box shrunk by spread.
-        private static void PaintInsetBand(Painter2D painter, Rect padding, Vector4 radii, float spread, Color tint)
+        private static void PaintInsetBand(Painter2D painter, Rect padding, in CornerRadii radii, float spread, Color tint)
         {
             if (spread <= 0f)
             {
                 return;
             }
             var hole = new Rect(padding.x + spread, padding.y + spread, padding.width - (spread * 2f), padding.height - (spread * 2f));
-            RingBandShape.Fill(painter, padding, radii, hole, RingBandShape.SpreadRadii(radii, -spread), tint);
+            RingBandShape.Fill(painter, padding, radii, hole, RingBandShape.Shrink(radii, spread), tint);
         }
 
         private static void PaintInsetShadow(MeshGenerationContext mgc, VisualElement element, in ShadowSpec shadow,
-            Rect padding, Vector4 radii)
+            Rect padding, in CornerRadii radii)
         {
             var tint = shadow.TintFor(element);
             if (tint.a <= 0f)

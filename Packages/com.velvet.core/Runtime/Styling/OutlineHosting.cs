@@ -298,8 +298,7 @@ namespace Velvet
             return true;
         }
 
-        // Writes the box only where it changed: a write that changes nothing still moves the panel's version, and
-        // the version is what tells Place to re-host.
+        // Writes the box only where it changed, so a placement that changes nothing writes nothing.
         internal static void SetBox(VisualElement e, float x, float y, float width, float height)
         {
             width = Mathf.Max(0f, width);
