@@ -435,15 +435,15 @@ namespace Velvet
                 }
                 else if (cls.StartsWith(FromPrefix, StringComparison.Ordinal))
                 {
-                    ReadStop(cls, FromPrefix.Length, ref fromStop);
+                    ReadStop(cls, FromPrefix.Length, 0f, ref fromStop);
                 }
                 else if (cls.StartsWith(ViaPrefix, StringComparison.Ordinal))
                 {
-                    ReadStop(cls, ViaPrefix.Length, ref viaStop);
+                    ReadStop(cls, ViaPrefix.Length, 0.5f, ref viaStop);
                 }
                 else if (cls.StartsWith(ToPrefix, StringComparison.Ordinal))
                 {
-                    ReadStop(cls, ToPrefix.Length, ref toStop);
+                    ReadStop(cls, ToPrefix.Length, 1f, ref toStop);
                 }
             }
 
@@ -530,7 +530,8 @@ namespace Velvet
         // A from-/via-/to- remainder is EITHER a stop position (a percentage, or a bracketed pixel length) or a colour — independent
         // utilities. A percentage sets only the position; a recognized colour sets the colour (and marks
         // the stop present); anything else is ignored (leaves the accumulated values untouched).
-        private static void ReadStop(string cls, int prefixLength, ref UtilityStop stop)
+        // initialPosition: the stop's registered initial position, which a position the browser rejects falls back to.
+        private static void ReadStop(string cls, int prefixLength, float initialPosition, ref UtilityStop stop)
         {
             if (!s_stopTokens.TryGet(cls, out var token))
             {
@@ -539,7 +540,8 @@ namespace Velvet
             }
             if (token.IsPosition)
             {
-                stop.Position = token.Position;
+                var rejected = float.IsNaN(token.Position) && float.IsNaN(token.PositionPx);
+                stop.Position = rejected ? initialPosition : token.Position;
                 stop.PositionPx = token.PositionPx;
             }
             else if (token.IsColor)
@@ -654,9 +656,24 @@ namespace Velvet
             {
                 return new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px };
             }
-            return VelvetPalette.TryResolveColorToken(suffix, out var c)
-                ? new StopToken { IsColor = true, Color = c }
-                : default;
+            // A length Tailwind's tests take that the line cannot place (`from-[2em]`) is a position here too.
+            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                && (TailwindDataTypes.IsLength(inner) || TailwindDataTypes.IsPercentage(inner)))
+            {
+                return default;
+            }
+            return ColourStopToken(suffix);
+        }
+
+        // Tailwind registers the stop colours as <color> with a transparent initial value, so a bracket it writes
+        // as a colour and the browser rejects leaves the stop transparent rather than unset.
+        private static StopToken ColourStopToken(string suffix)
+        {
+            if (VelvetPalette.TryResolveColorToken(suffix, out var c))
+            {
+                return new StopToken { IsColor = true, Color = c };
+            }
+            return suffix.Length > 0 && suffix[0] == '[' ? new StopToken { IsColor = true, Color = Color.clear } : default;
         }
 
         // A type hint picks the branch in place of Tailwind's tests: a length or percentage hint the position,
@@ -670,15 +687,16 @@ namespace Velvet
             }
             if (!StyleColorValueParser.HintSelectsNonColour("from", hint))
             {
-                return VelvetPalette.TryResolveColorToken(plain, out var c) ? new StopToken { IsColor = true, Color = c } : default;
+                return ColourStopToken(plain);
             }
             if (TryParsePercent(plain, out var p))
             {
                 return new StopToken { IsPosition = true, Position = p, PositionPx = float.NaN };
             }
+            // A position the browser rejects is the registered initial one: both NaN, which ReadStop reads so.
             return TryParseStopLength(plain.Substring(1, plain.Length - 2), out var px)
                 ? new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px }
-                : default;
+                : new StopToken { IsPosition = true, Position = float.NaN, PositionPx = float.NaN };
         }
 
         // Parses a gradient shape activator, including an optional /interp modifier: type, angle (linear

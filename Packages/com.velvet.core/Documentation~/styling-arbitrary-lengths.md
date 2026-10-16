@@ -20,7 +20,7 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 A unit is read in any case, as CSS reads it: `w-[10PX]` is `w-[10px]`. Where Tailwind reads a bracket as
 either a length or a colour — `border-*`, `text-*`, `ring-*`, `outline-*`, `ring-offset-*` and `from-*`,
 `via-*` and `to-*` — its type tests decide, and what they do not take for a length is written as a colour,
-which leaves the class inert as it does in a browser:
+which the browser rejects unless it is one ([a rejected value](#a-rejected-value)):
 
 - its length test takes a number with a unit in its own case, `Q` upper and the rest lower, or a math function
   named in lower case whatever case its units are in, so `border-[2PX]`, `text-[16PX]` and
@@ -70,6 +70,18 @@ it supports.
 
 So `top-[calc(1rem+4px)]`, `gap-[min(2rem,24px)]`, `blur-[calc(2px*3)]`,
 `shadow-[calc(1rem+4px)_4px_8px_#101820]` and `w-[calc(100%/3)]` resolve as the plain length would.
+
+### A rejected value
+
+A value Tailwind writes and the browser rejects does what it does in the browser. A plain declaration is
+dropped, so the class is inert: `border-[2PX]`, `text-[16]`, `w-[120]`. One Tailwind composes into the
+element's box-shadow discards the whole box-shadow, the ring and every `shadow-*` with it, while a
+`drop-shadow-*`, a filter, stays: a ring colour that is no colour (`ring ring-[5PX]`, `ring-2 ring-[2]`), a ring
+width that is no length (`ring-[length:2]`), a ring offset colour that is no colour beside an offset width
+(`ring-offset-2 ring-offset-[2]`), and a `shadow-[…]` holding a bare non-zero number (`shadow-[0_4_8_#000]`).
+The ring colour and width are each the last class's, as the ring reads them. A `from-` / `via-` / `to-` colour
+that is no colour (`from-[1IN]`) leaves its stop transparent, and a position that is no length
+(`from-[length:red]`) returns the stop to its initial position: 0%, 50% or 100%.
 
 ## Lengths only an element can measure
 

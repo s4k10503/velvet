@@ -138,9 +138,15 @@ namespace Velvet
             }
 
             var found = false;
+            // A box-shadow the browser discards takes every shadow-* with it; a drop-shadow is a filter and stays.
+            var discarded = StyleRingClass.DiscardsBoxShadow(classNames);
             foreach (var cls in classNames)
             {
-                if (TryParse(cls, out var parsed, out var wantShadow))
+                if (discarded && cls != null && (cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+                if (TryParse(cls!, out var parsed, out var wantShadow))
                 {
                     // A recognized utility overrides earlier ones; shadow-none flips found back to false.
                     found = wantShadow;
@@ -209,6 +215,33 @@ namespace Velvet
                 return true;
             }
             // Unrecognized shadow-* utility: not a known value.
+            return false;
+        }
+
+        // Whether cls is a box-shadow utility Tailwind generates: shadow, a preset, shadow-none or a bracket.
+        internal static bool DeclaresBoxShadow(string cls)
+            => cls == "shadow" || (cls.StartsWith("shadow-", StringComparison.Ordinal)
+                && (cls == "shadow-none" || Presets.ContainsKey(cls.Substring("shadow-".Length)) || cls["shadow-".Length] == '['));
+
+        // Whether cls is a shadow-[…] Tailwind writes as a box-shadow value that the browser rejects because it
+        // holds a bare non-zero number (`shadow-[0_4_8_#000]`).
+        internal static bool HoldsRejectedValue(string cls)
+        {
+            if (!cls.StartsWith("shadow-[", StringComparison.Ordinal)
+                || !StyleArbitraryValueResolver.TryStripBrackets(cls, "shadow-".Length, out var inner)
+                || !StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
+                || hint == "color" || (hint == null && StyleColorValueParser.TryParseColor(inner, out _)))
+            {
+                return false;
+            }
+            foreach (var token in StyleGradientClass.SplitTopLevel(inner.ToString().Replace('_', ' '), ' '))
+            {
+                if (float.TryParse(token, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n)
+                    && n != 0f)
+                {
+                    return true;
+                }
+            }
             return false;
         }
 

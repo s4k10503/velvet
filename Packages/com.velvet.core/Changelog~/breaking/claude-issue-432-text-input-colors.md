@@ -9,3 +9,8 @@
   `gap-[8]`, `border-[2]`, `ring-[2]` and `shadow-[0_4_8_#000]` used to read it as pixels. `text-[16]` and
   `text-[0]` are a colour to Tailwind and inert too. `outline-[2]` and `outline-[50%]` draw a 3px outline, the
   width the browser falls back to when it drops theirs.
+- A value Tailwind composes into an element's box-shadow and the browser rejects now discards the box-shadow,
+  as the browser does: a ring colour or offset colour that is no colour (`ring ring-[5PX]`), a ring width that
+  is no length (`ring-[length:2]`) and a `shadow-[…]` with a bare non-zero number take the ring and every
+  `shadow-*` on the element with them, where the ring used to draw. A `from-` / `via-` / `to-` colour that is
+  no colour leaves its stop transparent, and a rejected position returns the stop to its initial one.

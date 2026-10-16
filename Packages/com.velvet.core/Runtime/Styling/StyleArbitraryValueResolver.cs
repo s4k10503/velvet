@@ -336,8 +336,8 @@ namespace Velvet
                 or ArbitraryProperty.BorderRightWidth or ArbitraryProperty.BorderBottomWidth
                 or ArbitraryProperty.BorderLeftWidth;
 
-        // A <line-width> keyword (thin, medium, thick) or a font-size keyword, at the sizes Chromium computes,
-        // where Tailwind's type tests hand one to border-width or font-size.
+        // A <line-width> keyword (thin, medium, thick) or a font-size keyword, where Tailwind's type tests hand one
+        // to border-width or font-size. The sizes are a browser's, measured; BareNumberBracketTests pins them.
         private static bool TryParseKeywordLength(
             ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
