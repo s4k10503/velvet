@@ -396,7 +396,7 @@ measured in that section, against the window it names. A mutant's launch-compile
 sets how many each holds, up to `SHARD_CEILING`; it stops adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
 before its first mutant; the PlayMode pass of a shard's survivors pays its own activation and baseline in the same job, not an image pull, and each of its mutants costs more than twice an EditMode one measured on the same run.
 
-**Shard count under an account's concurrent-job cap.** GitHub Free runs 20 hosted jobs at once across the whole account, and one pull request's `Test` is about five of them while its campaign holds one for the plan, one for the Library and one per shard. With two pull requests open, `Test` takes about ten and leaves ten for both campaigns, so each runs about five shards at a time until `Test` ends, and ten after. `MAX_SHARDS` stays at ten: with one pull request open there are free jobs for ten shards, and with two they queue behind each other rather than slowing the others down, while a shard of fewer mutants pays the same pull, activation and baseline for less work. This follows from the timings below and the cap; no run of two campaigns has been timed. A cap is a reason not to add a PlayMode job per survivor, which is why that pass runs in the shard's own job. Measured over 121 EditMode shards of the 100 pull-request runs
+**Shard count under an account's concurrent-job cap.** GitHub Free runs 20 hosted jobs at once across the whole account, and one pull request's `Test` is about five of them while its campaign holds one for the plan, one for the Library and one per shard. With two pull requests open, `Test` takes about ten and leaves ten for both campaigns, fewer than the twenty shards they ask for. `MAX_SHARDS` stays at ten because the wall clock of a single pull request is what the count is set for: it has free jobs for ten shards, and a shard of fewer mutants pays the same pull, activation and baseline for less work. The cost falls on the second pull request. GitHub's queue has no priority per pull request, so shards one campaign has queued can start ahead of the other's `Test` jobs, and its aggregate with them, and `max-parallel` is not used to prevent that. Beyond what the timings below and the cap give, nothing here is measured: no run of two campaigns has been timed, thirteen is the most licence activations seen at once and not a limit, and two pull requests have run CI together without an activation failing, though the activations were not counted. A cap is a reason not to add a PlayMode job per survivor, which is why that pass runs in the shard's own job. Measured over 121 EditMode shards of the 100 pull-request runs
 completed on 2026-09-26 and 2026-09-27, before a mutant was narrowed, a shard spent a median of 98 s
 before activating, 82 s of it pulling the image, 36 s activating and 211 s on its baseline, and its
 645 mutants took a median of 190 s. Over the 461 EditMode baselines those runs uploaded, the
@@ -1231,7 +1231,10 @@ fail has had a campaign measure a change that cannot merge, and that run is spen
 starting it beside `Test` costs. Its `library` job reads none of `Test`'s artifacts or caches, which `Test` saves under the pull request's own ref, so it has nothing to wait for. The merge needs both to pass on the same head, so the wasted campaign
 cannot merge anything: `settle.py` refuses a head whose `Test` run has not passed whatever the
 campaign concluded, and the campaign's own group cancels the run over an older head when a push
-dispatches the next. Where the newest is still running it leaves it to finish; and otherwise it
+dispatches the next. A `Test` run on a head that concludes `failure` ends that head's open campaign
+(`automerge.yml`'s `cancel-campaign` job), so a red head holds no runner for long; a cancelled campaign
+is dispatched again by the recovery below once `Test` passes on the head, or by adding the label
+again. Where the newest is still running it leaves it to finish; and otherwise it
 dispatches the merge run. A failed campaign is a verdict about its head, which a push
 or a re-run of its failed jobs asks again, and a cancelled one is asked again by adding the label
 again, with no push. The campaign reads the head against
@@ -1240,7 +1243,7 @@ branch of this repository only: a head on a fork gets none, and settle refuses t
 holds one campaign at a time — a dispatch for a newer head cancels the run measuring the one before
 it — and no `Test` run shares its concurrency group. Two hand-offs of one head close enough together
 that neither finds the other's run can still dispatch twice, and the second then cancels the first;
-a label added just after a push, both of which hand the head off, is the likeliest pair. A
+two quick pushes, or a push and then marking ready for review or reopening, are the likeliest pairs. A
 hand-off whose campaign dispatch fails names `settle.py update` for a branch that predates the
 workflow. One from a pull request event logs a failed reading or dispatch as a warning and still
 passes: its job is a check on the head, and a failed one would have settle and the hook refuse that
@@ -1264,8 +1267,9 @@ dispatched with its number (*Actions ▸ Automerge ▸ Run workflow*). It asks a
 requests carrying the label when `Test` or `Source generators` passes a push run on `main`, which is
 what clears a red base, and when a release
 dispatch of `UPM` passes, which is what clears an unpublished release. Each of those dispatches the
-campaign rather than asking settle where a labelled head has none, so the campaign does not rest
-on the hand-off's events alone. A refusal cleared by anything
+campaign rather than asking settle where a labelled head has none and its newest `pull_request` run of
+`Test` has passed (concluded `success`, or open with `Required checks (Unity)` passed), so the campaign does not rest
+on the hand-off's events alone and a recovery spends no runners on a head `Test` has not passed. A refusal cleared by anything
 else — a `Test` run dispatched by hand onto the head, for one — waits for the next of those events or
 for a manual dispatch.
 

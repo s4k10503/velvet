@@ -125,9 +125,11 @@ def wait_for_run(project, run_id, read=None, clock=time.monotonic, sleep=time.sl
 def settle_one(project, number, tested=None, dispatch_token=None):
     """Merges one pull request if nothing blocks it, and says what happened.
 
-    Handed `dispatch_token`, a labelled head settle would refuse for want of a campaign gets the
-    campaign instead: the hand-off dispatches one only when its own event reaches it, and this asks
-    whatever event started the run.
+    Handed `dispatch_token`, a labelled head settle would refuse for want of a campaign, and whose
+    `campaign.AFTER` has passed, gets the campaign instead: the hand-off dispatches one only when its
+    own event reaches it, and this asks whatever event started the run. A head whose `campaign.AFTER`
+    has not passed is left alone here, since the hand-off dispatched at push time and a failed one
+    cancels the campaign it started.
     """
     pull = settle.rest_json(f"repos/{settle.repository(project)}/pulls/{number}")
     reason = pull_skip_reason(pull, tested)
@@ -143,7 +145,8 @@ def settle_one(project, number, tested=None, dispatch_token=None):
 def recover_campaign(project, number, pull, token):
     if dispatch_skip_reason(project, pull, ask_base=True):
         return False
-    if not settle.campaign.dispatch_owed(campaign_reading(project, pull["head"]["sha"])):
+    found, ready = campaign_reading(project, pull["head"]["sha"])
+    if not (settle.campaign.dispatch_owed(found) and ready):
         return False
     dispatch_campaign(project, number, pull, token)
     return True
@@ -199,19 +202,22 @@ def dispatch_skip_reason(project, pull, ask_base):
 
 
 def campaign_reading(project, sha):
-    """`campaign.state` over the head's runs."""
+    """(`campaign.state` over the head's runs, whether `campaign.AFTER` has passed there)."""
     runs = settle.campaign_runs(project, sha)
     now = time.time()
-    return settle.campaign_state(runs, settle.run_jobs(project, runs, now), now)
+    jobs = settle.run_jobs(project, runs, now)
+    return settle.campaign_state(runs, jobs, now), settle.campaign.after_passed(
+        runs, lambda run: settle.expected_checks.conclusion(run, jobs, now), jobs)
 
 
-def hand_off(project, number, run_id):
+def hand_off(project, number, run_id, event_sha=None):
     """Dispatches what a labelled pull request's head waits on, and says which.
 
     `run_id` is this run's own, which the merge run waits out for the reason `wait_for_run` gives.
     The campaign is dispatched without waiting for the head's other workflows: the merge run settle
     decides refuses a head any of them has not passed, and the campaign's own group cancels the run
-    over an older head.
+    over an older head. `event_sha` is the head the event carries; the pull request read over REST can
+    name another while it lags, and the dispatch targets the branch, so it lands on the tip either way.
     """
     pull = settle.rest_json(f"repos/{settle.repository(project)}/pulls/{number}")
     reason = pull_skip_reason(pull) or dispatch_skip_reason(project, pull, ask_base=False)
@@ -219,17 +225,43 @@ def hand_off(project, number, run_id):
         print(f"PR#{number} left alone: {reason}")
         return
     head, base = pull["head"], pull["base"]
-    found = campaign_reading(project, head["sha"])
+    sha = event_sha or head["sha"]
+    found, _ = campaign_reading(project, sha)
     if found == settle.campaign.RUNNING:
-        print(f"PR#{number}: the campaign on {head['sha'][:7]} is still running, and asks for the "
+        print(f"PR#{number}: the campaign on {sha[:7]} is still running, and asks for the "
               f"merge once it passes")
     elif not settle.campaign.dispatch_owed(found):
         dispatch(project, MERGE_WORKFLOW, base["repo"]["default_branch"], number=number,
                  after_run=run_id)
-        print(f"PR#{number}: the campaign on {head['sha'][:7]} {found}, so the merge run is "
+        print(f"PR#{number}: the campaign on {sha[:7]} {found}, so the merge run is "
               f"dispatched")
     else:
         dispatch_campaign(project, number, pull)
+
+
+def cancel_red(project, event):
+    """The ids of the campaigns cancelled because `campaign.AFTER` failed on their head.
+
+    A campaign over a head whose suites fail cannot merge, and under a cap on concurrent jobs it
+    holds runners another pull request's jobs wait for. Only a failed `pull_request` run counts: a
+    cancelled one says nothing about the head, and a push run is another commit.
+    """
+    run = event.get("workflow_run") or {}
+    branch, head = run.get("head_branch"), run.get("head_sha")
+    if not (run.get("conclusion") == "failure" and run.get("event") == "pull_request"
+            and run.get("path") == settle.campaign.AFTER and branch and head):
+        print(f"Nothing to cancel: this is not a failed pull_request run of {settle.campaign.AFTER}.")
+        return []
+    slug = settle.repository(project)
+    payload = settle.rest_json(f"repos/{slug}/actions/workflows/{settle.campaign.WORKFLOW}/runs"
+                               f"?branch={branch}&per_page=100")
+    open_here = [entry.get("id") for entry in settle.expected_checks.open_runs(
+        payload.get("workflow_runs") or [], time.time()) if entry.get("head_sha") == head]
+    for run_id in open_here:
+        settle.gh("run", "cancel", str(run_id), "--repo", slug)
+    print(f"{settle.campaign.AFTER} failed on {head[:7]}; cancelled the campaign run "
+          f"{', '.join(map(str, open_here)) or '(none open)'}.")
+    return open_here
 
 
 def base_holds(project, base, workflow):
@@ -278,6 +310,8 @@ def main(argv=None, environ=None):
     parser.add_argument("--after-run", type=optional_int, default=None,
                         help="a workflow run to wait for before reading anything about the head")
     parser.add_argument("--event", default=None, help="event payload (default: $GITHUB_EVENT_PATH)")
+    parser.add_argument("--cancel-red", action="store_true",
+                        help="handed a workflow_run event, cancel the campaign of a head whose Test failed")
     parser.add_argument("--hand-off", action="store_true",
                         help="the hand-off job: a missing token warns rather than fails")
     args = parser.parse_args(argv)
@@ -307,9 +341,17 @@ def main(argv=None, environ=None):
         event = json.loads(Path(path).read_text())
         if "pull_request" in event:
             try:
-                hand_off(project, event["pull_request"]["number"], environ.get("GITHUB_RUN_ID", ""))
+                hand_off(project, event["pull_request"]["number"], environ.get("GITHUB_RUN_ID", ""),
+                         ((event["pull_request"].get("head") or {}).get("sha")))
             except RuntimeError as error:
                 print(f"::warning::PR#{event['pull_request']['number']}: {error}")
+            return 0
+        if args.cancel_red:
+            try:
+                cancel_red(project, event)
+            except RuntimeError as error:
+                print(f"::error::{error}")
+                return 1
             return 0
         if args.hand_off:
             print("Nothing to hand off: this is not a pull_request_target event.")

@@ -29,6 +29,14 @@ WORKFLOW = "mutation.yml"
 
 PATH = ".github/workflows/" + WORKFLOW
 
+# The workflow whose pass a recovery waits for before it dispatches a campaign onto a head, and whose
+# failure cancels the head's open campaign, by the file it runs. The hand-off at push time waits for
+# neither. CONTRIBUTING.md's continuous-integration section owns why.
+AFTER = ".github/workflows/test.yml"
+
+# The job of `AFTER` that concludes over every other, by the name it declares.
+AGGREGATE = "Required checks (Unity)"
+
 RUNNING, PASSED, CANCELLED, FAILED = "running", "passed", "cancelled", "failed"
 
 # The artifact a passing campaign uploads: its key, and for a run that reused a verdict the run that
@@ -69,6 +77,35 @@ def state(runs, concluded):
     return {"success": PASSED, "cancelled": CANCELLED}.get(found, FAILED)
 
 
+def after_order(run):
+    """Where a run of `AFTER` sits among the head's, newest last: `expected_checks.failed`'s order."""
+    return run.get("run_number") or 0, run.get("run_attempt") or 1
+
+
+def newest_after(runs):
+    """The newest `pull_request` run of `AFTER` among the head's runs, or None.
+
+    A run of another event is left out, since `base-red` runs on a `pull_request` run alone.
+    """
+    ours = [run for run in runs if run.get("path") == AFTER and run.get("event") == "pull_request"]
+    return max(ours, key=after_order, default=None)
+
+
+def after_passed(runs, concluded, jobs):
+    """Whether `newest_after` concluded `success`.
+
+    `concluded` answers as it does for `state`, over `jobs`, each run's latest attempt's jobs by run
+    id. A run still open passes only once `AGGREGATE` is listed among those and passed, rather than
+    once every job listed so far has.
+    """
+    run = newest_after(runs)
+    if run is None or concluded(run) != "success":
+        return False
+    return run.get("status") == "completed" or any(
+        job.get("name") == AGGREGATE and job.get("status") == "completed"
+        and job.get("conclusion") == "success" for job in jobs.get(run.get("id")) or [])
+
+
 def others(runs):
     """The runs of every workflow but `WORKFLOW`: `reason` alone decides what a campaign owes, so a
     reading of what the head's other runs owe leaves it out."""
@@ -98,9 +135,11 @@ def reason(labels, found, head, stuck, unbacked=None):
         return None
     if found is None:
         return (f"it carries the {LABEL} label and no {WORKFLOW} run has measured {short}: a "
-                f"hand-off dispatches one when the label is added or the head is pushed, for a "
-                f"branch of this repository whose base holds automerge.yml, and adding the label "
-                f"again asks again; for any other branch the label comes off before a merge by hand")
+                f"hand-off dispatches one when the label is added, a labelled draft is marked ready, a "
+                f"labelled pull request is reopened or its head is pushed, and the merge job and the "
+                f"sweep dispatch one once {AFTER} has passed on it, for a branch of this repository "
+                f"whose base holds automerge.yml, and adding the label again asks again; for any "
+                f"other branch the label comes off before a merge by hand")
     if found == RUNNING:
         return f"its {WORKFLOW} run on {short} has not finished ({stuck})"
     if found == CANCELLED:
