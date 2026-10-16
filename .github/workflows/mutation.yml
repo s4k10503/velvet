@@ -1,8 +1,8 @@
 name: Mutation campaign
 
 # The mutation campaign over a pull request's change, once per labelled head rather than on every push.
-# scripts/pr/automerge.py's hand-off dispatches it onto the head's branch once the head carries the
-# `automerge` label and its Test run has passed; CONTRIBUTING.md's continuous-integration section owns
+# scripts/pr/automerge.py's hand-off dispatches it onto the head's branch as soon as the head carries the
+# `automerge` label, beside its Test run rather than after it; CONTRIBUTING.md's continuous-integration section owns
 # when, what the label means and what a merge requires of this workflow's runs.
 #
 # The hand-off dispatches no head on another repository. The checkout is the branch's head rather than

@@ -36,20 +36,15 @@ jobs:
   # A pull_request_target event's jobs are checks on the pull request's head, so a merge decided
   # inside this run would find its own job pending there. automerge.py dispatches the merge run
   # instead, which waits for this run to finish — or, where the head has no campaign, the campaign,
-  # whose aggregate dispatches the merge run once it passes. The campaign waits for the head's Test
-  # run to pass, so that run passing hands the labelled pull request off as well; the path is
-  # campaign.py's AFTER, which test_automerge.py holds this condition to.
+  # whose aggregate dispatches the merge run once it passes. The campaign does not wait for the head's
+  # Test run: it is dispatched as soon as the head carries the label, and the merge waits for both.
   hand-off:
     name: Hand off the labelled pull request
     if: >-
-      (github.event_name == 'pull_request_target'
-       && ((github.event.action == 'labeled' && github.event.label.name == 'automerge')
-           || (github.event.action != 'labeled'
-               && contains(github.event.pull_request.labels.*.name, 'automerge'))))
-      || (github.event_name == 'workflow_run'
-          && github.event.workflow_run.conclusion == 'success'
-          && github.event.workflow_run.event == 'pull_request'
-          && github.event.workflow_run.path == '.github/workflows/test.yml')
+      github.event_name == 'pull_request_target'
+      && ((github.event.action == 'labeled' && github.event.label.name == 'automerge')
+          || (github.event.action != 'labeled'
+              && contains(github.event.pull_request.labels.*.name, 'automerge')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
