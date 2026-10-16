@@ -414,8 +414,8 @@ namespace Velvet.Tests
             playback.CancelPlays();
             Ticks(2);
 
-            // Assert
-            Assert.That(Opacity(element), Is.EqualTo(1f - 4 * 0.016f).Within(1e-4f));
+            // Assert — the replacing play started from the 0.032 the first had drawn and has run four frames toward 0.
+            Assert.That(Opacity(element), Is.EqualTo(2 * 0.016f * (1f - 4 * 0.016f)).Within(1e-4f));
         }
 
         [Test]
@@ -471,9 +471,11 @@ namespace Velvet.Tests
             // Act
             first.ReleaseHeldPlays();
 
-            // Assert
+            // Assert — the second play's start, the 0.032 the first had drawn when it took over; NaN where no inline
+            // opacity is held.
             var opacity = element.style.opacity;
-            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 1f)));
+            Assert.That(opacity.keyword == StyleKeyword.Undefined ? opacity.value : float.NaN,
+                Is.EqualTo(2 * 0.016f).Within(1e-4f));
         }
 
         // The first playback still lists a running play of its own on the element whose held play is the second's.
