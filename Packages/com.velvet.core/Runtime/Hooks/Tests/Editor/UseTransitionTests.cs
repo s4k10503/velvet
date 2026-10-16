@@ -1909,7 +1909,6 @@ namespace Velvet.Tests
             s_deferredParentFiber = null;
             s_deferredChildFiber = null;
             s_deferredChildStart = default;
-            s_deferredChildSetCount = default;
             s_propSetterParentFiber = null;
             s_propSetterChildFiber = null;
             s_propSetterChildStart = default;
