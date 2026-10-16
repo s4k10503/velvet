@@ -27,8 +27,9 @@ registry that maps family names to Font Assets.
 | `font-bold italic` | **Composes** to bold-and-italic |
 | `bold-italic` | Single-class bold + italic (back-compat) |
 
-Facets follow CSS cascade order — a later class of the same facet wins (`font-bold font-light` →
-light), and the three facets coexist on one element.
+Of two classes of the same facet the one Tailwind emits last wins, whichever is written first
+(`font-bold font-light` and `font-light font-bold` → light; [the order](styling-arbitrary-lengths.md#utilities-a-c-resolver-folds-from-the-class-list)),
+and the three facets coexist on one element.
 
 ## How resolution works
 
@@ -321,7 +322,7 @@ while other text collapses as `normal` or `nowrap`. A white-space class (`whites
 `truncate`, whose `white-space: nowrap` resets the collapse as the CSS shorthand does) on the same
 element or on one nearer the text keeps its own value. Velvet writes this per text leaf as an inline
 `white-space`, the way it writes `whitespace-pre-line`. When several of the four meet on one element,
-the later class wins, as they set the same CSS properties; the later of them decides which line
+the one Tailwind emits last wins, as they set the same CSS properties; that one decides which line
 breaking the text gets.
 
 **Not expressible in UI Toolkit (no USS property — intentionally absent):**

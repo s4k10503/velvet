@@ -217,8 +217,36 @@ A stylesheet class that is written inline beside a narrower inline utility (`pt-
 inline form it becomes: `size-[10px] w-[10px] w-4` gives a 10px width, since Tailwind emits `w-[10px]` after `w-4`,
 where the inline form `w-[16px]` would sort after it. The same holds behind a variant and under `!`.
 
-Left to the last token written: a slash text size (`text-[14px]/6`) beside a later font size (`text-[16px]`), where
-the slash token stays because its line height is read off it; the nine-slice utilities of overlapping
-insets (`slice-y-[8] slice-t-[2]`), which have no Tailwind order to follow; and the utilities a C# resolver reads
-from the whole class list rather than writing as one inline property, the font facets (`font-light font-bold`)
-among them.
+A slash text size (`text-[14px]/6`) is not left out for a later plain font size (`text-[16px]`), because its line
+height is read off the token. Tailwind emits the slash form first, since it declares font size and line height, so
+the plain size holds the font size and the slash token the line height in either order:
+`text-[16px] text-[14px]/6` and `text-[14px]/6 text-[16px]` give 16px with the 6-step line height, and
+`text-sm/6 text-lg/7` gives the `text-sm` size with the `/6` line height.
+
+### Utilities a C# resolver folds from the class list
+
+A few families have no inline layer to settle a pair: a resolver reads the whole class list and ends on the last
+token of each slot. Their base tokens are put in the order Tailwind emits them, in the positions they hold, so the
+token the fold ends on is the one Tailwind emits last whichever is written first. Two utilities of one slot declare
+the same properties, so Tailwind sorts them by the candidate name, digits compared as numbers and a bracket ahead of
+a letter:
+
+- the font facets: `font-light font-bold` and `font-bold font-light` both give light, `not-italic italic` gives not
+  italic, `font-[700] font-[600]` gives 700, `font-light font-[700]` gives light, `font-sans font-mono` gives sans;
+  `bold-italic` sorts as its name, which Tailwind has no utility for;
+- the text effects: `uppercase lowercase` gives upper case, `underline overline` gives underline, `text-pretty
+  text-balance` gives pretty, `leading-6 leading-4` gives the 6 step, with `whitespace-*` and the named and slash
+  sizes in the same list;
+- `z-20 z-10` gives 20, `grid-cols-3 grid-cols-2` three columns, `gap-x-4 gap-2` a 4 horizontal gap with a 2
+  vertical one, `space-x-*` and `space-y-*`, and `divide-*`;
+- `shadow-*` and `drop-shadow-*`, `ring-*` and `outline-*`, `clip-path-none` and `clip-path-[…]`, `skew-*`, the
+  gradient shape and its `from-` / `via-` / `to-` stops, `pointer-events-none` and `pointer-events-auto`,
+  `bg-[addr:…]`, `border-solid` and the other line styles, and `animate-*`.
+
+Tokens of the two importances are ordered apart, as the resolvers fold them. A variant payload is appended after the
+base tokens by the variant gate and keeps its place there. The nine-slice insets (`slice-*`) write overlapping
+longhands that Tailwind has no utility for, so they follow the sort key instead: more longhands first, then the
+candidate name, which puts `slice-[…]` ahead of `slice-y-[…]` ahead of `slice-t-[…]` whichever is written first.
+
+This is a change from the last token written: `not-italic italic`, `underline overline`, `text-pretty text-balance`
+and `uppercase lowercase` used to end on their second class.

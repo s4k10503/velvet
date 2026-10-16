@@ -35,7 +35,7 @@ colours such a bracket carries; `in_{space}` inside it names one. `bg-gradient-t
 hue travels the shorter way round the circle; `/longer`, `/increasing` and `/decreasing` (and `/shorter`)
 pick the way, and name `oklch` by themselves. A colour with no chroma has no hue and takes the other's.
 
-The last shape utility in the class list wins, and a stop utility with no shape utility is inert.
+Of two shape utilities the one Tailwind emits last wins, whichever is written first, and a stop utility with no shape utility is inert.
 
 ## Stops from `from-` / `via-` / `to-`
 

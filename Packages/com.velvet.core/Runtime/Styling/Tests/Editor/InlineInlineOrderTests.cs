@@ -127,7 +127,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base leaves every token of these lists as written.
         // Each is a pair that does not contend for a property (another property, another layer, a variant, an
-        // important class that stays a class, a slash size whose line height is read off the token, an identical
+        // important class that stays a class, a slash size that stays beside a plain one, an identical
         // token, a shorthand beside its longhand that another pass orders), so leaving an inline token out for a
         // later one of another property reddens it.
         [TestCase("w-[1px] h-[2px]")]
@@ -146,8 +146,6 @@ namespace Velvet.Tests
         [TestCase("border-[3px] border-[#ff0000]")]
         [TestCase("border-[3px] bg-red-500")]
         [TestCase("text-[14px]/6 text-[16px]")]
-        [TestCase("text-[16px] text-[14px]/6")]
-        [TestCase("text-[14px] text-[16px]/6")]
         [TestCase("w-[1px] w-[1px]")]
         [TestCase("p-[1px] pt-[2px]")]
         [TestCase("pt-[2px] p-[1px]")]

@@ -186,9 +186,8 @@ namespace Velvet.Tests
             Assert.That(NarrowingOf(scope, label), Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(characterization): the base balances whenever text-balance is present.
         [Test]
-        public void Given_TextBalanceAfterTextPretty_When_Reconciled_Then_ItBalances()
+        public void Given_TextBalanceWrittenAfterTextPretty_When_Reconciled_Then_TextPrettyHolds()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -197,7 +196,7 @@ namespace Velvet.Tests
             var label = MountAndFindLabel(scope, V.Label(className: "text-pretty text-balance", text: "hello"));
 
             // Assert
-            Assert.That(NarrowingOf(scope, label), Is.EqualTo("Balance"));
+            Assert.That(NarrowingOf(scope, label), Is.EqualTo("Pretty"));
         }
 
         // GREEN_ON_BASE(characterization): the base already ran the later class's style; only the name moved with the behaviour.

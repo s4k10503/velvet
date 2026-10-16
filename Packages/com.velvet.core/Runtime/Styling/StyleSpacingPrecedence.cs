@@ -100,6 +100,17 @@ namespace Velvet
             return aRank < 0 || zRank < 0 ? StyleBorderSideColor.CompareCascade(a, z) : aRank.CompareTo(zRank);
         }
 
+        // tokens as NormalizeSpacing leaves them, with the tokens of each family a C# resolver folds from the whole list
+        // put in Tailwind's order (StyleFamilyOrder); tokens itself when nothing moves.
+        internal static string[] Normalize(string[] tokens)
+        {
+            if (tokens.Length < 2)
+            {
+                return tokens;
+            }
+            return StyleFamilyOrder.Sorted(NormalizeSpacing(tokens));
+        }
+
         // tokens without the inline token a later stylesheet class or inline token of its property writes in full, and
         // with a border width cut down to the sides such tokens leave (StyleInlineSheetOrder), and with each stylesheet-backed spacing class that an inline utility of an overlapping family stands
         // beside rewritten to its inline form (pt-2 as pt-[8px], mx-auto as mx-[auto], w-full as w-[100%]), and
@@ -109,12 +120,8 @@ namespace Velvet
         // are stylesheet classes, so that it is not left to a rule the logical token's removal no longer has anything to outrank; tokens itself when neither applies. Tokens are grouped by importance and by the set of their
         // variants, so `sm:p-13 sm:pt-2` is judged apart from `p-13 pt-2`, and `hover:focus:` is `focus:hover:`. A class
         // written inline goes when another token of its slot is emitted after it (DropOutrankedRewrites).
-        internal static string[] Normalize(string[] tokens)
+        private static string[] NormalizeSpacing(string[] tokens)
         {
-            if (tokens.Length < 2)
-            {
-                return tokens;
-            }
             // Before the readings, so a token this drops is not one a class is rewritten inline to outrank.
             tokens = StyleInlineSheetOrder.WithoutOutrankedInline(tokens);
             if (!Array.Exists(tokens, IsStylesheetClassOrLogical))
