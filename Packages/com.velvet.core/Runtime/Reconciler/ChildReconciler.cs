@@ -158,6 +158,7 @@ namespace Velvet
             double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
         {
             if (_ctx.IsAborted) return;
+            FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, parent);
 
             // Slot indices are LOGICAL throughout: a slot counts rendered children only, and the
             // reconciler-invisible ones (a z-index layer container, a filter bounds spacer, a ring band)
@@ -487,6 +488,7 @@ namespace Velvet
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
             // last member this pass tears down here, never synchronously mid-diff.
             FiberZLayerCoordinator.DrainTeardowns(_ctx);
+            FiberZLayerCoordinator.ResortLayers(_ctx);
         }
 
         // Taken by ref so one set serves the whole drain loop: each entry's snapshot is consumed by its own
@@ -603,6 +605,7 @@ namespace Velvet
 
             var state = PendingIndexedState.Value;
             PendingIndexedState = null;
+            FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, state.Parent);
             // Read only when the resume unwinds, for the reason Reconcile's own initialiser carries.
             // Deriving the outcome inside the finally instead is what this shape rejects: measured, the
             // unwound resume then retires an entry whose slots the unfinished diff never emptied.
@@ -628,6 +631,7 @@ namespace Velvet
 
             var state = PendingKeyedState;
             PendingKeyedState = null;
+            FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, state.Parent);
             // Same initialiser discipline as ContinueIndexed.
             var removals = ReconcilerContext.BoundaryRemovalOutcome.Skipped;
             try
