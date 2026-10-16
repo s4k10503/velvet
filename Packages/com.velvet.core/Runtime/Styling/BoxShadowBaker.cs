@@ -13,7 +13,7 @@ namespace Velvet
     // as the quad's vertex tint at draw time, so a color change retints without re-baking.
     //
     // The texture is the FULL silhouette at the caster's pixel size (target + padding per side), upright OR
-    // sheared (skewXDeg follows a skew-x-* caster). A full-size bake is used for every case because the
+    // sheared (skewDeg follows a skewed caster, x and y in degrees). A full-size bake is used for every case because the
     // in-element paint draws ONE quad; the size-keyed LRU cache below bounds the per-size bakes.
     internal static class BoxShadowBaker
     {
@@ -46,6 +46,7 @@ namespace Velvet
         private static readonly int SpreadId = Shader.PropertyToID("_Spread");
         private static readonly int ElementSizeId = Shader.PropertyToID("_ElementSize");
         private static readonly int SkewXId = Shader.PropertyToID("_SkewX");
+        private static readonly int SkewYId = Shader.PropertyToID("_SkewY");
 
 #if UNITY_EDITOR
         // Baked textures (and the bake Material) persist across play-mode cycles without a Domain Reload; drop
@@ -77,7 +78,7 @@ namespace Velvet
         // beyond any realistic screen, but not an absolute guarantee. Returns null (the caller paints nothing)
         // when the shader is unavailable / headless.
         internal static Texture2D? GetOrBakeSilhouette(float corner, float blur, float spread,
-            float targetWidth, float targetHeight, float skewXDeg)
+            float targetWidth, float targetHeight, Vector2 skewDeg)
         {
             if (targetWidth <= 0f || targetHeight <= 0f)
             {
@@ -88,9 +89,9 @@ namespace Velvet
                 return null;
             }
 
-            var key = (CacheKey(corner, blur, spread),
+            var key = (CacheKey(corner, blur, spread, skewDeg.y),
                 Mathf.RoundToInt(targetWidth), Mathf.RoundToInt(targetHeight),
-                Mathf.RoundToInt(skewXDeg * 100f));
+                Mathf.RoundToInt(skewDeg.x * 100f));
             if (s_silhouetteCache.TryGetValue(key, out var tex) && tex != null)
             {
                 TouchSilhouette(key);
@@ -104,7 +105,8 @@ namespace Velvet
                 Spread = spread,
                 TargetWidth = targetWidth,
                 TargetHeight = targetHeight,
-                SkewXDeg = skewXDeg,
+                SkewXDeg = skewDeg.x,
+                SkewYDeg = skewDeg.y,
             });
             StoreSilhouette(key, tex);
             return tex;
@@ -163,6 +165,7 @@ namespace Velvet
             public float TargetWidth { get; init; }
             public float TargetHeight { get; init; }
             public float SkewXDeg { get; init; }
+            public float SkewYDeg { get; init; }
         }
 
         // Bakes the silhouette at the exact quad pixel size (target + padding per side), so the stretched
@@ -185,6 +188,7 @@ namespace Velvet
             mat.SetFloat(SpreadId, spread);
             mat.SetVector(ElementSizeId, new Vector4(targetWidth, targetHeight, 0f, 0f));
             mat.SetFloat(SkewXId, Mathf.Tan(shape.SkewXDeg * Mathf.Deg2Rad));
+            mat.SetFloat(SkewYId, Mathf.Tan(shape.SkewYDeg * Mathf.Deg2Rad));
 
             var tex = SilhouetteBakeReadback.Bake(mat, qw, qh, new SilhouetteBakeSettings
             {
@@ -198,6 +202,7 @@ namespace Velvet
                 HideFlags = HideFlags.None,
             });
             mat.SetFloat(SkewXId, 0f); // defensive: never leave a stale shear on the shared Material
+            mat.SetFloat(SkewYId, 0f);
             return tex;
         }
 
@@ -249,14 +254,16 @@ namespace Velvet
             }
         }
 
-        // Round to whole pixels and pack (corner, blur, spread) into one key. Uses the SAME QuantizePx as the
+        // Round to whole pixels and pack (corner, blur, spread) into one key, with the y skew in hundredths of a
+        // degree in the top 16 bits, which the 16-bit corner field leaves free. Uses the SAME QuantizePx as the
         // bake so the key never disagrees with the baked texture.
-        private static long CacheKey(float corner, float blur, float spread)
+        private static long CacheKey(float corner, float blur, float spread, float skewYDeg)
         {
             long c = (long)QuantizePx(corner);
             long b = (long)QuantizePx(blur);
             long s = (long)QuantizePx(spread);
-            return (c << 32) | (b << 16) | s;
+            long y = (ushort)(short)Mathf.Clamp(Mathf.RoundToInt(skewYDeg * 100f), short.MinValue, short.MaxValue);
+            return (y << 48) | (c << 32) | (b << 16) | s;
         }
     }
 }

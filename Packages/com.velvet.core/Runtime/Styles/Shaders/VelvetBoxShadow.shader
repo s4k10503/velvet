@@ -26,9 +26,10 @@ Shader "Velvet/BoxShadow"
         _CornerRadius("Corner Radius", Range(0, 100)) = 32
         _Spread("Spread", Range(0, 50)) = 0
         _ElementSize("Element Size", Vector) = (100, 100, 0, 0)
-        // tan() of the caster's skew-x angle. Non-zero shears the silhouette so the shadow follows
-        // a skew-x-* caster (baked full-size by BoxShadowBaker).
+        // tan() of the caster's skew-x and skew-y angles. Non-zero shears the silhouette so the shadow
+        // follows a skewed caster (baked full-size by BoxShadowBaker).
         _SkewX("Skew X (tan)", Range(-2, 2)) = 0
+        _SkewY("Skew Y (tan)", Range(-2, 2)) = 0
     }
 
     SubShader
@@ -79,6 +80,7 @@ Shader "Velvet/BoxShadow"
             half _Spread;
             float4 _ElementSize;
             float _SkewX;
+            float _SkewY;
 
             Varyings vert(Attributes input)
             {
@@ -107,13 +109,15 @@ Shader "Velvet/BoxShadow"
                 float padding = _BlurRadius + extraPadding;
                 float2 elementSize = targetSize + float2(padding * 2.0, padding * 2.0);
 
-                // UV -> pixel position centered on the shadow quad.
-                float2 pixelPos = (input.uv - 0.5) * elementSize;
+                // UV -> pixel position centered on the shadow quad, y-down as the caster's box is.
+                float2 c = (float2(input.uv.x, 1.0 - input.uv.y) - 0.5) * elementSize;
 
                 // Unshear: evaluate the upright rounded-box SDF at the unsheared coordinate so the
-                // rendered alpha follows the skewed caster's silhouette. The quad is padded enough
+                // rendered alpha follows the skewed caster's silhouette. The shear is Tailwind's transform,
+                // skewX() skewY(): M = [[1 + skewX*skewY, skewX],[skewY, 1]], whose determinant is 1, so its
+                // inverse is [[1, -skewX],[-skewY, 1 + skewX*skewY]]. The quad is padded enough
                 // (blur + ExtraPadding per side) for small slant angles to stay inside it.
-                pixelPos.x += pixelPos.y * _SkewX;
+                float2 pixelPos = float2(c.x - (_SkewX * c.y), ((1.0 + (_SkewX * _SkewY)) * c.y) - (_SkewY * c.x));
 
                 // Half the target size is the SDF box's core extent.
                 float2 halfSize = targetSize * 0.5 - _Spread;

@@ -24,6 +24,8 @@
 
 ### Fixed
 
+- A `shadow-*` on a `skew-y-*` element follows the y shear as well as the x one, composed as Tailwind's
+  `skewX() skewY()` transform; it sheared on x alone.
 - A `shadow-*` or `skew-*` beside a filter utility on a field, a variant one included, reserves room for its
   paint under the filter, as it does on any other element.
 - Removing a named filter utility that shared a filter with a bracketed one, such as `blur-none` beside

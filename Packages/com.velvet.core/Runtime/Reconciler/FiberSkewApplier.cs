@@ -50,14 +50,14 @@ namespace Velvet
         // newly-skewed element, detach one whose skew classes were removed, or do nothing. Runs
         // AFTER SyncClassDrivenStyling so the stash sync observes this patch's freshly-applied
         // styling (the inline slot is shared with the arbitrary-value resolver). Returns the
-        // resolved X angle (0 = no skew) — the caller forwards it to ApplyShadowOnPatch so the
+        // resolved skew (zero on both axes = none) — the caller forwards it to ApplyShadowOnPatch so the
         // shadow follows the sheared silhouette without re-parsing the skew classes.
         // classesChanged comes from the caller because the answer depends on which class SOURCE this pass
         // was given: a variant re-sync hands over the same reconciled array both times and the change lives
         // entirely in what the live class list added, which a comparison here could not see. canReleaseFace is
         // the caller's separate promise that a re-stash will follow (see SilhouetteFaceStash.SyncOnPatch) —
         // false on that same re-sync, where nothing would ever re-take the stash.
-        internal float ApplySkewOnPatch(VisualElement element, string[] newClassNames, bool classesChanged,
+        internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] newClassNames, bool classesChanged,
             bool canReleaseFace)
         {
             var bound = _ctx.SkewBindings.TryGetValue(element, out var binding);
@@ -65,7 +65,7 @@ namespace Velvet
             // Fast path: no skew anywhere near this element.
             if (!bound && !has)
             {
-                return 0f;
+                return default;
             }
 
             // Steady state: the winning tokens are exactly what the live binding was built from —
@@ -85,7 +85,7 @@ namespace Velvet
                     // A filter utility / animate-hue can appear or vanish without the skew tokens changing.
                     SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
                 }
-                return binding.Spec.XDeg;
+                return binding.Spec;
             }
 
             SkewSpec spec = default;
@@ -100,7 +100,7 @@ namespace Velvet
                 SyncSkewGradient(element, binding, newClassNames);
                 SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
                 element.MarkDirtyRepaint();
-                return spec.XDeg;
+                return spec;
             }
             if (want)
             {
@@ -109,14 +109,14 @@ namespace Velvet
                 SkewSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true, canReleaseFace);
                 SyncSkewGradient(element, fresh, newClassNames);
                 SkewSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
-                return spec.XDeg;
+                return spec;
             }
             if (bound)
             {
                 SkewSilhouette.Detach(element, binding);
                 _ctx.SkewBindings.Remove(element);
             }
-            return 0f;
+            return default;
         }
     }
 }

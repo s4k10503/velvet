@@ -107,6 +107,42 @@ namespace Velvet.Tests
             Assert.That((backdrop > 0, shadow > 0), Is.EqualTo((true, true)));
         }
 
+        // The last row, in the reader's order, at which column x holds a pixel the predicate takes; -1 for none.
+        // Read the same way for two paints, it compares their edges whichever way up the frame comes back.
+        private int LastRow(int x, Func<Color32, bool> predicate)
+        {
+            var pixels = RenderTexturePixelReader.ReadPixels(
+                _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
+            var last = -1;
+            for (var y = 0; y < PanelSize; y++)
+            {
+                if (predicate(pixels[(y * PanelSize) + x]))
+                {
+                    last = y;
+                }
+            }
+            return last;
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ABoxShadowCasterSkewedOnY_When_RenderedOnARuntimePanel_Then_TheShadowTiltsWithTheFace()
+        {
+            // Arrange — a green face over the blue backdrop with a red shadow below it. Across the 30px between the
+            // sampled columns a 20deg y shear moves an edge by tan(20deg)·30 ≈ 11px; an upright shadow moves it by 0.
+            static bool Red(Color32 p) => p.r > 120 && p.g < 100 && p.b < 140;
+            static bool Green(Color32 p) => p.g > 200 && p.r < 60 && p.b < 60;
+            yield return MountOverBackdrop("SkewedBoxShadowPanel", V.Div(
+                className: "w-[40px] h-[30px] bg-[#00ff00] skew-y-[20deg] shadow-[0px_14px_10px_0px_#ff0000]"));
+
+            // Act
+            var faceTilt = LastRow(65, Green) - LastRow(35, Green);
+            var shadowTilt = LastRow(65, Red) - LastRow(35, Red);
+
+            // Assert
+            Assert.That((Math.Abs(faceTilt) >= 5, Math.Sign(shadowTilt) == Math.Sign(faceTilt), Math.Abs(shadowTilt) >= 5),
+                Is.EqualTo((true, true, true)), $"face tilt {faceTilt}, shadow tilt {shadowTilt}");
+        }
+
         [UnityTest]
         public IEnumerator Given_ASkewedGradientElement_When_RenderedOnARuntimePanel_Then_TheSilhouettePaintsIt()
         {

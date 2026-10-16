@@ -338,7 +338,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs",
-          "anchor": "float skewXDeg, bool canReleaseFace)",
+          "anchor": "SkewSpec skew, bool canReleaseFace)",
           "neuter": "return;"
         }
       ]

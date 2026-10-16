@@ -440,6 +440,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AShadowedElementSkewedOnY_When_Reconciled_Then_TheShadowCarriesTheYAngle()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "skew-y-3 shadow-md", name: "card") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].SkewYDeg, Is.EqualTo(3f));
+        }
+
+        [Test]
         public void Given_ASkewedElementWithAFaceColor_When_FirstMounted_Then_TheNativeRectIsSuppressedWithoutAPatch()
         {
             // Arrange — a skewed element whose face color is authored inline (the bg-[…] case). The silhouette

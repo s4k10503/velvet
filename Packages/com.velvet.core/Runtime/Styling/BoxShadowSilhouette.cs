@@ -16,8 +16,9 @@ namespace Velvet
         // The class list this element carries, kept current so the geometry callback can re-resolve the
         // rounded-* corner radius after a class change.
         public string[]? ClassNames;
-        // The caster's skew-x angle (degrees; 0 = upright). A skewed caster's shadow follows the slant.
+        // The caster's skew-x and skew-y angles (degrees; 0 = upright). A skewed caster's shadow follows the slant.
         public float SkewXDeg;
+        public float SkewYDeg;
         // Whether the caster is skewed on ANY axis (skew-x or skew-y). A skewed caster already has a
         // SkewSilhouette that suppresses + repaints its sheared fill/border, so the shadow paint must NOT
         // suppress or repaint the face — it paints ONLY the (sheared) shadow quad, behind that sheared fill.
@@ -56,6 +57,7 @@ namespace Velvet
         public ShadowSpec Spec { get; init; }
         public string[] ClassNames { get; init; }
         public float SkewXDeg { get; init; }
+        public float SkewYDeg { get; init; }
         public bool CasterSkewed { get; init; }
     }
 
@@ -105,13 +107,14 @@ namespace Velvet
         //   paint draws ONLY the shadow quad and is PREPENDED so it fires before the skew face, drawing behind
         //   the sheared fill.
         public static BoxShadowBinding Attach(VisualElement element, ShadowSpec spec, string[] classNames,
-            float skewXDeg, bool casterSkewed = false)
+            float skewXDeg, float skewYDeg, bool casterSkewed = false)
         {
             var binding = new BoxShadowBinding
             {
                 Spec = spec,
                 ClassNames = classNames,
                 SkewXDeg = skewXDeg,
+                SkewYDeg = skewYDeg,
                 CasterSkewed = casterSkewed,
             };
             ResolveCornerRadius(element, binding);
@@ -208,8 +211,8 @@ namespace Velvet
                 aabb = SilhouetteBoundsSpacer.Union(new Rect(0f, 0f, w, h), quad);
                 if (binding.CasterSkewed)
                 {
-                    var tanX = Mathf.Tan(binding.SkewXDeg * Mathf.Deg2Rad);
-                    aabb = SilhouetteBoundsSpacer.ExpandForShear(aabb, tanX, 0f);
+                    aabb = SilhouetteBoundsSpacer.ExpandForShear(aabb, Mathf.Tan(binding.SkewXDeg * Mathf.Deg2Rad),
+                        Mathf.Tan(binding.SkewYDeg * Mathf.Deg2Rad));
                 }
             }
             aabb = SilhouetteBoundsSpacer.ShiftToPaddingBox(aabb, binding.BorderLeft, binding.BorderTop);
@@ -231,6 +234,7 @@ namespace Velvet
             binding.Spec = request.Spec;
             binding.ClassNames = request.ClassNames;
             binding.SkewXDeg = request.SkewXDeg;
+            binding.SkewYDeg = request.SkewYDeg;
             ResolveCornerRadius(element, binding);
 
             var casterSkewed = request.CasterSkewed;
@@ -344,7 +348,7 @@ namespace Velvet
             // unbounded --radius-full bakes away.
             var corner = Mathf.Min(binding.CornerRadius, SilhouetteFace.MaxRadius(w, h));
             var tex = BoxShadowBaker.GetOrBakeSilhouette(corner, spec.Blur, spec.Spread,
-                w, h, binding.SkewXDeg);
+                w, h, new Vector2(binding.SkewXDeg, binding.SkewYDeg));
             if (tex == null)
             {
                 return; // no graphics device / shader yet — retry on the next geometry change
