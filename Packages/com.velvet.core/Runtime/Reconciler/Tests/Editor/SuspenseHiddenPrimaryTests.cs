@@ -682,6 +682,8 @@ namespace Velvet.Tests
                 "A Portal created among the children a boundary hides has its children hidden with them");
         }
 
+        // GREEN_ON_BASE(characterization): the merge base stops the pass at a catch of a failing ref cleanup too, with
+        // the reveal already recorded. What this pins is that the boundary reveals its children on the next render.
         [Test]
         public void Given_ABoundaryHidingItsPrimaryWhoseRevealIsStoppedByACatchAfterIt_When_ItsHostRendersAgain_Then_ItRevealsItsChildren()
         {
@@ -705,7 +707,7 @@ namespace Velvet.Tests
             // boundary's fallback, which shows that the catch stopped the pass
             Assert.That((primary.parent == container, primary.style.display.keyword, _root.DisplayedLabelTexts("|").Contains("caught")),
                 Is.EqualTo((true, StyleKeyword.Null, true)),
-                "The stopped pass revealed nothing, so the boundary still hides its children and reveals them now");
+                "The pass the failing ref cleanup stopped revealed nothing, so the boundary still hides its children and reveals them now");
         }
 
         // GREEN_ON_BASE(characterization): the base discards the inner children, so their ref is not attached.
