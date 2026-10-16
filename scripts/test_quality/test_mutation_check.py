@@ -7873,6 +7873,7 @@ class CostDealtShardTests(unittest.TestCase):
         # Assert
         self.assertEqual(dealt, [[1, 3], [2]])
 
+    # GREEN_ON_BASE(characterization): the base's ceiling of 16 is held by the same cap; deleting the `len(held[shard]) < SHARD_CEILING[platform]` test in `deal` reddens it.
     def test_Given_FewDearMutantsAndManyCheapOnes_When_DealtToTheMostShards_Then_NoShardHoldsMoreThanTheCeiling(self):
         # Arrange — 3 dear and the rest cheap fill every shard of the ceiling exactly; balanced on cost alone the
         # shards without a dear mutant would each take one cheap mutant more.
@@ -8067,6 +8068,7 @@ class ShardCeilingTests(unittest.TestCase):
         # Assert
         self.assertTrue(fits)
 
+    # GREEN_ON_BASE(characterization): the base's 493 s whole-suite figure is also under the 561 s charged here; raising `WHOLE_COST["EditMode"]` to 600 reddens it.
     def test_Given_TheDealsCostFigures_When_ComparedWithWhatTheCeilingCharges_Then_NoMutantIsDealtDearer(self):
         # Arrange — the ceiling charges 561 s an EditMode mutant and 934 + 100 s a PlayMode one, so a mutant the
         # plan deals as narrowed that `narrowable` then declines is still within the charge.
