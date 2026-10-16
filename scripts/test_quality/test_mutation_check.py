@@ -11277,6 +11277,35 @@ class ReusedKillCampaignTests(unittest.TestCase):
         self.assertEqual(("reusing=" in campaign.printed, "verdicts reused" in campaign.printed), (False, False))
 
 
+class LineRangeTests(unittest.TestCase):
+    """`--lines` keeps the mutants on named line ranges of the `--files` sources."""
+
+    def test_Given_ARangeOverFourOfTwelveMethods_When_Planned_Then_OnlyThoseMutantsAreCountedAndEmitted(self):
+        # Arrange — the methods sit on lines 5 to 16, one mutant each.
+        campaign = StubbedCampaign(body=probe_body(12))
+        listed = campaign.project / "list.json"
+
+        # Act
+        code = campaign.run("--plan", "--lines", "{}:5-8".format(campaign.source), "--emit-mutants", str(listed))
+
+        # Assert — the emitted list is what each shard hands back to its own tree.
+        emitted = json.loads(listed.read_text()) if listed.exists() else []
+        self.assertEqual((code, "mutants=4" in campaign.printed, [record["line"] for record in emitted]),
+                         (0, True, [5, 6, 7, 8]))
+
+    def test_Given_ARangeOutsideTheFileOrHoldingNoMutant_When_Planned_Then_ItIsRefused(self):
+        # Arrange
+        campaign = StubbedCampaign(body=probe_body(12))
+        source = campaign.source
+
+        # Act
+        outside = campaign.run("--plan", "--lines", "{}:5-999".format(source))
+        empty = campaign.run("--plan", "--lines", "{}:1-4".format(source))
+
+        # Assert
+        self.assertEqual(("outside" in str(outside), "no mutant" in str(empty)), (True, True))
+
+
 class KillSetShardTests(unittest.TestCase):
     """`.github/workflows/kill-set.yml`, whose shard job measures one tree and so is sized as
     `ShardCeilingTests` sizes `mutation-shard`'s step."""

@@ -4673,6 +4673,32 @@ def parse_shard(text):
     return int(match.group(1)), int(match.group(2))
 
 
+def line_ranges(specs, targets):
+    """{path: [(first, last)]} from `PATH:FIRST-LAST` specs, each over a file of `targets`.
+
+    A range that starts before line 1 or ends past the file's last line is refused, as is a file `--files`
+    did not name: a mistyped range would otherwise filter the list down to nothing it was meant to keep.
+    """
+    found = {}
+    for spec in specs:
+        match = re.fullmatch(r"(.+):(\d+)-(\d+)", spec)
+        if not match:
+            raise SystemExit("--lines takes PATH:FIRST-LAST, got {!r}".format(spec))
+        path, first, last = Path(match.group(1)).resolve(), int(match.group(2)), int(match.group(3))
+        if path not in targets:
+            raise SystemExit("--lines names {}, which --files does not".format(match.group(1)))
+        size = len(path.read_text().splitlines())
+        if not 1 <= first <= last <= size:
+            raise SystemExit("--lines range {}-{} lies outside {}, which has {} line(s)".format(
+                first, last, match.group(1), size))
+        found.setdefault(path, []).append((first, last))
+    return found
+
+
+def in_ranges(ranges, path, line):
+    return any(first <= line <= last for first, last in ranges.get(path, ()))
+
+
 def shard_count(mutants, platform="EditMode"):
     return min(MAX_SHARDS, -(-mutants // SHARD_SIZE[platform]))
 
@@ -5290,6 +5316,9 @@ def main():
                         help="branch to diff against, read at refs/remotes/origin/BASE where "
                              "both that and refs/heads/BASE exist (default: main)")
     parser.add_argument("--files", nargs="*", help="mutate these files whole instead of a diff")
+    parser.add_argument("--lines", nargs="+", metavar="PATH:FIRST-LAST",
+                        help="with --files, keep only the mutants on these line ranges of the named files; "
+                             "the list every shard and tree hands back is the filtered one")
     parser.add_argument("--platform", default="EditMode", choices=["EditMode", "PlayMode"])
     parser.add_argument("--assemblies", help="comma-separated test assemblies; default is every one")
     parser.add_argument("--filter", help="fixture or test name, as -testFilter takes it. Narrowing to one "
@@ -5377,6 +5406,8 @@ def main():
         parser.error("a reused kill is of a diff's mutants; --files names none")
     if args.survivors_shard is not None and args.survivors_of is None:
         parser.error("--survivors-shard narrows what --survivors-of reads; it goes with it")
+    if args.lines and not args.files:
+        parser.error("--lines narrows what --files names")
     if args.shard is not None and args.collect is not None:
         parser.error("--shard measures and --collect decides; a run does one of them")
     if args.survivors_of is not None:
@@ -5548,6 +5579,18 @@ def main():
         shared = declined_line_numbers(text, lines)
         if shared:
             declined[path] = shared
+    if args.lines:
+        ranges = line_ranges(args.lines, targets)
+        every = len(mutants)
+        mutants = [mutant for mutant in mutants if in_ranges(ranges, mutant.path, mutant.line)]
+        if not mutants:
+            raise SystemExit("no mutant of {} lies inside the --lines ranges".format(every))
+        unreached = {path: [number for number in numbers if in_ranges(ranges, path, number)]
+                     for path, numbers in unreached.items()}
+        declined = {path: [number for number in numbers if in_ranges(ranges, path, number)]
+                    for path, numbers in declined.items()}
+        body = [(path, number) for path, number in body if in_ranges(ranges, path, number)]
+        print("lines: {} of {} mutant(s) lie inside the ranges".format(len(mutants), every))
     coverage = reach(mutants, unreached, project, declined)
 
     coverage = "\n".join((coverage, body_reach(mutants, body)))
