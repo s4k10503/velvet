@@ -35,8 +35,12 @@ namespace Velvet.Tests
     /// <item>An element callback's error below a boundary leaves no effect set up under that element. A boundary
     /// catches the error of an element it renders itself, an element callback's or a ref's, and leaves its
     /// fallback's own element to the boundary above.</item>
-    /// <item>An AnimatePresence's onExitComplete that throws reaches a boundary once the render removing its child
-    /// has committed, and none where a V.Motion child completed it.</item>
+    /// <item>An AnimatePresence's onExitComplete that throws reaches a boundary from the passive-effect flush after
+    /// the render removing its child, which runs after that commit's layout effects, and none where a V.Motion
+    /// child completed it. A removal that render never committed completes nothing. A V.Motion's onEnterComplete
+    /// that throws reaches no boundary.</item>
+    /// <item>An element callback's error below a boundary mounting in a fragment or an element leaves the fallback
+    /// and the siblings ahead of the boundary rendered.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -86,7 +90,13 @@ namespace Velvet.Tests
             s_setExitFailTick = null;
             s_exitFailCompletions = 0;
             s_exitFailChild = () => V.Label(text: "exiting", key: "exiting");
+            s_exitFailNeighbour = null;
+            s_setOwnerShown = null;
             s_setAbortedEnterTick = null;
+            s_setAbortedExitTick = null;
+            s_abortedExits = 0;
+            s_setOrderedExitTick = null;
+            s_exitOrder.Clear();
         }
 
         private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
@@ -1620,10 +1630,8 @@ namespace Velvet.Tests
         private static int s_callbackSetups;
         private static int s_callbackCleanups;
 
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        // Before that, as characterization: the merge base takes an element callback's error on the aborting path.
-        // It disposes what the element built, which a catch taken in the walk for that error would leave set up.
+        // GREEN_ON_BASE(characterization): the merge base takes this error on the aborting path, which disposes what
+        // the element built. What this pins is that the catch in the walk leaves no effect under the element set up.
         [Test]
         public void Given_AnElementCallbackErrorBelowABoundary_When_TheBoundaryCatchesOnMount_Then_NoEffectUnderTheElementIsLeftSetUp()
         {
@@ -1636,6 +1644,44 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_callbackSetups - s_callbackCleanups, Is.EqualTo(0));
         }
+
+        [Test]
+        public void Given_ASiblingAheadOfABoundaryInAFragment_When_TheBoundaryCatchesAnElementCallbackErrorOnMount_Then_TheSiblingRendersBesideTheFallback()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SiblingAheadOfCallbackBoundaryInFragmentRender, key: "host"),
+                CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("sibling,fallback"));
+        }
+
+        [Test]
+        public void Given_ASiblingAheadOfABoundaryInAnElement_When_TheBoundaryCatchesAnElementCallbackErrorOnMount_Then_TheSiblingRendersBesideTheFallback()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SiblingAheadOfCallbackBoundaryInElementRender, key: "host"),
+                CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("sibling,fallback"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SiblingAheadOfCallbackBoundaryInFragmentRender()
+            => V.Fragment(new VNode[]
+            {
+                V.Component(SiblingRender, key: "sibling"),
+                V.Component(CallbackBoundaryRender, key: "boundary"),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode SiblingAheadOfCallbackBoundaryInElementRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(SiblingRender, key: "sibling"),
+                V.Component(CallbackBoundaryRender, key: "boundary"),
+            });
 
         [Test]
         public void Given_AWrapElementThatFailsBelowABoundary_When_TheBoundaryCatchesOnMount_Then_TheFallbackShowsAndTheElementsRefNeverRuns()
@@ -1711,6 +1757,7 @@ namespace Velvet.Tests
             // Act
             s_setExitFailTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("tail:1"));
@@ -1730,6 +1777,7 @@ namespace Velvet.Tests
             // Act
             s_setExitFailTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("tail:1"));
@@ -1745,6 +1793,7 @@ namespace Velvet.Tests
             // Act
             s_setExitFailTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("o-fallback,tail:1"));
@@ -1766,12 +1815,241 @@ namespace Velvet.Tests
             // Act
             s_setExitFailTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("o-fallback,tail:1"));
         }
 
+        // The onExitComplete of a presence whose child holds a Motion in a Portal is read as a Motion's: the Motion
+        // sits in the Portal's target, not under the child's own element.
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildHoldsAMotionInsideAPortal_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange
+            s_exitFailChild = () => V.Div(key: "exiting", children: new VNode[]
+            {
+                V.Portal(s_target, new VNode[]
+                {
+                    V.Motion(transition: StyleTransitionConfig.None, children: new VNode[] { V.Label(text: "m") }),
+                }),
+            });
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
+
+            // Act
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("tail:1"));
+        }
+
+        // A Portal of the presence's child is read over the slots its own children took in the target, which another
+        // Portal's Motion in the same target sits just behind.
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildHoldsAPortalBesideAnotherPortalsMotion_Then_TheBoundaryCatches()
+        {
+            // Arrange
+            s_exitFailChild = () => V.Div(key: "exiting", children: new VNode[]
+            {
+                V.Portal(s_target, new VNode[] { V.Label(text: "plain") }),
+            });
+            s_exitFailNeighbour = () => V.Portal(s_target, new VNode[]
+            {
+                V.Motion(transition: StyleTransitionConfig.None, children: new VNode[] { V.Label(text: "m") }),
+            });
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("o-fallback,tail:1"));
+        }
+
+        [Test]
+        public void Given_AMotionInABoundaryWhoseOnEnterCompleteFails_When_ItsEnterPlaysNothing_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange — Framer Motion's onAnimationComplete runs in a promise
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Enter complete throw");
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(EnterFailHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("motion,sibling"));
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode EnterFailBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+                {
+                    V.Motion(name: "item-a", key: "a", transition: StyleTransition.Fade,
+                        onEnterComplete: () => throw new InvalidOperationException("Enter complete throw"),
+                        children: new VNode[] { V.Label(text: "motion") }),
+                }),
+                V.Label(text: "sibling"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode EnterFailHostRender()
+            => V.Div(children: new VNode[] { V.Component(EnterFailBoundaryRender, key: "boundary") });
+
+        // A removal the pass never committed completes nothing: the sibling boundary's catch stops the walk the
+        // presence is expanded in, and the removals that walk owed do not run.
+        [Test]
+        public void Given_APresenceBesideABoundaryThatAbortsTheWalk_When_ThatRenderRemovesItsChild_Then_OnExitCompleteNeverRuns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(AbortedExitHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setAbortedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — the fallback is read with the count, since a render that stops no walk completes the exit
+            Assert.That((Texts().StartsWith("o-fallback"), s_abortedExits), Is.EqualTo((true, 0)));
+        }
+
+        private static Action<int> s_setAbortedExitTick;
+        private static int s_abortedExits;
+
+        // Its ref is removed by the render that follows, whose cleanup fails: not a render error, so the boundary
+        // catches on the aborting path.
+        [Component(Compiler = false)]
+        private static VNode RefCleanupFailsRender(int tick)
+            => V.Label(text: "child",
+                refCallback: tick == 0 ? _ => () => throw new InvalidOperationException("Ref cleanup throw") : null);
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode AbortingBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "o-fallback"));
+            return V.Component(RefCleanupFailsRender, tick, key: "child");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode AbortedExitHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setAbortedExitTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(AbortingBoundaryRender, tick, key: "o"),
+                V.AnimatePresence(key: "p", onExitComplete: () => s_abortedExits++,
+                    children: tick == 0 ? new VNode[] { V.Label(text: "a", key: "a") } : Array.Empty<VNode>()),
+                V.Label(text: "tail:" + tick),
+            });
+        }
+
+        [Test]
+        public void Given_APresenceWhoseChildLeavesWithNothingToAnimate_When_ARenderRemovesItBesideALayoutEffect_Then_OnExitCompleteRunsAfterThatLayoutEffect()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OrderedExitHostRender, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+            s_exitOrder.Clear();
+
+            // Act
+            s_setOrderedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join(",", s_exitOrder), Is.EqualTo("layout:1,exit"));
+        }
+
+        [Test]
+        public void Given_APresenceWhoseChildLeavesWithNothingToAnimate_When_ARenderRemovesIt_Then_ThePassiveDrainIsRegisteredBeforeAnyFlush()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OrderedExitHostRender, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+            s_exitOrder.Clear();
+
+            // Act
+            s_setOrderedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — no passive effect is staged by this tree, so the drain is registered for the completion alone
+            Assert.That((mounted.Root.Reconciler.Context.PassiveEffectDrainScheduled, s_exitOrder.Contains("exit")),
+                Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnExitCompletionStagedByARender_When_ItsOwnerUnmountsBeforeThePassiveFlush_Then_ItNeverRuns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(UnmountingOwnerHostRender, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+            s_setOrderedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setOwnerShown.Invoke(false);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_exitOrder.Contains("exit"), Is.False);
+        }
+
+        private static Action<bool> s_setOwnerShown;
+
+        [Component(Compiler = false)]
+        private static VNode ExitOwnerRender(int tick)
+            => V.AnimatePresence(key: "p", onExitComplete: () => s_exitOrder.Add("exit"),
+                children: tick == 0 ? new VNode[] { V.Label(text: "a", key: "a") } : Array.Empty<VNode>());
+
+        [Component(Compiler = false)]
+        private static VNode UnmountingOwnerHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setOrderedExitTick = setTick;
+            s_setOwnerShown = setShown;
+            return V.Div(children: new VNode[] { shown ? V.Component(ExitOwnerRender, tick, key: "owner") : null });
+        }
+
+        private static Action<int> s_setOrderedExitTick;
+        private static readonly System.Collections.Generic.List<string> s_exitOrder = new();
+
+        [Component(Compiler = false)]
+        private static VNode OrderedExitLayoutRender(int tick)
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_exitOrder.Add("layout:" + tick);
+                return () => { };
+            }, new object[] { tick });
+            return V.Label(text: "layout:" + tick);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OrderedExitHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOrderedExitTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.AnimatePresence(key: "p", onExitComplete: () => s_exitOrder.Add("exit"),
+                    children: tick == 0 ? new VNode[] { V.Label(text: "a", key: "a") } : Array.Empty<VNode>()),
+                V.Component(OrderedExitLayoutRender, tick, key: "layout"),
+            });
+        }
+
         private static Func<VNode> s_exitFailChild;
+        private static Func<VNode> s_exitFailNeighbour;
         private static Action<int> s_setExitFailTick;
         private static int s_exitFailCompletions;
 
@@ -1812,6 +2090,7 @@ namespace Velvet.Tests
                         children: tick == 0 ? new VNode[] { V.Label(text: "a", key: "a") } : Array.Empty<VNode>())
                     : null,
                 V.Label(text: "tail:" + tick),
+                s_exitFailNeighbour?.Invoke(),
             });
         }
 
@@ -2050,6 +2329,7 @@ namespace Velvet.Tests
             // Act — the render the boundary catches in also removes the presence's child and moves the tail on
             s_setStoppedTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(Texts() + ", exits " + s_stoppedExitCompletions, Is.EqualTo("o-fallback,tail:1, exits 1"));

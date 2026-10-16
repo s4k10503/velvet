@@ -12,11 +12,14 @@
 
 - An error boundary catches the error of an element it renders itself, from the element's `onCreated`,
   `wrapElement` or `refCallback`, as React captures an element's error from the element's parent. The search used
-  to start above that boundary. An element of the boundary's fallback still leaves its error to the boundary
-  above.
+  to start above that boundary. An element of the boundary's own fallback still leaves its error to the boundary
+  above, where React's capture would offer it to the same boundary: that boundary would mount the same fallback
+  again.
 
-- An `AnimatePresence`'s `onExitComplete` runs once the render that removed its last child has ended, not while
-  that render is still going on. An error it throws goes to the nearest error boundary at or above the component
+- An `AnimatePresence`'s `onExitComplete` for children removed with no exit to play runs from the passive-effect
+  flush after the render that removed them, after that commit's layout effects, and no longer while that render
+  is still going on. It does not run for a removal that render never committed. One whose exit plays runs when
+  the last exit's animation ends. An error it throws goes to the nearest error boundary at or above the component
   rendering the presence, as Framer Motion's `PresenceChild` calls it from an effect. Where an exit played, or a
   `V.Motion` child is among the children removed, no boundary takes the error and it is logged, as Framer Motion
   calls it from that exit's promise. It used to go to the nearest boundary above the component rendering the

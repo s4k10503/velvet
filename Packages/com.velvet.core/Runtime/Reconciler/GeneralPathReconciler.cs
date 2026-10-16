@@ -174,6 +174,7 @@ namespace Velvet
                 Placements = pool.RentPlacementList(),
             };
             var owner = _ctx.FiberStack.Current;
+            var removalsRan = false;
             try
             {
                 if (commit.OldKeys.Count == 0)
@@ -228,7 +229,7 @@ namespace Velvet
                 // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
                 RunOrphanEffectCleanups(oldFibers, newFibers);
-                var removalsRan = !_ctx.IsAborted;
+                removalsRan = !_ctx.IsAborted;
                 if (removalsRan)
                 {
                     FinalizeGeneralCommit(commit);
@@ -246,6 +247,9 @@ namespace Velvet
             }
             finally
             {
+                // Whether the walk threw or an abort skipped the removals, a completion that waits on them has nothing
+                // to follow.
+                if (!removalsRan) _ctx.DropCompletionsRemovedBy(commit);
                 pool.ReturnPlacementList(commit.Placements);
                 pool.Return(commit.OldKeyMap);
                 pool.ReturnOrphanedIndexSet(commit.UsedOldIndices);
@@ -2026,9 +2030,11 @@ namespace Velvet
                 // had NO exit animation (all instant-removed above) no PlayExit callback runs to complete it, so it
                 // completes here — but only when no animated exit is still in flight (those complete it when the
                 // Exiting set drains). Where a V.Motion child is among those removed, it is the Motion's completion.
+                // The removals are this walk's commit, which takes the completion back if they never run.
                 if (commit != null && tally.RemovedInstantThisRender && state.Exiting.Count == 0)
                 {
-                    _ctx.CompleteExitAfterThePass(presence.OnExitComplete, boundaryFiber, tally.RemovedAMotionThisRender);
+                    _ctx.CompleteExitAfterThePass(
+                        presence.OnExitComplete, boundaryFiber, tally.RemovedAMotionThisRender, removedBy: commit);
                 }
 
                 // 3) Commit the new composition for the next old-side reproduction. Exit-complete keys were
@@ -2262,14 +2268,16 @@ namespace Velvet
         }
 
         // Whether key's child holds a V.Motion, its anchor or one below up to an inner presence's children, as any
-        // Motion under Framer Motion's PresenceChild registers for its exit whether or not it animates.
+        // Motion under Framer Motion's PresenceChild registers for its exit whether or not it animates. Reads the
+        // elements as CollectDescendantExits does, which owns the roots and the Portals it follows.
         private bool HoldsAMotion(ReconcilerContext.PresenceBoundaryState state, string key)
         {
             if (state.ChildRoots.TryGetValue(key, out var roots))
             {
                 foreach (var root in roots)
                 {
-                    if (HoldsAMotionUnder(root, roots)) return true;
+                    var owned = ReferenceEquals(_ctx.PresenceChildRoots.GetValueOrDefault(root).Roots, roots);
+                    if (owned && HoldsAMotionUnder(root, roots)) return true;
                 }
             }
             return false;
@@ -2280,11 +2288,23 @@ namespace Velvet
             if (_ctx.ZLayerPlaceholders.TryGetValue(element, out var real)) element = real;
             var owner = _ctx.PresenceChildRoots.GetValueOrDefault(element).Roots;
             if (owner != null && !ReferenceEquals(owner, roots)) return false;
+            if (_ctx.PortalState.TryGetValue(element, out var portal)) return HoldsAMotionInPortal(portal, roots);
             if (_ctx.MotionNodes.ContainsKey(element)) return true;
             for (var i = 0; i < element.hierarchy.childCount; i++)
             {
                 var child = element.hierarchy[i];
                 if (!FiberZLayerCoordinator.IsLayerContainer(child) && HoldsAMotionUnder(child, roots)) return true;
+            }
+            return false;
+        }
+
+        private bool HoldsAMotionInPortal(PortalSlotInfo portal, List<VisualElement> roots)
+        {
+            var target = portal.Target!;
+            for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength; slot++)
+            {
+                if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical)
+                    && HoldsAMotionUnder(target.hierarchy[physical], roots)) return true;
             }
             return false;
         }
