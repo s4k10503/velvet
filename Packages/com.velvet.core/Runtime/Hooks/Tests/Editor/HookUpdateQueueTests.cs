@@ -43,6 +43,8 @@ namespace Velvet.Tests
             s_shown.Clear();
         }
 
+        private static ComponentFiber ComponentOf(MountedTree mounted) => mounted.Root.Child!;
+
         private MountedTree MountRebase()
         {
             // The writes are + 1 (Normal), * 2 (Transition), + 100 (Normal) over 10
@@ -249,7 +251,7 @@ namespace Velvet.Tests
             s_rebaseSetCount.Invoke(10);
 
             // Assert
-            Assert.That(mounted.Root.LaneQueue.Contains(FiberUpdatePriority.Normal), Is.True,
+            Assert.That(ComponentOf(mounted).LaneQueue.Contains(FiberUpdatePriority.Normal), Is.True,
                 "A write behind a scheduled one is not computed at the call, so it cannot bail out");
         }
 
@@ -267,7 +269,7 @@ namespace Velvet.Tests
             // Assert — read by name, since no surface a caller reaches shows the queue
             var pending = (System.Collections.ICollection)typeof(HookUpdateQueueSlot<int, StateAction<int>>)
                 .GetField("_pending", BindingFlags.NonPublic | BindingFlags.Instance)
-                .GetValue(mounted.Root.StateSlots[0]);
+                .GetValue(ComponentOf(mounted).StateSlots[0]);
             Assert.That(pending.Count, Is.EqualTo(1),
                 "Writes that bailed out are no-ops, so each replaces the ones before it rather than piling up");
         }
@@ -358,7 +360,7 @@ namespace Velvet.Tests
                 s_rebaseSetCount.Invoke(20 + i);
                 mounted.FlushStateForTest();
             }
-            mounted.Root.ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
+            ComponentOf(mounted).ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
             mounted.FlushStateForTest();
             return mounted;
         }
@@ -375,14 +377,14 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = ArrangePromotedTransition();
-            var promoted = mounted.Root.HasPromotedTransition;
+            var promoted = ComponentOf(mounted).HasPromotedTransition;
 
             // Act
             DropImmediateIntake(mounted);
 
             // Assert — the promoted term, since a lane that was never promoted keeps its own Transition lane
             Assert.That(
-                (promoted, mounted.Root.LaneQueue.Contains(FiberUpdatePriority.Transition)),
+                (promoted, ComponentOf(mounted).LaneQueue.Contains(FiberUpdatePriority.Transition)),
                 Is.EqualTo((true, true)),
                 "The drop leaves the transition's writes a lane to flush on");
         }
@@ -392,13 +394,13 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = ArrangePromotedTransition();
-            var promoted = mounted.Root.HasPromotedTransition;
+            var promoted = ComponentOf(mounted).HasPromotedTransition;
 
             // Act
             DropImmediateIntake(mounted);
 
             // Assert
-            Assert.That((promoted, mounted.Root.IsTransitionPending), Is.EqualTo((true, true)),
+            Assert.That((promoted, ComponentOf(mounted).IsTransitionPending), Is.EqualTo((true, true)),
                 "The transition's write is still queued, so the drop does not settle it");
         }
 
@@ -407,13 +409,13 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = ArrangePromotedTransition();
-            var promoted = mounted.Root.HasPromotedTransition;
+            var promoted = ComponentOf(mounted).HasPromotedTransition;
 
             // Act
             DropImmediateIntake(mounted);
 
             // Assert
-            Assert.That((promoted, mounted.Root.HasPromotedTransition), Is.EqualTo((true, false)),
+            Assert.That((promoted, ComponentOf(mounted).HasPromotedTransition), Is.EqualTo((true, false)),
                 "The Normal lane the marker rode is gone, so a later settle is not skipped for it");
         }
     }
