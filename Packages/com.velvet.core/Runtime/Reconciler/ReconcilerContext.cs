@@ -192,10 +192,11 @@ namespace Velvet
 
     // Per-element bookkeeping for the class-driven passes a variant payload can change, held in
     // ReconcilerContext.VariantGateClasses. An entry is opened by whichever comes first: the reconcile pass
-    // that sees the element DECLARE a gated payload (FiberNodePatcher.RecordVariantGateSource), or the
-    // payload toggle itself for an element whose own class list declares none — which only a [&>*]: rule on
-    // its PARENT produces, since every other family (first: and has-[.class]: included) spells its payload on
-    // the subject's own class list. It outlives an emptied token set, because the array it holds is what the
+    // that sees the element DECLARE a gated payload (FiberNodePatcher.RecordVariantGateSource), the create or
+    // patch that sees a gesture or drag channel carry one (ReconcilerContext.ExpectGatePayload), or the
+    // payload toggle itself for an element that declares none — which only a [&>*]: rule on its PARENT
+    // produces, since every other family (first: and has-[.class]: included) spells its payload on the
+    // subject's own class list. It outlives an emptied token set, because the array it holds is what the
     // NEXT toggle will need and no reconcile need ever run again to re-record it.
     internal sealed class VariantGateState
     {
@@ -823,6 +824,17 @@ namespace Velvet
         // toggle happens outside any reconcile pass (a breakpoint crossing, a theme flip, a pointer state
         // change), so nothing else would re-run those passes. Null until the patcher wires it.
         public System.Action<VisualElement> VariantGatedReSync { get; set; } = null!;
+
+        // A class channel that is not a variant (whileHoverClass, a drag's class) carrying a gate token needs the
+        // element's class source recorded as a declared variant payload does (FiberNodePatcher.RecordVariantGateSource),
+        // so a toggle re-derives its paints. Called ahead of the create path's paint resolution.
+        internal void ExpectGatePayload(VisualElement element, string[] payloads)
+        {
+            if (StyleVariantPayload.CarriesGatePayload(payloads))
+            {
+                VariantGateClasses.TryAdd(element, new VariantGateState());
+            }
+        }
 
         // Records / drops one variant-applied gate token for target at the priority its payload was applied
         // at — the same one StyleClassProjection layers the class itself at, so the token set and the class

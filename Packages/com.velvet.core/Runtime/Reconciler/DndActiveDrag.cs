@@ -404,11 +404,18 @@ namespace Velvet
             }
         }
 
+        // A class a drag puts on an element ranks as a data-[…]: payload does, after every rule the className
+        // declares at that rank, so it outranks the element's own utilities while the drag shows it.
+        private void Toggle(VisualElement element, string[] classes, bool on)
+            => StyleVariantPayload.Apply(element, classes, on, ChannelPriority, _ctx, this);
+
+        private static readonly long ChannelPriority = StyleLayerPriority.AfterEveryRule(StyleLayerPriority.Data);
+
         private void ApplyActiveStyling()
         {
             if (_activeDraggingClasses.Length > 0)
             {
-                StyleAnimationClassUtils.AddClasses(_source, _activeDraggingClasses);
+                Toggle(_source, _activeDraggingClasses, true);
             }
             ApplyDragActiveClasses();
         }
@@ -501,7 +508,7 @@ namespace Velvet
                     return;
                 }
             }
-            StyleAnimationClassUtils.AddClasses(element, binding.ActiveClasses);
+            Toggle(element, binding.ActiveClasses, true);
             _appliedActiveClasses.Add((element, binding.ActiveClasses));
         }
 
@@ -574,7 +581,7 @@ namespace Velvet
             }
             if (_overElement != null && _appliedOverClasses is { Length: > 0 })
             {
-                StyleAnimationClassUtils.RemoveClasses(_overElement, _appliedOverClasses);
+                Toggle(_overElement, _appliedOverClasses, false);
             }
             _overId = winnerId;
             _overBinding = null;
@@ -596,7 +603,7 @@ namespace Velvet
                     // Snapshot the applied array (see the field-block note): removal must target what
                     // was actually applied, not a mid-drag re-parse.
                     _appliedOverClasses = _overBinding.OverClasses;
-                    StyleAnimationClassUtils.AddClasses(_overElement, _appliedOverClasses);
+                    Toggle(_overElement, _appliedOverClasses, true);
                 }
             }
             // Over-change is continuous-lane feedback (it fires mid-move, potentially every frame):
@@ -736,6 +743,17 @@ namespace Velvet
             }
         }
 
+        // Takes this session's classes off element without ending the session, for a teardown that drops the
+        // element's class projection before it cancels the session.
+        internal void ReleaseClassesOf(VisualElement element)
+        {
+            if (ReferenceEquals(element, _source) && _activeDraggingClasses.Length > 0)
+            {
+                Toggle(_source, _activeDraggingClasses, false);
+            }
+            OnDroppableInvalidated(element);
+        }
+
         // A droppable leaving mid-drag (unmount, or a settings flip to disabled) must drop out of this
         // session's bookkeeping: its applied classes die with it, the over slot clears silently (the next
         // move recomputes and fires OnDragOver as usual — no user callback from mid-flush here).
@@ -745,7 +763,7 @@ namespace Velvet
             {
                 if (ReferenceEquals(_appliedActiveClasses[i].Element, element))
                 {
-                    StyleAnimationClassUtils.RemoveClasses(element, _appliedActiveClasses[i].Classes);
+                    Toggle(element, _appliedActiveClasses[i].Classes, false);
                     _appliedActiveClasses.RemoveAt(i);
                 }
             }
@@ -753,7 +771,7 @@ namespace Velvet
             {
                 if (_appliedOverClasses is { Length: > 0 })
                 {
-                    StyleAnimationClassUtils.RemoveClasses(element, _appliedOverClasses);
+                    Toggle(element, _appliedOverClasses, false);
                 }
                 _overId = null;
                 _overBinding = null;
@@ -899,16 +917,16 @@ namespace Velvet
         {
             if (_activeDraggingClasses.Length > 0)
             {
-                StyleAnimationClassUtils.RemoveClasses(_source, _activeDraggingClasses);
+                Toggle(_source, _activeDraggingClasses, false);
             }
             foreach (var (element, classes) in _appliedActiveClasses)
             {
-                StyleAnimationClassUtils.RemoveClasses(element, classes);
+                Toggle(element, classes, false);
             }
             _appliedActiveClasses.Clear();
             if (_overElement != null && _appliedOverClasses is { Length: > 0 })
             {
-                StyleAnimationClassUtils.RemoveClasses(_overElement, _appliedOverClasses);
+                Toggle(_overElement, _appliedOverClasses, false);
             }
             _overId = null;
             _overBinding = null;

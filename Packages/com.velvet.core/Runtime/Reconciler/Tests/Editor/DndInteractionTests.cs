@@ -29,6 +29,7 @@ namespace Velvet.Tests
         private static readonly List<string> s_overIds = new();
         private static readonly List<string> s_ended = new();
         private static int s_cancelCount;
+        private static int s_blurs;
         private static StateUpdater<bool> s_setShowSource;
         private static StateUpdater<bool> s_setAltDraggingClass;
         private static StateUpdater<bool> s_setDeclaringFocusable;
@@ -45,6 +46,7 @@ namespace Velvet.Tests
             s_overIds.Clear();
             s_ended.Clear();
             s_cancelCount = 0;
+            s_blurs = 0;
             s_setShowSource = default;
             s_setAltDraggingClass = default;
             s_setDeclaringFocusable = default;
@@ -113,6 +115,313 @@ namespace Velvet.Tests
                     V.Droppable("dead", key: "dead", name: "dead", disabled: true,
                         className: "absolute left-[150px] top-[150px] w-[100px] h-[100px]"),
                 });
+        }
+
+        // A draggable and a droppable whose own bracket values a drag's classes set the same properties as.
+        private static VNode ChannelOverBaseScene() => V.DndContext(
+            activation: new DragActivation(Distance: 4f),
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.Draggable("item", key: "item", name: "item", whileDraggingClass: "opacity-50 shadow-lg",
+                    className: "absolute left-[0px] top-[0px] w-[50px] h-[50px] opacity-[0.9] bg-white"),
+                V.Droppable("slot", key: "slot", name: "slot", whileOverClass: "bg-[#ff0000]",
+                    whileDragActiveClass: "w-20",
+                    className: "absolute left-[150px] top-[0px] w-[100px] h-[100px] bg-[#0000ff]"),
+            });
+
+        [Test]
+        public void Given_ADraggableWithItsOwnOpacity_When_ItIsDraggedAndDropped_Then_TheDraggingClassTakesItAndGivesItBack()
+        {
+            // Arrange
+            Mount(ChannelOverBaseScene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            var dragging = item.style.opacity.keyword;
+
+            // Act
+            SendPointerUp(item, new Vector2(20, 10));
+
+            // Assert — while dragging, the element's own inline opacity stands down for the class.
+            Assert.That((dragging, item.style.opacity.value), Is.EqualTo((StyleKeyword.Null, 0.9f)));
+        }
+
+        [Test]
+        public void Given_ADraggingClassThatPaints_When_ItIsDraggedAndDropped_Then_ThePaintComesAndGoes()
+        {
+            // Arrange — shadow-lg is a paint Velvet draws itself.
+            Mount(ChannelOverBaseScene);
+            var item = Q("item");
+            var shadows = _mounted.Root.Reconciler.Context.ShadowBindings;
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            var dragging = shadows.ContainsKey(item);
+
+            // Act
+            SendPointerUp(item, new Vector2(20, 10));
+
+            // Assert
+            Assert.That((dragging, shadows.ContainsKey(item)), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ADroppableWithItsOwnBackground_When_TheItemIsDroppedOnIt_Then_TheOverClassGivesItBack()
+        {
+            // Arrange
+            Mount(ChannelOverBaseScene);
+            var item = Q("item");
+            var slot = Q("slot");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            SendPointerMove(item, new Vector2(180, 30));
+            var over = slot.style.backgroundColor.value;
+
+            // Act
+            SendPointerUp(item, new Vector2(180, 30));
+
+            // Assert
+            Assert.That((over, slot.style.backgroundColor.value), Is.EqualTo((Color.red, Color.blue)));
+        }
+
+        // A droppable that paints while a drag is active and while the item is over it, which flag unmounts.
+        [Component]
+        private static VNode PaintingDroppableScene()
+        {
+            var (showSlot, setShowSlot) = Hooks.UseState(true);
+            s_setFlag = setShowSlot;
+            return V.DndContext(
+                activation: new DragActivation(Distance: 4f),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", key: "item", name: "item",
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                    showSlot
+                        ? V.Droppable("slot", key: "slot", name: "slot", whileOverClass: "shadow-lg bg-red-500",
+                            whileDragActiveClass: "ring-2 w-20",
+                            className: "absolute left-[150px] top-[0px] w-[100px] h-[100px] bg-white")
+                        : null,
+                });
+        }
+
+        [Test]
+        public void Given_ADroppableWhoseActiveClassPaints_When_ADragIsActive_Then_ItPaints()
+        {
+            // Arrange
+            Mount(PaintingDroppableScene);
+            var item = Q("item");
+            var slot = Q("slot");
+
+            // Act
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.RingBindings.ContainsKey(slot), Is.True);
+        }
+
+        [Test]
+        public void Given_ADroppableWhoseOverClassPaints_When_TheItemIsOverIt_Then_ItPaints()
+        {
+            // Arrange
+            Mount(PaintingDroppableScene);
+            var item = Q("item");
+            var slot = Q("slot");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Act
+            SendPointerMove(item, new Vector2(180, 30));
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(slot), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the drag's classes off the class list itself.
+        // What reddens it is the droppable's detach leaving its active or over classes on.
+        [Test]
+        public void Given_ADroppableUnmountedMidDrag_When_TheFlushCompletes_Then_NoDragClassRemainsOnIt()
+        {
+            // Arrange
+            Mount(PaintingDroppableScene);
+            var item = Q("item");
+            var slot = Q("slot");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            SendPointerMove(item, new Vector2(180, 30));
+            var applied = slot.ClassListContains("w-20") && slot.ClassListContains("bg-red-500");
+
+            // Act
+            s_setFlag.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((applied, slot.ClassListContains("w-20"), slot.ClassListContains("bg-red-500")),
+                Is.EqualTo((true, false, false)));
+        }
+
+        // A draggable Motion with a dragging class and a blur handler, which flag unmounts.
+        [Component]
+        private static VNode BlurringSourceScene()
+        {
+            var (showSource, setShowSource) = Hooks.UseState(true);
+            s_setFlag = setShowSource;
+            return V.DndContext(
+                activation: new DragActivation(Distance: 4f),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    showSource
+                        ? V.Motion(name: "item", key: "item", className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]",
+                            props: new FiberElementProps
+                            {
+                                Draggable = new DraggableSettings("item", WhileDraggingClass: "opacity-50"),
+                            },
+                            events: new FiberEventBinding[] { new BlurBinding { Handler = _ => s_blurs++ } })
+                        : null,
+                });
+        }
+
+        // GREEN_ON_BASE(characterization): the base unbinds the source's handlers before it cancels the drag.
+        // What reddens it is the drag cleanup running ahead of the style group, whose unbind it then precedes.
+        [Test]
+        public void Given_ADraggedSourceWithABlurHandler_When_ItUnmountsMidDrag_Then_TheHandlerIsNotCalled()
+        {
+            // Arrange
+            Mount(BlurringSourceScene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            var anchored = item.panel.focusController.focusedElement == item;
+
+            // Act
+            s_setFlag.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert — the drag's focus on the source rides along, since a source never focused has nothing to blur.
+            Assert.That((anchored, s_blurs), Is.EqualTo((true, 0)));
+        }
+
+        // A draggable and a droppable whose drag classes start without a paint and gain one on a re-render.
+        [Component]
+        private static VNode PaintArrivingScene()
+        {
+            var (painting, setPainting) = Hooks.UseState(false);
+            s_setFlag = setPainting;
+            return V.DndContext(
+                activation: new DragActivation(Distance: 4f),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", key: "item", name: "item", whileDraggingClass: painting ? "shadow-lg" : "opacity-50",
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                    V.Droppable("slot", key: "slot", name: "slot", whileOverClass: painting ? "shadow-lg" : null,
+                        className: "absolute left-[150px] top-[0px] w-[100px] h-[100px]"),
+                });
+        }
+
+        [Test]
+        public void Given_ADraggingClassThatGainsAPaintOnARerender_When_ItIsDragged_Then_ItPaints()
+        {
+            // Arrange
+            Mount(PaintArrivingScene);
+            s_setFlag.Invoke(true);
+            _mounted.FlushStateForTest();
+            var item = Q("item");
+
+            // Act
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(item), Is.True);
+        }
+
+        [Test]
+        public void Given_AnOverClassThatArrivesWithAPaintOnARerender_When_TheItemIsOverIt_Then_ItPaints()
+        {
+            // Arrange
+            Mount(PaintArrivingScene);
+            s_setFlag.Invoke(true);
+            _mounted.FlushStateForTest();
+            var item = Q("item");
+            var slot = Q("slot");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Act
+            SendPointerMove(item, new Vector2(180, 30));
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(slot), Is.True);
+        }
+
+        // A V.Motion made draggable through its props, whose dragging class is a gradient — a paint a Motion
+        // draws, unlike the silhouettes.
+        private static VNode DraggableMotionScene() => V.DndContext(
+            activation: new DragActivation(Distance: 4f),
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.Motion(name: "item", key: "item", className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]",
+                    props: new FiberElementProps
+                    {
+                        Draggable = new DraggableSettings("item",
+                            WhileDraggingClass: "bg-gradient-to-r from-red-500 to-blue-500"),
+                    }),
+            });
+
+        [Test]
+        public void Given_ADraggableMotionWhoseDraggingClassPaints_When_ItIsDragged_Then_ItPaints()
+        {
+            // Arrange
+            Mount(DraggableMotionScene);
+            var item = Q("item");
+
+            // Act
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.GradientBackgrounds.ContainsKey(item), Is.True);
+        }
+
+        [Test]
+        public void Given_ADroppableWithItsOwnWidth_When_ADragIsActiveAndEnds_Then_TheActiveClassTakesItAndGivesItBack()
+        {
+            // Arrange
+            Mount(ChannelOverBaseScene);
+            var item = Q("item");
+            var slot = Q("slot");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            var active = slot.style.width.keyword;
+
+            // Act
+            SendPointerUp(item, new Vector2(20, 10));
+
+            // Assert
+            Assert.That((active, slot.style.width.value.value), Is.EqualTo((StyleKeyword.Null, 100f)));
+        }
+
+        [Test]
+        public void Given_ADroppableWithItsOwnBackground_When_ADragPassesOverItAndLeaves_Then_TheOverClassTakesItAndGivesItBack()
+        {
+            // Arrange
+            Mount(ChannelOverBaseScene);
+            var item = Q("item");
+            var slot = Q("slot");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            SendPointerMove(item, new Vector2(180, 30));
+            var over = slot.style.backgroundColor.value;
+
+            // Act
+            SendPointerMove(item, new Vector2(20, 200));
+
+            // Assert
+            Assert.That((over, slot.style.backgroundColor.value), Is.EqualTo((Color.red, Color.blue)));
         }
 
         // GREEN_ON_BASE(characterization): a declared 4 px distance, the constraint the base applied by default.

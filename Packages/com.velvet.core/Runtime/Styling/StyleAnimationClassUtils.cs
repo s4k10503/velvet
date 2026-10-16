@@ -2,19 +2,34 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Shared add/remove helpers so every class-toggling system (animation scheduler, gesture/variant
-    // manipulators, drag-and-drop) treats a null class list the same way (RemoveClasses is a no-op) instead
-    // of each call site null-checking independently.
+    // The add/remove helpers for a class its writer puts on and takes off the live list itself — the
+    // animation scheduler's and the presence exit's — rather than as a payload. The element's class
+    // projection ranks such a class without owning it (StyleClassProjection.RawAdded), and a container that
+    // gives way to a class of the element's own (a divider, a space margin) re-applies after each add or
+    // remove.
     internal static class StyleAnimationClassUtils
     {
-        internal static void AddClasses(VisualElement element, string[] classes)
+        // priority is StyleLayerPriority.Animation for the classes a running play shows, and the base one for a
+        // class that rests on the element.
+        internal static void AddClasses(VisualElement element, string[] classes, long priority = StyleLayerPriority.Base)
         {
             foreach (var cls in classes)
             {
                 CornerRadiusFit.TrackClass(element, cls);
-                element.AddToClassList(cls);
+                Add(element, cls, priority);
             }
             ClipPathLayoutBox.SyncClasses(element);
+            StyleArbitraryValueResolver.NotifyClassesChanged(element);
+        }
+
+        // Ranks classes a play leaves on the element as the element's own from now on.
+        internal static void Rest(VisualElement element, string[]? classes)
+        {
+            if (classes == null) return;
+            foreach (var cls in classes)
+            {
+                StyleClassProjection.RawRested(element, cls);
+            }
         }
 
         // Removes each class, except one kept names, which is added instead: a play may have removed it
@@ -26,14 +41,22 @@ namespace Velvet
             {
                 if (kept != null && System.Array.IndexOf(kept, cls) >= 0)
                 {
-                    element.AddToClassList(cls);
+                    Add(element, cls, StyleLayerPriority.Base);
                 }
                 else
                 {
                     element.RemoveFromClassList(cls);
+                    StyleClassProjection.RawRemoved(element, cls);
                 }
             }
             ClipPathLayoutBox.SyncClasses(element);
+            StyleArbitraryValueResolver.NotifyClassesChanged(element);
+        }
+
+        private static void Add(VisualElement element, string cls, long priority)
+        {
+            element.AddToClassList(cls);
+            StyleClassProjection.RawAdded(element, cls, priority);
         }
     }
 }
