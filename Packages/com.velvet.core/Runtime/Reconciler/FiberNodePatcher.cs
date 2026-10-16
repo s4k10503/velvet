@@ -1699,10 +1699,9 @@ namespace Velvet
         }
 
         // An inline-resolved class leaving while another class in the incoming list writes the same property
-        // (w-[300px] to w-[10px]) gives up its layer without the property being resolved: the inline value
-        // keeps the old length until the incoming class lands over it, instead of passing through the base
-        // style in between. DiffClassList's reapply is what applies every incoming inline class, so the
-        // property is always resolved afterwards. Pinned by ArbitraryWidthSwapTransitionTests.
+        // (w-[300px] to w-[10px]) gives up its layer without the property being resolved. DiffClassList's
+        // reapply applies every incoming inline class afterwards, which resolves it. Pinned by
+        // ArbitraryWidthSwapTransitionTests.
         private static void RemoveOutgoingClass(VisualElement element, string cls, string[] newClasses)
         {
             if (InlineWriteOf(cls) is { } outgoing)

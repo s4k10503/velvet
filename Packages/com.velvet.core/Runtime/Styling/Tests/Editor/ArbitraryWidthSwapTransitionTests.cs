@@ -14,6 +14,12 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class ArbitraryWidthSwapTransitionTests
     {
+        // The widths the swaps move between, and the margin by which a width still on its way differs from the
+        // one it is heading for.
+        private const float Narrow = 10f;
+        private const float Wide = 300f;
+        private const float Margin = 0.5f;
+
         private const string Transition = "transition-all duration-[1000ms] h-[10px] ";
 
         private readonly record struct ClassNameState(string ClassName);
@@ -93,12 +99,15 @@ namespace Velvet.Tests
             // Arrange
             MountSettled(Transition + oldWidth);
 
+            var before = Child.layout.width;
+
             // Act
             Swap(Transition + newWidth);
             Frames(3, 16);
 
-            // Assert
-            Assert.That(Child.layout.width, Is.GreaterThan(150f));
+            // Assert — NaN unless the old width had settled above the new one, so a row whose old width never
+            // resolved cannot pass.
+            Assert.That(before > Narrow + Margin ? Child.layout.width : float.NaN, Is.GreaterThan(Narrow + Margin));
         }
 
         [Test]
@@ -107,12 +116,14 @@ namespace Velvet.Tests
             // Arrange
             MountSettled(Transition + "w-[10px]");
 
+            var before = Child.layout.width;
+
             // Act
             Swap(Transition + "w-[300px]");
             Frames(3, 16);
 
-            // Assert
-            Assert.That(Child.layout.width, Is.LessThan(150f));
+            // Assert — NaN unless the old width had settled below the new one.
+            Assert.That(before < Wide - Margin ? Child.layout.width : float.NaN, Is.LessThan(Wide - Margin));
         }
 
         [Test]
@@ -122,12 +133,14 @@ namespace Velvet.Tests
             const string pad = "p-[0px] m-[0px] pt-[0px] pb-[0px] pl-[0px] pr-[0px] ";
             MountSettled(Transition + pad + "w-[300px]");
 
+            var before = Child.layout.width;
+
             // Act
             Swap(Transition + pad + "w-[10px]");
             Frames(3, 16);
 
-            // Assert
-            Assert.That(Child.layout.width, Is.GreaterThan(150f));
+            // Assert — NaN unless the old width had settled above the new one.
+            Assert.That(before > Narrow + Margin ? Child.layout.width : float.NaN, Is.GreaterThan(Narrow + Margin));
         }
 
         // GREEN_ON_BASE(characterization): the base landed the new width at once, which is also where a finished transition ends.
