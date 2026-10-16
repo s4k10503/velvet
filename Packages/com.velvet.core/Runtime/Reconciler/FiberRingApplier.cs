@@ -20,8 +20,13 @@ namespace Velvet
         // overlay on the element's attach instead.
         internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
         {
-            if (!StyleRingClass.HasRingClass(classNames)
-                || !StyleRingClass.TryExtract(classNames, _ctx.ReconciledClassCount(element, classNames), out var spec))
+            if (!StyleRingClass.HasRingClass(classNames))
+            {
+                return;
+            }
+            var baseCount = _ctx.ReconciledClassCount(element, classNames);
+            StyleRingClass.RecordOwnInsetColor(element, classNames, baseCount);
+            if (!StyleRingClass.TryExtract(classNames, baseCount, out var spec))
             {
                 return;
             }
@@ -49,14 +54,19 @@ namespace Velvet
         {
             var bound = _ctx.RingBindings.TryGetValue(element, out var binding);
             // Fast path: no ring anywhere near this element.
-            if (!bound && !StyleRingClass.HasRingClass(classNames))
+            if (!StyleRingClass.HasRingClass(classNames))
             {
-                return;
+                ShadowColorInheritance.Forget(element, inset: true);
+                if (!bound)
+                {
+                    return;
+                }
             }
+            var baseCount = _ctx.ReconciledClassCount(element, classNames);
+            StyleRingClass.RecordOwnInsetColor(element, classNames, baseCount);
 
             var spec = default(RingSpec);
-            var want = !clipActive
-                && StyleRingClass.TryExtract(classNames, _ctx.ReconciledClassCount(element, classNames), out spec);
+            var want = !clipActive && StyleRingClass.TryExtract(classNames, baseCount, out spec);
 
             if (want && bound)
             {

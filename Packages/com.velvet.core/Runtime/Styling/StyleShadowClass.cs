@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -24,9 +23,11 @@ namespace Velvet
         // The text colour: a shadow-[…] naming no colour is var(--tw-shadow-color, currentcolor), and
         // shadow-current names it.
         public readonly bool CurrentColor;
-        // shadow-inherit: the nearest ancestor's shadow colour (StyleShadowClass.TryInheritedColor), the colour
-        // above where no ancestor has one.
+        // shadow-inherit: the nearest ancestor's shadow colour (ShadowColorInheritance), the colour above where no
+        // ancestor has one.
         public readonly bool InheritColor;
+        // An inset-shadow-* layer, whose inherited colour is --tw-inset-shadow-color rather than --tw-shadow-color.
+        public readonly bool Inset;
 
         public ShadowSpec(Color color, float blur, float offsetY, float spread)
             : this(color, blur, offsetY, spread, 0f)
@@ -34,7 +35,7 @@ namespace Velvet
         }
 
         public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX,
-            bool currentColor = false, bool inheritColor = false)
+            bool currentColor = false, bool inheritColor = false, bool inset = false)
         {
             Color = color;
             Blur = blur;
@@ -43,20 +44,23 @@ namespace Velvet
             OffsetX = offsetX;
             CurrentColor = currentColor;
             InheritColor = inheritColor;
+            Inset = inset;
         }
+
+        public ShadowSpec AsInset() => new(Color, Blur, OffsetY, Spread, OffsetX, CurrentColor, InheritColor, inset: true);
 
         // This shadow in the colour a shadow colour class of kind names: color itself, the text colour scaled by
         // color.a, or the ancestor's, the shadow keeping its own colour to fall back on.
         public ShadowSpec WithColor(ShadowColorSource kind, Color color) => kind switch
         {
-            ShadowColorSource.Inherit => new(Color, Blur, OffsetY, Spread, OffsetX, CurrentColor, inheritColor: true),
-            _ => new(color, Blur, OffsetY, Spread, OffsetX, currentColor: kind == ShadowColorSource.Current),
+            ShadowColorSource.Inherit => new(Color, Blur, OffsetY, Spread, OffsetX, CurrentColor, inheritColor: true, Inset),
+            _ => new(color, Blur, OffsetY, Spread, OffsetX, currentColor: kind == ShadowColorSource.Current, inset: Inset),
         };
 
         // The colour the shadow is painted in on element.
         public Color TintFor(VisualElement element)
         {
-            if (InheritColor && StyleShadowClass.TryInheritedColor(element, out var inherited))
+            if (InheritColor && ShadowColorInheritance.TryInherited(element, Inset, out var inherited))
             {
                 return inherited;
             }
@@ -258,11 +262,7 @@ namespace Velvet
             return set;
         }
 
-        // Each element's own --tw-shadow-color, for a descendant's shadow-inherit. Written by the shadow applier on
-        // every element carrying a shadow class, whether or not a size draws a shadow there.
-        private static readonly ConditionalWeakTable<VisualElement, StrongBox<(ShadowColorSource Source, Color Color)>>
-            s_ownColor = new();
-
+        // Records element's own --tw-shadow-color for a descendant's shadow-inherit (ShadowColorInheritance).
         internal static void RecordOwnColor(VisualElement element, string[] classNames, int baseCount)
         {
             classNames = StyleRingClass.InEmitOrder(classNames, baseCount);
@@ -276,42 +276,11 @@ namespace Velvet
                     sizeAlpha = modifier ?? 1f;
                 }
             }
-            if (TryResolveShadowColor(classNames, discarded, sizeAlpha, out var source, out var color))
-            {
-                s_ownColor.AddOrUpdate(element, new StrongBox<(ShadowColorSource, Color)>((source, color)));
-            }
-            else
-            {
-                s_ownColor.Remove(element);
-            }
+            var set = TryResolveShadowColor(classNames, discarded, sizeAlpha, out var source, out var color);
+            ShadowColorInheritance.Record(element, inset: false, set, source, color);
         }
 
-        internal static void ForgetOwnColor(VisualElement element) => s_ownColor.Remove(element);
-
-        // shadow-inherit: --tw-shadow-color is registered as not inheriting, so `inherit` takes the parent's
-        // value, which may itself be an inherit, and currentcolor resolves against this element's text colour.
-        internal static bool TryInheritedColor(VisualElement element, out Color color)
-        {
-            for (var ancestor = element.parent; ancestor != null; ancestor = ancestor.parent)
-            {
-                if (!s_ownColor.TryGetValue(ancestor, out var own))
-                {
-                    break;
-                }
-                switch (own.Value.Source)
-                {
-                    case ShadowColorSource.Explicit:
-                        color = own.Value.Color;
-                        return true;
-                    case ShadowColorSource.Current:
-                        color = element.resolvedStyle.color;
-                        color.a *= own.Value.Color.a;
-                        return true;
-                }
-            }
-            color = default;
-            return false;
-        }
+        internal static void ForgetOwnColor(VisualElement element) => ShadowColorInheritance.Forget(element, inset: false);
 
         // shadow-<colour> and shadow-[<colour>], Tailwind's --tw-shadow-color branch, with an optional opacity
         // modifier. A bracket is a colour where its hint is `color`, or where it has none and holds a colour.

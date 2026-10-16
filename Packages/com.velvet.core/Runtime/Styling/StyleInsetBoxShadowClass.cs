@@ -113,7 +113,7 @@ namespace Velvet
             }
             slots.ShadowDeclared = true;
             slots.WantShadow = true;
-            slots.Shadow = spec;
+            slots.Shadow = spec.AsInset();
             slots.ShadowAlpha = modifier ?? 1f;
         }
 
@@ -124,8 +124,7 @@ namespace Velvet
                 : default;
 
         // The inset shadow in the colour an inset-shadow colour class names, scaled by the size's modifier as
-        // --tw-inset-shadow-alpha scales it. shadow-inherit's ancestor lookup reads --tw-shadow-color, a property
-        // this one is not, so inset-shadow-inherit keeps the size's own colour.
+        // --tw-inset-shadow-alpha scales it; inset-shadow-inherit takes the ancestor's (ShadowColorInheritance).
         internal static bool TryShadowOf(in Slots slots, out ShadowSpec shadow)
         {
             shadow = slots.Shadow;
@@ -133,11 +132,25 @@ namespace Velvet
             {
                 return false;
             }
-            if (slots.ShadowColorSet && slots.ShadowColorKind != ShadowColorSource.Inherit)
+            if (TryOwnColor(slots, out var kind, out var color))
             {
-                var color = slots.ShadowColor;
-                color.a *= slots.ShadowAlpha;
-                shadow = shadow.WithColor(slots.ShadowColorKind, color);
+                shadow = shadow.WithColor(kind, color);
+            }
+            return true;
+        }
+
+        // This element's own --tw-inset-shadow-color, scaled by its size's modifier where it names a colour.
+        internal static bool TryOwnColor(in Slots slots, out ShadowColorSource kind, out Color color)
+        {
+            kind = slots.ShadowColorKind;
+            color = slots.ShadowColor;
+            if (!slots.ShadowColorSet)
+            {
+                return false;
+            }
+            if (kind != ShadowColorSource.Inherit)
+            {
+                color.a *= slots.WantShadow ? slots.ShadowAlpha : 1f;
             }
             return true;
         }

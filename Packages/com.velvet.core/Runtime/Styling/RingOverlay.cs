@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -13,7 +14,7 @@ namespace Velvet
     {
         // Each overlay covers the element's box and carries its transform, opacity, visibility and display; the
         // bands are their children. Overlay sits after the element and holds the outset ring under its offset fill;
-        // OutlineOverlay sits where the outline paints over the content around it (RingOverlay.OutlineHost).
+        // OutlineOverlay sits where the outline paints over the content around it (OutlineHosting).
         public readonly VisualElement Overlay;
         public readonly VisualElement RingElement;
         public readonly VisualElement OffsetElement;
@@ -32,6 +33,10 @@ namespace Velvet
         // Paints the bands ring-inset, inset-ring-* and inset-shadow-* put inside the padding box, in the
         // element's own content, so the element's children paint over them.
         public Action<MeshGenerationContext>? OnGenerateInside;
+        // The clip proxies standing in for the outline's clipping ancestors, outermost first (OutlineHosting), and
+        // the panel version the outline was last hosted at.
+        public readonly List<VisualElement> OutlineClips = new();
+        public uint? OutlineVersion;
         public EventCallback<GeometryChangedEvent>? OnGeometry;
         public EventCallback<AttachToPanelEvent>? OnAttach;
         public IVisualElementScheduledItem? StateTick;
@@ -72,8 +77,9 @@ namespace Velvet
     /// a text element's own text, where the element's own clip is the one CSS applies too.
     /// </para>
     /// <para>
-    /// An outline paints after all the content of its stacking context, so it is drawn on a second overlay, the
-    /// last child of the nearest ancestor that composites or clips what it holds (<c>OutlineHost</c>).
+    /// An outline paints after all the content of its stacking context, so it is drawn on a second overlay that
+    /// <see cref="OutlineHosting"/> places at the end of that context, behind clip proxies for the ancestors whose
+    /// overflow clips it.
     /// </para>
     /// A transform, an opacity, a visibility or a display on the ringed element reaches that element's own
     /// subtree only, which the overlays are not in, so they are given each of them (<c>SyncElementState</c>).
@@ -100,22 +106,6 @@ namespace Velvet
         internal const string RingBandName = "velvet-ring-band";
         internal const string OffsetBandName = "velvet-ring-offset-band";
         internal const string OutlineBandName = "velvet-outline-band";
-
-        private static readonly Func<VisualElement, bool>? s_shouldClip = ShouldClipDelegate();
-
-        private static Func<VisualElement, bool>? ShouldClipDelegate()
-        {
-            try
-            {
-                return EngineMember.ElementShouldClip.ResolveMethod() is { } method
-                    ? (Func<VisualElement, bool>)Delegate.CreateDelegate(typeof(Func<VisualElement, bool>), method)
-                    : null;
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
-        }
 
         private static VisualElement NewOverlay(string name)
         {
@@ -174,7 +164,7 @@ namespace Velvet
             // element is off a panel.
             binding.StateTick = element.schedule.Execute(() =>
             {
-                PlaceOutline(element, binding);
+                OutlineHosting.Place(element, binding, force: false);
                 SyncElementState(element, binding);
             }).Every(StyleAnimateDriver.TickMs);
 
@@ -239,7 +229,7 @@ namespace Velvet
             // The overlays live outside the element's own subtree, so they do not leave with it — a detach that
             // skipped this would strand a live band.
             binding.Overlay.RemoveFromHierarchy();
-            binding.OutlineOverlay.RemoveFromHierarchy();
+            OutlineHosting.Remove(binding);
             s_byElement.Remove(element);
         }
 
@@ -339,7 +329,7 @@ namespace Velvet
             }
 
             SyncGeometry(element, binding, host);
-            PlaceOutline(element, binding);
+            OutlineHosting.Place(element, binding, force: true);
             SyncElementState(element, binding);
         }
 
@@ -357,11 +347,11 @@ namespace Velvet
             binding.Height = height;
             binding.Radii = ResolveRadii(element, binding, width, height);
 
-            if (!TryOffsetWithin(element, host, out var x, out var y))
+            if (!OutlineHosting.TryOffsetWithin(element, host, out var x, out var y))
             {
                 return;
             }
-            SetBox(binding.Overlay, x, y, width, height);
+            OutlineHosting.SetBox(binding.Overlay, x, y, width, height);
 
             var spec = binding.Spec;
             var outlineGrow = spec.Outline.Offset + spec.Outline.Width;
@@ -373,116 +363,15 @@ namespace Velvet
             binding.OutlineElement.MarkDirtyRepaint();
         }
 
-        // Where element's border box sits in host's padding box, which an absolute child's left and top resolve
-        // against: its layout offsets up to host, each relative to its parent's border box, less host's border.
-        // False where a layout is not known yet.
-        private static bool TryOffsetWithin(VisualElement element, VisualElement host, out float x, out float y)
-        {
-            x = 0f;
-            y = 0f;
-            for (var e = element; e != host && e != null; e = e.parent)
-            {
-                var layout = e.layout;
-                if (float.IsNaN(layout.x) || float.IsNaN(layout.y))
-                {
-                    return false;
-                }
-                x += layout.x;
-                y += layout.y;
-            }
-            x -= Sane(host.resolvedStyle.borderLeftWidth);
-            y -= Sane(host.resolvedStyle.borderTopWidth);
-            return true;
-        }
-
-        private static void SetBox(VisualElement e, float x, float y, float width, float height)
-        {
-            e.style.left = x;
-            e.style.top = y;
-            e.style.width = Mathf.Max(0f, width);
-            e.style.height = Mathf.Max(0f, height);
-        }
-
         // A band's box is the element's grown by grow, rounded as the band's outer edge is painted.
         private static void PlaceBand(VisualElement band, float grow, RingBinding binding, Vector4 radii)
         {
-            SetBox(band, -grow, -grow, binding.Width + (grow * 2f), binding.Height + (grow * 2f));
+            OutlineHosting.SetBox(band, -grow, -grow, binding.Width + (grow * 2f), binding.Height + (grow * 2f));
             radii = RingBandShape.Fit(radii, Mathf.Max(0f, binding.Width + (grow * 2f)), Mathf.Max(0f, binding.Height + (grow * 2f)));
             band.style.borderTopLeftRadius = radii.x;
             band.style.borderTopRightRadius = radii.y;
             band.style.borderBottomRightRadius = radii.z;
             band.style.borderBottomLeftRadius = radii.w;
-        }
-
-        // The outline overlay's host: the nearest ancestor whose content an outline must not paint over from
-        // outside, because it composites, transforms, hides or clips what it holds, or which is a z-index layer;
-        // failing one, the topmost ancestor under the panel's root. The outline is that host's last child, so it
-        // paints over the content CSS paints it over, and the host's own effects reach it as they reach the element.
-        internal static VisualElement? OutlineHost(VisualElement element)
-        {
-            var candidate = element.parent;
-            while (candidate != null)
-            {
-                var up = candidate.parent;
-                if (up == null || up == candidate.panel?.visualTree || IsOutlineBoundary(candidate))
-                {
-                    return candidate;
-                }
-                candidate = up;
-            }
-            return null;
-        }
-
-        private static bool IsOutlineBoundary(VisualElement e)
-        {
-            var rs = e.resolvedStyle;
-            // Velvet writes filters inline and its sheets declare none, so the inline list is the one read.
-            var filter = e.style.filter;
-            return rs.display == DisplayStyle.None || rs.opacity < 1f || rs.translate != Vector3.zero
-                || rs.scale.value != Vector3.one || rs.rotate.angle.value != 0f
-                || (filter.keyword == StyleKeyword.Undefined && filter.value is { Count: > 0 })
-                || FiberZLayerCoordinator.IsLayerContainer(e) || Clips(e);
-        }
-
-        // Whether e clips its children, as UI Toolkit decides it; an inline overflow: hidden where the engine member
-        // does not resolve.
-        private static bool Clips(VisualElement e)
-        {
-            return s_shouldClip?.Invoke(e)
-                ?? (e.style.overflow.keyword == StyleKeyword.Undefined && e.style.overflow.value == Overflow.Hidden);
-        }
-
-        // Keeps the outline overlay the last child of its host but for other outlines, and over the element's box.
-        private static void PlaceOutline(VisualElement element, RingBinding binding)
-        {
-            var overlay = binding.OutlineOverlay;
-            var host = binding.Spec.Outline.Width > 0f && element.parent != null ? OutlineHost(element) : null;
-            if (host == null)
-            {
-                overlay.RemoveFromHierarchy();
-                return;
-            }
-            if (overlay.parent != host || !LastButOutlines(host, overlay))
-            {
-                overlay.RemoveFromHierarchy();
-                host.Add(overlay);
-            }
-            if (binding.Width > 0f && TryOffsetWithin(element, host, out var x, out var y))
-            {
-                SetBox(overlay, x, y, binding.Width, binding.Height);
-            }
-        }
-
-        private static bool LastButOutlines(VisualElement host, VisualElement overlay)
-        {
-            for (var i = host.IndexOf(overlay) + 1; i < host.childCount; i++)
-            {
-                if (!host[i].ClassListContains(OutlineMarkerClass))
-                {
-                    return false;
-                }
-            }
-            return true;
         }
 
         // Gives both overlays what the element's own subtree would have given them had they been inside: its

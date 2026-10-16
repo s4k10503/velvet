@@ -298,27 +298,90 @@ namespace Velvet.Tests
             Assert.That((binding?.RingTint, binding?.OutlineTint), Is.EqualTo(((Color?)Color.blue, (Color?)Color.red)));
         }
 
-        // Where an outline is hosted: after the content of the nearest ancestor that clips or composites.
+        // Where an outline is hosted: after the content of its stacking context, clipped only by its own ancestors.
 
         [Test]
-        public void Given_AnOutlineInsideAClippingParent_When_LaidOut_Then_ItIsThatParentsLastChild()
+        public void Given_AnOutlineInsideAClippingParent_When_LaidOut_Then_AProxyOfThatClipFollowsTheContentAfterIt()
         {
-            // Arrange — the later sibling b is what the outline has to come after.
+            // Arrange — after is content outside the clip, which the outline has to paint over.
             _mounted = V.Mount(_window.rootVisualElement,
-                V.Div(name: "clip", className: "w-[200px] h-[100px] overflow-hidden", children: new VNode[]
+                V.Div(name: "wrap", className: "w-[300px] h-[200px]", children: new VNode[]
                 {
-                    V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
-                    V.Div(name: "b", className: "w-[40px] h-[40px]"),
+                    V.Div(name: "clip", className: "w-[200px] h-[100px] overflow-hidden", children: new VNode[]
+                    {
+                        V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+                    }),
+                    V.Div(name: "after", className: "w-[40px] h-[40px]"),
                 }));
             var clip = _window.rootVisualElement.Q<VisualElement>("clip");
-            var b = _window.rootVisualElement.Q<VisualElement>("b");
+            var wrap = _window.rootVisualElement.Q<VisualElement>("wrap");
+
+            // Act — twice: the proxy is placed by the first pass's geometry event and laid out by the second.
+            ForcePanelUpdate(clip.panel);
+            ForcePanelUpdate(clip.panel);
+            var proxy = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a"))?.OutlineOverlay.parent;
+            var top = proxy;
+            while (top?.parent != null && !top.parent.Contains(wrap))
+            {
+                top = top.parent;
+            }
+
+            // Assert — the proxy stands over the clip's padding box, and its top-level node comes after the content
+            // that holds after.
+            Assert.That(
+                (proxy?.name, proxy?.worldBound == clip.worldBound,
+                    top?.parent != null && top.parent.IndexOf(top) > top.parent.IndexOf(AncestorUnder(top.parent, wrap))),
+                Is.EqualTo((OutlineHosting.ProxyName, (bool?)true, true)));
+        }
+
+        // The child of host on the way down to e.
+        private static VisualElement AncestorUnder(VisualElement host, VisualElement e)
+        {
+            while (e != null && e.parent != host)
+            {
+                e = e.parent;
+            }
+            return e;
+        }
+
+        [Test]
+        public void Given_TwoOutlinesInOneStackingContext_When_TheLaterIsPlacedFirst_Then_TheyKeepTreeOrder()
+        {
+            // Arrange — b's outline is hosted first; a's arrives with a later render.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "wrap", className: "w-[200px] h-[100px]",
+                children: new VNode[]
+                {
+                    V.Div(name: "a", className: "w-[40px] h-[40px]"),
+                    V.Div(name: "b", className: "w-[40px] h-[40px] outline-2"),
+                }));
+            var wrap = _window.rootVisualElement.Q<VisualElement>("wrap");
+            ForcePanelUpdate(wrap.panel);
 
             // Act
-            ForcePanelUpdate(clip.panel);
-            var outline = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a"))?.OutlineOverlay;
+            _mounted.Render(V.Div(name: "wrap", className: "w-[200px] h-[100px]", children: new VNode[]
+            {
+                V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+                V.Div(name: "b", className: "w-[40px] h-[40px] outline-2"),
+            }));
+            ForcePanelUpdate(wrap.panel);
+            var outlineA = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a"))?.OutlineOverlay;
+            var outlineB = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("b"))?.OutlineOverlay;
 
-            // Assert
-            Assert.That((outline?.parent == clip, clip.IndexOf(outline) > clip.IndexOf(b)), Is.EqualTo((true, true)));
+            // Assert — one host, a's outline painted before b's, as a comes before b.
+            Assert.That(
+                (outlineA?.parent != null && outlineA.parent == outlineB?.parent,
+                    outlineA?.parent != null && outlineA.parent.IndexOf(outlineA) < outlineA.parent.IndexOf(outlineB)),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AnOutlineOnAPanel_When_LaidOut_Then_ItsHostIsCachedAgainstThePanelVersion()
+        {
+            // Arrange & Act
+            var card = MountRinged("w-[40px] h-[40px] outline-2");
+
+            // Assert — the per-frame tick re-hosts only after the panel's version moves.
+            Assert.That(RingOverlay.TryGet(card)?.OutlineVersion.HasValue, Is.EqualTo((bool?)true));
         }
 
         [Test]
@@ -343,6 +406,55 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(outline?.parent?.name, Is.EqualTo("faded"));
+        }
+
+        // An inherited shadow colour reaches the children inheriting it when it changes, though their own classes
+        // do not.
+
+        [TestCase(false, "shadow-lg shadow-inherit", "shadow-lg")]
+        [TestCase(true, "inset-shadow-sm inset-shadow-inherit", "inset-shadow-sm")]
+        public void Given_AChildInheritingAShadowColour_When_TheParentsColourChanges_Then_OnlyThatChildRepaints(
+            bool inset, string inheriting, string control)
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "parent", className: "w-[200px] h-[100px] " + (inset ? "inset-shadow-[#ff0000]" : "shadow-[#ff0000]"),
+                    children: new VNode[]
+                    {
+                        V.Div(name: "inherits", className: "w-[40px] h-[40px] bg-[#ffffff] " + inheriting),
+                        V.Div(name: "control", className: "w-[40px] h-[40px] bg-[#ffffff] " + control),
+                    }));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            var (inherits, others) = (0, 0);
+            _window.rootVisualElement.Q<VisualElement>("inherits").generateVisualContent += _ => inherits++;
+            _window.rootVisualElement.Q<VisualElement>("control").generateVisualContent += _ => others++;
+            ForcePanelUpdate(parent.panel);
+            (inherits, others) = (0, 0);
+
+            // Act — the parent's colour changes with nothing re-rendered.
+            ShadowColorInheritance.Record(parent, inset, true, ShadowColorSource.Explicit, Color.green);
+            ForcePanelUpdate(parent.panel);
+
+            // Assert
+            Assert.That((inherits > 0, others), Is.EqualTo((true, 0)));
+        }
+
+        [Test]
+        public void Given_InsetShadowInheritUnderAColouredParent_When_LaidOut_Then_TheInsetShadowTakesTheParentsColour()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "parent", className: "w-[200px] h-[100px] inset-shadow-[#ff0000]", children: new VNode[]
+                {
+                    V.Div(name: "child", className: "w-[40px] h-[40px] inset-shadow-sm inset-shadow-inherit"),
+                }));
+            var child = _window.rootVisualElement.Q<VisualElement>("child");
+
+            // Act
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(child)?.Spec.InsetShadow.TintFor(child), Is.EqualTo((Color?)Color.red));
         }
 
         [Test]

@@ -11,9 +11,11 @@ A shadow colour, `shadow-<colour>` or a `shadow-[…]` holding a colour, opacity
 (`shadow-red-500/50`), is Tailwind's `--tw-shadow-color`: it replaces the colour of the `shadow-*` size beside
 it, whichever comes first, a `shadow-[…]` size's own colour included, and draws nothing alone. A
 `drop-shadow-*` keeps its own colour. `shadow-current` is the text colour, and `shadow-inherit` takes the
-nearest ancestor's shadow colour, the size keeping its own where no ancestor names one. A `shadow-[…]` naming no
+parent's shadow colour, through any parents that are themselves `shadow-inherit`, the size keeping its own where
+the parent names none; a change of that colour repaints the shadows inheriting it. A `shadow-[…]` naming no
 colour is drawn in the text colour. A size's opacity modifier (`shadow-lg/20`) sets its own colour's alpha and
-scales a shadow colour beside it.
+scales a shadow colour beside it. `inset-shadow-*` colours work the same way with `--tw-inset-shadow-color`,
+`inset-shadow-inherit` included.
 
 ## Accepted forms
 

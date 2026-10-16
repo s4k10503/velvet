@@ -223,6 +223,22 @@ namespace Velvet
             return false;
         }
 
+        // Records element's own --tw-inset-shadow-color for a descendant's inset-shadow-inherit
+        // (ShadowColorInheritance). A discarded box-shadow leaves the property itself standing, so it is read whole.
+        internal static void RecordOwnInsetColor(VisualElement element, string[] classNames, int baseCount)
+        {
+            var inset = default(StyleInsetBoxShadowClass.Slots);
+            foreach (var cls in InEmitOrder(classNames, baseCount))
+            {
+                if (!string.IsNullOrEmpty(cls) && StyleInsetBoxShadowClass.IsInsetBoxShadowClass(cls))
+                {
+                    StyleInsetBoxShadowClass.TryAccumulate(cls, ref inset);
+                }
+            }
+            var set = StyleInsetBoxShadowClass.TryOwnColor(inset, out var kind, out var color);
+            ShadowColorInheritance.Record(element, inset: true, set, kind, color);
+        }
+
         // classNames in the order InEmitOrder gives, read into the ring and outline slots and the inset ones. A
         // box-shadow the browser discards takes the ring and the inset layers with it; the outline stays.
         private static void AccumulateAll(string[] classNames, ref RingSlots slots, ref StyleInsetBoxShadowClass.Slots inset)

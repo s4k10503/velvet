@@ -121,6 +121,38 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_AnOutlineInsideAClipUnderLaterContent_When_Rendered_Then_ItPaintsOverThatContentWithinTheClip()
+        {
+            // Arrange — a sits at the clip's top-left, so its outline's top band lies outside the clip and its right
+            // band inside it, where b, later and outside the clip, overlaps it. The clip is set inline: the panel
+            // carries no stylesheet for overflow-hidden.
+            yield return MountRow("OutlineInClip", new VNode[]
+            {
+                V.Div(name: "clip", className: "w-[100px] h-[60px]", children: new VNode[]
+                {
+                    V.Div(name: "a", className: "w-[40px] h-[40px] bg-[#0000ff] outline-[8px] outline-[#ff0000]"),
+                }),
+                V.Div(name: "b", className: "w-[60px] h-[60px] bg-[#00ff00]"),
+            });
+            _host.Root.Q<VisualElement>("clip").style.overflow = Overflow.Hidden;
+            _host.Root.Q<VisualElement>("b").style.marginLeft = -60f;
+
+            // Act
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+            var a = _host.Root.Q<VisualElement>("a").worldBound;
+            var b = _host.Root.Q<VisualElement>("b").worldBound;
+            var inside = OuterStrip(a, right: true);
+            var outside = new RectInt(Mathf.RoundToInt(a.xMin + 10f), Mathf.RoundToInt(a.yMin - BandWidth + 2f), 10, 4);
+
+            // Assert — b covers the right band's strip, which still reads red, and the band above the clip's top
+            // edge is clipped away.
+            Assert.That(
+                (b.xMin < inside.xMin, b.xMax > inside.xMax, CountInPanelRect(inside, IsRed) > 0,
+                    CountInPanelRect(outside, IsRed) == 0),
+                Is.EqualTo((true, true, true, true)), $"a={a} b={b}");
+        }
+
+        [UnityTest]
         public IEnumerator Given_AnInsetRingUnderAFullBleedChild_When_Rendered_Then_TheChildCoversIt()
         {
             // Arrange — an inset box-shadow paints over the background and under the content; the control is the
