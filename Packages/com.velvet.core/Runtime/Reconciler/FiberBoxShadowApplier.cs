@@ -44,7 +44,7 @@ namespace Velvet
             var casterSkewed = _ctx.SkewBindings.ContainsKey(element);
             var shadowBinding = BoxShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
             _ctx.ShadowBindings[element] = shadowBinding;
-            BoxShadowSilhouette.SetWantSpacer(element, shadowBinding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
+            BoxShadowSilhouette.SetWantSpacer(element, shadowBinding, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
         }
 
         // Patch-time reconciliation of an element's shadow state against its new class list. Mirrors the
@@ -82,13 +82,13 @@ namespace Velvet
                     SkewXDeg = skewXDeg,
                     CasterSkewed = casterSkewed,
                 }, canReleaseFace);
-                BoxShadowSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
+                BoxShadowSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
             }
             else if (want)
             {
                 var fresh = BoxShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
                 _ctx.ShadowBindings[element] = fresh;
-                BoxShadowSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(classNames), classNames);
+                BoxShadowSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
             }
             else if (bound)
             {

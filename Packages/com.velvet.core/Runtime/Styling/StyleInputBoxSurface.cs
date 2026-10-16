@@ -29,18 +29,18 @@ namespace Velvet
         private static readonly string[] s_paddings =
             { "p-", "px-", "py-", "pt-", "pr-", "pb-", "pl-", "ps-", "pe-" };
 
-        private static readonly StyleLonghandSet s_boxLonghands = StyleLonghandSet.Of(StyleLonghand.Color)
-            .Union(StyleLonghandSet.Of(StyleLonghand.Opacity))
-            .Union(StyleLonghandSet.Of(StyleLonghand.Translate))
-            .Union(StyleLonghandSet.Of(StyleLonghand.Rotate))
-            .Union(StyleLonghandSet.Of(StyleLonghand.Scale))
-            .Union(StyleLonghandSet.Of(StyleLonghand.TransformOrigin));
+        private static readonly StyleLonghandSet s_boxLonghands = MotionNativeTransitionGuard.SetOf(
+            StyleLonghand.Color, StyleLonghand.Opacity, StyleLonghand.Translate, StyleLonghand.Rotate,
+            StyleLonghand.Scale, StyleLonghand.TransformOrigin, StyleLonghand.FontSize, StyleLonghand.UnityFont,
+            StyleLonghand.UnityFontDefinition, StyleLonghand.UnityFontStyle, StyleLonghand.UnityTextAlign,
+            StyleLonghand.UnityTextAutoSize, StyleLonghand.UnityTextGenerator, StyleLonghand.UnityTextOutlineColor,
+            StyleLonghand.UnityTextOutlineWidth, StyleLonghand.UnityTextOverflowPosition,
+            StyleLonghand.UnityParagraphSpacing, StyleLonghand.LetterSpacing, StyleLonghand.WordSpacing,
+            StyleLonghand.TextShadow, StyleLonghand.TextOverflow, StyleLonghand.WhiteSpace);
 
-        private static readonly StyleLonghandSet s_transitionLonghands =
-            StyleLonghandSet.Of(StyleLonghand.TransitionProperty)
-                .Union(StyleLonghandSet.Of(StyleLonghand.TransitionDuration))
-                .Union(StyleLonghandSet.Of(StyleLonghand.TransitionDelay))
-                .Union(StyleLonghandSet.Of(StyleLonghand.TransitionTimingFunction));
+        private static readonly StyleLonghandSet s_transitionLonghands = MotionNativeTransitionGuard.SetOf(
+            StyleLonghand.TransitionProperty, StyleLonghand.TransitionDuration, StyleLonghand.TransitionDelay,
+            StyleLonghand.TransitionTimingFunction);
 
         private enum Placement
         {
@@ -196,9 +196,11 @@ namespace Velvet
                 || StyleShadowClass.IsShadowClass(core)
                 || StyleRingClass.IsRingClass(core)
                 || StyleGradientClass.IsGradientClass(core)
-                // CSS's filter, opacity, transforms and color apply to the element and what it contains; a
-                // declared label is neither the input nor inside it.
+                // CSS's filter, opacity, transforms, color and text styling apply to the element and what it
+                // contains; a declared label is neither the input nor inside it.
                 || StyleFilterValueParser.IsFilterLeaf(core)
+                || StyleFontClass.IsFontToken(core)
+                || StyleTextEffectClass.IsTextEffectToken(core)
                 || StyleSkewClass.IsSkewClass(core)
                 || StyleAnimateClass.IsAnimateClass(core)
                 || core.StartsWith("caret-", StringComparison.Ordinal)

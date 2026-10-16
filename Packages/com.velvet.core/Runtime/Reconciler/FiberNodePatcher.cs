@@ -375,6 +375,13 @@ namespace Velvet
             // three own the edge and must win, exactly as they already win over a child's own explicit margin
             // — running [&>*]: first makes it behave as if the child itself carried the wrapped class.
             ApplyChildVariantManipulator(element, newClassNames);
+            // A field's input box decides its bounds-spacers from the payloads routed to it, applied or not
+            // (WrapperInfrastructure.CarriesFilter), and a routed payload that is not applied re-syncs nothing.
+            if (!ReferenceEquals(oldClassNames, newClassNames) && StyleInputBoxSurface.IsControl(element)
+                && StyleInputBoxSurface.TryGetBox(element, out var box) && _ctx.VariantGateClasses.ContainsKey(box))
+            {
+                ReSyncVariantGatedPasses(box);
+            }
             ApplyLayoutManipulators(element, newClassNames);
             ApplyStructuralVariants(element);
             ApplyHasClassVariants(element);

@@ -132,7 +132,7 @@ namespace Velvet
             bool on)
         {
             var dest = StyleInputBoxSurface.DestinationFor(control, core);
-            if (ctx != null && on && StyleInputBoxSurface.IsBox(dest) && IsGateTokenFor(dest, core))
+            if (ctx != null && on && IsVariantGateToken(core) && StyleInputBoxSurface.IsBox(dest))
             {
                 StyleInputBoxSurface.EnsurePaintState(ctx, dest);
             }
@@ -163,7 +163,7 @@ namespace Velvet
                 }
                 // text-<size>/<leading> also sets a line height, which the text-effect cascade reads back out of
                 // the composed class source.
-                return (StyleNamedTextSize.TryParseLineHeight(core, out _, out _) || IsBoxFilter(target, core))
+                return StyleNamedTextSize.TryParseLineHeight(core, out _, out _)
                     && TrackVariantGate(ctx, target, payload, key, declaration, on);
             }
 
@@ -182,7 +182,7 @@ namespace Velvet
             // TryClearUnregisteredFilterToken).
             if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, key))
             {
-                return IsBoxFilter(target, core) && TrackVariantGate(ctx, target, payload, key, declaration, on);
+                return false;
             }
 
             if (on)
@@ -246,19 +246,10 @@ namespace Velvet
             long priority, int declaration, bool on)
         {
             var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
-            return ctx != null && IsGateTokenFor(target, core)
+            return ctx != null && IsVariantGateToken(core)
                 && ctx.TrackVariantGateClass(target, IsImportanceAware(core) ? payload : core,
                     priority, declaration, on);
         }
-
-        // A filter is a gate token on a field's input box alone: the box's paint layers decide their bounds-spacer
-        // from its re-sync source, which holds only tracked tokens, where a reconciled element's holds its whole
-        // class list (WrapperInfrastructure.CarriesFilter).
-        private static bool IsGateTokenFor(VisualElement target, string core)
-            => IsVariantGateToken(core) || IsBoxFilter(target, core);
-
-        private static bool IsBoxFilter(VisualElement target, string core)
-            => StyleFilterValueParser.IsFilterLeaf(core) && StyleInputBoxSurface.IsBox(target);
 
         private static bool IsImportanceAware(string core)
             => StyleFontClass.IsFontToken(core) || StyleTextEffectClass.IsTextEffectToken(core)

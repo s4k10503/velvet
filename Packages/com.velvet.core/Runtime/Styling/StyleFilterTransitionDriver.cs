@@ -94,6 +94,15 @@ namespace Velvet
 
         public static void Unregister(VisualElement element) => s_bindings.Remove(element);
 
+        // Detach for whatever binding the element's tweens run on, the write hook's included.
+        public static void DetachBound(VisualElement element)
+        {
+            if (s_bindings.TryGetValue(element, out var b))
+            {
+                Detach(element, b);
+            }
+        }
+
         // Stops whatever tween the element has without writing to it, for an element about to serve another consumer.
         public static void Release(VisualElement element)
         {

@@ -105,6 +105,15 @@ namespace Velvet.Tests
         [TestCase("animate-spin")]
         [TestCase("animate-hue")]
         [TestCase("hover:opacity-50")]
+        [TestCase("font-bold")]
+        [TestCase("font-mono")]
+        [TestCase("italic")]
+        [TestCase("text-sm")]
+        [TestCase("text-[14px]")]
+        [TestCase("text-center")]
+        [TestCase("tracking-wide")]
+        [TestCase("uppercase")]
+        [TestCase("underline")]
         public void Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(
             string token)
         {
@@ -141,12 +150,12 @@ namespace Velvet.Tests
                 Is.EqualTo("w-64|" + Scoped + "bg-red-500|mt-2|" + Scoped + "rounded-lg"));
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves every one of these on the outer control, the font size too.
+        // GREEN_ON_BASE(characterization): the base leaves every one of these on the outer control, the height too.
         // They are the utilities that are not surface ones, and the conditions the control itself decides, which
         // StyleInputBoxSurface.DestinationFor redirects while the payload is applied and Route never rewrites.
         [TestCase("w-64")]
+        [TestCase("h-10")]
         [TestCase("mt-2")]
-        [TestCase("text-sm")]
         [TestCase("flex")]
         [TestCase("first:bg-red-500")]
         [TestCase("has-[:checked]:bg-red-500")]
@@ -671,6 +680,36 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AShadowBesideAHoverFilterOnATextField_When_Reconciled_Then_TheInputBoxsShadowReservesItsBounds()
+        {
+            // Arrange — the filter is not applied, as an inactive variant's is not on any other element.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "shadow-lg hover:blur-sm") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[Box(scope.Root[0])].WantSpacer, Is.True);
+        }
+
+        [Test]
+        public void Given_AShadowedTextField_When_AHoverFilterIsAdded_Then_TheInputBoxsShadowReservesItsBounds()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var first = new VNode[] { V.TextField(className: "shadow-lg") };
+            var second = new VNode[] { V.TextField(className: "shadow-lg hover:blur-sm") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, first, second);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[Box(scope.Root[0])].WantSpacer, Is.True);
+        }
+
+        [Test]
         public void Given_AnimateHueOnATextField_When_Reconciled_Then_TheInputBoxRunsTheMotion()
         {
             // Arrange
@@ -693,6 +732,9 @@ namespace Velvet.Tests
         [TestCase("opacity-50")]
         [TestCase("text-red-500")]
         [TestCase("rotate-45")]
+        [TestCase("font-bold")]
+        [TestCase("text-sm")]
+        [TestCase("text-center")]
         public void Given_AUtilityOnALabelledTextField_When_Reconciled_Then_OnlyTheInputBoxTakesIt(string token)
         {
             // Arrange
@@ -727,6 +769,40 @@ namespace Velvet.Tests
         #endregion
 
         #region Teardown
+
+        [Test]
+        public void Given_AFilterTweenTheWriteHookBoundOnTheInputBox_When_TheFieldIsRemoved_Then_TheBindingIsReleased()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField() };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var box = Box(scope.Root[0]);
+            var bound = StyleFilterTransitionDriver.Bind(box);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, tree, Array.Empty<VNode>());
+
+            // Assert — Bind hands back the binding still registered, or a fresh one once it is released.
+            Assert.That(StyleFilterTransitionDriver.Bind(box), Is.Not.SameAs(bound));
+        }
+
+        [Test]
+        public void Given_AnimateHueOnAnIntegerField_When_TheFieldIsRemoved_Then_NoMotionRemains()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.IntegerField(className: "animate-hue") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var motions = scope.Reconciler.Context.AnimationBindings;
+            var bound = motions.ContainsKey(Box(scope.Root[0]));
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, tree, Array.Empty<VNode>());
+
+            // Assert
+            Assert.That((bound, motions.Count), Is.EqualTo((true, 0)));
+        }
 
         // GREEN_ON_BASE(characterization): the base sweeps the box's own stacked manipulators through the
         // descendant pass of an ordinary removal. The case pins that the routed ones go the same way.

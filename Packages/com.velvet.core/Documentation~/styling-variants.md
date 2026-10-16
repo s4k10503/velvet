@@ -460,6 +460,9 @@ these to the box:
 - the filter utilities, `drop-shadow-*` and `filter-[…]` among them
   ([styling-filters.md](styling-filters.md));
 - the text colour (`text-<color>`, `text-[<color>]`) and `opacity-*`;
+- the text styling: `font-*`, `italic`, the text size (`text-sm`, `text-[14px]`), the alignment
+  (`text-left` / `-center` / `-right`), `tracking-*`, and the text effects (`uppercase`, `underline`,
+  `leading-*`, `whitespace-*`, …);
 - the transforms (`translate-*`, `rotate-*`, `scale-*`, `skew-*`, `origin-*`) and `animate-*`;
 - the caret and selection colours, `caret-*`, `selection:bg-*` and `selection:text-*`.
 
