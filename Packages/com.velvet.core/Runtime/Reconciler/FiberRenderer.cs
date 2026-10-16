@@ -142,8 +142,9 @@ namespace Velvet
         }
 
         // Settles a fiber that the render above just subsumed into the ancestor's batch pass. Every update
-        // pending BEFORE that render coalesces into it: the render ran with the fiber's latest state, so
-        // those lanes are satisfied at once. It un-enrolls every lane the render did not itself ask for
+        // pending BEFORE that render coalesces into it, except the state updates of lanes the pass does not
+        // render, which the hook that skipped each asks for again: the render ran with the state of the lanes it
+        // renders, so those lanes are satisfied at once. It un-enrolls every lane the render did not itself ask for
         // again, and when that empties the queue it
         // also clears the dirty flag and the transition-pending slots and drops the fiber from BOTH
         // batch-scheduler tiers, so a later drain does not independently re-process it — without which a
@@ -167,7 +168,7 @@ namespace Velvet
             {
                 fiber.Lanes.Queue.RetainAll(fiber.Lanes.LanesRequestedSinceReset);
                 fiber.Lanes.LanesRequestedSinceReset.Clear();
-                // The subsuming render committed the fiber's latest (eagerly-written) state, so any
+                // The subsuming render committed the state of the lanes it rendered, so any
                 // starvation-promoted work is satisfied too — a marker left true on the now-clean fiber
                 // would mis-time a LATER transition's settle (its sweep would be skipped while other lanes
                 // queue).

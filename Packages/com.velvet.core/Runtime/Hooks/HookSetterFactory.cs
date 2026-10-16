@@ -4,46 +4,32 @@ namespace Velvet
 {
     internal static class HookSetterFactory
     {
-        // The caller must invoke this exactly once when the slot is created and cache the resulting
+        // The caller must invoke each Create* exactly once when the slot is created and cache the resulting
         // delegate. Calling it on every render would keep producing unnecessary closures.
-        internal static Action<T> CreateStateSetter<T>(
-            HookStateSlot<T> slot,
-            Func<bool> isDisposed,
-            Action requestRender)
+        internal static Action<T> CreateStateSetter<T>(HookStateSlot<T> slot, ComponentFiber fiber)
+            => newValue => Dispatch(slot, fiber, new StateAction<T>(newValue, null));
+
+        internal static Action<Func<T, T>> CreateStateUpdater<T>(HookStateSlot<T> slot, ComponentFiber fiber)
         {
-            return newValue =>
+            return updater =>
             {
-                if (isDisposed()) return;
-                if (ObjectIs.AreEqual(slot.Value, newValue)) return;
-                slot.Value = newValue;
-                requestRender();
+                if (updater == null) throw new ArgumentNullException(nameof(updater));
+                Dispatch(slot, fiber, new StateAction<T>(default!, updater));
             };
         }
 
-        // The reducer is updated via the slot on every render, so the latest function is always used.
-        // Deliberate design choice here: dispatch applies the reducer EAGERLY against the latest
-        // committed reducer/state, rather than queuing actions and replaying them through the reducer captured
-        // at the next render. For a pure reducer the two are observationally identical —
-        // multiple dispatches in one tick chain through slot.Value in order, giving the same fold. They
-        // diverge only when the reducer FUNCTION is swapped on every render (a discouraged anti-pattern):
-        // a queue-and-replay model would re-run against the render-time reducer, whereas this uses the latest. A
-        // queue-and-replay path would add ordering/batching complexity (and regression surface) to benefit only
-        // that anti-pattern, so eager application is kept on purpose.
-        // The caller must invoke this exactly once when the slot is created and cache the resulting
-        // delegate. Calling it on every render would keep producing unnecessary closures.
         internal static Action<TAction> CreateReducerDispatch<TState, TAction>(
-            ReducerSlot<TState, TAction> slot,
-            Func<bool> isDisposed,
-            Action requestRender)
+            ReducerSlot<TState, TAction> slot, ComponentFiber fiber)
+            => action => Dispatch(slot, fiber, action);
+
+        private static void Dispatch<TState, TAction>(
+            HookUpdateQueueSlot<TState, TAction> slot, ComponentFiber fiber, TAction action)
         {
-            return action =>
+            if (fiber.IsDisposed) return;
+            if (slot.Enqueue(action, FiberWorkLoop.HookUpdateLane(fiber)))
             {
-                if (isDisposed()) return;
-                var newState = slot.Reducer(slot.Value, action);
-                if (ObjectIs.AreEqual(slot.Value, newState)) return;
-                slot.Value = newState;
-                requestRender();
-            };
+                FiberWorkLoop.RequestRenderFromHook(fiber);
+            }
         }
     }
 }

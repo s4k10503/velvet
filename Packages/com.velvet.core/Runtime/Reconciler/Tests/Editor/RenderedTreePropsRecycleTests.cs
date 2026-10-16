@@ -335,6 +335,77 @@ namespace Velvet.Tests
                 "A UseState-held node's props bag must stay rented out while the slot can re-emit it");
         }
 
+        // The same pattern with writes queued: a render that skips a transition write hides the node a state held
+        // while the write, or the state it is replayed over, still names it. Each of the three slots below leaves the
+        // node it began with reachable through exactly one of them once the render has hidden it: the state the
+        // skipped write is replayed over, the committed state, or a skipped write's own node.
+        private static StateUpdater<VNode> s_setBaseNode;
+        private static StateUpdater<VNode> s_setValueNode;
+        private static StateUpdater<VNode> s_setPayloadNode;
+        private static TransitionStarter s_queuedStart;
+        private static VNode s_baseNode;
+        private static VNode s_valueNode;
+        private static VNode s_payloadNode;
+
+        [Component]
+        private static VNode QueuedNodesHost()
+        {
+            var count = Hooks.UseStore(s_store, x => x);
+            var (baseHeld, setBase) = Hooks.UseState(() => s_baseNode = V.Button(text: "base-initial"));
+            var (valueHeld, setValue) = Hooks.UseState(() => s_valueNode = V.Button(text: "value-initial"));
+            var (payloadHeld, setPayload) = Hooks.UseState(() => s_payloadNode = V.Button(text: "payload-initial"));
+            var (_, start) = Hooks.UseTransition();
+            s_setBaseNode = setBase;
+            s_setValueNode = setValue;
+            s_setPayloadNode = setPayload;
+            s_queuedStart = start;
+            var shown = count % 2 == 0;
+            return V.Div(name: "queued-host", children: new VNode[]
+            {
+                V.Label(text: "count-" + count),
+                shown ? baseHeld : null,
+                shown ? valueHeld : null,
+                shown ? payloadHeld : null,
+            });
+        }
+
+        [Test]
+        public void Given_QueuedWritesAcrossLanes_When_TheUrgentRenderHidesTheNodesTheStatesHeld_Then_EachNodeAQueueStillNamesStaysOutOfThePool()
+        {
+            // Arrange — every slot has an urgent write and a transition write queued, and the store write hides
+            // all three nodes in the same render
+            using var store = new CounterStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(QueuedNodesHost, key: "queued-host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var initialBase = s_baseNode;
+            var initialValue = s_valueNode;
+            var initialPayload = s_payloadNode;
+            var bagOfBase = ((ElementNode)initialBase).Props;
+            var bagOfValue = ((ElementNode)initialValue).Props;
+            var bagOfPayload = ((ElementNode)initialPayload).Props;
+            // The base slot skips the transition write first, so the state it is replayed over is the initial node
+            s_queuedStart.Invoke(() => s_setBaseNode.Invoke(V.Button(text: "base-transition")));
+            s_setBaseNode.Invoke(V.Button(text: "base-urgent"));
+            // The value slot ends on the initial node again, through an updater that carries no node of its own
+            s_setValueNode.Invoke(V.Button(text: "value-urgent"));
+            s_queuedStart.Invoke(() => s_setValueNode.Invoke(V.Button(text: "value-transition")));
+            s_setValueNode.Invoke(_ => initialValue);
+            // The payload slot's transition write carries the initial node
+            s_setPayloadNode.Invoke(V.Button(text: "payload-urgent"));
+            s_queuedStart.Invoke(() => s_setPayloadNode.Invoke(initialPayload));
+            store.Increment();
+
+            // Act
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(
+                (OwnedPropsContains(bagOfBase), OwnedPropsContains(bagOfValue), OwnedPropsContains(bagOfPayload)),
+                Is.EqualTo((true, true, true)),
+                "A node the state it is replayed over, the committed state or a skipped write names must stay rented out");
+        }
+
         // A memoized LIST of nodes (List<VNode> satisfies the covariant IReadOnlyList probe) toggled
         // out and back: the slot protection must see through the list wrapper.
         [Component]

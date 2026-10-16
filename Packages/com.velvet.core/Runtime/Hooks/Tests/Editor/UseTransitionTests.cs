@@ -58,8 +58,9 @@ namespace Velvet.Tests
     /// component — a synchronous one when its callback returns, an async one on its own completion — even
     /// while another slot's transition work is still queued on the same fiber and even while another slot's
     /// in-flight action writes to it.</item>
-    /// <item>A transition committed by a subsuming parent render clears its pending flag even when a
-    /// <c>UseDeferredValue</c> in the same component holds the transition lane queued.</item>
+    /// <item>A render that does not drain the Transition lane leaves the transition's queued writes queued, and
+    /// the transition pending, whether it is the component's own or an ancestor's pass subsuming it; the
+    /// Transition-lane pass that does drain them commits them and settles the transition.</item>
     /// <item>A discrete update on the same component keeps its urgent priority while an async transition is in
     /// flight there, unless the handler wrapped it in a <c>startTransition</c> of its own.</item>
     /// <item>Calling the hook outside a render throws an <see cref="InvalidOperationException"/>.</item>
@@ -1359,62 +1360,80 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region A deferred value holding the same lane
+        #region A transition write queued under a subsuming pass
 
         [Test]
-        public void Given_ATransitionCommittedByASubsumingRender_When_ADeferredValueHoldsTheTransitionLane_Then_IsPendingClears()
+        public void Given_AChildsQueuedTransitionWrite_When_AParentsNormalPassSubsumesTheChild_Then_TheWriteStaysQueuedWithItsFlagLit()
         {
-            // Arrange — the child holds both hooks, and its transition queues work the parent's next render
-            // commits along with the new prop
-            using var mounted = V.Mount(_root,
-                V.Component(DeferredTransitionParentRender, key: "deferred-transition-parent"));
-            s_deferredChildStart.Invoke(() => s_deferredChildSetCount.Invoke(1));
-            var pendingBeforeParentRender = s_deferredChildFiber.TransitionSlots[0].IsPending;
+            // Arrange — the child holds the state and the hook, and its transition queues a write
+            using var mounted = V.Mount(_root, V.Component(QueueParentRender, key: "queue-parent"));
+            s_queueChildStart.Invoke(() => s_queueChildSetCount.Invoke(11));
 
-            // Act — the parent's state change re-renders the child inline with the new prop; the child's body
-            // re-queues the transition lane for the deferred value while that render runs
-            s_deferredParentSetQuery.Invoke("beta");
-            FiberWorkLoop.FlushState(s_deferredParentFiber);
+            // Act — the parent's state change re-renders the child inline with the new prop, on the Normal lane
+            s_queueParentSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_queueParentFiber);
+            var shownBySubsumingPass = _root.Q<Label>("queue-child-out").text;
+            var pendingAfterSubsumingPass = s_queueChildFiber.TransitionSlots[0].IsPending;
+            FiberWorkLoop.FlushState(s_queueChildFiber);
 
-            // Assert — four terms, because the pending flag being false proves nothing unless the transition
-            // was pending to begin with, its content is on screen, and the deferred value's lane is still there
+            // Assert — three terms: the flag proves nothing unless the write is still uncommitted, and the
+            // last reading is the child's own Transition-lane flush, which the subsuming pass must have kept
             Assert.That(
-                (pendingBeforeParentRender,
-                 _root.Q<Label>("deferred-transition-out").text,
-                 s_deferredChildFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
-                 s_deferredChildFiber.TransitionSlots[0].IsPending),
-                Is.EqualTo((true, "alpha:1", true, false)),
-                "isPending belongs to the slot that queued the work, not to whoever holds the transition lane");
+                (shownBySubsumingPass, pendingAfterSubsumingPass, _root.Q<Label>("queue-child-out").text),
+                Is.EqualTo(("10:1", true, "11:1")),
+                "A pass that does not render the Transition lane leaves the write queued and its transition pending");
         }
 
-        private static StateUpdater<string> s_deferredParentSetQuery;
-        private static ComponentFiber s_deferredParentFiber;
-        private static ComponentFiber s_deferredChildFiber;
-        private static TransitionStarter s_deferredChildStart;
-        private static StateUpdater<int> s_deferredChildSetCount;
+        // GREEN_ON_BASE(characterization): the base wrote the state at the call, so the subsuming pass already
+        // showed the write and discharged the child; a Transition-lane pass has to keep doing both.
+        [Test]
+        public void Given_AChildsQueuedTransitionWrite_When_AParentsTransitionPassSubsumesTheChild_Then_TheWriteCommitsAndTheFlagClears()
+        {
+            // Arrange — the same callback writes the child's state and the parent's
+            using var mounted = V.Mount(_root, V.Component(QueueParentRender, key: "queue-parent"));
+            s_queueChildStart.Invoke(() =>
+            {
+                s_queueChildSetCount.Invoke(11);
+                s_queueParentSetTick.Invoke(1);
+            });
+
+            // Act — the parent's flush drains the Transition lane, so it renders the child's write
+            FiberWorkLoop.FlushState(s_queueParentFiber);
+
+            // Assert
+            Assert.That(
+                (_root.Q<Label>("queue-child-out").text, s_queueChildFiber.TransitionSlots[0].IsPending),
+                Is.EqualTo(("11:1", false)),
+                "A Transition-lane pass that subsumes a child commits its queued write and settles the transition");
+        }
+
+        private static StateUpdater<int> s_queueParentSetTick;
+        private static ComponentFiber s_queueParentFiber;
+        private static ComponentFiber s_queueChildFiber;
+        private static TransitionStarter s_queueChildStart;
+        private static StateUpdater<int> s_queueChildSetCount;
 
         [Component]
-        private static VNode DeferredTransitionParentRender()
+        private static VNode QueueParentRender()
         {
-            s_deferredParentFiber = FiberAmbientStack.Current;
-            var (query, setQuery) = Hooks.UseState("alpha");
-            s_deferredParentSetQuery = setQuery;
+            s_queueParentFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_queueParentSetTick = setTick;
             return V.Div(children: new VNode[]
             {
-                V.Component(DeferredTransitionChildRender, query, key: "deferred-transition-child"),
+                V.Component(QueueChildRender, tick, key: "queue-child"),
             });
         }
 
         [Component]
-        private static VNode DeferredTransitionChildRender(string query)
+        private static VNode QueueChildRender(int tick)
         {
-            s_deferredChildFiber = FiberAmbientStack.Current;
-            var (count, setCount) = Hooks.UseState(0);
+            s_queueChildFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(10);
             var (_, start) = Hooks.UseTransition();
-            s_deferredChildStart = start;
-            s_deferredChildSetCount = setCount;
-            var deferred = Hooks.UseDeferredValue(query);
-            return V.Label(name: "deferred-transition-out", text: $"{deferred}:{count}");
+            s_queueChildStart = start;
+            s_queueChildSetCount = setCount;
+            return V.Label(name: "queue-child-out", text: $"{count}:{tick}");
         }
 
         #endregion

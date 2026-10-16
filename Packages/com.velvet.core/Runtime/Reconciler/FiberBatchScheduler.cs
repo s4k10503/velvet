@@ -363,8 +363,8 @@ namespace Velvet
                     // wiping that lane would strand its delayed-tier work (a StartTransition left
                     // isPending forever). A Transition lane that starvation-promoted to Normal DURING
                     // the runaway (the cap exceeds the starvation threshold) is dropped with it —
-                    // acceptable: state slots are written eagerly, so the last committed render already
-                    // showed the transition's values, and the pending-flag sweep below spares an async
+                    // acceptable: the transition's updates stay queued in their slots, and the next render that
+                    // skips them asks for their lane again; the pending-flag sweep below spares an async
                     // action still in flight.
                     FiberLogger.LogError("Scheduler",
                         "Maximum update depth exceeded. A component repeatedly schedules state"
