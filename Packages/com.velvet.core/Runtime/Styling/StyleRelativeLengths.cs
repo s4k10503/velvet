@@ -95,6 +95,19 @@ namespace Velvet
             return true;
         }
 
+        // length snapped as the browser snaps a border width to element's device pixels: under one device pixel
+        // to one, any other down to a whole number of them, the sign kept. Unsnapped off a panel.
+        public static float SnapAsBorderWidth(VisualElement element, float length)
+        {
+            if (length == 0f || element.panel == null)
+            {
+                return length;
+            }
+            var perPixel = element.panel.scaledPixelsPerPoint;
+            var devicePixels = Math.Abs(length) * perPixel;
+            return Math.Sign(length) * (devicePixels < 1f ? 1f : (float)Math.Floor(devicePixels)) / perPixel;
+        }
+
         // written, or what element measures expression to (no percentage), which is 0 until it can.
         public static float MeasureOr(VisualElement element, StyleLengthExpression? expression, float written)
             => expression == null ? written : TryMeasure(element, expression, 0f, out var px) ? px : 0f;

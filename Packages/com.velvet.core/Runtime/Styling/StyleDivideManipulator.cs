@@ -259,8 +259,10 @@ namespace Velvet
             }
         }
 
-        // The divider's width on child: the border is the child's, so the child measures a measured one.
-        private float WidthOn(VisualElement child) => StyleRelativeLengths.MeasureOr(child, _spec.WidthMeasured, _spec.Width);
+        // The divider's width on child: the border is the child's, so the child measures a measured one, and it is
+        // snapped as a border width.
+        private float WidthOn(VisualElement child)
+            => StyleRelativeLengths.SnapAsBorderWidth(child, StyleRelativeLengths.MeasureOr(child, _spec.WidthMeasured, _spec.Width));
 
         // Whether the child's own declaration of slot beats the divide's. An ordinary divide yields to any of
         // the child's own, an important one to its important ones alone: the divide's selector has zero

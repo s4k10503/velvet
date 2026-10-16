@@ -9,7 +9,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies a length only an element can measure — here an em under a 20px font — in each utility family that
-    /// writes its value through its own path rather than an inline length: border widths, radii, translate,
+    /// writes its value through its own path rather than an inline length: border widths (snapped to device
+    /// pixels as the browser snaps them), radii, translate,
     /// transform-origin, blur, gap and space margins, divide widths, ring and outline offsets, and leading.
     /// </summary>
     internal sealed class MeasuredLengthPanelTests
@@ -81,6 +82,27 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(First.resolvedStyle.borderTopWidth, Is.EqualTo(4f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AFractionalBorderWidth_When_Settled_Then_ItIsSnappedDownToDevicePixels()
+        {
+            // Act
+            Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] border-solid border-[2.75px]");
+
+            // Assert
+            var perPixel = First.panel.scaledPixelsPerPoint;
+            Assert.That(First.resolvedStyle.borderTopWidth, Is.EqualTo(Mathf.Floor(2.75f * perPixel) / perPixel).Within(0.001f));
+        }
+
+        [Test]
+        public void Given_ABorderWidthUnderADevicePixel_When_Settled_Then_ItIsOneDevicePixel()
+        {
+            // Act
+            Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] border-solid border-[0.25px]");
+
+            // Assert
+            Assert.That(First.resolvedStyle.borderTopWidth, Is.EqualTo(1f / First.panel.scaledPixelsPerPoint).Within(0.001f));
         }
 
         [Test]

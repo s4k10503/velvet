@@ -32,3 +32,5 @@
   box beside one, and a clip-path or gradient length a percentage added to a length (`calc(100%_-_10px)`).
 - An `overline` sits with its top edge on the first line's ascent line, as Chromium draws one, where it sat 15% of
   the font size below it.
+- A bracketed border width or `divide-*` width is snapped to the panel's device pixels as the browser snaps a border
+  width (`border-[2.75px]` is 2.5px at two device pixels a point, `border-[0.25px]` one device pixel).
