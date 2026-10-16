@@ -487,7 +487,7 @@ namespace Velvet
             if (due == null) return;
             for (var i = 0; i < due.Count; i++)
             {
-                FiberErrorBoundary.ReportCaughtError(ctx, due[i].Error, due[i].Info);
+                FiberErrorBoundary.ReportCaughtError(ctx, boundary, due[i].Error, due[i].Info);
             }
         }
 

@@ -7,9 +7,8 @@ namespace Velvet
     //
     // An exception thrown by an effect setup or cleanup is routed to the owning fiber's nearest Error
     // Boundary via ComponentBoundarySearch.PropagateException — the same path a render-phase throw takes —
-    // so an effect error triggers the boundary fallback. When no boundary exists,
-    // PropagateException falls back to Debug.LogException, so an effect error is always logged even
-    // without one.
+    // so an effect error triggers the boundary fallback, or, with no boundary above, the unmount of the
+    // tree V.Mount made.
     internal static class HookEffectExecutor
     {
         // mountDoubleInvoke must be false on update commits: doubling there would tear down and re-establish

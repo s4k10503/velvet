@@ -13,7 +13,7 @@ namespace Velvet.Tests
     /// Pins <c>AnimationSequenceStep.Await</c> on the EditMode fake clock, with the harness
     /// <see cref="UseAnimationSequenceTests"/> uses: the cursor holds until the task settles and not past it,
     /// time left over from before a pending await counts toward no hold after it, a pause holds a settled wait, a fault reaches the error
-    /// boundary, and a restart or unmount cancels the wait it leaves and keeps that wait's late settle out of the
+    /// boundary, or with none the root, which unmounts the tree, and a restart or unmount cancels the wait it leaves and keeps that wait's late settle out of the
     /// sequence it starts.
     /// </summary>
     internal sealed class UseAnimationSequenceAwaitTests
@@ -505,19 +505,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAwaitStepWithNoErrorBoundary_When_ItsTaskFaultsAndTwoFramesTick_Then_TheNextStepIsCurrent()
+        public void Given_AnAwaitStepWithNoErrorBoundary_When_ItsTaskFaultsAndAFrameTicks_Then_TheRootUnmountsTheHostsElement()
         {
-            // Arrange — with no boundary the fault is logged, once.
+            // Arrange — with no boundary the root takes the fault, and logs it once.
             s_steps = AwaitThenB();
             Mount(SequenceHost);
+            var childrenBefore = _host.Root.childCount;
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: await probe"));
             s_sources[0].SetException(new InvalidOperationException("await probe"));
 
             // Act
-            AdvanceTicks(2);
+            AdvanceTicks(1);
 
-            // Assert
-            Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
+            // Assert — counted against the target's children before, so whatever else the panel root holds stays out
+            Assert.That(childrenBefore - _host.Root.childCount, Is.EqualTo(1));
         }
 
         [Test]

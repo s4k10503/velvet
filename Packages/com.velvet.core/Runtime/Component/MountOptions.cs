@@ -25,5 +25,15 @@ namespace Velvet
         /// clock of the application's own keeps that motion in step with game time. See <see cref="Velvet.MotionClock"/>.
         /// </summary>
         public MotionClock MotionClock { get; init; } = MotionClock.Realtime;
+
+        /// <summary>
+        /// Called when the tree unmounts for an error no error boundary in it caught — React's
+        /// <c>onUncaughtError</c>. It is called once the tree has unmounted, with the exception and an
+        /// <see cref="ErrorInfo"/> carrying the component stack and an empty <see cref="ErrorInfo.ErrorBoundary"/>.
+        /// An error an effect cleanup throws while that unmount runs is reported after it, and one thrown while
+        /// <see cref="MountedTree.Dispose"/> runs is reported as it is thrown. When null, the exception is logged
+        /// with <c>Debug.LogException</c>. An exception the handler throws is logged.
+        /// </summary>
+        public Action<Exception, ErrorInfo>? OnUncaughtError { get; init; }
     }
 }

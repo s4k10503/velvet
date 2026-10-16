@@ -149,8 +149,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_FirstOfTwoSubscriptionsThrowsOnUnsubscribe_When_Unmounted_Then_TheSecondIsStillRemoved()
         {
-            // Arrange — a whole-tree dispose marks the root disposed before unmounting it, so the contained
-            // exception's walk toward a boundary stops at the root and logs nothing
+            // Arrange — the root being disposed reports the contained exception as uncaught
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: unsubscribe failed");
             s_sourceA = new ExternalSource<int>(0) { ThrowOnUnsubscribe = true };
             s_sourceB = new ExternalSource<int>(0);
             var mounted = V.Mount(_root, V.Component(TwoStoresRender, key: "two"));
@@ -166,7 +166,7 @@ namespace Velvet.Tests
         public void Given_UnsubscribeThatThrows_When_TheReaderAloneUnmounts_Then_TheExceptionIsLogged()
         {
             // Arrange — with the host still mounted, the contained exception's walk reaches the live root, which
-            // is no boundary, and is logged
+            // unmounts the tree and logs it
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: unsubscribe failed");
             s_sourceA = new ExternalSource<int>(0) { ThrowOnUnsubscribe = true };
             using var mounted = V.Mount(_root, V.Component(ToggledReaderHostRender, key: "host"));

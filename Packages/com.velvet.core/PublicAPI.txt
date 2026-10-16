@@ -980,6 +980,7 @@
 [Velvet] property Velvet.MotionVariant.Transition: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.MountOptions.MotionClock: Velvet.MotionClock
 [Velvet] property Velvet.MountOptions.OnCaughtError: System.Action`2[System.Exception, Velvet.ErrorInfo]?
+[Velvet] property Velvet.MountOptions.OnUncaughtError: System.Action`2[System.Exception, Velvet.ErrorInfo]?
 [Velvet] property Velvet.MutableRef`1[T].Current: T
 [Velvet] property Velvet.MutateOptions`2[TVariables, TData].CancellationToken: System.Threading.CancellationToken
 [Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnError: System.Action`3[System.Exception, TVariables, System.Object?]?

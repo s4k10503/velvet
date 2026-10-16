@@ -1,5 +1,4 @@
 using System;
-using System.Text.RegularExpressions;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine;
@@ -16,7 +15,6 @@ namespace Velvet.Tests
     /// <item>An update queued on the component while it was suspended is satisfied by that render: the reveal
     /// commits it without rendering the component again, including after the component committed a transition's
     /// work earlier.</item>
-    /// <item>A render that throws satisfies nothing, so the reveal renders the component again for the update.</item>
     /// <item>A lane that render asks for again survives it, so a deferred value the render left pending still
     /// commits.</item>
     /// <item>A component holding a transition's work keeps it queued through a render that suspends on a
@@ -40,7 +38,6 @@ namespace Velvet.Tests
             s_forceIndicator = null;
             s_resourceKey = "first";
             s_keyedTask = VelvetTask.FromResult("a");
-            s_throwOnRender = false;
         }
 
         [Test]
@@ -125,27 +122,6 @@ namespace Velvet.Tests
                 "Transition work the child already committed does not keep the resolve's render from settling it");
         }
 
-        // GREEN_ON_BASE(characterization): the base never settles at a resolve, so a throwing render keeps its lanes.
-        // The case pins that the settle added here is not reached from a render whose output was not retained.
-        [Test]
-        public void Given_AMemoizedChildWithAnUpdateQueuedWhileSuspended_When_TheRenderItsResolveGivesItThrows_Then_TheRevealRendersTheUpdate()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(ThrowingHostRender, key: "host"));
-            s_setTick(1);
-            s_throwOnRender = true;
-            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: resolved render failed"));
-
-            // Act — the resolve's render throws; the reveal's does not
-            s_firstSource.TrySetResult("ready");
-            s_throwOnRender = false;
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(_root.Q<Label>(name: "content")?.text, Is.EqualTo("ready-1"),
-                "A render that threw satisfied nothing, so the reveal renders the child with the update it still owes");
-        }
-
         #region Components
 
         private static VelvetTaskCompletionSource<string> s_firstSource;
@@ -156,7 +132,6 @@ namespace Velvet.Tests
         private static Action<int> s_forceIndicator;
         private static string s_resourceKey;
         private static VelvetTask<string> s_keyedTask;
-        private static bool s_throwOnRender;
 
         private static VelvetTask<string> ReadFirst(CancellationToken _) => s_firstSource.Task;
 
@@ -248,22 +223,6 @@ namespace Velvet.Tests
                     fallback: V.Label(text: "loading"),
                     children: new VNode[] { V.Component(KeyedChildRender, key: "child") }),
             });
-
-        [Component(Memoize = true)]
-        private static VNode ThrowingChildRender()
-        {
-            var (tick, setTick) = Hooks.UseState(0);
-            s_setTick = setTick;
-            var value = Hooks.Use<string>(ReadFirst, "first");
-            if (s_throwOnRender) throw new InvalidOperationException("resolved render failed");
-            return V.Label(name: "content", text: $"{value}-{tick}");
-        }
-
-        [Component]
-        private static VNode ThrowingHostRender()
-            => V.Suspense(
-                fallback: V.Label(text: "loading"),
-                children: new VNode[] { V.Component(ThrowingChildRender, key: "child") });
 
         #endregion
     }

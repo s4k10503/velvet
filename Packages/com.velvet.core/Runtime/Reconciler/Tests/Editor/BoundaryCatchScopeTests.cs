@@ -25,9 +25,9 @@ namespace Velvet.Tests
     /// while a sibling's element is kept. The failed output's
     /// pooled nodes go back to the pool, and a boundary catches again on a later update.</item>
     /// <item>Where the fallback's own content throws, it renders once, and the content's error goes to the
-    /// boundary above whether that boundary catches in the walk or aborts its own render. The original error
-    /// goes on after it where no boundary above caught the content's — to a boundary that declined the
-    /// content's error, with the component stack starting at the component that threw, or to the log.</item>
+    /// boundary above whether that boundary catches in the walk or aborts its own render. Where every boundary
+    /// above declines the content's error, the root takes it and unmounts the tree, and the original error goes no
+    /// further.</item>
     /// <item>What the failed output left behind goes with it: an AnimatePresence it rendered keeps no state
     /// of it, an enter it completed without playing reports no completion while one ahead of the boundary
     /// still reports its own, a Suspense fallback it showed is no longer recorded as shown, and a Portal target
@@ -79,7 +79,6 @@ namespace Velvet.Tests
             s_setOwnRowsTick = null;
             s_setSiblingCount = null;
             s_outerSaw = null;
-            s_caughtStacks.Clear();
             s_target = new VisualElement { name = "target" };
             s_callbackSetups = 0;
             s_callbackCleanups = 0;
@@ -720,17 +719,13 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("owner-fallback"));
         }
 
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        // Before that, as characterization: the merge base logs both errors on the aborting path.
-        // The catch taken in the walk passes the original error on after the fallback's own, which this pins.
         [Test]
-        public void Given_AFallbackWhoseContentThrowsWithNoBoundaryAbove_When_ItsChildThrowsOnMount_Then_TheOriginalErrorIsLoggedToo()
+        public void Given_AFallbackWhoseContentThrowsWithNoBoundaryAbove_When_ItsChildThrowsOnMount_Then_OnlyTheContentsErrorIsReported()
         {
-            // Arrange
+            // Arrange — the root takes the content's error and unmounts the boundary with the rest of the tree, so the
+            // error the boundary was showing its fallback for goes no further
             s_throws = true;
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Broken fallback content");
-            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Boundary catch scope throw");
 
             // Act
             using var mounted = V.Mount(_root, V.Component(BrokenAloneHostRender, key: "host"), CaughtErrors.Unlogged);
@@ -1558,7 +1553,6 @@ namespace Velvet.Tests
         #region Where the original error goes after the fallback's own
 
         private static string s_outerSaw;
-        private static readonly System.Collections.Generic.List<string> s_caughtStacks = new();
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
         // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
@@ -1575,10 +1569,8 @@ namespace Velvet.Tests
             Assert.That(Texts() + "|" + s_outerSaw, Is.EqualTo("outer-fallback|Broken fallback content"));
         }
 
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
-        public void Given_AnOuterBoundaryThatDeclinesTheFallbacksError_When_TheOriginalErrorGoesOn_Then_ItCatchesThatInTheWalk()
+        public void Given_AnOuterBoundaryThatDeclinesTheFallbacksError_When_NoBoundaryAboveItCatchesThat_Then_TheRootUnmountsTheTree()
         {
             // Arrange
             s_throws = true;
@@ -1588,25 +1580,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(DecliningHostRender, key: "host"), CaughtErrors.Unlogged);
 
             // Assert
-            Assert.That(Texts(), Is.EqualTo("declined-fallback,sibling"));
-        }
-
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        [Test]
-        public void Given_AnOuterBoundaryThatDeclinesTheFallbacksError_When_ItReportsTheOriginalError_Then_TheComponentStackStartsAtTheComponentThatThrew()
-        {
-            // Arrange
-            s_throws = true;
-            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Broken fallback content");
-
-            // Act
-            using var mounted = V.Mount(_root, V.Component(DecliningHostRender, key: "host"),
-                new MountOptions((_, info) => s_caughtStacks.Add(info.ComponentStack)));
-
-            // Assert
-            Assert.That(string.Join("|", s_caughtStacks.Select(stack => stack.Split('\n')[0])),
-                Is.EqualTo("    at BoundaryCatchScopeTests.ThrowerRender"));
+            Assert.That(Texts(), Is.EqualTo(""));
         }
 
         [Component(Compiler = false, IsErrorBoundary = true)]
@@ -1998,11 +1972,12 @@ namespace Velvet.Tests
         private static Func<VNode> s_abortedExitChild;
         private static Action s_abortedExitCallback;
 
-        // A subscription the failed output made is released when the boundary catches, and its unsubscribe fails.
+        // A subscription the failed output made is released when the boundary catches, and its unsubscribe fails. The
+        // failure belongs to a boundary above, and with none mounted the root takes it and unmounts the tree.
         [Test]
-        public void Given_AnUnsubscribeThatFailsInAFailedOutputBelowABoundary_When_TheBoundaryCatchesInTheWalkOfAnElementItMounts_Then_TheFallbackShows()
+        public void Given_AnUnsubscribeThatFailsInAFailedOutputBelowABoundary_When_TheBoundaryCatchesInTheWalkOfAnElementItMounts_Then_TheRootUnmountsTheTree()
         {
-            // Arrange — the failure belongs to a boundary above, and none is mounted, so it is logged
+            // Arrange
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Unsubscribe throw");
             s_throws = true;
 
@@ -2010,11 +1985,11 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(SubscribedFailureHostRender, key: "host"), CaughtErrors.Unlogged);
 
             // Assert
-            Assert.That(Texts(), Is.EqualTo("fallback"));
+            Assert.That(Texts(), Is.EqualTo(""));
         }
 
         [Test]
-        public void Given_AnUnsubscribeThatFailsInAFailedOutputOfABoundary_When_TheBoundaryCatchesInItsOwnReconcile_Then_TheFallbackShows()
+        public void Given_AnUnsubscribeThatFailsInAFailedOutputOfABoundary_When_TheBoundaryCatchesInItsOwnReconcile_Then_TheRootUnmountsTheTree()
         {
             // Arrange
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Unsubscribe throw");
@@ -2024,7 +1999,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(SubscribedFailureBoundaryRender, key: "boundary"), CaughtErrors.Unlogged);
 
             // Assert
-            Assert.That(Texts(), Is.EqualTo("fallback"));
+            Assert.That(Texts(), Is.EqualTo(""));
         }
 
         [Component(Compiler = false)]

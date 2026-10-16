@@ -825,6 +825,13 @@ namespace Velvet
         // Hooks.UseErrorBoundary passes over as react-error-boundary's context passes over React Router's.
         internal bool IsFrameworkErrorBoundary { get; set; }
 
+        // The fiber V.Mount creates. It takes an error no boundary below it caught by rendering nothing, as React's
+        // root renders null, and reports it to MountOptions.OnUncaughtError rather than OnCaughtError. It is not an
+        // IsErrorBoundary, which is public and which Hooks.UseErrorBoundary looks for.
+        internal bool IsMountRoot { get; set; }
+
+        internal bool CatchesErrors => IsErrorBoundary || IsMountRoot;
+
         private ErrorBoundaryReset? _errorBoundaryReset;
 
         internal ErrorBoundaryReset ResetHandle => _errorBoundaryReset ??= new ErrorBoundaryReset(this);

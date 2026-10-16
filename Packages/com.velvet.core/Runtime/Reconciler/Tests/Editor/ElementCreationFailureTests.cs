@@ -231,11 +231,15 @@ namespace Velvet.Tests
                 : new VNode[] { V.Label(key: "old", text: "old"), V.Label(key: "tail", text: "tail") });
         }
 
+        // GREEN_ON_BASE(characterization): the base sets up no effect a failed render built either.
+        // The root now unmounts after the refusal, so the later render the case drove before is gone, and an effect
+        // the failed render had set up would be counted by the unmount's cleanup instead.
         [Test]
-        public void Given_AKeyedRowHoldingAComponentBuiltBeforeASiblingRefusedConstruction_When_TheNextRenderCommits_Then_TheComponentsEffectNeverRuns()
+        public void Given_AKeyedRowHoldingAComponentBuiltBeforeASiblingRefusedConstruction_When_TheRootUnmountsForTheRefusal_Then_TheComponentsEffectNeverRuns()
         {
             // Arrange — the keyed Pass 2 of the first case, with a component mounted inside the leaf it builds,
-            // and no boundary: the host that owns the failed render stays mounted.
+            // and no boundary: the root takes the refusal and unmounts the tree, which would clean up an effect the
+            // failed render had set up.
             s_probeSetUps = 0;
             s_probeCleanUps = 0;
             var root = new VisualElement();
@@ -244,11 +248,9 @@ namespace Velvet.Tests
             try
             {
                 using var mounted = V.Mount(root, V.Component(KeyedRowHostRender, key: "host"));
-                s_rowHostSetTick.Invoke(1);
-                mounted.FlushStateForTest();
 
                 // Act
-                s_rowHostSetTick.Invoke(2);
+                s_rowHostSetTick.Invoke(1);
                 mounted.FlushStateForTest();
                 mounted.FlushEffectsForTest();
 

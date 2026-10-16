@@ -605,47 +605,6 @@ namespace Velvet.Tests
                 "The render loop is bounded by RenderPhaseUpdateLimit");
         }
 
-        [Test]
-        public void Given_RenderPhaseSetStateThenThrow_When_FiberSurvives_Then_CounterResets()
-        {
-            // A render-phase setState bumps the counter, then the re-run throws. The fiber is not unmounted
-            // (root-path exception preserves the previous tree), so the counter must reset on the exception path.
-            // Arrange
-            ResetThrowAfterBump();
-            s_throwAfterBumpTarget = "normalized";
-            s_throwAfterBumpShouldThrow = true;
-            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*ThrowAfterBump boom"));
-
-            // Act
-            using var mounted = V.Mount(_root, V.Component(ThrowAfterBumpRender, key: "throw-after-bump"));
-
-            // Assert — LogAssert.Expect verifies the re-run threw
-            Assert.AreEqual(0, mounted.Root.RenderPhaseSetStateCounter,
-                "The render-phase counter resets even when the loop exits via an exception");
-        }
-
-        [Test]
-        public void Given_RecoveredFiber_When_NextRenderNormalizes_Then_SettlesWithoutTrippingTheLimit()
-        {
-            // Arrange — drive the fiber through the throwing render, then stop throwing
-            ResetThrowAfterBump();
-            s_throwAfterBumpTarget = "normalized";
-            s_throwAfterBumpShouldThrow = true;
-            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*ThrowAfterBump boom"));
-            using var mounted = V.Mount(_root, V.Component(ThrowAfterBumpRender, key: "throw-after-bump"));
-            Assume.That(mounted.Root.RenderPhaseSetStateCounter, Is.EqualTo(0), "Precondition: the counter reset after the throw");
-
-            // Act — a fresh render that itself does a render-phase setState (normalizes once)
-            s_throwAfterBumpShouldThrow = false;
-            s_throwAfterBumpTarget = "renormalized";
-            s_throwAfterBumpSetRaw.Invoke("dirty");
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.AreEqual(("renormalized", 0), (s_throwAfterBumpLastValue, mounted.Root.RenderPhaseSetStateCounter),
-                "The recovery render settles its normalization and returns the counter to zero");
-        }
-
         #endregion
 
         #region Discrete event priority
@@ -800,43 +759,6 @@ namespace Velvet.Tests
             // Unconditional render-phase setState: never bails out, so the render loop hits the limit.
             setValue.Invoke(value + 1);
             return V.Label(text: value.ToString());
-        }
-
-        #endregion
-
-        #region ThrowAfterBump component (render-phase setState then throw on the re-run)
-
-        private static string s_throwAfterBumpTarget;
-        private static bool s_throwAfterBumpShouldThrow;
-        private static string s_throwAfterBumpLastValue;
-        private static Action<string> s_throwAfterBumpSetRaw;
-
-        private static void ResetThrowAfterBump()
-        {
-            s_throwAfterBumpTarget = null;
-            s_throwAfterBumpShouldThrow = false;
-            s_throwAfterBumpLastValue = null;
-            s_throwAfterBumpSetRaw = null;
-        }
-
-        [Component]
-        private static VNode ThrowAfterBumpRender()
-        {
-            var (value, setValue) = Hooks.UseState("initial");
-            s_throwAfterBumpSetRaw = setValue;
-            if (value != s_throwAfterBumpTarget)
-            {
-                // First attempt: render-phase setState bumps the counter before the re-run.
-                setValue.Invoke(s_throwAfterBumpTarget);
-            }
-            else if (s_throwAfterBumpShouldThrow)
-            {
-                // Re-run attempt (value already normalized): throw with a non-zero counter so the exception path
-                // is exercised while the fiber stays mounted (root-path recovery).
-                throw new InvalidOperationException("ThrowAfterBump boom");
-            }
-            s_throwAfterBumpLastValue = value;
-            return V.Label(text: value);
         }
 
         #endregion

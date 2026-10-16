@@ -394,7 +394,7 @@ namespace Velvet
             try
             {
                 if (deferReconcile) return null;
-                if (fiber.IsErrorBoundary) return ReconcileOwnRowsCatching(fiber, oldTree, newTree, frameBudgetMs);
+                if (fiber.CatchesErrors) return ReconcileOwnRowsCatching(fiber, oldTree, newTree, frameBudgetMs);
                 ReconcileOwnRows(fiber, oldTree, newTree, frameBudgetMs);
                 return null;
             }
