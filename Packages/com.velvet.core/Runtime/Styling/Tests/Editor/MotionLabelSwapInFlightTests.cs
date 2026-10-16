@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -64,6 +65,39 @@ namespace Velvet.Tests
 
             // Assert — NaN unless the first play's frame sits between both of its ends.
             Assert.That(frame > 10.5f && frame < 99.5f ? start : float.NaN, Is.EqualTo(frame).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ANativeOpacityTransitionInFlight_When_TheLabelSwaps_Then_TheNewPlayStartsFromThePaint()
+        {
+            // Arrange
+            var element = Mount();
+            var now = 100.0;
+            element.style.opacity = 1f;
+            ForcePanelUpdate(element.panel);
+            EditorPanelTestHelpers.SetPanelTimeFunction(element.panel, () => now);
+            element.style.transitionProperty = new List<StylePropertyName> { new("opacity") };
+            element.style.transitionDuration = new List<TimeValue> { new(2f, TimeUnit.Second) };
+            element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+            ForcePanelUpdate(element.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            element.style.opacity = 0f;
+            ForcePanelUpdate(element.panel);
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            ForcePanelUpdate(element.panel);
+            var paint = element.resolvedStyle.opacity;
+            var from = new[] { "opacity-100" };
+            var to = new[] { "opacity-50" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f,
+                MotionSlotContext.Read(element, from, to, _ => false));
+
+            // Assert — NaN unless the transition is part of the way, so a paint at either end cannot pass by
+            // meeting the swapped-out value.
+            Assert.That(paint > 0.01f && paint < 0.99f ? plan.Opacity?.from ?? float.NaN : float.NaN,
+                Is.EqualTo(paint).Within(1e-5f));
         }
 
         // GREEN_ON_BASE(characterization): the base starts a slot no play drives from the swapped-out value too, and

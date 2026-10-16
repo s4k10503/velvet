@@ -700,11 +700,15 @@ namespace Velvet
             var state = ValidateSpringParameters(stiffness, damping, mass)
                 ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat)
                 : null;
-            // A spring this one interrupts hands on its velocity, read before the cancel below ends it.
-            var interrupted = map.GetValueOrDefault(element)?.Spring;
-            if (state != null && interrupted != null)
+            // A spring or bezier play this one interrupts hands on its velocity, read before the cancel below ends it.
+            var interruptedPlay = map.GetValueOrDefault(element);
+            if (state != null && interruptedPlay?.Spring is { } interrupted)
             {
                 MotionSpringDriver.InheritVelocity(state, interrupted);
+            }
+            else if (state != null && interruptedPlay?.Bezier is { } interruptedBezier)
+            {
+                MotionSpringDriver.InheritVelocity(state, interruptedBezier);
             }
 
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's

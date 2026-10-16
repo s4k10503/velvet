@@ -108,6 +108,8 @@ namespace Velvet
         // takes that from StartFromHeld, in the held play's own unit.
         public bool DrivenByLivePlay(ArbitraryProperty slot) => _drivenByLivePlay(slot);
 
+        public bool NativeTransitionRunning(ArbitraryProperty slot) => HasRunningNativeTransition(slot);
+
         public bool TryReadCurrent(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
         {
             if (slot == ArbitraryProperty.BorderColor)

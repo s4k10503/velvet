@@ -267,7 +267,9 @@ new StyleTransitionConfig
   Framer Motion's spring by the time since the play started. **Interrupting a running spring — a
   label change mid-spring, or an exit cancelled mid-flight — releases a new one from the current
   value *and velocity***, as Framer starts an interrupted value's next animation. A spring that
-  interrupts a bezier play starts at rest, since a bezier play keeps no velocity. An exit whose delta resolves no channel at all completes immediately.
+  interrupts a running `Bezier` play (or a `Tween` the mount's own clock drives) starts with the velocity of the
+  curve at that moment. A spring that interrupts a native CSS transition starts at rest, since Velvet reads no
+  velocity from one, which deviates from Framer. An exit whose delta resolves no channel at all completes immediately.
 - `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
   slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
   so a frame that arrives late moves the spring as far as the time it covers.
@@ -278,13 +280,14 @@ new StyleTransitionConfig
 ## Driven channels (Spring and Bezier)
 
 Both non-CSS drivers write inline styles every tick. A play reads its targets from the swapped-in
-classes and the element's classes left in place. A slot that a running Spring or Bezier play is moving
-starts from that play's current frame. Any other slot starts from the swapped-out value when the
-swapped-out classes name one. Otherwise, on a mounted element, the start is the current inline value,
-or the resolved value when no inline value is set. If a native transition is running on that same
-element and longhand, the play samples its displayed value before cancellation or the class swap. A
-transition on another property does not change this slot's starting value. If the native activity lookup
-is missing or cannot be invoked, the play uses the ordinary inline or resolved start described above.
+classes and the element's classes left in place. A slot that a running Spring or Bezier play, or a
+native transition, is moving starts from the value on screen: that play's current frame, or the
+transition's displayed value sampled before cancellation or the class swap. A slot a `controls.Cancel()`
+hold has taken starts from the held value on the channels both name (see *Timelines*). Any other slot
+starts from the swapped-out value when the swapped-out classes name one. Otherwise, on a mounted element,
+the start is the current inline value, or the resolved value when no inline value is set. A transition
+on another property does not change this slot's starting value. If the native activity lookup is
+missing or cannot be invoked, the play uses the ordinary inline or resolved start described above.
 
 - **The transform quartet.** `opacity` and the `translate` / `scale` / `rotate` trio the transform
   utilities write. Naming one on one side of the delta is enough. When only the from-side names
@@ -313,7 +316,7 @@ is missing or cannot be invoked, the play uses the ordinary inline or resolved s
   from — so a `text-sm` → `text-2xl` delta lands instantly while `text-[14px]` → `text-[24px]`
   animates. Reach for the bracket form when you want the size to move.
 - **The to-side must name a color or length.** A swapped-out value in the target's unit supplies
-  the start unless a running play is moving the slot; otherwise a mounted
+  the start unless a running Spring or Bezier play, or a native transition, is moving the slot; otherwise a mounted
   element supplies its current inline or displayed value. Width and height, including their min/max
   forms, can convert between pixels and percentages through the parent's content box. Other mixed-unit
   pairs, or an off-panel target with no matching-unit start, land instantly. A color or length with no

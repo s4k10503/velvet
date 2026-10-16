@@ -454,6 +454,36 @@ namespace Velvet
             }
         }
 
+        /// <summary>
+        /// <see cref="InheritVelocity(MotionSpringState, MotionSpringState)"/> for a bezier play: each channel the two
+        /// share is released at the bezier channel's slope at its current time.
+        /// </summary>
+        public static void InheritVelocity(MotionSpringState next, BezierTweenState interrupted)
+        {
+            Inherit(next, next.Opacity, interrupted.Opacity, interrupted);
+            Inherit(next, next.TranslateX, interrupted.TranslateX, interrupted);
+            Inherit(next, next.TranslateY, interrupted.TranslateY, interrupted);
+            Inherit(next, next.Scale, interrupted.Scale, interrupted);
+            Inherit(next, next.Rotate, interrupted.Rotate, interrupted);
+            if (next.Lengths != null && interrupted.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    var match = interrupted.Lengths.Find(l => l.Property == length.Property && l.Unit == length.Unit);
+                    Inherit(next, length.Value, match?.Value, interrupted);
+                }
+            }
+        }
+
+        private static void Inherit(MotionSpringState next, SpringChannel? channel, BezierTweenChannel? interrupted,
+            BezierTweenState state)
+        {
+            if (channel != null && interrupted != null)
+            {
+                Release(next, channel, channel.Origin, BezierTweenDriver.VelocityOf(state, interrupted));
+            }
+        }
+
         // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
         public static bool EndsAtFrom(MotionSpringState state) => state.Repeat.EndsAtFrom;
 

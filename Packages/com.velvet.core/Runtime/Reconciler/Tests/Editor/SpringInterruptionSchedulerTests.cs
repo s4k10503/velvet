@@ -7,7 +7,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins that <see cref="StyleAnimationScheduler"/> hands a running spring's velocity to the spring that interrupts
-    /// it on the same element, as Framer Motion starts a value's next animation with the motion value's velocity.
+    /// it on the same element, and a running bezier play's likewise, as Framer Motion starts a value's next animation with the motion value's velocity.
     /// </summary>
     [TestFixture]
     internal sealed class SpringInterruptionSchedulerTests : MotionSimulatedPanelTestsBase
@@ -49,6 +49,32 @@ namespace Velvet.Tests
             // Assert — Framer hands the opacity's rising velocity unscaled to the browser easing, as progress toward
             // opacity 0, which shrinks the displacement from that target the driver's start velocity measures: below
             // zero, where a spring started at rest has zero. NaN when no spring took over.
+            var startVelocity = RunningEnterSpring(element)?.Opacity?.StartVelocity ?? float.NaN;
+            Assert.That(startVelocity, Is.LessThan(0f));
+        }
+
+        [Test]
+        public void Given_AnOpacityBezierRisingPartWay_When_ALabelChangeSendsItBackWithASpring_Then_TheNewSpringStartsWithItsVelocity()
+        {
+            // Arrange — six frames into a linear fade in, the opacity is still rising.
+            _scheduler = new StyleAnimationScheduler();
+            var element = new VisualElement();
+            element.AddToClassList("opacity-100");
+            Root.Add(element);
+            var bezier = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+                DurationSec = 1f,
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, bezier);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-100" }, new[] { "opacity-0" },
+                new StyleTransitionConfig { Type = TransitionType.Spring });
+
+            // Assert — below zero as in the spring case above, which a spring started at rest does not have. NaN
+            // when no spring took over.
             var startVelocity = RunningEnterSpring(element)?.Opacity?.StartVelocity ?? float.NaN;
             Assert.That(startVelocity, Is.LessThan(0f));
         }
