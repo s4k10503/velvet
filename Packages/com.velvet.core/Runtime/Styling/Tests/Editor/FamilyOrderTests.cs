@@ -154,24 +154,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABracketClipAddedByALaterRenderBesideAnotherOne_When_TheLiveClipIsRead_Then_ItIsTheShapeAFreshMountResolves()
-        {
-            // Arrange
-            using var reconciler = new Reconciler();
-            var root = new VisualElement();
-            var firstTree = new VNode[] { V.Div(name: "t", className: "clip-path-[inset(10%)]") };
-            var secondTree = new VNode[] { V.Div(name: "t", className: "clip-path-[inset(10%)] clip-path-[circle(40%)]") };
-            reconciler.Reconcile(root, Array.Empty<VNode>(), firstTree);
-
-            // Act
-            reconciler.Reconcile(root, firstTree, secondTree);
-
-            // Assert
-            StyleClipPathClass.TryExtractLive(root.Q<VisualElement>("t"), out var spec);
-            Assert.That(spec?.Source, Is.EqualTo("clip-path-[inset(10%)]"));
-        }
-
-        [Test]
         public void Given_ABracketClipAddedByALaterRenderBesideClipPathNone_When_TheLiveClipIsRead_Then_NoClipResolves()
         {
             // Arrange

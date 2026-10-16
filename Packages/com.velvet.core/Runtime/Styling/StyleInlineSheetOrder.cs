@@ -231,7 +231,7 @@ namespace Velvet
             var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
             if (StyleSpacingPrecedence.VariantsLength(core) != 0
                 || !StyleArbitraryValueResolver.IsInlineResolved(core)
-                || !StyleArbitraryValueResolver.TryParseLayer(core, out var style))
+                || !StyleArbitraryValueResolver.TryParseLayerQuietly(core, out var style))
             {
                 return false;
             }

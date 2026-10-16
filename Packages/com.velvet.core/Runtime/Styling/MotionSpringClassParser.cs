@@ -479,9 +479,12 @@ namespace Velvet
             }
             if (classes != null)
             {
+                // The place in Tailwind's order, not the position written: two inline tokens of one property settle as
+                // the mounted element settles them (StyleInlineSheetOrder).
+                var places = StyleRuleOrder.OrdinalsOf(classes);
                 for (var i = 0; i < classes.Length; i++)
                 {
-                    Claim(classes[i], i, claims, in importantClasses, swapped: true);
+                    Claim(classes[i], places[i], claims, in importantClasses, swapped: true);
                 }
             }
 

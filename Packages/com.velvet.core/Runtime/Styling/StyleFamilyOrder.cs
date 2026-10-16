@@ -218,14 +218,14 @@ namespace Velvet
 
         private static bool IsSliceToken(string core)
             => StyleArbitraryValueResolver.IsInlineResolved(core)
-                && StyleArbitraryValueResolver.TryParseLayer(core, out var style)
+                && StyleArbitraryValueResolver.TryParseLayerQuietly(core, out var style)
                 && style.Property is ArbitraryProperty.Slice or ArbitraryProperty.SliceX or ArbitraryProperty.SliceY
                     or ArbitraryProperty.SliceTop or ArbitraryProperty.SliceRight or ArbitraryProperty.SliceBottom
                     or ArbitraryProperty.SliceLeft;
 
         private static bool Parses(string core, ArbitraryProperty property)
             => StyleArbitraryValueResolver.IsInlineResolved(core)
-                && StyleArbitraryValueResolver.TryParseLayer(core, out var style) && style.Property == property;
+                && StyleArbitraryValueResolver.TryParseLayerQuietly(core, out var style) && style.Property == property;
 
         private static bool IsZIndexToken(string core)
             => core.StartsWith("z-", StringComparison.Ordinal) || core.StartsWith("-z-", StringComparison.Ordinal);
