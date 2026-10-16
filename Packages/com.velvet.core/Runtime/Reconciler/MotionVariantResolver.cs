@@ -65,7 +65,7 @@ namespace Velvet
                 return baseClasses;
             }
 
-            var parsed = V.ParseClassNames(variant.ClassName);
+            var parsed = PoseClasses(node, variant.ClassName);
             if (parsed.Length == 0)
             {
                 variantClasses = Array.Empty<string>();
@@ -85,6 +85,21 @@ namespace Velvet
             Array.Copy(own, merged, own.Length);
             Array.Copy(parsed, 0, merged, own.Length, parsed.Length);
             return merged;
+        }
+
+        // A pose's classes as they apply over the node's own: a family the node's own list rejects without a
+        // variant holds at its identity under every pose (StyleCompositeRejection.WithoutFamiliesRejectedIn).
+        // Every pose a node applies — resting, enter, exit — is read through here.
+        public static string[] PoseClasses(MotionNode node, string? className)
+            => StyleCompositeRejection.WithoutFamiliesRejectedIn(node.ClassNames ?? Array.Empty<string>(),
+                V.ParseClassNames(className));
+
+        // PoseClasses as the class string a transition carries: the string as written where nothing is taken out.
+        public static string PoseClassName(MotionNode node, string? className)
+        {
+            var parsed = V.ParseClassNames(className);
+            var applied = StyleCompositeRejection.WithoutFamiliesRejectedIn(node.ClassNames ?? Array.Empty<string>(), parsed);
+            return ReferenceEquals(applied, parsed) ? className ?? string.Empty : string.Join(" ", applied);
         }
 
         // Framer Motion's isControllingVariants over the labels a MotionNode can name: naming any of them, the

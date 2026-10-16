@@ -102,15 +102,15 @@ namespace Velvet
 
         // tokens without a composite family the browser discards (StyleCompositeRejection), as NormalizeSpacing leaves
         // them, with the tokens of each family a C# resolver folds from the whole list put in Tailwind's order
-        // (StyleFamilyOrder); tokens itself when nothing moves.
+        // (StyleFamilyOrder); tokens itself when nothing moves. The families it rejected without a variant are
+        // remembered against the array it returns, the one a caller holds for WithoutFamiliesRejectedIn.
         internal static string[] Normalize(string[] tokens)
         {
-            tokens = StyleCompositeRejection.WithoutRejectedComposites(tokens);
-            if (tokens.Length < 2)
-            {
-                return tokens;
-            }
-            return StyleFamilyOrder.Sorted(NormalizeSpacing(tokens));
+            var rejected = StyleCompositeRejection.RejectedEverywhere(tokens);
+            var composed = StyleCompositeRejection.WithoutRejectedComposites(tokens);
+            var normalized = composed.Length < 2 ? composed : StyleFamilyOrder.Sorted(NormalizeSpacing(composed));
+            StyleCompositeRejection.Remember(normalized, rejected);
+            return normalized;
         }
 
         // tokens without the inline token a later stylesheet class or inline token of its property writes in full, and

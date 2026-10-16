@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace Velvet
 {
@@ -12,8 +13,10 @@ namespace Velvet
     // Tailwind's own CSS; RejectedCompositeTests pins it. A rejection without a variant applies always, so it
     // takes the family under every variant too. One behind a variant applies while that variant does, so the
     // family's tokens there are replaced by the family's identity values, which outrank the base tokens while the
-    // variant holds. A while*Class, pose or transition list is normalized on its own, so a rejection in the
-    // element's own list does not reach it.
+    // variant holds. A list normalized on its own — a V.Motion pose — reads the families its element's own list
+    // rejected without a variant through WithoutFamiliesRejectedIn. The gesture, presence and drag channels add
+    // stylesheet classes only, which the inline identity values hold against; RejectedCompositeLayerTests pins
+    // both layers.
     internal static class StyleCompositeRejection
     {
         private enum Family
@@ -39,6 +42,47 @@ namespace Velvet
                 "saturate-[1]", "sepia-[0]",
             },
         };
+
+        // Each normalized list's families rejected without a variant, as a mask of 1 << Family, for the lists
+        // layered over it. Keyed by the array the parse cache hands out for the list, which it keeps stable.
+        private static readonly ConditionalWeakTable<string[], StrongBox<int>> s_rejectedEverywhere = new();
+
+        // The mask of families tokens rejects without a variant.
+        internal static int RejectedEverywhere(string[] tokens)
+        {
+            var mask = 0;
+            foreach (var token in tokens)
+            {
+                if (TryRead(token, out var variants, out var family, out _, out var isRejected) && isRejected
+                    && variants.Length == 0)
+                {
+                    mask |= 1 << (int)family;
+                }
+            }
+            return mask;
+        }
+
+        // Records mask against normalized, the list the normalizer handed back for tokens it read it from.
+        internal static void Remember(string[] normalized, int mask)
+        {
+            if (mask != 0)
+            {
+                s_rejectedEverywhere.AddOrUpdate(normalized, new StrongBox<int>(mask));
+            }
+        }
+
+        // layer without its tokens of a family owner, the list it is layered over, rejected without a variant:
+        // that rejection holds the family at its identity under every layer, as a base rule's does in the browser.
+        internal static string[] WithoutFamiliesRejectedIn(string[] owner, string[] layer)
+        {
+            if (!s_rejectedEverywhere.TryGetValue(owner, out var box))
+            {
+                return layer;
+            }
+            var mask = box.Value;
+            return Array.FindAll(layer, token => !(TryRead(token, out _, out var family, out _, out _)
+                && (mask & (1 << (int)family)) != 0));
+        }
 
         // tokens with each family whose tokens hold a value the browser rejects written as that family's identity at
         // the variants where the rejection applies; tokens itself when there is none.
