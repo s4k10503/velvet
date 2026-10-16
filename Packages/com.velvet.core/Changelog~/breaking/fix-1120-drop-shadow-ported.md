@@ -13,6 +13,12 @@
   them to an `<input>` alone. They were on the outer control, where they also reached a declared `label:`.
   The transition utilities (`transition-*`, `duration-*`, `ease-*`) land on both, so a change to a box's
   background or filter tweens; they were on the control alone, which left the box's changes instant.
+- `shadow-*` presets are Tailwind v4's, layers and all: `shadow-lg` is `0 10px 15px -3px` and `0 4px 6px -4px`,
+  both black at 10%, where it was one soft tinted glow on Velvet's own scale. `shadow-2xs` and `shadow-xs` are
+  added. Each layer is drawn as CSS draws it: the spread grows or shrinks the box with CSS's corner-radius
+  rule, the blur is a Gaussian of half the blur radius, nothing is drawn inside the element's border box, and
+  the first layer is on top. A translucent background no longer shows the shadow through it.
+  `shadow-[…]` takes a comma-separated list of shadows, and rejects a negative blur.
 - `drop-shadow` is a reserved name in `VelvetFilters.Register`.
 - The box-shadow shader is named `Velvet/BoxShadow`; it was `Velvet/DropShadow`. A shader opted out under
   **Project Settings ▸ Velvet** is saved by name, so an opt-out made under the old name has to be made again.

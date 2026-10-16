@@ -167,8 +167,8 @@ namespace Velvet.Tests
             // Act
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg") });
 
-            // Assert: lg preset blur.
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Blur, Is.EqualTo(34f));
+            // Assert: the lg preset's front layer blur.
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Blur, Is.EqualTo(15f));
         }
 
         [Test]
@@ -180,8 +180,8 @@ namespace Velvet.Tests
             // Act
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg") });
 
-            // Assert: lg preset alpha (--color-shadow base, stepped per preset).
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Color.a, Is.EqualTo(0.28f).Within(0.001f));
+            // Assert: the lg preset's front layer alpha.
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Color.a, Is.EqualTo(0.1f).Within(0.001f));
         }
 
         [Test]
@@ -194,7 +194,7 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg") });
 
             // Assert
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Spread, Is.EqualTo(0f));
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Spread, Is.EqualTo(-3f));
         }
 
         [Test]
@@ -283,13 +283,13 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: "shadow-lg", name: "card") };
             Mount(scope, before);
-            Assume.That(Binding(scope, scope.Root[0]).Spec.Blur, Is.EqualTo(34f));
+            Assume.That(Binding(scope, scope.Root[0]).Layers[0].Blur, Is.EqualTo(15f));
 
             // Act: lg → md on the same element (linear patch, no key change).
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Div(className: "shadow-md", name: "card") });
 
             // Assert
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Blur, Is.EqualTo(22f));
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Blur, Is.EqualTo(6f));
         }
 
         // Patch: class removal (detach)

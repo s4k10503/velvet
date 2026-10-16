@@ -66,7 +66,7 @@ namespace Velvet
                 return;
             }
 
-            var spec = default(ShadowSpec);
+            var spec = System.Array.Empty<ShadowSpec>();
             var want = !clipActive && StyleShadowClass.TryExtract(classNames, out spec);
 
             // ApplySkewOnPatch ran before this (the shared pass order), so the SkewBindings entry is in its
@@ -78,7 +78,7 @@ namespace Velvet
             {
                 BoxShadowSilhouette.Sync(element, binding, new BoxShadowSyncRequest
                 {
-                    Spec = spec,
+                    Layers = spec,
                     ClassNames = classNames,
                     SkewXDeg = skew.XDeg,
                     SkewYDeg = skew.YDeg,

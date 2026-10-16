@@ -3,23 +3,21 @@ using UnityEngine;
 
 namespace Velvet
 {
-    // Bakes the Velvet/BoxShadow SDF shader into a full-size shadow texture and caches the result.
+    // Bakes the Velvet/BoxShadow shader into a full-size texture per box-shadow layer and caches the result.
     // UI Toolkit (6000.3) has no native box-shadow, so a shadow-* utility paints a baked
-    // shadow texture behind its caster (BoxShadowSilhouette draws it as a single quad in the caster's own
-    // generateVisualContent). The shader is BAKED once (Graphics.Blit) rather than applied as a live
+    // shadow texture behind its caster (BoxShadowSilhouette draws each layer as a single quad in the caster's
+    // own generateVisualContent). The shader is BAKED once (Graphics.Blit) rather than applied as a live
     // per-element material: UITK freezes a custom-material element's draw-command order at first generation,
     // so a shadow first generated under an animating ancestor transform would composite in FRONT of its
-    // caster. The bake produces a WHITE texture with the soft falloff in alpha — the shadow color is applied
+    // caster. The bake produces a WHITE texture with the coverage in alpha — the layer's color is applied
     // as the quad's vertex tint at draw time, so a color change retints without re-baking.
     //
-    // The texture is the FULL silhouette at the caster's pixel size (target + padding per side), upright OR
-    // sheared (skewDeg follows a skewed caster, x and y in degrees). A full-size bake is used for every case because the
-    // in-element paint draws ONE quad; the size-keyed LRU cache below bounds the per-size bakes.
+    // The texture covers ShadowRect at one texel per pixel, upright OR sheared (skewDeg follows a skewed
+    // caster, x and y in degrees); the LRU cache below bounds the per-shape bakes.
     internal static class BoxShadowBaker
     {
-        // Bleed margin added around the blur so the soft edge is not clipped by the quad. Public so the paint
-        // binding can size and offset the draw quad to match the bake.
-        internal const float ExtraPadding = 5f;
+        // Margin past three standard deviations, so the quad's edge texels hold no coverage worth drawing.
+        internal const float ExtraPadding = 1f;
 
         private static Shader? s_shader;
 
@@ -27,23 +25,25 @@ namespace Velvet
         // are cached below), so one instance serves every shadow and is disposed once on reconciler teardown.
         private static Material? s_material;
 
-        // Baked SDF silhouettes shared across all shadows, keyed by (corner/blur/spread, target size, skew).
-        // A baked shadow cannot be size-independent (a full-size quad is drawn), so a card that animates
+        // Baked layers shared across all shadows, keyed by (corner/blur/spread/y skew, target size, x skew,
+        // offset). A baked shadow cannot be size-independent (a full-size quad is drawn), so a card that animates
         // through many pixel sizes would otherwise leak one full-quad Texture2D per distinct size. The LRU
         // below caps the cache and evicts the least-recently-used bake; a re-needed size re-bakes.
-        private static readonly Dictionary<(long key, int w, int h, int skewCenti), Texture2D> s_silhouetteCache = new();
+        private static readonly Dictionary<(long shape, int w, int h, int skewCenti, long offset), Texture2D>
+            s_silhouetteCache = new();
 
         // Most-recently-used at the TAIL of s_silhouetteLru, least at the HEAD; a node-by-key map keeps
         // touch/evict O(1) and keeps the list in lockstep with the cache (no duplicate or orphaned nodes).
         private const int MaxSilhouetteCacheEntries = 64;
-        private static readonly LinkedList<(long key, int w, int h, int skewCenti)> s_silhouetteLru = new();
-        private static readonly Dictionary<(long key, int w, int h, int skewCenti),
-            LinkedListNode<(long key, int w, int h, int skewCenti)>> s_silhouetteLruNodes = new();
+        private static readonly LinkedList<(long shape, int w, int h, int skewCenti, long offset)> s_silhouetteLru = new();
+        private static readonly Dictionary<(long shape, int w, int h, int skewCenti, long offset),
+            LinkedListNode<(long shape, int w, int h, int skewCenti, long offset)>> s_silhouetteLruNodes = new();
 
-        private static readonly int ShadowColorId = Shader.PropertyToID("_ShadowColor");
         private static readonly int BlurRadiusId = Shader.PropertyToID("_BlurRadius");
         private static readonly int CornerRadiusId = Shader.PropertyToID("_CornerRadius");
+        private static readonly int ShapeRadiusId = Shader.PropertyToID("_ShapeRadius");
         private static readonly int SpreadId = Shader.PropertyToID("_Spread");
+        private static readonly int OffsetId = Shader.PropertyToID("_Offset");
         private static readonly int ElementSizeId = Shader.PropertyToID("_ElementSize");
         private static readonly int SkewXId = Shader.PropertyToID("_SkewX");
         private static readonly int SkewYId = Shader.PropertyToID("_SkewY");
@@ -70,14 +70,13 @@ namespace Velvet
         }
 #endif
 
-        // Returns the cached silhouette for (corner, blur, spread, target size, skew), baking it if absent.
-        // Keeps the returned key warm in the LRU (touched on hit, re-baked if it was evicted) so a caster
-        // re-fetching its own bake never serves a destroyed texture. NB this only protects the key being
-        // fetched: were more than MaxSilhouetteCacheEntries distinct-sized shadows painted in a SINGLE frame,
-        // an earlier caster's already-handed-off texture could be evicted by a later bake that frame — well
-        // beyond any realistic screen, but not an absolute guarantee. Returns null (the caller paints nothing)
-        // when the shader is unavailable / headless.
-        internal static Texture2D? GetOrBakeSilhouette(float corner, float blur, float spread,
+        // Returns the cached bake of one layer for a caster of (targetWidth, targetHeight) with the given corner
+        // radius and skew, baking it if absent. Keeps the returned key warm in the LRU (touched on hit, re-baked
+        // if it was evicted) so a caster re-fetching its own bake never serves a destroyed texture. NB this only
+        // protects the key being fetched: were more than MaxSilhouetteCacheEntries distinct layers painted in a
+        // SINGLE frame, an earlier caster's already-handed-off texture could be evicted by a later bake that
+        // frame. Returns null (the caller paints nothing) when the shader is unavailable / headless.
+        internal static Texture2D? GetOrBakeSilhouette(float corner, in ShadowSpec layer,
             float targetWidth, float targetHeight, Vector2 skewDeg)
         {
             if (targetWidth <= 0f || targetHeight <= 0f)
@@ -89,44 +88,52 @@ namespace Velvet
                 return null;
             }
 
-            var key = (CacheKey(corner, blur, spread, skewDeg.y),
+            var key = (CacheKey(corner, layer.Blur, layer.Spread, skewDeg.y),
                 Mathf.RoundToInt(targetWidth), Mathf.RoundToInt(targetHeight),
-                Mathf.RoundToInt(skewDeg.x * 100f));
+                Mathf.RoundToInt(skewDeg.x * 100f), OffsetKey(layer.OffsetX, layer.OffsetY));
             if (s_silhouetteCache.TryGetValue(key, out var tex) && tex != null)
             {
                 TouchSilhouette(key);
                 return tex;
             }
 
-            tex = BakeSilhouetteTexture(mat, new SilhouetteBakeShape
-            {
-                Corner = corner,
-                Blur = blur,
-                Spread = spread,
-                TargetWidth = targetWidth,
-                TargetHeight = targetHeight,
-                SkewXDeg = skewDeg.x,
-                SkewYDeg = skewDeg.y,
-            });
+            tex = BakeSilhouetteTexture(mat, corner, layer, new Vector2(targetWidth, targetHeight), skewDeg);
             StoreSilhouette(key, tex);
             return tex;
         }
 
-        // The rect the shadow quad covers in the caster's local space: the box padded by blur + ExtraPadding per
-        // side, grown by the shear's overhang about the box centre, and moved by the offset carried through the
-        // same shear, as CSS transforms a shadow with its element, offset included. Upright, it is the padded box
-        // moved by the offset.
-        internal static Rect ShadowRect(float targetWidth, float targetHeight, float blur, Vector2 offset,
-            Vector2 skewDeg)
+        // The rect one layer's quad covers in the caster's local space: the box grown by the spread, padded by
+        // three standard deviations of the blur (half the blur radius) plus ExtraPadding per side, grown by the
+        // shear's overhang about the box centre, and moved by the offset carried through the same shear, as CSS
+        // transforms a shadow with its element, offset included. Upright, it is that padded shape moved by the
+        // offset.
+        internal static Rect ShadowRect(float targetWidth, float targetHeight, in ShadowSpec layer, Vector2 skewDeg)
         {
-            var pad = QuantizePx(blur) + ExtraPadding;
+            var spread = QuantizeSpread(layer.Spread);
+            var pad = Mathf.Ceil(1.5f * QuantizePx(layer.Blur)) + ExtraPadding;
+            var shapeW = Mathf.Max(targetWidth + (2f * spread), 0f);
+            var shapeH = Mathf.Max(targetHeight + (2f * spread), 0f);
             var tanX = Mathf.Tan(skewDeg.x * Mathf.Deg2Rad);
             var tanY = Mathf.Tan(skewDeg.y * Mathf.Deg2Rad);
             var quad = SilhouetteBoundsSpacer.ExpandForShear(
-                new Rect(-pad, -pad, targetWidth + (2f * pad), targetHeight + (2f * pad)), tanX, tanY);
-            var sheared = new Vector2(((1f + (tanX * tanY)) * offset.x) + (tanX * offset.y),
-                (tanY * offset.x) + offset.y);
+                new Rect(((targetWidth - shapeW) * 0.5f) - pad, ((targetHeight - shapeH) * 0.5f) - pad,
+                    shapeW + (2f * pad), shapeH + (2f * pad)), tanX, tanY);
+            var sheared = new Vector2(((1f + (tanX * tanY)) * layer.OffsetX) + (tanX * layer.OffsetY),
+                (tanY * layer.OffsetX) + layer.OffsetY);
             return new Rect(quad.position + sheared, quad.size);
+        }
+
+        // CSS Backgrounds 3's spread rule for the shadow shape's corner radius: the spread is added to the
+        // caster's radius, floored at zero, and where a positive spread exceeds the radius it is first scaled by
+        // 1 + (r - 1)^3, r being the radius over the spread, so a square corner stays square.
+        internal static float SpreadRadius(float radius, float spread)
+        {
+            if (spread > radius && spread > 0f)
+            {
+                var ratio = (radius / spread) - 1f;
+                return radius + (spread * (1f + (ratio * ratio * ratio)));
+            }
+            return Mathf.Max(radius + spread, 0f);
         }
 
         // The pixel size the silhouette is baked at for a shadow rect of that size. The paint binding sizes its
@@ -171,38 +178,28 @@ namespace Velvet
         // same key would share whichever raw-float texture baked first, giving a subpixel-off shadow.
         internal static float QuantizePx(float v) => Mathf.Clamp(Mathf.RoundToInt(v), 0, 0xFFFF);
 
-        private readonly struct SilhouetteBakeShape
-        {
-            public float Corner { get; init; }
-            public float Blur { get; init; }
-            public float Spread { get; init; }
-            public float TargetWidth { get; init; }
-            public float TargetHeight { get; init; }
-            public float SkewXDeg { get; init; }
-            public float SkewYDeg { get; init; }
-        }
+        // As QuantizePx for the spread, which may be negative.
+        internal static float QuantizeSpread(float v) => Mathf.Clamp(Mathf.RoundToInt(v), short.MinValue, short.MaxValue);
 
-        // Bakes the silhouette at the exact quad pixel size (target + padding per side), so the stretched
-        // quad is texel-accurate. The shader unshears the sample coordinate, so the SDF evaluates the upright
-        // rounded box while the rendered alpha follows the slant. White RGB; alpha is the soft falloff.
-        private static Texture2D BakeSilhouetteTexture(Material mat, in SilhouetteBakeShape shape)
+        // Bakes one layer at the exact quad pixel size, so the stretched quad is texel-accurate. The shader
+        // unshears the sample coordinate, so the shape evaluates upright while the rendered alpha follows the
+        // slant. White RGB; alpha is the coverage.
+        private static Texture2D BakeSilhouetteTexture(Material mat, float corner, in ShadowSpec layer,
+            Vector2 target, Vector2 skewDeg)
         {
-            var corner = QuantizePx(shape.Corner);
-            var blur = QuantizePx(shape.Blur);
-            var spread = QuantizePx(shape.Spread);
-            var targetWidth = shape.TargetWidth;
-            var targetHeight = shape.TargetHeight;
-            var rect = ShadowRect(targetWidth, targetHeight, blur, Vector2.zero,
-                new Vector2(shape.SkewXDeg, shape.SkewYDeg));
+            var radius = QuantizePx(corner);
+            var spread = QuantizeSpread(layer.Spread);
+            var rect = ShadowRect(target.x, target.y, layer, skewDeg);
             QuadSize(rect.size, out var qw, out var qh);
 
-            mat.SetColor(ShadowColorId, Color.white);
-            mat.SetFloat(BlurRadiusId, blur);
-            mat.SetFloat(CornerRadiusId, corner);
+            mat.SetFloat(BlurRadiusId, QuantizePx(layer.Blur));
+            mat.SetFloat(CornerRadiusId, radius);
+            mat.SetFloat(ShapeRadiusId, SpreadRadius(radius, spread));
             mat.SetFloat(SpreadId, spread);
-            mat.SetVector(ElementSizeId, new Vector4(targetWidth, targetHeight, rect.width, rect.height));
-            mat.SetFloat(SkewXId, Mathf.Tan(shape.SkewXDeg * Mathf.Deg2Rad));
-            mat.SetFloat(SkewYId, Mathf.Tan(shape.SkewYDeg * Mathf.Deg2Rad));
+            mat.SetVector(OffsetId, new Vector4(OffsetPx(layer.OffsetX), OffsetPx(layer.OffsetY), 0f, 0f));
+            mat.SetVector(ElementSizeId, new Vector4(target.x, target.y, rect.width, rect.height));
+            mat.SetFloat(SkewXId, Mathf.Tan(skewDeg.x * Mathf.Deg2Rad));
+            mat.SetFloat(SkewYId, Mathf.Tan(skewDeg.y * Mathf.Deg2Rad));
 
             var tex = SilhouetteBakeReadback.Bake(mat, qw, qh, new SilhouetteBakeSettings
             {
@@ -223,7 +220,7 @@ namespace Velvet
         // Inserts a freshly baked silhouette and evicts the least-recently-used bake (destroying its texture)
         // when the cache would exceed its cap. A null bake (shader unresolved) is not cached so it re-attempts.
         // Re-storing an already-present key replaces its texture and just refreshes recency (no duplicate node).
-        private static void StoreSilhouette((long key, int w, int h, int skewCenti) key, Texture2D tex)
+        private static void StoreSilhouette((long shape, int w, int h, int skewCenti, long offset) key, Texture2D tex)
         {
             if (tex == null)
             {
@@ -259,7 +256,7 @@ namespace Velvet
 
         // Marks an existing key most-recently-used (moves its node to the tail) on a cache hit — O(1) via the
         // node map, so a frequently re-hit silhouette pays no linear scan.
-        private static void TouchSilhouette((long key, int w, int h, int skewCenti) key)
+        private static void TouchSilhouette((long shape, int w, int h, int skewCenti, long offset) key)
         {
             if (s_silhouetteLruNodes.TryGetValue(key, out var node))
             {
@@ -269,15 +266,21 @@ namespace Velvet
         }
 
         // Round to whole pixels and pack (corner, blur, spread) into one key, with the y skew in hundredths of a
-        // degree in the top 16 bits, which the 16-bit corner field leaves free. Uses the SAME QuantizePx as the
-        // bake so the key never disagrees with the baked texture.
+        // degree in the top 16 bits. Uses the SAME quantizers as the bake so the key never disagrees with the
+        // baked texture.
         private static long CacheKey(float corner, float blur, float spread, float skewYDeg)
         {
             long c = (long)QuantizePx(corner);
             long b = (long)QuantizePx(blur);
-            long s = (long)QuantizePx(spread);
+            long s = (ushort)(short)QuantizeSpread(spread);
             long y = (ushort)(short)Mathf.Clamp(Mathf.RoundToInt(skewYDeg * 100f), short.MinValue, short.MaxValue);
             return (y << 48) | (c << 32) | (b << 16) | s;
         }
+
+        // The offset in hundredths of a pixel, as the bake reads it, since it places the caster's cut-out.
+        private static float OffsetPx(float v) => Mathf.RoundToInt(v * 100f) / 100f;
+
+        private static long OffsetKey(float x, float y)
+            => ((long)Mathf.RoundToInt(x * 100f) << 32) | (uint)Mathf.RoundToInt(y * 100f);
     }
 }
