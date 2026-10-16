@@ -17,7 +17,8 @@
 - A value the browser rejects in one utility of a family Tailwind composes through one declaration — translate,
   per-axis and uniform scale, skew, the filters — leaves the family at its identity wherever the rejecting class
   applies, as the browser discards the shared declaration: `translate-x-4 translate-y-[10]` no longer translates
-  along x, `translate-y-[10] hover:translate-x-4` does not translate on hover either, and
+  along x, `translate-y-[10] hover:translate-x-4` does not translate on hover either, nor under a `V.Motion`
+  pose or a `whileHoverClass` naming the family, and
   `drop-shadow-lg blur-[2]` no longer draws its drop shadow. `blur-[-2px]` is declined.
 - `ring` is 1px, Tailwind v4's default ring width, where it was 3px, and a ring or outline naming no colour is
   drawn in the element's text colour, as v4's `var(--tw-ring-color, currentcolor)` and `outline-color`'s

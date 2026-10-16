@@ -91,6 +91,9 @@ browser discards the declaration they share: `translate-x-4 translate-y-[10]` tr
 `blur-sm brightness-[abc]` filters nothing, and `drop-shadow-lg blur-[2]` loses its drop shadow. A rejection
 without a variant holds under every variant (`translate-y-[10] hover:translate-x-4` never translates), and one
 behind a variant holds while the variant does (`translate-x-4 hover:translate-y-[10]` translates until hovered).
+A rejection without a variant in an element's own `className` holds under its `V.Motion` poses and under the
+stylesheet classes `whileHoverClass` and the other class channels add, and a pose that rejects a value holds
+the element's own family at its identity while the element rests at that pose.
 A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with them.
 
 ## Lengths only an element can measure
