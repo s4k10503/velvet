@@ -97,6 +97,8 @@ namespace Velvet
 
         private const string NamedTextSizePrefix = "text-";
 
+        private const string GridUtility = "grid";
+
         private static int[] BuildTailwindIndex()
         {
             var index = new int[s_longhands.Length];
@@ -350,6 +352,12 @@ namespace Velvet
             else
             {
                 set = StyleUtilityProperties.TryGet(core, out var rule) ? rule.Properties : StyleLonghandSet.Empty;
+            }
+            if (core == GridUtility)
+            {
+                // Sorts as the display utility it stands for, not by the direction and wrap its rule also writes to
+                // realise the display. StyleSheetTailwindOrderTests pins where flex, grid and hidden fall.
+                set = StyleLonghandSet.Of(StyleLonghand.Display);
             }
             var order = new List<int>();
             var count = 0;

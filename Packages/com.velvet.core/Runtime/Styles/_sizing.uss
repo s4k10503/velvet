@@ -6,7 +6,6 @@
 /* ============================= */
 
 .size-0 { width: var(--space-0); height: var(--space-0); }
-.size-px { width: var(--space-px); height: var(--space-px); }
 .size-0-5 { width: var(--space-0-5); height: var(--space-0-5); }
 .size-1 { width: var(--space-1); height: var(--space-1); }
 .size-1-5 { width: var(--space-1-5); height: var(--space-1-5); }
@@ -40,10 +39,10 @@
 .size-72 { width: var(--space-72); height: var(--space-72); }
 .size-80 { width: var(--space-80); height: var(--space-80); }
 .size-96 { width: var(--space-96); height: var(--space-96); }
-
-/* Size - Special */
-.size-full { width: 100%; height: 100%; }
 .size-auto { width: auto; height: auto; }
+.size-full { width: 100%; height: 100%; }
+.size-px { width: var(--space-px); height: var(--space-px); }
+
 /* Fractional sizes (size-1/2 .. size-11/12) resolve via StyleArbitraryValueResolver — USS cannot spell '/'. */
 
 /* ============================= */
@@ -51,7 +50,6 @@
 /* ============================= */
 
 .w-0 { width: var(--space-0); }
-.w-px { width: var(--space-px); }
 .w-0-5 { width: var(--space-0-5); }
 .w-1 { width: var(--space-1); }
 .w-1-5 { width: var(--space-1-5); }
@@ -85,10 +83,10 @@
 .w-72 { width: var(--space-72); }
 .w-80 { width: var(--space-80); }
 .w-96 { width: var(--space-96); }
-
-/* Width - Special */
-.w-full { width: 100%; }
 .w-auto { width: auto; }
+.w-full { width: 100%; }
+.w-px { width: var(--space-px); }
+
 /* Fractional widths (w-1/2 .. w-11/12) resolve via StyleArbitraryValueResolver — USS cannot spell '/'. */
 
 /* ============================= */
@@ -96,7 +94,6 @@
 /* ============================= */
 
 .h-0 { height: var(--space-0); }
-.h-px { height: var(--space-px); }
 .h-0-5 { height: var(--space-0-5); }
 .h-1 { height: var(--space-1); }
 .h-1-5 { height: var(--space-1-5); }
@@ -130,17 +127,16 @@
 .h-72 { height: var(--space-72); }
 .h-80 { height: var(--space-80); }
 .h-96 { height: var(--space-96); }
-
-/* Height - Special */
-.h-full { height: 100%; }
 .h-auto { height: auto; }
+.h-full { height: 100%; }
+.h-px { height: var(--space-px); }
+
 
 /* ============================= */
 /* Min Width                     */
 /* ============================= */
 
 .min-w-0 { min-width: 0; }
-.min-w-px { min-width: var(--space-px); }
 .min-w-0-5 { min-width: var(--space-0-5); }
 .min-w-1 { min-width: var(--space-1); }
 .min-w-1-5 { min-width: var(--space-1-5); }
@@ -175,13 +171,13 @@
 .min-w-80 { min-width: var(--space-80); }
 .min-w-96 { min-width: var(--space-96); }
 .min-w-full { min-width: 100%; }
+.min-w-px { min-width: var(--space-px); }
 
 /* ============================= */
 /* Max Width                     */
 /* ============================= */
 
 .max-w-0 { max-width: 0; }
-.max-w-px { max-width: var(--space-px); }
 .max-w-0-5 { max-width: var(--space-0-5); }
 .max-w-1 { max-width: var(--space-1); }
 .max-w-1-5 { max-width: var(--space-1-5); }
@@ -216,13 +212,13 @@
 .max-w-80 { max-width: var(--space-80); }
 .max-w-96 { max-width: var(--space-96); }
 .max-w-full { max-width: 100%; }
+.max-w-px { max-width: var(--space-px); }
 
 /* ============================= */
 /* Min Height                    */
 /* ============================= */
 
 .min-h-0 { min-height: 0; }
-.min-h-px { min-height: var(--space-px); }
 .min-h-0-5 { min-height: var(--space-0-5); }
 .min-h-1 { min-height: var(--space-1); }
 .min-h-1-5 { min-height: var(--space-1-5); }
@@ -257,13 +253,13 @@
 .min-h-80 { min-height: var(--space-80); }
 .min-h-96 { min-height: var(--space-96); }
 .min-h-full { min-height: 100%; }
+.min-h-px { min-height: var(--space-px); }
 
 /* ============================= */
 /* Max Height                    */
 /* ============================= */
 
 .max-h-0 { max-height: 0; }
-.max-h-px { max-height: var(--space-px); }
 .max-h-0-5 { max-height: var(--space-0-5); }
 .max-h-1 { max-height: var(--space-1); }
 .max-h-1-5 { max-height: var(--space-1-5); }
@@ -298,4 +294,5 @@
 .max-h-80 { max-height: var(--space-80); }
 .max-h-96 { max-height: var(--space-96); }
 .max-h-full { max-height: 100%; }
+.max-h-px { max-height: var(--space-px); }
 

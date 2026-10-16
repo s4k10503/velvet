@@ -252,11 +252,24 @@ namespace Velvet.Tests
             Assert.That(corners, Is.EqualTo("2,6,8,8"));
         }
 
-        // GREEN_ON_BASE(characterization): the base lets the last of two classes that set the same corners hold them.
-        // Letting the first hold them instead reddens both cases.
-        [TestCase("rounded-sm rounded-lg", 8f)]
+        // Tailwind emits rounded-lg before rounded-sm, so the smaller radius holds the corners whichever is written first.
+        [TestCase("rounded-sm rounded-lg", 2f)]
+        [TestCase("rounded-t-sm rounded-t-lg", 2f)]
+        public void Given_RadiusClassesOfOneShadowCasterOnOneProperty_When_TheCornerRadiusIsResolvedWithTheLaterInTailwindsOrderFirst_Then_ItHolds(
+            string classNames, float expected)
+        {
+            // Act
+            var ok = StyleShadowClass.TryResolveCornerRadius(classNames.Split(' '), out var radius);
+
+            // Assert
+            Assert.That((ok, radius), Is.EqualTo((true, expected)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lets the last written of two classes that set the same corners hold them.
+        // Here that is the one Tailwind emits last; letting the first hold them instead reddens both cases.
         [TestCase("rounded-lg rounded-sm", 2f)]
-        public void Given_RadiusClassesOfOneShadowCasterOnOneProperty_When_TheCornerRadiusIsResolved_Then_TheLastWrittenHolds(
+        [TestCase("rounded-t-lg rounded-t-sm", 2f)]
+        public void Given_RadiusClassesOfOneShadowCasterOnOneProperty_When_TheCornerRadiusIsResolvedWithTheLaterInTailwindsOrderLast_Then_ItHolds(
             string classNames, float expected)
         {
             // Act

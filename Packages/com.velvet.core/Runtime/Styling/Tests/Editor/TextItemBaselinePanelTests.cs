@@ -412,6 +412,36 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        [TestCase("truncate overflow-visible")]
+        [TestCase("overflow-visible truncate")]
+        public void Given_ATruncatedLabelWithOverflowVisible_When_Resolved_Then_ItIsNotClippedAndGetsAMinWidth(
+            string labelClass)
+        {
+            // Arrange / Act — Tailwind emits truncate before overflow-visible, so the label shows its overflow.
+            var label = MountLabel("flex flex-row w-[20px]", labelClass, Sentence);
+
+            // Assert
+            Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Undefined));
+        }
+
+        [Test]
+        public void Given_AClippedLabelWithAnMdVisibleVariant_When_ThePanelWidensPastMd_Then_ItGetsAMinWidth()
+        {
+            // Arrange
+            _window.position = new Rect(0, 0, 500, 600);
+            var label = MountLabel("flex flex-row w-[20px]", "overflow-hidden md:overflow-visible", Sentence);
+
+            // Act
+            _window.position = new Rect(0, 0, 1000, 600);
+            ForcePanelUpdate(label.panel);
+            using var evt = EventBase<GeometryChangedEvent>.GetPooled();
+            label.panel.visualTree.SimulateEvent(evt);
+            Settle(label);
+
+            // Assert
+            Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Undefined));
+        }
+
         // GREEN_ON_BASE(characterization): the base writes no minimum at all; what reddens it is the manipulator
         // ignoring the class — a min-w-* class is the author declaring the axis.
         [Test]

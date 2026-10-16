@@ -54,12 +54,12 @@
    which is the box center). skew-x and skew-y are deliberately NOT given static USS presets
    here: StyleSkewClass is the sole parser for those (a static rule would double-dispatch
    against the silhouette manipulator). */
-.origin-center { transform-origin: center center; }
-.origin-top { transform-origin: center top; }
-.origin-top-right { transform-origin: right top; }
-.origin-right { transform-origin: right center; }
-.origin-bottom-right { transform-origin: right bottom; }
 .origin-bottom { transform-origin: center bottom; }
 .origin-bottom-left { transform-origin: left bottom; }
+.origin-bottom-right { transform-origin: right bottom; }
+.origin-center { transform-origin: center center; }
 .origin-left { transform-origin: left center; }
+.origin-right { transform-origin: right center; }
+.origin-top { transform-origin: center top; }
 .origin-top-left { transform-origin: left top; }
+.origin-top-right { transform-origin: right top; }
