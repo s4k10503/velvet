@@ -16,7 +16,8 @@ namespace Velvet.Tests
     /// <item>So do a holder the drain's pass rendered before the work of a descendant it subsumes settled the
     /// transition, and its reader.</item>
     /// <item>So do they when the flush runs outside a drain, whose layout effects run inline, and when the
-    /// settle is the terminal slice of a time-sliced reconcile.</item>
+    /// settle is the terminal slice of a time-sliced reconcile, or the abort of one whose resumed slice throws
+    /// into a boundary above it.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -41,6 +42,8 @@ namespace Velvet.Tests
             s_setTick = default;
             s_setParentTick = default;
             s_fiber = null;
+            s_refuse = false;
+            s_seenInFallback.Clear();
         }
 
         [TearDown]
@@ -146,8 +149,43 @@ namespace Velvet.Tests
                 "The terminal slice reverts its holders ahead of the layout effects it commits");
         }
 
+        [Test]
+        public void Given_ATimeSlicedTransitionReconcile_When_ItsResumedSliceThrowsPastEveryInPassBoundary_Then_TheOuterFallbackReadsTheHolderAndItsReaderWithoutTheEntry()
+        {
+            // Arrange — the row appended past the first slice's budget refuses construction, and the only
+            // boundary is above the fiber being resumed, so the throw leaves the slice rather than being caught in it
+            using var mounted = V.Mount(_root, V.Component(AbortRootRender, key: "abort-root"), CaughtErrors.Unlogged);
+            var sliced = s_fiber;
+            s_refuse = true;
+            s_start.Invoke(() =>
+            {
+                s_add.Invoke("sent");
+                s_setTick.Invoke(1);
+            });
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var shownBefore = ReadLabels();
+            sliced.FlushStateWithTinyBudgetForTest();
+            var parked = sliced.HasPendingReconcileWorkForTest();
+
+            // Act
+            sliced.DrainTimeSlicedReconcileForTest();
+
+            // Assert — the park and the fallback's reading travel with the assertion, so an arrangement that
+            // never threw leaves the reading empty
+            Assert.That((parked, shownBefore, s_seenInFallback.FirstOrDefault()),
+                Is.EqualTo((true, "base+sent|base+sent", "base|base")),
+                "A slice that aborts has settled its transition, so the boundary above reads its holders without the entry");
+        }
+
         private static VisualElement s_observedRoot;
         private static ComponentFiber s_fiber;
+        private static bool s_refuse;
+        private static readonly List<string> s_seenInFallback = new();
+
+        private sealed class ConstructionRefusingElement : VisualElement
+        {
+            public ConstructionRefusingElement() => throw new InvalidOperationException("constructor refused");
+        }
         private static readonly List<string> s_seenAtCommit = new();
         private static Action<string> s_add;
         private static TransitionStarter s_start;
@@ -226,12 +264,39 @@ namespace Velvet.Tests
                 s_seenAtCommit.Add(ReadLabels());
                 return null;
             }));
-            var rows = new VNode[9];
-            for (var i = 0; i < rows.Length; i++)
+            var rows = new VNode[s_refuse ? 10 : 9];
+            for (var i = 0; i < 9; i++)
             {
                 rows[i] = V.Label(text: $"{i}-{tick}");
             }
+            if (s_refuse)
+            {
+                rows[9] = V.Custom<ConstructionRefusingElement>();
+            }
             return V.Fragment(children: rows);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode AbortRootRender()
+        {
+            var (_, start) = Hooks.UseTransition();
+            s_start = start;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(AbortBoundaryRender, key: "boundary"),
+                V.Component(HolderRender, key: "holder"),
+            });
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode AbortBoundaryRender()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_seenInFallback.Add(ReadLabels());
+                return V.Label(text: "fallback");
+            });
+            return V.Component(SlicedRowsRender, key: "rows");
         }
 
         [Component(Compiler = false)]
