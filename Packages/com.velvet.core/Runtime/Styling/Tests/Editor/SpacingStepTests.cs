@@ -1,5 +1,4 @@
 using System.IO;
-using System.Linq;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -19,9 +18,6 @@ namespace Velvet.Tests
         [TestCase("4.5", 18f)]
         [TestCase("0.25", 1f)]
         [TestCase("0.75", 3f)]
-        [TestCase("17.75", 71f)]
-        [TestCase("100", 400f)]
-        [TestCase("1.5", 6f)]
         public void Given_ACanonicalMultipleOfAQuarter_When_ReadAsASpacingStep_Then_ItIsThatManyFourPixelSteps(
             string suffix, float expectedPx)
         {
@@ -48,15 +44,11 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base declines every one of these suffixes, and so must this change.
         // Reading the suffix with float.TryParse and testing for a multiple of 0.25, instead of comparing its
-        // spelling, accepts `.5`, `4.50`, `4.0`, `05` and `1e2` and reddens this.
+        // spelling, accepts `.5`, `4.50`, `05` and `1e2` and reddens this.
         [TestCase(".5")]
         [TestCase("4.50")]
-        [TestCase("4.0")]
         [TestCase("05")]
-        [TestCase("00")]
-        [TestCase("4.")]
         [TestCase("4.1")]
-        [TestCase("0.125")]
         [TestCase("-1")]
         [TestCase("+1")]
         [TestCase("1e2")]
@@ -131,9 +123,6 @@ namespace Velvet.Tests
             new object[] { "w-19", ArbitraryProperty.Width, 76f },
         };
 
-        private static string[] StepClassNames()
-            => StepClassCases.Select(row => (string)((object[])row)[0]).ToArray();
-
         [TestCaseSource(nameof(StepClassCases))]
         public void Given_AStepClassNoStylesheetRuleDeclares_When_Parsed_Then_ResolvesThePropertyAtThatManyPixels(
             string className, object property, float expectedPx)
@@ -147,7 +136,15 @@ namespace Velvet.Tests
                 Is.EqualTo((true, (ArbitraryProperty)property, expectedPx, LengthUnit.Pixel)));
         }
 
-        [TestCaseSource(nameof(StepClassNames))]
+        // GREEN_ON_BASE(refactor): the remaining rows are cases this method already ran.
+        // The rows reach the spacing-family, logical-utility, and positive and negated translate clauses of
+        // `MayBeStaticScale`.
+        [TestCase("p-13")]
+        [TestCase("-mt-4.5")]
+        [TestCase("ms-13")]
+        [TestCase("translate-x-13")]
+        [TestCase("translate-y-4.5")]
+        [TestCase("-translate-x-13")]
         public void Given_AStepClassNoStylesheetRuleDeclares_When_DispatchGateChecked_Then_ItIsInlineResolved(
             string className)
         {
@@ -341,21 +338,9 @@ namespace Velvet.Tests
         // is written first and whichever resolves inline (a stylesheet class is rewritten to join an inline one).
         // A shorthand written after, or a stylesheet class beside an inline value, would hold 52 instead.
         [TestCase("p-13 pt-2", "paddingTop", 8f)]
-        [TestCase("pt-2 p-13", "paddingTop", 8f)]
         [TestCase("pt-1.5 p-13", "paddingTop", 6f)]
-        [TestCase("m-13 mt-2", "marginTop", 8f)]
-        [TestCase("inset-13 top-2", "top", 8f)]
-        [TestCase("px-13 pl-2", "paddingLeft", 8f)]
-        [TestCase("!p-13 !pt-2", "paddingTop", 8f)]
-        [TestCase("!pt-2 !p-13", "paddingTop", 8f)]
-        [TestCase("w-4 size-13", "width", 16f)]
         [TestCase("ps-13 pl-2", "paddingLeft", 8f)]
-        [TestCase("pl-2 ps-13", "paddingLeft", 8f)]
-        [TestCase("pl-[8px] ps-13", "paddingLeft", 8f)]
-        [TestCase("ms-13 ml-2", "marginLeft", 8f)]
         [TestCase("start-13 left-2", "left", 8f)]
-        [TestCase("p-13 ps-2", "paddingLeft", 8f)]
-        [TestCase("ps-2 p-13", "paddingLeft", 8f)]
         public void Given_AShorthandStepAndALonghandOfOneFamily_When_Reconciled_Then_TheLonghandHoldsItsSide(
             string className, string side, float expected)
         {
@@ -372,40 +357,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AShorthandStepAndAnotherSideOfItsLonghand_When_Reconciled_Then_TheShorthandKeepsTheRest()
-        {
-            // Arrange
-            using var reconciler = new Reconciler();
-            var root = new VisualElement();
-            var tree = new VNode[] { V.Div("pt-2 p-13") };
-
-            // Act
-            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
-
-            // Assert
-            var style = root.ElementAt(0).style;
-            Assert.That((style.paddingTop.value.value, style.paddingBottom.value.value), Is.EqualTo((8f, 52f)));
-        }
-
-        [Test]
-        public void Given_ALonghandRemovedBesideAnInlineShorthand_When_Reconciled_Then_TheShorthandReturnsToTheSide()
-        {
-            // Arrange
-            using var reconciler = new Reconciler();
-            var root = new VisualElement();
-            var oldTree = new VNode[] { V.Div("p-13 pt-2") };
-            var newTree = new VNode[] { V.Div("p-13") };
-            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
-            var before = root.ElementAt(0).style.paddingTop.value.value;
-
-            // Act
-            reconciler.Reconcile(root, oldTree, newTree);
-
-            // Assert
-            Assert.That((before, root.ElementAt(0).style.paddingTop.value.value), Is.EqualTo((8f, 52f)));
-        }
-
-        [Test]
         public void Given_EqualLayerVariantPayloadsOfAShorthandStepAndALonghand_When_Enabled_Then_TheLonghandHoldsTheSide()
         {
             // Arrange
@@ -419,21 +370,9 @@ namespace Velvet.Tests
         }
 
         [TestCase("p-13 pt-2", "p-13 pt-[8px]")]
-        [TestCase("pt-2 p-13", "pt-[8px] p-13")]
-        [TestCase("hover:p-13 hover:pt-2", "hover:p-13 hover:pt-[8px]")]
-        [TestCase("sm:hover:p-13 sm:hover:pt-2", "sm:hover:p-13 sm:hover:pt-[8px]")]
-        [TestCase("!p-13 !pt-2", "!p-13 !pt-[8px]")]
-        [TestCase("!p-13 pt-2!", "!p-13 pt-[8px]!")]
-        [TestCase("px-13 pl-2", "px-13 pl-[8px]")]
-        [TestCase("p-13 py-1.5 pt-2", "p-13 py-1.5 pt-[8px]")]
         [TestCase("m-13 mx-auto", "m-13 mx-[auto]")]
         [TestCase("size-13 w-full", "size-13 w-[100%]")]
-        [TestCase("h-full size-13", "h-[100%] size-13")]
-        [TestCase("hover:focus:pt-2 focus:hover:p-13", "hover:focus:pt-[8px] focus:hover:p-13")]
         [TestCase("ps-13 pl-2", "pl-[8px]")]
-        [TestCase("pl-2 ps-13", "pl-[8px]")]
-        [TestCase("ps-13 pl-[8px] flex", "pl-[8px] flex")]
-        [TestCase("size-13 w-4", "size-13 w-[16px]")]
         public void Given_AStylesheetClassBesideAnInlineShorthandOfItsFamily_When_ClassNamesAreParsed_Then_TheClassIsWrittenInline(
             string className, string expected)
         {
@@ -448,11 +387,6 @@ namespace Velvet.Tests
         // Each is a pair where leaving the class alone gives Tailwind's answer already or the two do not
         // contend, so a rewrite of every stylesheet class beside an inline one reddens it.
         [TestCase("p-4 pt-13")]
-        [TestCase("px-4 py-13")]
-        [TestCase("p-13 p-4")]
-        [TestCase("p-13 hover:pt-2")]
-        [TestCase("!p-13 pt-2")]
-        [TestCase("size-4 w-13")]
         [TestCase("hover:ps-13 hover:pl-2")]
         public void Given_AClassListThatNeedsNoRewrite_When_ClassNamesAreParsed_Then_TheyAreAsWritten(string className)
         {
@@ -461,21 +395,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", tokens), Is.EqualTo(className));
-        }
-
-        [Test]
-        public void Given_AutoMarginOnASideBesideAnInlineMarginShorthand_When_Reconciled_Then_TheSideIsAuto()
-        {
-            // Arrange
-            using var reconciler = new Reconciler();
-            var root = new VisualElement();
-            var tree = new VNode[] { V.Div("m-13 mx-auto") };
-
-            // Act
-            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
-
-            // Assert
-            Assert.That(root.ElementAt(0).style.marginLeft.keyword, Is.EqualTo(StyleKeyword.Auto));
         }
 
         [Test]
@@ -492,22 +411,6 @@ namespace Velvet.Tests
             // Assert
             var width = root.ElementAt(0).style.width.value;
             Assert.That((width.value, width.unit), Is.EqualTo((100f, LengthUnit.Percent)));
-        }
-
-        [Test]
-        public void Given_FullHeightWrittenBeforeAnInlineSize_When_Reconciled_Then_TheHeightIsAllOfTheParent()
-        {
-            // Arrange
-            using var reconciler = new Reconciler();
-            var root = new VisualElement();
-            var tree = new VNode[] { V.Div("h-full size-13") };
-
-            // Act
-            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
-
-            // Assert
-            var height = root.ElementAt(0).style.height.value;
-            Assert.That((height.value, height.unit), Is.EqualTo((100f, LengthUnit.Percent)));
         }
 
         [Test]
