@@ -2145,8 +2145,9 @@ namespace Velvet
         {
             if (element != null && s_layers.TryGetValue(element, out var map)) map.RelativePoll?.Stop();
             if (element != null) s_layers.Remove(element);
-            // What the fit records the radius layers as declaring goes with them.
+            // What the fit records the radius layers as declaring goes with them, as does the record of a play's.
             if (element != null) CornerRadiusFit.Release(element);
+            if (element != null) StyleAnimationClassUtils.ForgetShownLayers(element);
         }
 
         // Resolves an inline-value class token to inline style — arbitrary value first, then background

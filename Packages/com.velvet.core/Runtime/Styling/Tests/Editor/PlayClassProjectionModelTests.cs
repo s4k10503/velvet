@@ -46,5 +46,39 @@ namespace Velvet.Tests
             // Assert
             Assert.IsFalse(element.ClassListContains("bg-blue-500"));
         }
+
+        [Test]
+        public void Given_AnElementPooledWhileAPlayShowsABracketWidth_When_ItsNextConsumerDropsThatClass_Then_ItsOwnWidthStays()
+        {
+            // Arrange — the pool drops the element's layers, the play's among them.
+            var element = new VisualElement();
+            StyleAnimationClassUtils.AddClasses(element, new[] { "w-[40px]" }, StyleLayerPriority.Animation,
+                realiseInline: true);
+            FiberElementPoolReset.ResetClassListAndCommon(element, string.Empty, string.Empty);
+            element.style.width = 10f;
+
+            // Act
+            StyleAnimationClassUtils.RemoveClasses(element, new[] { "w-[40px]" });
+
+            // Assert — a record outliving its layer clears a layer that is gone, which nulls the slot.
+            Assert.That(element.style.width.value.value, Is.EqualTo(10f));
+        }
+
+        [Test]
+        public void Given_AClippedElement_When_APlayShowsAnotherClipPathClass_Then_TheMaskFollows()
+        {
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[] { V.Div(className: "clip-path-[circle(50%)]", name: "card") });
+            var inner = scope.Root.Q<VisualElement>("card");
+
+            // Act
+            StyleAnimationClassUtils.AddClasses(inner, new[] { "clip-path-[inset(10%)]" }, StyleLayerPriority.Animation,
+                scope.Reconciler.Context);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ClipPathBindings[inner].Spec.Kind, Is.EqualTo(ClipPathKind.Inset));
+        }
     }
 }

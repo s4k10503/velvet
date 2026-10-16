@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
@@ -333,6 +334,108 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((during, Context.ShadowBindings.ContainsKey(element)), Is.EqualTo((false, true)));
+        }
+
+        // A Motion named "b" entering under an AnimatePresence on a 0.2 s tween from `from` to opacity-100, beside a
+        // reference named "ref" carrying reference.
+        private static VNode EnterBeside(string className, string from, string reference, Type? elementType = null)
+            => V.Div(children: new VNode[]
+            {
+                V.AnimatePresence(children: new VNode[]
+                {
+                    V.Motion(key: "b", name: "b", className: "w-[20px] h-[20px] " + className, elementType: elementType,
+                        transition: new StyleTransitionConfig
+                        {
+                            DurationSec = 0.2f, EnterFromClass = from, EnterToClass = "opacity-100",
+                        }),
+                }),
+                V.Div(name: "ref", className: "w-[20px] h-[20px] " + reference),
+            });
+
+        private static void Hover(VisualElement element)
+        {
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                element.SimulateEvent(over);
+            }
+            ForcePanelUpdate(element.panel);
+        }
+
+        [Test]
+        public void Given_AHoveredElementWithAHoverBackground_When_AnEnterShowsABracketBackground_Then_ThePlaysWinsUntilItsSwap()
+        {
+            // Arrange — the play's layer outranks the hover payload's, as an animation's declaration outranks a
+            // :hover rule, and the hover payload's comes back once the play's class goes.
+            var element = MountOnFakeClock(EnterBeside("bg-[#0000ff] hover:bg-[#00ff00]", "bg-[#ff0000]", ""));
+            Hover(element);
+            var during = element.style.backgroundColor.value;
+
+            // Act
+            Step(element);
+
+            // Assert
+            Assert.That((during, element.style.backgroundColor.value), Is.EqualTo((Color.red, Color.green)));
+        }
+
+        [Test]
+        public void Given_AHoveredElementWithAHoverPaddingClass_When_AnEnterShowsABracketPadding_Then_ThePlaysWinsUntilItsSwap()
+        {
+            // Arrange — a class of a lower rank than the play's layer claiming the same longhand is held off the
+            // element while the layer stands (StyleClassProjection's floors), and comes back after.
+            var element = MountOnFakeClock(EnterBeside("hover:p-8", "p-[6px]", "p-8"));
+            Hover(element);
+            var during = element.resolvedStyle.paddingTop;
+
+            // Act
+            Step(element);
+
+            // Assert
+            var reference = _window.rootVisualElement.Q("ref").resolvedStyle.paddingTop;
+            Assert.That((during, element.resolvedStyle.paddingTop), Is.EqualTo((6f, reference)));
+        }
+
+        [Component]
+        private static VNode GapRowWithEnteringChild()
+            => V.Div(className: "flex flex-row gap-[10px]", children: new VNode[]
+            {
+                V.Div(className: "w-[20px] h-[20px]"),
+                V.AnimatePresence(children: new VNode[]
+                {
+                    V.Motion(key: "b", name: "b", className: "w-[20px] h-[20px]",
+                        transition: new StyleTransitionConfig
+                        {
+                            DurationSec = 0.2f, EnterFromClass = "ml-[3px]", EnterToClass = "opacity-100",
+                        }),
+                }),
+            });
+
+        // GREEN_ON_BASE(characterization): a gap's held child margin outranks a play's bracket margin as it does a child's own.
+        // Make the gap manipulator yield its held margin to the element's layers and this reddens.
+        [Test]
+        public void Given_AGapRowChild_When_AnEnterShowsABracketMargin_Then_TheGapsHeldMarginStands()
+        {
+            // Arrange
+            var element = MountOnFakeClock(V.Component(GapRowWithEnteringChild));
+            var during = element.style.marginLeft.value.value;
+
+            // Act
+            Step(element);
+            Step(element);
+
+            // Assert — the margin the play's ml-[3px] would have replaced is the one the gap holds once it is gone.
+            Assert.That(during, Is.EqualTo(element.style.marginLeft.value.value));
+        }
+
+        [Test]
+        public void Given_AMotionTextField_When_AnEnterShowsABracketBackground_Then_ItsInputBoxTakesIt()
+        {
+            // Arrange / Act — a field control's surface utility lands on the box its value is shown in, as a
+            // payload's does.
+            var element = MountOnFakeClock(EnterBeside("", "bg-[#ff0000]", "", typeof(TextField)));
+            var box = element.Q<VisualElement>(className: StyleChildVariantClass.InputBoxClass);
+
+            // Assert
+            Assert.That(box.style.backgroundColor.value, Is.EqualTo(Color.red));
         }
     }
 }
