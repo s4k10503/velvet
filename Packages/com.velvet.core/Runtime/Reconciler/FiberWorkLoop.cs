@@ -347,6 +347,55 @@ namespace Velvet
         // to inherit.
         internal static void FlushState(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
+            var owedFrom = OwedSettleRenders.Count;
+            s_settleWindowDepth++;
+            try
+            {
+                FlushFiber(fiber, timeSlicedBudgetMs);
+                FlushOwedSettleRenders(owedFrom);
+            }
+            finally
+            {
+                s_settleWindowDepth--;
+                OwedSettleRenders.RemoveRange(owedFrom, OwedSettleRenders.Count - owedFrom);
+            }
+        }
+
+        // The components a settle inside an open FlushState asked for a render, in the order it asked. A window
+        // is one FlushState call, and a nested call's entries sit above its enclosing window's, so each call
+        // reads and removes only the range it opened.
+        private static readonly List<ComponentFiber> OwedSettleRenders = new();
+        private static int s_settleWindowDepth;
+
+        // Called by the settle that takes optimistic entries down. A holder owed a render by a settle inside a
+        // flush is rendered before that flush returns, ahead of the layout effects the drain defers to its end,
+        // so the commit that lands a transition's last work shows the revert in a holder its pass does not reach
+        // and in one it rendered before the settle. A settle outside every flush, an async action completing,
+        // has no commit to join and leaves the render it requested to the scheduler.
+        internal static void OweSettleRender(ComponentFiber holder)
+        {
+            if (s_settleWindowDepth > 0)
+            {
+                OwedSettleRenders.Add(holder);
+            }
+        }
+
+        // Only a holder still holding an immediate-tier lane is flushed, so Transition work it holds for itself
+        // keeps its tier.
+        private static void FlushOwedSettleRenders(int from)
+        {
+            for (var i = from; i < OwedSettleRenders.Count; i++)
+            {
+                var holder = OwedSettleRenders[i];
+                if (FiberLane.SchedulesOnImmediateTier(FiberLane.GetHighestPendingPriority(holder)))
+                {
+                    FlushState(holder);
+                }
+            }
+        }
+
+        private static void FlushFiber(ComponentFiber fiber, double timeSlicedBudgetMs)
+        {
             if (!fiber.IsMounted) return;
             if (!fiber.IsDirty)
             {
