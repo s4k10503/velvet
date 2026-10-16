@@ -696,6 +696,8 @@ namespace Velvet.Tests
             Assert.That(HostChildCount, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base dropped the outer child once the inner presence stopped propagating.
+        // The passive flush and drain added are the ones its settled exit now waits for.
         [Test]
         public void Given_AnInnerPresenceWaitedOn_When_ItStopsPropagatingMidExit_Then_TheOuterChildLeaves()
         {
@@ -705,8 +707,11 @@ namespace Velvet.Tests
             Drain(mounted);
             Frames(3);
 
-            // Act — the inner presence re-renders alone with propagate off, well short of its exit's end.
+            // Act — the inner presence re-renders alone with propagate off, well short of its exit's end; then the
+            // passive flush the outer child's exit settles in, and the render that settle asks for.
             s_propagate.Set(false);
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
             Drain(mounted);
 
             // Assert
