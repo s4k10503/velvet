@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -52,9 +53,27 @@ namespace Velvet
             Both,
         }
 
+        // Keyed by the parsed array, which a cached class string hands back unchanged and nothing mutates, so a
+        // field re-rendered with the same classes keeps the same array, as the reconciler's class diff needs.
+        private static readonly ConditionalWeakTable<string[], string[]> s_routed = new();
+
         // classNames itself when no token is routed, so a field without one allocates nothing and keeps the shared
         // parsed array.
         public static string[] Route(string[] classNames)
+        {
+            if (s_routed.TryGetValue(classNames, out var cached))
+            {
+                return cached;
+            }
+            var result = RouteUncached(classNames);
+            if (!ReferenceEquals(result, classNames))
+            {
+                s_routed.AddOrUpdate(classNames, result);
+            }
+            return result;
+        }
+
+        private static string[] RouteUncached(string[] classNames)
         {
             List<string>? routed = null;
             for (var i = 0; i < classNames.Length; i++)

@@ -130,7 +130,7 @@
 821f581d2bcc	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 830b4a5b18ea	Runtime/Styling/StyleAnimateClass.cs,Runtime/Styling/StyleArbitraryValueResolver.cs
 845c505f58f9	Runtime/Styling/StyleClipPathClass.cs,Runtime/Styling/StyleShadowClass.cs
-8486406c6258	Runtime/Styling/MotionNativeTransitionGuard.cs,Runtime/Styling/StyleAnimationScheduler.cs
+8486406c6258	Runtime/Styling/MotionNativeTransitionGuard.cs,Runtime/Styling/StyleAnimationScheduler.cs,Runtime/Styling/StyleInputBoxSurface.cs
 849992088c36	Runtime/Styling/StyleConditionalVariantManipulator.cs,Runtime/Styling/StyleContainerVariantManipulator.cs
 850c29b9e905	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 85380b9b0309	Runtime/Reconciler/FiberAnimateMotionApplier.cs,Runtime/Reconciler/FiberFilterTransitionApplier.cs

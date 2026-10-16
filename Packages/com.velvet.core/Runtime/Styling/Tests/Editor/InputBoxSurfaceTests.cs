@@ -141,6 +141,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ATextFieldBuiltTwiceWithTheSameClasses_When_ItsClassesAreRouted_Then_BothBuildsShareOneArray()
+        {
+            // Arrange
+            const string classes = "bg-red-500 w-64 rounded-[7px]";
+            var first = V.TextField(className: classes).ClassNames;
+
+            // Act
+            var second = V.TextField(className: classes).ClassNames;
+
+            // Assert
+            Assert.That(second, Is.SameAs(first));
+        }
+
+        [Test]
         public void Given_SurfaceAndLayoutUtilities_When_TheNodeIsBuilt_Then_OnlyTheSurfaceOnesAreScoped()
         {
             // Act
