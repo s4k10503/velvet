@@ -461,6 +461,8 @@ namespace Velvet.Tests
             Assert.That(span, Is.EqualTo(0.0));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads no spring's duration; the physics knob keeps this one's
+        // duration unread once a spring setting none takes its physics from it.
         [Test]
         public void Given_ASpringConfig_When_ItsPlaySpanIsRead_Then_ItIsTheTimeItsChannelTakesToRestNotItsDuration()
         {

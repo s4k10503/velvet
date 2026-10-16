@@ -32,15 +32,14 @@ namespace Velvet.Tests
             ["hidden"] = new MotionVariant("", new StyleTransitionConfig { StaggerChildrenSec = 0.1f }),
         };
 
-        // A coordinator whose exit pose springs its opacity 1 → 0, which Framer's default spring ends at 1.05 s on
-        // the browser, and holds its inheriting children until then. DurationSec, which a spring setting a physics
-        // knob does not read, declares 0.05 s.
+        // A coordinator whose exit pose springs its opacity 1 → 0 on the spring a 0.05 s duration describes, which
+        // ends at 0.05 s, and holds its inheriting children until then; Framer's default spring would end at 1.05 s.
         private static readonly Dictionary<string, MotionVariant> s_springCoordinator = new()
         {
             ["visible"] = "opacity-100",
             ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig
             {
-                Type = TransitionType.Spring, Stiffness = 100f, DurationSec = 0.05f, When = TransitionWhen.BeforeChildren,
+                Type = TransitionType.Spring, DurationSec = 0.05f, When = TransitionWhen.BeforeChildren,
             }),
         };
 
@@ -549,20 +548,23 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ACoordinatorWhoseExitSpringsBeforeChildren_When_TheKeyIsRemoved_Then_ItsChildWaitsForTheSpringToRest()
+        public void Given_ACoordinatorWhoseExitSpringsBeforeChildrenOnADuration_When_TheKeyIsRemoved_Then_ItsChildStartsOnceThatDurationHasRun()
         {
             // Arrange
             using var mounted = MountSettled("coordinator-spring", "a");
             using var keys = s_keyStore;
 
-            // Act — past the 0.05 s the pose declares, well short of the spring's 1.05 s.
+            // Act — one frame, inside the spring's 0.05 s, then twenty, past it and well short of the 1.05 s the
+            // default physics would take.
             keys.Set(string.Empty);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Frames(1);
+            var startedEarly = HasClass("child0", "opacity-0");
             Frames(20);
 
-            // Assert — the coordinator's own exit has swapped and its inheriting child has not started its own.
-            Assert.That((HasClass("spring-coordinator", "opacity-0"), HasClass("child0", "opacity-0")),
-                Is.EqualTo((true, false)));
+            // Assert — the coordinator's own exit has swapped, and its inheriting child started its own only after it.
+            Assert.That((HasClass("spring-coordinator", "opacity-0"), startedEarly, HasClass("child0", "opacity-0")),
+                Is.EqualTo((true, false, true)));
         }
 
         [Test]

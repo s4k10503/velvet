@@ -262,6 +262,8 @@ namespace Velvet.Tests
             Assert.That(delay, Is.EqualTo(float.PositiveInfinity));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads no spring's duration; the physics knob keeps this one's
+        // duration unread once a spring setting none takes its physics from it.
         [Test]
         public void Given_BeforeChildrenOnASpringSwap_When_AChildClaimsItsSlot_Then_ItWaitsUntilTheSpringRests()
         {
