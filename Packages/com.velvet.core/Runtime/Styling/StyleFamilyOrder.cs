@@ -85,7 +85,9 @@ namespace Velvet
         // Puts the base tokens of each family on element's class list in the order of tokens, and the variant payloads
         // a manipulator has appended after them, so a reader that folds the live list ends on the same token a fresh
         // mount would. DiffClassList appends a token it adds, which leaves the live order to the order of the patches.
-        // A token the class list does not hold (one resolved inline) takes no part.
+        // A token the class list does not hold (one resolved inline) takes no part. The set of classes on the element is
+        // the same afterwards, and neither StyleClassProjection.Model nor ClipPathLayoutBox.SyncClasses reads the
+        // order of the list, so nothing that mirrors it needs telling.
         internal static void RestoreLiveOrder(VisualElement element, string[] tokens)
         {
             var sorted = Sorted(tokens);
@@ -185,11 +187,11 @@ namespace Velvet
 
         private static string Core(string token) => StyleArbitraryValueResolver.StripImportant(token, out _);
 
-        // box-shadow is emitted before filter.
+        // Tailwind v4's property-order.ts lists box-shadow before the outline properties and those before filter.
         private static int ShadowLane(string core)
             => core == "drop-shadow" || core.StartsWith("drop-shadow-", StringComparison.Ordinal) ? 1 : 0;
 
-        // box-shadow is emitted before outline.
+        // Same list: the ring's box-shadow properties come before the outline ones.
         private static int RingLane(string core)
             => core == "outline" || core.StartsWith("outline-", StringComparison.Ordinal) ? 1 : 0;
 

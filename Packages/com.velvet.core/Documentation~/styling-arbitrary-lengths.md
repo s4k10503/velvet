@@ -240,7 +240,7 @@ the exceptions are named in the list:
   sizes in the same list;
 - `z-20 z-10` gives 20, `grid-cols-3 grid-cols-2` three columns, `gap-x-4 gap-2` a 4 horizontal gap with a 2
   vertical one, `space-x-*` and `space-y-*`, and `divide-*`;
-- `shadow-*` and `drop-shadow-*`, which declare box-shadow and filter, so `shadow-lg drop-shadow-sm` gives the drop
+- `shadow-*` and `drop-shadow-*`, which declare box-shadow and filter (Tailwind v4's `property-order.ts` lists box-shadow, the ring's before the outline's, ahead of filter), so `shadow-lg drop-shadow-sm` gives the drop
   shadow; `ring-*` and `outline-*`, outline being emitted after the ring, so `ring-0 outline-2` gives a 2px outline;
   `skew-*`, `pointer-events-none` and `pointer-events-auto`, `border-solid` and the other line styles, and
   `animate-*`;
