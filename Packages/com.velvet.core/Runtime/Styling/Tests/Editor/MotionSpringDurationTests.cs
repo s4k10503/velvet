@@ -195,6 +195,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOpacitySpringItsDurationDescribes_When_ReleasedFallingWithAVelocity_Then_ItSolvesForTheValuesOwnVelocity()
+        {
+            // Arrange — an opacity heading for 0, which Framer hands to the browser as an easing over a travel of
+            // 100, released while the value moves at 50 per second. Framer passes the value's own velocity, so
+            // findSpring reads -0.05, where the driver's start velocity on its downward travel would give +0.05.
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-100" }, new[] { "opacity-0" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 351.77878f, damping: 28.13365f, mass: 1f,
+                settleSec: 0.5, description: new DurationSpringDescription(0.5f, 0.25f))!;
+            var moving = new MotionDrawnValues { Opacity = (0.6f, 50f) };
+
+            // Act
+            MotionSpringDriver.ContinueFrom(state, moving, fromDrawn: true);
+
+            // Assert — NaN where the channel kept the state's own physics.
+            var physics = state.Opacity!.Physics;
+            Assert.That(new[] { physics?.Stiffness ?? float.NaN, physics?.Damping ?? float.NaN },
+                Is.EqualTo(new[] { 352.13362f, 28.147835f }).Within(1e-3).Percent);
+        }
+
+        [Test]
         public void Given_AnInstantSpring_When_AskedWhetherASwapStaggeredOnItLandsAtOnce_Then_ItDoesNot()
         {
             // Arrange — Framer's instant animation waits out the delay a stagger adds as it waits out its own.
@@ -218,19 +238,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(runsOnSwap, Is.True);
-        }
-
-        [Test]
-        public void Given_AnInstantSpring_When_AskedWhetherAStaggeredExitOnItAnimates_Then_ItDoes()
-        {
-            // Arrange
-            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f };
-
-            // Act
-            var animates = config.HasExitAnimationAfter(0.1f);
-
-            // Assert
-            Assert.That(animates, Is.True);
         }
 
         [Test]
@@ -340,25 +347,12 @@ namespace Velvet.Tests
             Assert.That(exit.Damping, Is.EqualTo(28.13365f).Within(1e-3).Percent);
         }
 
-        [Test]
-        public void Given_ASpringWithAZeroDuration_When_AskedWhetherItsExitAnimates_Then_ItDoesNot()
-        {
-            // Arrange
-            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f };
-
-            // Act
-            var animates = config.HasExitAnimation;
-
-            // Assert
-            Assert.That(animates, Is.False);
-        }
-
         // GREEN_ON_BASE(characterization): the base counts every spring exit as animated.
         [Test]
-        public void Given_ASpringWithAZeroDurationAndADelay_When_AskedWhetherItsExitAnimates_Then_ItDoes()
+        public void Given_ASpringWithAZeroDuration_When_AskedWhetherItsExitAnimates_Then_ItDoes()
         {
-            // Arrange — Framer's instant animation still waits out its delay.
-            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f, DelaySec = 0.2f };
+            // Arrange — Framer completes an instant exit on the next frame, so its presence still holds the child.
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f };
 
             // Act
             var animates = config.HasExitAnimation;

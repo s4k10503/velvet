@@ -9,9 +9,9 @@
   and a sequence `To` step on one, which holds until the first 50 ms sample at or past the duration.
 - Any `Spring`, physics knobs included, with a `DurationSec` of exactly 0 and no `RepeatDelaySec` is instant,
   as Framer makes a zero-duration transition: it lands on its pose once its `DelaySec` and the stagger its play
-  is given have run, at once where both are none, and repeats nothing. A `V.AnimatePresence` with no
-  `staggerSec` or `delayChildrenSec` removes a child whose undelayed exit is such a spring at once instead of
-  keeping it as an exiting ghost. Such a spring used to play on its physics. A sequence `To` step on one still
+  is given have run, at once where both are none, and repeats nothing. A `V.AnimatePresence` keeps a child
+  whose exit is such a spring until that exit has landed, and removes it on the render after. Such a spring
+  used to play on its physics. A sequence `To` step on one still
   plays, as in Framer's sequence: on its physics knobs where it sets any, and otherwise on the spring a 0.01 s
   duration describes.
 - An enter or label change on a `Spring` or a `Bezier` that interrupts a running `Spring` or `Bezier` enter or

@@ -288,8 +288,9 @@ new StyleTransitionConfig
 - A `DurationSec` of exactly 0 makes any spring instant, physics knobs or not, as Framer makes a
   transition with a zero duration and no `repeatDelay` instant: it lands on its pose once its
   `DelaySec` and the stagger its play is given (`StaggerChildrenSec` / `DelayChildrenSec`, or
-  `V.AnimatePresence`'s) have run, at once where both are none, so a presence with no `staggerSec` or
-  `delayChildrenSec` removes a child whose undelayed exit is such a spring at once. It repeats nothing. A `RepeatDelaySec` above 0 keeps it a spring, as Framer's
+  `V.AnimatePresence`'s) have run, at once where both are none. A presence keeps a child whose exit is
+  such a spring until that exit has landed and removes it on the render after, as Framer completes an
+  instant animation on the next frame rather than as it starts. It repeats nothing. A `RepeatDelaySec` above 0 keeps it a spring, as Framer's
   does. Outside these two cases a spring's play ends when its slowest channel's spring has run the
   duration Framer measures for it (see *Repeating a play*), so a frame that arrives late moves the
   spring as far as the time it covers.

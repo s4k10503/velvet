@@ -1919,7 +1919,7 @@ namespace Velvet
             {
                 if (newKeySet.Contains(key)) continue;
                 if (state.ExitComplete.Contains(key)) continue;
-                if (RemovalPlaysExit(state, key, node, presence)) return true;
+                if (RemovalPlaysExit(state, key, node)) return true;
             }
             return false;
         }
@@ -1953,7 +1953,6 @@ namespace Velvet
         // no-op for the default forward direction, but needed to reverse), so the total has to be known
         // before the first exit is dispatched.
         private int CountAnimatedExits(
-            AnimatePresenceNode presence,
             List<(string key, VNode node)> prevCommitted,
             HashSet<string> newKeySet,
             ReconcilerContext.PresenceBoundaryState state)
@@ -1962,7 +1961,7 @@ namespace Velvet
             foreach (var (key, node) in prevCommitted)
             {
                 if (newKeySet.Contains(key) || state.ExitComplete.Contains(key)) continue;
-                if (RemovalPlaysExit(state, key, node, presence))
+                if (RemovalPlaysExit(state, key, node))
                 {
                     exitCount++;
                 }
@@ -2017,7 +2016,7 @@ namespace Velvet
 
                 var blockEnters = ShouldBlockPresenceEnters(presence, prevCommitted, newKeySet, state);
                 BuildPresenceEmissionPlan(newKeyed, prevCommitted, newKeySet, plan);
-                var exitCount = CountAnimatedExits(presence, prevCommitted, newKeySet, state);
+                var exitCount = CountAnimatedExits(prevCommitted, newKeySet, state);
 
                 // An exit's completion callback normally runs long after this method has returned (a tween's
                 // scheduled timeout, a spring's settled tick). A spring exit whose variant pair touches no
@@ -2262,7 +2261,7 @@ namespace Velvet
                 return;
             }
 
-            if (!RemovalPlaysExit(state, key, node, pass.Presence))
+            if (!RemovalPlaysExit(state, key, node))
             {
                 // No exit animation → immediate removal (skip emitting; the diff reaps the leaves).
                 RemoveGhostAtOnce(in pass, key, node);
@@ -2422,22 +2421,13 @@ namespace Velvet
         // Whether removing key plays an exit at all: its anchor's, a descendant Motion's, or the removal of a
         // propagating presence inside it that still holds children, which is when Framer's inner presence
         // registers with the child and so settles it through its own exit path.
-        private bool RemovalPlaysExit(ReconcilerContext.PresenceBoundaryState state, string key, VNode node,
-            AnimatePresenceNode presence)
+        private bool RemovalPlaysExit(ReconcilerContext.PresenceBoundaryState state, string key, VNode node)
         {
             var anchor = FiberNodeFactory.FindFirstMotionDescendant(node);
-            // An instant spring exit waits out the presence's stagger, so it counts as playing wherever the
-            // presence can give it one: the exit index the stagger is read at is assigned only to the removals
-            // counted here, so this asks whether any slot is delayed rather than which one this removal takes.
-            // DispatchPresenceExits reads the slot it does take, and lands one whose slot is undelayed at once.
-            var delaySec = Math.Max(0f, presence.DelayChildrenSec) + Math.Max(0f, presence.StaggerSec);
-            return AnchorPlaysExit(anchor, delaySec)
-                || CollectDescendantExits(state, key, anchor, into: null, delaySec) > 0
+            return ResolveExitTransition(anchor)?.HasExitAnimation == true
+                || CollectDescendantExits(state, key, anchor, into: null) > 0
                 || PropagatingPresenceHoldsChildren(state, key);
         }
-
-        private static bool AnchorPlaysExit(MotionNode? anchor, float staggerSec)
-            => ResolveExitTransition(anchor)?.HasExitAnimationAfter(staggerSec) == true;
 
         private static bool IsPropagatingPresenceOf(
             ReconcilerContext.PresenceBoundaryState inner,
@@ -2498,11 +2488,10 @@ namespace Velvet
             ReconcilerContext.PresenceBoundaryState state,
             string key,
             MotionNode? anchor,
-            List<ReconcilerContext.PresenceDescendantExit>? into,
-            float staggerSec)
+            List<ReconcilerContext.PresenceDescendantExit>? into)
         {
             if (!state.ChildRoots.TryGetValue(key, out var roots)) return 0;
-            var walk = new DescendantExitWalk { Roots = roots, Anchor = anchor, Into = into, StaggerSec = staggerSec };
+            var walk = new DescendantExitWalk { Roots = roots, Anchor = anchor, Into = into };
             var count = 0;
             foreach (var root in roots)
             {
@@ -2522,8 +2511,6 @@ namespace Velvet
             internal List<VisualElement> Roots { get; init; }
             internal MotionNode? Anchor { get; init; }
             internal List<ReconcilerContext.PresenceDescendantExit>? Into { get; init; }
-            // The presence's stagger for the removal, which a descendant's exit is played with on top of its claim.
-            internal float StaggerSec { get; init; }
         }
 
         // inheritedExit is the exit label an ancestor Motion hands down and frame the orchestration an
@@ -2608,8 +2595,7 @@ namespace Velvet
                 exitTransition = hasPose ? pose.Transition ?? motion.Transition
                     : motion.Exit != null ? motion.Transition : null;
                 exitPoseClass = hasPose ? pose.ClassName : null;
-                // DispatchPresenceExits plays the descendant's exit after both, which an instant spring waits out.
-                if (exitTransition?.HasExitAnimationAfter(walk.StaggerSec + claimSec) == true)
+                if (exitTransition?.HasExitAnimation == true)
                 {
                     if (!ReferenceEquals(motion, walk.Anchor))
                     {
@@ -2765,10 +2751,9 @@ namespace Velvet
                 else runExitComplete();
             }
 
-            var staggerSec = pass.Presence.StaggerDelaySec(tally.ExitIndex, tally.AnimatedExitCount);
-            var anchorPlays = AnchorPlaysExit(ghostMotionNode, staggerSec);
+            var anchorPlays = ResolveExitTransition(ghostMotionNode)?.HasExitAnimation == true;
             var descendants = new List<ReconcilerContext.PresenceDescendantExit>();
-            CollectDescendantExits(state, key, ghostMotionNode, descendants, staggerSec);
+            CollectDescendantExits(state, key, ghostMotionNode, descendants);
             var inners = PresencesRunningExitsUnder(state, key);
             if (!anchorPlays && descendants.Count == 0 && inners == null)
             {
@@ -2789,6 +2774,7 @@ namespace Velvet
                 _ctx.PresenceDescendantExitWaits[exit.Element] = exitWait;
             }
 
+            var staggerSec = pass.Presence.StaggerDelaySec(tally.ExitIndex, tally.AnimatedExitCount);
             // A spring or bezier exit reads the element's inline translate as PlayExit starts it and holds an axis
             // neither pose names there, so a hold lands before it. A tween exit writes its transition in PlayExit,
             // so a hold landed after moves on it where the exit plays on this element, as the resting USS classes

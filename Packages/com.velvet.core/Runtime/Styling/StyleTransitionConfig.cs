@@ -314,16 +314,14 @@ namespace Velvet
 
         /// <summary>
         /// Whether an AnimatePresence exit gated by this config should be treated as animated (kept mounted as
-        /// an exiting ghost) rather than removed instantly. A spring counts as animated unless it lands at once
-        /// (<see cref="SpringLandsAtOnce"/>) — including the degenerate case where the exit's variant pair touches
-        /// no spring-animatable channel at all, which still plays through the spring machinery (completing on its
-        /// own, deferred, rather than being pre-empted by an instant-removal gate keyed on this flag).
+        /// an exiting ghost) rather than removed instantly. A spring counts as animated whatever its duration — an
+        /// instant one (<see cref="SpringIsInstant"/>) included, since Framer Motion completes an instant animation
+        /// on the next frame rather than synchronously, and waits out its delay and stagger first — and so does the
+        /// degenerate case where the exit's variant pair touches no spring-animatable channel at all, which still
+        /// plays through the spring machinery (completing on its own, deferred, rather than being pre-empted by an
+        /// instant-removal gate keyed on this flag).
         /// </summary>
-        internal bool HasExitAnimation => HasExitAnimationAfter(0f);
-
-        // As HasExitAnimation, for an exit a caller delays by additionalDelaySec beyond DelaySec.
-        internal bool HasExitAnimationAfter(float additionalDelaySec)
-            => Type == TransitionType.Spring ? !SpringLandsAtOnceAfter(additionalDelaySec) : DurationSec > 0f;
+        internal bool HasExitAnimation => Type == TransitionType.Spring || DurationSec > 0f;
 
         // Parsed class-name array caches (lazily initialized).
         private string[]? _enterFromClasses;

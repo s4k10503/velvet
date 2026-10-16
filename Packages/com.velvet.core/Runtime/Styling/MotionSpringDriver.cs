@@ -205,8 +205,11 @@ namespace Velvet
                 && state.Repeat.DelaySec == 0f;
             c.Scale = (c.Normalized || accelerated) && travel != 0f ? 100f / System.Math.Abs(travel) : 1f;
             c.StartVelocity = c.Normalized ? 0f : accelerated ? System.Math.Sign(travel) * velocity : velocity * c.Scale;
-            c.Physics = PhysicsAt(state, c.StartVelocity);
-            c.MirroredPhysics = PhysicsAt(state, -c.StartVelocity);
+            // Framer hands the spring the motion value's own velocity on either path, the browser's travel of 100
+            // included, and a mirrored pass the opposite one; a color's progress has none.
+            var valueVelocity = c.Normalized ? 0f : velocity;
+            c.Physics = PhysicsAt(state, valueVelocity);
+            c.MirroredPhysics = PhysicsAt(state, -valueVelocity);
             // A spring with a settle time runs exactly that long on the main thread, and on the browser for the
             // easing Framer samples from it, which ends at the first sample at or past it.
             var pass = state.SettleSec is { } settleSec
@@ -231,9 +234,9 @@ namespace Velvet
             return float.PositiveInfinity;
         }
 
-        // The physics a spring its duration describes solves for when released with `velocity`, the velocity the
-        // driver hands the spring's solution: Framer's spring hands findSpring the value's velocity negated and in
-        // thousandths (its getSpringOptions call). At rest the state's own physics are already that solution.
+        // The physics a spring its duration describes solves for when released with `velocity`, the motion value's
+        // velocity in its units per second: Framer's spring hands findSpring that negated and in thousandths (its
+        // getSpringOptions call). At rest the state's own physics are already that solution.
         private static (float Stiffness, float Damping)? PhysicsAt(MotionSpringState state, float velocity)
         {
             if (state.Description is not { } description || velocity == 0f)
