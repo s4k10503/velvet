@@ -180,8 +180,8 @@ namespace Velvet
             }
         }
 
-        // Whether a Portal's rows are among the tree's: the only elements whose setups the queue can list ahead of
-        // ones that precede them.
+        // Whether a Portal has rows in a target, which mount after the pass that rendered the Portal: the late
+        // arrival SortByTreeOrder places.
         internal bool HasPortalRows => _portalsOf.Count != 0;
 
         // The Portal placeholder whose rows the fiber is the top level of, or null for a fiber that is not.
