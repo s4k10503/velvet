@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -23,23 +22,19 @@ namespace Velvet
         private static FilterFunctionDefinition? s_saturate;
 
         internal static FilterFunctionDefinition? Brightness
-            => IsUsable(s_brightness) ? s_brightness : s_brightness = Build(VelvetShaders.FilterBrightness, "_Brightness", "velvet-brightness");
+            => IsUsable(s_brightness) ? s_brightness : s_brightness = Build(VelvetShaders.FilterBrightness, "_Brightness", FilterNamePrefix + "brightness");
 
         internal static FilterFunctionDefinition? Saturate
-            => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", "velvet-saturate");
+            => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", FilterNamePrefix + "saturate");
 
-        // Every definition Build has handed out, not only the cached two: a shader reimport and the subsystem reset
-        // below both replace the cached one while elements still hold the one they were composed with.
-        private static readonly ConditionalWeakTable<FilterFunctionDefinition, object> s_built = new();
-
-        // First-party is what Build handed out, or what carries the filter-name prefix the first-party builders give
-        // their definitions, so a builder that does not go through Build still counts.
+        // First-party is keyed on the filter-name prefix Build gives its definitions rather than on the cached two: a
+        // shader reimport and the subsystem reset below both replace a cached one while elements still hold the one
+        // they were composed with.
         internal const string FilterNamePrefix = "velvet-";
 
         internal static bool IsFirstParty(FilterFunctionDefinition? definition)
             => definition is not null
-                && (s_built.TryGetValue(definition, out _)
-                    || (definition.filterName?.StartsWith(FilterNamePrefix, System.StringComparison.Ordinal) ?? false));
+                && (definition.filterName?.StartsWith(FilterNamePrefix, System.StringComparison.Ordinal) ?? false);
 
         // A cached definition is reusable only while both it and the material its single pass binds are live.
         // A shader reimport can destroy the pass material out from under a surviving definition; UI Toolkit's
@@ -92,7 +87,6 @@ namespace Velvet
                     },
                 },
             };
-            s_built.Add(def, s_built);
             return def;
         }
 

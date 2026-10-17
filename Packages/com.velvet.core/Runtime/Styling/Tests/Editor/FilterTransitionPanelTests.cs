@@ -2035,6 +2035,30 @@ namespace Velvet.Tests
             Assert.That(element.resolvedStyle.filter.Count(), Is.EqualTo(1));
         }
 
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransitionOverABlurInADroppedChain_When_TheCustomIsRemoved_Then_TheBlurIsPaintedAtOnce()
+        {
+            // Arrange — blur(12) and a user custom at rest, then the custom's definition destroyed and the chain
+            // composed again, so the element paints no filter and holds no url() for the next change to read.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            var definition = CreateUserDefinition(new FilterParameter(0f));
+            var custom = new ArbitraryStyle(ArbitraryProperty.FilterCustom,
+                new CustomFilterValue("drops-engine", definition, new[] { new FilterParameter(1f) }));
+            ApplyBlur(element, 12f);
+            StyleArbitraryValueResolver.Apply(element, custom);
+            AdvanceAndPaint(element.panel, 1.0);
+            Object.DestroyImmediate(definition);
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act
+            StyleArbitraryValueResolver.Clear(element, custom);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert
+            Assert.That(PaintedFloat(element), Is.EqualTo(12f).Within(1e-3f));
+        }
+
         #endregion
 
         #region Group F — on a mount's MotionClock

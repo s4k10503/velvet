@@ -2821,11 +2821,7 @@ namespace Velvet
             }
             foreach (var (_, stack) in map.Customs)
             {
-                var top = stack.Count - 1;
-                while (top >= 0 && stack.Values[top].Custom!.Rejected)
-                {
-                    top--;
-                }
+                var top = TopAcceptedLayer(stack);
                 if (top < 0)
                 {
                     continue;
@@ -2839,6 +2835,18 @@ namespace Velvet
                 (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
             }
             return functions;
+        }
+
+        private static int TopAcceptedLayer(SortedList<long, ArbitraryStyle> stack)
+        {
+            for (var i = stack.Count - 1; i >= 0; i--)
+            {
+                if (!stack.Values[i].Custom!.Rejected)
+                {
+                    return i;
+                }
+            }
+            return -1;
         }
 
         // Builds the FilterFunction for a filter-[name:args] custom filter. The public

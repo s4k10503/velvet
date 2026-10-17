@@ -836,6 +836,100 @@ namespace Velvet.Tests
             Assert.That(HostsListedFor("fade-cleared"), Is.EqualTo(0));
         }
 
+        // Styles elements nothing keeps, so a collection can take them while their name still lists them. A method
+        // of its own so that no frame of the caller's holds one.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static void StyleCollectible(string name, int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), $"filter-[{name}:1]", StyleLayerPriority.Base);
+            }
+        }
+
+        private static List<VisualElement> StyleHeld(string name, int count)
+        {
+            var held = new List<VisualElement>();
+            for (var i = 0; i < count; i++)
+            {
+                held.Add(new VisualElement());
+                StyleArbitraryValueResolver.ApplyClassToken(held[i], $"filter-[{name}:1]", StyleLayerPriority.Base);
+            }
+            return held;
+        }
+
+        private static void Collect()
+        {
+            System.GC.Collect();
+            System.GC.WaitForPendingFinalizers();
+            System.GC.Collect();
+        }
+
+        [Test]
+        public void Given_SixteenCollectedHostsUnderANameNeverPruned_When_AnotherElementTakesIt_Then_TheCollectedAreDropped()
+        {
+            // Arrange — sixteen is the size at which a name that has never been pruned prunes on its next add.
+            RegisterForTestRun("prune-add", _fadeDef);
+            StyleCollectible("prune-add", 16);
+            Collect();
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), "filter-[prune-add:1]", StyleLayerPriority.Base);
+
+            // Assert — the range leaves the collector free to keep some, so long as it took one.
+            Assert.That(HostsListedFor("prune-add"), Is.InRange(1, 16));
+        }
+
+        [Test]
+        public void Given_ANamePrunedWithSixteenLiveHosts_When_TenMoreAreCollectedBeforeItDoubles_Then_TheyStayListed()
+        {
+            // Arrange — the seventeenth add prunes and finds all sixteen live, so the next prune waits for thirty-two.
+            RegisterForTestRun("prune-doubling", _fadeDef);
+            var held = StyleHeld("prune-doubling", 17);
+            StyleCollectible("prune-doubling", 10);
+            Collect();
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), "filter-[prune-doubling:1]", StyleLayerPriority.Base);
+            System.GC.KeepAlive(held);
+
+            // Assert
+            Assert.That(HostsListedFor("prune-doubling"), Is.EqualTo(28));
+        }
+
+        [Test]
+        public void Given_CollectedHostsUnderAName_When_ItIsRegistered_Then_TheCollectedAreDropped()
+        {
+            // Arrange — twelve stay under the sixteen at which an add would prune them first.
+            StyleCollectible("prune-reresolve", 12);
+            var held = StyleHeld("prune-reresolve", 1);
+            Collect();
+
+            // Act
+            RegisterForTestRun("prune-reresolve", _fadeDef);
+            System.GC.KeepAlive(held);
+
+            // Assert — the range leaves the collector free to keep some, so long as it took one.
+            Assert.That(HostsListedFor("prune-reresolve"), Is.InRange(1, 12));
+        }
+
+        [Test]
+        public void Given_ANameRegisteredOverNineLiveHosts_When_SevenMoreAreCollectedBeforeItDoubles_Then_TheyStayListed()
+        {
+            // Arrange — the registration records nine, so the next prune waits for eighteen rather than sixteen.
+            var held = StyleHeld("prune-registered", 9);
+            RegisterForTestRun("prune-registered", _fadeDef);
+            StyleCollectible("prune-registered", 7);
+            Collect();
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), "filter-[prune-registered:1]", StyleLayerPriority.Base);
+            System.GC.KeepAlive(held);
+
+            // Assert
+            Assert.That(HostsListedFor("prune-registered"), Is.EqualTo(17));
+        }
+
         #endregion
 
         #region Registration contract
