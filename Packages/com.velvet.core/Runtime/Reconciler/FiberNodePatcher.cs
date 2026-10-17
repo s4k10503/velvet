@@ -3335,7 +3335,7 @@ namespace Velvet
             var previous = state?.Resolved;
             var resolved = reconciled == null ? LiveClasses(element)
                 : state == null ? reconciled
-                : ComposeVariantClasses(reconciled, state.Tokens, state.Resolved);
+                : ComposeVariantClasses(element, reconciled, state.Tokens, state.Resolved);
             var classesChanged = !ReferenceEquals(previous, resolved);
             if (state != null)
             {
@@ -3490,7 +3490,7 @@ namespace Velvet
             // the composition only while it is actually hovered, and a dictionary probe the rest of the time.
             var resolved = state.Tokens.Count == 0
                 ? newClassNames
-                : ComposeVariantClasses(newClassNames, state.Tokens, state.Resolved);
+                : ComposeVariantClasses(element, newClassNames, state.Tokens, state.Resolved);
             changed = !ReferenceEquals(oldClassNames, newClassNames)
                 || !ReferenceEquals(state.Resolved, resolved);
             state.Reconciled = newClassNames;
@@ -3517,7 +3517,7 @@ namespace Velvet
                 || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
                 || state.Tokens.Count == 0
                     ? classNames
-                    : ComposeVariantClasses(classNames, state.Tokens, state.Resolved);
+                    : ComposeVariantClasses(element, classNames, state.Tokens, state.Resolved);
 
         // Builds classNames plus every variant-applied gate token, handing back reuse unchanged when the
         // result would match it token for token, and classNames itself when no payload is lit.
@@ -3539,11 +3539,16 @@ namespace Velvet
         //
         // The reuse compare runs before anything is built, so the steady state allocates NOTHING. This runs
         // on every patch of every element a variant has a gate token applied to.
-        private static string[] ComposeVariantClasses(string[] classNames, List<string> tokens, string[]? reuse)
+        private static string[] ComposeVariantClasses(VisualElement element, string[] classNames, List<string> tokens,
+            string[]? reuse)
         {
             if (tokens.Count == 0)
             {
                 return classNames;
+            }
+            if (StyleCustomProperties.AnyPlaced(element))
+            {
+                return ComposePlacedClasses(element, classNames, tokens, reuse);
             }
             var total = classNames.Length + tokens.Count;
             if (reuse != null && reuse.Length == total && TailEquals(reuse, classNames.Length, tokens)
@@ -3559,6 +3564,65 @@ namespace Velvet
                 composed[classNames.Length + i] = tokens[i];
             }
             return composed;
+        }
+
+        private static readonly List<string> s_placedScratch = new();
+        private static readonly List<int> s_placedAt = new();
+
+        // ComposeVariantClasses for an element whose custom-property readers apply payloads at the base layer: a
+        // reader's payload sits before the first reconciled token Tailwind orders after the reader (the reader
+        // ties after an equal one), so a family reading the last token of the composed array ranks it against the
+        // element's literal utilities as Tailwind does. A payload no reader owns follows them all, as it does
+        // without readers.
+        private static string[] ComposePlacedClasses(VisualElement element, string[] classNames, List<string> tokens,
+            string[]? reuse)
+        {
+            s_placedScratch.Clear();
+            s_placedAt.Clear();
+            foreach (var token in tokens)
+            {
+                s_placedAt.Add(StyleCustomProperties.PlaceOf(element, token));
+            }
+            for (var j = 0; j < classNames.Length; j++)
+            {
+                var ordinal = StyleRuleOrder.OrdinalOf(classNames, j);
+                for (var i = 0; i < tokens.Count; i++)
+                {
+                    if (s_placedAt[i] >= 0 && s_placedAt[i] < ordinal)
+                    {
+                        s_placedScratch.Add(tokens[i]);
+                        s_placedAt[i] = -2;
+                    }
+                }
+                s_placedScratch.Add(classNames[j]);
+            }
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (s_placedAt[i] >= 0)
+                {
+                    s_placedScratch.Add(tokens[i]);
+                }
+            }
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (s_placedAt[i] == -1)
+                {
+                    s_placedScratch.Add(tokens[i]);
+                }
+            }
+            if (reuse != null && reuse.Length == s_placedScratch.Count)
+            {
+                var same = true;
+                for (var i = 0; i < reuse.Length && same; i++)
+                {
+                    same = reuse[i] == s_placedScratch[i];
+                }
+                if (same)
+                {
+                    return reuse;
+                }
+            }
+            return s_placedScratch.ToArray();
         }
 
         // Whether array carries exactly tokens from start on.
