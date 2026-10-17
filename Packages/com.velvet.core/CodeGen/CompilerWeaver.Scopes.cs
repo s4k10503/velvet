@@ -33,7 +33,8 @@ namespace Velvet.CodeGen
     //   It calls no member of a Ref / MutableRef and no method taking one, and reads no hook value from UseService
     //   or from a custom hook unless value-like: a render reading through one has no value to compare.
     //   It reads no mutable static, and calls only a V factory, a constructor, a plain property read (see
-    //   IsPlainGetter), or a member of the BCL namespaces named in PureNamespaces, other than a member of the types
+    //   IsPlainGetter), or a member of the BCL namespaces named in PureNamespaces, other than a call that changes a
+    //   collection in place (see ChangesACollection) and a member of the types
     //   named in AmbientStateTypes and the static members of those in AmbientStateStaticTypes.
     //   It reads no reference a call outside every scope is given (see ReferencesGivenToCalls): that call may write
     //   through it, and the scope would hold what it built from the object before.
@@ -91,6 +92,24 @@ namespace Velvet.CodeGen
         {
             "System.DateTime", "System.DateTimeOffset", "System.Guid", "System.TimeZoneInfo",
         };
+
+        // A collection of these namespaces changes in place, and a call that changes one made inside a scope is skipped
+        // by a hit. Only a getter, or a call by one of these names, is taken for a read of one.
+        private static readonly HashSet<string> CollectionNamespaces = new() { "System.Collections", "System.Collections.Generic" };
+
+        private static readonly HashSet<string> CollectionReads = new()
+        {
+            "Contains", "ContainsKey", "ContainsValue", "TryGetValue", "IndexOf", "LastIndexOf", "Find", "FindAll",
+            "FindIndex", "FindLast", "Exists", "TrueForAll", "BinarySearch", "GetEnumerator", "ToArray", "CopyTo",
+            "GetRange", "Peek", "ToString", "Equals", "GetHashCode",
+        };
+
+        private static bool ChangesACollection(MethodReference method, TypeReference declaring)
+            => method.HasThis && CollectionNamespaces.Contains(declaring.Namespace)
+                && !declaring.Name.StartsWith("IReadOnly", System.StringComparison.Ordinal)
+                && !declaring.Name.StartsWith("IEnumerable", System.StringComparison.Ordinal)
+                && !method.Name.StartsWith("get_", System.StringComparison.Ordinal)
+                && !CollectionReads.Contains(method.Name);
 
         // Interfaces declaring no member that changes what a value holds, so that one kept from an earlier render
         // is what the expression would build again.
@@ -630,7 +649,7 @@ namespace Velvet.CodeGen
                 || (!method.HasThis && AmbientStateStaticTypes.Contains(declaring.FullName));
             return instr.OpCode.Code == Code.Newobj
                 || declaring.FullName == FactoryTypeFullName
-                || (PureNamespaces.Contains(declaring.Namespace) && !ambient)
+                || (PureNamespaces.Contains(declaring.Namespace) && !ambient && !ChangesACollection(method, declaring))
                 || IsPlainGetter(facts, method);
         }
 
