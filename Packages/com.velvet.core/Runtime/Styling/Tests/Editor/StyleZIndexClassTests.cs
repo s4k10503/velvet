@@ -167,7 +167,7 @@ namespace Velvet.Tests
         // `z-1152921504606846976` (2^60, which JavaScript prints as 1152921504606847000), taking 1e21 itself
         // as printing back unchanged reddens `z-1000000000000000000000`, and passing over a run exactly half a gap
         // away from a double whose last bit is even reddens `z-477028999999999970000` (JavaScript prints that
-        // double as 477029000000000000000).
+        // double as 477029000000000000000), and taking an empty run of digits as zero reddens `z-[-]`.
         [TestCase("z-05")]
         [TestCase("z-00")]
         [TestCase("z-+5")]
@@ -181,6 +181,7 @@ namespace Velvet.Tests
         [TestCase("z-477028999999999970000")]
         [TestCase("-z-auto")]
         [TestCase("z-")]
+        [TestCase("z-[-]")]
         public void Given_ASuffixThatIsNotACanonicalWholeNumber_When_Parsed_Then_ItIsRejected(string cls)
         {
             // Act
