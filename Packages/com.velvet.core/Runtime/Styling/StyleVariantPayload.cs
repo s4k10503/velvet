@@ -232,6 +232,19 @@ namespace Velvet
             return false;
         }
 
+        // True when a channel's class array — whileHoverClass, a drag's class — holds a gate token.
+        public static bool CarriesGatePayload(string[] payloads)
+        {
+            foreach (var payload in payloads)
+            {
+                if (IsVariantGateToken(StyleArbitraryValueResolver.StripImportant(payload, out _)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Records a toggled payload that is one of the gate tokens, returning true when the tracked set
         // changed. Returns false without touching anything for the parameterless callers (no context to
         // record into) and for the overwhelmingly common non-gate payload. An important font, text-effect, gap,

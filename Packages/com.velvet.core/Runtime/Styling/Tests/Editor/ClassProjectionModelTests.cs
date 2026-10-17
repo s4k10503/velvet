@@ -24,6 +24,26 @@ namespace Velvet.Tests
             return element;
         }
 
+        // GREEN_ON_BASE(characterization): the base's model never ranks a class a play puts on itself, so nothing
+        // brings it back. What reddens it is the play's rank outliving the class the payload took off.
+        [Test]
+        public void Given_APlayClassAPayloadTookOff_When_AnotherPayloadComesAndGoes_Then_ItStaysOff()
+        {
+            // Arrange — bg-blue-500 is both a hover: payload and a class a play put on itself; the payload turning
+            // off takes it off the live list, as nothing else in the model holds it.
+            var element = WithBaseClasses("my-card");
+            StyleClassProjection.Add(element, "bg-blue-500", StyleLayerPriority.Hover);
+            StyleAnimationClassUtils.AddClasses(element, new[] { "bg-blue-500" });
+            StyleClassProjection.Remove(element, "bg-blue-500", StyleLayerPriority.Hover);
+
+            // Act — a payload that outranks it while it is on.
+            StyleClassProjection.Add(element, "bg-red-500", StyleLayerPriority.Focus);
+            StyleClassProjection.Remove(element, "bg-red-500", StyleLayerPriority.Focus);
+
+            // Assert
+            Assert.IsFalse(element.ClassListContains("bg-blue-500"));
+        }
+
         [Test]
         public void Given_TwoUserAuthoredClassesOnDifferentLayers_When_TheUpperOneApplies_Then_TheLowerOneSurvives()
         {

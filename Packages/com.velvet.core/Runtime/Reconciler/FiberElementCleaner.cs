@@ -181,9 +181,12 @@ namespace Velvet
         // Performs no DOM operations. Shared logic between CleanupElement and
         // CleanupDescendants. Split into cohesive groups, called in their original sequence — see
         // CleanupEffectAndStyleBindingResources' own note on why MotionLayoutIdDriver must run before
-        // ClearElementSideTables.
+        // ClearElementSideTables. A drag session's classes come off first, through the element's class
+        // projection, which the style group drops; the session itself is cancelled with the other drag
+        // bindings, once the style group has unbound the element's handlers.
         private void CleanupElementResources(VisualElement element)
         {
+            _ctx.ActiveDrag?.ReleaseClassesOf(element);
             CleanupEffectAndStyleBindingResources(element);
             CleanupPaintResources(element);
             CleanupElementDriverResources(element);
