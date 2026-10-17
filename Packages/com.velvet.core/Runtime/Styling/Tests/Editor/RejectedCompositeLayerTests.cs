@@ -60,13 +60,43 @@ namespace Velvet.Tests
             // Act
             reconciler.Reconcile(root, System.Array.Empty<VNode>(), new VNode[]
             {
-                V.Motion(className: "translate-x-4"),
                 V.Motion(className: "translate-x-4", variants: poses, animate: "open"),
             });
 
-            // Assert — the pose-less Motion is the own class taking effect.
-            Assert.That((root.ElementAt(0).style.translate.value.x.value, root.ElementAt(1).style.translate.value.x.value),
-                Is.EqualTo((16f, 0f)));
+            // Assert
+            Assert.That(root.ElementAt(0).style.translate.value.x.value, Is.EqualTo(0f));
+        }
+
+        // GREEN_ON_BASE(characterization): a Motion with no pose reads no composed-family rejection, on the base or here; it is the control for the case above.
+        [Test]
+        public void Given_AMotionWithNoPose_When_Mounted_Then_TheOwnTranslationApplies()
+        {
+            // Arrange
+            var root = new VisualElement();
+            using var reconciler = new Reconciler();
+
+            // Act
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(className: "translate-x-4"),
+            });
+
+            // Assert
+            Assert.That(root.ElementAt(0).style.translate.value.x.value, Is.EqualTo(16f));
+        }
+
+        [Test]
+        public void Given_AnOwnListTheNormalizerReorders_When_APoseOverridesItsRejectedValue_Then_NoIdentityIsLeftBehind()
+        {
+            // Arrange
+            var node = V.Motion(className: "translate-y-[10] font-[700] font-[600]",
+                variants: new Dictionary<string, MotionVariant> { ["open"] = "translate-y-4" });
+
+            // Act
+            var applied = MotionVariantResolver.ResolveAppliedAt(node, "open", out _, out _);
+
+            // Assert
+            Assert.That(applied, Does.Not.Contain("translate-x-[0]"));
         }
 
         [Test]
