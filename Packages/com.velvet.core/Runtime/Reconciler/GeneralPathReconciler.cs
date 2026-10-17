@@ -2683,8 +2683,8 @@ namespace Velvet
                 => CompletePresenceExit(capturedState, capturedKey, capturedBoundary, capturedOnExitComplete,
                     playsAnExit || HoldsAMotion(capturedState, capturedKey));
             // The child is removed once its exits have played and each lead its layoutIds passed to has landed. A key
-            // coming back drops its landings (MotionLayoutIdDriver.Present), and a presence retired since completes
-            // nothing, by the check SettleIfStillExiting makes.
+            // coming back drops its landings (MotionLayoutIdDriver.Present), and a landing reported after its presence was
+            // retired completes nothing.
             var waits = 1;
             void Settle()
             {
