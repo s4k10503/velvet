@@ -192,10 +192,9 @@ namespace Velvet.Tests
         private static int s_exitCompletions;
 
         [Test]
-        public void Given_ASpringExitWithNoChannelToDrive_When_TheKeyIsRemoved_Then_OnExitCompleteRunsOnlyAfterThatRendersCommit()
+        public void Given_ASpringExitWithNoChannelToDrive_When_TheKeyIsRemoved_Then_OnExitCompleteHasNotRunInThatRender()
         {
-            // Arrange — the spring's exit plays nothing, as Framer Motion plays an instant animation for a value it
-            // cannot animate, which completes on a frame after the commit.
+            // Arrange — the spring's exit plays nothing, so it completes after the commit that removed its child.
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
@@ -203,11 +202,26 @@ namespace Velvet.Tests
             // Act
             store.Set("");
             mounted.FlushStateForTest();
-            var afterTheRemovingRender = s_exitCompletions;
+
+            // Assert
+            Assert.That(s_exitCompletions, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ASpringExitWithNoChannelToDrive_When_TheRemovingRendersEffectsFlush_Then_OnExitCompleteRunsOnce()
+        {
+            // Arrange
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
+            store.Set("");
+            mounted.FlushStateForTest();
+
+            // Act
             mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That((afterTheRemovingRender, s_exitCompletions), Is.EqualTo((0, 1)));
+            Assert.That(s_exitCompletions, Is.EqualTo(1));
         }
 
         // A variant Motion with no exit label: its removal plays the classic exit of this spring, whose class

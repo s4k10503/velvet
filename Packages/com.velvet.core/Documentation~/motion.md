@@ -98,8 +98,10 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   error boundary at or above the component rendering the presence, except where an exit played or the child
   whose exit completed last holds a `V.Motion`: Framer calls it from that exit's promise, so no boundary takes it
   and it is logged. The exits one render leaves with nothing to animate complete in Framer's order: a Motion whose
-  exit names no pose or exit classes first, from its promise, then a child holding no Motion, from its effect, then
-  a Motion whose exit has a target it reaches instantly, on the next frame; tree order within each. An error from
+  exit names no target, or one a zero-duration or `StyleTransitionConfig.None` exit reaches at once, completes
+  from its promise, and a child holding no Motion from its effect. A removal from a discrete event (the Urgent
+  lane) settles the effects first, as React flushes the passive effects of a synchronous commit before any promise
+  reaction runs; any other removal settles the promises first. Tree order within each. An error from
   a Motion's `onEnterComplete` reaches no boundary and is logged, as Framer's `onAnimationComplete` runs in a
   promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the

@@ -1439,17 +1439,26 @@ namespace Velvet
         // waits on: that exit completes from the passive-effect flush after the pass, and the commit takes it
         // back if its removals never run (DropCompletionsRemovedBy).
         internal readonly record struct PendingCompletion(
-            System.Action Complete, ComponentFiber? Boundary, object? RemovedBy, ExitSettlePhase Phase = ExitSettlePhase.Effect);
+            System.Action Complete, ComponentFiber? Boundary, object? RemovedBy, ExitSettlePhase Phase = ExitSettlePhase.Effect,
+            bool Urgent = false);
 
-        // The order Framer Motion settles the exits one commit leaves with nothing to animate: a motion component's
-        // exit naming no target from a promise its layout effect resolves, a child holding no motion component from
-        // PresenceChild's passive effect, and an exit it animates instantly on the next frame. Which settles last
-        // decides how onExitComplete's error is routed (GeneralPathReconciler.CompletePresenceExit).
+        // The two ways an exit that animates nothing settles in Framer Motion: a child holding a motion component
+        // from the promise of its exit, which resolves at once when the exit names no target or one reached with a
+        // zero-duration or `type: false` transition and no delay, and a child holding none from PresenceChild's
+        // passive effect. Which settles last decides how onExitComplete's error is routed
+        // (GeneralPathReconciler.CompletePresenceExit).
+        //
+        // The order between the two follows the removing commit's lane. React flushes the passive effects of a
+        // commit whose lanes include SyncLane at the end of that commit (react-dom
+        // commitRootImpl: includesSomeLane(pendingPassiveEffectsLanes, SyncLane) then flushPassiveEffects), before
+        // any promise reaction runs, so the Urgent lane settles Effect before Promise. Any other lane flushes its
+        // passive effects later and the promise reactions run first. The zero-duration skip is motion-dom
+        // animateMotionValue: shouldSkip schedules frame.update(onComplete) and returns undefined, so
+        // animateTarget collects no animation and its Promise.all([]) resolves like an exit with no target.
         internal enum ExitSettlePhase
         {
             Promise,
             Effect,
-            Frame,
         }
 
         internal readonly List<PendingCompletion> PendingCompletions = new();
@@ -1493,7 +1502,7 @@ namespace Velvet
             ExitSettlePhase phase = ExitSettlePhase.Effect)
         {
             if (SharedReconcileDepth == 0 && removedBy == null) complete();
-            else PendingCompletions.Add(new PendingCompletion(complete, boundary, removedBy, phase));
+            else PendingCompletions.Add(new PendingCompletion(complete, boundary, removedBy, phase, FiberWorkLoop.IsRenderingUrgentLane));
         }
 
         // The entries a render below boundary queued: read before a catch detaches what that render created, since
@@ -1542,8 +1551,8 @@ namespace Velvet
                 else (staged ??= new List<PendingCompletion>()).Add(entry);
             }
             if (staged == null) return;
-            // In ExitSettlePhase order, tree order within a phase.
-            foreach (var entry in System.Linq.Enumerable.OrderBy(staged, entry => entry.Phase))
+            // In ExitSettlePhase order for the entry's lane, tree order within a phase.
+            foreach (var entry in System.Linq.Enumerable.OrderBy(staged, entry => entry.Urgent ? 1 - (int)entry.Phase : (int)entry.Phase))
             {
                 FiberEffects.StagePassiveCompletion(this, entry.Complete);
             }

@@ -2089,8 +2089,8 @@ namespace Velvet
                             settle();
                             continue;
                         }
-                        // An instant animation's completion, on a frame after the commit.
-                        var pending = new ReconcilerContext.PendingSettle(settle, ReconcilerContext.ExitSettlePhase.Frame);
+                        // A completion fired while this presence expanded: an exit that resolved without animating.
+                        var pending = new ReconcilerContext.PendingSettle(settle, ReconcilerContext.ExitSettlePhase.Promise);
                         state.PendingSettles[key] = pending;
                         StagePendingSettle(state, commit, boundaryFiber, key, pending);
                     }
@@ -2536,11 +2536,10 @@ namespace Velvet
             ReconcilerContext.PresenceBoundaryState state,
             string key,
             MotionNode? anchor,
-            List<ReconcilerContext.PresenceDescendantExit>? into,
-            System.Runtime.CompilerServices.StrongBox<bool>? instantTarget = null)
+            List<ReconcilerContext.PresenceDescendantExit>? into)
         {
             if (!state.ChildRoots.TryGetValue(key, out var roots)) return 0;
-            var walk = new DescendantExitWalk { Roots = roots, Anchor = anchor, Into = into, InstantTarget = instantTarget };
+            var walk = new DescendantExitWalk { Roots = roots, Anchor = anchor, Into = into };
             var count = 0;
             foreach (var root in roots)
             {
@@ -2560,8 +2559,6 @@ namespace Velvet
             internal List<VisualElement> Roots { get; init; }
             internal MotionNode? Anchor { get; init; }
             internal List<ReconcilerContext.PresenceDescendantExit>? Into { get; init; }
-            // Set when a descendant's exit names a target it reaches instantly (QuietExitPhase).
-            internal System.Runtime.CompilerServices.StrongBox<bool>? InstantTarget { get; init; }
         }
 
         // inheritedExit is the exit label an ancestor Motion hands down and frame the orchestration an
@@ -2646,11 +2643,6 @@ namespace Velvet
                 exitTransition = hasPose ? pose.Transition ?? motion.Transition
                     : motion.Exit != null ? motion.Transition : null;
                 exitPoseClass = hasPose ? pose.ClassName : null;
-                if (walk.InstantTarget != null && exitTransition?.HasExitAnimation != true
-                    && (hasPose || exitTransition?.ExitToClasses.Length > 0))
-                {
-                    walk.InstantTarget.Value = true;
-                }
                 if (exitTransition?.HasExitAnimation == true)
                 {
                     if (!ReferenceEquals(motion, walk.Anchor))
@@ -2808,13 +2800,11 @@ namespace Velvet
 
             var anchorPlays = ResolveExitTransition(ghostMotionNode)?.HasExitAnimation == true;
             var descendants = new List<ReconcilerContext.PresenceDescendantExit>();
-            var instantTarget = new System.Runtime.CompilerServices.StrongBox<bool>();
-            CollectDescendantExits(state, key, ghostMotionNode, descendants, instantTarget);
+            CollectDescendantExits(state, key, ghostMotionNode, descendants);
             var inners = PresencesRunningExitsUnder(state, key);
             if (!anchorPlays && descendants.Count == 0 && inners == null)
             {
-                SettleAfterTheRemovingCommit(in pass, key, Settled,
-                    QuietExitPhase(state, key, ghostMotionNode, instantTarget.Value));
+                SettleAfterTheRemovingCommit(in pass, key, Settled, QuietExitPhase(state, key));
                 return false;
             }
 
@@ -3708,21 +3698,10 @@ namespace Velvet
         internal static StyleTransitionConfig? ResolveExitTransition(MotionNode? motion)
             => TryResolveExitVariant(motion, out _, out _, out var transition) ? transition : motion?.Transition;
 
-        // ReconcilerContext.ExitSettlePhase owns the order; descendantInstantTarget is what CollectDescendantExits found.
-        private ReconcilerContext.ExitSettlePhase QuietExitPhase(
-            ReconcilerContext.PresenceBoundaryState state, string key, MotionNode? anchor, bool descendantInstantTarget)
-        {
-            if (!HoldsAMotion(state, key)) return ReconcilerContext.ExitSettlePhase.Effect;
-            return descendantInstantTarget || HasExitTarget(anchor)
-                ? ReconcilerContext.ExitSettlePhase.Frame
-                : ReconcilerContext.ExitSettlePhase.Promise;
-        }
-
-        // Whether the anchor's exit names somewhere to go, a pose or the classic exit's classes: what Framer Motion
-        // animates there, instantly where the config plays nothing, rather than resolving the exit with nothing to do.
-        private static bool HasExitTarget(MotionNode? motion)
-            => motion != null && (TryResolveExitVariant(motion, out _, out _, out _)
-                || motion.Transition?.ExitToClasses.Length > 0);
+        // A child holding a motion component settles in the Promise phase whether its exit names no target or one
+        // the config reaches instantly; ReconcilerContext.ExitSettlePhase owns the order.
+        private ReconcilerContext.ExitSettlePhase QuietExitPhase(ReconcilerContext.PresenceBoundaryState state, string key)
+            => HoldsAMotion(state, key) ? ReconcilerContext.ExitSettlePhase.Promise : ReconcilerContext.ExitSettlePhase.Effect;
 
         // The exit-variant preconditions, in one place so the gates above and TryResolveVariantExit below
         // cannot drift apart on which configurations count as a variant exit.

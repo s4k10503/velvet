@@ -2525,8 +2525,9 @@ namespace Velvet.Tests
         // Set by a case removing several children at once from the presence whose onExitComplete fails.
         private static Func<VNode[]> s_exitFailChildren;
 
-        // A Motion with no transition names no exit target, so Framer Motion resolves its exit from a promise, ahead of
-        // the plain child's effect: the plain child settles last, and a boundary takes the error.
+        // A Motion with no transition names no exit target, so Framer Motion resolves its exit from a promise. Outside a
+        // discrete event that runs ahead of the plain child's effect: the plain child settles last, and a boundary
+        // takes the error.
         [Test]
         public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_APlainChildAndAMotionWithNoExitTargetLeaveTogether_Then_TheBoundaryCatches()
         {
@@ -2554,22 +2555,15 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("o-fallback,tail:1"));
         }
 
-        // An exit pose played on no duration is an instant animation, which Framer Motion completes on the next frame,
-        // after the plain child's effect: the Motion settles last, and no boundary takes the error.
-        // GREEN_ON_BASE(characterization): the base read any removed V.Motion as the completion's and logged the error.
-        // What this pins is the order the exits settle in, which the base did not have.
+        // An exit pose reached on no duration resolves like an exit naming no target: motion-dom's animateMotionValue
+        // skips the animation, so the exit's promise settles with nothing to wait on. A removal outside a discrete
+        // event settles the promise ahead of the plain child's effect, and the plain child settles last.
         [Test]
-        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_AMotionWithAnInstantExitPoseAndAPlainChildLeaveTogether_Then_NoBoundaryTakesTheError()
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_AMotionWithAnInstantExitPoseAndAPlainChildLeaveTogether_Then_TheBoundaryCatches()
         {
             // Arrange
-            s_exitFailChildren = () => new VNode[]
-            {
-                V.Motion(key: "m", variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: StyleTransitionConfig.None, children: new VNode[] { V.Label(text: "m") }),
-                V.Label(text: "plain", key: "plain"),
-            };
+            s_exitFailChildren = InstantPoseMotionAndPlainChild;
             using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
-            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
 
             // Act
             s_setExitFailTick.Invoke(1);
@@ -2578,8 +2572,82 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
+            Assert.That(Texts(), Is.EqualTo("o-fallback,tail:1"));
+        }
+
+        // A removal from a discrete event is an Urgent commit, which React flushes the passive effects of before any
+        // promise reaction runs: the plain child settles first and the Motion's promise last, so no boundary takes the
+        // error.
+        // GREEN_ON_BASE(characterization): the base read any removed V.Motion as the completion's and logged the error.
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ADiscreteEventRemovesAMotionWithAnInstantExitPoseAndAPlainChild_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange
+            s_exitFailChildren = InstantPoseMotionAndPlainChild;
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
+
+            // Act
+            TickInADiscreteEvent();
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
             Assert.That(Texts(), Is.EqualTo("tail:1"));
         }
+
+        // The no-target Motion settles from the same promise phase, so the discrete lane reorders it the same way.
+        // GREEN_ON_BASE(characterization): the base read any removed V.Motion as the completion's and logged the error.
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ADiscreteEventRemovesAMotionWithNoExitTargetAndAPlainChild_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange
+            s_exitFailChildren = NoTargetMotionAndPlainChild;
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
+
+            // Act
+            TickInADiscreteEvent();
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("tail:1"));
+        }
+
+        private static void TickInADiscreteEvent()
+        {
+            FiberWorkLoop.IsInDiscreteEvent = true;
+            try
+            {
+                s_setExitFailTick.Invoke(1);
+            }
+            finally
+            {
+                FiberWorkLoop.IsInDiscreteEvent = false;
+            }
+        }
+
+        private static VNode[] InstantPoseMotionAndPlainChild() => new VNode[]
+        {
+            V.Motion(key: "m", variants: s_fade, animate: "visible", exit: "hidden",
+                transition: StyleTransitionConfig.None, children: new VNode[] { V.Label(text: "m") }),
+            V.Label(text: "plain", key: "plain"),
+        };
+
+        private static VNode[] NoTargetMotionAndPlainChild() => new VNode[]
+        {
+            V.Label(text: "plain", key: "plain"),
+            new MotionNode
+            {
+                Key = "m",
+                ElementType = typeof(VisualElement),
+                Transition = null,
+                Children = new VNode[] { V.Label(text: "m") },
+            },
+        };
 
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode ExitFailBoundaryRender(int tick)

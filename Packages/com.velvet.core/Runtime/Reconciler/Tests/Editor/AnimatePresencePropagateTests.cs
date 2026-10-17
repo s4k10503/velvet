@@ -720,6 +720,24 @@ namespace Velvet.Tests
 
         [TestCase("wrapper")]
         [TestCase("top")]
+        public void Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildStaysForThatRender(
+            string shape)
+        {
+            // Arrange
+            using var mounted = MountSettled(shape);
+            s_propagate.Set(false);
+            Drain(mounted);
+
+            // Act
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+
+            // Assert
+            Assert.That(HostChildCount, Is.EqualTo(1));
+        }
+
+        [TestCase("wrapper")]
+        [TestCase("top")]
         public void Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesOnTheNextRender(
             string shape)
         {
@@ -731,12 +749,27 @@ namespace Velvet.Tests
             // Act — the removing render, the flush its exit settles in, and the render that settle asks for.
             s_outerKeys.Set(string.Empty);
             Drain(mounted);
-            var heldForTheRemovingRender = HostChildCount;
             mounted.FlushEffectsForTest();
             Drain(mounted);
 
             // Assert — no frame has passed, so the inner presence's 300ms exit did not hold it.
-            Assert.That((heldForTheRemovingRender, HostChildCount), Is.EqualTo((1, 0)));
+            Assert.That(HostChildCount, Is.EqualTo(0));
+        }
+
+        [TestCase("middle")]
+        [TestCase("middle-top")]
+        public void Given_APresenceBetweenThatDoesNotPropagate_When_TheOuterKeyIsRemoved_Then_TheOuterChildStaysForThatRender(
+            string shape)
+        {
+            // Arrange — the inner presence propagates, but the nearest presence above it does not.
+            using var mounted = MountSettled(shape);
+
+            // Act
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+
+            // Assert
+            Assert.That(HostChildCount, Is.EqualTo(1));
         }
 
         [TestCase("middle")]
@@ -750,12 +783,11 @@ namespace Velvet.Tests
             // Act — the removing render, the flush its exit settles in, and the render that settle asks for.
             s_outerKeys.Set(string.Empty);
             Drain(mounted);
-            var heldForTheRemovingRender = HostChildCount;
             mounted.FlushEffectsForTest();
             Drain(mounted);
 
             // Assert — no frame has passed, so the inner presence's 300ms exit did not hold it.
-            Assert.That((heldForTheRemovingRender, HostChildCount), Is.EqualTo((1, 0)));
+            Assert.That(HostChildCount, Is.EqualTo(0));
         }
 
         [TestCase("middle")]
