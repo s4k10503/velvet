@@ -197,16 +197,30 @@ namespace Velvet.Tests
             Assert.That(element.style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base writes a list of none, which names no opacity either.
+        // Narrowing the list must still take opacity out of it.
         [Test]
-        public void Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_TheNativeSlotIsSuspended()
+        public void Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_OpacityIsTakenOutOfTheNativeSlot()
         {
-            // Arrange
+            // Arrange — no sheet, so the rules' transition-property is the initial `all`, opacity among what it names.
             var element = Drawn();
             element.AddToClassList("transition-opacity");
             // Act
             MotionOpacity.Draw(element, Half, 0f);
             // Assert
-            Assert.That(element.style.transitionProperty.value[0], Is.EqualTo(new StylePropertyName("none")));
+            Assert.That(element.style.transitionProperty.value?.Contains(new StylePropertyName("opacity")), Is.False);
+        }
+
+        [Test]
+        public void Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_AnotherPropertyIsLeftInTheNativeSlot()
+        {
+            // Arrange — no sheet, so the rules' transition-property is the initial `all`.
+            var element = Drawn();
+            element.AddToClassList("transition-opacity");
+            // Act
+            MotionOpacity.Draw(element, Half, 0f);
+            // Assert
+            Assert.That(element.style.transitionProperty.value?.Contains(new StylePropertyName("background-color")), Is.True);
         }
 
         [Test]
