@@ -6,12 +6,13 @@ namespace Velvet
     /// <summary>
     /// Brackets a discrete user-input handler: marks <see cref="FiberWorkLoop.IsInDiscreteEvent"/> for its
     /// duration so hook-triggered renders take the Urgent lane, then — at the outermost discrete boundary —
-    /// flushes the owning context's immediate batch synchronously so the update commits in the same frame.
-    /// The flag is restored before the flush so updates scheduled by effects that run during the flush take
-    /// the Normal lane; they still commit within this same synchronous flush (the drain loops until its
-    /// queue is quiet, so a state update issued during commit still commits within the same flush, with
-    /// the maximum-update-depth cap bounding a runaway feedback pair), just without escalating the
-    /// discrete Urgent classification. Shared by
+    /// runs the pending passive effects of earlier commits and flushes the owning context's immediate batch
+    /// synchronously, so the update commits in the same frame. That commit is a sync-lane one, so it runs its
+    /// own passive effects as it ends (<c>FiberBatchScheduler.DrainImmediatePasses</c>). The flag is restored
+    /// before both, so an update an effect schedules takes the Normal lane: one from the earlier commits'
+    /// effects commits within this same flush, and one from this commit's waits for the next drain. A state
+    /// update issued during the commit still commits within the same flush (the drain loops until its queue
+    /// is quiet, with the maximum-update-depth cap bounding a runaway feedback pair). Shared by
     /// <c>FiberEventBindingManager</c> (clicks, value changes, discrete pointer/key bindings) and the
     /// drag-and-drop session (<c>OnDragStart</c>/<c>OnDragEnd</c>/<c>OnDragCancel</c>), so a drag commit
     /// behaves exactly like a click handler's.
@@ -49,7 +50,7 @@ namespace Velvet
                     }
                     finally
                     {
-                        batchScheduler?.FlushSyncLane();
+                        batchScheduler?.FlushImmediate();
                     }
                 }
             }

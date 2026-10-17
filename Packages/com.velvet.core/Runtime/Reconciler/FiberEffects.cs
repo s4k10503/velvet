@@ -623,6 +623,7 @@ namespace Velvet
             // rather than mutate the list we are iterating.
             if (context.PendingPassiveEffectFibers.Count == 0 && context.PendingPassiveCompletions.Count == 0) return;
             context.EffectCommitDepth++;
+            context.PassiveDrainDepth++;
             try
             {
                 RunPassivePhases(context);
@@ -630,6 +631,7 @@ namespace Velvet
             }
             finally
             {
+                context.PassiveDrainDepth--;
                 context.EffectCommitDepth--;
             }
             CommitStrandedLayoutWork(context);

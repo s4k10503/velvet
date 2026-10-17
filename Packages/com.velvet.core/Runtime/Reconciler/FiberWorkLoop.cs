@@ -644,7 +644,7 @@ namespace Velvet
         {
             // A resumed slice renders, so pending passive effects run before it as they do before a drain
             // (FiberBatchScheduler.Drain), and ahead of the guards below, which read what those effects leave.
-            fiber.Reconciler?.Context.BatchScheduler.FlushPendingPassiveEffects();
+            fiber.Reconciler?.Context.BatchScheduler.FlushPendingPassiveEffectsAheadOfAResume();
             // Ahead of the guards below, since the flush can unmount the fiber or finish its pass.
             fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRenders();
             if (!fiber.IsMounted) return;
@@ -736,7 +736,7 @@ namespace Velvet
                     // pattern), and the resume runs outside any batch drain — flush now so the write
                     // commits before the frame yields. Safe here: the pass completed (no pending
                     // work) and the reconcile-active bracket was exited by ContinueReconcile above.
-                    fiber.Reconciler?.Context.BatchScheduler.FlushSyncLane();
+                    fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
                 }
                 FiberEffects.CommitStrandedLayoutWork(resumeContext);
             }

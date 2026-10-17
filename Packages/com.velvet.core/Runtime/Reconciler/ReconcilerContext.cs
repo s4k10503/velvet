@@ -1538,6 +1538,11 @@ namespace Velvet
         // it (FiberEffects.CommitStrandedLayoutWork).
         internal int EffectCommitDepth;
 
+        // The passive drains among EffectCommitDepth, so a layout commit nested in one still reads as running.
+        internal int PassiveDrainDepth;
+
+        internal bool InLayoutCommit => EffectCommitDepth > PassiveDrainDepth;
+
         // Fibers with pending passive (UseEffect) effects awaiting the next post-paint drain. Unlike
         // layout effects (committed synchronously, bottom-up, before paint) passive effects fire
         // asynchronously after paint — but they must still observe the tree-ordered 2-phase

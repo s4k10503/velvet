@@ -15,8 +15,11 @@
   frame: the commit of a discrete event (a click, a value change, a drag), the follow-up commit of a layout effect or
   callback ref writing state, and the render of a `Hooks.UseSyncExternalStore` change. An update one of those
   effects schedules waits for the next drain. A drain of ordinary updates still leaves its effects to the next frame.
-- An update that a passive effect schedules while the Transition tier's drain flushes renders before that drain's
-  transition, as React renders the higher-priority lane first. It used to render after the transition.
+- An update that a passive effect schedules while the Transition tier's drain, or the resume of a parked transition
+  pass, flushes renders before that transition, as React renders the higher-priority lane first. It used to render
+  after the transition.
 - A passive-effect flush reached from inside a layout commit or a running passive drain, such as a click an effect
   dispatches, no longer runs the pending effects there, as React refuses to flush passive effects inside a commit.
   They wait for the passive drain under way to finish, or, from a layout commit, for the next flush.
+- Pending passive effects stay per root, a deviation from React: React flushes every root's pending effects before
+  any root renders, while a render of one `V.Mount` root flushes only its own.

@@ -107,6 +107,16 @@ namespace Velvet
         // each drain's render (see Drain).
         private Action? _flushPassiveEffects;
 
+        // Set by intake React would give the sync lane — an update a discrete event's handler makes, a write made
+        // while a layout commit runs, a UseSyncExternalStore change — and taken by the pass that renders it, which
+        // then flushes the passive effects of its commits as it ends (DrainImmediatePasses). Intake from anywhere
+        // else, a passive effect's included, leaves it as it is.
+        private bool _syncLaneQueued;
+
+        // Counts every ScheduleImmediate call, for a caller asking whether a flush it ran queued anything; a count
+        // of the queue would miss intake that dedups onto a fiber already queued.
+        private int _immediateIntake;
+
         // Set by ScheduleImmediate whenever intake happens while a drain is live; the delayed drain
         // resets it before draining and reads it after, to decide whether its commits spawned
         // immediate-tier work owed the setState-in-commit boundary pass (see DrainDelayed).
@@ -167,6 +177,10 @@ namespace Velvet
             // comparison would be masked when the drain's own commits also REMOVED entries (an
             // unmount, a subsume) or when the write dedups onto a fiber already queued.
             if (_draining) _immediateWorkArrivedMidDrain = true;
+            // An empty tier holds no sync-lane work, whatever left it empty: a drain, a Remove, a drop or a Clear.
+            if (_immediateOrder.Count == 0) _syncLaneQueued = false;
+            if (FiberWorkLoop.IsInDiscreteEvent || fiber.Reconciler?.Context.InLayoutCommit == true) _syncLaneQueued = true;
+            _immediateIntake++;
             if (_immediateSet.Add(fiber)) _immediateOrder.Add(fiber);
             ArmImmediateDrain();
         }
@@ -178,6 +192,7 @@ namespace Velvet
         // frame-boundary callback ScheduleImmediate registered still commits it when neither has.
         internal void OweExternalStoreFlush()
         {
+            _syncLaneQueued = true;
             if (_externalStoreRenderQueued) return;
             VelvetMainThread.Post(static scheduler => ((FiberBatchScheduler)scheduler!).FlushOwedExternalStoreRenders(), this);
             _externalStoreRenderQueued = true;
@@ -305,16 +320,12 @@ namespace Velvet
             }
         }
 
-        private void DrainImmediate() => DrainImmediateTier(syncLane: false);
-
-        // syncLane: every pass of this drain renders work React gives the sync lane (FlushSyncLane names which), not
-        // only the follow-up passes.
-        private void DrainImmediateTier(bool syncLane)
+        private void DrainImmediate()
         {
             var completed = false;
             try
             {
-                DrainImmediatePasses(syncLane);
+                DrainImmediatePasses();
                 completed = true;
             }
             finally
@@ -340,10 +351,9 @@ namespace Velvet
             }
         }
 
-        private void DrainImmediatePasses(bool syncLane)
+        private void DrainImmediatePasses()
         {
-            // The flag marks an external store's update in the queue, which React renders at the sync lane.
-            var firstPassIsSyncLane = syncLane || _externalStoreRenderQueued;
+            var renderedSyncLane = false;
             // Commit-phase state writes (a callback ref invoked during the patch, an event
             // dispatched from a detach) re-enqueue their fiber mid-drain. Keep draining until the
             // queue is quiet so the follow-up render commits before this frame callback yields —
@@ -380,12 +390,16 @@ namespace Velvet
                     break;
                 }
                 totalPasses++;
+                renderedSyncLane |= _syncLaneQueued;
+                _syncLaneQueued = false;
                 Drain(_immediateOrder, _immediateSet, immediateTier: true);
             }
-            // React flushes the passive effects of a sync-lane commit as that commit ends, and a pass rendering what
-            // a commit wrote is one, a commit running its writes at discrete priority. An update one of those effects
-            // schedules waits for the tier's next drain, as a default-lane update waits for React's next task.
-            if (totalPasses > (firstPassIsSyncLane ? 0 : 1)) FlushPendingPassiveEffects();
+            // Ahead of the flush below: an update an effect there schedules is an ordinary one, and a flag left
+            // standing would keep OweExternalStoreFlush from posting the next store change.
+            if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
+            // React flushes the passive effects of a sync-lane commit as that commit ends. An update one of those
+            // effects schedules waits for the tier's next drain, as a default-lane update waits for React's next task.
+            if (renderedSyncLane) FlushPendingPassiveEffects();
         }
 
         // Which lanes go, and why only these, is the nested-update cap's comment in DrainImmediatePasses.
@@ -476,7 +490,7 @@ namespace Velvet
             // desync for the next immediate callback to converge.
             if (_immediateWorkArrivedMidDrain && _immediateOrder.Count > 0)
             {
-                DrainImmediateTier(syncLane: true);
+                DrainImmediate();
             }
         }
 
@@ -631,13 +645,13 @@ namespace Velvet
             DrainImmediate();
         }
 
-        // FlushImmediate for work React renders at the sync lane — a discrete event's update, the writes a commit
-        // made — whose commit flushes its passive effects as it ends, rather than leaving them to the next frame
-        // (DrainImmediatePasses).
-        internal void FlushSyncLane()
+        // React's task flushes pending passive effects and then renders the highest-priority lanes pending, so an
+        // update one of those effects schedules renders ahead of the transition the task was resuming.
+        internal void FlushPendingPassiveEffectsAheadOfAResume()
         {
-            if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
-            DrainImmediateTier(syncLane: true);
+            var intake = _immediateIntake;
+            FlushPendingPassiveEffects();
+            if (_immediateIntake != intake) FlushImmediate();
         }
 
         // Gated like FlushImmediate so it never re-enters a live drain / reconcile.

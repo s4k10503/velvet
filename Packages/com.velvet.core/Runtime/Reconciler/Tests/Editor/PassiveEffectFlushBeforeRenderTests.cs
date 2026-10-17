@@ -15,8 +15,11 @@ namespace Velvet.Tests
     /// pass a layout effect's write asks for, a resumed slice of a parked time-sliced pass and a VirtualList range
     /// rendered outside a pass — and a discrete event runs it when it renders nothing;</item>
     /// <item>as a sync-lane commit ends — a click's, a commit-phase write's on a drain, a mount or a resumed pass,
-    /// a store change's — while a default-lane drain of one pass leaves its effects pending;</item>
-    /// <item>ahead of a transition, an update one of them schedules rendering before the transition does;</item>
+    /// a store change's — while a default-lane drain leaves its effects pending, and an update a flushed effect
+    /// schedules is a default-lane one;</item>
+    /// <item>ahead of a transition, an update one of them schedules rendering before the transition does, whether
+    /// the Transition tier's drain or a parked pass's resume flushed it, and a VirtualList range leaving the update
+    /// its flush scheduled to the scheduler;</item>
     /// <item>never from inside a passive drain already running, so what an effect's own render stages waits for
     /// that drain to return.</item>
     /// </list>
@@ -359,7 +362,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's discrete flush stands down while a reconcile is on the stack too.
-        // What this pins is that the sync-lane flush a click now takes keeps that gate.
+        // What this pins is that neither the click's flush nor the passive flush that ends its commit runs past it.
         [Test]
         public void Given_AReconcileOnTheStack_When_AClickSchedulesAnUpdate_Then_NothingRendersOrRuns()
         {
@@ -583,6 +586,32 @@ namespace Velvet.Tests
             Assert.That(s_log, Is.EqualTo(new[] { "render:v5", "effect:v5" }));
         }
 
+        [Component(Compiler = false)]
+        private static VNode ReaderBesideFollowerHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(ExternalReaderRender, key: "reader"),
+                V.Component(StoreFollowerRender, key: "follower"),
+            });
+
+        [Test]
+        public void Given_AStoreChangeAndThenAnOrdinaryUpdate_When_TheMainThreadRendersBoth_Then_TheReadersEffectHasRun()
+        {
+            // Arrange — the ordinary update joins a tier the store change already holds
+            s_externalCounter = new ExternalCounter();
+            _mounted = V.Mount(_root, V.Component(ReaderBesideFollowerHostRender, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_log.Clear();
+            s_externalCounter.Set(5);
+            s_setStoreFollower.Invoke(1);
+
+            // Act
+            VelvetMainThread.RunHandoffs();
+
+            // Assert
+            Assert.That(s_log, Does.Contain("effect:v5"));
+        }
+
         // --- Work a passive flush schedules ahead of a transition ---
 
         private static StateUpdater<int> s_setWriterDep;
@@ -647,14 +676,20 @@ namespace Velvet.Tests
             Assert.That(s_log, Is.EqualTo(new[] { "effect:d1", "render:other:1", "render:transition" }));
         }
 
-        // Sets state from every commit's effect, so each flush the transition tier makes schedules another render.
+        // Far above FiberBatchScheduler.NestedUpdateLimit, and finite, so a transition tier that no bound stopped
+        // still returns, having rendered every tick first.
+        private const int RunawayTicks = 200;
+
+        // Sets state from every commit's effect up to RunawayTicks, so each flush the transition tier makes
+        // schedules another render until then.
         [Component(Compiler = false)]
         private static VNode RunawayRender()
         {
             var (tick, setTick) = Hooks.UseState(0);
+            s_log.Add("render:runaway");
             Hooks.UseEffect(() =>
             {
-                setTick.Invoke(tick + 1);
+                if (tick < RunawayTicks) setTick.Invoke(tick + 1);
                 return (Action)null;
             }, new object[] { tick });
             return V.Label(text: "runaway");
@@ -669,9 +704,10 @@ namespace Velvet.Tests
             });
 
         // GREEN_ON_BASE(characterization): the base renders the transition without flushing anything ahead of it.
-        // What this pins is that an effect setting state on every commit cannot hold the transition back for good.
+        // What this pins is that an effect setting state on every commit holds the transition back for a bounded
+        // number of renders, not for as long as it keeps setting state.
         [Test]
-        public void Given_AnEffectThatSetsStateOnEveryCommit_When_TheTransitionTierDrains_Then_TheTransitionStillRenders()
+        public void Given_AnEffectThatSetsStateOnEveryCommit_When_TheTransitionTierDrains_Then_TheTransitionRendersBeforeTheEffectStops()
         {
             // Arrange
             _mounted = V.Mount(_root, V.Component(RunawayAndTargetHostRender, key: "host"));
@@ -681,8 +717,8 @@ namespace Velvet.Tests
             // Act
             _mounted.GetSchedulerForTest().DrainDelayedForTest();
 
-            // Assert
-            Assert.That(s_log, Does.Contain("render:transition"));
+            // Assert — the renders the runaway made before the transition rendered
+            Assert.That(s_log.TakeWhile(entry => entry != "render:transition").Count(), Is.LessThan(RunawayTicks));
         }
 
         // --- A flush reached from inside a running passive drain ---
@@ -776,6 +812,147 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_log.FirstOrDefault(), Is.EqualTo("effect:d0"));
+        }
+
+        // --- Updates a flush schedules are ordinary ones ---
+
+        private static StateUpdater<int> s_setStoreFollower;
+
+        [Component(Compiler = false)]
+        private static VNode StoreFollowerRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_setStoreFollower = setValue;
+            s_log.Add($"render:follower:{value}");
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add($"effect:follower:{value}");
+                return (Action)null;
+            }, new object[] { value });
+            return V.Label(text: "follower");
+        }
+
+        // Hands each snapshot it commits to the follower from its effect.
+        [Component(Compiler = false)]
+        private static VNode HandingExternalReaderRender()
+        {
+            var value = Hooks.UseSyncExternalStore(s_externalCounter.Subscribe, s_externalCounter.GetSnapshot);
+            s_log.Add($"render:v{value}");
+            Hooks.UseEffect(() =>
+            {
+                if (value > 0) s_setStoreFollower.Invoke(value);
+                return (Action)null;
+            }, new object[] { value });
+            return V.Label(text: "handing");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ReaderAndFollowerHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(HandingExternalReaderRender, key: "reader"),
+                V.Component(StoreFollowerRender, key: "follower"),
+            });
+
+        // The store change's render flushes the reader's effect as its commit ends, which hands the follower 5.
+        private void MountReaderAndRenderAStoreChange()
+        {
+            s_externalCounter = new ExternalCounter();
+            _mounted = V.Mount(_root, V.Component(ReaderAndFollowerHostRender, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_externalCounter.Set(5);
+            VelvetMainThread.RunHandoffs();
+            s_log.Clear();
+        }
+
+        [Test]
+        public void Given_AnUpdateAStoreRendersEffectScheduled_When_AnOrdinaryDrainRendersIt_Then_ItsEffectIsStillPending()
+        {
+            // Arrange
+            MountReaderAndRenderAStoreChange();
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "render:follower:5" }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base posts a flush for every store change that finds none owed.
+        // What this pins is that an update the store render's own effects queued does not leave the owed flag set,
+        // which kept the next change from being posted.
+        [Test]
+        public void Given_AnUpdateAStoreRendersEffectScheduled_When_TheStoreChangesAgain_Then_ThePostedWorkRendersTheReader()
+        {
+            // Arrange
+            MountReaderAndRenderAStoreChange();
+            s_externalCounter.Set(6);
+
+            // Act
+            VelvetMainThread.RunHandoffs();
+
+            // Assert
+            Assert.That(s_log, Does.Contain("render:v6"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ResumeListWriterOtherHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(ResumeListRender, key: "list"),
+                V.Component(EffectWriterRender, key: "writer"),
+                V.Component(OtherRender, key: "other"),
+            });
+
+        [Test]
+        public void Given_AnEffectPendingAsAParkedPassResumes_When_ItSchedulesAnUpdate_Then_TheUpdateRendersBeforeTheResumedSlice()
+        {
+            // Arrange — the writer's effect is staged after the pass parks
+            s_resumeRowsShown = false;
+            s_lateRow = LateRowRender;
+            _mounted = V.Mount(_root, V.Component(ResumeListWriterOtherHostRender, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_resumeRowsShown = true;
+            s_resumeListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_setWriterDep.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_log.Clear();
+
+            // Act
+            s_resumeListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "effect:d1", "render:other:1", "render:late" }));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode WriterOtherListHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(EffectWriterRender, key: "writer"),
+                V.Component(OtherRender, key: "other"),
+                V.VirtualList(items: new[] { "a", "b", "c", "d", "e", "f" }, keySelector: item => item,
+                    itemHeight: 50f, renderer: item => V.Component<string>(VirtualRowRender, item, key: item),
+                    overscan: 0, key: "list"),
+            });
+
+        [Test]
+        public void Given_AnEffectARangeRendersFlushSchedulesAnUpdate_When_TheRangesRowsMount_Then_TheUpdateIsLeftToTheScheduler()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(WriterOtherListHostRender, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_setWriterDep.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var controller = _mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            s_log.Clear();
+
+            // Act — what a scroll to the top of a 100-unit viewport renders
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "effect:d1", "render:row-a", "render:row-b" }));
         }
     }
 }
