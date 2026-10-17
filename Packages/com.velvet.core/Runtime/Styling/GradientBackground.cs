@@ -566,7 +566,8 @@ namespace Velvet
                 case RadialExtent.Explicit:
                     radii = radial.Circle
                         ? new Vector2(radial.X, radial.X)
-                        : new Vector2(radial.XPercent ? radial.X * width : radial.X, radial.YPercent ? radial.Y * height : radial.Y);
+                        : new Vector2(Radius(radial.X, radial.XPercent, radial.XAt, width),
+                            Radius(radial.Y, radial.YPercent, radial.YAt, height));
                     break;
                 case RadialExtent.ClosestSide:
                     radii = radial.Circle ? Vector2.one * Mathf.Min(nearX, nearY) : new Vector2(nearX, nearY);
@@ -587,6 +588,10 @@ namespace Velvet
             }
             return new Vector2(Mathf.Max(radii.x, 1e-4f), Mathf.Max(radii.y, 1e-4f));
         }
+
+        // CSS clamps a calculated radius to zero rather than reject it.
+        private static float Radius(float value, bool percent, MeasuredLength? at, float side)
+            => at != null ? Mathf.Max(at.Of(side), 0f) : percent ? value * side : value;
 
         // The unit direction a linear gradient runs in, for an angle in CSS degrees (0 = to top, clockwise),
         // in a box whose x points right and y down. Shared with the skew silhouette bake.
@@ -617,8 +622,8 @@ namespace Velvet
                 for (var i = 0; i < stops.Length; i++)
                 {
                     var stop = stops[i];
-                    placed[i] = new GradientStop(stop.Color, Place(stop.Position, stop.PositionPx, length), float.NaN,
-                        Place(stop.Hint, stop.HintPx, length));
+                    placed[i] = new GradientStop(stop.Color, Place(stop.Position, stop.PositionPx, stop.PositionAt, length),
+                        float.NaN, Place(stop.Hint, stop.HintPx, stop.HintAt, length));
                 }
                 stops = StyleGradientClass.FixUp(placed);
             }
@@ -637,9 +642,11 @@ namespace Velvet
             return resolved;
         }
 
-        // A position of fraction of the line plus px pixels along it, either NaN where it was not written.
-        private static float Place(float fraction, float px, float length)
-            => float.IsNaN(px) ? fraction : (float.IsNaN(fraction) ? 0f : fraction) + (px / length);
+        // A position of fraction of the line plus px pixels along it, either NaN where it was not written, or at's
+        // reading against the line where at is given.
+        private static float Place(float fraction, float px, MeasuredLength? at, float length)
+            => at != null ? at.Of(length) / length
+                : float.IsNaN(px) ? fraction : (float.IsNaN(fraction) ? 0f : fraction) + (px / length);
 
         // The length in pixels of what a stop position of 100% is: a linear gradient's line, a radial's
         // ray along x; a conic has no length.

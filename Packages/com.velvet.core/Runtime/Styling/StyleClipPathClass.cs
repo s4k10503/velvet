@@ -30,33 +30,31 @@ namespace Velvet
         public readonly bool IsPercent;
         // Pixels added to a percentage (calc(100%_-_10px)); 0 otherwise.
         public readonly float AddedPx;
-        // A length the element measures (a font-relative or viewport unit), affine in its percentage; Value,
-        // IsPercent and AddedPx carry nothing until ClipPathSpec.MeasuredOn reads it.
+        // A length reading a font-relative or viewport unit, which ClipPathSpec.MeasuredOn reads into At.
         public readonly StyleLengthExpression? Measured;
+        public readonly string? MeasuredText;
+        // A length that is no percentage plus pixels, its percentage taken of the slot's basis when the shape is
+        // baked; where it is set, Value and AddedPx carry nothing and IsPercent holds, so a slot hands it a basis.
+        public readonly MeasuredLength? At;
 
-        public ClipPathLength(float value, bool isPercent, float px = 0f, StyleLengthExpression? measured = null)
+        public ClipPathLength(float value, bool isPercent, float px = 0f, StyleLengthExpression? measured = null,
+            string? measuredText = null, MeasuredLength? at = null)
         {
             Value = value;
             IsPercent = isPercent;
             AddedPx = px;
             Measured = measured;
+            MeasuredText = measuredText;
+            At = at;
         }
 
-        public float Resolve(float basis) => (IsPercent ? Value * 0.01f * basis : Value) + AddedPx;
+        public float Resolve(float basis) => At != null ? At.Of(basis) : (IsPercent ? Value * 0.01f * basis : Value) + AddedPx;
 
         // Whether the length is a percentage alone, which scales with the box.
-        public bool ScalesWithBox => IsPercent && AddedPx == 0f && Measured == null;
+        public bool ScalesWithBox => IsPercent && AddedPx == 0f && Measured == null && At == null;
 
-        // This length as the element measures it, as a percentage plus pixels.
         public ClipPathLength MeasuredOn(in RelativeLengthBasis basis)
-        {
-            if (Measured == null)
-            {
-                return this;
-            }
-            Measured.SplitPercentage(basis, out var fraction, out var px);
-            return fraction != 0f ? new ClipPathLength(fraction * 100f, true, px) : new ClipPathLength(px, false);
-        }
+            => Measured == null ? this : new ClipPathLength(0f, true, at: new MeasuredLength(Measured, basis, MeasuredText!));
 
         public static ClipPathLength Percent(float value) => new(value, true);
         public static ClipPathLength Px(float value) => new(value, false);
@@ -116,7 +114,7 @@ namespace Velvet
             ClipPathLength Read(ClipPathLength length)
             {
                 var read = length.MeasuredOn(basis);
-                key.Append('|').Append(read.Value).Append(read.IsPercent ? "%" : "px").Append(read.AddedPx);
+                key.Append('|').Append(read.At?.Key);
                 return read;
             }
             copy.PolygonPoints = PolygonPoints == null ? null : System.Array.ConvertAll(PolygonPoints, Read);
@@ -617,14 +615,16 @@ namespace Velvet
                 length = new ClipPathLength(value, unit == LengthUnit.Percent);
                 return true;
             }
-            // A percentage beside a length, or a length the element measures, each affine in the percentage.
-            if (!StyleLengthExpression.TryParse(span, out var expression) || !expression!.IsAffine)
+            // A percentage beside a length reads as both, a percentage under a function of one as At, and a length the
+            // element measures is read when the shape is baked.
+            if (!StyleLengthExpression.TryParse(span, out var expression))
             {
                 return false;
             }
-            length = !expression.TrySplitPercentage(out var fraction, out var px) ? new ClipPathLength(0f, false, 0f, expression)
-                : fraction != 0f ? new ClipPathLength(fraction * 100f, true, px)
-                : new ClipPathLength(px, false);
+            length = expression!.TrySplitPercentage(out var fraction, out var px)
+                ? (fraction != 0f ? new ClipPathLength(fraction * 100f, true, px) : new ClipPathLength(px, false))
+                : expression.ReadsElementUnits ? new ClipPathLength(0f, false, 0f, expression, span.ToString())
+                : new ClipPathLength(0f, true, at: new MeasuredLength(expression, default, span.ToString()));
             return true;
         }
 

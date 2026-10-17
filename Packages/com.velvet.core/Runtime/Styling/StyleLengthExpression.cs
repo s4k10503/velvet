@@ -44,6 +44,43 @@ namespace Velvet
         public RelativeLengthBasis WithPercent(float percent) => new(Font, Root, percent, ViewportWidth, ViewportHeight);
     }
 
+    // A length as an element measures it, whose percentage is taken of what a caller hands Of: a clip-path's or a
+    // gradient's length, read once the element is known and resolved against the box it is drawn in. Two are equal
+    // where their text and the element's measures are.
+    internal sealed class MeasuredLength : IEquatable<MeasuredLength>
+    {
+        private readonly StyleLengthExpression _expression;
+        private readonly RelativeLengthBasis _basis;
+
+        public MeasuredLength(StyleLengthExpression expression, in RelativeLengthBasis basis, string text)
+            : this(expression, basis, string.Concat(text, "@", basis.Font.ToString(), basis.Root.ToString(),
+                basis.ViewportWidth.ToString("R", System.Globalization.CultureInfo.InvariantCulture), "x",
+                basis.ViewportHeight.ToString("R", System.Globalization.CultureInfo.InvariantCulture)), 0)
+        {
+        }
+
+        private MeasuredLength(StyleLengthExpression expression, in RelativeLengthBasis basis, string key, int _)
+        {
+            _expression = expression;
+            _basis = basis;
+            Key = key;
+        }
+
+        public string Key { get; }
+
+        public bool ReadsPercentage => _expression.ReadsPercentage;
+
+        public MeasuredLength Negated() => new(_expression.Negated(), _basis, "-" + Key, 0);
+
+        public float Of(float percentBasis) => _expression.Evaluate(_basis.WithPercent(percentBasis));
+
+        public bool Equals(MeasuredLength? other) => other != null && Key == other.Key;
+
+        public override bool Equals(object? obj) => obj is MeasuredLength other && Equals(other);
+
+        public override int GetHashCode() => Key.GetHashCode();
+    }
+
     // The type a math function comes to, where a percentage is its own (StyleLengthExpression.TypeOf).
     internal enum MathType
     {
@@ -174,6 +211,8 @@ namespace Velvet
 
         public bool ReadsPercentage => (_reads & ReadsPercent) != 0;
 
+        public bool ReadsElementUnits => (_reads & ReadsElement) != 0;
+
         // The pixel length or percentage this is whatever it is measured against, or false when it reads a font-
         // relative or viewport unit, or a percentage beside a pixel length. A length reading percentages alone is
         // folded to a percentage, which UI Toolkit takes of the basis: each number in it is a literal or a ratio
@@ -211,6 +250,16 @@ namespace Velvet
         // A math function coming to an angle that needs nothing measured, in degrees.
         public static bool TryParseAngle(ReadOnlySpan<char> text, out float degrees)
             => TryParseConstant(text, CalcType.Angle, out degrees);
+
+        // A math function coming to an angle-percentage that needs nothing measured, in degrees, its percentage taken of
+        // turn degrees.
+        public static bool TryParseAnglePercentage(ReadOnlySpan<char> text, float turn, out float degrees)
+        {
+            var expression = OpensMathFunction(text.Trim("_ ".AsSpan())) ? Parse(text, CalcType.Angle, percentIsAngle: true) : null;
+            var constant = expression != null && (expression._reads & ReadsElement) == 0;
+            degrees = constant ? expression!.Evaluate(new RelativeLengthBasis(0f, turn, 0f, 0f)) : 0f;
+            return constant;
+        }
 
         // A math function coming to a time that needs nothing measured, in milliseconds.
         public static bool TryParseTime(ReadOnlySpan<char> text, out float milliseconds)
@@ -260,10 +309,13 @@ namespace Velvet
         }
 
         // The expression text comes to, or null where it comes to another type than type (any type, where type is
-        // null). A percentage is a length where percentIsLength holds, and its own type otherwise.
-        private static StyleLengthExpression? Parse(ReadOnlySpan<char> text, CalcType? type, bool percentIsLength = true)
+        // null). A percentage is an angle where percentIsAngle holds, a length where percentIsLength holds, and its own
+        // type otherwise.
+        private static StyleLengthExpression? Parse(ReadOnlySpan<char> text, CalcType? type, bool percentIsLength = true,
+            bool percentIsAngle = false)
         {
-            var parser = new Parser(TailwindMathSpacing.Format(text.ToString().Replace('_', ' ').Trim(' ')), percentIsLength);
+            var parser = new Parser(TailwindMathSpacing.Format(text.ToString().Replace('_', ' ').Trim(' ')), percentIsLength,
+                percentIsAngle);
             return parser.TryTop(out var top) && top != null && (type == null || top._type.Equals(type.Value)) ? top : null;
         }
 
@@ -603,13 +655,15 @@ namespace Velvet
             private readonly List<Token> _tokens = new();
             private readonly bool _tokenized;
             private readonly bool _percentIsLength;
+            private readonly bool _percentIsAngle;
             private int _at;
             private int _depth;
 
-            public Parser(string text, bool percentIsLength)
+            public Parser(string text, bool percentIsLength, bool percentIsAngle)
             {
                 _tokenized = Tokenize(text, _tokens);
                 _percentIsLength = percentIsLength;
+                _percentIsAngle = percentIsAngle;
             }
 
             // A function or a single dimension, with no space before it and nothing after it.
@@ -736,6 +790,8 @@ namespace Velvet
                     return null;
                 }
                 return token.Unit == null ? new Constant(number, 0, CalcType.Number)
+                    : token.Unit == "%" && _percentIsAngle
+                        ? new Unary(new Leaf(b => b.Percent / 100d, ReadsPercent, CalcType.Angle), CalcType.Angle, x => number * x)
                     : token.Unit == "%" && !_percentIsLength ? new Constant(number, 0, CalcType.Percent)
                     : Dimension(number, token.Unit);
             }
