@@ -74,16 +74,18 @@ namespace Velvet.Tests
             (s_cMounted, s_cTransition) = (false, null);
             (s_aClasses, s_bClasses) = (null, null);
             (s_aPose, s_aTransition) = (null, null);
-            (s_aField, s_looseField) = (false, false);
+            (s_aField, s_looseField, s_controlClasses) = (false, false, null);
             (s_modalTransition, s_exitCompletions, s_presenceGone) = (null, 0, false);
             (s_modalLeft, s_moverLeft) = (300, -1);
             s_cardTransition = null;
             (s_cardMounted, s_m1Open, s_m2Open) = (false, false, false);
+            s_closeRead = null;
         }
 
         [TearDown]
         public override void TearDown()
         {
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = false;
             _moveMount?.Dispose();
             _moveMount = null;
             base.TearDown();
@@ -2741,6 +2743,8 @@ namespace Velvet.Tests
         // A TextField "field" inside "a", and one "loose" outside every holder.
         private static bool s_aField;
         private static bool s_looseField;
+        // The classes of a Div "control" holding no id, whose opacity UI Toolkit transitions natively; none while null.
+        private static string s_controlClasses;
 
         [Component]
         private static VNode SharedLiveIdRender()
@@ -2770,6 +2774,10 @@ namespace Velvet.Tests
             if (s_looseField)
             {
                 children.Add(V.TextField(key: "loose", name: "loose"));
+            }
+            if (s_controlClasses != null)
+            {
+                children.Add(V.Div(key: "control", name: "control", className: $"w-[100px] h-[100px] {s_controlClasses}"));
             }
             return V.Div(children: children.ToArray());
         }
@@ -3246,6 +3254,84 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALeadMixingFromAHalfOpaqueHolder_When_AMoveOfItsOwnInterruptsIt_Then_TheMixHoldsWhereItWas()
+        {
+            // Arrange — the bundled sheet; "a" at half opacity leaves as "b" mounts under its id, and "b" about a
+            // third of the way through mixing from it.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aClasses) = (300, s_slowTween, "", "opacity-50");
+            using var mounted = MountAAlone();
+            (s_aMounted, s_bMounted) = (false, true);
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+            var reached = WrittenOpacity(Root.Q<VisualElement>("b"));
+
+            // Act
+            s_bLeft = 400;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            // NaN stands in for the drawn opacity where the mix was not part-way, so a tree that never mixes fails here
+            // rather than reading inconclusive.
+            var drawn = reached < 0.9f ? WrittenOpacity(Root.Q<VisualElement>("b")) : float.NaN;
+
+            // Assert — still at the part-way opacity the mix reached, as a crossfade interrupted the same way holds.
+            Assert.That(drawn, Is.EqualTo(reached).Within(0.06f));
+        }
+
+        [Test]
+        public void Given_ALeadMixingFromAHalfOpaqueHolder_When_ItsOwnOpacityChangesDuringAMoveThatInterruptedTheMix_Then_ItIsDrawnAtWhatTheMixHadReached()
+        {
+            // Arrange — the bundled sheet; "a" at half opacity leaves as "b" mounts under its id, "b" about a third of the
+            // way through mixing from it, and a move of "b"'s own interrupting the mix.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aClasses) = (300, s_slowTween, "", "opacity-50");
+            using var mounted = MountAAlone();
+            (s_aMounted, s_bMounted) = (false, true);
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+            s_bLeft = 400;
+            RenderShared(mounted);
+            var reached = WrittenOpacity(Root.Q<VisualElement>("b"));
+
+            // Act — "b"'s own opacity drops to a quarter while its own move runs.
+            s_bClasses = "opacity-25";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            // NaN stands in for the drawn opacity where the mix was not left part-way, so a tree that never mixes fails
+            // here rather than reading inconclusive.
+            var drawn = reached < 0.9f ? WrittenOpacity(Root.Q<VisualElement>("b")) : float.NaN;
+
+            // Assert
+            Assert.That(drawn, Is.EqualTo(reached).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AMemberFadingOutBehindALeadWhoseOwnMoveInterruptedIt_When_ItsOwnOpacityChanges_Then_ItIsDrawnAtWhatTheFadeHadReached()
+        {
+            // Arrange — the bundled sheet; "b" three quarters of the way through crossfading over "a", "a" fading out
+            // behind it, and a move of "b"'s own interrupting the crossfade.
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 45; i++) Tick();
+            s_bLeft = 400;
+            RenderShared(mounted);
+            var reached = WrittenOpacity(Root.Q<VisualElement>("a"));
+
+            // Act — "a"'s own opacity drops to a quarter while "b"'s own move runs.
+            s_aClasses = "opacity-25";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            // NaN stands in for the drawn opacity where the fade was not part-way, so a tree that never fades fails here
+            // rather than reading inconclusive.
+            var drawn = reached < 0.9f ? WrittenOpacity(Root.Q<VisualElement>("a")) : float.NaN;
+
+            // Assert
+            Assert.That(drawn, Is.EqualTo(reached).Within(0.01f));
+        }
+
+        [Test]
         public void Given_AHalfOpaqueHolderRemovedAsAnotherMountsAtItsBox_When_AQuarterOfTheTweenHasPassed_Then_TheOtherIsMixingFromItsOpacity()
         {
             // Arrange — the bundled sheet, and "a" at half opacity where "b" mounts.
@@ -3356,6 +3442,65 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALeadCrossfadingInOnANegativeDelay_When_ItsClassesFadeItOutAndBack_Then_TheWayBackShortensItsDelayAsTheEngineDoes()
+        {
+            // Arrange — the bundled sheet and the test's own; "b", and a control holding no id, both transitioning their
+            // opacity linearly over a second begun a fifth of a second in; "b" takes the id on a three-second tween.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(OpacityTransitionSheetPath));
+            (s_bClasses, s_controlClasses) = ("layout-id-test-fade-early", "layout-id-test-fade-early");
+            s_bTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+            (s_bClasses, s_controlClasses) = ("layout-id-test-fade-early opacity-0", "layout-id-test-fade-early opacity-0");
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Act — both back towards their own whole; a tenth of a second on.
+            (s_bClasses, s_controlClasses) = ("layout-id-test-fade-early", "layout-id-test-fade-early");
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert — "b"'s own opacity, under the crossfade's circOut, where the control stands: the engine shortens the
+            // way back's negative delay with its duration, which leaves the control below three quarters.
+            var own = WrittenOpacity(Root.Q<VisualElement>("b")) / Mathf.Sin(Mathf.Acos(1f - BProgress() / 0.5f));
+            var control = Root.Q<VisualElement>("control").resolvedStyle.opacity;
+            Assert.That(own, Is.EqualTo(control < 0.75f ? control : float.NaN).Within(0.03f));
+        }
+
+        [Test]
+        public void Given_ALeadCrossfadingIn_When_ItsClassesFadeItOutAndBackMidway_Then_TheWayBackIsShortened()
+        {
+            // Arrange — the bundled sheet and the test's own; "b", and a control holding no id, both transitioning their
+            // opacity linearly over a second; "b" takes the id on a three-second tween.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(OpacityTransitionSheetPath));
+            (s_bClasses, s_controlClasses) = ("layout-id-test-fade", "layout-id-test-fade");
+            s_bTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+            (s_bClasses, s_controlClasses) = ("layout-id-test-fade opacity-0", "layout-id-test-fade opacity-0");
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Act — both back towards their own whole some 0.3 s into the fade out, out again some 0.15 s later, and about
+            // 0.2 s on.
+            (s_bClasses, s_controlClasses) = ("layout-id-test-fade", "layout-id-test-fade");
+            RenderShared(mounted);
+            for (var i = 0; i < 9; i++) Tick();
+            (s_bClasses, s_controlClasses) = ("layout-id-test-fade opacity-0", "layout-id-test-fade opacity-0");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert — "b"'s own opacity, under the crossfade's circOut, where the control stands: the engine runs each
+            // reversal over a share of the second shortened by how far the one it reverses had got, which leaves the
+            // control near two thirds, where whole seconds would leave it near three fifths.
+            var own = WrittenOpacity(Root.Q<VisualElement>("b")) / Mathf.Sin(Mathf.Acos(1f - BProgress() / 0.5f));
+            var control = Root.Q<VisualElement>("control").resolvedStyle.opacity;
+            Assert.That(own, Is.EqualTo(control > 0.63f ? control : float.NaN).Within(0.03f));
+        }
+
+        [Test]
         public void Given_AMemberHalfWayThroughItsOwnFade_When_ANewLeadTakesTheId_Then_TheFadeEndsWhenItWouldHave()
         {
             // Arrange — the bundled sheet; "a" about half way through a linear second down to opacity-0 as "b" takes the
@@ -3402,6 +3547,31 @@ namespace Velvet.Tests
             // Assert — about a quarter, where the fade stands 0.75 s into its second, rather than near a half, where
             // it would stand had it waited out its delay again as "b" took the id.
             Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.InRange(0.15f, 0.35f));
+        }
+
+        [Test]
+        public void Given_AMemberInsideTheDelayOfAFade_When_ANewLeadTakesTheId_Then_ItsOwnRunsAsTheEngineRunsIt()
+        {
+            // Arrange — the bundled sheet and the test's own; "a", and a control holding no id, both fading to opacity-0 over
+            // a linear second after a fifth of a second's delay, and "b" taking the id from "a" a tenth of a second in.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(OpacityTransitionSheetPath));
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            (s_aClasses, s_controlClasses) = ("layout-id-test-fade-delayed", "layout-id-test-fade-delayed");
+            using var mounted = MountAAlone();
+            (s_aClasses, s_controlClasses) = ("layout-id-test-fade-delayed opacity-0", "layout-id-test-fade-delayed opacity-0");
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+            s_bMounted = true;
+            RenderShared(mounted);
+
+            // Act — some 0.45 s on, before "a" starts fading out behind "b".
+            for (var i = 0; i < 27; i++) Tick();
+
+            // Assert — where the control stands, part way down after what was left of the delay.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.opacity;
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.EqualTo(control > 0.1f && control < 0.9f ? control : float.NaN).Within(0.03f));
         }
 
         [Test]
@@ -3924,7 +4094,44 @@ namespace Velvet.Tests
                             className: $"absolute left-[{s_modalLeft}px] top-[0px] w-[100px] h-[100px]"),
                     }
                     : Array.Empty<VNode>()),
+                s_closeRead == null ? null : V.Component(CloseReaderRender, s_modalOpen, key: "reader"),
             });
+        }
+
+        // Set before a case that suspends the render closing the modal: the read that render waits for.
+        private static VelvetTaskCompletionSource<int> s_closeRead;
+
+        // Reads nothing pending while the modal is open, and s_closeRead once it closes, with no Suspense above.
+        [Component(Compiler = false)]
+        private static VNode CloseReaderRender(bool open)
+        {
+            Hooks.Use<int>(_ => open ? VelvetTask.FromResult(0) : s_closeRead.Task, open);
+            return V.Div(name: "reader");
+        }
+
+        [Test]
+        public void Given_AModalWithNothingToAnimateRelegatingTheCard_When_TheRenderClosingItSuspendsAndIsTakenAgain_Then_TheCardIsRelegatedOnce()
+        {
+            // Arrange — the modal's exit plays nothing, so it waits for the card to land and for its commit.
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            s_modalTransition = StyleTransitionConfig.None;
+            s_closeRead = new VelvetTaskCompletionSource<int>();
+            s_modalOpen = false;
+            using var mounted = V.Mount(Root, V.Component(CardModalRender, key: "root"));
+            Tick();
+            s_modalOpen = true;
+            RenderShared(mounted);
+            AdvancePast(1f);
+            s_modalOpen = false;
+            RenderShared(mounted);
+
+            // Act — the read resolves, and the render it suspended is taken again.
+            s_closeRead.TrySetResult(0);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — one landing waited for: a second relegation would add the card's landing again.
+            Assert.That(mounted.Root.Reconciler.Context.LayoutIdLandings.Count, Is.EqualTo(1));
         }
 
         // Mounts the card, opens the modal over it and lets its tween end, then closes it and plays the frame after.

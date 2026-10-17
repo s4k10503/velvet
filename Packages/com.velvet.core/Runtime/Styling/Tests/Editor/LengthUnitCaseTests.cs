@@ -236,7 +236,7 @@ namespace Velvet.Tests
         public void Given_AParenthesisedUnitWithNoMathFunction_When_ItsUnitCaseIsAsked_Then_TailwindDoesNotTakeItForALength()
         {
             // Act
-            var length = StyleArbitraryValueResolver.SpellsUnitAsTailwindInfers("(2PX)".AsSpan());
+            var length = TailwindDataTypes.IsLength("(2PX)".AsSpan());
 
             // Assert
             Assert.That(length, Is.False);
@@ -246,7 +246,7 @@ namespace Velvet.Tests
         public void Given_AnEmptyValue_When_ItsUnitCaseIsAsked_Then_NothingThrows()
         {
             // Assert
-            Assert.That(() => StyleArbitraryValueResolver.SpellsUnitAsTailwindInfers(string.Empty.AsSpan()), Throws.Nothing);
+            Assert.That(() => TailwindDataTypes.IsLength(string.Empty.AsSpan()), Throws.Nothing);
         }
     }
 }

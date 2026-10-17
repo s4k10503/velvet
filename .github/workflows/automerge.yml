@@ -10,13 +10,13 @@ name: Automerge
 # moment of the merge, are not among them.
 #
 # No job checks out the pull request: these jobs hold write access, and the only code of this
-# repository they run is the default branch's. The campaign the hand-off dispatches runs the branch's.
+# repository they run is the default branch's.
 on:
   workflow_run:
     workflows: [Test, Source generators, UPM]
     types: [completed]
   pull_request_target:
-    types: [labeled, ready_for_review, synchronize, reopened]
+    types: [labeled, ready_for_review]
   workflow_dispatch:
     inputs:
       number:
@@ -35,9 +35,8 @@ env:
 jobs:
   # A pull_request_target event's jobs are checks on the pull request's head, so a merge decided
   # inside this run would find its own job pending there. automerge.py dispatches the merge run
-  # instead, which waits for this run to finish — or, where the head has no campaign, the campaign,
-  # whose aggregate dispatches the merge run once it passes. The campaign does not wait for the head's
-  # Test run: it is dispatched as soon as the head carries the label, and the merge waits for both.
+  # instead, which waits for this run to finish. A push or a reopen starts the head's Test run, whose
+  # completion asks through the merge job, so only the two events that start no Test run hand off.
   hand-off:
     name: Hand off the labelled pull request
     if: >-
@@ -49,10 +48,8 @@ jobs:
     timeout-minutes: 5
     permissions:
       actions: write
-      checks: read
       contents: read
       pull-requests: read
-      statuses: read
     steps:
       # The default branch, as the merge job checks it out.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,31 +59,6 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/pr/automerge.py --hand-off
-
-  # A campaign over a head whose Test run failed cannot merge, and under a cap on concurrent jobs it
-  # holds runners other pull requests wait for. The campaign is dispatched beside Test, so a failed
-  # Test run ends it; test_automerge.py holds this condition to campaign.py's AFTER.
-  cancel-campaign:
-    name: Cancel the campaign of a head whose Test failed
-    if: >-
-      github.event_name == 'workflow_run'
-      && github.event.workflow_run.conclusion == 'failure'
-      && github.event.workflow_run.event == 'pull_request'
-      && github.event.workflow_run.path == '.github/workflows/test.yml'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      # The default branch, as the merge job checks it out.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/pr/automerge.py --cancel-red
 
   # This job's `if` and the sweep's are automerge.py's `run_selection` taken again, so a completed
   # run it would decline starts no job. test_automerge.py holds the workflow names in them to its.
@@ -101,7 +73,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      actions: write
       contents: read
     # One merge run per pull request at a time, since each required workflow completing starts one.
     # Job-level rather than workflow-level: a run waiting in the group is cancelled when another joins
@@ -116,10 +87,8 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
-      # automerge.py's DISPATCH_TOKEN says why this job carries a second token.
       - env:
           GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
-          DISPATCH_TOKEN: ${{ github.token }}
           NUMBER: ${{ inputs.number }}
           AFTER_RUN: ${{ inputs.after_run }}
         run: python3 scripts/pr/automerge.py --number "$NUMBER" --after-run "$AFTER_RUN"
@@ -137,7 +106,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      actions: write
       contents: read
     concurrency:
       group: automerge-sweep
@@ -151,5 +119,4 @@ jobs:
 
       - env:
           GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
-          DISPATCH_TOKEN: ${{ github.token }}
         run: python3 scripts/pr/automerge.py

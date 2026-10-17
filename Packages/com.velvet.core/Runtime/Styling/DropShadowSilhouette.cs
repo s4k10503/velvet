@@ -61,8 +61,8 @@ namespace Velvet
 
     /// <summary>
     /// Paints a shadowed element's drop shadow — a baked, SDF-antialiased silhouette drawn as a single quad
-    /// BEHIND the element's content in its own generateVisualContent. This is the <c>shadow-*</c> /
-    /// <c>drop-shadow-*</c> parity mechanism: UI Toolkit (6000.3) has no <c>box-shadow</c>, and a CSS box-shadow
+    /// BEHIND the element's content in its own generateVisualContent. This is the <c>shadow-*</c> parity
+    /// mechanism: UI Toolkit (6000.3) has no <c>box-shadow</c>, and a CSS box-shadow
     /// is a non-structural paint (it does not change layout and it follows a transform on the element), so the
     /// shadow is painted in the caster's own content rather than hosted in a structural wrapper (a wrapper
     /// altered flex/grid sizing and did not follow the caster's transform).

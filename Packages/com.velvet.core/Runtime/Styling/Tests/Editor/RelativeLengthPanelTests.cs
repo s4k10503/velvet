@@ -147,6 +147,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEmBasisInTheFlexShorthandUnderATwelvePixelFont_When_Settled_Then_ItIsTwentyFourPixelsTall()
+        {
+            // Act — the parent is a column, so the basis is the child's height; zero factors leave it there.
+            Mount("text-[12px] w-[300px] h-[200px]", "flex-[0_0_2em] w-[10px]");
+
+            // Assert
+            Assert.That(Child.layout.height, Is.EqualTo(24f).Within(0.01f));
+        }
+
+        [Test]
         public void Given_AnEmWidth_When_TheInheritedFontGrows_Then_ItIsRemeasured()
         {
             // Arrange

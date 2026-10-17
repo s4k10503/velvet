@@ -8,8 +8,8 @@ using UnityEngine.Rendering.Universal;
 namespace Velvet.EditorTools
 {
     /// <summary>
-    /// One-shot project conversion to the Universal Render Pipeline (URP). Velvet's core drop-shadow
-    /// shader (<c>Velvet/DropShadow</c>) targets <c>"RenderPipeline" = "UniversalPipeline"</c>, so the
+    /// One-shot project conversion to the Universal Render Pipeline (URP). Velvet's box-shadow
+    /// shader (<c>Velvet/BoxShadow</c>) targets <c>"RenderPipeline" = "UniversalPipeline"</c>, so the
     /// showcase project must run under URP. Creates a URP asset + Universal Renderer data under
     /// <c>Assets/Settings/</c> and wires them into <see cref="GraphicsSettings"/> /
     /// <see cref="QualitySettings"/> so Unity writes the correct asset GUIDs into the
