@@ -22,11 +22,10 @@ namespace Velvet
     }
 
     // A bracketed CSS <length-percentage>: a single dimension, or calc() / min() / max() / clamp() over
-    // dimensions, numbers and nested parentheses, with `_` read as a space. CSS wants a space on both sides of
-    // a binary + or -; Tailwind writes calc(50%-1rem) and spaces it itself, so a space on neither side is
-    // read the same, and one on a single side is declined: `1px -2px` is two values. px, rem (at the fixed 16px the rest of the
-    // bracket grammar uses) and the absolute units are pixels; %, em and the viewport units stay symbolic until
-    // Evaluate is handed a basis.
+    // dimensions, numbers and nested parentheses, with `_` read as a space. The text is first spaced as
+    // TailwindMathSpacing writes it, and then read as CSS reads it: a binary + or - needs a space on both
+    // sides. px, rem (at the fixed 16px the rest of the bracket grammar uses) and the absolute units are
+    // pixels; %, em and the viewport units stay symbolic until Evaluate is handed a basis.
     internal abstract class StyleLengthExpression
     {
         // What a length reads, for TryFoldConstant.
@@ -37,9 +36,8 @@ namespace Velvet
         // Nesting, and a run of terms or arguments, past this depth is declined rather than recursed into.
         private const int MaxDepth = 64;
 
-        // Unit names match case-sensitively, as StyleArbitraryValueResolver.TryParseValue's do. The small,
-        // large and dynamic viewport units read the panel as vw/vh/vmin/vmax do: a panel has no UA chrome to
-        // show or hide, the case where CSS makes all three equal.
+        // The small, large and dynamic viewport units read the panel as vw/vh/vmin/vmax do: a panel has no UA
+        // chrome to show or hide, the case where CSS makes all three equal.
         private static readonly Dictionary<string, Leaf> s_units = BuildUnits();
 
         private readonly int _reads;
@@ -70,19 +68,21 @@ namespace Velvet
         // Asked before TryParse, so that var(), rgb() and the other functions this does not read are declined
         // without being tokenized.
         public static bool OpensMathFunction(ReadOnlySpan<char> text)
-            => text.StartsWith("calc(".AsSpan()) || text.StartsWith("min(".AsSpan())
-                || text.StartsWith("max(".AsSpan()) || text.StartsWith("clamp(".AsSpan());
+            => text.StartsWith("calc(".AsSpan(), StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("min(".AsSpan(), StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("max(".AsSpan(), StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("clamp(".AsSpan(), StringComparison.OrdinalIgnoreCase);
 
         public static bool TryParse(ReadOnlySpan<char> text, out StyleLengthExpression? expression)
         {
-            var parser = new Parser(text.ToString());
+            var parser = new Parser(TailwindMathSpacing.Format(text.ToString().Replace('_', ' ').Trim(' ')));
             expression = parser.TryTop(out var top) ? top : null;
             return expression != null;
         }
 
         private static Dictionary<string, Leaf> BuildUnits()
         {
-            var units = new Dictionary<string, Leaf>(StringComparer.Ordinal)
+            var units = new Dictionary<string, Leaf>(StringComparer.OrdinalIgnoreCase)
             {
                 ["px"] = new Leaf(_ => 1f, ReadsPixels),
                 ["rem"] = new Leaf(_ => 16f, ReadsPixels),
@@ -276,16 +276,13 @@ namespace Velvet
 
             private Operand Sum() => MoreTerms(Product());
 
-            // A sign glued to the number after an operand is the operator: the term is that signed number.
+            // A signed number after an operand is a second value rather than a term, which leaves the function
+            // unclosed.
             private Operand MoreTerms(Operand left)
             {
                 if (!Descend())
                 {
                     return default;
-                }
-                if (Is(Token.Number) && !Spaced() && "+-".IndexOf(_tokens[_at].Text[0]) >= 0)
-                {
-                    return Ascend(MoreTerms(Operand.Add(left, Product(), 1f)));
                 }
                 var sign = Peek('+') ? 1f : Peek('-') ? -1f : 0f;
                 if (sign == 0f)
@@ -294,7 +291,7 @@ namespace Velvet
                 }
                 var spaced = Spaced();
                 _at++;
-                return Ascend(spaced == Spaced() ? MoreTerms(Operand.Add(left, Product(), sign)) : default);
+                return Ascend(spaced && Spaced() ? MoreTerms(Operand.Add(left, Product(), sign)) : default);
             }
 
             private Operand Product() => MoreFactors(Value());
@@ -321,7 +318,7 @@ namespace Velvet
 
             private Operand Function()
             {
-                var name = _tokens[_at++].Text;
+                var name = _tokens[_at++].Text.ToLowerInvariant();
                 var args = Arguments(new List<Operand>());
                 if (args == null || !Accept(')'))
                 {
