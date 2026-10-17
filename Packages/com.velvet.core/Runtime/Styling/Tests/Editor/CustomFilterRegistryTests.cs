@@ -49,9 +49,7 @@ namespace Velvet.Tests
         private readonly HashSet<string> _warnedNames =
             (HashSet<string>)typeof(StyleFilterValueParser).GetField("s_warnedUnregistered",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
-        private readonly System.Collections.IDictionary _customFilterHosts =
-            (System.Collections.IDictionary)typeof(StyleArbitraryValueResolver).GetField("s_customFilterHosts",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
+        private readonly System.Collections.IDictionary? _customFilterHosts = CustomFilterHosts();
         private Dictionary<string, FilterFunctionDefinition> _definitionsBefore = null!;
         private List<System.Collections.DictionaryEntry> _customFilterHostsBefore = null!;
         private HashSet<string> _warnedBefore = null!;
@@ -61,7 +59,8 @@ namespace Velvet.Tests
         {
             _definitionsBefore = new Dictionary<string, FilterFunctionDefinition>(_definitions);
             _warnedBefore = new HashSet<string>(_warnedNames);
-            _customFilterHostsBefore = _customFilterHosts.Cast<System.Collections.DictionaryEntry>().ToList();
+            _customFilterHostsBefore = _customFilterHosts?.Cast<System.Collections.DictionaryEntry>().ToList()
+                ?? new List<System.Collections.DictionaryEntry>();
             _definitions.Clear();
             _warnedNames.Clear();
             try
@@ -107,8 +106,11 @@ namespace Velvet.Tests
                 foreach (var entry in _definitionsBefore) _definitions.Add(entry.Key, entry.Value);
                 _warnedNames.Clear();
                 _warnedNames.UnionWith(_warnedBefore);
-                _customFilterHosts.Clear();
-                foreach (var entry in _customFilterHostsBefore) _customFilterHosts[entry.Key] = entry.Value;
+                if (_customFilterHosts != null)
+                {
+                    _customFilterHosts.Clear();
+                    foreach (var entry in _customFilterHostsBefore) _customFilterHosts[entry.Key] = entry.Value;
+                }
             }
         }
 
@@ -773,14 +775,21 @@ namespace Velvet.Tests
             Assert.That(f?.Count == 1 ? f[0].GetParameter(1).floatValue : float.NaN, Is.EqualTo(2f));
         }
 
+        // Null rather than a throw where the resolver keeps no host list, as a tree from before it does: the
+        // fixture's construction reaches this, so a throw there fails every case before its body runs, where
+        // HostsListedFor's -1 lets the cases reading the list disagree.
+        private static System.Collections.IDictionary? CustomFilterHosts() =>
+            typeof(StyleArbitraryValueResolver).GetField("s_customFilterHosts",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)?.GetValue(null)
+                as System.Collections.IDictionary;
+
         // The elements the registry would re-resolve for a name, or -1 where it keeps no such list.
         private static int HostsListedFor(string name)
         {
-            var field = typeof(StyleArbitraryValueResolver).GetField("s_customFilterHosts",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            if (field?.GetValue(null) is not System.Collections.IDictionary hosts || !hosts.Contains(name))
+            var hosts = CustomFilterHosts();
+            if (hosts == null || !hosts.Contains(name))
             {
-                return field == null ? -1 : 0;
+                return hosts == null ? -1 : 0;
             }
             var entry = hosts[name]!;
             var list = entry.GetType().GetField("Item1")?.GetValue(entry) as System.Collections.IList;
@@ -808,8 +817,6 @@ namespace Velvet.Tests
             // Arrange
             var el = new VisualElement();
             StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade-cleared:1]", StyleLayerPriority.Base);
-            Assume.That(HostsListedFor("fade-cleared"), Is.EqualTo(1),
-                "Precondition: the element is listed while styled, which the reuse case above pins");
 
             // Act
             StyleArbitraryValueResolver.ClearAll(el);
@@ -947,10 +954,10 @@ namespace Velvet.Tests
             // Arrange — TearDown puts the process-wide hosts back.
             StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), "filter-[dissolve:0.4]", StyleLayerPriority.Base);
             var reset = typeof(StyleArbitraryValueResolver).GetMethod("ResetCustomFilterHosts",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
 
             // Act
-            reset.Invoke(null, null);
+            reset?.Invoke(null, null);
 
             // Assert
             Assert.That(HostsListedFor("dissolve"), Is.Zero);
