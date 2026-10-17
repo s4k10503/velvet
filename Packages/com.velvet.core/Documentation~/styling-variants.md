@@ -122,10 +122,13 @@ Four consequences worth knowing:
   `StyleSheetTailwindOrderTests` fails when a rule's place in a sheet stops agreeing with it. The `anim-*`
   presets are the exception: the animation scheduler applies them to outrank the utilities they animate.
   One utility that resolves inline beside the bundled classes is ordered the same way ([An inline value and a stylesheet class](styling-arbitrary-lengths.md#an-inline-value-and-a-stylesheet-class)
-  has the cases). Two utilities that both resolve inline are ordered as Tailwind emits them only in the spacing, size,
-  inset and radius families ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)) and among per-side border colours
-  ([react-migration.md §4-1b](react-migration.md#4-1b-per-side-border-colors)); any other pair goes to the last class
-  written, the font facets (`font-light font-bold`, `not-italic italic`) among them.
+  has the cases). Two utilities that both resolve inline are ordered as Tailwind emits them when they write one property
+  ([Two inline utilities of one property](styling-arbitrary-lengths.md#two-inline-utilities-of-one-property)), when a
+  shorthand meets its longhand in the spacing, size, inset, radius and border-width families
+  ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)), and among per-side border colours
+  ([react-migration.md §4-1b](react-migration.md#4-1b-per-side-border-colors)); the families a C# resolver folds from
+  the class list, the font facets (`font-light font-bold`, `not-italic italic`) among them, and the nine-slice
+  utilities are put in Tailwind's order too ([the list](styling-arbitrary-lengths.md#utilities-a-c-resolver-folds-from-the-class-list)).
 - **A payload only displaces a class whose properties it wholly covers.** A base utility writing
   something the payload does not keeps its place, and the two then settle their shared properties in
   Tailwind's order. That is reliable where one set contains the other — `size-8 md:w-4` resolves the

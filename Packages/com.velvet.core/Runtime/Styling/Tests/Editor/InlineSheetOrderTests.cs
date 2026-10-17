@@ -193,6 +193,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_EveryClassTheBundledStylesheetsDefine_When_ParsedAsALayer_Then_NoneIsOneTheInlineGateRefuses()
+        {
+            // Arrange
+            var classes = ((System.Collections.IDictionary)typeof(StyleUtilityProperties)
+                .GetField("ByClassName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .GetValue(null)!).Keys.Cast<string>();
+
+            // Act
+            var taken = classes.Where(cls => !StyleArbitraryValueResolver.IsInlineResolved(cls)
+                && StyleArbitraryValueResolver.TryParseLayerQuietly(cls, out _)).ToArray();
+
+            // Assert
+            Assert.That(string.Join(" ", taken), Is.Empty);
+        }
+
+        [Test]
         public void Given_TheWinningClassOfAPairRemoved_When_Reconciled_Then_TheInlineTokenHoldsTheWidth()
         {
             // Arrange

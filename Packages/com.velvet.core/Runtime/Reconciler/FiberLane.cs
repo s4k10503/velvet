@@ -39,6 +39,12 @@ namespace Velvet
         internal static bool SchedulesOnImmediateTier(FiberUpdatePriority priority)
             => priority is FiberUpdatePriority.Urgent or FiberUpdatePriority.Normal;
 
+        // Whether a render of renderLane folds in a state update written on updateLane. React renders its sync,
+        // input-continuous and default lanes together (SyncUpdateLanes), which are Urgent and Normal here, so
+        // only a Transition update waits for a Transition render.
+        internal static bool Renders(FiberUpdatePriority renderLane, FiberUpdatePriority updateLane)
+            => updateLane != FiberUpdatePriority.Transition || renderLane == FiberUpdatePriority.Transition;
+
         // Frame budget for a flush of priority. Transition slices against timeSlicedBudgetMs so a
         // large flat-list diff can pause/resume across frames; Urgent and Normal run synchronously
         // (user-input-driven updates are never interrupted). Only the reconciler fast path acts on

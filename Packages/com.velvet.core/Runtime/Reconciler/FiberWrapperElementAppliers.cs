@@ -237,7 +237,7 @@ namespace Velvet
             }
             else if (settings != null)
             {
-                _ctx.DroppableBindings[element] = DndDroppableDriver.Attach(element, settings);
+                _ctx.DroppableBindings[element] = DndDroppableDriver.Attach(element, settings, _ctx);
             }
         }
 
