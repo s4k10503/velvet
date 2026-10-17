@@ -1368,7 +1368,7 @@ namespace Velvet
             [ArbitraryProperty.BorderBlockEndColor] = new Func<IResolvedStyle, Color>[] { s => s.borderBottomColor },
         };
 
-        // A colour read off a live source, which ColorReferencePoll writes again as the source moves. currentcolor is
+        // A colour read off a live source, which ColorReferenceWatch writes again as the source moves. currentcolor is
         // the element's own text colour, except on the text colour itself, where CSS reads it as the inherited one.
         // inherit is the parent's value of the same longhand; the parent is the one the element is laid out in, past
         // a clip-path wrapper (ClipPathLayoutBox), whose own colours mirror the element's rather than the parent's.
@@ -1388,7 +1388,14 @@ namespace Velvet
                 }
                 else if (parent == null)
                 {
-                    continue; // no parent yet: the poll writes it once there is one
+                    continue; // no parent yet: the watch writes it once there is one
+                }
+                else if (style.Reference == ColorReference.Inherit && IsBorderColor(style.Property)
+                    && BorderKeepsCurrentColor(parent, style.Property, out var parentAlpha))
+                {
+                    // currentcolor inherits as the keyword, so it reads against this element's own text colour.
+                    color = element.resolvedStyle.color;
+                    color.a *= parentAlpha;
                 }
                 else
                 {
@@ -1397,6 +1404,37 @@ namespace Velvet
                 color.a *= style.Color.a;
                 setters[i](cs, new StyleColor(color));
             }
+        }
+
+        private static bool IsBorderColor(ArbitraryProperty property)
+            => property != ArbitraryProperty.TextColor && property != ArbitraryProperty.BackgroundColor;
+
+        // Whether element's border colour at property is currentcolor: named so by its winning layer (or, through an
+        // inherit, its parent's), or left at CSS's initial value where nothing sets one. alpha is the modifier of the
+        // currentcolor layer it comes from.
+        private static bool BorderKeepsCurrentColor(VisualElement element, ArbitraryProperty property, out float alpha)
+        {
+            alpha = 1f;
+            if (s_layers.TryGetValue(element, out var map)
+                && (TryWinningLayer(map, property, out var own) || TryWinningLayer(map, ArbitraryProperty.BorderColor, out own)))
+            {
+                if (own.Reference == ColorReference.Inherit)
+                {
+                    var up = ClipPathLayoutBox.Of(element).hierarchy.parent;
+                    return up == null || BorderKeepsCurrentColor(up, property, out alpha);
+                }
+                alpha = own.Reference == ColorReference.Current ? own.Color.a : 1f;
+                return own.Reference == ColorReference.Current;
+            }
+            var colours = StyleArbitraryLonghands.Of(ArbitraryProperty.BorderColor);
+            foreach (var cls in element.GetClasses())
+            {
+                if (StyleUtilityProperties.TryGet(cls, out var rule) && rule.Properties.Overlaps(colours))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         // Float-valued counterpart to PropertySetters. Border widths are
@@ -1488,7 +1526,7 @@ namespace Velvet
 
             // Set while a winning layer reads its colour off a live source (ArbitraryStyle.Reference) — see
             // ReresolveColorReferences.
-            public ColorReferencePoll? ColorPoll;
+            public ColorReferenceWatch? ColorWatch;
 
             // What each writer of the background image last asked for — see WriteBackgroundImage. Lazily
             // allocated: only an element something writes a background image to gets one.
@@ -2372,7 +2410,7 @@ namespace Velvet
             if (element != null && s_layers.TryGetValue(element, out var map))
             {
                 map.RelativePoll?.Stop();
-                map.ColorPoll?.Stop();
+                map.ColorWatch?.Stop();
             }
             if (element != null) s_layers.Remove(element);
             // What the fit records the radius layers as declaring goes with them.
@@ -2523,7 +2561,7 @@ namespace Velvet
             }
             else if (winner.Reference != ColorReference.None)
             {
-                map.ColorPoll ??= new ColorReferencePoll(element, ReresolveColorReferences);
+                map.ColorWatch ??= new ColorReferenceWatch(element, ReresolveColorReferences);
             }
             var rewritten = ResolveSharedLonghands(element, property, map);
             ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property) | rewritten);
@@ -2575,11 +2613,11 @@ namespace Velvet
         }
 
         // The poll's tick for colours read off a live source: re-writes each property such a colour wins once the
-        // colours it reads have moved, and stops the poll once none wins.
+        // colours it reads have moved, and stops the watch once none wins.
         private static void ReresolveColorReferences(VisualElement element)
         {
             // MUTANT_SURVIVES(unreachable): a ticking poll always finds its element's map holding a poll.
-            if (!s_layers.TryGetValue(element, out var map) || map.ColorPoll == null)
+            if (!s_layers.TryGetValue(element, out var map) || map.ColorWatch == null)
             {
                 return;
             }
@@ -2593,11 +2631,11 @@ namespace Velvet
             }
             if (s_relativeWinners.Count == 0)
             {
-                map.ColorPoll.Stop();
-                map.ColorPoll = null;
+                map.ColorWatch.Stop();
+                map.ColorWatch = null;
                 return;
             }
-            if (!map.ColorPoll.Moved())
+            if (!map.ColorWatch.Moved())
             {
                 return;
             }

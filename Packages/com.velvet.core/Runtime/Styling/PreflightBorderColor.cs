@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -36,26 +37,21 @@ namespace Velvet
             StyleArbitraryValueResolver.Apply(element, s_currentColor, StyleLayerPriority.Preflight);
         }
 
-        private static bool SetsBorderWidth(string[] classNames)
+        private static bool SetsBorderWidth(string[] classNames) => Array.Exists(classNames, SetsWidth);
+
+        private static bool SetsWidth(string cls)
         {
-            foreach (var cls in classNames)
+            if (string.IsNullOrEmpty(cls) || cls.IndexOf("border", StringComparison.Ordinal) < 0)
             {
-                if (string.IsNullOrEmpty(cls) || cls.IndexOf("border", System.StringComparison.Ordinal) < 0)
-                {
-                    continue;
-                }
-                var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-                var leaf = core.Substring(StyleSpacingPrecedence.VariantsLength(core));
-                if (StyleUtilityProperties.TryGet(leaf, out var rule)
-                    ? rule.Properties.Overlaps(s_widths)
-                    : StyleArbitraryValueResolver.IsInlineResolved(leaf)
-                        && StyleArbitraryValueResolver.TryParseLayer(leaf, out var style)
-                        && StyleArbitraryLonghands.Of(style.Property).Overlaps(s_widths))
-                {
-                    return true;
-                }
+                return false;
             }
-            return false;
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            var leaf = core.Substring(StyleSpacingPrecedence.VariantsLength(core));
+            return StyleUtilityProperties.TryGet(leaf, out var rule)
+                ? rule.Properties.Overlaps(s_widths)
+                : StyleArbitraryValueResolver.IsInlineResolved(leaf)
+                    && StyleArbitraryValueResolver.TryParseLayer(leaf, out var style)
+                    && StyleArbitraryLonghands.Of(style.Property).Overlaps(s_widths);
         }
     }
 }

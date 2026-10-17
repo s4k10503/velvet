@@ -41,7 +41,7 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
-          "anchor": "public static bool TryExtract(string[] classNames, out RingSpec spec)",
+          "anchor": "public static bool TryExtract(string[] classNames, int baseCount, out RingSpec spec)",
           "neuter": "spec = default; return false;"
         },
         {
@@ -316,7 +316,7 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
-          "anchor": "public static bool TryExtract(string[] classNames, out ShadowSpec spec)",
+          "anchor": "public static bool TryExtract(string[] classNames, int baseCount, out ShadowSpec spec)",
           "neuter": "spec = default; return false;"
         },
         {
