@@ -2299,6 +2299,7 @@ class RemoteBranchDeletionTests(unittest.TestCase):
         # Assert
         self.assertEqual(failure, "")
 
+    # GREEN_ON_BASE(characterization): the base reported every refused delete, so a ref that exists was reported too.
     def test_Given_ARefThatExistsAndADeleteTheProxyRefuses_When_Deleted_Then_ItIsReportedAsSurviving(self):
         # Arrange
         read = remote_answering("")
