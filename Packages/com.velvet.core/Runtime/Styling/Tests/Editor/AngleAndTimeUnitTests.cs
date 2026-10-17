@@ -165,5 +165,16 @@ namespace Velvet.Tests
             // Assert
             Assert.That(ok ? spec.AngleDeg : float.NaN, Is.EqualTo(90f));
         }
+
+        // GREEN_ON_BASE(characterization): the base declined an empty conic start too.
+        [Test]
+        public void Given_AConicActivatorWithNoStart_When_Extracted_Then_TheClassIsInert()
+        {
+            // Act
+            var ok = StyleGradientClass.TryExtract(new[] { "bg-conic-", "from-[#ff0000]", "to-[#0000ff]" }, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
     }
 }
