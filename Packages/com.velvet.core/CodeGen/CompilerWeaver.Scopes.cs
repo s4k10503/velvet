@@ -31,7 +31,8 @@ namespace Velvet.CodeGen
     //   It calls no member of a Ref / MutableRef and no method taking one, and reads no hook value from UseService
     //   or from a custom hook unless value-like: a render reading through one has no value to compare.
     //   It reads no mutable static, and calls only a V factory, a constructor, a plain property read (see
-    //   IsPlainGetter), or a member of the BCL namespaces named in PureNamespaces, other than a member of the types
+    //   IsPlainGetter), or a member of the BCL namespaces named in PureNamespaces, other than a call that changes a
+    //   collection in place (see ChangesACollection) and a member of the types
     //   named in AmbientStateTypes and the static members of those in AmbientStateStaticTypes.
     //   Control flow in it stays inside it and moves forward, nothing outside jumps into it, and nothing
     //   outside runs it twice (no loop around it).
@@ -87,6 +88,24 @@ namespace Velvet.CodeGen
         {
             "System.DateTime", "System.DateTimeOffset", "System.Guid", "System.TimeZoneInfo",
         };
+
+        // A collection of these namespaces changes in place, and a call that changes one made inside a scope is skipped
+        // by a hit. Only a getter, or a call by one of these names, is taken for a read of one.
+        private static readonly HashSet<string> CollectionNamespaces = new() { "System.Collections", "System.Collections.Generic" };
+
+        private static readonly HashSet<string> CollectionReads = new()
+        {
+            "Contains", "ContainsKey", "ContainsValue", "TryGetValue", "IndexOf", "LastIndexOf", "Find", "FindAll",
+            "FindIndex", "FindLast", "Exists", "TrueForAll", "BinarySearch", "GetEnumerator", "ToArray", "CopyTo",
+            "GetRange", "Peek", "ToString", "Equals", "GetHashCode",
+        };
+
+        private static bool ChangesACollection(MethodReference method, TypeReference declaring)
+            => method.HasThis && CollectionNamespaces.Contains(declaring.Namespace)
+                && !declaring.Name.StartsWith("IReadOnly", System.StringComparison.Ordinal)
+                && !declaring.Name.StartsWith("IEnumerable", System.StringComparison.Ordinal)
+                && !method.Name.StartsWith("get_", System.StringComparison.Ordinal)
+                && !CollectionReads.Contains(method.Name);
 
         // Interfaces declaring no member that changes what a value holds, so that one kept from an earlier render
         // is what the expression would build again.
@@ -541,7 +560,7 @@ namespace Velvet.CodeGen
                 || (!method.HasThis && AmbientStateStaticTypes.Contains(declaring.FullName));
             return instr.OpCode.Code == Code.Newobj
                 || declaring.FullName == FactoryTypeFullName
-                || (PureNamespaces.Contains(declaring.Namespace) && !ambient)
+                || (PureNamespaces.Contains(declaring.Namespace) && !ambient && !ChangesACollection(method, declaring))
                 || IsPlainGetter(facts, method);
         }
 
@@ -551,6 +570,7 @@ namespace Velvet.CodeGen
         private static bool IsPlainGetter(ScopeFacts facts, MethodReference method)
         {
             if (!method.HasThis || !method.Name.StartsWith("get_", System.StringComparison.Ordinal)) return false;
+            // MUTANT_SURVIVES(unreachable, literal): a body calling a method that does not resolve is left unwoven before any scope is planned; Given_AChildReadingAGetterWhoseAssemblyCannotBeResolved_When_CompilerWeaverRuns_Then_TheMethodIsLeftUnwoven pins that.
             if (TryResolve(() => method.Resolve()) is not { } definition) return false;
             return ReferenceEquals(definition.Module, facts.Module) || IsAutoPropertyGetter(definition);
         }
