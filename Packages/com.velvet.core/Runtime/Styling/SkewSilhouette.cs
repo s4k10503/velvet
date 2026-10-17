@@ -37,6 +37,9 @@ namespace Velvet
         public GradientSpec Gradient;
         public bool HasGradient;
 
+        // Reads the gradient's classes again once a length they hold measures has moved (FiberSkewApplier).
+        public RelativeLengthPoll? Poll;
+
         // The baked silhouette: the sheared, rounded, SDF-antialiased gradient fill rendered by the
         // Velvet/GradientSilhouette shader at the element's sheared bounding-box size. Owned by this binding
         // — re-baked when the size / skew / spec change, destroyed on Detach. Draw samples it on a
@@ -180,6 +183,7 @@ namespace Velvet
                 element.RemoveManipulator(binding.ChildTranslate);
                 binding.ChildTranslate = null;
             }
+            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, false, () => { });
             DestroyGradientTex(binding);
             SilhouetteBoundsSpacer.Remove(element, ref binding.BoundsSpacer);
             element.MarkDirtyRepaint();

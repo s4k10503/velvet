@@ -40,9 +40,17 @@ namespace Velvet
         private static void SyncSkewGradient(VisualElement element, SkewBinding binding, string[] classNames)
         {
             GradientSpec gradient = default;
+            var measured = false;
             var has = StyleGradientClass.HasGradientClass(classNames)
-                && StyleGradientClass.TryExtract(classNames, element, out gradient, out _);
+                && StyleGradientClass.TryExtract(classNames, element, out gradient, out measured);
             SkewSilhouette.SetGradient(element, binding, has, gradient);
+            // The poll of the classes before these held those, so it is replaced rather than kept.
+            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, false, () => { });
+            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, has && measured, () =>
+            {
+                var read = StyleGradientClass.TryExtract(classNames, element, out var spec, out _);
+                SkewSilhouette.SetGradient(element, binding, read, spec);
+            });
         }
 
         // Patch-time reconciliation of an element's skew state against its new class list. Four
