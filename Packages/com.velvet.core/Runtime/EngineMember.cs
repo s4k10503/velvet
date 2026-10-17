@@ -130,6 +130,9 @@ namespace Velvet
         internal static readonly EngineMember AnimatedFloats =
             Field(UIElements, AnimationSystemType, "m_Floats", AnimationSystemType + "+ValuesFloat");
 
+        internal static readonly EngineMember AnimatedRotates =
+            Field(UIElements, AnimationSystemType, "m_Rotate", AnimationSystemType + "+ValuesRotate");
+
         internal static readonly EngineMember RunningAnimations = Field(UIElements, AnimatedValuesType, "running",
             AnimationDataSetType + "[" + AnimatedValuesType + "+TimingData[generic:T]," + AnimatedValuesType
             + "+StyleData[generic:T]]");
@@ -169,6 +172,9 @@ namespace Velvet
 
         internal static readonly EngineMember OpacityPropertyId =
             Field(UIElements, StylePropertyIdType, "Opacity", StylePropertyIdShape);
+
+        internal static readonly EngineMember RotatePropertyId =
+            Field(UIElements, StylePropertyIdType, "Rotate", StylePropertyIdShape);
 
         // FiberLayoutReflow's layout computation ahead of a commit's layout reads.
         private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";

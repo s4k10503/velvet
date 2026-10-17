@@ -73,7 +73,8 @@ namespace Velvet.Tests
             s_sharedClasses = null;
             (s_cMounted, s_cTransition) = (false, null);
             (s_aClasses, s_bClasses, s_aSize, s_bSize) = (null, null, 100, 100);
-            (s_aPose, s_aTransition) = (null, null);
+            (s_aPose, s_aTransition, s_bPose, s_bVariants) = (null, null, null, null);
+            s_aVariants = null;
             (s_aField, s_looseField, s_controlClasses) = (false, false, null);
             (s_modalTransition, s_exitCompletions, s_presenceGone, s_cardClasses) = (null, 0, false, null);
             (s_modalLeft, s_moverLeft) = (300, -1);
@@ -2742,11 +2743,28 @@ namespace Velvet.Tests
         // The pose "a" takes of s_fade, none while null, on s_aTransition in place of s_slowTween while set.
         private static string s_aPose;
         private static StyleTransitionConfig s_aTransition;
+        // The pose "b" takes of s_bVariants, or of s_fade while those are null; none while null.
+        private static string s_bPose;
+        private static Dictionary<string, MotionVariant> s_bVariants;
         // A TextField "field" inside "a", and one "loose" outside every holder.
         private static bool s_aField;
         private static bool s_looseField;
         // The classes of a Div "control" holding no id, whose opacity UI Toolkit transitions natively; none while null.
         private static string s_controlClasses;
+        // The variants "a" takes its pose of in place of s_fade, while set.
+        private static Dictionary<string, MotionVariant> s_aVariants;
+
+        private static readonly Dictionary<string, MotionVariant> s_shade = new()
+        {
+            ["dark"] = "bg-black",
+            ["light"] = "bg-white",
+        };
+
+        private static readonly Dictionary<string, MotionVariant> s_turn = new()
+        {
+            ["still"] = "rotate-0",
+            ["turned"] = "rotate-90",
+        };
 
         [Component]
         private static VNode SharedLiveIdRender()
@@ -2757,7 +2775,7 @@ namespace Velvet.Tests
             if (s_aMounted)
             {
                 children.Add(V.Motion(key: "a", name: "a", layoutId: s_aId, transition: s_aTransition ?? s_slowTween,
-                    variants: s_aPose != null ? s_fade : null, animate: s_aPose,
+                    variants: s_aPose != null ? s_aVariants ?? s_fade : null, animate: s_aPose,
                     className: $"absolute left-[{s_aLeft}px] top-[0px] w-[{s_aSize}px] h-[{s_aSize}px] {s_sharedClasses} {s_aClasses}",
                     children: s_aField
                         ? new VNode[] { V.Div(key: "a-child", name: "a-child", className: "w-[20px] h-[20px]"), V.TextField(key: "field", name: "field") }
@@ -2766,6 +2784,7 @@ namespace Velvet.Tests
             if (s_bMounted)
             {
                 children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_bTransition,
+                    variants: s_bPose != null ? s_bVariants ?? s_fade : null, animate: s_bPose,
                     className: $"absolute left-[{s_bLeft}px] top-[0px] w-[{s_bSize}px] h-[{s_bSize}px] {s_sharedClasses} {s_bClasses}"));
             }
             if (s_cMounted)
@@ -4504,6 +4523,693 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ListedValues(delay), Is.EqualTo(new[] { 0.1f }).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ALeadMixingItsRotateWhoseOwnMoveInterruptedIt_When_ItsOwnRotateChanges_Then_ItIsDrawnAtWhatTheMixHadReached()
+        {
+            // Arrange — the bundled sheet; "b" at rotate-45 mixing it in from an unrotated "a", and a move of "b"'s own
+            // interrupting the mix.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "rotate-45";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+            s_bLeft = 400;
+            RenderShared(mounted);
+            var b = Root.Q<VisualElement>("b");
+            var reached = b.style.rotate.value.angle.ToDegrees();
+            Assume.That(reached, Is.GreaterThan(1f));
+
+            // Act
+            s_bClasses = "rotate-90";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That(b.style.rotate.value.angle.ToDegrees(), Is.EqualTo(reached).Within(0.5f));
+        }
+
+
+        [Test]
+        public void Given_ALeadMixingRotateWhileABezierDrivesIt_When_HalfTheMoveHasPassed_Then_ItsOwnRotateIsTheBeziersAtOnce()
+        {
+            // Arrange — the bundled sheet; "a", transitioning everything, holds an id of its own still, while "b" holds
+            // "card" 300px right.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aClasses) = (300, s_slowTween, "", "transition-all");
+            (s_aVariants, s_aPose) = (s_turn, "still");
+            s_aTransition = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f, Layout = s_slowTween,
+            };
+            using var mounted = MountAAlone();
+
+            // Act — "a" moves under "card" and turns on a linear second's bezier in one render; half a second on.
+            (s_aId, s_aLeft, s_aPose) = ("card", 0, "turned");
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Assert — drawn at its own rotate mixed in from "b"'s none as far as the move has got, its own being where the
+            // bezier has got, which runs alongside the move. Read off the projection, since the bezier writes the slot too.
+            var a = Root.Q<VisualElement>("a");
+            var progress = 1f - TranslateX(a) / 300f;
+            var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[a].DrawnRotate;
+            Assert.That(drawn / progress, Is.EqualTo(90f * progress).Within(3f));
+        }
+
+
+        // Whether MotionNativeTransitionGuard keeps a suspension record for the element (s_suspensions).
+        private static bool GuardKeepsARecordOf(VisualElement element)
+        {
+            var table = typeof(MotionNativeTransitionGuard).GetField("s_suspensions", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .GetValue(null);
+            var args = new object[] { element, null };
+            return (bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, args);
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base keeps a record only for an owner that suspends the element.
+        // Recording a driver that suspends nothing must not leave one behind once it is released.
+        [Test]
+        public void Given_ADriverWhoseSlotsAnElementsClassesDoNotTransition_When_ItIsReleased_Then_TheGuardKeepsNoRecordOfTheElement()
+        {
+            // Arrange — the bundled sheet; an element transitioning its colors, and a driver writing its opacity.
+            VelvetStyleUtilities.AttachTo(Root);
+            var element = new VisualElement();
+            element.AddToClassList("transition-colors");
+            Root.Add(element);
+            Tick();
+            var owner = new object();
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, owner, MotionTransitionSlots.Opacity);
+
+            // Act
+            MotionNativeTransitionGuard.Release(element, owner);
+
+            // Assert
+            Assert.That(GuardKeepsARecordOf(element), Is.False);
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base clears the slot a tween ends in where no owner suspends.
+        // A driver recorded without suspending must not have the cascade's list written there.
+        [Test]
+        public void Given_AnAnimateDriverWhoseSlotsAnElementsClassesDoNotTransition_When_ATweenEnds_Then_NoTransitionIsLeftInline()
+        {
+            // Arrange — the bundled sheet; an element transitioning its colors, and an animate-* driver writing its opacity
+            // for as long as it is bound.
+            VelvetStyleUtilities.AttachTo(Root);
+            var element = new VisualElement();
+            element.AddToClassList("transition-colors");
+            Root.Add(element);
+            Tick();
+            MotionNativeTransitionGuard.SyncSuspension(element, new object(), MotionTransitionSlots.Opacity);
+
+            // Act
+            MotionNativeTransitionGuard.RestoreAfterForeignWrite(element);
+
+            // Assert
+            Assert.That(element.style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base leaves no list inline once both plays have ended.
+        // Recording the spring's slots must not pin the classes' transitions inline past the tween.
+        [Test]
+        public void Given_AMotionWhoseSpringPoseDroveNothingItsClassesTransition_When_ATweenPoseEndsAndItsClassesTurnIt_Then_ItTurnsOnItsTransition()
+        {
+            // Arrange — the bundled sheet; "a", and a control holding no id, transitioning their colors linearly over a
+            // second; "a" swaps its pose on a spring, then on a fifth of a second's tween, and both end.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = (null, 0, true, false);
+            (s_aPose, s_aTransition) = ("hidden", new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 300f, Damping = 35f, Mass = 1f });
+            (s_aClasses, s_controlClasses) = ("transition-colors duration-1000 ease-linear", "transition-colors duration-1000 ease-linear");
+            using var mounted = MountAAlone();
+            for (var i = 0; i < 5; i++) Tick();
+            s_aPose = "visible";
+            RenderShared(mounted);
+            AdvancePast(2f);
+            (s_aPose, s_aTransition) = ("hidden", new StyleTransitionConfig { DurationSec = 0.2f, Easing = EasingMode.Linear });
+            RenderShared(mounted);
+            AdvancePast(1f);
+
+            // Act — both take a turn on transitions of everything; some 0.2 s on.
+            (s_aClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear rotate-90", "transition-all duration-1000 ease-linear rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert — "a" turned as far as the control, which is part way round.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
+            Assert.That(Root.Q<VisualElement>("a").resolvedStyle.rotate.angle.ToDegrees(), Is.EqualTo(control > 5f && control < 45f ? control : float.NaN).Within(3f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base writes a duration-[x] into the slot whatever played before.
+        // Recording the spring's slots must not route that write anywhere else.
+        [Test]
+        public void Given_AMotionWhoseSpringPoseDroveNothingItsClassesTransition_When_ATweenPoseEndsAndItTakesAnArbitraryDuration_Then_ItsBackgroundTransitionsOnIt()
+        {
+            // Arrange — the bundled sheet; "a", and a control holding no id, transitioning their colors linearly and black;
+            // "a" swaps its pose on a spring, then on a fifth of a second's tween, and both end; both take a second's
+            // arbitrary duration.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = (null, 0, true, false);
+            (s_aPose, s_aTransition) = ("hidden", new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 300f, Damping = 35f, Mass = 1f });
+            (s_aClasses, s_controlClasses) = ("transition-colors ease-linear bg-black", "transition-colors ease-linear bg-black");
+            using var mounted = MountAAlone();
+            for (var i = 0; i < 5; i++) Tick();
+            s_aPose = "visible";
+            RenderShared(mounted);
+            AdvancePast(2f);
+            (s_aPose, s_aTransition) = ("hidden", new StyleTransitionConfig { DurationSec = 0.2f, Easing = EasingMode.Linear });
+            RenderShared(mounted);
+            AdvancePast(1f);
+            (s_aClasses, s_controlClasses) = ("transition-colors ease-linear bg-black duration-[1000ms]", "transition-colors ease-linear bg-black duration-[1000ms]");
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Act — both turn white; some 0.3 s on.
+            (s_aClasses, s_controlClasses) = ("transition-colors ease-linear bg-white duration-[1000ms]", "transition-colors ease-linear bg-white duration-[1000ms]");
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Assert — "a" as far along as the control, which is part way.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.backgroundColor.r;
+            Assert.That(Root.Q<VisualElement>("a").resolvedStyle.backgroundColor.r, Is.EqualTo(control > 0.1f && control < 0.9f ? control : float.NaN).Within(0.05f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base keeps nothing of a projection that narrowed nothing once a next one
+        // takes its tail. Deciding again on a later pass must decide for the projection that took it.
+        [Test]
+        public void Given_ALeadWhoseRotateRunsOnPastALandingWithItsTranslateUnnarrowed_When_ItMovesAgainTakingTransitionClasses_Then_NoTransitionIsLeftInlineOnceItLands()
+        {
+            // Arrange — the bundled sheet and the test's own; "b", whose rules transition its rotate alone over a second,
+            // takes the id from an unrotated "a" on a one-second tween, turns 0.6 s in, and the move lands with the turn
+            // running on.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            s_bClasses = "layout-id-test-turn";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            s_bClasses += " rotate-90";
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Act — "b" moves 100px further taking transitions of everything; past every landing.
+            (s_bLeft, s_bClasses) = (400, "transition-all duration-1000 ease-linear rotate-90");
+            RenderShared(mounted);
+            AdvancePast(3f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("b").style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base runs no tail, and hands the translate back as the move lands.
+        // A tail that writes the rotate alone must not narrow the translate again on a later class change.
+        [Test]
+        public void Given_ALeadWhoseRotateRunsOnPastALandingWithItsTranslateUnnarrowed_When_ItsClassesChangeAndItsTranslateMoves_Then_TheTranslateTransitions()
+        {
+            // Arrange — the bundled sheet and the test's own; "b", whose rules transition its rotate alone over a second,
+            // takes the id from an unrotated "a" on a one-second tween, turns 0.6 s in, and the move lands with the turn
+            // running on; then "b", and a control holding no id, take transitions of everything over a second.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            s_bClasses = "layout-id-test-turn";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            s_bClasses += " rotate-90";
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear rotate-90", "transition-all duration-1000 ease-linear rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Act — both move 40px right by a class while "b"'s turn runs on; some 0.2 s on.
+            (s_bClasses, s_controlClasses) = (s_bClasses + " translate-x-[40px]", s_controlClasses + " translate-x-[40px]");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert — "b" where the control is, part way along its second.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.translate.x;
+            Assert.That(Root.Q<VisualElement>("b").resolvedStyle.translate.x, Is.EqualTo(control > 2f && control < 20f ? control : float.NaN).Within(1f));
+        }
+
+
+        [Test]
+        public void Given_ALeadMixingItsRotate_When_ItsOwnRotateIsReadAgain_Then_NothingIsAllocated()
+        {
+            // Arrange — "b" taking the id from "a" at rotate-[40deg], mixing its rotate from "a"'s to its own, which no
+            // inline value gives, so that it is read off its rules; one read to warm it, and a canary allocating a known
+            // array.
+            s_aClasses = "rotate-[40deg]";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+            var b = Root.Q<VisualElement>("b");
+            var projection = mounted.Root.Reconciler.Context.LayoutIdProjections[b];
+            Action read = () => LayoutIdLook.OwnRotate(b, projection, 0f);
+            read();
+            Action canary = () => GC.KeepAlive(new byte[16]);
+            canary();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(read);
+            var counted = GCAllocationProbe.MedianBlocksDuring(canary) > 0;
+
+            // Assert — none, where the canary's are counted, the projection writing the rotate with no inline value of
+            // "b"'s own under it.
+            var readsRules = projection.WritesRotate && projection.OwnInlineRotate.keyword == StyleKeyword.Null;
+            Assert.That(counted && readsRules ? blocks : -1, Is.Zero);
+        }
+
+
+        [Test]
+        public void Given_ALeadMixingRotateUnderAPoseTweenASpinTookRotateOutOf_When_TheSpinEndsAndItsRulesTurnIt_Then_TheTurnIsTakenAtOnce()
+        {
+            // Arrange — the bundled sheet; "a" spinning and swapping to its second pose on a second's tween in the render
+            // that moves it under "card" from "b" 300px right, mixing its rotate in from "b"'s none.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aClasses) = (300, s_slowTween, "", "animate-spin");
+            (s_aVariants, s_aPose) = (s_shade, "dark");
+            s_aTransition = new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.Linear, Layout = s_slowTween };
+            using var mounted = MountAAlone();
+            (s_aId, s_aLeft, s_aPose) = ("card", 0, "light");
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Act — the spin ends as a class turns "a" a quarter round; two frames on.
+            s_aClasses = "rotate-90";
+            RenderShared(mounted);
+            for (var i = 0; i < 2; i++) Tick();
+
+            // Assert — its own rotate at the quarter turn, read off the mix: the pose tween's list, which the spin took
+            // rotate out of, gives rotate no transition.
+            var a = Root.Q<VisualElement>("a");
+            var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[a].DrawnRotate;
+            Assert.That(drawn / (1f - TranslateX(a) / 300f), Is.EqualTo(90f).Within(1f));
+        }
+
+
+        [Test]
+        public void Given_ALeadMixingRotateUnderAPoseTweenThatASpinStartedOn_When_ItsRulesTurnIt_Then_TheTurnIsTakenAtOnce()
+        {
+            // Arrange — the bundled sheet; "a" swapping to its second pose on a second's tween, whose list names rotate,
+            // in the render that moves it under "card" from "b", at rotate-45, 300px right; five frames on "a" starts
+            // spinning, which takes rotate out of that list after the move has read its timing there.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_bClasses) = (300, s_slowTween, "", "rotate-45");
+            (s_aVariants, s_aPose) = (s_shade, "dark");
+            s_aTransition = new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.Linear, Layout = s_slowTween };
+            using var mounted = MountAAlone();
+            (s_aId, s_aLeft, s_aPose) = ("card", 0, "light");
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            s_aClasses = "animate-spin";
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Act — a class turns "a" a quarter round while it spins; two frames on.
+            s_aClasses = "animate-spin rotate-90";
+            RenderShared(mounted);
+            for (var i = 0; i < 2; i++) Tick();
+
+            // Assert — mixed from "b"'s rotate to its own at the quarter turn, the spin driving rotate taking the turn at
+            // once rather than on the second the pose tween's list gave rotate.
+            var a = Root.Q<VisualElement>("a");
+            var progress = 1f - TranslateX(a) / 300f;
+            var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[a].DrawnRotate;
+            Assert.That(drawn, Is.EqualTo(Mathf.LerpUnclamped(45f, 90f, progress)).Within(1f));
+        }
+
+
+        [Test]
+        public void Given_ALeadMixingRotateUnderAPoseTween_When_ASpinStarts_Then_ItsTurnIsAddedToTheMix()
+        {
+            // Arrange — the bundled sheet; "a" swapping to its second pose on a second's tween in the render that moves it
+            // under "card" from "b", at rotate-45, 300px right, mixing its rotate from "b"'s.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_bClasses) = (300, s_slowTween, "", "rotate-45");
+            (s_aVariants, s_aPose) = (s_shade, "dark");
+            s_aTransition = new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.Linear, Layout = s_slowTween };
+            using var mounted = MountAAlone();
+            (s_aId, s_aLeft, s_aPose) = ("card", 0, "light");
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Act — "a" starts spinning; a third of a second on.
+            s_aClasses = "animate-spin";
+            RenderShared(mounted);
+            for (var i = 0; i < 20; i++) Tick();
+
+            // Assert — drawn at the mix from "b"'s rotate to "a"'s own none, turned on by the spin, as the keyframes' turn
+            // composes with `rotate`. The spin's turn read here can be a tick ahead of the one the pass added, under
+            // 6 degrees.
+            var a = Root.Q<VisualElement>("a");
+            var progress = 1f - TranslateX(a) / 300f;
+            var expected = Mathf.LerpUnclamped(45f, 0f, progress) + StyleAnimateDriver.CurrentSpinDeg(a);
+            Assert.That(a.style.rotate.value.angle.ToDegrees(), Is.EqualTo(expected).Within(6.5f));
+        }
+
+
+        // "a", and a control holding no id, both transitioning everything linearly over a second, turn or round as
+        // classes turn; some 0.3 s in, "a" moves under "card" from "b" 300px right on a three-second tween, mixing in
+        // from "b"'s none. Returns "a"'s own some 0.2 s on, read off the projection, and the control's.
+        private (float Own, float Control) TakeOverAsItTurns(string to, System.Func<VisualElement, float> control,
+            System.Func<LayoutIdProjection, float> drawn)
+        {
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            s_aTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
+            (s_aClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountAAlone();
+            (s_aClasses, s_controlClasses) = (s_aClasses + " " + to, s_controlClasses + " " + to);
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+            (s_aId, s_aLeft) = ("card", 0);
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+            var a = Root.Q<VisualElement>("a");
+            var own = drawn(mounted.Root.Reconciler.Context.LayoutIdProjections[a]) / (1f - TranslateX(a) / 300f);
+            var native = control(Root.Q<VisualElement>("control"));
+            return (own, native);
+        }
+
+
+        [Test]
+        public void Given_AMotionTurningOnATransition_When_ItTakesAHeldIdAndMixesItsRotate_Then_ItsOwnRunsAsTheEngineRunsIt()
+        {
+            // Arrange / Act
+            var (own, control) = TakeOverAsItTurns("rotate-90", e => e.resolvedStyle.rotate.angle.ToDegrees(), p => p.DrawnRotate);
+
+            // Assert — within a degree of the control, which is half way round.
+            Assert.That(own, Is.EqualTo(control > 30f && control < 60f ? control : float.NaN).Within(1f));
+        }
+
+
+        [Test]
+        public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItMovesAgain_Then_ItsRotateRunsOnAsTheEngineRunsIt()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second; "b" takes the id from an unrotated "a" on a one-second tween, both turn 0.6 s in, and the move lands.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Act — "b" moves 100px further while its turn runs on; some 0.2 s on.
+            s_bLeft = 400;
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert — where the control stands, rather than landed at the quarter turn as the move starts.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
+            var b = Root.Q<VisualElement>("b").resolvedStyle.rotate.angle.ToDegrees();
+            Assert.That(b, Is.EqualTo(control > 50f && control < 85f ? control : float.NaN).Within(1.5f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base hands the transitions back as the move lands.
+        // Running the rotate on past the landing must take a change of the classes as it comes.
+        [Test]
+        public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsClassesTurnItsTransitionsOff_Then_ItsBackgroundChangesAtOnce()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second and black; "b" takes the id from an unrotated "a" on a one-second tween, both turn 0.6 s in, and the
+            // move lands while "b"'s turn runs on.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear bg-black", "transition-all duration-1000 ease-linear bg-black");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Act — both stop transitioning, keeping their duration, and turn white.
+            (s_bClasses, s_controlClasses) = ("transition-none duration-1000 ease-linear bg-white rotate-90", "transition-none duration-1000 ease-linear bg-white rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Assert — "b" white with the control.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.backgroundColor.r;
+            Assert.That(Root.Q<VisualElement>("b").resolvedStyle.backgroundColor.r, Is.EqualTo(control == 1f ? control : float.NaN).Within(0.05f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base hands the element's transitions back as the move lands, before the
+        // translate changes. Running the rotate on past the landing must not keep the translate from transitioning.
+        [Test]
+        public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsTranslateChanges_Then_TheTranslateTransitions()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second; "b" takes the id from an unrotated "a" on a one-second tween, both turn 0.6 s in, and the move lands.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Act — both move 40px right by a class while "b"'s turn runs on; some 0.2 s on.
+            (s_bClasses, s_controlClasses) = (s_bClasses + " translate-x-[40px]", s_controlClasses + " translate-x-[40px]");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert — "b" where the control is, part way along its second.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.translate.x;
+            Assert.That(Root.Q<VisualElement>("b").resolvedStyle.translate.x, Is.EqualTo(control > 2f && control < 20f ? control : float.NaN).Within(1f));
+        }
+
+
+        [Test]
+        public void Given_ALeadWhoseOwnRotateChangesLateInItsMove_When_TheMoveLands_Then_ItsRotateRunsOnAsTheEngineRunsIt()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second; "b" takes the id from an unrotated "a" on a one-second tween, and both turn 0.6 s in.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
+            RenderShared(mounted);
+
+            // Act — past the landing; some 0.6 s into the turn.
+            for (var i = 0; i < 35; i++) Tick();
+
+            // Assert — where the control stands, rather than a fresh second begun from where the move left it.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
+            var b = Root.Q<VisualElement>("b").resolvedStyle.rotate.angle.ToDegrees();
+            Assert.That(b, Is.EqualTo(control > 30f && control < 80f ? control : float.NaN).Within(1.5f));
+        }
+
+
+        [Test]
+        public void Given_ALayoutIdMotionJoiningARotatedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRotateIsMixingFromTheHolders()
+        {
+            // Arrange
+            s_aClasses = "rotate-[40deg]";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(rotate, Is.EqualTo(40f * (1f - BProgress())).Within(1f));
+        }
+
+
+        [Test]
+        public void Given_ARotatedHolderBehindALeadMovingFromIt_When_TheCrossfadeIsUnderWay_Then_ItIsDrawnAtTheLeadsRotate()
+        {
+            // Arrange
+            s_aClasses = "rotate-[40deg]";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var lead = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(Root.Q<VisualElement>("a").style.rotate.value.angle.ToDegrees(), Is.EqualTo(lead).Within(0.3f));
+        }
+
+
+        [Test]
+        public void Given_AStylesheetRotatedMotionJoiningAnUnrotatedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRotateIsMixingToItsOwn()
+        {
+            // Arrange — the bundled sheet, so rotate-45 resolves.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "rotate-45";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(rotate, Is.EqualTo(45f * BProgress()).Within(1f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base never writes the rotate of a layoutId Motion.
+        // A mix between two holders at the same rotate must leave the slot alone.
+        [Test]
+        public void Given_TwoUnrotatedHolders_When_TheSecondTweensFromTheFirst_Then_ItsRotateIsLeftAlone()
+        {
+            // Arrange / Act
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("b").style.rotate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base never writes the rotate of a layoutId Motion, so a value written there stays.
+        // A rotate mix must take a value written over it as the Motion's own and hand that back.
+        [Test]
+        public void Given_ALayoutIdMotionMixingItsRotate_When_SomethingElseWritesItsRotateMidTween_Then_TheSlotKeepsThatValueAfterwards()
+        {
+            // Arrange
+            s_aClasses = "rotate-[40deg]";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Act
+            var b = Root.Q<VisualElement>("b");
+            b.style.rotate = new Rotate(new Angle(10f, AngleUnit.Degree));
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(b.style.rotate.value.angle.ToDegrees(), Is.EqualTo(10f).Within(0.01f));
+        }
+
+
+        // Mounts "a" alone on the bundled sheet, swaps it to its hidden pose on a one-second tween, so that the swap's
+        // list is in its transition-property slot, and mounts "b" over it with the given classes, five frames on.
+        private MountedTree MountBOverASwappingA(string bClasses)
+        {
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aPose, s_bClasses) = (300, s_slowTween, "", "visible", bClasses);
+            var mounted = MountAAlone();
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            s_bMounted = true;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            return mounted;
+        }
+
+
+        // Whether the element's inline transition-property is a list naming none of the given properties, nor all.
+        private static bool HoldsAListWithout(VisualElement element, params string[] properties)
+        {
+            var names = element.style.transitionProperty.value;
+            return names != null && !names.Exists(n => n == new StylePropertyName("all")
+                || Array.Exists(properties, p => n == new StylePropertyName(p)));
+        }
+
+
+        [Test]
+        public void Given_AMemberMidVariantSwapBehindARotatedLead_When_ItIsDrawnAtTheLeadsRotate_Then_TheSwapsListCarriesNoRotate()
+        {
+            // Arrange / Act
+            using var mounted = MountBOverASwappingA("rotate-[40deg]");
+
+            // Assert
+            Assert.That(HoldsAListWithout(Root.Q<VisualElement>("a"), "rotate"), Is.True);
+        }
+
+
+        [Test]
+        public void Given_AStylesheetRotatedLead_When_ItTakesAnotherRotateMidMove_Then_ItMixesTowardsThatRotate()
+        {
+            // Arrange — the bundled sheet; "b" at rotate-45 some way from an unrotated "a".
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "rotate-45";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Act — and a frame more, the first pass reading the rules as the render left them.
+            s_bClasses = "rotate-90";
+            RenderShared(mounted);
+            Tick();
+
+            // Assert
+            var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(rotate, Is.EqualTo(90f * BProgress()).Within(1.5f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base never writes the rotate of a layoutId Motion, so a render's rotate shows.
+        // A render that ends the projection must keep a rotate it writes over the member.
+        [Test]
+        public void Given_ARotatedMemberBehindALead_When_ARenderRotatesItAndRemovesTheLead_Then_ItKeepsTheNewRotate()
+        {
+            // Arrange
+            s_aClasses = "rotate-[40deg]";
+            s_bClasses = "rotate-[10deg]";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act
+            (s_aClasses, s_bMounted) = ("rotate-[70deg]", false);
+            RenderShared(mounted);
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").style.rotate.value.angle.ToDegrees(), Is.EqualTo(70f).Within(0.01f));
+        }
+
+
+        [Test]
+        public void Given_ALeadMixingItsRotate_When_AVariantSwapStartsMidMove_Then_TheSwapsListCarriesNoRotate()
+        {
+            // Arrange — "b" at its visible pose, some way from a rotated "a".
+            (s_aClasses, s_bPose) = ("rotate-[40deg]", "visible");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — "b" swaps to its hidden pose, whose list names every property.
+            s_bPose = "hidden";
+            RenderShared(mounted);
+            Tick();
+
+            // Assert
+            Assert.That(HoldsAListWithout(Root.Q<VisualElement>("b"), "rotate"), Is.True);
+        }
+
+
+        [Test]
+        public void Given_ALeadMixingItsRotate_When_ItsPoseTweensItsRotateMidMove_Then_ItMixesTowardsThePosesRotateAsItTweens()
+        {
+            // Arrange — "b" level at its first pose, some way from "a" at twenty degrees, both on a linear second.
+            s_aClasses = "rotate-[20deg]";
+            s_bVariants = new Dictionary<string, MotionVariant> { ["level"] = "rotate-[0deg]", ["tilted"] = "rotate-[40deg]" };
+            s_bPose = "level";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — the tilted pose, about a quarter of a second on.
+            s_bPose = "tilted";
+            RenderShared(mounted);
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert — mixed from "a"'s twenty degrees towards "b"'s own a quarter of the way to forty, rather than
+            // towards forty.
+            var own = 40f * 16 * 0.016f;
+            var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(rotate, Is.EqualTo(Mathf.Lerp(20f, own, BProgress())).Within(1.5f));
         }
 
         [Test]

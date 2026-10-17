@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
@@ -79,6 +80,8 @@ namespace Velvet
             public readonly HashSet<object> Owners = new();
             // The owners that take only what they write out of the element's transitions (Narrow), with those longhands.
             public readonly Dictionary<object, StyleLonghandSet> Narrowers = new();
+            // The drivers writing the element's slots frame by frame, suspended or not, with those slots (Drives).
+            public readonly Dictionary<object, MotionTransitionSlots> Driven = new();
             // The transition-property list Narrow last wrote, null while it has written none, and the rules it read it off.
             public List<StylePropertyName> Written;
             public long? Rules;
@@ -113,6 +116,7 @@ namespace Velvet
             {
                 return;
             }
+            s_suspensions.GetValue(element, static _ => new Suspension()).Driven[owner] = drivenSlots;
             // A variant tween holding the slot is narrowed whatever the classes say: its list names this play's
             // slots, and writing `none` over it instead would land the tween at its target.
             // A keyword in the slot is not a list to narrow, and is written over as it always was.
@@ -162,13 +166,12 @@ namespace Velvet
             if (!intercepted)
             {
                 Release(element, owner);
-                return;
             }
-            var suspension = s_suspensions.GetValue(element, static _ => new Suspension());
-            if (suspension.Owners.Add(owner) && !HoldsAForeignValue(element))
+            else if (s_suspensions.GetValue(element, static _ => new Suspension()).Owners.Add(owner) && !HoldsAForeignValue(element))
             {
                 element.style.transitionProperty = s_none;
             }
+            s_suspensions.GetValue(element, static _ => new Suspension()).Driven[owner] = drivenSlots;
         }
 
         /// <summary>
@@ -369,6 +372,12 @@ namespace Velvet
             MotionTweenTiming.Unnarrow(element);
             suspension.WroteTiming = false;
         }
+
+        /// <summary>
+        /// Whether a driver holds a suspension of the element's transitions.
+        /// </summary>
+        internal static bool DriverSuspends(VisualElement element) =>
+            s_suspensions.TryGetValue(element, out var suspension) && suspension.Owners.Count > 0;
 
         /// <summary>
         /// Re-decides the inline slot for a layer that has just finished writing it itself: back to the
@@ -729,6 +738,7 @@ namespace Velvet
         public static void Release(VisualElement element, object owner)
         {
             if (!s_suspensions.TryGetValue(element, out var suspension)) return;
+            suspension.Driven.Remove(owner);
             suspension.Undecided.Remove(owner);
             var suspended = suspension.Owners.Remove(owner);
             var narrowed = suspension.Narrowers.Remove(owner);
@@ -743,22 +753,52 @@ namespace Velvet
                 }
                 if (suspension.Narrowers.Count > 0) WriteNarrowed(element, suspension);
             }
-            // The record goes with the last of its owners, narrowers and undecided owners.
-            if (suspension.Owners.Count + suspension.Narrowers.Count + suspension.Undecided.Count == 0) s_suspensions.Remove(element);
+            // The record goes with the last of its owners, narrowers, drivers and undecided owners
+            // (Given_ADriverWhoseSlotsAnElementsClassesDoNotTransition_When_ItIsReleased_Then_TheGuardKeepsNoRecordOfTheElement).
+            if (suspension.Owners.Count + suspension.Narrowers.Count + suspension.Driven.Count + suspension.Undecided.Count == 0) s_suspensions.Remove(element);
+        }
+
+        /// <summary>
+        /// Hands <paramref name="from"/>'s narrowing on to <paramref name="to"/>.
+        /// </summary>
+        internal static void Transfer(VisualElement element, object from, object to)
+        {
+            if (!s_suspensions.TryGetValue(element, out var suspension)) return;
+            if (suspension.Narrowers.Remove(from, out var longhands)) suspension.Narrowers[to] = longhands;
+            if (suspension.Undecided.Remove(from, out var undecided)) suspension.Undecided[to] = undecided;
+        }
+
+        /// <summary>
+        /// Narrows <paramref name="owner"/> to the longhands of <paramref name="drivenSlots"/> alone, for one that has
+        /// stopped writing some of what it narrowed; a no-op for an owner that narrows nothing.
+        /// </summary>
+        internal static void NarrowTo(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+        {
+            if (!s_suspensions.TryGetValue(element, out var suspension)) return;
+            // Nor is a slot it no longer writes decided again
+            // (Given_ALeadWhoseRotateRunsOnPastALandingWithItsTranslateUnnarrowed_When_ItsClassesChangeAndItsTranslateMoves_Then_TheTranslateTransitions).
+            if (suspension.Undecided.TryGetValue(owner, out var undecided))
+            {
+                suspension.Undecided[owner] = (undecided.Slots & drivenSlots, undecided.Rules);
+            }
+            if (!suspension.Narrowers.ContainsKey(owner)) return;
+            (suspension.Narrowers[owner], suspension.Stale) = (LonghandsOf(drivenSlots), true);
+            WriteNarrowed(element, suspension);
         }
 
         /// <summary>
         /// Writes the narrowed lists again where the element's rules have changed since they were written, called on
         /// each pass a layoutId projection draws the element
-        /// (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming).
+        /// (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming)
+        /// and each step it runs its rotate on past its landing.
         /// </summary>
         internal static void Refresh(VisualElement element)
         {
             if (!s_suspensions.TryGetValue(element, out var suspension)) return;
             if (suspension.Undecided.Count > 0) Redecide(element, suspension);
             if (suspension.Written == null) return;
-            // A variant swap's list holds what a narrower writes until taken out again
-            // (Given_ANarrowedLayoutIdMotionWhosePoseSwapsMidMove_When_ItsMoveRuns_Then_ItIsDrawnWhereItIsWritten).
+            // A variant swap's list holds what a narrower writes until taken out again, as LayoutIdLook.Narrow takes rotate
+            // out (Given_ANarrowedLayoutIdMotionWhosePoseSwapsMidMove_When_ItsMoveRuns_Then_ItIsDrawnWhereItIsWritten).
             var narrowed = StyleLonghandSet.Empty;
             foreach (var longhands in suspension.Narrowers.Values)
             {
@@ -785,6 +825,18 @@ namespace Velvet
                 if (slots != MotionTransitionSlots.None) NarrowIfIntercepted(element, owner, slots);
             }
             s_redecided.Clear();
+        }
+
+        /// <summary>
+        /// Whether a driver that took the element through <see cref="SuspendIfIntercepted"/> or
+        /// <see cref="SyncSuspension(VisualElement, object, MotionTransitionSlots, bool)"/> writes the property frame by
+        /// frame, whether or not it suspended the element's transitions.
+        /// </summary>
+        internal static bool Drives(VisualElement element, string property)
+        {
+            var longhand = Array.IndexOf(s_longhandNames, new StylePropertyName(property));
+            if (longhand < 0 || !s_suspensions.TryGetValue(element, out var suspension)) return false;
+            return suspension.Driven.Values.Any(slots => LonghandsOf(slots).Contains((StyleLonghand)longhand));
         }
 
         /// <summary>

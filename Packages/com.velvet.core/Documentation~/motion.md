@@ -520,8 +520,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   the opacity the holder the lead took its box from was drawn at, if that holder was itself moving from
   another's box, or else from its own opacity as it is now, and take no pointer while they are drawn. A
   lead alone under its id instead mixes its opacity from that holder's to its own over the move, written
-  the same way. A move of
-  the lead's own that interrupts its crossfade or its mix holds the opacities they had reached until that
+  the same way. The lead also mixes its rotate from that holder's to its own over the move, and the others
+  are drawn with the lead's. A move of
+  the lead's own that interrupts its crossfade or its mix holds the values they had reached until that
   move lands.
   The others are hidden again once the lead lands. When the lead leaves the tree, the holder of those
   left that took the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts
@@ -547,6 +548,13 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   the stretch as for any change of size. The scale holds the element's transform origin still (its
   centre unless an `origin-*` class or style moves it), and the translate places the element so that it
   starts over the old box.
+- **A rotate mixes with the box.** A Motion that takes its box from another holder mixes its `rotate` from
+  that holder's to its own over the move, as Framer's `mixValues` does, and leaves the slot alone where both
+  are unrotated. A rotate the Motion is given meanwhile is drawn as it is given, on the transition it changes by,
+  such as a variant swap's, and at once while a Spring or Bezier play writes it; a running `animate-spin`
+  turns it on as the loops below describe. One already running as the tween starts writing it runs on from
+  where it had got, and one still running as the tween lands runs on to its end, through any tween that
+  starts on the Motion meanwhile.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
   `.layout` before the mutation that invalidates it" pattern); the new rect is captured on the
   element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's
@@ -592,9 +600,10 @@ scaled or turned element is scaled and turned with it. `animate-spin` on an elem
 not carry it: CSS turns the content beneath the scale and leaves the squash axes where they are,
 while a single `rotate` and `scale` turn the squash axes with the element. An even scale is exact.
 
-A layoutId move on an element with a running `animate-bounce` or `animate-ping` composes with it as CSS composes a
-layout animation with a keyframe one: the move writes the element's translate or scale, and the bounce's lift or
-the ping's growth is added to its frame, so the element keeps bouncing or pinging while it moves.
+A layoutId move on an element with a running `animate-bounce`, `animate-ping` or `animate-spin` composes with it as
+CSS composes a layout animation with a keyframe one: the move writes the element's translate, scale or rotate, and
+the bounce's lift, the ping's growth or the spin's turn is added to its frame, so the element keeps bouncing,
+pinging or spinning while it moves.
 
 Each mode owns its style slot while it runs, as a CSS animation outranks an element's ordinary
 declarations: the gradient pair owns background position, size and repeat, `animate-hue` owns the
@@ -654,7 +663,8 @@ frame's worth:
   transitions naming no such property, `transition-filter` among them, are left running. The play
   completes once its slowest `PropertyOverrides` entry has run, whether or not a channel plays that entry's property, and an exit cancelled part-way
   reverses over the shortened timing UI Toolkit gives a reversed transition.
-- **A `layoutId` move**, and the opacity a crossfade hands back as it ends.
+- **A `layoutId` move**, the opacity a crossfade hands back as it ends, and the rotate a move runs on past its
+  landing.
 - **A `filter-*` transition**, including one UI Toolkit would animate itself on the default clock
   ([styling-filters.md](styling-filters.md#transitions)).
 - **The `animate-*` loops**, which show the phase of the distance since they started.

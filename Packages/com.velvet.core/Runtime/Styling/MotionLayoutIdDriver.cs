@@ -240,6 +240,7 @@ namespace Velvet
             {
                 From = element.layout,
             };
+            LayoutIdLook.Settle(element, projection);
             ctx.LayoutIdProjections[element] = projection;
             return projection;
         }
@@ -305,6 +306,7 @@ namespace Velvet
             Write(element, projection, delta.Translate);
             WriteOpacity(element, projection, Fade(element, projection, ctx), ctx);
             if (projection.Leader != null) LayoutIdPicking.Ignore(element, projection);
+            WriteLook(element, projection, ctx);
             return projection.Scale;
         }
 
@@ -353,6 +355,28 @@ namespace Velvet
                 projection.WritesOpacity = false;
                 MotionOpacity.End(element, ctx.StyleAnimationScheduler.Clock);
             }
+        }
+
+        // Draws the element at the rotate its id's lead mixes in from the box it took, and a member behind a crossfading
+        // lead at the lead's, as Framer draws every node of a shared animation with the lead's values.
+        private static void WriteLook(VisualElement element, LayoutIdProjection projection, ReconcilerContext ctx)
+        {
+            LayoutIdLook.Adopt(element, projection);
+            LayoutIdLook.Narrow(element, projection);
+            var rotate = float.NaN;
+            if (projection.Leader != null)
+            {
+                rotate = LayoutIdLook.RotateOf(projection.Leader, ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader));
+            }
+            else if (projection is { Shared: true, Moving: true, Held: { } held })
+            {
+                rotate = held.Rotate;
+            }
+            else if (projection is { Shared: true, Moving: true, FromLook: { } from })
+            {
+                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection, s_passDt), CrossfadeProgress(projection));
+            }
+            LayoutIdLook.WriteRotate(element, projection, rotate, s_passDt);
         }
 
         // Read before the projection takes its new tween. A move of the lead's own that interrupts its shared move
@@ -447,9 +471,10 @@ namespace Velvet
         }
 
         // The slots a running animate-* loop leaves to the projection, which adds the loop's share to its own frame.
-        private static MotionTransitionSlots WrittenSlots(LayoutIdProjection projection)
+        internal static MotionTransitionSlots WrittenSlots(LayoutIdProjection projection)
             => (projection.WritesTranslate ? MotionTransitionSlots.Translate : MotionTransitionSlots.None)
-                | (projection.WritesScale ? MotionTransitionSlots.Scale : MotionTransitionSlots.None);
+                | (projection.WritesScale ? MotionTransitionSlots.Scale : MotionTransitionSlots.None)
+                | (projection.WritesRotate ? MotionTransitionSlots.Rotate : MotionTransitionSlots.None);
 
         // A slot that no longer holds the last value written here was written by someone else — the element's
         // own arbitrary-value class re-applied by a patch, a drag, another driver — and that value is the
@@ -557,14 +582,18 @@ namespace Velvet
         {
             if (!ctx.LayoutIdProjections.Remove(element, out var projection)) return;
             AdoptForeignWrites(element, projection);
+            LayoutIdLook.Adopt(element, projection);
             if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
-            StyleAnimateDriver.YieldSlots(element, projection, MotionTransitionSlots.None);
+            // A rotate that runs on past the move keeps the slot from a spin until it lands (LayoutIdLook.Hand).
+            var rotate = projection.WritesRotate ? MotionTransitionSlots.Rotate : MotionTransitionSlots.None;
+            StyleAnimateDriver.YieldSlots(element, projection, LayoutIdLook.RunsOn(projection) ? rotate : MotionTransitionSlots.None);
             // The loop's frame follows at once, rather than the element standing at its own value until its next tick.
-            StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.None);
+            // The rotate slot still holds the projection's frame, handed back by LayoutIdLook.End.
+            StyleAnimateDriver.ReassertLoop(element, rotate);
             WriteOpacity(element, projection, null, ctx);
             LayoutIdPicking.Restore(projection);
-            MotionNativeTransitionGuard.Release(element, projection);
+            LayoutIdLook.End(element, projection, ctx.StyleAnimationScheduler.Clock);
         }
 
         private static Vector3 Pixels(Translate translate, Rect layout) => new(
@@ -613,6 +642,7 @@ namespace Velvet
             if (ctx.LayoutIdProjections.Remove(element, out var projection)) LayoutIdPicking.Restore(projection);
             LayoutIdPicking.Release(element, ctx);
             MotionOpacity.Forget(element);
+            LayoutIdLook.Forget(element);
             CancelPendingSettle(element, ctx);
         }
 
@@ -1005,6 +1035,15 @@ namespace Velvet
         // What the lead was drawn with as a move of its own interrupted its shared one, while it holds that (Hold).
         public LayoutIdLook? Held;
 
+        public bool WritesRotate;
+        public StyleRotate OwnInlineRotate;
+        // The rotate the element had as the projection first wrote it.
+        public float StartRotate;
+        public float DrawnRotate;
+        public StyleRotate WrittenRotate;
+        // How the own rotate is carried while the projection writes it (LayoutIdLook.OwnRotate).
+        public LayoutIdCarry RotateCarry = new();
+
         // Each element of a member's subtree whose picking it holds off while drawn over the lead (LayoutIdPicking).
         public HashSet<VisualElement>? Picking;
         public bool WritesOpacity;
@@ -1126,6 +1165,8 @@ namespace Velvet
         private float _heldDurationSec = float.NaN;
         private float _heldDelaySec;
         private EasingMode _heldEasing;
+        // The held list has named the property since it was written.
+        private bool _named;
 
         public float Value { get; private set; }
         public float Target { get; private set; }
@@ -1152,11 +1193,18 @@ namespace Velvet
         {
             if (!listed)
             {
-                _heldDurationSec = float.NaN;
+                (_heldDurationSec, _named) = (float.NaN, false);
             }
             else if (StyleFilterTransitionDriver.TryFindTransition(lists, property, shorthand, out var durationMs, out var delayMs, out var easing))
             {
-                (_heldDurationSec, _heldDelaySec, _heldEasing) = (durationMs / 1000f, delayMs / 1000f, easing);
+                (_heldDurationSec, _heldDelaySec, _heldEasing, _named) = (durationMs / 1000f, delayMs / 1000f, easing, true);
+            }
+            // A held list that has not named the property since it was written gives it no transition, as UI Toolkit runs
+            // the inline list; one that named it had it taken out by the projection after it was read here
+            // (Given_ALeadMixingRotateUnderAPoseTweenASpinTookRotateOutOf_When_TheSpinEndsAndItsRulesTurnIt_Then_TheTurnIsTakenAtOnce).
+            else if (!_named)
+            {
+                (_heldDurationSec, _heldDelaySec) = (0f, 0f);
             }
         }
 
@@ -1173,7 +1221,11 @@ namespace Velvet
                 _shortening = reverses ? Mathf.Clamp01(Mathf.Abs(1f - (1f - _eased) * _shortening)) : 1f;
                 _reversingStart = reverses ? Target : Value;
                 (_from, Target, _elapsedSec, _curve) = (Value, target, 0f, null);
-                (_durationSec, _delaySec, _easing) = float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
+                // Before the held list, since a driver takes the property out of it, and one that started after the list
+                // was read here leaves it holding the timing it had
+                // (Given_ALeadMixingRotateUnderAPoseTweenThatASpinStartedOn_When_ItsRulesTurnIt_Then_TheTurnIsTakenAtOnce).
+                (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
+                    : float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
                     : (_heldDurationSec, _heldDelaySec, _heldEasing);
                 _durationSec *= _shortening;
                 if (_delaySec < 0f) _delaySec *= _shortening;
