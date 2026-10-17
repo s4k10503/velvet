@@ -41,7 +41,7 @@ settle = load_module()
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
             fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs_unfinished=(),
-            runs_failed=(), required=(), owed_campaign=None):
+            runs_failed=(), required=()):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
@@ -50,7 +50,7 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
                                merge_state=merge_state, fork=fork, failing_runs=failing_runs,
                                behind_release=behind_release, long_lived_head=long_lived_head,
                                runs_unfinished=runs_unfinished, runs_failed=runs_failed,
-                               required=required, owed_campaign=owed_campaign)
+                               required=required)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -234,7 +234,7 @@ COMPLETED_JOBS = [{"name": "Source generators (dotnet)", "status": "completed",
                   {"name": "Required checks (generators)", "status": "completed",
                    "conclusion": "success"}]
 
-# The label that owes a head a campaign.
+# The label that once owed a head a campaign, and owes it nothing now.
 AUTOMERGE = "automerge"
 
 CAMPAIGN = ".github/workflows/mutation.yml"
@@ -310,7 +310,6 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
             ("campaign_runs", lambda _project, sha: by_sha[sha].runs),
             ("run_jobs", lambda _project, runs, _now: {
                 run.get("id"): by_run[run.get("id")] for run in runs if run.get("id") in by_run}),
-            ("campaign_backing", lambda *_: None),
             ("head_sha", lambda _project, number: states[number].after),
             ("contains_commit", lambda _project, branch, sha: (
                 _refuse_for_a_fork(by_branch[branch]) if by_branch[branch].fork
@@ -1056,238 +1055,11 @@ def check_run(name, conclusion, suite):
             "check_suite": {"id": suite}}
 
 
-class ReusedVerdictTests(unittest.TestCase):
-    """A campaign that reused a verdict merges only while the run it cites stands."""
-
-    KEY = "a1" * 32
-
-    def artifacts(self, *names):
-        return {"total_count": len(names), "artifacts": [{"name": name} for name in names]}
-
-    def reading(self, own, cited_run=None, cited_artifacts=None, fails=False):
-        """`campaign_backing` over a head whose one campaign has run 9001's artifacts `own`."""
-        def rest_json(path):
-            if fails and path.endswith("/actions/runs/9500"):
-                raise RuntimeError("gh api failed: HTTP 404")
-            if path.endswith("/actions/runs/9001/artifacts?per_page=100"):
-                return own
-            if path.endswith("/actions/runs/9500"):
-                return cited_run
-            if path.endswith("/actions/runs/9500/artifacts?per_page=100"):
-                return cited_artifacts
-            raise AssertionError(path)
-        with mock.patch.object(settle, "repository", lambda *_: "owner/name"), \
-                mock.patch.object(settle, "rest_json", rest_json):
-            return settle.campaign_backing(Path("."), [campaign_run(1, "success")])
-
-    def reuses(self):
-        return self.artifacts(settle.campaign.key_artifact_name(self.KEY, 9500))
-
-    def test_Given_ACampaignThatMeasuredItself_When_Backed_Then_NothingIsOwed(self):
-        # Arrange
-        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
-
-        # Act
-        why = self.reading(own)
-
-        # Assert
-        self.assertIsNone(why)
-
-    def test_Given_ACampaignWhoseOwnKeyArtifactExpired_When_Backed_Then_ItIsUnbacked(self):
-        # Arrange
-        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
-        own["artifacts"][0]["expired"] = True
-
-        # Act
-        why = self.reading(own)
-
-        # Assert
-        self.assertEqual(why, "holds a key artifact that has expired")
-
-    def test_Given_ACampaignHoldingArtifactsOfTwoKeys_When_Backed_Then_ItIsUnbacked(self):
-        # Arrange
-        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY),
-                             settle.campaign.key_artifact_name("b2" * 32))
-
-        # Act
-        why = self.reading(own)
-
-        # Assert
-        self.assertEqual(why, "holds key artifacts of more than one key")
-
-    def test_Given_ACampaignThatMeasuredWhatItHadReused_When_Backed_Then_NothingIsOwed(self):
-        # Arrange -- both names of one key: the re-run measured.
-        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY),
-                             settle.campaign.key_artifact_name(self.KEY, 9500))
-
-        # Act
-        why = self.reading(own)
-
-        # Assert
-        self.assertIsNone(why)
-
-    def test_Given_ACampaignWithNoKeyArtifact_When_Backed_Then_NothingIsOwed(self):
-        # Arrange -- every campaign that ran before the key existed.
-        why = self.reading(self.artifacts("Mutation EditMode shard 0"))
-
-        # Assert
-        self.assertIsNone(why)
-
-    def test_Given_AReusedVerdictWhoseCitedRunMeasuredIt_When_Backed_Then_NothingIsOwed(self):
-        # Arrange
-        cited = campaign_run(1, "success")
-        cited["id"] = 9500
-        measured = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
-
-        # Act
-        why = self.reading(self.reuses(), cited, measured)
-
-        # Assert
-        self.assertIsNone(why)
-
-    def test_Given_AReusedVerdictWhoseCitedRunFailed_When_Backed_Then_ItIsUnbacked(self):
-        # Arrange
-        cited = campaign_run(1, "failure")
-        cited["id"] = 9500
-        measured = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
-
-        # Act
-        why = self.reading(self.reuses(), cited, measured)
-
-        # Assert
-        self.assertEqual(why, "cites run 9500, which is not a pass of mutation.yml")
-
-    def test_Given_AReusedVerdictWhoseCitedRunCannotBeRead_When_Backed_Then_ItIsUnbacked(self):
-        # Act
-        why = self.reading(self.reuses(), fails=True)
-
-        # Assert
-        self.assertEqual(why, "cites run 9500, which could not be read")
-
-    def test_Given_AReusedVerdictWhoseCitedRunHasNoReadableKeyArtifact_When_Backed_Then_TheMessageNamesThat(self):
-        # Arrange -- the cited run is a pass, and its artifacts listing is what lapsed.
-        cited = campaign_run(1, "success")
-        cited["id"] = 9500
-        lapsed = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
-        lapsed["artifacts"][0]["expired"] = True
-
-        # Act
-        why = self.reading(self.reuses(), cited, lapsed)
-
-        # Assert
-        self.assertEqual(why, "cites run 9500, whose key artifact is missing, expired or ambiguous")
-
-    def test_Given_AReusedVerdictWhoseCitedRunItselfReused_When_Backed_Then_TheMessageNamesThat(self):
-        # Arrange
-        cited = campaign_run(1, "success")
-        cited["id"] = 9500
-        chained = self.artifacts(settle.campaign.key_artifact_name(self.KEY, 9400))
-
-        # Act
-        why = self.reading(self.reuses(), cited, chained)
-
-        # Assert
-        self.assertEqual(why, "cites run 9500, which did not itself measure this key")
-
-    def test_Given_AUnbackedReuse_When_TheMergeIsDecided_Then_TheHeadIsRefused(self):
-        # Arrange
-        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=CAMPAIGN_PASSED)}
-        why = "cites run 9500, which did not itself measure this key"
-
-        # Act
-        with fabricated_readings(states), mock.patch.object(settle, "campaign_backing", lambda *_: why):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert
-        self.assertEqual(decided, ["its mutation.yml run on 0000000 does not stand: it " + why])
-
-    # GREEN_ON_BASE(characterization): the base reads no backing, so a pass that owes none merges there too.
-    # It is the side the refusal above must not take, which a rule holding every reuse would.
-    def test_Given_ABackedReuse_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
-        # Arrange -- the control: the pass is the same, and nothing is owed for it.
-        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=CAMPAIGN_PASSED)}
-
-        # Act
-        with fabricated_readings(states), mock.patch.object(settle, "campaign_backing", lambda *_: None):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert
-        self.assertEqual(decided, [])
-
-    # GREEN_ON_BASE(characterization): the base reads no backing, so it asks for none of a failed run either.
-    # What it pins is that the new reading is not made for a campaign that did not pass.
-    def test_Given_ACampaignThatFailed_When_TheMergeIsDecided_Then_ItsArtifactsAreNotRead(self):
-        # Arrange -- a verdict that did not pass has nothing to be backed.
-        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[campaign_run(1, "failure")])}
-        asked = []
-
-        # Act
-        with fabricated_readings(states), mock.patch.object(
-                settle, "campaign_backing", lambda *_: asked.append(1)):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert
-        self.assertEqual((decided, asked), (["its mutation.yml run on 0000000 failed"], []))
-
-
-class CampaignDisplayMergeTests(unittest.TestCase):
-    def decide(self, runs, state, labels=(AUTOMERGE,), context="Mutation campaign", checks=()):
-        statuses = {"total_count": 1, "statuses": [{"context": context, "state": state}]}
-        with rest_readings([check_run("Required checks (Unity)", "success", 7), *checks],
-                           runs, labels=labels, statuses=statuses):
-            return settle.blocking_reasons(Path("."), 1).reasons
-
-    def test_Given_AuthoritativeCampaignSuccess_When_TheDisplayIsStalePendingOrError_Then_ItAddsNoMergeGate(self):
-        # Act
-        outcomes = [self.decide(CAMPAIGN_PASSED, state) for state in ["pending", "error"]]
-
-        # Assert
-        self.assertEqual(outcomes, [[], []])
-
-    def test_Given_NoCampaignIsRequired_When_TheDisplayIsStale_Then_ManualMergingIsNotDelayed(self):
-        # Act
-        outcomes = [self.decide(runs, "pending", labels=())
-                    for runs in [[], [campaign_run(1, "cancelled")]]]
-
-        # Assert
-        self.assertEqual(outcomes, [[], []])
-
-    # GREEN_ON_BASE(characterization): the base already reads campaign policy independently.
-    # Removing the `owed_campaign` argument from `reasons_from` shows these green displays cannot sign off a merge.
-    def test_Given_ARequiredCampaignMissingFailedOrRunning_When_TheDisplayIsGreen_Then_TheRawRunStillRefusesIt(self):
-        # Act
-        outcomes = [bool(self.decide(runs, "success")) for runs in
-                    [[], [campaign_run(1, "failure")], [campaign_run(1, None, status="in_progress")]]]
-
-        # Assert
-        self.assertEqual(outcomes, [True, True, True])
-
-    # GREEN_ON_BASE(characterization): the base refuses an unreadable campaign before deciding a merge.
-    # Replacing an unreadable `campaign_runs` reading with an empty list makes this case fail.
-    def test_Given_AnUnreadableCampaign_When_TheDisplayIsGreen_Then_NoMergeDecisionIsInvented(self):
-        # Arrange
-        statuses = {"total_count": 1, "statuses": [{"context": "Mutation campaign", "state": "success"}]}
-
-        # Act / Assert
-        with rest_readings([], [], statuses=statuses), mock.patch.object(settle, "campaign_runs", side_effect=RuntimeError):
-            self.assertRaises(RuntimeError, settle.blocking_reasons, Path("."), 1)
-
-    # GREEN_ON_BASE(characterization): real checks and unrelated statuses already gate merging.
-    # Filtering the display name out of both REST surfaces instead of only legacy statuses makes this case fail.
-    def test_Given_ARealCheckRunOrAnotherContext_When_TheCampaignPassed_Then_TheirFailureStillBlocksMerging(self):
-        # Act
-        other = self.decide(CAMPAIGN_PASSED, "pending", context="Other")
-        real = self.decide(CAMPAIGN_PASSED, "success", checks=[check_run("Mutation campaign", "failure", 1)])
-
-        # Assert
-        self.assertEqual((bool(other), bool(real)), (True, True))
-
-
 class CampaignMergeTests(unittest.TestCase):
-    """What a campaign on a head, or a label owing one, does to its merge."""
+    """A mutation campaign on a head, or the `automerge` label on it, holds nothing of its merge."""
 
-    def test_Given_ALabelledHeadNoCampaignRanOn_When_TheMergeIsDecided_Then_ItIsRefused(self):
-        # Arrange — every check passed, so the missing campaign is the only thing left to refuse on.
+    def test_Given_ALabelledHeadNoCampaignRanOn_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
+        # Arrange — every check passed, and the label once owed the head a campaign.
         states = {1: fabricate(1, labels=(AUTOMERGE,))}
 
         # Act
@@ -1295,16 +1067,57 @@ class CampaignMergeTests(unittest.TestCase):
             decided = settle.blocking_reasons(Path("."), 1).reasons
 
         # Assert
-        self.assertEqual(decided, [
-            "it carries the automerge label and no mutation.yml run has measured 0000000: a "
-            "hand-off dispatches one when the label is added, a labelled draft is marked ready, a "
-            "labelled pull request is reopened or its head is pushed, and the merge job and the "
-            "sweep dispatch one once .github/workflows/test.yml has passed on it, for a branch of "
-            "this repository whose base holds automerge.yml, and adding the label again asks again; "
-            "for any other branch the label comes off before a merge by hand"])
+        self.assertEqual(decided, [])
 
-    # GREEN_ON_BASE(characterization): a labelled head whose campaign passed merges on both sides.
-    # It is the side the refusal above must not take, which a rule ignoring the run would.
+    def test_Given_ACampaignThatFailedOnTheHead_When_TheMergeIsDecided_Then_ItsRunIsNotRead(self):
+        # Arrange — the checks are stubbed passing, so the run is all that could refuse.
+        states = {1: fabricate(1, runs=[campaign_run(1, "failure")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_ACampaignStillRunningOnTheHead_When_TheMergeIsDecided_Then_ItIsNotWaitedFor(self):
+        # Arrange
+        states = {1: fabricate(1, runs=[campaign_run(1, None, status="in_progress")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    # GREEN_ON_BASE(characterization): the base left this status out as the campaign's display beside
+    # the run it read. What it pins is that the status a removed publisher left on a head still holds
+    # nothing: dropping the `STATUS_CONTEXT` filter from `check_results` reddens it.
+    def test_Given_APendingStatusTheRemovedPublisherLeft_When_TheMergeIsDecided_Then_ItIsNotRead(self):
+        # Arrange
+        statuses = {"total_count": 1, "statuses": [{"context": "Mutation campaign", "state": "pending"}]}
+
+        # Act
+        with rest_readings([check_run("Required checks (Unity)", "success", 7)], [], labels=(),
+                           statuses=statuses):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_AFailedCheckOfTheCampaignsSuite_When_TheMergeIsDecided_Then_ItIsNotRead(self):
+        # Arrange — the run reads as passed, so the check in its suite is all that could refuse.
+        checks = [check_run("Required checks (Unity)", "success", 7),
+                  check_run("Mutation campaign (verdict)", "failure", 8)]
+
+        # Act
+        with rest_readings(checks, [campaign_run(1, "success", suite=8)], labels=()):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
     def test_Given_ALabelledHeadWhoseCampaignPassed_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange
         states = {1: fabricate(1, labels=(AUTOMERGE,), runs=CAMPAIGN_PASSED)}
@@ -1315,21 +1128,6 @@ class CampaignMergeTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(decided, [])
-
-    def test_Given_ASkippedCampaignCheckOfAnotherWorkflow_When_TheMergeIsDecided_Then_ItIsNoCampaign(self):
-        # Arrange — the job test.yml carried before the campaign moved, skipped on a run of its own.
-        checks = [check_run("Required checks (Unity)", "success", 7),
-                  check_run("Mutation campaign", "skipped", 7)]
-        runs = [campaign_run(40, "success", path=".github/workflows/test.yml", suite=7)]
-
-        # Act
-        with rest_readings(checks, runs):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert
-        self.assertEqual([reason.partition(":")[0] for reason in decided],
-                         ["it carries the automerge label and no mutation.yml run has measured "
-                          "aaaaaaa"])
 
     def test_Given_ACancelledCampaignAndANewerOneThatPassed_When_Decided_Then_TheCancelledChecksAreNotRead(self):
         # Arrange — the older campaign's aggregate failed on the cancel, in a suite of its own.
@@ -1360,54 +1158,6 @@ class CampaignMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, ["failing at {}: Required checks (Unity)=cancel".format(GREEN[:7])])
 
-    def test_Given_APassedCampaignAndANewerOneCancelled_When_Decided_Then_ALabelledHeadIsRefused(self):
-        # Arrange
-        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[campaign_run(1, "success"),
-                                                            campaign_run(2, "cancelled")])}
-
-        # Act
-        with fabricated_readings(states):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert
-        self.assertEqual(decided, ["its mutation.yml run on 0000000 was cancelled: adding the label "
-                                   "again dispatches another"])
-
-    def test_Given_AnUnlabelledHeadWhoseCampaignFailed_When_TheMergeIsDecided_Then_ItIsRefused(self):
-        # Arrange — a campaign that ran has to have passed, whether or not one was owed.
-        states = {1: fabricate(1, runs=[campaign_run(1, "failure")])}
-
-        # Act
-        with fabricated_readings(states):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert
-        self.assertEqual(decided, ["its mutation.yml run on 0000000 failed"])
-
-    def test_Given_AnUnlabelledHeadWhoseCampaignWasCancelled_When_Decided_Then_NothingBlocksIt(self):
-        # Arrange — a cancelled campaign measured nothing, and nothing owed one.
-        states = {1: fabricate(1, runs=[campaign_run(1, "cancelled")])}
-
-        # Act
-        with fabricated_readings(states):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert — the reading rides along, since a settle that never asks reports nothing as well.
-        self.assertEqual((decided, settle.campaign_state(states[1].runs, {}, 0)), ([], "cancelled"))
-
-    def test_Given_ALabelledHeadWhoseCampaignConcludedSkipped_When_Decided_Then_ItIsRefused(self):
-        # Arrange — `success` alone is a pass, and a skipped run measured nothing.
-        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[campaign_run(1, "skipped")])}
-
-        # Act
-        with fabricated_readings(states):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert
-        self.assertEqual(decided, ["its mutation.yml run on 0000000 failed"])
-
-    # GREEN_ON_BASE(characterization): a labelled fork is refused for its repository alone on both sides.
-    # No campaign is dispatched onto it, so a reason saying one would be is not added beside it.
     def test_Given_ALabelledForkWithNoCampaign_When_TheMergeIsDecided_Then_OnlyTheForkIsNamed(self):
         # Arrange
         states = {1: fabricate(1, fork=True, labels=(AUTOMERGE,))}
@@ -1431,33 +1181,6 @@ class CampaignMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [])
 
-    def test_Given_ACampaignLeftQueuedPastTheBound_When_TheMergeIsDecided_Then_ItReadsAsCancelled(self):
-        # Arrange — no job listed, so the bound is all that ends it; a labelled head then owes another.
-        run = dict(campaign_run(1, None, status="queued"), updated_at="2026-08-06T21:55:26Z")
-        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[run])}
-
-        # Act
-        with fabricated_readings(states):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert
-        self.assertEqual(decided, ["its mutation.yml run on 0000000 was cancelled: adding the label "
-                                   "again dispatches another"])
-
-    def test_Given_ACampaignQueuedWithNoCheckYet_When_TheMergeIsDecided_Then_ItIsRefused(self):
-        # Arrange — a dispatched run carries no check until its first job starts.
-        states = {1: fabricate(1, runs=[campaign_run(1, None, status="queued")])}
-
-        # Act
-        with fabricated_readings(states):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert
-        self.assertEqual(decided, ["its mutation.yml run on 0000000 has not finished (run 9001: "
-                                   "`gh run cancel 9001` if it is stuck)"])
-
-    # GREEN_ON_BASE(characterization): the watcher prints every finished check on both sides.
-    # A loop waiting on the campaign reads this line, which a filter over the output would drop.
     def test_Given_ACampaignThatPassed_When_TheWatcherPolls_Then_ItPrintsItsCheck(self):
         # Arrange
         results = PASSING + [{"name": "Mutation campaign", "bucket": "pass"}]
@@ -1467,6 +1190,8 @@ class CampaignMergeTests(unittest.TestCase):
 
         # Assert
         self.assertIn("PR#1 0000000 Mutation campaign => pass", outcome.output)
+
+
 
 
 class ForkMergeTests(unittest.TestCase):
@@ -1821,7 +1546,7 @@ class RedBaseMergeTests(unittest.TestCase):
         self.assertEqual(decided, [RED_REASON])
 
     # GREEN_ON_BASE(characterization): an unlabelled head behind a green base still merges.
-    # This change only adds a `campaign_backing` double to the stack; the arranged verdict is unchanged.
+    # This change only drops a double of a reading settle no longer takes; the arranged verdict is unchanged.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
@@ -1836,7 +1561,6 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("checks", lambda *_, **__: PASSING),
                 ("campaign_runs", lambda *_: []),
                 ("run_jobs", lambda *_: {}),
-                ("campaign_backing", lambda *_: None),
                 ("head_sha", lambda *_: GREEN),
                 ("project_state", lambda _project, base: base_state(set(), base)),
                 ("gh_git", lambda _project, command, *_: answers[command]),

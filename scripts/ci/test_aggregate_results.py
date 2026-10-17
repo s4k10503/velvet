@@ -198,12 +198,11 @@ def jobs(text):
 
 
 def aggregates():
-    """(workflow, job key, block) for each required-checks aggregate and the campaign's."""
+    """(workflow, job key, block) for each required-checks aggregate."""
     found = []
     for path in sorted(WORKFLOWS.glob("*.yml")):
         for key, block in jobs(path.read_text()).items():
-            if re.search(r"^    name: Required checks \(", block, re.MULTILINE) or (
-                    path.name == "mutation.yml" and key == "campaign"):
+            if re.search(r"^    name: Required checks \(", block, re.MULTILINE):
                 found.append((path.name, key, block))
     return found
 
@@ -235,6 +234,8 @@ def job_outcome(block, results):
 
 
 class WorkflowTests(unittest.TestCase):
+    # GREEN_ON_BASE(refactor): the campaign's aggregate it also read is gone with that job, and the
+    # two required-checks aggregates are asked exactly as before.
     def test_Given_EveryAggregate_When_ItsStepsAreRead_Then_OnlyANonPassingResultReachesTheScript(self):
         # Arrange — an aggregate left on the inline loop alone fails a superseded run, one missing a
         # permission fails it too, and a checkout taken on an all-passing run can red a green head.
@@ -254,10 +255,11 @@ class WorkflowTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((sorted((workflow, key) for workflow, key, _ in found), missing, gated),
-                         ([("generators.yml", "required-checks"), ("mutation.yml", "campaign"),
-                           ("test.yml", "required-checks")], [],
-                          [("generators.yml", 2), ("mutation.yml", 2), ("test.yml", 2)]))
+                         ([("generators.yml", "required-checks"), ("test.yml", "required-checks")], [],
+                          [("generators.yml", 2), ("test.yml", 2)]))
 
+    # GREEN_ON_BASE(refactor): the campaign's aggregate it also read is gone with that job, and the
+    # two required-checks aggregates are asked exactly as before.
     def test_Given_EveryAggregate_When_ItsScriptStepIsRead_Then_ItHandsOverTheRunsHeadAndPullRequest(self):
         # Arrange — github.sha on a pull request is the test merge rather than the pull request's
         # head, so a cancellation there would read as superseded; and a HEAD or NUMBER missing from
@@ -274,9 +276,10 @@ class WorkflowTests(unittest.TestCase):
         # Assert
         pull_request = (["${{ github.event.pull_request.head.sha || github.sha }}"],
                         ["${{ github.event.pull_request.number }}"])
-        self.assertEqual(handed, {"generators.yml": pull_request, "test.yml": pull_request,
-                                  "mutation.yml": (["${{ github.sha }}"], ["${{ inputs.number }}"])})
+        self.assertEqual(handed, {"generators.yml": pull_request, "test.yml": pull_request})
 
+    # GREEN_ON_BASE(refactor): the campaign's aggregate it also read is gone with that job, and the
+    # two required-checks aggregates are asked exactly as before.
     def test_Given_EveryAggregate_When_ItsStepsRun_Then_TheGatePassesAndTheScriptRefuses(self):
         # Arrange
         found = aggregates()
@@ -289,7 +292,7 @@ class WorkflowTests(unittest.TestCase):
         # Assert
         expected = (("gate", True), ("script", 1), ("script", 1))
         self.assertEqual(outcomes, {workflow: expected
-                                    for workflow in ("generators.yml", "mutation.yml", "test.yml")})
+                                    for workflow in ("generators.yml", "test.yml")})
 
 
 if __name__ == "__main__":

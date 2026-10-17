@@ -16,9 +16,15 @@ on:
       version:
         description: "Release version (e.g. 1.0.0). Must match package.json. Creates tag vX.Y.Z on the upm branch."
         required: true
+      skip_release_gate:
+        description: "Release without the gate (scripts/release/mutation_gate.py), for the reason written here. Empty runs the gate."
+        required: false
+        default: ""
 
+# actions: read, for the release gate's reading of the required workflows' push runs.
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: upm
@@ -43,6 +49,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # Ahead of the tagging, so a commit the mutation record does not answer, or whose required CI did
+      # not pass, is never published. CONTRIBUTING.md's release section owns the rule and the way past it.
+      # Ahead of the overlay below too: its depth-1 fetch makes the clone shallow, which cuts the
+      # scope's tag and cutover off the history the gate reads, and the gate refuses a shallow one.
+      - name: Release gate (release only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SKIP: ${{ inputs.skip_release_gate }}
+        run: python3 scripts/release/mutation_gate.py --release "$GITHUB_SHA" --skip "$SKIP"
 
       # A release dispatched on a maintenance line runs that line's copy of these checks, which is
       # main's copy as of the cut -- so every rule main adds afterwards is one the line can ship

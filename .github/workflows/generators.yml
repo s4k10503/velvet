@@ -114,9 +114,6 @@ jobs:
       - name: Automerge tests
         run: python3 scripts/test_quality/run_suite.py scripts/pr/test_automerge.py
 
-      - name: Campaign status tests
-        run: python3 scripts/test_quality/run_suite.py scripts/pr/test_campaign_status.py
-
       - name: Campaign tests
         run: python3 scripts/test_quality/run_suite.py scripts/pr/test_campaign.py
 
