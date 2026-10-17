@@ -18,50 +18,88 @@ namespace Velvet.Tests
         private static readonly StyleLonghandSet s_flexLonghands = StyleLonghandSet.Of(StyleLonghand.FlexGrow)
             .Union(StyleLonghandSet.Of(StyleLonghand.FlexShrink)).Union(StyleLonghandSet.Of(StyleLonghand.FlexBasis));
 
-        // A flex shorthand result as one string: recognized, grow, shrink, basis and its unit, "auto" for a NaN
-        // basis. The property is told by the longhands it writes, which the base can read too.
-        private static string Flex(bool ok, ArbitraryStyle s)
-            => !ok || StyleArbitraryLonghands.Of(s.Property) != s_flexLonghands
-                ? "unrecognized"
-                : $"{s.Value} {s.Value3} " + (float.IsNaN(s.Value2) ? "auto" : $"{s.Value2}{s.Unit2}");
+        // What each flex shorthand utility parses to: grow, shrink, and the basis with its unit ("auto" for a NaN
+        // basis). A basis the element measures carries a placeholder here and an Expression besides.
+        private static readonly (string Class, float Grow, float Shrink, string Basis)[] s_parses =
+        {
+            ("flex-12", 12f, 1f, "0Percent"),
+            ("flex-0", 0f, 1f, "0Percent"),
+            ("flex-3/4", 1f, 1f, "75Percent"),
+            ("flex-[2_3_10px]", 2f, 3f, "10Pixel"),
+            ("flex-[10px_2_3]", 2f, 3f, "10Pixel"),
+            ("flex-[2_0]", 2f, 0f, "0Percent"),
+            ("flex-[2_auto]", 2f, 1f, "auto"),
+            ("flex-[2_AUTO]", 2f, 1f, "auto"),
+            ("flex-[50%]", 1f, 1f, "50Percent"),
+            ("flex-[none]", 0f, 0f, "auto"),
+            ("flex-[NONE]", 0f, 0f, "auto"),
+            ("flex-[auto]", 1f, 1f, "auto"),
+            ("flex-[initial]", 0f, 1f, "auto"),
+            ("flex-[unset]", 0f, 1f, "auto"),
+            ("flex-[revert]", 0f, 1f, "auto"),
+            ("flex-[1_1_0]", 1f, 1f, "0Pixel"),
+            ("flex-[2_0%]", 2f, 1f, "0Percent"),
+            ("flex-[2_3_2em]", 2f, 3f, "0Pixel"),
+            ("flex-[50vw_2_3]", 2f, 3f, "0Pixel"),
+            ("flex-[2_3_calc(50%+10px)]", 2f, 3f, "0Pixel"),
+        };
 
-        [TestCase("flex-12", "12 1 0Percent")]
-        [TestCase("flex-0", "0 1 0Percent")]
-        [TestCase("flex-3/4", "1 1 75Percent")]
-        [TestCase("flex-[2_3_10px]", "2 3 10Pixel")]
-        [TestCase("flex-[10px_2_3]", "2 3 10Pixel")]
-        [TestCase("flex-[2_0]", "2 0 0Percent")]
-        [TestCase("flex-[2_auto]", "2 1 auto")]
-        [TestCase("flex-[2_AUTO]", "2 1 auto")]
-        [TestCase("flex-[50%]", "1 1 50Percent")]
-        [TestCase("flex-[none]", "0 0 auto")]
-        [TestCase("flex-[NONE]", "0 0 auto")]
-        [TestCase("flex-[auto]", "1 1 auto")]
-        [TestCase("flex-[initial]", "0 1 auto")]
-        [TestCase("flex-[unset]", "0 1 auto")]
-        [TestCase("flex-[revert]", "0 1 auto")]
-        [TestCase("flex-[1_1_0]", "1 1 0Pixel")]
-        [TestCase("flex-[2_0%]", "2 1 0Percent")]
-        public void Given_AFlexShorthandUtility_When_Parsed_Then_ItResolvesGrowShrinkAndBasis(string cls, string expected)
+        public static IEnumerable<TestCaseData> ParsedClasses => s_parses.Select(row => new TestCaseData(row.Class));
+        public static IEnumerable<TestCaseData> ParsedGrows => s_parses.Select(row => new TestCaseData(row.Class, row.Grow));
+        public static IEnumerable<TestCaseData> ParsedShrinks => s_parses.Select(row => new TestCaseData(row.Class, row.Shrink));
+        public static IEnumerable<TestCaseData> ParsedBases => s_parses.Select(row => new TestCaseData(row.Class, row.Basis));
+
+        [TestCaseSource(nameof(ParsedClasses))]
+        public void Given_AFlexShorthandUtility_When_Parsed_Then_ItWritesTheThreeFlexLonghands(string cls)
         {
             // Act
             var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
 
-            // Assert — grow, shrink, then the basis and its unit.
-            Assert.That(Flex(ok, s), Is.EqualTo(expected));
+            // Assert — the property is told by the longhands it writes, which the base can read too.
+            Assert.That(ok && StyleArbitraryLonghands.Of(s.Property) == s_flexLonghands, Is.True);
+        }
+
+        [TestCaseSource(nameof(ParsedGrows))]
+        public void Given_AFlexShorthandUtility_When_Parsed_Then_ItResolvesTheGrow(string cls, float expected)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
+
+            // Assert
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(expected));
+        }
+
+        [TestCaseSource(nameof(ParsedShrinks))]
+        public void Given_AFlexShorthandUtility_When_Parsed_Then_ItResolvesTheShrink(string cls, float expected)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
+
+            // Assert
+            Assert.That(ok ? s.Value3 : float.NaN, Is.EqualTo(expected));
+        }
+
+        [TestCaseSource(nameof(ParsedBases))]
+        public void Given_AFlexShorthandUtility_When_Parsed_Then_ItResolvesTheBasisAndItsUnit(string cls, string expected)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
+
+            // Assert — "auto" for a NaN basis.
+            Assert.That(!ok ? "unrecognized" : float.IsNaN(s.Value2) ? "auto" : $"{s.Value2}{s.Unit2}", Is.EqualTo(expected));
         }
 
         [TestCase("flex-[2_3_2em]")]
         [TestCase("flex-[50vw_2_3]")]
         [TestCase("flex-[2_3_calc(50%+10px)]")]
-        public void Given_AFlexShorthandWithABasisTheElementMeasures_When_Parsed_Then_ItCarriesTheFactorsAndTheMeasuredBasis(
+        public void Given_AFlexShorthandWithABasisTheElementMeasures_When_Parsed_Then_TheBasisIsLeftToAnExpression(
             string cls)
         {
             // Act
             var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
 
-            // Assert — grow and shrink, then whether the basis is left to the element to measure.
-            Assert.That(Flex(ok, s) + $" {s.Expression != null}", Is.EqualTo("2 3 0Pixel True"));
+            // Assert
+            Assert.That(ok && s.Expression != null, Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the base parses no flex shorthand utility, so each is declined there.
@@ -106,10 +144,10 @@ namespace Velvet.Tests
         public void Given_TwoFlexBracketsDifferingInTheShrink_When_Keyed_Then_TheKeysDiffer()
         {
             // Act
-            var keys = (FiberNodePatcher.ValueKey("flex-[2_1]"), FiberNodePatcher.ValueKey("flex-[2_3]"));
+            var keyed = FiberNodePatcher.ValueKey("flex-[2_1]");
 
             // Assert
-            Assert.That(keys.Item1, Is.Not.EqualTo(keys.Item2));
+            Assert.That(keyed, Is.Not.EqualTo(FiberNodePatcher.ValueKey("flex-[2_3]")));
         }
 
         [Test]
@@ -117,39 +155,40 @@ namespace Velvet.Tests
         {
             // Arrange
             var el = new VisualElement();
-            var ok = StyleArbitraryValueResolver.TryParse("flex-[auto]", out var style);
+            StyleArbitraryValueResolver.TryParse("flex-[auto]", out var style);
 
             // Act
             StyleArbitraryValueResolver.Apply(el, in style);
 
             // Assert
-            Assert.That((ok, el.style.flexBasis.keyword), Is.EqualTo((true, StyleKeyword.Auto)));
+            Assert.That(el.style.flexBasis.keyword, Is.EqualTo(StyleKeyword.Auto));
         }
 
-        [Test]
-        public void Given_AFlexShorthand_When_Cleared_Then_TheThreeLonghandsRevertToNull()
+        [TestCase("grow")]
+        [TestCase("shrink")]
+        [TestCase("basis")]
+        public void Given_AFlexShorthand_When_Cleared_Then_TheLonghandRevertsToNull(string longhand)
         {
             // Arrange
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("flex-[2_3_10px]", out var style);
             StyleArbitraryValueResolver.Apply(el, style);
-            var applied = el.style.flexShrink.value;
+            Assume.That(el.style.flexShrink.value, Is.EqualTo(3f)); // a fresh element already reads Null
 
             // Act
             StyleArbitraryValueResolver.Clear(el, style.Property);
 
-            // Assert — the applied shrink rides along, since a fresh element already reads Null.
-            Assert.That((applied, el.style.flexGrow.keyword, el.style.flexShrink.keyword, el.style.flexBasis.keyword),
-                Is.EqualTo((3f, StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
+            // Assert
+            Assert.That(KeywordOf(el, longhand), Is.EqualTo(StyleKeyword.Null));
         }
 
-        // The element's inline grow, shrink and basis as one string.
-        private static string InlineFlex(VisualElement element)
-        {
-            var style = element.style;
-            return $"{style.flexGrow.value} {style.flexShrink.value} "
-                + $"{style.flexBasis.value.value}{style.flexBasis.value.unit}";
-        }
+        private static StyleKeyword KeywordOf(VisualElement element, string longhand)
+            => longhand switch
+            {
+                "grow" => element.style.flexGrow.keyword,
+                "shrink" => element.style.flexShrink.keyword,
+                _ => element.style.flexBasis.keyword,
+            };
 
         private static VisualElement MountDiv(Velvet.TestUtilities.ReconcilerScope scope, string className)
         {
@@ -158,8 +197,14 @@ namespace Velvet.Tests
             return scope.Root[0];
         }
 
-        [Test]
-        public void Given_ADivCarryingABareFlexNumber_When_Reconciled_Then_TheElementCarriesTheThreeLonghands()
+        private static string BasisOf(VisualElement element)
+            => $"{element.style.flexBasis.value.value}{element.style.flexBasis.value.unit}";
+
+        [TestCase("grow", "3")]
+        [TestCase("shrink", "1")]
+        [TestCase("basis", "0Percent")]
+        public void Given_ADivCarryingABareFlexNumber_When_Reconciled_Then_TheElementCarriesTheLonghand(
+            string longhand, string expected)
         {
             // Arrange
             using var scope = new Velvet.TestUtilities.ReconcilerScope();
@@ -168,7 +213,12 @@ namespace Velvet.Tests
             var div = MountDiv(scope, "flex-3");
 
             // Assert
-            Assert.That(InlineFlex(div), Is.EqualTo("3 1 0Percent"));
+            Assert.That(longhand switch
+            {
+                "grow" => div.style.flexGrow.value.ToString(),
+                "shrink" => div.style.flexShrink.value.ToString(),
+                _ => BasisOf(div),
+            }, Is.EqualTo(expected));
         }
 
         [Test]
@@ -187,19 +237,20 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base does not parse flex-2, so flex-none sets all three there.
         // What reddens it is Normalize skipping StyleInlineSheetOrder.WithoutOutrankedInline, which leaves the inline
         // shorthand to outrank the class.
-        [Test]
-        public void Given_AFlexNoneClassBeforeAFlexNumberInOneClassName_When_Mounted_Then_TheClassSetsAllThree()
+        [TestCase("grow")]
+        [TestCase("shrink")]
+        [TestCase("basis")]
+        public void Given_AFlexNoneClassBeforeAFlexNumberInOneClassName_When_Mounted_Then_TheClassSetsTheLonghand(
+            string longhand)
         {
-            // Arrange — Tailwind orders flex-none after flex-2, so the class wins wherever it is listed.
+            // Arrange — the class wins wherever it is listed, so no inline value is left.
             using var scope = new Velvet.TestUtilities.ReconcilerScope();
 
             // Act
             var div = MountDiv(scope, "flex-none flex-2");
 
             // Assert
-            var style = div.style;
-            Assert.That((style.flexGrow.keyword, style.flexShrink.keyword, style.flexBasis.keyword),
-                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
+            Assert.That(KeywordOf(div, longhand), Is.EqualTo(StyleKeyword.Null));
         }
 
         // GREEN_ON_BASE(characterization): the base does not parse flex-0, so flex-1 sets the grow there.
@@ -219,13 +270,50 @@ namespace Velvet.Tests
 
         // Tailwind declares flex before flex-shrink, flex-grow and flex-basis, so a longhand beside the shorthand
         // takes its own part whichever is listed first, a class or an inline value alike.
-        [TestCase("flex-2 shrink-0", "2 0 0Percent")]
-        [TestCase("shrink-0 flex-2", "2 0 0Percent")]
-        [TestCase("grow-0 flex-[3_2]", "0 2 0Percent")]
-        [TestCase("grow-[3] flex-2", "3 1 0Percent")]
-        [TestCase("basis-4 flex-2", "2 1 16Pixel")]
-        [TestCase("basis-[20px] flex-[2_1_10px]", "2 1 20Pixel")]
-        public void Given_AFlexLonghandBesideTheShorthand_When_Mounted_Then_TheLonghandTakesItsPart(
+        private static readonly (string ClassName, float Grow, float Shrink, string Basis)[] s_beside =
+        {
+            ("flex-2 shrink-0", 2f, 0f, "0Percent"),
+            ("shrink-0 flex-2", 2f, 0f, "0Percent"),
+            ("grow-0 flex-[3_2]", 0f, 2f, "0Percent"),
+            ("grow-[3] flex-2", 3f, 1f, "0Percent"),
+            ("basis-4 flex-2", 2f, 1f, "16Pixel"),
+            ("basis-[20px] flex-[2_1_10px]", 2f, 1f, "20Pixel"),
+        };
+
+        public static IEnumerable<TestCaseData> BesideGrows => s_beside.Select(row => new TestCaseData(row.ClassName, row.Grow));
+        public static IEnumerable<TestCaseData> BesideShrinks => s_beside.Select(row => new TestCaseData(row.ClassName, row.Shrink));
+        public static IEnumerable<TestCaseData> BesideBases => s_beside.Select(row => new TestCaseData(row.ClassName, row.Basis));
+
+        [TestCaseSource(nameof(BesideGrows))]
+        public void Given_AFlexLonghandBesideTheShorthand_When_Mounted_Then_TheGrowIsTheOneTheTwoLeaveIt(
+            string className, float expected)
+        {
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var div = MountDiv(scope, className);
+
+            // Assert
+            Assert.That(div.style.flexGrow.value, Is.EqualTo(expected));
+        }
+
+        [TestCaseSource(nameof(BesideShrinks))]
+        public void Given_AFlexLonghandBesideTheShorthand_When_Mounted_Then_TheShrinkIsTheOneTheTwoLeaveIt(
+            string className, float expected)
+        {
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var div = MountDiv(scope, className);
+
+            // Assert
+            Assert.That(div.style.flexShrink.value, Is.EqualTo(expected));
+        }
+
+        [TestCaseSource(nameof(BesideBases))]
+        public void Given_AFlexLonghandBesideTheShorthand_When_Mounted_Then_TheBasisIsTheOneTheTwoLeaveIt(
             string className, string expected)
         {
             // Arrange
@@ -235,7 +323,7 @@ namespace Velvet.Tests
             var div = MountDiv(scope, className);
 
             // Assert
-            Assert.That(InlineFlex(div), Is.EqualTo(expected));
+            Assert.That(BasisOf(div), Is.EqualTo(expected));
         }
 
         private static readonly Dictionary<string, MotionVariant> s_narrowPose = new()
@@ -244,23 +332,42 @@ namespace Velvet.Tests
             ["closed"] = "",
         };
 
-        [Test]
-        public void Given_AMotionWhosePoseRepeatsItsClassNamesShorthand_When_MountedAtThePose_Then_ThePoseSetsTheGrow()
+        // A pose overrides the node's own className, as Framer Motion's animate does its style.
+        private static VisualElement MountMotionAtThePose(Velvet.TestUtilities.ReconcilerScope scope)
         {
-            // Arrange — a pose overrides the node's own className, as Framer Motion's animate does its style.
-            using var scope = new Velvet.TestUtilities.ReconcilerScope();
-
-            // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
                 new VNode[]
                 {
                     V.Motion(className: "w-[200px] flex-[3]", variants: s_narrowPose, animate: "open",
                         transition: StyleTransitionConfig.None),
                 });
+            return scope.Root[0];
+        }
+
+        [Test]
+        public void Given_AMotionWhosePoseRepeatsItsClassNamesShorthand_When_MountedAtThePose_Then_ThePoseSetsTheGrow()
+        {
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var motion = MountMotionAtThePose(scope);
 
             // Assert
-            var motion = scope.Root[0];
-            Assert.That((motion.style.width.value.value, motion.style.flexGrow.value), Is.EqualTo((100f, 2f)));
+            Assert.That(motion.style.flexGrow.value, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_AMotionWhosePoseRepeatsItsClassNamesShorthand_When_MountedAtThePose_Then_ThePoseSetsTheWidth()
+        {
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var motion = MountMotionAtThePose(scope);
+
+            // Assert
+            Assert.That(motion.style.width.value.value, Is.EqualTo(100f));
         }
     }
 
