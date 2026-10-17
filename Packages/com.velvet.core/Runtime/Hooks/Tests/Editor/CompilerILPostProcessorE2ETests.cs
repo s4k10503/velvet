@@ -3935,8 +3935,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base leaves this body unwoven, and a body left unwoven has no fresh dependency.
-        // What it pins is UseFallback being on the void allow-list: removing it from `MemoSafeVoidHookNames` gives the
-        // gate a dependency that is never equal.
+        // What it pins is UseFallback not being a hook no comparison stands for: leaving it out of the void names
+        // `IsDirectSafeHookCall` accepts, `&& method.Name != nameof(Velvet.Hooks.UseFallback)` on the `MemoSafeVoidHookNames`
+        // test, gives the gate a dependency that is never equal.
         [Test]
         public void Given_UseFallbackComponent_When_Woven_Then_ItsGateCarriesNoFreshDependency()
         {
@@ -4024,6 +4025,16 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(brackets, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_CustomHookComposingADispatch_When_Woven_Then_ItsGateCarriesAFreshDependency()
+        {
+            // Act
+            var fresh = CountFreshObjects(LoadMethod(nameof(CustomHookWithDispatchComponent)));
+
+            // Assert
+            Assert.That(fresh, Is.EqualTo(1), "A hook the dispatch runs is one no scan of the component classifies");
         }
 
         [Test]

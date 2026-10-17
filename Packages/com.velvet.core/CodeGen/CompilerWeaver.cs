@@ -18,8 +18,7 @@ namespace Velvet.CodeGen
     //   A hook the scan sees the body reach — directly or transitively through a custom hook — that is on the SAFE
     //   allow-list (MemoSafeValueHookNames ∪ MemoSafeVoidHookNames) is admitted because its re-render trigger is
     //   soundly represented by an Object.is comparison of a value captured into the deps array, or because it
-    //   returns nothing reactive at all. A hook that is not on the allow-list (a known memo-unsafe hook, or an
-    //   unknown / future hook) is volatile: the body is still woven, its gate carries a dependency that is never
+    //   returns nothing reactive at all. A hook named in PositionalHookNames that is on neither allow-list (UseMutation, UseBlocker) is volatile: the body is still woven, its gate carries a dependency that is never
     //   equal to the last one's, and a scope reading the value such a hook returns is not woven.
     //   At least one parameter or value-returning hook call, so the deps array is not empty. A body that
     //   calls a hook has every return placed after the last hook call, every hook reached unconditionally,
@@ -145,12 +144,14 @@ namespace Velvet.CodeGen
         //     status / data fields in place and requests a re-render, but the captured reference stays Object.is
         //     equal, so no comparison of it sees the change.
         //   UseBlocker returns a stable navigation-blocker state changed in place likewise.
-        // Any unknown or future hook is volatile too, being absent from both allow-lists.
+        // Any other name in PositionalHookNames is volatile too, being absent from both allow-lists; a hook that list does
+        // not name is read through the hooks it calls, as a custom hook is.
 
         public static bool Weave(ModuleDefinition module, List<DiagnosticMessage> diagnostics)
             => Run(module, diagnostics, reportBailouts: false);
 
-        // One warning per [Component] says why it is left unwoven or what was woven into it.
+        // One warning for each [Component] method that has a body, saying why it is left unwoven or what was
+        // woven into it.
         public static bool WeaveAndReport(ModuleDefinition module, List<DiagnosticMessage> diagnostics)
             => Run(module, diagnostics, reportBailouts: true);
 
@@ -176,7 +177,7 @@ namespace Velvet.CodeGen
             }
 
             // One fold of each kind per weave, shared by every candidate body: "what a call reaches" and "reaches a
-            // non-safe (unsafe / unknown / unverifiable) hook" are distinct predicates and must not share results.
+            // non-safe hook" (a positional hook on neither allow-list) are distinct predicates and must not share results.
             var reach = new HookReachFold();
             var nonSafe = new NonSafeHookFold();
 
@@ -185,9 +186,18 @@ namespace Velvet.CodeGen
             {
                 foreach (var method in type.Methods)
                 {
-                    if (!IsCandidate(method)) continue;
+                    if (!HasComponentAttribute(method)) continue;
+                    if (WhyNotCandidate(method) is { } skipped)
+                    {
+                        if (reportBailouts) Report(diagnostics, method, "left unwoven because " + skipped);
+                        continue;
+                    }
                     if (!method.HasBody) continue;
-                    if (IsAlreadyMemoized(method)) continue;
+                    if (IsAlreadyMemoized(method))
+                    {
+                        if (reportBailouts) Report(diagnostics, method, "left unwoven because it already calls Hooks.TryGetMemoizedVNode");
+                        continue;
+                    }
                     if (TryWeaveMethod(method, context, ref reach, ref nonSafe, diagnostics, reportBailouts))
                     {
                         changed = true;
@@ -197,7 +207,7 @@ namespace Velvet.CodeGen
             return changed;
         }
 
-        // A method is a weave candidate when it is a static component method that returns Velvet.VNode.
+        // A [Component] method is a weave candidate (WhyNotCandidate finds no reason against it) when it is a static component method that returns Velvet.VNode.
         // Auto-memoization applies to every [Component] regardless of the Memoize flag (that flag
         // is the props-bail, an orthogonal axis), unless the component opts out with
         // [Component(Compiler = false)] — an explicit "skip memoization" directive — which
@@ -207,22 +217,17 @@ namespace Velvet.CodeGen
         // (ref / out / in) are not loadable into an object[] as a plain value, so a
         // method that declares one is left unwoven; canonical [Component] factories take a single
         // by-value record prop and never hit this guard.
-        private static bool IsCandidate(MethodDefinition method)
+        private static bool HasComponentAttribute(MethodDefinition method)
+            => method.CustomAttributes.Any(attr => attr.AttributeType.FullName == ComponentAttrFullName);
+
+        // Why a [Component] method is left alone before its body is read, or null where it is read.
+        private static string? WhyNotCandidate(MethodDefinition method)
         {
-            if (!method.IsStatic) return false;
-            if (method.ReturnType.FullName != VNodeFullName) return false;
-            foreach (var parameter in method.Parameters)
-            {
-                if (parameter.ParameterType.IsByReference) return false;
-            }
-            foreach (var attr in method.CustomAttributes)
-            {
-                if (attr.AttributeType.FullName == ComponentAttrFullName)
-                {
-                    return CompilerEnabled(attr);
-                }
-            }
-            return false;
+            if (!method.IsStatic) return "it is not static";
+            if (method.ReturnType.FullName != VNodeFullName) return "it does not return Velvet.VNode";
+            if (method.Parameters.Any(parameter => parameter.ParameterType.IsByReference)) return "it declares a ref, out or in parameter";
+            var attr = method.CustomAttributes.First(each => each.AttributeType.FullName == ComponentAttrFullName);
+            return CompilerEnabled(attr) ? null : "[Component(Compiler = false)] opts it out";
         }
 
         // Returns true unless the [Component] attribute carries Compiler = false. The property
@@ -295,7 +300,8 @@ namespace Velvet.CodeGen
                     return false;
                 }
 
-                var scopes = InjectMemoization(method, analysis, context, withScopes: true);
+                var refusals = new List<string>();
+                var scopes = InjectMemoization(method, analysis, context, withScopes: true, refusals);
                 // MUTANT_SURVIVES(equivalent, boundary): a body with no scope is the gate alone, which the check finds balanced.
                 var scopesDropped = scopes > 0 && !IsStackBalanced(method.Body);
                 if (scopesDropped)
@@ -303,11 +309,11 @@ namespace Velvet.CodeGen
                     // MUTANT_SURVIVES(unreachable): the weave inserts balanced runs into a body the model read as consistent.
                     snapshot.Restore();
                     // MUTANT_SURVIVES(unreachable): only a body failing the check reaches this call.
-                    InjectMemoization(method, analysis, context, withScopes: false);
+                    InjectMemoization(method, analysis, context, withScopes: false, refusals);
                     // MUTANT_SURVIVES(unreachable): the line runs only after the stack check failed, which the planned scopes never cause.
                     scopes = 0;
                 }
-                if (reportBailouts) Report(diagnostics, method, DescribeWeave(analysis, scopes, scopesDropped));
+                if (reportBailouts) Report(diagnostics, method, DescribeWeave(analysis, scopes, scopesDropped, refusals));
                 return true;
             }
             catch (System.Exception exception)
@@ -616,6 +622,11 @@ namespace Velvet.CodeGen
 
                 // Record every hook call site so the post-loop pass can verify none is conditionally skipped.
                 hookCalls.Add(instr);
+
+                // NonSafeHookFold gives an open dispatch no reach, so a hook that dispatch runs is one the scan above
+                // did not classify; the call is not bracketed, because the hooks it runs by name would mark every
+                // render, so its gate is the one that never hits.
+                if ((reach.ReachOf((MethodReference)instr.Operand) & HookReach.Opaque) != 0) hookKeys.Volatile = true;
 
                 // A direct SAFE void hook (UseEffect and friends) runs for its side effect only and pushes no
                 // value, so there is no dep to capture. Advance the boundary past it so the cache gate lands after
@@ -955,8 +966,8 @@ namespace Velvet.CodeGen
 
         // What a call is known to reach, as flags: Hook for a hook the scan sees, Opaque for an open dispatch,
         // whose runtime target the scan cannot enumerate. Whether an Opaque call runs a hook is decided by where
-        // it sits: TryAnalyze refuses one ahead of the gate — a custom hook reaching one included — and the
-        // gate's runtime check covers one past it.
+        // it sits: a call ahead of the gate is bracketed at run time, a hook call that reaches one makes the gate
+        // never hit, and the gate's runtime check covers one past it.
         [System.Flags]
         private enum HookReach
         {
@@ -1126,9 +1137,8 @@ namespace Velvet.CodeGen
             return reach.ReachOf((MethodReference)instr.Operand) == HookReach.Opaque;
         }
 
-        // True when a Velvet.Hooks.* member is a positional hook NOT on the SAFE allow-list — a known memo-unsafe
-        // hook (Use / UseMutation / UseBlocker / UseFallback) or a future positional hook nobody has classified
-        // yet. A Hooks.* member that is not a positional hook (framework plumbing such as TryGetMemoizedVNode)
+        // True when a Velvet.Hooks.* member is a positional hook NOT on the SAFE allow-list — UseMutation or
+        // UseBlocker today, or a positional hook nobody has classified yet. A Hooks.* member that is not a positional hook (framework plumbing such as TryGetMemoizedVNode)
         // is not a reactive hook and is treated as safe.
         private static bool IsDirectNonSafeHookCall(MethodReference method)
             => method.DeclaringType.FullName == HooksTypeFullName
@@ -1177,7 +1187,7 @@ namespace Velvet.CodeGen
                 && !(def.DeclaringType.IsSealed && !def.DeclaringType.IsInterface);
 
         // Whether a method reaches a non-SAFE hook, directly or transitively across plain method calls. A hook is
-        // non-SAFE when it is a positional hook absent from both allow-lists (known memo-unsafe or unknown / future).
+        // non-SAFE when it is a positional hook absent from both allow-lists (UseMutation, UseBlocker, or one nobody has classified yet).
         // A custom hook that composes UseMutation is caught here. A callee the walk cannot inspect reaches none it
         // can see: it is opaque, and HookReachFold says what that costs.
         private sealed class NonSafeHookFold : CallGraphFold
@@ -1294,7 +1304,7 @@ namespace Velvet.CodeGen
         }
 
         private static int InjectMemoization(MethodDefinition method, HookAnalysis analysis, WeaverContext context,
-            bool withScopes)
+            bool withScopes, List<string> refusals)
         {
             var body = method.Body;
             var module = method.Module;
@@ -1302,7 +1312,7 @@ namespace Velvet.CodeGen
 
             body.SimplifyMacros();
             var plans = withScopes && context.TryGetMemoizedScope != null && context.StoreMemoizedScope != null
-                ? PlanScopes(body, analysis, context)
+                ? PlanScopes(body, analysis, context, refusals)
                 : new List<ScopePlan>();
 
             var vnodeType = context.VNode;
@@ -1558,8 +1568,8 @@ namespace Velvet.CodeGen
         // pair, one object for the life of the component, which a scope compares as a dependency that never changes.
         private sealed class HookKeys
         {
-            // Whether the body reaches a hook that is on neither allow-list: its gate carries a dependency that is
-            // never equal to the last one's, and so never hits.
+            // Whether the body reaches a hook that is on neither allow-list, or a hook call that reaches an open
+            // dispatch: its gate carries a dependency that is never equal to the last one's, and so never hits.
             public bool Volatile { get; set; }
 
             public HashSet<object> Uncomparable { get; } = new();

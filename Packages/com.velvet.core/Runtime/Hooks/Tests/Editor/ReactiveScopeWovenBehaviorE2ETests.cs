@@ -377,10 +377,62 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode GrowsAListBetweenTheHooks()
+        {
+            var (items, _) = Hooks.UseState(new List<int>());
+            Grow(items);
+            var (other, setOther) = Hooks.UseState(0);
+            s_setOther = setOther;
+            return V.Div("root",
+                V.Label(name: "count", text: items.Count.ToString()),
+                V.Label(name: "other", text: other.ToString()));
+        }
+
+        [Component]
+        private static VNode GrowsACopyOfAList()
+        {
+            var (items, _) = Hooks.UseState(new List<int>());
+            var (other, setOther) = Hooks.UseState(0);
+            s_setOther = setOther;
+            var copy = items;
+            Grow(copy);
+            return V.Div("root",
+                V.Label(name: "count", text: items.Count.ToString()),
+                V.Label(name: "other", text: other.ToString()));
+        }
+
+        [Component]
         private static VNode ReadsAMutation()
         {
             var mutation = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: (v, _) => VelvetTask.FromResult(v)));
+            s_mutation = mutation;
+            return V.Label(name: "status", text: mutation.Status.ToString());
+        }
+
+        public interface IMutationSource
+        {
+            MutationResult<int, int> Get();
+        }
+
+        private sealed class HookMutationSource : IMutationSource
+        {
+            public MutationResult<int, int> Get()
+                => Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: (v, _) => VelvetTask.FromResult(v)));
+        }
+
+        private static IMutationSource s_mutationSource = new HookMutationSource();
+
+        private static MutationResult<int, int> UseDispatchedMutation()
+        {
+            var (n, _) = Hooks.UseState(0);
+            return s_mutationSource.Get();
+        }
+
+        [Component]
+        private static VNode ReadsADispatchedMutation()
+        {
+            var mutation = UseDispatchedMutation();
             s_mutation = mutation;
             return V.Label(name: "status", text: mutation.Status.ToString());
         }
@@ -636,8 +688,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base builds every child on every miss of an unwoven body too.
-        // What it pins is the opt-out being read ahead of the scopes: `return true;` in place of
-        // `return CompilerEnabled(attr);` in `IsCandidate` weaves the body and builds its left child once.
+        // What it pins is the opt-out being read ahead of the scopes: `null` in place of the
+        // `CompilerEnabled(attr) ? null : …` result in `WhyNotCandidate` weaves the body and builds its left child once.
         [Test]
         public void Given_ATextComponentOptedOutOfTheCompiler_When_OneTextChanges_Then_EveryChildIsBuiltAgain()
         {
@@ -795,8 +847,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base builds every child on every miss of an unwoven body too.
-        // What it pins is the opt-out being read ahead of the scopes: `return true;` in place of
-        // `return CompilerEnabled(attr);` in `IsCandidate` weaves the body and builds its left child once.
+        // What it pins is the opt-out being read ahead of the scopes: `null` in place of the
+        // `CompilerEnabled(attr) ? null : …` result in `WhyNotCandidate` weaves the body and builds its left child once.
         [Test]
         public void Given_AComponentOptedOutOfTheCompiler_When_OneStateChanges_Then_EveryChildIsBuiltAgain()
         {
@@ -918,6 +970,23 @@ namespace Velvet.Tests
             Assert.That(LabelText("greeting"), Is.EqualTo("hook8"));
         }
 
+        // What it pins is a render in which a hook ran inside a dispatch still granting the gate's slot: returning
+        // `-1` from `TryGetMemoizedVNode` for it, as before the clause moved to the hit test, builds the greeting again.
+        [Test]
+        public void Given_ADispatchAheadOfTheGateRunningAHook_When_AnotherStateChanges_Then_TheChildReadingTheGreetingIsNotBuiltAgain()
+        {
+            // Arrange
+            s_greeter = new HookGreeter();
+            using var mounted = V.Mount(_root, V.Component(DispatchAheadOfTheGate, key: "hook-dispatch-kept"));
+
+            // Act
+            s_setOther(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("greeting"), Is.EqualTo(1));
+        }
+
         // What it pins is a reference a call outside every scope is given staying out of them: replacing
         // `mutated.Contains(dep.Key)` in `TryPlanCandidate` with `false` caches the child on the list's identity.
         [Test]
@@ -925,6 +994,34 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(GrowsAListAfterTheHooks, key: "grows"));
+
+            // Act
+            s_setOther(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("count"), Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void Given_AListAnOpaqueCallGrowsBetweenTheHooks_When_AnotherStateChanges_Then_TheChildCountingItShowsTheCurrentCount()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(GrowsAListBetweenTheHooks, key: "grows-between"));
+
+            // Act
+            s_setOther(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("count"), Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void Given_ACopyOfAListAnOpaqueCallGrows_When_AnotherStateChanges_Then_TheChildCountingTheListShowsTheCurrentCount()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(GrowsACopyOfAList, key: "grows-copy"));
 
             // Act
             s_setOther(1);
@@ -942,6 +1039,20 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ReadsAMutation, key: "mutation"));
+
+            // Act
+            s_mutation.Mutate(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("status"), Is.Not.EqualTo("Idle"));
+        }
+
+        [Test]
+        public void Given_AMutationReadThroughADispatchInACustomHook_When_ItIsMutated_Then_TheLabelShowsItHasLeftIdle()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ReadsADispatchedMutation, key: "dispatched-mutation"));
 
             // Act
             s_mutation.Mutate(1);

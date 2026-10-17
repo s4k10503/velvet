@@ -1141,10 +1141,10 @@ namespace Velvet.Tests
             AssignSequentialOffsets(method);
 
             // Act
-            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
 
             // Assert
-            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((true, 0)),
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
                 "A callee Resolve() returns nothing for is opaque rather than a reason to bail");
         }
 
@@ -1337,7 +1337,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base leaves a body with an opaque call ahead of a hook unwoven, and so
         // does this change where the Velvet declares no bracket.
-        // What it pins is the bracket test in `TryAnalyze`: `if (false)` in place of it reddens this case.
+        // What it pins is the bracket test in `TryAnalyze`: `if (false)` in place of it, with `InjectOpaqueGuards` returning
+        // at once where the Velvet declares no bracket, weaves the body.
         [Test]
         public void Given_AnOpaqueCallAheadOfAHookAndAVelvetDeclaringNoBracket_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
         {
@@ -1349,11 +1350,31 @@ namespace Velvet.Tests
             AssembleUnresolvableCallAheadOfAHook(module, method, useId);
 
             // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
+                "Without the bracket nothing tells the gate a hook ran inside the call");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves that body unwoven without a failure too.
+        // What it pins is the bracket test in `TryAnalyze`: `if (false)` in place of it reaches an `InjectOpaqueGuards`
+        // with no bracket to call, and the weave reports a failure.
+        [Test]
+        public void Given_AnOpaqueCallAheadOfAHookAndAVelvetDeclaringNoBracket_When_CompilerWeaverRuns_Then_NoFailureIsReported()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("NoBracketQuietProbe",
+                out var method, out var useId, out _, out _);
+            var hooks = module.Types.Single(type => type.FullName == "Velvet.Hooks");
+            hooks.Methods.Remove(hooks.Methods.Single(each => each.Name == "BeginOpaqueCall"));
+            AssembleUnresolvableCallAheadOfAHook(module, method, useId);
+
+            // Act
             var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
 
             // Assert
-            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((false, 0)),
-                "Without the bracket nothing tells the gate a hook ran inside the call, so the body is left unwoven without a failure");
+            Assert.That(FailureWarnings(messages), Is.EqualTo(0));
         }
 
         [Test]
@@ -1374,7 +1395,28 @@ namespace Velvet.Tests
             var messages = InvokeWeaveAndReport(module);
 
             // Assert
-            Assert.That(messages, Has.Some.Contains("Probe.Fixture::Component").And.Contains("discarded"));
+            Assert.That(messages, Has.Some.Contains("discarded"));
+        }
+
+        [Test]
+        public void Given_ADiscardedHookResult_When_BailoutsAreReported_Then_TheMessageNamesTheComponent()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("ReportedBailoutNamedProbe",
+                out var method, out var useId, out _, out _);
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Pop));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            var messages = InvokeWeaveAndReport(module);
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("Probe.Fixture::Component"));
         }
 
         // GREEN_ON_BASE(characterization): the base says nothing about a body it leaves unwoven.

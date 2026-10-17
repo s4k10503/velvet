@@ -70,13 +70,16 @@ namespace Velvet
         /// A component that takes props and calls no hook is keyed on its props alone, and left unwoven where it
         /// also sets <see cref="Memoize"/>; one with neither props nor a hook has nothing to key on and is left
         /// unwoven. Auto-memoization needs no opt-in: set this to <c>false</c> to opt
-        /// out. The weaver also declines a component silently, with no diagnostic, where it finds a hook it
-        /// cannot memoize safely, and <c>VelvetCompilerILPostProcessor.WillProcess</c> decides which
-        /// assemblies it reaches at all. A component whose body the weaver fails to process is left unwoven with a
-        /// build warning naming it. A call whose target the build cannot enumerate — through an interface,
-        /// or to a virtual method an override can replace — is cached with the rest of the body where it follows
-        /// every hook call the body makes, and declines the component where it precedes one or sits inside a
-        /// custom hook, even after that hook's own <c>UseState</c>. Once such a call
+        /// out. A component whose hook result the weaver cannot compare (one discarded, read by a shape it does not
+        /// recognise, or reached through a branch) is left unwoven without a diagnostic, unless the assembly defines
+        /// <c>VELVET_REPORT_AUTOMEMO</c>, which reports for each component considered why it is left unwoven or what was
+        /// woven; <c>VelvetCompilerILPostProcessor.WillProcess</c> decides which assemblies it reaches at all. A hook
+        /// that returns an object changed in place (<c>UseMutation</c>, <c>UseBlocker</c>) is woven with a gate that
+        /// never hits, while the scopes that do not read it are still cached. A component whose body the weaver fails
+        /// to process is left unwoven with a build warning naming it. A call ahead of the last hook whose target the
+        /// build cannot enumerate — through an interface, or to a virtual method an override can replace — is
+        /// bracketed, and the gate misses on a render in which a hook ran inside it; the gate of a component calling
+        /// a custom hook that composes such a call never hits. Once such a call
         /// runs a hook while the body builds its tree, the component's body runs on every render from then on.
         /// <para>
         /// Set to <c>false</c> to opt this component out of the transform, so its body then runs in full on

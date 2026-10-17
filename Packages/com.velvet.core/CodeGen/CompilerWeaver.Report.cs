@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Mono.Cecil;
 using Unity.CompilationPipeline.Common.Diagnostics;
 
@@ -39,7 +40,7 @@ namespace Velvet.CodeGen
             _ => "no reason recorded",
         };
 
-        // One warning per [Component] when the assembly asks for them: the reason a body is left unwoven, or what
+        // One warning for each [Component] method that has a body, when the assembly asks for them: the reason a body is left unwoven, or what
         // was woven into it, so that a partly optimised component can be told from a fully optimised one.
         private static void Report(List<DiagnosticMessage> diagnostics, MethodDefinition method, string what)
         {
@@ -50,11 +51,17 @@ namespace Velvet.CodeGen
             });
         }
 
-        private static string DescribeWeave(HookAnalysis analysis, int scopes, bool scopesDropped)
+        private static string DescribeWeave(HookAnalysis analysis, int scopes, bool scopesDropped, List<string> refusals)
         {
             var parts = new List<string> { scopes == 1 ? "woven with 1 scope" : $"woven with {scopes} scopes" };
             // MUTANT_SURVIVES(unreachable): the flag is set only after the stack check failed, which the planned scopes never cause.
             if (scopesDropped) parts.Add("scopes dropped because the weave failed the stack check");
+            if (refusals.Count > 0)
+            {
+                var reasons = refusals.GroupBy(reason => reason).OrderByDescending(group => group.Count()).ThenBy(group => group.Key, System.StringComparer.Ordinal)
+                    .Select(group => group.Count() == 1 ? group.Key : $"{group.Key} (x{group.Count()})");
+                parts.Add($"{refusals.Count} child/derived expression(s) left uncached: {string.Join(", ", reasons)}");
+            }
             if (analysis.Volatile) parts.Add("its gate never hits, because it reaches a hook no comparison stands for");
             if (analysis.OpaqueCalls.Count > 0) parts.Add($"{analysis.OpaqueCalls.Count} call(s) ahead of the gate bracketed");
             return string.Join("; ", parts);

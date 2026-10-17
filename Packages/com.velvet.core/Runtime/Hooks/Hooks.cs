@@ -2786,8 +2786,7 @@ namespace Velvet
         {
             if (deps == null) throw new ArgumentNullException(nameof(deps));
             var fiber = FiberAmbientStack.Current;
-            if (fiber == null || fiber.Indices.MemoHookIndex != 0 || fiber.HookRanInOpaqueCall
-                || !fiber.RendersComponent(component))
+            if (fiber == null || fiber.Indices.MemoHookIndex != 0 || !fiber.RendersComponent(component))
             {
                 slotIndex = -1;
                 cached = null;
@@ -2802,11 +2801,15 @@ namespace Velvet
             var slot = fiber.MemoSlots[slotIndex];
             slot.HookCallCountAtGate = fiber.HookCallCount;
             RestageScopes(fiber.MemoSlots, slotIndex);
+            // A hook ran inside a call bracketed ahead of this gate: it may have fed the body a value the deps do not
+            // hold, so the gate misses. The slot is still granted, so that a scope whose own dependencies are equal
+            // still hits.
+
             // Structural value equality would call a fresh-but-content-equal record class prop or context
             // value unchanged and hand back the cached VNode, so the render the reconciler had already
             // decided to make would produce the committed tree instead of the new one.
             // MUTANT_SURVIVES(equivalent, clause removed): AreEqualDeps reads a null committed list as unequal to the non-null deps checked above.
-            if (!slot.RunsHooksPastGate && slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
+            if (!fiber.HookRanInOpaqueCall && !slot.RunsHooksPastGate && slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
             {
                 // Hit against the committed deps: reuse the committed VNode and stage the committed values so the
                 // render-phase settle keeps them. (On a miss, StoreMemoizedVNode stages the rebuilt result; without
@@ -2833,7 +2836,8 @@ namespace Velvet
 
         /// <summary>
         /// Closes the bracket opened by <see cref="BeginOpaqueCall"/>. A hook called inside it makes the gate of
-        /// this render report a miss, since the value it fed the body is not among the gate's dependencies.
+        /// this render report a miss, since the value it fed the body is not among the gate's dependencies; a
+        /// reactive scope is judged on its own dependencies as before.
         /// Do not call by hand.
         /// </summary>
         /// <param name="hooksBefore">The count <see cref="BeginOpaqueCall"/> returned.</param>

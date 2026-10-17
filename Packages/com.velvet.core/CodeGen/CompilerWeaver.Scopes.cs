@@ -153,7 +153,7 @@ namespace Velvet.CodeGen
 
         private static bool IsStackBalanced(MethodBody body) => DepthsBefore(body.Instructions.ToArray()) != null;
 
-        private static List<ScopePlan> PlanScopes(MethodBody body, HookAnalysis analysis, WeaverContext context)
+        private static List<ScopePlan> PlanScopes(MethodBody body, HookAnalysis analysis, WeaverContext context, List<string> refusals)
         {
             var plans = new List<ScopePlan>();
             var instructions = body.Instructions.ToArray();
@@ -166,7 +166,11 @@ namespace Velvet.CodeGen
             foreach (var candidate in FindCandidates(facts).Where(each => each.Span.Start > boundary))
             {
                 if (candidate.Kind == ScopeKind.Value && (context.TryGetMemoizedValue == null || context.StoreMemoizedValue == null)) continue;
-                if (TryPlanCandidate(facts, candidate, plans, mutated) is not { } plan) continue;
+                if (TryPlanCandidate(facts, candidate, plans, mutated, out var refusal) is not { } plan)
+                {
+                    refusals.Add(refusal!);
+                    continue;
+                }
                 plans.Add(plan);
                 if (candidate.Output != null) facts.AcceptOutput(candidate.Output);
             }
@@ -377,25 +381,49 @@ namespace Velvet.CodeGen
 
         // The references a call outside every scope is given: a call the weaver cannot take for a function of its
         // arguments may write through any of them, so a scope reading one holds what it built from the object as it
-        // was. The arguments are the references read by the expression the call ends, and a variable shared by two
-        // such calls is named once.
+        // was. The arguments are the references read by the instructions that push them, wherever the call stands in
+        // the body, and a reference copied into another variable is the same object under both names.
         private static HashSet<object> ReferencesGivenToCalls(ScopeFacts facts)
         {
             var given = new HashSet<object>();
-            for (var i = facts.Boundary + 1; i < facts.Instructions.Length; i++)
+            for (var i = 0; i < facts.Instructions.Length; i++)
             {
                 var instr = facts.Instructions[i];
                 if (instr.OpCode.Code is not (Code.Call or Code.Callvirt) || instr.Operand is not MethodReference method
-                    || IsRepeatableCall(facts, instr, method))
+                    || IsRepeatableCall(facts, instr, method) || method.DeclaringType.FullName == HooksTypeFullName)
                 {
                     continue;
                 }
-                // MUTANT_SURVIVES(equivalent, arithmetic): the two instructions at the boundary store a hook result and load no variable a callee could change.
-                var start = SpanEndingAt(facts, i)?.Start ?? facts.Boundary + 1;
-                // MUTANT_SURVIVES(equivalent, boundary): the instruction at `i` is the call, which names a method and reads no variable.
-                for (var read = start; read < i; read++)
+                var baseDepth = facts.Depths[i] - Pops(instr);
+                for (var read = i - 1; Pops(instr) > 0 && read >= 0; read--)
                 {
                     if (ReferenceKeyOf(facts.Instructions[read]) is { } key) given.Add(key);
+                    if (facts.Depths[read] <= baseDepth) break;
+                }
+            }
+            return WithAliases(facts, given);
+        }
+
+        // `ldloc a; stloc b` (or a store into a captured variable) makes `b` the object `a` is: a call given either
+        // is given both. Taken to a fixed point, as a copy of a copy is a copy.
+        private static HashSet<object> WithAliases(ScopeFacts facts, HashSet<object> given)
+        {
+            var copies = new List<(object From, object To)>();
+            for (var i = 0; i + 1 < facts.Instructions.Length; i++)
+            {
+                if (ReferenceKeyOf(facts.Instructions[i]) is { } from && facts.StoredKey(i + 1) is { } to) copies.Add((from, to));
+            }
+            for (var changed = true; changed;)
+            {
+                changed = false;
+                foreach (var (from, to) in copies)
+                {
+                    if (given.Contains(from) != given.Contains(to))
+                    {
+                        given.Add(from);
+                        given.Add(to);
+                        changed = true;
+                    }
                 }
             }
             return given;
@@ -420,20 +448,20 @@ namespace Velvet.CodeGen
         private static bool CanBeWrittenThrough(TypeReference type) => !IsValueLike(type) && !IsImmutableType(type);
 
         private static ScopePlan? TryPlanCandidate(ScopeFacts facts, ScopeCandidate candidate, List<ScopePlan> accepted,
-            HashSet<object> mutated)
+            HashSet<object> mutated, out string? refusal)
         {
             var region = candidate.Span;
             var scan = new ScopeScan();
-            if (accepted.Any(each => each.Region.End == region.End)
-                || facts.Branches.Any(branch => BranchBreaksRegion(branch.Source, branch.Target, region))
-                || !Enumerable.Range(region.Start, region.End - region.Start + 1).All(i => ScanInstruction(facts, i, region, scan))
-                || !scan.HasCall || (scan.Deps.Count == 0 && !scan.OnlyFactoryCalls)
-                || scan.Deps.Any(dep => mutated.Contains(dep.Key))
-                || RepeatsEnclosingScope(accepted, region, scan.Deps)
-                || (facts.FlowsIntoReturn(region.End + 1) && facts.CoversGate(scan.Deps)))
-            {
-                return null;
-            }
+            refusal = null;
+            if (accepted.Any(each => each.Region.End == region.End)) refusal = "it ends where a scope around it ends";
+            else if (facts.Branches.Any(branch => BranchBreaksRegion(branch.Source, branch.Target, region))) refusal = "a jump crosses its edge";
+            else if (!Enumerable.Range(region.Start, region.End - region.Start + 1).All(i => ScanInstruction(facts, i, region, scan))) refusal = scan.Why;
+            else if (!scan.HasCall) refusal = "it makes no call";
+            else if (scan.Deps.Count == 0 && !scan.OnlyFactoryCalls) refusal = "it reads no value a comparison could key it on";
+            else if (scan.Deps.Any(dep => mutated.Contains(dep.Key))) refusal = "it reads a reference a call outside every scope is given";
+            else if (RepeatsEnclosingScope(accepted, region, scan.Deps)) refusal = "it reads what the scope around it reads";
+            else if (facts.FlowsIntoReturn(region.End + 1) && facts.CoversGate(scan.Deps)) refusal = "it is returned and reads only what the component's gate compares";
+            if (refusal != null) return null;
             return new ScopePlan(candidate, facts.Instructions[region.Start], facts.Instructions[region.End + 1], scan.Deps,
                 accepted.Count);
         }
@@ -465,7 +493,7 @@ namespace Velvet.CodeGen
         private static bool ScanInstruction(ScopeFacts facts, int index, ElementRegion region, ScopeScan scan)
         {
             var instr = facts.Instructions[index];
-            if (ScopeForbiddenCodes.Contains(instr.OpCode.Code)) return false;
+            if (ScopeForbiddenCodes.Contains(instr.OpCode.Code)) return scan.Refuse($"it holds a {instr.OpCode.Name} instruction");
             switch (instr.Operand)
             {
                 case VariableDefinition local:
@@ -474,8 +502,9 @@ namespace Velvet.CodeGen
                         : ScanLocal(facts, index, local, region, scan);
                 case ParameterDefinition parameter:
                     scan.Add(facts.ParameterDependency(parameter));
-                    return IsBoxable(parameter.ParameterType)
-                        && (instr.OpCode.Code != Code.Ldarga || ReadsInPlace(facts.Instructions[index + 1], parameter.ParameterType));
+                    return (IsBoxable(parameter.ParameterType)
+                        && (instr.OpCode.Code != Code.Ldarga || ReadsInPlace(facts.Instructions[index + 1], parameter.ParameterType)))
+                        || scan.Refuse($"it reads parameter '{parameter.Name}' in a way a comparison cannot stand for");
                 case FieldReference field:
                     return ScanField(facts, index, field, region, scan);
                 case MethodReference method:
@@ -489,8 +518,9 @@ namespace Velvet.CodeGen
         {
             var code = facts.Instructions[index].OpCode.Code;
             if (facts.IsPrivateTo(local, region)) return true;
-            if (code == Code.Stloc || !facts.CanBeCompared(local, local.VariableType, region)) return false;
-            if (code == Code.Ldloca && !ReadsInPlace(facts.Instructions[index + 1], local.VariableType)) return false;
+            if (code == Code.Stloc) return scan.Refuse($"it writes a local of type {local.VariableType.Name} that is read outside it");
+            if (!facts.CanBeCompared(local, local.VariableType, region)) return scan.Refuse($"it reads a local of type {local.VariableType.Name} that no comparison stands for");
+            if (code == Code.Ldloca && !ReadsInPlace(facts.Instructions[index + 1], local.VariableType)) return scan.Refuse($"it passes the address of a local of type {local.VariableType.Name} on");
             scan.Add(new DepSource(local, local.VariableType) { Local = local });
             return true;
         }
@@ -530,7 +560,8 @@ namespace Velvet.CodeGen
             var code = instr.OpCode.Code;
             if (code is Code.Ldsfld or Code.Ldsflda or Code.Stsfld)
             {
-                return IsClosureCache(field) || (code == Code.Ldsfld && IsReadOnlyValue(field));
+                return IsClosureCache(field) || (code == Code.Ldsfld && IsReadOnlyValue(field))
+                    || scan.Refuse($"it reads the static field '{field.Name}', which nothing compares");
             }
             return !IsClosureField(field) || ScanClosureField(facts, index, field, region, scan);
         }
@@ -540,13 +571,13 @@ namespace Velvet.CodeGen
         {
             var code = facts.Instructions[index].OpCode.Code;
             var next = facts.Instructions[index + 1];
-            if (code == Code.Stfld) return false;
-            if (IsParentLink(field)) return IsClosureMemberAccess(next);
-            if (code == Code.Ldflda && !ReadsInPlace(next, field.FieldType)) return false;
+            if (code == Code.Stfld) return scan.Refuse($"it writes the captured variable '{field.Name}'");
+            if (IsParentLink(field)) return IsClosureMemberAccess(next) || scan.Refuse("it hands a display class on");
+            if (code == Code.Ldflda && !ReadsInPlace(next, field.FieldType)) return scan.Refuse($"it passes the address of the captured variable '{field.Name}' on");
             // MUTANT_SURVIVES(unreachable, literal): a display class belongs to the assembly being woven, which resolves its fields.
             if (TryResolve(() => field.Resolve()) is not { } definition) return false;
             var dependency = facts.FieldDependency(definition, direct: true, region);
-            if (dependency == null) return false;
+            if (dependency == null) return scan.Refuse($"it reads the captured variable '{field.Name}', which no comparison stands for");
             scan.Add(dependency);
             return true;
         }
@@ -558,14 +589,17 @@ namespace Velvet.CodeGen
             {
                 scan.HasCall = true;
                 scan.OnlyFactoryCalls &= method.DeclaringType.FullName == FactoryTypeFullName;
-                if (!IsRepeatableCall(facts, instr, method)) return false;
+                if (!IsRepeatableCall(facts, instr, method))
+                {
+                    return scan.Refuse($"it calls {method.DeclaringType.Name}.{method.Name}, which the weaver does not read as a function of its arguments");
+                }
             }
             if (instr.OpCode.Code is Code.Ldftn or Code.Ldvirtftn && IsClosureClass(method.DeclaringType)
                 && !ScanClosureCreation(facts, method, region, scan))
             {
-                return false;
+                return scan.Refuse("it creates a lambda that reads a captured variable no comparison stands for, or does more than read");
             }
-            return !TouchesRef(method);
+            return !TouchesRef(method) || scan.Refuse($"it calls {method.DeclaringType.Name}.{method.Name}, which touches a Ref");
         }
 
         // A lambda reads captured variables when it runs, so what a scope holding its creation depends on is what
@@ -816,6 +850,15 @@ namespace Velvet.CodeGen
             public bool HasCall { get; set; }
 
             public bool OnlyFactoryCalls { get; set; } = true;
+
+            // The first thing found that no comparison stands for.
+            public string? Why { get; private set; }
+
+            public bool Refuse(string why)
+            {
+                Why ??= why;
+                return false;
+            }
 
             // A variable read twice is added once.
             public void Add(DepSource source)
