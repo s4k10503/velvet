@@ -50,7 +50,7 @@ namespace Velvet
         /// <c>none</c> (the first four would break the class token; the rest are CSS's own function syntax and
         /// keyword, which a <c>filter-[...]</c> body reads as CSS rather than as a name);
         /// the built-in filter family names (blur, brightness, contrast, grayscale, hue-rotate, invert,
-        /// saturate, sepia) are reserved case-insensitively. Invalid names are rejected with a warning.</param>
+        /// saturate, sepia, drop-shadow) are reserved case-insensitively. Invalid names are rejected with a warning.</param>
         /// <param name="definition">The custom filter definition applied when the class resolves.
         /// Null (or a destroyed asset) is rejected with a warning, as is a definition declaring more than
         /// the 4 parameters a filter function can carry.</param>
