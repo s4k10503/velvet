@@ -86,11 +86,20 @@ namespace Velvet
                 if (ReferenceEquals(dest, control))
                 {
                     gateChanged |= payloadGated;
+                    if (StyleInputBoxSurface.TryGetSharedBox(control, core, out var shared))
+                    {
+                        box = shared;
+                        boxChanged |= ToggleResolvedPayload(shared, payload, on, effectivePriority, ctx, declaration);
+                    }
                 }
                 else
                 {
                     box = dest;
                     boxChanged |= payloadGated;
+                }
+                if (StyleInputBoxSurface.TryGetBoxText(dest, core, out var boxText))
+                {
+                    ToggleResolvedPayload(boxText, payload, on, effectivePriority, ctx, declaration);
                 }
 
                 // A clip-path payload (hover:clip-path-[…], dark:/first:clip-path-[…], …) was just toggled as a class,

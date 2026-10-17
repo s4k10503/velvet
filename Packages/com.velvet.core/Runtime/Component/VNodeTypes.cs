@@ -129,7 +129,7 @@ namespace Velvet
         /// <summary>
         /// Function that wraps the element with a wrapper container.
         /// The Reconciler places the wrapper in the DOM and tracks the inner real element in a dictionary for patching.
-        /// Primary use case: wrapping a button with a DropShadow container.
+        /// Primary use case: wrapping a button with a shadow container.
         /// </summary>
         public Func<VisualElement, VisualElement>? WrapElement { get; init; }
     }

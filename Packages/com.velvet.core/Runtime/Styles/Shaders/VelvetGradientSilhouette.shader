@@ -13,7 +13,7 @@ Shader "Velvet/GradientSilhouette"
     // Vectors (no gamma conversion); the bake target is a Linear RenderTexture.
     //
     // Baked, NOT a live per-element material: UITK freezes a custom-material element's draw order at first
-    // generation, mis-ordering it under an animating ancestor transform (the same reason DropShadow bakes).
+    // generation, mis-ordering it under an animating ancestor transform (the same reason BoxShadow bakes).
     // URP only ("UniversalPipeline").
     Properties
     {

@@ -950,13 +950,13 @@ namespace Velvet
         public Dictionary<VisualElement, LayoutIdProjection> LayoutIdProjections { get; } = new();
         public Dictionary<VisualElement, IVisualElementScheduledItem> LayoutIdFrames { get; } = new();
 
-        // Per-element drop-shadow bookkeeping for the shadow-* className layer, keyed by the element
+        // Per-element box-shadow bookkeeping for the shadow-* className layer, keyed by the element
         // itself — the shadow needs NO structural wrapper. Like skew and gradient, the shadow is painted
-        // by the element's own generateVisualContent (DropShadowSilhouette draws the baked shadow texture
+        // by the element's own generateVisualContent (BoxShadowSilhouette draws the baked shadow texture
         // BEHIND the content, bleeding outside the box), so it composes as a paint, not a wrapper —
         // matching CSS box-shadow (non-structural: it neither alters layout nor escapes a transform on the
         // element). Maintained by FiberNodePatcher's shadow methods and torn down by FiberElementCleaner.
-        public Dictionary<VisualElement, DropShadowBinding> ShadowBindings { get; } = new();
+        public Dictionary<VisualElement, BoxShadowBinding> ShadowBindings { get; } = new();
 
         // Per-element clip-path bookkeeping for the clip-path-* className layer, keyed by the INNER
         // (real) element. An entry means the element is wrapped in a stencil-masking clip wrapper
