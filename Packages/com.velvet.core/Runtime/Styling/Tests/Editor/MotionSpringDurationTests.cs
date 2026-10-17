@@ -52,7 +52,7 @@ namespace Velvet.Tests
             return element;
         }
 
-        private enum Knob
+        internal enum Knob
         {
             Stiffness,
             Damping,
