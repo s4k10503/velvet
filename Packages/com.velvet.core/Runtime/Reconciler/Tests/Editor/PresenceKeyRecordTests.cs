@@ -333,7 +333,6 @@ namespace Velvet.Tests
         }
 
         // The teardown of the descendant's element settles the same wait the disposal already settled.
-        // GREEN_ON_BASE(characterization): the base completed the exit once, from the descendant's teardown.
         [Test]
         public void Given_AKeyLeavingThroughADescendantsExit_When_TheTreeIsDisposed_Then_OnExitCompleteRunsOnce()
         {
