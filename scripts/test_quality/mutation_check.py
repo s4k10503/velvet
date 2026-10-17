@@ -3083,6 +3083,28 @@ def build_error(log):
     return found.group(1).replace("\\", "/") if found else None
 
 
+EXCERPT_LINES = 20
+WORDED_ERROR = re.compile(r"\berror\b", re.IGNORECASE)
+
+
+def log_excerpt(log, limit=EXCERPT_LINES):
+    """For the job log: CI keeps `log` inside an artifact, and where a build stopped the editor's banner
+    in the job log says no more than that scripts had compiler errors."""
+    try:
+        lines = [line.strip() for line in Path(log).read_text(errors="replace").splitlines() if line.strip()]
+    except OSError:
+        return "{} could not be read".format(log)
+    for heading, chosen in (("its errors", [line for line in lines if ": error " in line]),
+                            ("its lines naming an error",
+                             [line for line in lines if WORDED_ERROR.search(line)]),
+                            ("it names no error; its last lines", lines[-limit:])):
+        unique = list(dict.fromkeys(chosen))
+        if unique:
+            return "\n".join(["{}, from {}:".format(heading, log)]
+                             + ["  " + line for line in unique[:limit]])
+    return "{} is empty".format(log)
+
+
 # Any compiler or analyzer error line. The editor log can cut the front off one -- measured,
 # `r/Tests/Editor/InlineOwnerListPoolingTests.cs(45,33): error CS1061: ...` beside three whole copies of
 # it -- so the path is kept as the fragment it arrived as rather than required to open at the root.
@@ -5079,7 +5101,8 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
         raise SystemExit("the baseline run did not finish within --timeout, so no mutant can be timed")
     baseline = read_counts(baseline_results)
     if baseline is None:
-        raise SystemExit("the baseline run wrote no result; read {}".format(output / "baseline.log"))
+        raise SystemExit("the baseline run wrote no result; read {}\n{}".format(
+            output / "baseline.log", log_excerpt(output / "baseline.log")))
     if baseline["failed"] or baseline["inconclusive"]:
         raise SystemExit("baseline is not green, so a mutant would read as killed by {}".format(
             ", ".join(failing_names(baseline_results)) or "an inconclusive case"))

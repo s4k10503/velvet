@@ -3156,11 +3156,16 @@ class StubbedCampaign:
     # which is what separates a mutant that hung from a bound the suite was always going to outrun.
     baseline_seconds = 0.0
     baseline_text = GREEN_RESULTS
+    # Where set, the baseline writes this log and no result, as a build that stopped does.
+    baseline_log = None
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         # The baseline has to be green whatever the mutants do, or the run stops before the loop.
         mutant = Path(results).name != "baseline.xml"
         wall = 0.0 if mutant else self.baseline_seconds
+        if not mutant and self.baseline_log is not None:
+            Path(log).write_text(self.baseline_log)
+            return wall, False, 0
         if mutant and self.no_results:
             Path(log).write_text("")
             return wall, False, 0
@@ -3204,6 +3209,103 @@ class StubbedCampaign:
         finally:
             self.printed = spoken.getvalue()
             sys.argv, mutation_check.run_suite, mutation_check.unity_busy = saved
+
+
+class UnbuiltBaselineTests(unittest.TestCase):
+    """A baseline whose build stopped writes no result, and the job log is all a failed CI step shows."""
+
+    def refusal(self, log):
+        campaign = StubbedCampaign()
+        campaign.baseline_log = log
+        return str(campaign.run("--max", "1"))
+
+    def test_Given_ABaselineLogWithACompilerError_When_TheRunStops_Then_TheErrorIsQuoted(self):
+        # Arrange
+        log = ("Start importing\n"
+               "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS0103: The name 'x' does not exist\n"
+               "Scripts have compiler errors.\n")
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertIn("  Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS0103: The name 'x' does not exist",
+                      refusal)
+
+    def test_Given_ACompilerErrorTheLogRepeats_When_TheRunStops_Then_ItIsQuotedOnce(self):
+        # Arrange
+        line = "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS0103: The name 'x' does not exist"
+        log = "\n".join([line, "Scripts have compiler errors.", line]) + "\n"
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertEqual(refusal.count(line), 1)
+
+    def test_Given_MoreCompilerErrorsThanTheExcerptHolds_When_TheRunStops_Then_OnlyTheFirstAreQuoted(self):
+        # Arrange
+        log = "".join("Packages/com.velvet.core/Runtime/Probe.cs({},9): error CS0103: missing\n".format(number)
+                      for number in range(1, 31))
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertEqual(("Probe.cs(20,9)" in refusal, "Probe.cs(21,9)" in refusal), (True, False))
+
+    def test_Given_ABaselineLogWithCompilerErrorsAndOtherErrorWords_When_TheRunStops_Then_OnlyTheDiagnosticsAreQuoted(self):
+        # Arrange
+        log = ("[Licensing::Client] Error: a token was refreshed\n"
+               "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS0103: The name 'x' does not exist\n")
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertNotIn("a token was refreshed", refusal)
+
+    def test_Given_ABaselineLogNamingAnErrorInWords_When_TheRunStops_Then_ThatLineIsQuoted(self):
+        # Arrange — an error stated in words, with more lines after it than the excerpt quotes.
+        log = ("Start importing\n"
+               "An error occurred while resolving packages:\n"
+               + "".join("Shutting down {}\n".format(number) for number in range(30)))
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertIn("  An error occurred while resolving packages:", refusal)
+
+    def test_Given_ABaselineLogNamingNoError_When_TheRunStops_Then_ItsLastLinesAreQuoted(self):
+        # Arrange
+        log = "".join("line {}\n".format(number) for number in range(1, 31))
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertEqual(("  line 10\n" in refusal, "  line 11\n" in refusal, refusal.endswith("  line 30")),
+                         (False, True, True))
+
+    def test_Given_ABaselineThatLeftNoLog_When_TheRunStops_Then_TheRefusalSaysSo(self):
+        # Arrange
+        campaign = StubbedCampaign()
+        campaign.baseline_log = ""
+        original = campaign.run_suite
+
+        def no_log(unity, project, platform, scope, results, log, timeout, holder=None):
+            answer = original(unity, project, platform, scope, results, log, timeout, holder)
+            Path(log).unlink()
+            return answer
+
+        campaign.run_suite = no_log
+
+        # Act
+        refusal = str(campaign.run("--max", "1"))
+
+        # Assert
+        self.assertIn("baseline.log could not be read", refusal)
 
 
 class QueuedCampaignTests(unittest.TestCase):
