@@ -328,13 +328,13 @@ new StyleTransitionConfig
 ## Driven channels (Spring and Bezier)
 
 Both non-CSS drivers write inline styles every tick. A play reads its targets from the swapped-in
-classes and the element's classes left in place. A slot that a running Spring or Bezier play, or a
-native transition, is moving starts from the value on screen: that play's current frame, or the
-transition's displayed value sampled before cancellation or the class swap. An enter or label change on a Spring or a Bezier that interrupts a running Spring or Bezier enter or label
-change — a Tween on a clock other than the panel's (*Clocks*) counting as a Bezier on either side — starts each
-channel the two share from the value it is drawn at, as Framer animates every value from the one it has,
-whichever transition either plays on; a length the two hold in different units keeps the start below.
-A slot a `controls.Cancel()`
+classes and the element's classes left in place. A slot that a running Spring or Bezier play (a Tween
+on a clock other than the panel's, *Clocks*, counting as a Bezier), or a native transition, is moving
+starts from the value on screen: that play's current frame, or the transition's displayed value sampled
+before cancellation or the class swap. On an element that is off its panel, where the screen cannot be
+read, an enter or label change on a Spring or a Bezier that interrupts such a play starts each channel the
+two share from the value that play has reached, as Framer animates every value from the one it has; a length the two hold in
+different units keeps the start below. A slot a `controls.Cancel()`
 hold has taken starts from the held value on the channels both name (see *Timelines*). Any other slot
 starts from the swapped-out value when the swapped-out classes name one. Otherwise, on a mounted element,
 the start is the current inline value, or the resolved value when no inline value is set. A transition

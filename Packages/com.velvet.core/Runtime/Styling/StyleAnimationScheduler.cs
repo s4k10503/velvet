@@ -714,11 +714,14 @@ namespace Velvet
             var state = ValidateSpringParameters(stiffness, damping, mass)
                 ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description)
                 : null;
-            // A spring or bezier play this one interrupts hands on its velocity, and to an enter its drawn values too, and
-            // a native transition its rate, all read before the cancel and the class swap below end them.
+            // A spring or bezier play this one interrupts hands on its velocity, and a native transition its rate, both
+            // read before the cancel and the class swap below end them. The interrupted play's values are an enter's
+            // start only where no context was read: a context reads the start of each slot a running play drives
+            // off the screen (MotionSpringClassParser.HoldsExplicitStart), which an inline write over the play's
+            // frame moves and the play's own values do not (MotionSlotContextTests).
             if (state != null && Drawn(map.GetValueOrDefault(element)) is { } interrupted)
             {
-                MotionSpringDriver.ContinueFrom(state, interrupted, fromDrawn: !isExit);
+                MotionSpringDriver.ContinueFrom(state, interrupted, fromDrawn: !isExit && context == null);
             }
             if (state != null && context != null)
             {
@@ -883,18 +886,20 @@ namespace Velvet
             // Read BEFORE the class swap lands (same rationale as StartSpringVariant): a translate axis the swap
             // names on neither side rests at the element's own current inline translate rather than snapping to 0.
             var restingTranslate = element.style.translate.value;
+            var context = MotionSlotContext.Read(element, planFrom, planTo, slot => DrivenByRunningPlay(element, slot),
+                slot => DrivenByLivePlay(element, slot));
             var plan = MotionSpringClassParser.Resolve(planFrom, planTo,
-                restingTranslate.x.value, restingTranslate.y.value,
-                MotionSlotContext.Read(element, planFrom, planTo, slot => DrivenByRunningPlay(element, slot), slot => DrivenByLivePlay(element, slot)));
+                restingTranslate.x.value, restingTranslate.y.value, context);
             plan = StartFromHeld(element, plan, planFrom, planTo);
             // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
             var state = create(plan);
-            // A variant enter interrupting a spring or bezier play starts from the values it drew, as a spring's does
-            // (StartSpringVariant). A classic preset enter's from-classes are its own start, which Framer, having
-            // no such enter, has nothing to say about. Read before the cancel below ends it.
-            if (state != null && !play.IsExit && !removesToClasses
+            // A variant enter interrupting a spring or bezier play where no context was read starts from the values
+            // that play drew, as a spring's does (StartSpringVariant). A classic preset enter's from-classes are its
+            // own start, which Framer, having no such enter, has nothing to say about. Read before the cancel below
+            // ends it.
+            if (state != null && context == null && !play.IsExit && !removesToClasses
                 && Drawn(map.GetValueOrDefault(element)) is { } interrupted)
             {
                 BezierTweenDriver.ContinueFrom(state, interrupted);

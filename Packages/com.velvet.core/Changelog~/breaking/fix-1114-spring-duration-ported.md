@@ -15,8 +15,8 @@
   plays, as in Framer's sequence: on its physics knobs where it sets any, and otherwise on the spring a 0.01 s
   duration describes.
 - An enter or label change on a `Spring` or a `Bezier` that interrupts a running `Spring` or `Bezier` enter or
-  label change starts each channel the two share from the value it is drawn at, as Framer Motion animates every
-  value from the one it has, whichever transition either plays on; a `Tween` on a mount clock other than the
-  panel's counts as a `Bezier` here. A spring also takes the velocity the interrupted channel moves at, a
-  bezier's being its curve's slope. A color starts at the color drawn, and a length the two hold in different
-  units keeps its own start.
+  label change on an element that is off its panel starts each channel the two share from the value the
+  interrupted play has reached, as Framer Motion animates every value from the one it has; a `Tween` on a mount
+  clock other than the panel's counts as a `Bezier` here. A color starts at the color drawn, and a length the two
+  hold in different units keeps its own start. Such a change used to start from the pose the swapped-out label
+  names. On an element on its panel the start stays the value on screen.

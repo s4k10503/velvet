@@ -182,10 +182,12 @@ namespace Velvet.Tests
             FlipBackToA(mounted);
             Ticks(1);
 
-            // Assert — as the same-driver case above: still near the value drawn, where a restart from pose b is
-            // most of the travel away.
+            // Assert — as the same-driver case above, at twice its margin: a spring back from a bezier starts with
+            // the curve's slope, which six frames into this one is steeper than a spring's at that point and takes
+            // a translate or a width about a tenth of the travel in one frame. A restart from pose b is still most
+            // of the travel away.
             var midway = drawn > low + 0.01f * (high - low) && drawn < high - 0.01f * (high - low);
-            Assert.That(midway ? Read(m, channel) : float.NaN, Is.EqualTo(drawn).Within(0.1f * (high - low)));
+            Assert.That(midway ? Read(m, channel) : float.NaN, Is.EqualTo(drawn).Within(0.2f * (high - low)));
         }
 
         [Test]

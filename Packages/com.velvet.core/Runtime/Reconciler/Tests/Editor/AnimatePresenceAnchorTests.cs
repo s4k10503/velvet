@@ -548,7 +548,7 @@ namespace Velvet.Tests
         }
 
         [TestCase(1, false)]
-        [TestCase(21, true)]
+        [TestCase(5, true)]
         public void Given_ACoordinatorWhoseExitSpringsBeforeChildrenOnADuration_When_TheKeyIsRemoved_Then_ItsChildHasStartedOnlyOnceThatDurationHasRun(
             int frames, bool expected)
         {
@@ -556,8 +556,9 @@ namespace Velvet.Tests
             using var mounted = MountSettled("coordinator-spring", "a");
             using var keys = s_keyStore;
 
-            // Act — one frame is inside the spring's 0.05 s, twenty-one are past it and well short of the 1.05 s the
-            // default physics would take.
+            // Act — one frame is inside the spring's 0.05 s, and five past it, short of the 1.05 s the default
+            // physics would take. Five also fall short of the end of the child's own 0.05 s exit, after which the
+            // presence removes the child and nothing is left to read a class off.
             keys.Set(string.Empty);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             Frames(frames);
@@ -574,10 +575,10 @@ namespace Velvet.Tests
             using var mounted = MountSettled("coordinator-spring", "a");
             using var keys = s_keyStore;
 
-            // Act
+            // Act — the frames the case above reads its child at.
             keys.Set(string.Empty);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-            Frames(21);
+            Frames(5);
 
             // Assert
             Assert.That(HasClass("spring-coordinator", "opacity-0"), Is.True);
