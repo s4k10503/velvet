@@ -102,8 +102,6 @@ namespace Velvet.CodeGen
 
         private static bool ChangesACollection(MethodReference method, TypeReference declaring)
             => method.HasThis && CollectionNamespaces.Contains(declaring.Namespace)
-                && !declaring.Name.StartsWith("IReadOnly", System.StringComparison.Ordinal)
-                && !declaring.Name.StartsWith("IEnumerable", System.StringComparison.Ordinal)
                 && !method.Name.StartsWith("get_", System.StringComparison.Ordinal)
                 && !CollectionReads.Contains(method.Name);
 
