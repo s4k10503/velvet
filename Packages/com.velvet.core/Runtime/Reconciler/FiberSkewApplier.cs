@@ -31,7 +31,7 @@ namespace Velvet
             // sheared mesh (the rectangular background-image the non-skew path would set cannot follow the
             // shear). ApplyGradientOnCreate runs next and defers to this binding.
             SyncSkewGradient(element, binding, classNames);
-            SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
+            SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
         }
 
         // Feeds the gradient resolved from the element's class list into a skew binding (or clears it), so
@@ -83,7 +83,7 @@ namespace Velvet
                 {
                     SyncSkewGradient(element, binding, newClassNames);
                     // A filter utility / animate-hue can appear or vanish without the skew tokens changing.
-                    SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(newClassNames), newClassNames);
+                    SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
                 }
                 return binding.Spec.XDeg;
             }
@@ -98,7 +98,7 @@ namespace Velvet
                 // The manipulator reads Spec live, so the just-changed angle re-seats the children here.
                 SkewSilhouette.SyncChildTranslate(binding);
                 SyncSkewGradient(element, binding, newClassNames);
-                SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(newClassNames), newClassNames);
+                SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
                 element.MarkDirtyRepaint();
                 return spec.XDeg;
             }
@@ -108,7 +108,7 @@ namespace Velvet
                 _ctx.SkewBindings[element] = fresh;
                 SkewSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true, canReleaseFace);
                 SyncSkewGradient(element, fresh, newClassNames);
-                SkewSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(newClassNames), newClassNames);
+                SkewSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
                 return spec.XDeg;
             }
             if (bound)

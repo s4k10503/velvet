@@ -94,6 +94,66 @@ namespace Velvet.Tests
             Assert.That(Joined(classNames), Is.EqualTo(Scoped + token));
         }
 
+        [TestCase("opacity-50")]
+        [TestCase("text-red-500")]
+        [TestCase("text-[#ff0000]")]
+        [TestCase("translate-x-4")]
+        [TestCase("rotate-45")]
+        [TestCase("scale-105")]
+        [TestCase("origin-center")]
+        [TestCase("skew-x-6")]
+        [TestCase("animate-spin")]
+        [TestCase("animate-hue")]
+        [TestCase("hover:opacity-50")]
+        [TestCase("font-bold")]
+        [TestCase("font-mono")]
+        [TestCase("italic")]
+        [TestCase("text-sm")]
+        [TestCase("text-[14px]")]
+        [TestCase("text-center")]
+        [TestCase("tracking-wide")]
+        [TestCase("uppercase")]
+        [TestCase("underline")]
+        [TestCase("truncate")]
+        public void Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(
+            string token)
+        {
+            // Act
+            var classNames = V.TextField(className: token).ClassNames;
+
+            // Assert
+            Assert.That(Joined(classNames), Is.EqualTo(Scoped + token));
+        }
+
+        [TestCase("transition-all")]
+        [TestCase("transition-filter")]
+        [TestCase("duration-300")]
+        [TestCase("ease-out")]
+        [TestCase("hover:duration-300")]
+        public void Given_ATransitionUtilityOnATextField_When_TheNodeIsBuilt_Then_TheControlKeepsItAndTheInputBoxTakesIt(
+            string token)
+        {
+            // Act
+            var classNames = V.TextField(className: token).ClassNames;
+
+            // Assert
+            Assert.That(Joined(classNames), Is.EqualTo(token + "|" + Scoped + token));
+        }
+
+        [Test]
+        public void Given_ATextFieldBuiltTwiceWithTheSameClasses_When_ItsClassesAreRouted_Then_BothBuildsShareOneArray()
+        {
+            // Arrange
+            const string classes = "bg-red-500 w-64 rounded-[7px]";
+            var first = V.TextField(className: classes).ClassNames;
+
+            // Act
+            var second = V.TextField(className: classes).ClassNames;
+
+            // Assert
+            Assert.That(second, Is.SameAs(first));
+        }
+
         [Test]
         public void Given_SurfaceAndLayoutUtilities_When_TheNodeIsBuilt_Then_OnlyTheSurfaceOnesAreScoped()
         {
@@ -105,12 +165,12 @@ namespace Velvet.Tests
                 Is.EqualTo("w-64|" + Scoped + "bg-red-500|mt-2|" + Scoped + "rounded-lg"));
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves every one of these on the outer control. They are the
-        // utilities that are not surface ones, and the conditions the control itself decides, which
+        // GREEN_ON_BASE(characterization): the base leaves every one of these on the outer control, the height too.
+        // They are the utilities that are not surface ones, and the conditions the control itself decides, which
         // StyleInputBoxSurface.DestinationFor redirects while the payload is applied and Route never rewrites.
         [TestCase("w-64")]
+        [TestCase("h-10")]
         [TestCase("mt-2")]
-        [TestCase("text-white")]
         [TestCase("flex")]
         [TestCase("first:bg-red-500")]
         [TestCase("has-[:checked]:bg-red-500")]
@@ -621,9 +681,283 @@ namespace Velvet.Tests
             Assert.That(FilterTypes(scope.Root[0]), Is.EqualTo("none"));
         }
 
+        [Test]
+        public void Given_AShadowBesideAFilterOnATextField_When_Reconciled_Then_TheInputBoxsShadowReservesItsBounds()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "shadow-lg blur-sm") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[Box(scope.Root[0])].WantSpacer, Is.True);
+        }
+
+        [Test]
+        public void Given_AShadowBesideAHoverFilterOnATextField_When_Reconciled_Then_TheInputBoxsShadowReservesItsBounds()
+        {
+            // Arrange — the filter is not applied, as an inactive variant's is not on any other element.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "shadow-lg hover:blur-sm") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[Box(scope.Root[0])].WantSpacer, Is.True);
+        }
+
+        [Test]
+        public void Given_AShadowedTextField_When_AHoverFilterIsAdded_Then_TheInputBoxsShadowReservesItsBounds()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var first = new VNode[] { V.TextField(className: "shadow-lg") };
+            var second = new VNode[] { V.TextField(className: "shadow-lg hover:blur-sm") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, first, second);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[Box(scope.Root[0])].WantSpacer, Is.True);
+        }
+
+        [Test]
+        public void Given_AnimateHueOnATextField_When_Reconciled_Then_TheInputBoxRunsTheMotion()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "animate-hue") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.AnimationBindings.ContainsKey(Box(scope.Root[0])), Is.True);
+        }
+
+        [Test]
+        public void Given_AnimateHueOnATextField_When_Reconciled_Then_TheControlRunsNoMotion()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "animate-hue") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.AnimationBindings.ContainsKey(scope.Root[0]), Is.False);
+        }
+
+        #endregion
+
+        #region Label
+
+        [TestCase("opacity-50")]
+        [TestCase("text-red-500")]
+        [TestCase("rotate-45")]
+        [TestCase("font-bold")]
+        [TestCase("text-sm")]
+        [TestCase("text-center")]
+        [TestCase("truncate")]
+        public void Given_AUtilityOnALabelledTextField_When_Reconciled_Then_TheInputBoxTakesIt(string token)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: token, label: "Name") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Box(scope.Root[0]).ClassListContains(token), Is.True);
+        }
+
+        [TestCase("opacity-50")]
+        [TestCase("text-red-500")]
+        [TestCase("rotate-45")]
+        [TestCase("font-bold")]
+        [TestCase("text-sm")]
+        [TestCase("text-center")]
+        [TestCase("truncate")]
+        public void Given_AUtilityOnALabelledTextField_When_Reconciled_Then_TheControlDoesNotTakeIt(string token)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: token, label: "Name") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0].ClassListContains(token), Is.False);
+        }
+
+        [Test]
+        public void Given_TruncateOnATextField_When_Reconciled_Then_TheTextTheInputBoxDrawsTakesIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "truncate") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Box(scope.Root[0]).Q<TextElement>().ClassListContains("truncate"), Is.True);
+        }
+
+        [TestCase("text-ellipsis")]
+        [TestCase("text-clip")]
+        public void Given_ATextOverflowUtilityOnATextField_When_Reconciled_Then_TheInputBoxClips(string token)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: token) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Box(scope.Root[0]).ClassListContains("overflow-hidden"), Is.True);
+        }
+
+        [TestCase("text-ellipsis")]
+        [TestCase("text-clip")]
+        public void Given_ATextOverflowUtilityOnATextField_When_Reconciled_Then_TheTextTheInputBoxDrawsClips(string token)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: token) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Box(scope.Root[0]).Q<TextElement>().ClassListContains("overflow-hidden"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base never clipped the text for an ellipsis, so it had no clip to give up.
+        [Test]
+        public void Given_AnEllipsisOnATextField_When_ItIsDropped_Then_TheTextGivesUpItsClip()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var first = new VNode[] { V.TextField(className: "text-ellipsis") };
+            var second = new VNode[] { V.TextField(className: "w-64") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+            var text = Box(scope.Root[0]).Q<TextElement>();
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, first, second);
+
+            // Assert
+            Assert.That(text.ClassListContains("overflow-hidden"), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base put no truncate on that text, so none is left to give up; the
+        // case before this one holds that the box's text takes it.
+        [Test]
+        public void Given_ATruncatedTextField_When_TruncateIsDropped_Then_TheTextTheInputBoxDrawsGivesItUp()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var first = new VNode[] { V.TextField(className: "truncate") };
+            var second = new VNode[] { V.TextField(className: "w-64") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+            var text = Box(scope.Root[0]).Q<TextElement>();
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, first, second);
+
+            // Assert
+            Assert.That(text.ClassListContains("truncate"), Is.False);
+        }
+
+        [Test]
+        public void Given_ATransitionOnATextField_When_Reconciled_Then_TheInputBoxTakesIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "transition-all") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Box(scope.Root[0]).ClassListContains("transition-all"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base put the transition utilities on the control alone.
+        [Test]
+        public void Given_ATransitionOnATextField_When_Reconciled_Then_TheControlKeepsIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "transition-all") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0].ClassListContains("transition-all"), Is.True);
+        }
+
         #endregion
 
         #region Teardown
+
+        [Test]
+        public void Given_AFilterTweenTheWriteHookBoundOnTheInputBox_When_TheFieldIsRemoved_Then_TheBindingIsReleased()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField() };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var box = Box(scope.Root[0]);
+            var bound = StyleFilterTransitionDriver.Bind(box);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, tree, Array.Empty<VNode>());
+
+            // Assert — Bind hands back the binding still registered, or a fresh one once it is released.
+            Assert.That(StyleFilterTransitionDriver.Bind(box), Is.Not.SameAs(bound));
+        }
+
+        [Test]
+        public void Given_AnimateHueOnAnIntegerField_When_Reconciled_Then_TheInputBoxRunsTheMotion()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.IntegerField(className: "animate-hue") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.AnimationBindings.ContainsKey(Box(scope.Root[0])), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base bound no motion to the box, so none can outlive it there; the
+        // case before this one holds that the box carries one now.
+        [Test]
+        public void Given_AnimateHueOnAnIntegerField_When_TheFieldIsRemoved_Then_NoMotionRemains()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.IntegerField(className: "animate-hue") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, tree, Array.Empty<VNode>());
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.AnimationBindings.Count, Is.EqualTo(0));
+        }
 
         // GREEN_ON_BASE(characterization): the base sweeps the box's own stacked manipulators through the
         // descendant pass of an ordinary removal. The case pins that the routed ones go the same way.

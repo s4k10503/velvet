@@ -5,7 +5,7 @@ Shader "Velvet/BoxShadow"
     // (_BlurRadius + extraPadding) so the blur has room to fade inside the quad, and outputs white RGB with the
     // falloff in alpha (the shadow color/strength is applied later as a tint).
     //
-    // This pass is BAKED once into a texture (DropShadowBaker uses Graphics.Blit) and that texture is drawn as
+    // This pass is BAKED once into a texture (BoxShadowBaker uses Graphics.Blit) and that texture is drawn as
     // a single quad in the caster element's OWN generateVisualContent — FIRST, before the binding repaints the
     // caster's upright fill + border, so the silhouette sits behind the caster's chrome. The bake is the FULL
     // soft silhouette (interior opaque); the repainted opaque fill covers the interior and the offset-up
@@ -27,7 +27,7 @@ Shader "Velvet/BoxShadow"
         _Spread("Spread", Range(0, 50)) = 0
         _ElementSize("Element Size", Vector) = (100, 100, 0, 0)
         // tan() of the caster's skew-x angle. Non-zero shears the silhouette so the shadow follows
-        // a skew-x-* caster (baked full-size by DropShadowBaker).
+        // a skew-x-* caster (baked full-size by BoxShadowBaker).
         _SkewX("Skew X (tan)", Range(-2, 2)) = 0
     }
 
@@ -136,8 +136,8 @@ Shader "Velvet/BoxShadow"
                 // This pass is NOT applied as a live per-element UITK material (style.unityMaterial): UI Toolkit
                 // freezes a custom-material element's draw-command order at first generation and never re-derives
                 // it, so a shadow whose subtree is first generated under an animating ancestor transform composites
-                // IN FRONT of its caster and stays wrong. Instead DropShadowBaker BAKES this pass once into an
-                // RGBA texture (Graphics.Blit) and DropShadowSilhouette draws it as a single quad in the caster's
+                // IN FRONT of its caster and stays wrong. Instead BoxShadowBaker BAKES this pass once into an
+                // RGBA texture (Graphics.Blit) and BoxShadowSilhouette draws it as a single quad in the caster's
                 // own generateVisualContent — FIRST, before it repaints the caster's upright fill + border, so the
                 // silhouette renders BEHIND the caster's chrome in plain depth-first order with no custom-material
                 // command to misorder. The baked texture is the FULL silhouette (interior included and opaque);
