@@ -157,7 +157,8 @@ namespace Velvet
             // The double below a power of two sits half as far away as the one above it.
             var gapBelow = mantissa == 1L << 52 ? gapAbove / 2 : gapAbove;
             var even = (mantissa & 1) == 0;
-            for (var length = 1; ; length++)
+            var exactLength = exact.ToString(CultureInfo.InvariantCulture).Length;
+            for (var length = 1; length <= exactLength; length++)
             {
                 var candidate = RoundToSignificantDigits(exact, length);
                 var twiceOffset = 2 * (candidate - exact);
@@ -169,6 +170,8 @@ namespace Velvet
                     return candidate == written;
                 }
             }
+            // MUTANT_SURVIVES(unreachable, literal): at exactLength the candidate is the double itself, which reads back.
+            return false;
         }
 
         // Rounds half to even, as Number::toString picks the even run of two equally close ones.
