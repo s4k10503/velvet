@@ -47,15 +47,14 @@ namespace Velvet
         internal void ApplySkewOnCreate(VisualElement element, string[] classNames)
             => _skew.ApplySkewOnCreate(element, classNames);
 
-        internal float ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged,
-            bool canReleaseFace)
-            => _skew.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
+        internal float ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged)
+            => _skew.ApplySkewOnPatch(element, classNames, classesChanged);
 
         internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)
             => _gradient.ApplyGradientOnCreate(element, classNames);
 
-        internal void ApplyGradientOnPatch(VisualElement element, string[] classNames, bool skewable)
-            => _gradient.ApplyGradientOnPatch(element, classNames, skewable);
+        internal void ApplyGradientOnPatch(VisualElement element, string[] classNames)
+            => _gradient.ApplyGradientOnPatch(element, classNames);
 
         internal void ApplyAnimateOnCreate(VisualElement element, string[] classNames)
             => _animate.ApplyAnimateOnCreate(element, classNames);
@@ -79,9 +78,8 @@ namespace Velvet
         internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)
             => _borderStyle.ApplyBorderStyleOnCreate(element, classNames);
 
-        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] classNames, bool classesChanged,
-            bool canReleaseFace)
-            => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
+        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] classNames, bool classesChanged)
+            => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
 
         internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
             => _ring.ApplyRingOnCreate(element, classNames);

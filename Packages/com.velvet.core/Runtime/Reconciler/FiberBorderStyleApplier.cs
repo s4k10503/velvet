@@ -38,9 +38,7 @@ namespace Velvet
         // without a race.
         // classesChanged is the caller's, for the same reason as ApplySkewOnPatch's: on a variant re-sync the
         // change lives in what the live class list added, not in a difference between two reconciled arrays.
-        // canReleaseFace rides along for the same reason it does there.
-        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] newClassNames, bool classesChanged,
-            bool canReleaseFace)
+        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)
         {
             var bound = _ctx.BorderStyleBindings.TryGetValue(element, out var binding);
             var has = StyleBorderStyleClass.TryGetWinningBorderStyleClass(newClassNames, out var winner);
@@ -57,7 +55,7 @@ namespace Velvet
             // layer took the face — skip the parse, but keep the color stash in sync with this patch's styling.
             if (bound && has && !deferred && binding.Spec.Source == winner)
             {
-                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged, canReleaseFace);
+                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged);
                 return;
             }
 
@@ -67,7 +65,7 @@ namespace Velvet
             if (want && bound)
             {
                 binding.Spec = spec;
-                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged: true, canReleaseFace);
+                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
                 element.MarkDirtyRepaint();
                 return;
             }
@@ -75,7 +73,7 @@ namespace Velvet
             {
                 var fresh = BorderStyleSilhouette.Attach(element, spec);
                 _ctx.BorderStyleBindings[element] = fresh;
-                BorderStyleSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true, canReleaseFace);
+                BorderStyleSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true);
                 return;
             }
             if (bound)

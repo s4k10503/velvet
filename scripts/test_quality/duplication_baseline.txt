@@ -11,7 +11,7 @@
 093b40cd54e6	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
 0a908dd739e5	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 0b382412f364	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
-0cf2c6ead50e	Runtime/Hooks/UseFrameDispatcher.cs,Runtime/Styling/DropShadowSilhouette.cs,Runtime/Styling/StyleAnimateDriver.cs
+0cf2c6ead50e	Runtime/Hooks/UseFrameDispatcher.cs,Runtime/Styling/DropShadowSilhouette.cs,Runtime/Styling/SilhouetteFace.cs,Runtime/Styling/StyleAnimateDriver.cs
 0d9134402163	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 0e98e1cb0635	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
 0f15f4bea12e	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs

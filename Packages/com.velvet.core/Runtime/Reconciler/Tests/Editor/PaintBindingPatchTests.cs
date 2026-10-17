@@ -1,8 +1,6 @@
 using System;
-using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -126,36 +124,134 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ShadowOnMotion_When_Reconciled_Then_NoPaintBindingIsCreated()
+        public void Given_ShadowOnMotion_When_Reconciled_Then_APaintBindingIsCreated()
         {
-            // Arrange — a Motion carrying a shadow-* utility. The silhouette paints stand down on a Motion, so
-            // one attached here would be a binding its own patch path never reconciles; the shadow belongs on
-            // a wrapped Div.
+            // Arrange — a Motion paints a shadow as any element does.
             using var scope = new ReconcilerScope();
-            LogAssert.Expect(LogType.Warning, new Regex(@"shadow-\* utility on a Motion is ignored"));
 
             // Act
             Mount(scope, new VNode[] { V.Motion("shadow-2xl", key: "m") });
 
-            // Assert — the Motion element carries no shadow paint binding.
-            Assert.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
+            // Assert
+            Assert.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Not.Null);
         }
 
         [Test]
-        public void Given_AMotion_When_ShadowClassAddedByPatch_Then_NoPaintBindingIsCreated()
+        public void Given_AMotion_When_ShadowClassAddedByPatch_Then_APaintBindingIsCreated()
         {
-            // Arrange — a Motion that gains shadow-lg on a re-render. The create path refuses the paint on a
-            // Motion; the patch path must enforce the same rule (a Motion never starts a shadow paint).
+            // Arrange — a Motion that gains shadow-lg on a re-render.
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Motion("", key: "m") };
             Mount(scope, before);
-            Assume.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
+            Assume.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Null,
+                "Precondition: the create path binds nothing for a Motion without a shadow class");
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Motion("shadow-lg", key: "m") });
 
-            // Assert — still no paint binding on the Motion element.
-            Assert.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
+            // Assert
+            Assert.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_SkewOnMotion_When_Reconciled_Then_ASkewBindingIsCreated()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Motion(Skew, key: "m") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.SkewBindings.ContainsKey(scope.Root[0]), Is.True);
+        }
+
+        [Test]
+        public void Given_AMotion_When_SkewClassAddedByPatch_Then_ASkewBindingIsCreated()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var before = new VNode[] { V.Motion("", key: "m") };
+            Mount(scope, before);
+            Assume.That(scope.Reconciler.Context.SkewBindings.ContainsKey(scope.Root[0]), Is.False,
+                "Precondition: the create path binds nothing for a Motion without a skew class");
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Motion(Skew, key: "m") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.SkewBindings.ContainsKey(scope.Root[0]), Is.True);
+        }
+
+        [Test]
+        public void Given_BorderDashedOnMotion_When_Reconciled_Then_ABorderStyleBindingIsCreated()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Motion("border-2 border-dashed", key: "m") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.BorderStyleBindings.ContainsKey(scope.Root[0]), Is.True);
+        }
+
+        [Test]
+        public void Given_AMotion_When_BorderDashedAddedByPatch_Then_ABorderStyleBindingIsCreated()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var before = new VNode[] { V.Motion("border-2", key: "m") };
+            Mount(scope, before);
+            Assume.That(scope.Reconciler.Context.BorderStyleBindings.ContainsKey(scope.Root[0]), Is.False,
+                "Precondition: the create path binds nothing for a Motion with a solid border");
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Motion("border-2 border-dotted", key: "m") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.BorderStyleBindings.ContainsKey(scope.Root[0]), Is.True);
+        }
+
+        [Test]
+        public void Given_AMotionRestingAtASkewedVariant_When_Reconciled_Then_ASkewBindingIsCreated()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var poses = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["a"] = Skew };
+
+            // Act
+            Mount(scope, new VNode[] { V.Motion(key: "m", variants: poses, animate: "a") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.SkewBindings.ContainsKey(scope.Root[0]), Is.True);
+        }
+
+        [Test]
+        public void Given_ASkewedGradientMotion_When_Reconciled_Then_TheSkewOwnsTheGradient()
+        {
+            // Arrange — a skewed element paints its gradient on the sheared face.
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Motion(Skew + " " + Gradient, key: "m") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.SkewBindings.TryGetValue(scope.Root[0], out var skew) && skew.HasGradient,
+                Is.True);
+        }
+
+        [Test]
+        public void Given_ASkewedGradientMotion_When_Reconciled_Then_TheStraightBackgroundImagePathStandsDown()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Motion(Skew + " " + Gradient, key: "m") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.GradientBackgrounds.ContainsKey(scope.Root[0]), Is.False);
         }
 
         [Test]

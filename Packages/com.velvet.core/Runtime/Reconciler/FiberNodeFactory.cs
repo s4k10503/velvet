@@ -178,8 +178,7 @@ namespace Velvet
             // lines up — has-[.class]:shadow-lg over a matching child, structural, data-/aria-,
             // supports- — and not dark: or md:, which are still off while the element is detached and
             // arrive later through attach.
-            var paintClasses = _patcher.ResolveVariantClassesOnCreate(
-                element, elementNode.ClassNames, paintTail: true);
+            var paintClasses = _patcher.ResolveVariantClassesOnCreate(element, elementNode.ClassNames);
             // Skew is wrapper-less (the sheared silhouette is the element's own painted
             // content), so it attaches before — and composes with — any wrap layer below,
             // including a user wrapElement.
@@ -199,8 +198,7 @@ namespace Velvet
             _patcher.Appliers.ApplyShadowOnCreate(element, paintClasses);
             // border-dashed / border-dotted: another wrapper-less paint (the dashed outline is the
             // element's own generateVisualContent; only the border color is suppressed). Attaches after
-            // skew so it can defer to it when it owns the face. ElementNode only — a Motion never
-            // renders this silhouette (mirroring skew's own silent Motion exclusion).
+            // skew so it can defer to it when it owns the face.
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, paintClasses);
             // ring-* / outline-*: the band is a native-border overlay hosted as a reconciler-invisible
             // SIBLING of this element (RingOverlay), so nothing is added to the element's own slot and it
@@ -359,18 +357,19 @@ namespace Velvet
             _patcher.ApplyHasClassVariants(element);
             _patcher.ApplyHasVariantManipulators(element);
             _patcher.ApplyTextEffects(element, appliedClasses);
-            // Same composed source as the element path, recorded as a NON-paint-tail element so a
-            // later variant re-sync never attaches to a Motion the three silhouette paints its own
-            // patch would refuse.
-            var motionPaintClasses = _patcher.ResolveVariantClassesOnCreate(
-                element, appliedClasses, paintTail: false);
+            // The element path's sequence, from the same composed source. The shadow and the ring take their
+            // patch-time entries rather than ApplyShadowOnCreate / ApplyRingOnCreate, whose clip-path gates would
+            // suppress them for a clip-path this Motion ignores (WarnIgnoredMotionUtilities); a Motion's patch
+            // passes no active clip either.
+            var motionPaintClasses = _patcher.ResolveVariantClassesOnCreate(element, appliedClasses);
+            _patcher.Appliers.ApplySkewOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyGradientOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyAnimateOnCreate(element, motionPaintClasses);
             // transition-filter on a Motion host, as on a plain element above.
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, motionPaintClasses);
-            // The patch-time entry rather than ApplyRingOnCreate, whose clip-path gate would suppress the band
-            // for a clip-path this Motion ignores (WarnIgnoredMotionUtilities); a Motion's patch passes no
-            // active clip either.
+            _patcher.Appliers.ApplyShadowOnPatch(element, motionPaintClasses, clipActive: false,
+                StyleSkewClass.TryExtract(motionPaintClasses, out var motionSkew) ? motionSkew.XDeg : 0f);
+            _patcher.Appliers.ApplyBorderStyleOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyRingOnPatch(element, motionPaintClasses, clipActive: false);
             WarnIgnoredMotionUtilities(motionNode, appliedClasses);
             // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
@@ -477,28 +476,14 @@ namespace Velvet
         // reads as a broken utility.
         private void WarnIgnoredMotionUtilities(MotionNode motionNode, string[] appliedClasses)
         {
-            // Motion does NOT paint a drop shadow: the three silhouette paints stand down on a Motion
-            // on BOTH halves — here, and on the patch path through ApplyResolvedClassPasses' paintTail
-            // gate — so attaching one here would leave a binding the Motion's own patch never syncs
-            // against a class change and never detaches. The shadow belongs on a Div the Motion wraps
-            // (the Div carries the shadow, the Motion carries the transition). Warn and skip the paint.
-            // Warn only for an ACTIVE shadow (shadow-none deliberately cancelling the cascade is not
-            // "ignored" — nothing would render anywhere).
-            if (StyleShadowClass.HasShadowClass(appliedClasses)
-                && StyleShadowClass.TryExtract(appliedClasses, out _))
-            {
-                FiberLogger.LogWarning("Motion",
-                    "A shadow-* utility on a Motion is ignored: a Motion carries the transition, not "
-                    + "the paint layers. Wrap the Motion around a shadowed Div instead.");
-            }
             // clip-path-* is a structural wrapper, which would become the AnimatePresence anchor while
             // the enter/exit transition stays on the inner Motion: ignored on a Motion, never wrapped.
-            // Same active-only gate: clip-path-none / an unparseable value activates nothing.
+            // Warned only for an ACTIVE clip: clip-path-none / an unparseable value activates nothing.
             if (StyleClipPathClass.WantsClipPath(appliedClasses))
             {
                 FiberLogger.LogWarning("Motion",
-                    "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit "
-                    + "(same constraint as shadow-*). Wrap the Motion around a clipped Div instead.");
+                    "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit. "
+                    + "Wrap the Motion around a clipped Div instead.");
             }
             // Exit plays only when an AnimatePresence removal defers the unmount, so it is inert outside one.
             // Warned only where this reconciler holds no presence at all: a Motion a component inside a

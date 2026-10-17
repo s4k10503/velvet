@@ -20,6 +20,7 @@ namespace Velvet
             }
             ClipPathLayoutBox.SyncClasses(element);
             StyleArbitraryValueResolver.NotifyClassesChanged(element);
+            SilhouetteFaceStash.NotifyClassesChanged(element);
         }
 
         // Ranks classes a play leaves on the element as the element's own from now on.
@@ -51,6 +52,7 @@ namespace Velvet
             }
             ClipPathLayoutBox.SyncClasses(element);
             StyleArbitraryValueResolver.NotifyClassesChanged(element);
+            SilhouetteFaceStash.NotifyClassesChanged(element);
         }
 
         private static void Add(VisualElement element, string cls, long priority)

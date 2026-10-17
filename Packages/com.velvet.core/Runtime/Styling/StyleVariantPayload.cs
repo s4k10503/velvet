@@ -116,6 +116,12 @@ namespace Velvet
                 ctx?.VariantGatedReSync?.Invoke(box!);
             }
 
+            SilhouetteFaceStash.NotifyClassesChanged(control);
+            if (box != null)
+            {
+                SilhouetteFaceStash.NotifyClassesChanged(box);
+            }
+
             // A clipped element's wrapper lays the element out from the same classes, so it takes the toggle too.
             ClipPathLayoutBox.SyncClasses(control);
             ctx?.StyleAnimationScheduler.ReassertHeld(control);

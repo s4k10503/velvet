@@ -94,14 +94,16 @@ namespace Velvet
         // True when child is a bounds-spacer (the internal, reconciler-invisible render-bounds child), a
         // z-index layer container (FiberZLayerCoordinator's front/back containers, which are equally
         // reconciler-invisible — a z-marked absolute child's real element lives inside one instead of at its
-        // logical slot), OR a ring overlay (RingOverlay's band, hosted beside the element it rings rather than
-        // wrapped around it). LogicalChildSlots asks this predicate wherever the reconciler converts between its
-        // slots and the physical children, so broadening it makes that slot arithmetic treat all three as
-        // invisible without touching any of its call sites.
+        // logical slot), a ring overlay (RingOverlay's band, hosted beside the element it rings rather than
+        // wrapped around it), OR a face probe (SilhouetteFaceStash's hidden child). LogicalChildSlots asks this
+        // predicate wherever the reconciler converts between its slots and the physical children, so
+        // broadening it makes that slot arithmetic treat each of them as invisible without touching any of
+        // its call sites.
         internal static bool IsSpacer(VisualElement child)
             => child != null
                 && (child.ClassListContains(MarkerClass)
                     || child.ClassListContains(RingOverlay.MarkerClass)
+                    || child.ClassListContains(SilhouetteFaceStash.ProbeMarkerClass)
                     || FiberZLayerCoordinator.IsLayerContainer(child));
 
         // True when spacer is a child of caster and no RENDERED (non-spacer) child follows it — the placement
