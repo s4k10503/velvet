@@ -2787,7 +2787,7 @@ namespace Velvet
             // Every exit is counted before the first play starts, so a completion one of them fires
             // synchronously cannot settle the wait while the rest are still to start.
             var exitWait = new ReconcilerContext.PresenceExitWait(anchorPlays, descendants, inners, Settled,
-                tornDown => SettleExitWaitByTeardown(state, wait!, ghostAnchor, runExitComplete, tornDown));
+                _ => SettleExitWaitByTeardown(state, wait!, runExitComplete));
             wait = exitWait;
             state.ExitWaits[key] = exitWait;
             foreach (var exit in descendants)
@@ -2832,29 +2832,15 @@ namespace Velvet
         }
 
         // A torn-down descendant settles the wait from inside FiberElementCleaner, which unmounting the whole
-        // presence reaches as well, and so does an inner presence retired while the wait holds a slot for it
-        // (tornDown is null then, and ghostAnchor is the only element to read a panel from). Where an element
-        // has a panel the check waits for the next frame: a presence unmounted whole has settled its exits as it
-        // retired (ReconcilerContext.SettleExitsOf) and is not read again, while one still mounted, an enclosing
-        // presence whose inner presence was retired alone, settles here. With no panel the check runs at the
-        // teardown itself.
-        private void SettleExitWaitByTeardown(
+        // presence reaches as well, and so does an inner presence retired while the wait holds a slot for it. It
+        // settles at once on every root: a presence unmounted whole completes its exits, as Framer's run out. A key
+        // that came back has dropped its wait (ReleaseDescendantExits), which settles nothing then.
+        private static void SettleExitWaitByTeardown(
             ReconcilerContext.PresenceBoundaryState state,
             ReconcilerContext.PresenceExitWait wait,
-            VisualElement ghostAnchor,
-            Action runExitComplete,
-            VisualElement? tornDown)
+            Action runExitComplete)
         {
-            void SettleIfStillExiting()
-            {
-                if (_ctx.PresenceStates.ContainsValue(state) && state.ExitWaits.ContainsValue(wait))
-                {
-                    runExitComplete();
-                }
-            }
-            var panel = tornDown?.panel ?? ghostAnchor.panel;
-            if (panel != null) panel.visualTree.schedule.Execute(SettleIfStillExiting);
-            else SettleIfStillExiting();
+            if (state.ExitWaits.ContainsValue(wait)) runExitComplete();
         }
 
         // Lands the descendant's hold, and writes its exit pose's inline values at the swap, on the anchor's terms

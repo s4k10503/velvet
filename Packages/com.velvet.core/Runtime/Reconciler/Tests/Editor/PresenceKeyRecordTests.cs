@@ -419,7 +419,9 @@ namespace Velvet.Tests
             };
         }
 
-        // The boundary aborts the pass of the first render at s_abortAt or later, after the presence has expanded.
+        // The boundary aborts the pass of the first render at s_abortAt or later, after the presence has expanded. It
+        // is rendered only where a case sets s_abortAt: until it aborts, its ref's cleanup throws on any removal,
+        // the tree's disposal included.
         [Component(Compiler = false)]
         private static VNode HostRender()
         {
@@ -428,7 +430,9 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Component(PresenceOwnerRender, tick, key: "p"),
-                V.Component(AbortingBoundaryRender, tick >= s_abortAt ? 1 : 0, key: "o"),
+                s_abortAt == int.MaxValue
+                    ? null
+                    : V.Component(AbortingBoundaryRender, tick >= s_abortAt ? 1 : 0, key: "o"),
             });
         }
 
