@@ -1504,7 +1504,8 @@ namespace Velvet
             ExitSettlePhase phase = ExitSettlePhase.Effect)
         {
             if (SharedReconcileDepth == 0 && removedBy == null) complete();
-            else PendingCompletions.Add(new PendingCompletion(complete, boundary, removedBy, phase, FiberWorkLoop.IsRenderingUrgentLane));
+            else PendingCompletions.Add(new PendingCompletion(
+                complete, boundary, removedBy, phase, FiberWorkLoop.RenderLane == FiberUpdatePriority.Urgent));
         }
 
         // The entries a render below boundary queued: read before a catch detaches what that render created, since
@@ -2204,15 +2205,8 @@ namespace Velvet
             _suspenseFallbackKeys.Remove(boundary);
         }
 
-        // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed as PresenceStates below
-        // is. The keyed children are expanded directly into the parent's slot range (no wrapper element);
-        // this state records, per AnimatePresence, the leaf composition currently committed to the DOM so
-        // the old-side structural walk can reproduce it for the diff, plus which keys are mid-exit (kept
-        // mounted as ghosts) and which have finished exiting (dropped on the next render). PresenceStateOwner
-        // enumerates what it is pruned with; RetireBoundaryStatesNotReRendered and the whole-table clear in
-        // Reconciler.ReleaseHostsAndScopes are the other two ways it ends.
-        // An exit's settle waiting for a commit to run after. Staging is null while no walk holds it, and names the
-        // walk's stage otherwise, so the put-back of an earlier walk leaves a later stage alone.
+        // An exit's settle waiting for a commit to run after. Equal only to itself: a key's later exit puts another
+        // in its place, which GeneralPathReconciler.TakeIfStillPending tells apart by reference.
         internal sealed class PendingSettle
         {
             internal PendingSettle(System.Action settle, ExitSettlePhase phase)
@@ -2223,9 +2217,15 @@ namespace Velvet
 
             internal System.Action Settle { get; }
             internal ExitSettlePhase Phase { get; }
-            internal object? Staging { get; set; }
         }
 
+        // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed as PresenceStates below
+        // is. The keyed children are expanded directly into the parent's slot range (no wrapper element);
+        // this state records, per AnimatePresence, the leaf composition currently committed to the DOM so
+        // the old-side structural walk can reproduce it for the diff, plus which keys are mid-exit (kept
+        // mounted as ghosts) and which have finished exiting (dropped on the next render). PresenceStateOwner
+        // enumerates what it is pruned with; RetireBoundaryStatesNotReRendered and the whole-table clear in
+        // Reconciler.ReleaseHostsAndScopes are the other two ways it ends.
         internal sealed class PresenceBoundaryState
         {
             // Keyed children currently in the DOM (in DOM order), including exiting ghosts.

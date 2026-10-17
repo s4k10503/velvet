@@ -130,8 +130,16 @@ namespace Velvet.Tests
             // Rests at a pose of its own when mounted leaving, so the swap to its exit pose is readable.
             "s" => V.Motion(name: "inner-s", key: key, variants: s_staged, initial: "start", animate: "visible",
                 exit: "hidden", transition: new StyleTransitionConfig { DurationSec = s_innerDurationSec }),
+            "c" => V.Component(PlacingRender, key: key),
+            "n" => V.Component(EmptyRender, key: key),
             _ => InnerChildOfKind(key),
         };
+
+        [Component]
+        private static VNode PlacingRender() => V.Div(name: "inner-c");
+
+        [Component]
+        private static VNode EmptyRender() => null;
 
         private static readonly Dictionary<string, MotionVariant> s_staged = new()
         {
@@ -602,6 +610,24 @@ namespace Velvet.Tests
             // Assert — "s" has swapped to its exit pose, which it would not yet have in the second slot.
             var staged = Root.Q<VisualElement>("inner-s");
             Assert.That(staged != null && staged.ClassListContains("pose-exit"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base took back an emission that placed nothing the way it does now.
+        [Test]
+        public void Given_AKeyPlacingNothingMountedLeavingAfterAComponentThatPlaces_When_TheInnerPresenceRenders_Then_TheEarlierComponentStillMounts()
+        {
+            // Arrange
+            using var mounted = MountSettled("wrapper");
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            Frames(2);
+
+            // Act — "c" and then "n" mount leaving, and the emission of "n" places nothing, so it is taken back
+            s_innerKeys.Set("xcn");
+            Drain(mounted);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("inner-c"), Is.Not.Null);
         }
 
         [TestCase("wrapper")]

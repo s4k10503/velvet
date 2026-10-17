@@ -62,10 +62,6 @@ namespace Velvet
         // Saved and restored, so a flush nested inside a render leaves the enclosing answer intact.
         internal static bool IsRenderingTransitionLane;
 
-        // True while a flush of the Urgent lane renders: the SyncLane of React, whose commit flushes its passive
-        // effects before it returns (ReconcilerContext.ExitSettlePhase).
-        internal static bool IsRenderingUrgentLane;
-
         // The fiber whose drain of Transition work the render in progress belongs to, null wherever
         // IsRenderingTransitionLane is false. A descendant its pass renders commits with it, which is how a
         // component holding optimistic entries learns the commit it is in lands its transition's work
@@ -491,13 +487,11 @@ namespace Velvet
             // lane (e.g. a context-driven flush) the reconcile runs synchronously.
             var flushBudget = FiberLane.FrameBudgetMs;
             var drainsTransitionWork = false;
-            var drainsUrgentWork = false;
             var renderLane = FiberUpdatePriority.Normal;
 
             if (fiber.LaneQueue.Count > 0)
             {
                 var flushingLane = fiber.LaneQueue.Min;
-                drainsUrgentWork = flushingLane == FiberUpdatePriority.Urgent;
                 flushBudget = FiberLane.BudgetForLane(flushingLane, timeSlicedBudgetMs);
                 // A starvation-promoted lane carries the transition's own updates under the Normal label, and
                 // the marker that says so is cleared a few lines below, so read it here. Withholding a deferred
@@ -546,10 +540,8 @@ namespace Velvet
             fiber.PendingReconcileDrainsTransitionWork = drainsTransitionWork;
             var wasRenderingTransitionLane = IsRenderingTransitionLane;
             var wasTransitionDrainFiber = TransitionDrainFiber;
-            var wasRenderingUrgentLane = IsRenderingUrgentLane;
             var wasRenderLane = RenderLane;
             IsRenderingTransitionLane = drainsTransitionWork;
-            IsRenderingUrgentLane = drainsUrgentWork;
             TransitionDrainFiber = drainsTransitionWork ? fiber : null;
             RenderLane = renderLane;
             var suspended = false;
@@ -566,7 +558,6 @@ namespace Velvet
             finally
             {
                 IsRenderingTransitionLane = wasRenderingTransitionLane;
-                IsRenderingUrgentLane = wasRenderingUrgentLane;
                 TransitionDrainFiber = wasTransitionDrainFiber;
                 RenderLane = wasRenderLane;
             }

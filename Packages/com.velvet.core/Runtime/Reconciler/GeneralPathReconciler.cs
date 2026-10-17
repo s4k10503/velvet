@@ -1876,6 +1876,8 @@ namespace Velvet
         // pass runs per reconcile of a presence boundary, so bundling it must not allocate.
         private readonly struct PresenceExpansion
         {
+            // A new-side walk, so its Commit is set: ReconcileGeneral starts every one, and the one caller of
+            // ExpandInlineForReconcile walks the old side.
             internal InlineWalk Walk { get; init; }
             internal WalkPosition Position { get; init; }
             internal ReconcilerContext.PresenceBoundaryState State { get; init; }
@@ -2084,15 +2086,10 @@ namespace Velvet
                     state.DeferredCompletions = null;
                     foreach (var (key, settle) in deferred)
                     {
-                        if (commit == null)
-                        {
-                            settle();
-                            continue;
-                        }
                         // A completion fired while this presence expanded: an exit that resolved without animating.
                         var pending = new ReconcilerContext.PendingSettle(settle, ReconcilerContext.ExitSettlePhase.Promise);
                         state.PendingSettles[key] = pending;
-                        StagePendingSettle(state, commit, boundaryFiber, key, pending);
+                        StagePendingSettle(state, pass.Walk.Commit!, boundaryFiber, key, pending);
                     }
                 }
 
@@ -2306,32 +2303,30 @@ namespace Velvet
 
         // Where the walk's removals never run, the settle waits for the next walk to stage it again rather than the
         // exit starting over: a restarted exit would pin a PopLayout child and relegate its layoutIds a second time.
+        // A settle two walks staged runs once, since whichever runs first takes it.
         private void StagePendingSettle(
             ReconcilerContext.PresenceBoundaryState state,
             GeneralCommitState commit,
             ComponentFiber? boundary,
             string key,
             ReconcilerContext.PendingSettle pending)
-        {
-            var staging = new object();
-            pending.Staging = staging;
-            _ctx.CompleteAfterTheRemovals(() =>
+            => _ctx.CompleteAfterTheRemovals(() =>
             {
                 // A key that came back and left again before the flush is another exit, which this one must not settle.
-                if (!state.PendingSettles.TryGetValue(key, out var current) || !ReferenceEquals(current, pending)) return;
-                state.PendingSettles.Remove(key);
+                if (!TakeIfStillPending(state, key, pending)) return;
                 pending.Settle();
             }, boundary, removedBy: commit, pending.Phase);
-            (commit.PutBackRemovals ??= new List<Action>()).Add(() =>
-            {
-                if (ReferenceEquals(pending.Staging, staging)) pending.Staging = null;
-            });
-        }
 
-        // A ghost whose settle a walk that never committed took back is staged again by the next walk that emits it.
+        private static bool TakeIfStillPending(
+            ReconcilerContext.PresenceBoundaryState state, string key, ReconcilerContext.PendingSettle pending)
+            => ((ICollection<KeyValuePair<string, ReconcilerContext.PendingSettle>>)state.PendingSettles)
+                .Remove(new KeyValuePair<string, ReconcilerContext.PendingSettle>(key, pending));
+
+        // Every walk emitting the ghost while its settle is pending stages it, so one a walk that never committed took
+        // back is staged again by the next.
         private void RestagePendingSettle(in PresenceExpansion pass, string key)
         {
-            if (pass.State.PendingSettles.TryGetValue(key, out var pending) && pending.Staging == null)
+            if (pass.State.PendingSettles.TryGetValue(key, out var pending))
             {
                 StagePendingSettle(pass.State, pass.Walk.Commit!, pass.BoundaryFiber, key, pending);
             }
@@ -2343,41 +2338,27 @@ namespace Velvet
         private void DropExitedGhost(in PresenceExpansion pass, string key, VNode node)
         {
             var state = pass.State;
-            var commit = pass.Walk.Commit;
-            state.Exiting.Remove(key);
+            var commit = pass.Walk.Commit!;
             // Once the exit detached the ghost's element, the old-side reproduction can no longer
             // recurse into the ghost's subtree (the Motion's PreviousTree was cleared), so its
             // inline fibers escape the orphan sweep. Dispose them explicitly via the tracked anchor
             // before the diff removes the leaves — otherwise a same-key re-entry would re-pair the
             // undisposed fiber as a zombie whose local state updates no longer re-render. Only once the walk
             // commits: an abort leaves the leaves on screen, and the next walk drops them.
-            if (commit == null)
-            {
-                DisposeExitedGhostFibers(state, key);
-            }
-            else
-            {
-                DisposeGhostFibersOnceCommitted(commit, state, key);
-            }
-            if (commit != null)
-            {
-                NotePresenceRemovalPutBack(commit, state, key, node);
-                (commit.PutBackRemovals ??= new List<Action>()).Add(() => state.ExitComplete.Add(key));
-            }
-            // Leaving the committed set is the ghost node's last live root (presence bookkeeping
-            // was what kept it alive past its emitting render), so retire its pooled objects once the
-            // removals have run. The entry must leave state.Committed FIRST: the sweep's mark reads that
-            // very list (other retirements must spare live ghosts), and a still-listed entry would spare
-            // this sweep's own target. prevCommitted is a copy, so the loop is unaffected.
+            DisposeGhostFibersOnceCommitted(commit, state, key);
+            NotePresenceRemovalPutBack(commit, state, key, node);
+            (commit.PutBackRemovals ??= new List<Action>()).Add(() => state.ExitComplete.Add(key));
             RemovePresenceCommittedEntry(state.Committed, key);
             // The key's leaves are leaving the DOM for good — its memoized Motion element
             // must retire with them, or a pooled element could be resurrected as a later
             // dispatch target.
             RetirePresenceKeyEntries(state, key);
+            // Leaving the committed set is the ghost node's last live root (presence bookkeeping
+            // was what kept it alive past its emitting render), so its pooled objects retire once the
+            // removals have run.
             var boundary = pass.BoundaryFiber;
-            void Retire() => FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundary);
-            if (commit != null) (commit.AfterRemovals ??= new List<Action>()).Add(Retire);
-            else Retire();
+            (commit.AfterRemovals ??= new List<Action>()).Add(
+                () => FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundary));
         }
 
         // Whether key's child holds a V.Motion, its anchor or one below up to an inner presence's children, as any
@@ -2435,8 +2416,10 @@ namespace Velvet
             placements.RemoveRange(before.Placements, placements.Count - before.Placements);
         }
 
-        // Records what DropExitedGhost is about to take from the presence's state, so a walk whose removals never
-        // run gives the next walk the committed child it still has on screen.
+        // Records what a removal of this walk is about to take from the presence's state, so a walk whose removals
+        // never run gives the next walk the committed child it still has on screen. Each caller takes the entry out of
+        // state.Committed before the walk records another removal, since the put-backs insert in reverse order: an
+        // entry after this one, its index read with this one still listed, would go back one place too far.
         private static void NotePresenceRemovalPutBack(
             GeneralCommitState commit, ReconcilerContext.PresenceBoundaryState state, string key, VNode node)
         {
@@ -3017,9 +3000,7 @@ namespace Velvet
                 if (wasExiting) state.Exiting.Add(key);
                 if (wasExitComplete) state.ExitComplete.Add(key);
                 if (initialBlocked) state.InitialBlocked.Add(key);
-                if (pending == null) return;
-                pending.Staging = null;
-                state.PendingSettles[key] = pending;
+                if (pending != null) state.PendingSettles[key] = pending;
             });
             DisposeGhostFibersOnceCommitted(commit, state, key);
             if (wasExiting || wasExitComplete) ReleaseDescendantExits(state, key);
