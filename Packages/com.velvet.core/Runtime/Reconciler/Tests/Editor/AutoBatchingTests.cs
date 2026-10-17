@@ -180,6 +180,7 @@ namespace Velvet.Tests
         public void Given_MixedNormalAndTransition_When_Batched_Then_EachLaneSitsOnItsOwnTier()
         {
             // Arrange — Fiber A on the Normal lane (immediate tier), Fiber B on the Transition lane (delayed tier)
+            // and, for the pending state its call asks for, on the Urgent lane (immediate tier)
             using var mounted = MountThree();
 
             // Act
@@ -188,12 +189,29 @@ namespace Velvet.Tests
 
             // Assert
             var scheduler = mounted.GetSchedulerForTest();
-            Assert.AreEqual((1, 1), (scheduler.ImmediatePendingCount, scheduler.DelayedPendingCount),
-                "The Normal-lane fiber sits on the immediate tier and the Transition-lane fiber on the delayed tier");
+            Assert.AreEqual(2, scheduler.ImmediatePendingCount,
+                "Both fibers sit on the immediate tier, the Transition-lane fiber for its pending state");
         }
 
+        // GREEN_ON_BASE(characterization): the base queued the Transition-lane fiber on the delayed tier as well.
         [Test]
-        public void Given_MixedNormalAndTransition_When_ImmediateDrained_Then_OnlyNormalLaneFiberFlushes()
+        public void Given_MixedNormalAndTransition_When_Batched_Then_TheTransitionLaneFiberAlsoSitsOnTheDelayedTier()
+        {
+            // Arrange
+            using var mounted = MountThree();
+
+            // Act
+            s_setA.Invoke("a-normal");
+            s_startTransitionB.Invoke(() => s_setB.Invoke("b-transition"));
+
+            // Assert
+            Assert.AreEqual(1, mounted.GetSchedulerForTest().DelayedPendingCount,
+                "The transition's own lane waits on the delayed tier");
+        }
+
+        // GREEN_ON_BASE(characterization): the base flushed the Normal-lane fiber in the immediate drain too.
+        [Test]
+        public void Given_MixedNormalAndTransition_When_ImmediateDrained_Then_TheNormalLaneFiberRenders()
         {
             // Arrange
             using var mounted = MountThree();
@@ -204,10 +222,42 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.AreEqual((2, 1), (s_renderCountA, s_renderCountB),
-                "The immediate drain flushes the Normal-lane fiber and leaves the Transition-lane fiber pending");
+            Assert.AreEqual(2, s_renderCountA, "The immediate drain flushes the Normal-lane fiber");
         }
 
+        [Test]
+        public void Given_MixedNormalAndTransition_When_ImmediateDrained_Then_TheTransitionLaneFiberRendersItsPendingState()
+        {
+            // Arrange
+            using var mounted = MountThree();
+            s_setA.Invoke("a-normal");
+            s_startTransitionB.Invoke(() => s_setB.Invoke("b-transition"));
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.AreEqual(2, s_renderCountB, "The Transition-lane fiber renders once for the state the call asked for");
+        }
+
+        // GREEN_ON_BASE(characterization): the base left the Transition-lane fiber's content pending in the
+        // immediate drain by not rendering it. The case before it is what shows the head rendered it.
+        [Test]
+        public void Given_MixedNormalAndTransition_When_ImmediateDrained_Then_TheTransitionContentIsStillPending()
+        {
+            // Arrange
+            using var mounted = MountThree();
+            s_setA.Invoke("a-normal");
+            s_startTransitionB.Invoke(() => s_setB.Invoke("b-transition"));
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.AreEqual("b", s_lastB, "The immediate drain does not commit the transition's value");
+        }
+
+        // GREEN_ON_BASE(refactor): the delayed drain commits the Transition-lane value on the base as well.
         [Test]
         public void Given_MixedNormalAndTransition_When_DelayedDrained_Then_TransitionLaneFiberFlushes()
         {
@@ -221,8 +271,24 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
-            Assert.AreEqual((3, "b-transition"), (s_renderCountB, s_lastB),
-                "The delayed drain commits the Transition-lane value, then renders the cleared pending state");
+            Assert.AreEqual("b-transition", s_lastB, "The delayed drain commits the Transition-lane value");
+        }
+
+        [Test]
+        public void Given_MixedNormalAndTransition_When_DelayedDrained_Then_TheClearedPendingStateRendersAfterThePendingRender()
+        {
+            // Arrange
+            using var mounted = MountThree();
+            s_setA.Invoke("a-normal");
+            s_startTransitionB.Invoke(() => s_setB.Invoke("b-transition"));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.AreEqual(4, s_renderCountB,
+                "The mount, the immediate drain's pending render, the content commit and the clear");
         }
 
         [Test]
