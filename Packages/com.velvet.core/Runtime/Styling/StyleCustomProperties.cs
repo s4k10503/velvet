@@ -193,6 +193,43 @@ namespace Velvet
             s_classes.Add(element, classNames);
         }
 
+        // The place among the element's rules (StyleRuleOrder) of the base-layer reader whose resolved payload is
+        // token, or -1 where no such reader applies it. A payload a class-driven pass reads from the composed class
+        // array is put there by this place rather than after the reconciled tokens, so it ranks against the
+        // element's literal utilities as Tailwind orders them. An important reader stays after them.
+        public static int PlaceOf(VisualElement element, string token)
+        {
+            if (!s_consumers.TryGetValue(element, out var consumers))
+            {
+                return -1;
+            }
+            foreach (var consumer in consumers.Entries)
+            {
+                if (consumer.Applied != null && consumer.OnBaseLayer && (consumer.Priority & StyleLayerPriority.Important) == 0
+                    && Array.IndexOf(consumer.Applied, token) >= 0)
+                {
+                    return consumer.Order;
+                }
+            }
+            return -1;
+        }
+
+        public static bool AnyPlaced(VisualElement element)
+        {
+            if (!s_consumers.TryGetValue(element, out var consumers))
+            {
+                return false;
+            }
+            foreach (var consumer in consumers.Entries)
+            {
+                if (consumer.Applied != null && consumer.OnBaseLayer && (consumer.Priority & StyleLayerPriority.Important) == 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // A parseable stand-in for a consumer token, read in place of it where the rule order sorts the element's
         // tokens by the property they write: the utility with a value of the type Tailwind gives it. Null for any
         // other token, and for a consumer no such value parses for.
@@ -434,11 +471,12 @@ namespace Velvet
                 return;
             }
             var source = resolved ? s_built.ToString() : null;
-            var payloads = source == null ? null : Outranked(target, consumer, Split(consumer, source));
+            var split = source == null ? null : Split(consumer, source);
+            var payloads = Outranked(target, consumer, split);
             var unset = false;
             if (consumer.Property is { } property)
             {
-                unset = payloads == null || !AllWrite(payloads, consumer.Sides == null || payloads.Length == 1 ? property : null);
+                unset = payloads == null || !AllWrite(payloads, consumer.Sides == null || split!.Length == 1 ? property : null);
                 payloads = unset ? null : payloads;
             }
             else if (payloads == null && consumer.UnsetUtility != null)

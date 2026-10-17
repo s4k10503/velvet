@@ -41,6 +41,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnAddressableKeyWithAnEscapedUnderscore_When_Extracted_Then_TheKeyKeepsTheUnderscore()
+        {
+            // Act
+            StyleFontClass.TryExtract(new[] { "font-[family-name:addr:my\\_key]" }, out var intent);
+
+            // Assert
+            Assert.That(intent.Family, Is.EqualTo("addr:my_key"));
+        }
+
+        [Test]
         public void Given_APercentageInAnAlphaBracket_When_Parsed_Then_ItIsThatFraction()
         {
             // Act
