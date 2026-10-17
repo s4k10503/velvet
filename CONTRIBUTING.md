@@ -814,6 +814,25 @@ falsify the assumption, which the text does not say, and the filters tried inste
 the suite that the record would stop being a list anybody reads. A case carrying only that shape is
 not in the record; what still reaches it is `assert_no_inconclusive.py`, on the day it fires.
 
+### Checking that a Python case asserts one value
+
+`scripts/test_quality/tuple_assert_check.py` reports where a Python suite under `scripts/` or
+`.harness/` packs several values into one assertion, the shape [AGENTS.md ▸ Tests](AGENTS.md#tests)
+rules out:
+
+```bash
+python3 scripts/test_quality/tuple_assert_check.py
+python3 scripts/test_quality/tuple_assert_check.py --write-baseline scripts/test_quality/tuple_assert_baseline.txt
+```
+
+It reports an assertion whose first argument is a tuple or list display of two or more elements,
+where the other compared argument is a display too or the first holds an element that is not a
+literal. `scripts/test_quality/tuple_assert_baseline.txt` records the ones written before the rule, for
+the reason `assume_gate_baseline.txt` does, and both a new entry and one the scan no longer finds fail
+the check; a rewrite regenerates the record in the same change. It runs in `Test ▸ test-quality`. It
+does not read C#, and it does not read a display written second against a name, which the text cannot
+tell from a computed value compared with an expected tuple.
+
 ### Checking that a removal did not strand its name
 
 A comment naming a method is true until somebody deletes the method, and nothing was reading for
