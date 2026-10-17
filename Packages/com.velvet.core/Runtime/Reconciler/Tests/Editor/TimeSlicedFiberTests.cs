@@ -552,11 +552,14 @@ namespace Velvet.Tests
         // commit finds it run already. Drop the `IsHeld(entry.Pass) && roots.Exists(...)` line from TakeBatch and
         // this reddens.
         [Test]
-        public void Given_AParkedTransitionPassThatMountedAComponentRow_When_ThatRowCommitsAloneBeforeItCompletes_Then_ItsPassiveEffectRunsWithoutWaitingForThePass()
+        public void Given_AParkedTransitionPassThatReRenderedAComponentRow_When_ThatRowCommitsAloneBeforeItCompletes_Then_ItsPassiveEffectRunsWithoutWaitingForThePass()
         {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            // Arrange — the row is in the committed tree from the mount, since a row the parked pass created is not
+            // placed until the pass completes, and a flush of a component in an unplaced host is deferred
             s_slowRowsShown = true;
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            mounted.FlushEffectsForTest();
+            s_slowRowTick = 1;
             s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             mounted.GetSchedulerForTest().DrainDelayedForTest();
             mounted.FlushEffectsForTest();

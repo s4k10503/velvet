@@ -428,11 +428,11 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base holds the report the same way. Drop
         // `&& !HasLayoutEffectsWaiting(ctx, boundary)` from DeliverCaughtErrors and this reddens.
         [Test]
-        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionMounted_When_ItsChildReRendersAloneAndThrowsBeforeThePassCompletes_Then_NoReportIsMadeYet()
+        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionReRendered_When_ItsChildReRendersAloneAndThrowsBeforeThePassCompletes_Then_NoReportIsMadeYet()
         {
-            // Arrange — the child mounts in the first slice, whose slow render parks the pass right after its row
-            s_child = () => V.Component(SlowThrowOnUpdateRender, key: "child");
-            _mounted = V.Mount(_root, V.Component(BoundaryFirstListRender, key: "list"), RecordingOrder);
+            // Arrange — the boundary's row is in the committed tree from the mount, since a row the parked pass
+            // created is not placed until the pass completes, and its slow render parks the pass right after the row
+            _mounted = V.Mount(_root, V.Component(TickedFirstBoundaryListRender, key: "list"), RecordingOrder);
             s_listTick = 1;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             _mounted.GetSchedulerForTest().DrainDelayedForTest();
@@ -449,11 +449,10 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base reports at the same commit. The case before it holds the
         // report back, and this one shows the catch happened and the report followed the pass.
         [Test]
-        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionMounted_When_ItsChildReRenderedAloneAndThrewAndThePassCompletes_Then_TheReportFollowsTheFallback()
+        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionReRendered_When_ItsChildReRenderedAloneAndThrewAndThePassCompletes_Then_TheReportFollowsTheFallback()
         {
             // Arrange
-            s_child = () => V.Component(SlowThrowOnUpdateRender, key: "child");
-            _mounted = V.Mount(_root, V.Component(BoundaryFirstListRender, key: "list"), RecordingOrder);
+            _mounted = V.Mount(_root, V.Component(TickedFirstBoundaryListRender, key: "list"), RecordingOrder);
             s_listTick = 1;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             _mounted.GetSchedulerForTest().DrainDelayedForTest();
@@ -897,6 +896,34 @@ namespace Velvet.Tests
                 rows.Add(V.Div(key: "item" + i, children: new VNode[] { V.Label(text: "item-" + i) }));
             }
             return V.Fragment(children: rows.ToArray());
+        }
+
+        // The boundary's row leads, and the boundary takes the tick, so the transition re-renders it first and its
+        // slow render parks the pass before the rows behind it.
+        [Component(Compiler = false)]
+        private static VNode TickedFirstBoundaryListRender()
+        {
+            s_listFiber = FiberAmbientStack.Current;
+            var rows = new List<VNode>
+            {
+                V.Div(key: "boundary", children: new VNode[]
+                {
+                    V.Component(TickedLayoutBoundaryRender, s_listTick, key: "boundary"),
+                }),
+            };
+            for (var i = 0; i < 3; i++)
+            {
+                rows.Add(V.Div(key: "item" + i, children: new VNode[] { V.Label(text: "item-" + i + "-" + s_listTick) }));
+            }
+            return V.Fragment(children: rows.ToArray());
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode TickedLayoutBoundaryRender(int tick)
+        {
+            System.Threading.Thread.Sleep(SlowRenderMs);
+            Hooks.UseFallback(_ => V.Component(FallbackWithLayoutEffectRender, key: "fallback"));
+            return V.Component(SlowThrowOnUpdateRender, key: "child");
         }
 
         [Component]
