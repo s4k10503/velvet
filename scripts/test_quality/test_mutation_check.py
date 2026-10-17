@@ -3126,7 +3126,10 @@ class StubbedCampaign:
         """)
 
     def __init__(self, body=None):
-        self.holder = tempfile.mkdtemp(prefix="mutation-check-")
+        # Reached through a link, as macOS reaches its temporary directory, so that comparing a resolved
+        # path against an unresolved one fails on every platform rather than on macOS alone.
+        self.holder = tempfile.mkdtemp(prefix="mutation-check-") + "-link"
+        os.symlink(self.holder[:-len("-link")], self.holder)
         self.project = Path(self.holder)
         self.source = self.project / self.SOURCE
         self.source.parent.mkdir(parents=True, exist_ok=True)
@@ -10634,6 +10637,19 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertIsNone(traced)
 
+    def test_Given_AnotherFileSpellingTheFixturesClassInAString_When_Traced_Then_OnlyTheFixturesFileIsHashed(self):
+        # Arrange -- a generator test holding C# source as text declares no class.
+        campaign = LedgerCampaign()
+        other = campaign.project / "Packages/com.velvet.core/Runtime/Tests/Editor/OtherTests.cs"
+        other.write_text(other.read_text().replace(
+            "{ }", "{ var source = \"class ProbeTests { void Given_A_When_B_Then_Probe() { } }\"; }"))
+
+        # Act
+        traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe")
+
+        # Assert
+        self.assertEqual(sorted(traced or {}), ["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"])
+
     def test_Given_AFixtureDerivedFromABaseInAnotherFile_When_Traced_Then_BothFilesAreHashed(self):
         # Arrange
         campaign = LedgerCampaign()
@@ -10684,7 +10700,7 @@ class KillStandingTests(unittest.TestCase):
     def killed(self):
         """(campaign, the mutant, its ledger record) for a kill by the first fixture's case."""
         campaign = LedgerCampaign()
-        path = campaign.source.resolve()
+        path = campaign.source
         mutant = next(m for m in mutation_check.mutations_for(
             path, path.read_text(), {5}) if m.operator == "boundary")
         mutant.verdict, mutant.killers, mutant.platform = mutation_check.KILLED, (self.CASE,), "EditMode"
@@ -10694,7 +10710,8 @@ class KillStandingTests(unittest.TestCase):
 
     def problem(self, campaign, mutant, record):
         return mutation_check.kill_problem(record, mutant, campaign.project,
-                                           mutation_check.test_index(campaign.project))
+                                           mutation_check.test_index(campaign.project),
+                                           mutation_check.assembly_readers(campaign.project))
 
     def test_Given_ATreeNothingMovedIn_When_TheKillIsChecked_Then_ItStands(self):
         # Arrange
@@ -10800,7 +10817,7 @@ class ReuseDecisionTests(unittest.TestCase):
     """Which mutants a plan hands to the shards, given the ledgers of the branch's earlier campaigns."""
 
     def mutants_of(self, campaign):
-        path = campaign.source.resolve()
+        path = campaign.source
         return mutation_check.one_per_line(mutation_check.mutations_for(
             path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
 
@@ -10899,7 +10916,7 @@ class LedgerContextTests(unittest.TestCase):
                                                      "Support\n    {\n    }\n}\n")
         campaign.after_a_campaign()
         edit(campaign)
-        path = campaign.source.resolve()
+        path = campaign.source
         mutants = mutation_check.one_per_line(mutation_check.mutations_for(
             path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
         ledger = campaign.written_ledger() | {"run": "9001"}
@@ -11073,6 +11090,348 @@ class LedgerContextTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, mutation_check.REUSE_LAPSED in campaign.printed), (1, True))
+
+    OTHER = TESTS + "OtherTests.cs"
+    HOOK = "[UnityEditor.InitializeOnLoad] internal static class Boot { }\n"
+
+    def test_Given_ANonKillingFixtureFileGainingADomainLoadHook_When_Decided_Then_EveryKillLapses(self):
+        # Arrange -- the hook runs outside its own fixture, where the killing case can read what it wrote.
+        edit = self.append(self.OTHER, self.HOOK)
+
+        # Act
+        reused, reasons = self.reused_after(edit)
+
+        # Assert
+        self.assertIn("test support files", reasons.get(1, ""))
+
+    def test_Given_ANonKillingFixtureFileLosingADomainLoadHook_When_Decided_Then_EveryKillLapses(self):
+        # Arrange -- what the hook wrote when the kill was taken is no longer written.
+        def edit(campaign):
+            campaign.write_fixture(self.OTHER, "OtherTests", "Given_A_When_B_Then_Other")
+
+        # Act
+        reused, reasons = self.reused_after(edit, self.append(self.OTHER, self.HOOK))
+
+        # Assert
+        self.assertIn("test support files", reasons.get(1, ""))
+
+    # GREEN_ON_BASE(characterization): the base reuses this kill, and a hook named in a string keeps it.
+    def test_Given_AFixtureFileNamingADomainLoadHookOnlyInAString_When_Decided_Then_TheKillIsStillReused(self):
+        # Arrange
+        edit = self.append(self.OTHER, "class Names { string s = \"[InitializeOnLoad]\"; }\n")
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    PROBE = TESTS + "ProbeTests.cs"
+    SCANNER = "Packages/com.velvet.core/Runtime/Scanner.cs"
+    READS = "System.AppDomain.CurrentDomain.GetAssemblies()"
+
+    def killer(self, member, head="", beside=None):
+        """A `before` writing the killing fixture with `member` inside it, `head` above it, and the
+        files of `beside` next to it."""
+        def before(campaign):
+            (campaign.project / self.PROBE).write_text(
+                head + "namespace Velvet.Tests\n{\n    internal sealed class ProbeTests\n    {\n" + member
+                + "        [Test]\n        public void Given_A_When_B_Then_Probe() { }\n    }\n}\n")
+            for relative, text in (beside or {}).items():
+                (campaign.project / relative).parent.mkdir(parents=True, exist_ok=True)
+                (campaign.project / relative).write_text(text)
+        return before
+
+    def reused_past_a_test_only_fix(self, before):
+        """`reused_after` an edit to the fixture that killed nothing, over a tree `before` shaped."""
+        return self.reused_after(self.append(self.OTHER, "class Added { }\n"), before)
+
+    def test_Given_AKillingFixtureReadingTheLoadedAssemblies_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
+        # Arrange -- what it reads can be the edited fixture's assembly.
+        before = self.killer("        private static object All() => {};\n".format(self.READS))
+
+        # Act
+        reused, reasons = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertIn("through an assembly", reasons.get(1, ""))
+
+    def test_Given_AKillingFixtureReadingTheLoadedAssembliesInAnInterpolationHole_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
+        # Arrange -- the hole is code, though the literal around it is not.
+        before = self.killer("        private static string Count => $\"{{{}.Length}}\";\n".format(self.READS))
+
+        # Act
+        reused, reasons = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertIn("through an assembly", reasons.get(1, ""))
+
+    def test_Given_AKillingFixtureNamingARuntimeTypeThatReadsTheLoadedAssemblies_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
+        # Arrange
+        scanner = "namespace Velvet\n{{\n    internal static class Scanner\n    {{\n        internal static object All() => {};\n    }}\n}}\n".format(self.READS)
+        before = self.killer("        private static object All() => Scanner.All();\n", beside={self.SCANNER: scanner})
+
+        # Act
+        reused, reasons = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertIn("through an assembly", reasons.get(1, ""))
+
+    def test_Given_AKillingFixtureNamingATestHelperThatReadsTheLoadedAssemblies_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
+        # Arrange -- a helper declaring no test is followed as a runtime source is.
+        helper = "namespace Velvet.Tests\n{{\n    internal static class Scan\n    {{\n        internal static object All() => {};\n    }}\n}}\n".format(self.READS)
+        before = self.killer("        private static object All() => Scan.All();\n", beside={self.TESTS + "Scan.cs": helper})
+
+        # Act
+        reused, reasons = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertIn("through an assembly", reasons.get(1, ""))
+
+    def test_Given_AKillingFixtureDerivedFromAFixtureThatReadsTheLoadedAssemblies_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
+        # Arrange -- the base declares cases of its own, so it is a fixture rather than a followed helper.
+        base = ("namespace Velvet.Tests\n{{\n    internal abstract class BaseTests\n    {{\n"
+                "        protected static object All() => {};\n        [Test]\n        public void Shared() {{ }}\n"
+                "    }}\n}}\n").format(self.READS)
+
+        def before(campaign):
+            (campaign.project / (self.TESTS + "BaseTests.cs")).write_text(base)
+            campaign.write_fixture(self.PROBE, "ProbeTests", "Given_A_When_B_Then_Probe", " : BaseTests")
+
+        # Act
+        reused, reasons = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertIn("through an assembly", reasons.get(1, ""))
+
+    # GREEN_ON_BASE(characterization): the base reuses this kill, and a read named in a string keeps it.
+    def test_Given_AKillingFixtureNamingTheLoadedAssembliesOnlyInAString_When_AnotherFixtureIsEdited_Then_TheKillIsStillReused(self):
+        # Arrange
+        before = self.killer("        private const string Name = \"GetAssemblies\";\n")
+
+        # Act
+        reused, _ = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    # GREEN_ON_BASE(characterization): the base reuses this kill, and importing that namespace keeps it.
+    def test_Given_AKillingFixtureImportingThePostProcessorNamespace_When_AnotherFixtureIsEdited_Then_TheKillIsStillReused(self):
+        # Arrange
+        before = self.killer("", head="using Unity.CompilationPipeline.Common.Diagnostics;\n")
+
+        # Act
+        reused, _ = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    # GREEN_ON_BASE(characterization): the base reuses this kill, and a reader's nested name keeps it.
+    def test_Given_AKillingFixtureSpellingOnlyANestedTypeNameOfARuntimeReader_When_AnotherFixtureIsEdited_Then_TheKillIsStillReused(self):
+        # Arrange -- `Item` here is the fixture's own; the reader's is spelt `Scanner.Item` elsewhere.
+        scanner = ("namespace Velvet\n{{\n    internal static class Scanner\n    {{\n        internal sealed class Item {{ }}\n"
+                   "        internal static object All() => {};\n    }}\n}}\n").format(self.READS)
+        before = self.killer("        private sealed class Item { }\n", beside={self.SCANNER: scanner})
+
+        # Act
+        reused, _ = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+
+    def other_with(self, helper):
+        """OtherTests.cs holding its own case and `helper` beside it, a static helper class at top level."""
+        return ("namespace Velvet.Tests\n{\n    internal sealed class OtherTests\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_Other() { }\n    }\n\n" + helper + "}\n")
+
+    HELPERS = "    internal static class Helpers\n    {\n        internal static int Make() => 1;\n    }\n"
+
+    def helper_edited(self, campaign):
+        (campaign.project / self.OTHER).write_text(self.other_with(self.HELPERS.replace("=> 1", "=> 2")))
+
+    def test_Given_AKillingFixtureCallingAHelperInAnotherFixtureFile_When_TheHelperIsEdited_Then_TheKillLapses(self):
+        # Arrange
+        before = self.killer("        private static int Made => Helpers.Make();\n",
+                             beside={self.OTHER: self.other_with(self.HELPERS)})
+
+        # Act
+        reused, reasons = self.reused_after(self.helper_edited, before)
+
+        # Assert
+        self.assertIn("OtherTests.cs of its killing case", reasons.get(1, ""))
+
+    def test_Given_AKillingFixtureReachingAHelperThroughAnotherFixtureFile_When_TheHelperIsEdited_Then_TheKillLapses(self):
+        # Arrange -- the killing fixture names only `Middle`, whose file names `Helpers`.
+        middle = ("namespace Velvet.Tests\n{\n    internal static class Middle\n    {\n"
+                  "        internal static int Make() => Helpers.Make();\n        [Test]\n"
+                  "        public static void Case() { }\n    }\n}\n")
+        before = self.killer("        private static int Made => Middle.Make();\n",
+                             beside={self.OTHER: self.other_with(self.HELPERS), self.TESTS + "MiddleTests.cs": middle})
+
+        # Act
+        reused, reasons = self.reused_after(self.helper_edited, before)
+
+        # Assert
+        self.assertIn("OtherTests.cs of its killing case", reasons.get(1, ""))
+
+    EXTENSIONS = ("    internal static class Extensions\n    {\n"
+                  "        internal static int Doubled(this int value) => value * 2;\n    }\n")
+
+    def extension_edited(self, campaign):
+        (campaign.project / self.OTHER).write_text(self.other_with(self.EXTENSIONS.replace("* 2", "* 3")))
+
+    def test_Given_AKillingFixtureCallingAnExtensionMethodInAnotherFixtureFile_When_TheExtensionIsEdited_Then_TheKillLapses(self):
+        # Arrange -- the call spells `Doubled` and never the class declaring it.
+        before = self.killer("        private static int Made => 4.Doubled();\n",
+                             beside={self.OTHER: self.other_with(self.EXTENSIONS)})
+
+        # Act
+        reused, reasons = self.reused_after(self.extension_edited, before)
+
+        # Assert
+        self.assertIn("OtherTests.cs of its killing case", reasons.get(1, ""))
+
+    # GREEN_ON_BASE(characterization): the base reuses this kill, and an extension named in a string keeps it.
+    def test_Given_AKillingFixtureNamingAnExtensionMethodOnlyInAString_When_TheExtensionIsEdited_Then_TheKillIsStillReused(self):
+        # Arrange
+        before = self.killer("        private const string Name = \"Doubled\";\n",
+                             beside={self.OTHER: self.other_with(self.EXTENSIONS)})
+
+        # Act
+        reused, _ = self.reused_after(self.extension_edited, before)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    # GREEN_ON_BASE(characterization): the base reuses this kill, and a helper named in a string keeps it.
+    def test_Given_AKillingFixtureNamingAHelperOnlyInAString_When_TheHelperIsEdited_Then_TheKillIsStillReused(self):
+        # Arrange
+        before = self.killer("        private const string Name = \"Helpers\";\n",
+                             beside={self.OTHER: self.other_with(self.HELPERS)})
+
+        # Act
+        reused, _ = self.reused_after(self.helper_edited, before)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    def test_Given_AKillingFixtureListingItsOwnAssemblysTypes_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
+        # Arrange -- the edited fixture's types are among those it lists.
+        before = self.killer("        private static object All() => typeof(ProbeTests).Assembly.GetTypes();\n")
+
+        # Act
+        reused, reasons = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertIn("through an assembly", reasons.get(1, ""))
+
+    def test_Given_AKillingFixtureReadingTheExecutingAssembly_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
+        # Arrange
+        before = self.killer("        private static object All() => "
+                             "System.Reflection.Assembly.GetExecutingAssembly().GetTypes();\n")
+
+        # Act
+        reused, reasons = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertIn("through an assembly", reasons.get(1, ""))
+
+    def test_Given_AKillingFixtureReadingCompiledIL_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
+        # Arrange -- the IL it reads holds every file of the assembly it reads.
+        before = self.killer("        private static object Il(string path) => ModuleDefinition.ReadModule(path);\n")
+
+        # Act
+        reused, reasons = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertIn("through an assembly", reasons.get(1, ""))
+
+    # GREEN_ON_BASE(characterization): the base reuses this kill, and the runtime assembly's types keep it.
+    def test_Given_AKillingFixtureListingTheRuntimeAssemblysTypes_When_AnotherFixtureIsEdited_Then_TheKillIsStillReused(self):
+        # Arrange -- `Probe` is declared under Runtime/, which the production digest already covers.
+        before = self.killer("        private static object All() => typeof(Probe).Assembly.GetTypes();\n")
+
+        # Act
+        reused, _ = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    def test_Given_AKillingFixtureImportingARuntimeReaderStatically_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
+        # Arrange -- the call never spells `Scanner`; the directive does.
+        scanner = "namespace Velvet\n{{\n    internal static class Scanner\n    {{\n        internal static object All() => {};\n    }}\n}}\n".format(self.READS)
+        before = self.killer("        private static object Everything() => All();\n",
+                             head="using static Velvet.Scanner;\n", beside={self.SCANNER: scanner})
+
+        # Act
+        reused, reasons = self.reused_past_a_test_only_fix(before)
+
+        # Assert
+        self.assertIn("through an assembly", reasons.get(1, ""))
+
+
+class CrossAssemblySpellingTests(unittest.TestCase):
+    """What the two reuse refusals read in a C# source."""
+
+    def test_Given_EachDomainLoadHookSpelling_When_Read_Then_EveryOneIsFound(self):
+        # Arrange
+        spellings = ["[InitializeOnLoad] internal static class Boot { }",
+                     "[UnityEditor.InitializeOnLoadAttribute] internal static class Boot { }",
+                     "[InitializeOnLoadMethod] private static void Boot() { }",
+                     "[UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType."
+                     "SubsystemRegistration)] private static void Boot() { }",
+                     "[InitializeOnEnterPlayMode] private static void Boot() { }",
+                     "[UnityEditor.Callbacks.DidReloadScripts] private static void Boot() { }",
+                     "[ModuleInitializer] internal static void Boot() { }"]
+
+        # Act
+        found = [bool(mutation_check.DOMAIN_HOOKS.search(text)) for text in spellings]
+
+        # Assert
+        self.assertEqual(found, [True] * len(spellings))
+
+    def test_Given_EachReadAcrossTheLoadedAssemblies_When_Read_Then_EveryOneIsFound(self):
+        # Arrange
+        spellings = ["foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())",
+                     "var wanted = CompilationPipeline.GetAssemblies(AssembliesType.Player)",
+                     "var names = CompilationPipeline.GetAssemblyNameFromScriptPath(path)",
+                     "return new StyleTableProbe(Assembly.Load(name));",
+                     "var types = TypeCache.GetTypesWithAttribute<StoryAttribute>();"]
+
+        # Act
+        found = [bool(mutation_check.ACROSS_ASSEMBLIES.search(text)) for text in spellings]
+
+        # Assert
+        self.assertEqual(found, [True] * len(spellings))
+
+    def test_Given_EachReadOfATestAssembly_When_Read_Then_EveryOneIsFound(self):
+        # Arrange
+        spellings = ["var types = typeof(ProbeTests).Assembly.GetTypes();",
+                     "var types = typeof(Velvet.Tests.ProbeTests).Assembly.GetTypes();",
+                     "var types = typeof(ProbeTests<int>).Assembly.GetTypes();",
+                     "var types = System.Reflection.Assembly.GetAssembly(typeof(ProbeTests)).GetTypes();",
+                     "var types = this.GetType().Assembly.GetTypes();",
+                     "var types = Assembly.GetCallingAssembly().GetTypes();",
+                     "var module = AssemblyDefinition.ReadAssembly(path);"]
+
+        # Act
+        found = [mutation_check.reads_a_test_assembly(text, {"ProbeTests"}) for text in spellings]
+
+        # Assert
+        self.assertEqual(found, [True] * len(spellings))
+
+    def test_Given_TypesNestedAndNot_When_Read_Then_OnlyThoseOutsideAnotherTypeAreFound(self):
+        # Arrange -- a block namespace, a file-scoped one, and members nested two deep.
+        texts = ["namespace A\n{\n    internal sealed class Outer\n    {\n        private sealed class Inner { }\n"
+                 "        internal delegate void Handler(int x);\n    }\n    internal enum Mode { X }\n}\n",
+                 "namespace A.B;\ninternal static class Holder { private struct Item { class Deeper { } } }\n"]
+
+        # Act
+        found = [sorted(mutation_check.top_level_types(text)) for text in texts]
+
+        # Assert
+        self.assertEqual(found, [["Mode", "Outer"], ["Holder"]])
 
 
 class ReusedKillCampaignTests(unittest.TestCase):
