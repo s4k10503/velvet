@@ -576,14 +576,19 @@ namespace Velvet.Tests
                 Is.EqualTo("True | nothing thrown | 0 reported"));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the row's layout effect across the bound's drop the same way.
+        // The chain starts from an effect the boundary's child stages by its own commit after the pass parks, since
+        // one the mount left pending now runs, and reaches the bound, before the transition renders at all.
         [Test]
         public void Given_AParkedTransitionHoldingARowsLayoutEffect_When_TheFollowUpBoundStopsAChainElsewhere_Then_TheRowsLayoutEffectRunsWhenThePassCompletes()
         {
             // Arrange
-            _mounted = V.Mount(_root, V.Component(RefallingBesideASlowListRender, key: "host"), CaughtErrors.Unlogged);
+            _mounted = V.Mount(_root, V.Component(RefallingOnUpdateBesideASlowListRender, key: "host"), CaughtErrors.Unlogged);
             s_listTick = 1;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_setFirstTick.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
             var parked = s_listFiber.HasPendingReconcileWorkForTest();
             var bounded = false;
             try
@@ -1026,12 +1031,24 @@ namespace Velvet.Tests
                 name: "rows");
 
         [Component]
-        private static VNode RefallingBesideASlowListRender()
+        private static VNode RefallingOnUpdateBesideASlowListRender()
             => V.Div(children: new VNode[]
             {
-                V.Component(RefallingBoundaryRender, key: "boundary"),
+                V.Component(RefallingOnUpdateBoundaryRender, key: "boundary"),
                 V.Component(SlowLayoutListRender, key: "list"),
             });
+
+        // RefallingBoundaryRender's chain, started by a child whose effect throws only once it has re-rendered.
+        [Component(IsErrorBoundary = true)]
+        private static VNode RefallingOnUpdateBoundaryRender()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                var mount = s_fallbackMounts++;
+                return V.Component(RefallingFallbackRender, mount, key: "fallback-" + mount);
+            });
+            return V.Component(ThrowInPassiveSetupOnUpdateRender, key: "child");
+        }
 
         [Component(Compiler = false)]
         private static VNode SlowLayoutListRender()
