@@ -44,16 +44,29 @@ STAND_INS = {
 
 
 class Project:
+    """A repository on `main` holding the stand-ins, whose origin is itself."""
+
     def __init__(self, files=STAND_INS):
         self.root = Path(tempfile.mkdtemp(prefix="velvet-gate-"))
         for name, text in files.items():
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             (self.root / name).write_text(text)
-        for command in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "release"]):
-            subprocess.run(["git", "-c", "user.email=p@e", "-c", "user.name=P", *command], cwd=self.root,
-                           check=True, capture_output=True)
-        self.head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root, capture_output=True,
-                                   text=True).stdout.strip()
+        self.git("init", "-q", "-b", "main")
+        self.commit("release")
+        self.git("remote", "add", "origin", str(self.root))
+
+    def git(self, *arguments):
+        return subprocess.run(["git", "-c", "user.email=p@e", "-c", "user.name=P", *arguments], cwd=self.root,
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def commit(self, message, **files):
+        """Commits `files` (a path under the root, with `/` as `__`) and returns the new head."""
+        for name, text in files.items():
+            (self.root / name.replace("__", "/")).write_text(text)
+        self.git("add", "-A")
+        self.git("commit", "-q", "--allow-empty", "-m", message)
+        self.head = self.git("rev-parse", "HEAD")
+        return self.head
 
     def remove(self):
         shutil.rmtree(self.root, ignore_errors=True)
@@ -100,89 +113,137 @@ class GateTests(unittest.TestCase):
         self.project = Project()
         self.addCleanup(self.project.remove)
 
-    def decide(self, verdict="0", branch="2.x", read=lambda path: runs("success"), release=None, skip="",
-               record=()):
-        (self.project.root / "scripts/test_quality/verdict").write_text(verdict)
+    def verdict(self, code):
+        """Commits a stand-in decision exiting with `code` on the current branch."""
+        self.project.commit("verdict", scripts__test_quality__verdict=code)
+
+    def decide(self, read=lambda path: runs("success"), release=None, skip="", record=(), project=None,
+               default="main"):
         printed = io.StringIO()
+        root = project or self.project.root
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True).stdout.strip()
         with contextlib.redirect_stdout(printed):
-            code = gate.main(["--project", str(self.project.root), "--release", release or self.project.head,
-                              "--skip", skip, *record],
-                             {"DEFAULT_BRANCH": "main", "GITHUB_REF_NAME": branch, "GITHUB_REPOSITORY": "o/r"},
-                             read)
+            code = gate.main(["--project", str(root), "--release", release or head, "--skip", skip, *record],
+                             {"DEFAULT_BRANCH": default, "GITHUB_REPOSITORY": "o/r"}, read)
         return code, printed.getvalue()
 
     def test_Given_ARecordThatAnswersTheScope_When_Gated_Then_TheReleasePasses(self):
         # Act
-        code, _ = self.decide("0")
+        code, _ = self.decide()
 
         # Assert
         self.assertEqual(code, 0)
 
     def test_Given_ARecordThatLeavesAMutantUnanswered_When_Gated_Then_TheReleaseIsRefused(self):
+        # Arrange
+        self.verdict("1")
+
         # Act
-        code, _ = self.decide("1")
+        code, _ = self.decide()
 
         # Assert
         self.assertEqual(code, 1)
 
     def test_Given_TheReleaseCommit_When_Gated_Then_TheDecisionReadsTheScopeAndTheRecord(self):
         # Act
-        _, printed = self.decide("0")
+        _, printed = self.decide()
 
         # Assert
-        self.assertIn("--base scope-commit --gate --reuse-from", printed)
+        self.assertIn("--project . --base scope-commit --gate --reuse-from", printed)
+
+    def test_Given_AnEditTheReleaseCommitDoesNotHold_When_Gated_Then_TheCommitIsWhatIsRead(self):
+        # Arrange — the committed decision refuses; the checkout's uncommitted one would pass.
+        self.verdict("1")
+        (self.project.root / "scripts/test_quality/verdict").write_text("0")
+
+        # Act
+        code, _ = self.decide()
+
+        # Assert
+        self.assertEqual(code, 1)
 
     def test_Given_ACommitWithoutTheRecordTooling_When_Gated_Then_TheReleaseIsRefused(self):
         # Arrange — a line cut before the record existed.
         (self.project.root / "scripts/ci/mutation_record.py").unlink()
+        self.project.commit("no record tooling")
 
         # Act
-        code, _ = self.decide("0")
+        code, _ = self.decide()
 
         # Assert
         self.assertEqual(code, 1)
 
-    def test_Given_TheDefaultBranchWithAFailedRequiredRun_When_Gated_Then_TheReleaseIsRefused(self):
+    def test_Given_AShallowClone_When_Gated_Then_TheReleaseIsRefused(self):
+        # Arrange — a history cut short can hide the scope's tag and cutover, which empties the scope.
+        shallow = self.project.root.parent / (self.project.root.name + "-shallow")
+        self.addCleanup(shutil.rmtree, shallow, True)
+        subprocess.run(["git", "clone", "-q", "--depth", "1", "file://{}".format(self.project.root), str(shallow)],
+                       check=True, capture_output=True)
+
         # Act
-        code, _ = self.decide("0", branch="main", read=lambda path: runs("failure"))
+        code, _ = self.decide(project=shallow)
 
         # Assert
         self.assertEqual(code, 1)
 
-    def test_Given_AMaintenanceLine_When_Gated_Then_ItsCiIsNotRead(self):
+    def test_Given_ACommitOnTheDefaultBranchWithAFailedRequiredRun_When_Gated_Then_TheReleaseIsRefused(self):
+        # Act
+        code, _ = self.decide(read=lambda path: runs("failure"))
+
+        # Assert
+        self.assertEqual(code, 1)
+
+    def test_Given_ACommitOnTheDefaultBranchDispatchedFromAnotherRef_When_Gated_Then_ItsCiIsRead(self):
+        # Arrange — the ref a release is dispatched from does not decide whether its CI is read.
+        self.project.git("checkout", "-q", "-b", "2.x")
+
+        # Act
+        code, _ = self.decide(read=lambda path: runs("failure"))
+
+        # Assert
+        self.assertEqual(code, 1)
+
+    def test_Given_ACommitOnlyAMaintenanceLineHolds_When_Gated_Then_ItsCiIsNotRead(self):
         # Arrange — push runs are read on the default branch alone, and a read here would fail.
+        self.project.git("checkout", "-q", "-b", "2.x")
+        self.project.commit("a fix on the line")
+
         def refuse(path):
             raise AssertionError("read " + path)
 
         # Act
-        code, _ = self.decide("0", branch="2.x", read=refuse)
+        code, _ = self.decide(read=refuse)
 
         # Assert
         self.assertEqual(code, 0)
 
-    def test_Given_AReleaseCommitOtherThanTheCheckout_When_Gated_Then_TheReleaseIsRefused(self):
+    def test_Given_AReleaseCommitTheRepositoryDoesNotHold_When_Gated_Then_TheReleaseIsRefusedNamingIt(self):
         # Act
-        code, _ = self.decide("0", release=SHA)
+        code, printed = self.decide(release=SHA)
 
-        # Assert
-        self.assertEqual(code, 1)
+        # Assert — named, so the refusal is not the missing-tooling one a tree that is not there gives too.
+        self.assertEqual((code, "no worktree of {}".format(SHA) in printed), (1, True))
 
     def test_Given_AReasonToSkip_When_TheRecordLeavesAMutantUnanswered_Then_TheReleasePasses(self):
+        # Arrange
+        self.verdict("1")
+
         # Act
-        code, _ = self.decide("1", skip="the record branch was lost")
+        code, _ = self.decide(skip="the record branch was lost")
 
         # Assert
         self.assertEqual(code, 0)
 
     def test_Given_TheSameCommitAndRecord_When_GatedTwice_Then_TheAnswersAreIdentical(self):
         # Arrange — one record directory for both, as the fetch would leave it.
-        record = ("--record", str(self.project.root / "record"))
+        self.verdict("1")
+        record = ("--record", str(self.project.root.parent / (self.project.root.name + "-record")))
 
         # Act
-        first, second = self.decide("1", record=record), self.decide("1", record=record)
+        first, second = self.decide(record=record), self.decide(record=record)
 
         # Assert
-        self.assertEqual(first, second)
+        self.assertEqual((first, first[1].count("--gate")), (second, 1))
 
 
 if __name__ == "__main__":

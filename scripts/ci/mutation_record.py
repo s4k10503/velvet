@@ -13,9 +13,9 @@ same file under the same tool, and a later one replacing an earlier one is the n
 under other names never touch, so a push that lost a race is retried over the newer branch rather
 than merged.
 
-The branch's first commit is also the campaign's cutover: `change_base.py` starts the range a run
-measures at the first-parent commit that added this file, since everything merged before it was
-measured by the per-pull-request campaign that preceded the record.
+This file also marks the campaign's cutover: `change_base.py` starts the range a run measures no
+earlier than the first-parent commit on the default branch that added it, since everything merged
+before that was measured by the per-pull-request campaign that preceded the record.
 """
 
 import argparse
@@ -52,12 +52,20 @@ def fetch(project, directory):
     directory.mkdir(parents=True, exist_ok=True)
     if not remote_branch(project):
         return 0
-    listed = git("ls-tree", "--name-only", "origin/{}".format(RECORD_BRANCH), ENTRIES + "/",
-                 cwd=project).stdout.split()
-    for name in listed:
-        blob = git("show", "origin/{}:{}".format(RECORD_BRANCH, name), cwd=project).stdout
-        (directory / Path(name).name).write_text(blob)
-    return len(listed)
+    listed = [line.split("\t", 1) for line in git("ls-tree", "origin/{}".format(RECORD_BRANCH), ENTRIES + "/",
+                                                    cwd=project).stdout.splitlines()]
+    entries = [(header.split()[2], Path(name).name) for header, name in listed]
+    done = subprocess.run(["git", "cat-file", "--batch"], cwd=project, capture_output=True,
+                          input="".join(oid + "\n" for oid, _ in entries).encode())
+    if done.returncode != 0:
+        raise RuntimeError("git cat-file --batch failed: {}".format(done.stderr.decode().strip()))
+    out, cursor = done.stdout, 0
+    for _, name in entries:
+        end = out.index(b"\n", cursor)
+        size = int(out[cursor:end].split()[2])
+        (directory / name).write_bytes(out[end + 1:end + 1 + size])
+        cursor = end + 1 + size + 1
+    return len(entries)
 
 
 def publish(project, directory, message):

@@ -94,6 +94,11 @@ SURVIVING = (SURVIVED, INCONCLUSIVE, UNCOVERED)
 # The verdicts a decision can pass, besides a survivor a declaration answers. Every other verdict,
 # however it is spelled, fails the decision as one nothing measured.
 DECIDED = (KILLED, HUNG, CRASHED, INAPPLICABLE)
+# Final in the record, though a run that measures them names them: StrykerJS scores a compile error
+# as no result at all and a timeout as detected. Neither is measured again while it stands, and a
+# reused one fails neither a later run nor the release gate.
+RECORDED_FINAL = (UNCOMPILABLE, TIMED_OUT)
+RECORDED = DECIDED + SURVIVING + RECORDED_FINAL
 OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
 
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
@@ -220,8 +225,11 @@ UNREADABLE = object()
 # could not take the reading at all. Both stop the tool; only one is about a campaign.
 CARRIED_REFUSAL = 3
 
-# Include generation semantics in verdict identity.
-MUTATION_MODEL_VERSION = 10
+# Which mutants a tree generates and how each one is written into its file: the operator tables, the
+# reading of C# that places them, a mutant's identity and the rewrite. Part of every verdict's identity
+# here and in the record, so raising it measures every mutant again. `MutatorVersionTests` holds a
+# digest of that code to this number, and fails until both move together.
+MUTATOR_VERSION = 10
 
 
 class Mutant:
@@ -4121,7 +4129,7 @@ def scope_digest(base, targets, project, platform):
     checked for what it stops voiding on, and this stops on exactly the spans the generator already
     refuses to mutate.
     """
-    parts = ["mutation-model:{}".format(MUTATION_MODEL_VERSION), base, platform]
+    parts = ["mutation-model:{}".format(MUTATOR_VERSION), base, platform]
     for path in sorted(targets, key=str):
         # Repository-relative, so a record does not depend on where the checkout sits: a resolved
         # path and an unresolved one reach the same file and digest differently.
@@ -4136,7 +4144,6 @@ def scope_digest(base, targets, project, platform):
 # and `Logs` sit at the project root, outside these roots, and no directory is skipped by its name
 # at depth: a `Logs` or `obj` folder inside a root holds sources the editor compiles.
 KEY_ROOTS = (PACKAGE, "Assets", "ProjectSettings")
-KEY_FILES = ("Packages/manifest.json", "Packages/packages-lock.json")
 
 
 def is_test_source(relative):
@@ -4144,25 +4151,21 @@ def is_test_source(relative):
     return "/Tests/" in "/" + relative or relative.startswith(PACKAGE + "/TestUtilities/")
 
 
-def key_inputs(project):
-    """(test sources, every other file the editor compiles or imports), as sorted relative paths.
+def test_sources(project):
+    """Every test source the editor compiles or imports, as sorted relative paths.
 
     Prose is left out -- a markdown file, and the `.meta` beside it -- because the fixtures that read
-    the repository's text are the ones no launch runs (`text_reading_fixtures`). Everything else the
-    editor can import is in, since `assembly_readers` follows a type through a file that is no test.
+    the repository's text are the ones no launch runs (`text_reading_fixtures`).
     """
-    tests, rest = [], []
-    candidates = list(KEY_FILES)
+    candidates = []
     for root_name in KEY_ROOTS:
         for root, directories, files in os.walk(str(project / root_name)):
             directories[:] = sorted(name for name in directories
                                     if not name.endswith("~"))
             candidates.extend(relative_to(Path(root) / name, project).as_posix()
                               for name in files if not name.endswith((".md", ".md.meta")))
-    for relative in sorted(set(candidates)):
-        if (project / relative).is_file():
-            (tests if is_test_source(relative) else rest).append(relative)
-    return tests, rest
+    return [relative for relative in sorted(set(candidates))
+            if is_test_source(relative) and (project / relative).is_file()]
 
 
 def mutant_record(mutant, project):
@@ -4171,32 +4174,12 @@ def mutant_record(mutant, project):
             "after": mutant.after, "shadowed": sorted(mutant.shadowed)}
 
 
-# The files besides this script that decide a verdict, relative to `scripts/`: what
-# `ci_mutation_shard.py` activates and launches, the modules the campaign imports and the rewriter it
-# builds. Not the workflow or the step that reads the change base: they choose which mutants a run
-# asks about and how long it waits, and a verdict that ran out of time is never recorded.
-TOOL_FILES = ("test_quality/ci_mutation_shard.py", "test_quality/unity_running.py",
-              "test_quality/schemata_tool.py", "test_quality/schemata/MutantSchemata.cs",
-              "ci/licensed_editor.py")
-
-
-def tool_digest(project):
-    """What a verdict depends on that is not the tree under test: this script, `TOOL_FILES` and its
-    operator tables. Part of every `record_key`, so a change to any of them measures again."""
-    here = Path(__file__).resolve()
-    held = [here, *(here.parents[1] / name for name in TOOL_FILES)]
-    parts = [repr((MUTATION_MODEL_VERSION, OPERATORS, WORD_OPERATORS, LINE_PRIORITY))]
-    parts.extend("{}:{}".format(path.name, hashlib.sha256(path.read_bytes()).hexdigest())
-                 for path in held if path.exists())
-    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
-
-
 # --------------------------------------------------------------------------------------------------
 # The record: one verdict per mutant, reused while what decided it stands
 # --------------------------------------------------------------------------------------------------
 
 # An entry's shape, so a reader refuses one written by a tool that laid it out otherwise.
-RECORD_SCHEMA = 2
+RECORD_SCHEMA = 3
 
 # A kill is recorded with at most this many of its behavioural killing cases, first by name. Each one
 # is a condition on reusing it, so recording every case a widely reaching mutant reddens would tie the
@@ -4225,7 +4208,7 @@ def test_index(project):
     track folders, and a nested fixture's carries `Outer+Inner`, whose source is the outer's.
     """
     classes, texts, declarers = {}, {}, {}
-    for relative in key_inputs(project)[0]:
+    for relative in test_sources(project):
         if not relative.endswith(".cs"):
             continue
         try:
@@ -4283,30 +4266,6 @@ def fixture_hashes(project, case, index):
     return {relative: hashlib.sha256(texts[relative].encode()).hexdigest() for relative in sorted(files)}
 
 
-# An attribute list that holds a test attribute anywhere in it: `[Category("x"), Test]`,
-# `[Timeout(1), UnityTest]`, `[NUnit.Framework.Test]`.
-TEST_ATTRIBUTE = re.compile(
-    r"\[([^\]]*)\]")
-TEST_ATTRIBUTE_NAME = re.compile(
-    r"(?:^|,)\s*(?:[A-Za-z_]\w*\.)*(?:Test|TestCase|TestCaseSource|UnityTest|Theory|Property)\s*(?:\(|,|$)")
-
-# Unity writes a `.meta` beside every file, and one that holds a guid only moves with the file it
-# names. An assembly definition's or reference's is kept: other definitions resolve it by that guid.
-GUID_ONLY_META = re.compile(r"\.meta$")
-KEPT_META = (".asmdef.meta", ".asmref.meta")
-
-
-def declares_a_test(text):
-    return any(TEST_ATTRIBUTE_NAME.search(body) for body in TEST_ATTRIBUTE.findall(text))
-
-
-# Unity or the runtime calls a member these mark on its own, so what it writes can reach cases in any
-# assembly.
-DOMAIN_HOOKS = re.compile(
-    r"\b(?:InitializeOnLoad(?:Method)?|RuntimeInitializeOnLoadMethod|InitializeOnEnterPlayMode"
-    r"|DidReloadScripts|ModuleInitializer)(?:Attribute)?\b")
-
-
 def code_text(text, holes=False):
     """`text` with its comments, directives and literals blanked, newlines kept. With `holes`, an
     interpolated string is kept whole, since its holes are code."""
@@ -4316,28 +4275,11 @@ def code_text(text, holes=False):
                    for offset, character in enumerate(text))
 
 
-def is_test_support(relative, text):
-    """Whether a test-side file supports fixtures rather than being one: the shared helpers, every
-    assembly definition and reference, data, and a `.cs` that declares no test, sets up a fixture or
-    declares a domain-load hook.
-
-    `text` is the file's comment-free form, so a test attribute that is commented out declares nothing.
-    A `.meta` is not support unless it belongs to an assembly definition or reference: a new fixture
-    file brings its own, and that must not move what the existing fixtures' kills rest on.
-    """
-    if GUID_ONLY_META.search(relative):
-        return relative.endswith(KEPT_META)
-    if relative.startswith(PACKAGE + "/TestUtilities/") or not relative.endswith(".cs"):
-        return True
-    return (not declares_a_test(text) or "SetUpFixture" in text
-            or bool(DOMAIN_HOOKS.search(code_text(text))))
-
-
 def tests_digest(project):
     """A hash over every test source, with a C# file in its comment-free form: what a recorded verdict
     other than a kill stands on, since any test can be the one that starts killing it."""
     parts = []
-    for relative in key_inputs(project)[0]:
+    for relative in test_sources(project):
         path = project / relative
         if relative.endswith(".cs"):
             held = digestible(path.read_text(encoding="utf-8", errors="replace")).encode()
@@ -4347,16 +4289,6 @@ def tests_digest(project):
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
-# What reads the loaded assemblies rather than the one a case runs in. `Unity.CompilationPipeline.Common`
-# is the post-processor API's namespace, which `CodeGen/` files import.
-ACROSS_ASSEMBLIES = re.compile(
-    r"\bGetAssemblies\b|\bTypeCache\.|\bAssembly\.Load\w*|\bAppDomain\.CurrentDomain\b"
-    r"|\bCompilationPipeline\.(?!Common\b)")
-OWN_ASSEMBLY = re.compile(r"\bGet(?:Executing|Calling)Assembly\b|\bGetType\s*\(\s*\)\s*\.\s*Assembly\b")
-# `typeof(T).Assembly` and `Assembly.GetAssembly(typeof(T))`, capturing `T` without its namespace.
-ASSEMBLY_OF_TYPE = re.compile(
-    r"typeof\(\s*(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*)\s*(?:<[^()]*>)?\s*\)\s*\.\s*Assembly\b"
-    r"|\bAssembly\.GetAssembly\s*\(\s*typeof\(\s*(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*)")
 TYPE_DECLARATION = re.compile(r"\b(?:class|struct|interface|enum|record(?:\s+(?:class|struct))?)\s+@?([A-Za-z_]\w*)")
 DELEGATE_DECLARATION = re.compile(r"\bdelegate\s+[\w<>\[\],.?\s]*?\s@?([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(")
 # Words TYPE_DECLARATION captures that name no type: `where T : struct where U : class`.
@@ -4388,47 +4320,6 @@ def top_level_types(code):
     return names - NOT_A_TYPE
 
 
-def reads_a_test_assembly(code, test_types):
-    """Whether `code` reads a whole test assembly's types or IL: one of `ACROSS_ASSEMBLIES`, an IL
-    read, its own assembly by `GetExecutingAssembly`, `GetCallingAssembly` or `GetType().Assembly`, or
-    the assembly of a type `test_types` holds."""
-    if ACROSS_ASSEMBLIES.search(code) or IL_READ.search(code) or OWN_ASSEMBLY.search(code):
-        return True
-    return any(name in test_types for pair in ASSEMBLY_OF_TYPE.findall(code) for name in pair if name)
-
-
-def assembly_readers(project):
-    """The fixture files that can read another test file through an assembly: one `reads_a_test_assembly`
-    holds for, or one naming a top-level type that a file that is no fixture declares and that either
-    reads one or names such a type in turn.
-
-    A kill such a fixture recorded can rest on any test file's content, which its record does not hash.
-    """
-    code, fixtures = {}, set()
-    for relative in sum(key_inputs(project), []):
-        if not relative.endswith(".cs"):
-            continue
-        try:
-            text = digestible((project / relative).read_text(encoding="utf-8", errors="replace"))
-        except OSError:
-            continue
-        code[relative] = code_text(text, holes=True)
-        if is_test_source(relative) and not is_test_support(relative, text):
-            fixtures.add(relative)
-    test_types = set().union(*(TYPE_DECLARATION.findall(code_text(code[relative]))
-                               for relative in code if is_test_source(relative)))
-    found = {relative for relative, text in code.items() if reads_a_test_assembly(text, test_types)}
-    followed, names = set(code) - fixtures, set()
-    while True:
-        grown = set().union(*(top_level_types(code_text(code[relative])) for relative in found & followed)) - names
-        if not grown:
-            break
-        names |= grown
-        named = re.compile(r"\b(?:{})\b".format("|".join(sorted(map(re.escape, names)))))
-        found |= {relative for relative, text in code.items() if named.search(text)}
-    return found & fixtures
-
-
 def measured_entry(mutant, project, index, text_readers, run):
     """One measured mutant as the record keeps it: its identity, its file's content, its verdict and,
     for a kill, the cases that killed it with the fixture sources they stood on."""
@@ -4447,11 +4338,10 @@ def short_case(case):
     return ".".join(CASE_NAME.match(case).group(1).split(".")[-2:])
 
 
-def kill_problem(record, mutant, project, index, readers):
-    """Why a recorded kill does not stand for this mutant in this tree, or None where it does.
-
-    `readers` is `assembly_readers`' reading of this tree. A record that cannot be read as the
-    shape `measured_entry` writes does not stand either.
+def kill_problem(record, mutant, project, index):
+    """Why a recorded kill does not stand for this mutant in this tree, or None where it does: a
+    killing case is gone, or a source file it was traced to changed. A record that cannot be read as
+    the shape `measured_entry` writes does not stand either.
     """
     try:
         if record["verdict"] != KILLED:
@@ -4460,8 +4350,6 @@ def kill_problem(record, mutant, project, index, readers):
             return "the record is of another mutant"
         if record["file"] != sha(mutant.path):
             return "its file changed since the kill was recorded"
-        if not record["killers"]:
-            return "the record names no killing case that could be traced to a source file"
         for held in record["killers"]:
             now = fixture_hashes(project, held["case"], index)
             if now is None:
@@ -4471,23 +4359,20 @@ def kill_problem(record, mutant, project, index, readers):
                                if now.get(name) != held["files"].get(name))
                 return "the fixture source {} of its killing case {} changed".format(
                     moved[0], short_case(held["case"]))
-            across = sorted(set(now) & readers)
-            if across:
-                return "the fixture source {} of its killing case {} reads another test file through an assembly".format(
-                    across[0], short_case(held["case"]))
     except (KeyError, TypeError, AttributeError, ValueError):
         return "the record cannot be read"
     return None
 
 
-def record_key(mutant, project, tool):
-    """Where the record holds `mutant`'s entry: its identity, its file's bytes and the tool, hashed.
+def record_key(mutant, project):
+    """Where the record holds `mutant`'s entry: its identity, its file's bytes and `MUTATOR_VERSION`,
+    hashed.
 
-    The same mutant of the same file under the same tool has one key, so a later verdict replaces an
-    earlier one and nothing else decides which of two entries counts.
+    The same mutant of the same file under the same mutator has one key, so a later verdict replaces
+    an earlier one and nothing else decides which of two entries counts.
     """
     identity = json.dumps(mutant_record(mutant, project), sort_keys=True)
-    return hashlib.sha256("\n".join((identity, sha(mutant.path), tool)).encode()).hexdigest()
+    return hashlib.sha256("\n".join((identity, sha(mutant.path), str(MUTATOR_VERSION))).encode()).hexdigest()
 
 
 def record_entry(directory, key):
@@ -4500,19 +4385,19 @@ def record_entry(directory, key):
     return held if isinstance(held, dict) and held.get("schema") == RECORD_SCHEMA else None
 
 
-def reuse_problem(entry, mutant, project, index, readers, tests):
+def reuse_problem(entry, mutant, project, index, tests):
     """Why a recorded verdict does not stand for this mutant in this tree, or None where it does.
 
-    StrykerJS's rule: a kill stands while the cases that killed it are still declared and unchanged
-    (`kill_problem`), and any other verdict while no test source changed (`tests`, `tests_digest`'s
-    reading of this tree).
+    StrykerJS's rule: a kill stands while the cases that killed it are still declared and their files
+    unchanged (`kill_problem`), and any other verdict -- a kill traced to no file among them -- while
+    no test source changed (`tests`, `tests_digest`'s reading of this tree).
     """
     try:
         if entry["mutant"] != mutant_record(mutant, project) or entry["file"] != sha(mutant.path):
             return "the record is of another mutant"
-        if entry["verdict"] == KILLED:
-            return kill_problem(entry, mutant, project, index, readers)
-        if entry["verdict"] not in DECIDED + SURVIVING:
+        if entry["verdict"] == KILLED and entry["killers"]:
+            return kill_problem(entry, mutant, project, index)
+        if entry["verdict"] not in RECORDED:
             return "it was {} when last measured".format(entry["verdict"])
         if entry["tests"] != tests:
             return "it was {} when last measured, and a test source changed since".format(entry["verdict"])
@@ -4527,12 +4412,11 @@ def decide_reuse(mutants, directory, project):
     A pure function of the tree and the record: each mutant's entry is found by `record_key` alone.
     """
     reused, reasons = {}, {}
-    tool, index, tests = tool_digest(project), test_index(project), tests_digest(project)
-    readers = assembly_readers(project)
+    index, tests = test_index(project), tests_digest(project)
     for number, mutant in enumerate(mutants, start=1):
-        entry = record_entry(directory, record_key(mutant, project, tool))
+        entry = record_entry(directory, record_key(mutant, project))
         problem = ("the record holds no verdict for it" if entry is None
-                   else reuse_problem(entry, mutant, project, index, readers, tests))
+                   else reuse_problem(entry, mutant, project, index, tests))
         if problem is None:
             reused[number] = entry
         else:
@@ -4577,21 +4461,24 @@ def reuse_report(mutants, reused, reasons, project):
 
 
 def write_record(directory, mutants, reused, project):
-    """An entry for each mutant this run decided and did not reuse, under its `record_key`.
+    """An entry for each mutant this run gave a `RECORDED` verdict and did not reuse, under its
+    `record_key`.
 
-    A mutant without a decided verdict writes none: one no shard recorded, one that timed out, one
-    past `--cap`, and a reused verdict that lapsed.
+    Every entry written is one `reuse_problem` accepts over the tree that wrote it, since an entry the
+    gate could never accept would hold a release and a catch-up chain for good. A mutant without such
+    a verdict writes none: one no shard recorded, one the project lock or the build system kept from
+    its suite, one past `--cap`, and a reused verdict that lapsed.
     """
     run = os.environ.get("GITHUB_RUN_ID", "")
-    tool, tests = tool_digest(project), tests_digest(project)
+    tests = tests_digest(project)
     index, text_readers = test_index(project), text_reading_fixtures(project)
     Path(directory).mkdir(parents=True, exist_ok=True)
     for number, mutant in enumerate(mutants, start=1):
-        if number in reused or mutant.verdict not in DECIDED + SURVIVING:
+        if number in reused or mutant.verdict not in RECORDED:
             continue
         entry = dict(measured_entry(mutant, project, index, text_readers, run),
-                     schema=RECORD_SCHEMA, tool=tool, tests=tests)
-        (Path(directory) / "{}.json".format(record_key(mutant, project, tool))).write_text(
+                     schema=RECORD_SCHEMA, mutator=MUTATOR_VERSION, tests=tests)
+        (Path(directory) / "{}.json".format(record_key(mutant, project))).write_text(
             json.dumps(entry, indent=1, sort_keys=True))
 
 
@@ -5388,6 +5275,10 @@ def gate(mutants, reused, reasons, declared, coverage, project):
               .format(relative_to(path, project), declaration.line, subject))
     print("\ngate: {} mutant(s); {} resolved, {} unresolved, {} unanswered, {} stale".format(
         len(mutants), len(reused), len(unresolved), len(unanswered), len(stale)))
+    if unresolved:
+        print("An unresolved mutant is one no record run has measured to a verdict yet: the next record "
+              "run on this\nbranch measures it, and `gh workflow run mutation.yml --ref <branch>` starts "
+              "one. A pull request\nanswers an unanswered survivor or a stale declaration.")
     return 1 if unresolved or unanswered or stale else 0
 
 
@@ -5840,9 +5731,9 @@ def main():
         # Read against this tree rather than taken from the plan's file: the plan decided it on a
         # runner of its own, and a verdict that does not stand here is not a pass.
         if reused:
-            index, readers, tests = test_index(project), assembly_readers(project), tests_digest(project)
+            index, tests = test_index(project), tests_digest(project)
             for number, record in reused.items():
-                problem = reuse_problem(record, mutants[number - 1], project, index, readers, tests)
+                problem = reuse_problem(record, mutants[number - 1], project, index, tests)
                 if problem is not None:
                     mutants[number - 1].verdict = REUSE_LAPSED
                     mutants[number - 1].detail = problem
@@ -5895,7 +5786,9 @@ def main():
     if args.collect is not None and reading:
         print("\n" + reuse_report(mutants, reused, reasons, project))
 
-    unmeasured = [m for m in mutants if m.verdict not in DECIDED + SURVIVING + (PENDING,)]
+    unmeasured = [m for number, m in enumerate(mutants, start=1)
+                  if m.verdict not in DECIDED + SURVIVING + (PENDING,)
+                  and not (number in reused and m.verdict in RECORDED_FINAL)]
     if pending:
         print("\n--- left to a later run, past --cap: {} mutant(s) ---".format(len(pending)))
     if unmeasured:

@@ -2,19 +2,21 @@
 """Refuse to release a commit the mutation record does not answer, or whose required CI did not pass.
 
 `.github/workflows/upm.yml` runs this on a release dispatch, before anything is tagged, over the
-commit the dispatch checked out, which is the commit the release promotes. CONTRIBUTING.md's release
+commit the dispatch checked out, which is the commit the release promotes and the one `--release`
+names. CONTRIBUTING.md's release
 section owns the rule and the way out; this holds the decision:
 
-- On the default branch, the newest completed push run of each required workflow
-  (`red_base.REQUIRED_WORKFLOWS`) at that commit concluded `success`.
-- `mutation_check.py --gate` over the campaign's scope at that commit (`change_base.campaign_scope`),
+- Where the commit is on the default branch, however the release was dispatched, the newest completed
+  push run of each required workflow (`red_base.REQUIRED_WORKFLOWS`) at it concluded `success`.
+- `mutation_check.py --gate` over the campaign's scope at the commit (`change_base.campaign_scope`),
   reading the record branch (`mutation_record.py`): every mutant holds a standing verdict, and every
   survivor among them is answered.
 
-The mutation half runs the release commit's own copy of the campaign's scripts, which is the copy a
-campaign on that commit measured and recorded with: an entry's key carries the digest of the tool that
-wrote it. It reads git and the record alone, so the same commit and the same record give the same
-answer, and a commit whose tree has no record tooling is refused rather than passed.
+The mutation half reads git and the record alone: it runs in a worktree checked out from the release
+commit's objects, so nothing uncommitted in the dispatch's checkout reaches it, and it refuses a
+shallow repository, where the scope's tag and cutover are not in the history to be found. It runs that
+commit's own copy of the campaign's scripts, the copy its record runs measured with, and refuses a
+commit whose tree has none.
 
     python3 scripts/release/mutation_gate.py --release SHA [--skip REASON]
 """
@@ -23,6 +25,7 @@ import argparse
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,6 +41,10 @@ def load(path, name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def git(project, *arguments):
+    return subprocess.run(["git", "-C", str(project), *arguments], capture_output=True, text=True)
 
 
 def gh_json(path):
@@ -64,12 +71,20 @@ def ci_problems(slug, sha, workflows, read=gh_json):
     return problems
 
 
-def mutation_gate(project, record_dir=None):
-    """(`mutation_check.py --gate`'s exit, what it printed) over the campaign's scope at `project`'s
-    HEAD, with the record fetched from origin unless `record_dir` already holds it."""
-    change_base = load(project / "scripts/ci/change_base.py", "change_base")
+def on_default_branch(project, default_branch, release):
+    """Whether origin's default branch holds `release`, fetched whole so the answer is not a cut's."""
+    if git(project, "fetch", "--quiet", "origin", default_branch).returncode != 0:
+        raise SystemExit("origin/{} could not be fetched, so whether it holds {} is unknown".format(
+            default_branch, release[:12]))
+    return git(project, "merge-base", "--is-ancestor", release, "FETCH_HEAD").returncode == 0
+
+
+def mutation_gate(tree, project, record_dir=None):
+    """(`mutation_check.py --gate`'s exit, what it printed) over the campaign's scope at `tree`'s HEAD,
+    with the record fetched from `project`'s origin unless `record_dir` already holds it."""
+    change_base = load(tree / "scripts/ci/change_base.py", "change_base")
     here = os.getcwd()
-    os.chdir(project)
+    os.chdir(tree)
     try:
         base = change_base.campaign_scope()
     finally:
@@ -77,11 +92,10 @@ def mutation_gate(project, record_dir=None):
     with tempfile.TemporaryDirectory(prefix="mutation-gate-") as scratch:
         if record_dir is None:
             record_dir = scratch
-            load(project / "scripts/ci/mutation_record.py", "mutation_record").fetch(project, scratch)
-        done = subprocess.run([sys.executable, str(project / "scripts/test_quality/mutation_check.py"),
-                               "--project", str(project), "--base", base, "--gate",
-                               "--reuse-from", str(record_dir)],
-                              capture_output=True, text=True, cwd=str(project))
+            load(tree / "scripts/ci/mutation_record.py", "mutation_record").fetch(project, scratch)
+        done = subprocess.run([sys.executable, "scripts/test_quality/mutation_check.py",
+                               "--project", ".", "--base", base, "--gate", "--reuse-from", str(record_dir)],
+                              capture_output=True, text=True, cwd=str(tree))
     return done.returncode, "scope: {}\n{}{}".format(base, done.stdout, done.stderr)
 
 
@@ -98,30 +112,43 @@ def main(argv=None, environ=None, read=gh_json):
         print("::warning::the release gate was skipped for {}: {}".format(args.release[:12], args.skip.strip()))
         return 0
     project = Path(args.project).resolve()
-    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(project), capture_output=True,
-                          text=True).stdout.strip()
-    if head != args.release:
-        print("::error::the checkout is {}, not the release commit {}, and the gate reads the "
-              "checkout".format(head or "no commit", args.release))
+    if git(project, "rev-parse", "--is-shallow-repository").stdout.strip() != "false":
+        print("::error::the repository is shallow, or git could not say: the scope's release tag and "
+              "cutover may be cut off, so no scope read here can be trusted. Check out the whole history.")
         return 1
     failed = False
-    default_branch, branch = environ.get("DEFAULT_BRANCH", ""), environ.get("GITHUB_REF_NAME", "")
-    if branch and branch == default_branch:
+    default_branch = environ.get("DEFAULT_BRANCH", "")
+    if not default_branch:
+        print("DEFAULT_BRANCH is not set, so the required CI is not read")
+    elif on_default_branch(project, default_branch, args.release):
         red_base = load(project / "scripts/pr/red_base.py", "red_base")
         for problem in ci_problems(environ.get("GITHUB_REPOSITORY", ""), args.release,
                                    red_base.REQUIRED_WORKFLOWS, read):
             print("::error::{}".format(problem))
             failed = True
-    missing = [name for name in TOOLING if not (project / name).is_file()]
-    if missing:
-        print("::error::{} is not in this commit's tree, so no campaign on it could have written the "
-              "record it would be gated on".format(missing[0]))
-        return 1
-    code, printed = mutation_gate(project, args.record)
+    else:
+        print("{} is not on {}, whose push runs alone the required CI is read from".format(
+            args.release[:12], default_branch))
+    scratch = Path(tempfile.mkdtemp(prefix="mutation-gate-tree-"))
+    tree = scratch / "tree"
+    try:
+        if git(project, "worktree", "add", "--quiet", "--detach", str(tree), args.release).returncode != 0:
+            print("::error::no worktree of {} could be checked out".format(args.release))
+            return 1
+        missing = [name for name in TOOLING if not (tree / name).is_file()]
+        if missing:
+            print("::error::{} is not in this commit's tree, so no campaign on it could have written the "
+                  "record it would be gated on".format(missing[0]))
+            return 1
+        code, printed = mutation_gate(tree, project, args.record)
+    finally:
+        git(project, "worktree", "remove", "--force", str(tree))
+        shutil.rmtree(scratch, ignore_errors=True)
     print(printed)
     if code != 0:
-        print("::error::the mutation record does not answer every mutant of this release; "
-              "CONTRIBUTING.md's release section says how to measure them or to skip the gate")
+        print("::error::the mutation record does not answer every mutant of this release; what the gate "
+              "printed above names each and how it is answered, and CONTRIBUTING.md's release section "
+              "says how to release without the gate")
         failed = True
     return 1 if failed else 0
 

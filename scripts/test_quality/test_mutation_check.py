@@ -15,6 +15,7 @@ Run: python3 scripts/test_quality/test_mutation_check.py
 """
 
 import argparse
+import ast
 import contextlib
 import fcntl
 import hashlib
@@ -4212,7 +4213,7 @@ class CampaignVerdictTests(unittest.TestCase):
         mutation_check.write_verdict(output, 1, old_digest, mutant, campaign.project)
 
         # Act
-        with mock.patch.object(mutation_check, "MUTATION_MODEL_VERSION", "next", create=True):
+        with mock.patch.object(mutation_check, "MUTATOR_VERSION", "next"):
             new_digest = mutation_check.scope_digest(
                 "aaaaaaa", targets, campaign.project, "EditMode")
             reading = mutation_check.read_verdict(output, 1, new_digest, mutant, campaign.project)
@@ -6259,12 +6260,12 @@ class KeyedProject(StubbedCampaign):
 
 class CampaignKeyTests(unittest.TestCase):
     """What a mutant's record key moves with, and what it leaves alone: the mutant, its file's bytes
-    and the tool, as StrykerJS keys an incremental result, and nothing else in the tree."""
+    and `MUTATOR_VERSION`, as StrykerJS keys an incremental result, and nothing else in the tree."""
 
     def keyed(self, project):
         mutant = mutants_of(project.source.read_text())[0]
         mutant.path = project.source
-        return mutation_check.record_key(mutant, project.project, mutation_check.tool_digest(project.project))
+        return mutation_check.record_key(mutant, project.project)
 
     def test_Given_TheSameContentInTwoCheckouts_When_Keyed_Then_TheKeysAreEqual(self):
         # Act
@@ -6297,45 +6298,58 @@ class CampaignKeyTests(unittest.TestCase):
         # Assert
         self.assertEqual(after, before)
 
-    def test_Given_TheToolChanged_When_Keyed_Then_TheKeyMoves(self):
+    def test_Given_TheMutatorVersionRaised_When_Keyed_Then_TheKeyMoves(self):
         # Arrange
         project = KeyedProject()
         before = self.keyed(project)
 
         # Act
-        with mock.patch.object(mutation_check, "LINE_PRIORITY", tuple(reversed(mutation_check.LINE_PRIORITY))):
+        with mock.patch.object(mutation_check, "MUTATOR_VERSION", mutation_check.MUTATOR_VERSION + 1):
             after = self.keyed(project)
 
         # Assert
         self.assertNotEqual(after, before)
 
-    def test_Given_TheCampaignsToolFiles_When_Listed_Then_EachExists(self):
-        # Arrange
-        scripts = Path(mutation_check.__file__).resolve().parents[1]
 
+# The code `MUTATOR_VERSION` answers for, digested as `mutator_digest` reads it, at each version. A
+# change to that code fails `MutatorVersionTests` until the version is raised and its digest added here.
+MUTATOR_DIGESTS = {
+    10: "b65e5f36cb41ebbd342d3890b237167a57d5f0f54f1642c822d785ab23bb8181",
+}
+
+
+def mutator_digest():
+    """A hash of the `Mutant` class and of everything from `CHARACTER_LITERAL_REACH` through
+    `apply_mutation` in mutation_check.py: the C# reading that places a mutant, the operator tables, the
+    cap and the rewrite. Lines that are blank or only a comment are left out."""
+    source = Path(mutation_check.__file__).read_text()
+    lines = source.splitlines()
+    body = ast.parse(source).body
+
+    def named(node):
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            return node.name
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            return node.targets[0].id
+        return None
+
+    names = [named(node) for node in body]
+    first, last = names.index("CHARACTER_LITERAL_REACH"), names.index("apply_mutation")
+    chosen = [body[names.index("Mutant")]] + body[first:last + 1]
+    kept = [line.rstrip() for node in chosen for line in lines[node.lineno - 1:node.end_lineno]
+            if line.strip() and not line.strip().startswith("#")]
+    return hashlib.sha256("\n".join(kept).encode()).hexdigest()
+
+
+class MutatorVersionTests(unittest.TestCase):
+    """`MUTATOR_VERSION` against the code it stands for."""
+
+    def test_Given_TheMutatorsCode_When_Digested_Then_ItIsTheDigestPinnedToItsVersion(self):
         # Act
-        missing = [name for name in mutation_check.TOOL_FILES if not (scripts / name).is_file()]
+        digest = mutator_digest()
 
-        # Assert
-        self.assertEqual(missing, [])
-
-    def test_Given_TheModulesTheCampaignImports_When_ComparedWithTheToolFiles_Then_NoneIsLeftOut(self):
-        # Arrange -- a sibling module the campaign or its shard wrapper imports from scripts/ is part
-        # of what a verdict ran under.
-        scripts = Path(mutation_check.__file__).resolve().parents[1]
-        sources = [scripts / "test_quality" / name for name in ("mutation_check.py", "ci_mutation_shard.py")]
-        imported = set()
-        for source in sources:
-            imported.update(re.findall(r"^\s*(?:import|from)\s+(\w+)", source.read_text(), re.MULTILINE))
-        local = {path.relative_to(scripts).as_posix() for path in scripts.glob("*/*.py")
-                 if path.stem in imported and path.name != "mutation_check.py"}
-
-        # Act
-        left_out = sorted(local - set(mutation_check.TOOL_FILES))
-
-        # Assert
-        self.assertEqual(left_out, [])
-
+        # Assert — on a mismatch, raise MUTATOR_VERSION and pin this digest under the new number.
+        self.assertEqual(MUTATOR_DIGESTS.get(mutation_check.MUTATOR_VERSION), digest)
 
 
 class MutantListHandOffTests(unittest.TestCase):
@@ -10584,8 +10598,7 @@ class KillStandingTests(unittest.TestCase):
 
     def problem(self, campaign, mutant, record):
         return mutation_check.kill_problem(record, mutant, campaign.project,
-                                           mutation_check.test_index(campaign.project),
-                                           mutation_check.assembly_readers(campaign.project))
+                                           mutation_check.test_index(campaign.project))
 
     def test_Given_ATreeNothingMovedIn_When_TheKillIsChecked_Then_ItStands(self):
         # Arrange
@@ -10654,16 +10667,35 @@ class KillStandingTests(unittest.TestCase):
         # Assert
         self.assertIn("only a kill is reused", problem or "")
 
-    def test_Given_AKillWhoseCasesWereAllUntraceable_When_TheKillIsChecked_Then_ItDoesNotStand(self):
-        # Arrange
+    def untraced(self, campaign, mutant, record):
+        """A reading, by `reuse_problem`, of why `record` as a kill traced to no source file does not stand."""
+        entry = dict(record, killers=[], tests=mutation_check.tests_digest(campaign.project))
+        return lambda: mutation_check.reuse_problem(
+            entry, mutant, campaign.project, mutation_check.test_index(campaign.project),
+            mutation_check.tests_digest(campaign.project))
+
+    def test_Given_AKillTracedToNoFile_When_NoTestChanged_Then_ItStands(self):
+        # Arrange — an entry the gate refused for good would hold a release and the catch-up chain.
         campaign, mutant, record = self.killed()
-        record["killers"] = []
+        reread = self.untraced(campaign, mutant, record)
 
         # Act
-        problem = self.problem(campaign, mutant, record)
+        problem = reread()
 
         # Assert
-        self.assertIn("names no killing case", problem or "")
+        self.assertIsNone(problem)
+
+    def test_Given_AKillTracedToNoFile_When_ATestChanged_Then_ItIsMeasuredAgain(self):
+        # Arrange — StrykerJS's rule for a result no culprit test is known for.
+        campaign, mutant, record = self.killed()
+        reread = self.untraced(campaign, mutant, record)
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/NewTests.cs", "NewTests", "Case")
+
+        # Act
+        problem = reread()
+
+        # Assert
+        self.assertIn("a test source changed", problem or "")
 
     def test_Given_ARecordMissingItsFields_When_TheKillIsChecked_Then_ItCannotBeRead(self):
         # Arrange
@@ -10730,13 +10762,13 @@ class ReuseDecisionTests(unittest.TestCase):
         # Assert
         self.assertEqual((sorted(reused), "a test source changed" in reasons[2]), ([1], True))
 
-    def test_Given_ARecordOfAnotherToolVersion_When_Decided_Then_NothingIsReused(self):
+    def test_Given_ARecordOfAnotherMutatorVersion_When_Decided_Then_NothingIsReused(self):
         # Arrange
         campaign = RecordCampaign()
         campaign.after_a_campaign()
 
         # Act
-        with mock.patch.object(mutation_check, "tool_digest", lambda _project: "0" * 64):
+        with mock.patch.object(mutation_check, "MUTATOR_VERSION", mutation_check.MUTATOR_VERSION + 1):
             reused, _ = self.decided(campaign)
 
         # Assert
@@ -10753,6 +10785,29 @@ class ReuseDecisionTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(reused, {})
+
+    def test_Given_EachVerdictTheRecordKeeps_When_ReadOverTheTreeThatWroteIt_Then_EveryOneIsReused(self):
+        # Arrange — an entry the gate cannot accept over its own tree is unresolved for good: it holds
+        # every release, and every run deals its mutant again.
+        campaign = RecordCampaign()
+        mutant = self.mutants_of(campaign)[0]
+        mutant.platform = "EditMode"
+        shapes = [(verdict, ()) for verdict in mutation_check.RECORDED]
+        shapes += [(mutation_check.KILLED, (RecordCampaign.CASES["mutant-001.xml"],)),
+                   (mutation_check.KILLED, ("Velvet.Tests.Nowhere.Given_A_When_B_Then_Untraceable",))]
+
+        # Act
+        refused = []
+        for number, (verdict, killers) in enumerate(shapes):
+            mutant.verdict, mutant.killers = verdict, killers
+            directory = campaign.project / "record-{}".format(number)
+            mutation_check.write_record(directory, [mutant], {}, campaign.project)
+            reused, reasons = mutation_check.decide_reuse([mutant], directory, campaign.project)
+            if 1 not in reused:
+                refused.append("{} {}: {}".format(verdict, killers, reasons.get(1)))
+
+        # Assert
+        self.assertEqual(refused, [])
 
     def test_Given_TheSameTreeAndRecord_When_DecidedTwice_Then_TheDecisionsAreEqual(self):
         # Arrange
@@ -10874,19 +10929,7 @@ class RecordContextTests(unittest.TestCase):
 
     OTHER = TESTS + "OtherTests.cs"
 
-    # GREEN_ON_BASE(characterization): the base reuses this kill, and a hook named in a string keeps it.
-    def test_Given_AFixtureFileNamingADomainLoadHookOnlyInAString_When_Decided_Then_TheKillIsStillReused(self):
-        # Arrange
-        edit = self.append(self.OTHER, "class Names { string s = \"[InitializeOnLoad]\"; }\n")
-
-        # Act
-        reused, _ = self.reused_after(edit)
-
-        # Assert
-        self.assertEqual(reused, [1])
-
     PROBE = TESTS + "ProbeTests.cs"
-    SCANNER = "Packages/com.velvet.core/Runtime/Scanner.cs"
     READS = "System.AppDomain.CurrentDomain.GetAssemblies()"
 
     def killer(self, member, head="", beside=None):
@@ -10905,98 +10948,16 @@ class RecordContextTests(unittest.TestCase):
         """`reused_after` an edit to the fixture that killed nothing, over a tree `before` shaped."""
         return self.reused_after(self.append(self.OTHER, "class Added { }\n"), before)
 
-    def test_Given_AKillingFixtureReadingTheLoadedAssemblies_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
-        # Arrange -- what it reads can be the edited fixture's assembly.
+    def test_Given_AKillingFixtureReadingTheLoadedAssemblies_When_AnotherFixtureIsEdited_Then_TheKillIsStillReused(self):
+        # Arrange -- StrykerJS's rule reads the killing test's own files and no other, whatever that
+        # test reads at run time; a kill lapsing here for good would hold every release.
         before = self.killer("        private static object All() => {};\n".format(self.READS))
 
         # Act
         reused, reasons = self.reused_past_a_test_only_fix(before)
 
         # Assert
-        self.assertIn("through an assembly", reasons.get(1, ""))
-
-    def test_Given_AKillingFixtureReadingTheLoadedAssembliesInAnInterpolationHole_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
-        # Arrange -- the hole is code, though the literal around it is not.
-        before = self.killer("        private static string Count => $\"{{{}.Length}}\";\n".format(self.READS))
-
-        # Act
-        reused, reasons = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertIn("through an assembly", reasons.get(1, ""))
-
-    def test_Given_AKillingFixtureNamingARuntimeTypeThatReadsTheLoadedAssemblies_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
-        # Arrange
-        scanner = "namespace Velvet\n{{\n    internal static class Scanner\n    {{\n        internal static object All() => {};\n    }}\n}}\n".format(self.READS)
-        before = self.killer("        private static object All() => Scanner.All();\n", beside={self.SCANNER: scanner})
-
-        # Act
-        reused, reasons = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertIn("through an assembly", reasons.get(1, ""))
-
-    def test_Given_AKillingFixtureNamingATestHelperThatReadsTheLoadedAssemblies_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
-        # Arrange -- a helper declaring no test is followed as a runtime source is.
-        helper = "namespace Velvet.Tests\n{{\n    internal static class Scan\n    {{\n        internal static object All() => {};\n    }}\n}}\n".format(self.READS)
-        before = self.killer("        private static object All() => Scan.All();\n", beside={self.TESTS + "Scan.cs": helper})
-
-        # Act
-        reused, reasons = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertIn("through an assembly", reasons.get(1, ""))
-
-    def test_Given_AKillingFixtureDerivedFromAFixtureThatReadsTheLoadedAssemblies_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
-        # Arrange -- the base declares cases of its own, so it is a fixture rather than a followed helper.
-        base = ("namespace Velvet.Tests\n{{\n    internal abstract class BaseTests\n    {{\n"
-                "        protected static object All() => {};\n        [Test]\n        public void Shared() {{ }}\n"
-                "    }}\n}}\n").format(self.READS)
-
-        def before(campaign):
-            (campaign.project / (self.TESTS + "BaseTests.cs")).write_text(base)
-            campaign.write_fixture(self.PROBE, "ProbeTests", "Given_A_When_B_Then_Probe", " : BaseTests")
-
-        # Act
-        reused, reasons = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertIn("through an assembly", reasons.get(1, ""))
-
-    # GREEN_ON_BASE(characterization): the base reuses this kill, and a read named in a string keeps it.
-    def test_Given_AKillingFixtureNamingTheLoadedAssembliesOnlyInAString_When_AnotherFixtureIsEdited_Then_TheKillIsStillReused(self):
-        # Arrange
-        before = self.killer("        private const string Name = \"GetAssemblies\";\n")
-
-        # Act
-        reused, _ = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertEqual(reused, [1])
-
-    # GREEN_ON_BASE(characterization): the base reuses this kill, and importing that namespace keeps it.
-    def test_Given_AKillingFixtureImportingThePostProcessorNamespace_When_AnotherFixtureIsEdited_Then_TheKillIsStillReused(self):
-        # Arrange
-        before = self.killer("", head="using Unity.CompilationPipeline.Common.Diagnostics;\n")
-
-        # Act
-        reused, _ = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertEqual(reused, [1])
-
-    # GREEN_ON_BASE(characterization): the base reuses this kill, and a reader's nested name keeps it.
-    def test_Given_AKillingFixtureSpellingOnlyANestedTypeNameOfARuntimeReader_When_AnotherFixtureIsEdited_Then_TheKillIsStillReused(self):
-        # Arrange -- `Item` here is the fixture's own; the reader's is spelt `Scanner.Item` elsewhere.
-        scanner = ("namespace Velvet\n{{\n    internal static class Scanner\n    {{\n        internal sealed class Item {{ }}\n"
-                   "        internal static object All() => {};\n    }}\n}}\n").format(self.READS)
-        before = self.killer("        private sealed class Item { }\n", beside={self.SCANNER: scanner})
-
-        # Act
-        reused, _ = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertEqual(reused, [1])
+        self.assertEqual((sorted(reused), reasons.get(1)), ([1], None))
 
 
     def other_with(self, helper):
@@ -11075,110 +11036,9 @@ class RecordContextTests(unittest.TestCase):
         # Assert
         self.assertEqual(reused, [1])
 
-    def test_Given_AKillingFixtureListingItsOwnAssemblysTypes_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
-        # Arrange -- the edited fixture's types are among those it lists.
-        before = self.killer("        private static object All() => typeof(ProbeTests).Assembly.GetTypes();\n")
 
-        # Act
-        reused, reasons = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertIn("through an assembly", reasons.get(1, ""))
-
-    def test_Given_AKillingFixtureReadingTheExecutingAssembly_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
-        # Arrange
-        before = self.killer("        private static object All() => "
-                             "System.Reflection.Assembly.GetExecutingAssembly().GetTypes();\n")
-
-        # Act
-        reused, reasons = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertIn("through an assembly", reasons.get(1, ""))
-
-    def test_Given_AKillingFixtureReadingCompiledIL_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
-        # Arrange -- the IL it reads holds every file of the assembly it reads.
-        before = self.killer("        private static object Il(string path) => ModuleDefinition.ReadModule(path);\n")
-
-        # Act
-        reused, reasons = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertIn("through an assembly", reasons.get(1, ""))
-
-    # GREEN_ON_BASE(characterization): the base reuses this kill, and the runtime assembly's types keep it.
-    def test_Given_AKillingFixtureListingTheRuntimeAssemblysTypes_When_AnotherFixtureIsEdited_Then_TheKillIsStillReused(self):
-        # Arrange -- `Probe` is declared under Runtime/, which the production digest already covers.
-        before = self.killer("        private static object All() => typeof(Probe).Assembly.GetTypes();\n")
-
-        # Act
-        reused, _ = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertEqual(reused, [1])
-
-    def test_Given_AKillingFixtureImportingARuntimeReaderStatically_When_AnotherFixtureIsEdited_Then_TheKillLapses(self):
-        # Arrange -- the call never spells `Scanner`; the directive does.
-        scanner = "namespace Velvet\n{{\n    internal static class Scanner\n    {{\n        internal static object All() => {};\n    }}\n}}\n".format(self.READS)
-        before = self.killer("        private static object Everything() => All();\n",
-                             head="using static Velvet.Scanner;\n", beside={self.SCANNER: scanner})
-
-        # Act
-        reused, reasons = self.reused_past_a_test_only_fix(before)
-
-        # Assert
-        self.assertIn("through an assembly", reasons.get(1, ""))
-
-
-class CrossAssemblySpellingTests(unittest.TestCase):
-    """What the two reuse refusals read in a C# source."""
-
-    def test_Given_EachDomainLoadHookSpelling_When_Read_Then_EveryOneIsFound(self):
-        # Arrange
-        spellings = ["[InitializeOnLoad] internal static class Boot { }",
-                     "[UnityEditor.InitializeOnLoadAttribute] internal static class Boot { }",
-                     "[InitializeOnLoadMethod] private static void Boot() { }",
-                     "[UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType."
-                     "SubsystemRegistration)] private static void Boot() { }",
-                     "[InitializeOnEnterPlayMode] private static void Boot() { }",
-                     "[UnityEditor.Callbacks.DidReloadScripts] private static void Boot() { }",
-                     "[ModuleInitializer] internal static void Boot() { }"]
-
-        # Act
-        found = [bool(mutation_check.DOMAIN_HOOKS.search(text)) for text in spellings]
-
-        # Assert
-        self.assertEqual(found, [True] * len(spellings))
-
-    def test_Given_EachReadAcrossTheLoadedAssemblies_When_Read_Then_EveryOneIsFound(self):
-        # Arrange
-        spellings = ["foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())",
-                     "var wanted = CompilationPipeline.GetAssemblies(AssembliesType.Player)",
-                     "var names = CompilationPipeline.GetAssemblyNameFromScriptPath(path)",
-                     "return new StyleTableProbe(Assembly.Load(name));",
-                     "var types = TypeCache.GetTypesWithAttribute<StoryAttribute>();"]
-
-        # Act
-        found = [bool(mutation_check.ACROSS_ASSEMBLIES.search(text)) for text in spellings]
-
-        # Assert
-        self.assertEqual(found, [True] * len(spellings))
-
-    def test_Given_EachReadOfATestAssembly_When_Read_Then_EveryOneIsFound(self):
-        # Arrange
-        spellings = ["var types = typeof(ProbeTests).Assembly.GetTypes();",
-                     "var types = typeof(Velvet.Tests.ProbeTests).Assembly.GetTypes();",
-                     "var types = typeof(ProbeTests<int>).Assembly.GetTypes();",
-                     "var types = System.Reflection.Assembly.GetAssembly(typeof(ProbeTests)).GetTypes();",
-                     "var types = this.GetType().Assembly.GetTypes();",
-                     "var types = Assembly.GetCallingAssembly().GetTypes();",
-                     "var module = AssemblyDefinition.ReadAssembly(path);"]
-
-        # Act
-        found = [mutation_check.reads_a_test_assembly(text, {"ProbeTests"}) for text in spellings]
-
-        # Assert
-        self.assertEqual(found, [True] * len(spellings))
+class TopLevelTypeTests(unittest.TestCase):
+    """Which types a C# source declares outside every other type, which a killing case's trace follows."""
 
     def test_Given_TypesNestedAndNot_When_Read_Then_OnlyThoseOutsideAnotherTypeAreFound(self):
         # Arrange -- a block namespace, a file-scoped one, and members nested two deep.
@@ -11238,7 +11098,7 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((campaign.plan_output("reusing"), campaign.plan_output("shards"),
-                          [record["platform"] for record in campaign.written_record().get("records", [])]),
+                          sorted(record["platform"] for record in campaign.written_record().get("records", []))),
                          ("2", "[]", ["EditMode", "PlayMode"]))
 
     def test_Given_AReusingPlan_When_Printed_Then_ItCountsTheReusedAndNamesWhyTheOtherIsMeasured(self):
@@ -11409,6 +11269,35 @@ class RecordGateTests(unittest.TestCase):
         campaign.measure()
         campaign.decide()
         return campaign
+
+    def final_in_the_record(self):
+        """A campaign whose record holds a timeout for its first mutant and a compile error for its
+        second, as a run that measured them would have written them."""
+        campaign = self.killed_both()
+        for path, verdict in zip(sorted(campaign.record.glob("*.json"),
+                                        key=lambda path: json.loads(path.read_text())["mutant"]["line"]),
+                                 (mutation_check.TIMED_OUT, mutation_check.UNCOMPILABLE)):
+            path.write_text(json.dumps(dict(json.loads(path.read_text()), verdict=verdict, killers=[])))
+        return campaign
+
+    def test_Given_ATimeoutAndACompileErrorInTheRecord_When_Gated_Then_ItPasses(self):
+        # Act — StrykerJS scores the one as detected and the other as no result.
+        code, _ = self.gate(self.final_in_the_record())
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_ATimeoutAndACompileErrorInTheRecord_When_ALaterRunReusesThem_Then_ItPasses(self):
+        # Arrange — failing every run that reuses them would turn each record run red for good.
+        campaign = self.final_in_the_record()
+        campaign.plan()
+        reusing = campaign.plan_output("reusing")
+
+        # Act
+        code = campaign.decide("--reuse", str(campaign.project / "reuse.json"))
+
+        # Assert
+        self.assertEqual((reusing, code), ("2", 0))
 
     def test_Given_EveryMutantKilledInTheRecord_When_Gated_Then_ItPasses(self):
         # Act

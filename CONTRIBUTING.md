@@ -249,43 +249,58 @@ backfilled. `ScopeTests` holds both orders and the history with no cutover.
 
 **The record is a branch of one file per verdict.** The `mutation-record` branch holds an entry for each
 mutant a run decided, at `records/<key>.json`, where the key hashes the mutant (file, line, column,
-operator and both texts), the mutated file's bytes, and the tool: `mutation_check.py`, its operator
-tables and priority order, and the scripts the shards run or import (`TOOL_FILES`). A run fetches the
+operator and both texts), the mutated file's bytes, and `MUTATOR_VERSION`. A run fetches the
 branch; its `record` job, the only job that writes it, commits what the verdict wrote and pushes, building
 the commit with an index of its own and retrying over a newer branch when a push lost a race
 (`scripts/ci/mutation_record.py`). Entries under different keys never touch, so no two runs conflict,
 and the same key written again is the newer verdict. The branch shares no history with the code and
 nothing merges it. `protect-main` covers `refs/heads/main` alone, so the workflow's token can push the
 branch; no ruleset holds anyone else off it, and one restricting its updates to the GitHub Actions
-integration would. A verdict measured to nothing — no shard recorded it, it did not build, the
-project lock was held — writes no entry, so the next run measures it.
+integration would. A mutant measured to nothing — no shard recorded it, the project lock or the build
+system kept its suite from running, its assembly was never rebuilt — writes no entry, so the next run
+measures it.
+
+**`MUTATOR_VERSION` is the tool's part of the key, and only the mutator moves it.** It stands for what
+decides which mutants a tree has and how each is written into its file: the `Mutant` class and
+`mutation_check.py` from `CHARACTER_LITERAL_REACH` through `apply_mutation` — the reading of C# that
+places a mutant, the operator tables, the one-per-line cap and the rewrite. Any other edit to the
+tooling keeps every entry, where a digest of the whole tool in the key would re-key the scope on every
+edit to `mutation_check.py`. `MutatorVersionTests` pins a
+digest of that code to each version and fails when the code moves without the version being raised
+and the new digest pinned beside it. An edit elsewhere that changes what a verdict means raises the
+version by hand, which measures everything again.
 
 **An entry is reused by StrykerJS's rule**, which reuses a kill while the test that killed it still
 exists unchanged, and any other result while no new test covers it and no test changed. Here an
-entry is found only for the same mutant of the same file bytes under the same tool, and then:
+entry is found only for the same mutant of the same file bytes under the same `MUTATOR_VERSION`, and
+then:
 
-- a kill stands while every killing case it recorded — up to `MAX_RECORDED_KILLERS` of its behavioural
-  ones, the first by name, each with the hash of every source file that declares the case's fixture or
-  one it derives from, and of every test source declaring a type, outside any other type, or an
-  extension method that one of those spells in its code, followed through such sources in turn — is
-  still declared in the tree, no code in the files recorded for it has changed, and none of those files
-  reads another test file through an assembly: spells one of the reads `ACROSS_ASSEMBLIES` lists, an
-  IL read, its own assembly (`OWN_ASSEMBLY`), or the assembly of a type a test source declares
-  (`ASSEMBLY_OF_TYPE`), or names a type declared outside any other type by a C# file that is not a
-  fixture and that spells one or names such a type in turn, a `using static` of it included. Comments
-  and string literals other than interpolated ones are not read for it, nor for the helpers above, and
-  comments are left out of each hash;
-- any other verdict — a survivor, an uncovered mutant, a hang, a crash — stands while no test source
-  changed: the entry carries `tests_digest`, a hash over every test source (every file under a `Tests/`
-  directory and under `Packages/com.velvet.core/TestUtilities/`, a C# one without its comments), and a
-  change to any of them measures it again.
+- a kill traced to its killing cases stands while every one it recorded — up to
+  `MAX_RECORDED_KILLERS` of its behavioural ones, the first by name, each with the hash of every source
+  file that declares the case's fixture or one it derives from, and of every test source declaring a
+  type, outside any other type, or an extension method that one of those spells in its code, followed
+  through such sources in turn — is still declared in the tree and no code in the files recorded for it
+  has changed. Comments are left out of each hash. What a killing case reads at run time is not
+  followed: a fixture that reads every loaded assembly is a test file like any other;
+- any other verdict — a survivor, an uncovered mutant, a hang, a crash, a compile error, a timeout,
+  and a kill traced to no case — stands while no test source changed: the entry carries
+  `tests_digest`, a hash over every test source (every file under a `Tests/` directory and under
+  `Packages/com.velvet.core/TestUtilities/`, a C# one without its comments), and a change to any of
+  them measures it again.
+
+Every verdict the record keeps (`RECORDED`) is one this rule accepts over the tree that wrote it, which
+`ReuseDecisionTests` holds verdict by verdict: an entry nothing could accept would leave its mutant
+unresolved for good, holding every release and dealt to every run. A compile error and a timeout are
+final there, as StrykerJS scores the first as no result and the second as detected
+(`RECORDED_FINAL`): the run that measures one names it among the mutants nothing was asked about, and
+once it is recorded neither a later run nor the release gate fails on it.
 
 **What the rule does not see**, as StrykerJS says of its own: an edit to a production file other than
 the mutated one, a stylesheet, an assembly definition or a project setting does not lapse a verdict,
 though it can change what a mutant does. The per-change key this replaced hashed every such input, and
 on the default branch it lapsed on 36 of the 56 first-parent commits of one week, measured, which would
 have measured the scope again nearly every day. Where such a reach is suspected, deleting the entries
-from the branch or raising `MUTATION_MODEL_VERSION`, which moves every key, measures them again. The
+from the branch or raising `MUTATOR_VERSION`, which moves every key, measures them again. The
 other side of the rule is that a change to any test re-measures every survivor in scope, the declared
 ones included.
 
@@ -294,19 +309,21 @@ generates the scope's mutants in the order `--list` prints them, looks each one 
 deals the first `RECORD_CAP` the record does not answer across at most `RECORD_SHARDS` shards
 (`mutation_check.py --cap`, `--max-shards`); the rest are pending, left to a later run, and fail nothing.
 `mutation.yml` declares both figures: 400 mutants over forty shards, which `mutation-shard` runs at most
-ten at a time (`max-parallel`), so a full run is four waves of the shard job's 360-minute limit and ends
-inside a day. `RecordBudgetTests` holds each cap inside its shards' ceiling and those waves inside 24
-hours. Where a run left mutants pending, recorded at least one entry, and every shard passed, its
+ten at a time (`max-parallel`), so a full run's shards are four waves of the shard job's 360-minute
+limit, 24 hours at the very worst, with the plan, Library, verdict, record and report jobs on top;
+a scheduled run that comes meanwhile waits for it in the concurrency group below. `RecordBudgetTests`
+holds each cap inside its shards' ceiling and the shard waves inside 24 hours. Where a run left mutants pending, recorded at least one entry, and every shard passed, its
 `record` job dispatches the next run onto the same ref, which deals the next mutants in the same order,
 since the ones just answered are in the record now. A run that recorded nothing dispatches nothing, so a
 mutant no run can measure stops the chain instead of being dealt to it forever; the next push or night
-deals it again. Record runs on one ref share a concurrency group that cancels nothing, so two never
-measure at once, and GitHub keeps only the newest waiting run, which reads the newest head. An advisory
+deals it again. Record runs on one ref share a concurrency group that cancels nothing, so no two of
+them measure at once, and GitHub keeps only the newest waiting run, which reads the newest head. An advisory
 run deals at most `ADVISORY_CAP` across `ADVISORY_SHARDS`, and a newer head of its pull request cancels it.
 
 **The same tree and the same record give the same answer.** Which mutants a run deals, which entries it
-reuses and what the release gate decides are functions of the git history and the record branch alone:
-no clock, no run history, no artifact and no issue is read. A mutant the record does not answer, never
+reuses, and the release gate's mutation half are functions of the git history and the record branch
+alone: no clock, no run history, no artifact and no issue is read. The gate's other half reads the
+required workflows' push runs, which a re-run moves. A mutant the record does not answer, never
 measured or measured to nothing, is never a pass. `RecordGateTests`, `CappedPlanTests`,
 `ReuseDecisionTests`, `ScopeTests` and `test_mutation_gate.py` each take their decision twice and compare.
 
@@ -418,7 +435,7 @@ mutant over sixteen: the job's timeout cancelled it, so each launch it had not f
 mean of those it had; its session's confirmation under the unmutated program failed, and 15 of its
 16 mutants took launches of their own. `ShardCeilingTests` charges the slowest of the figures measured over the EditMode shards of the week of 2026-10-12 to 2026-10-16 (runs 38882765210 and 38865742861 among them): a baseline of 445 to 486 s, a launch of an area's own assemblies of 180 to 231 s, and about 561 s a mutant from the end of a shard's baseline to its last verdict, which is 486, 231 and 561. It charges an EditMode session, before its first mutant, one reach run at twice the baseline's figure (the bound a run that never finishes is stopped at) and the opening runs of each mutant's covered cases at a tenth of the baseline's seconds each, in place of an area's own launch, which a session that runs the reach run does not take, and charges each of its mutants as a survivor under `Runtime/`: the session's whole suite, then the launch of the fixtures reading IL that follows it, taken at an area's launch (no run has timed it). A session that places fewer than `REACH_MIN_MUTANTS` mutants, or declines one, runs no reach run and takes the areas' launches, as before, which the small arm charges for the whole shard. A placed mutant whose reading does not stand launches on the whole suite alone afterwards, since a session that made the reach run takes no area's baseline. `SHARD_CEILING` is the most mutants for which all three arms fit the job's timeout, 10 on EditMode, and the test derives it from the timeout rather than reading it back; no recording run has been timed, so the reach factors are allowances. A shard whose reach run never finishes is charged as one without the opening runs.
 
-**Mutants are dealt by expected cost, not by position.** `--plan` and every `--shard` job compute the same assignment from the mutant list alone: `deal` takes the mutants longest first and gives each to the shard charged least so far, ties going to the lower shard and then the lower index, and prints each shard's mutant count and expected seconds with the spread between the cheapest and the dearest. A mutant under `Runtime/<Area>/` on EditMode is charged `NARROWED_COST`, 145 s, and any other mutant 493 s on EditMode, or 934 s on PlayMode, where nothing is narrowed and the deal comes to an even count. The 145 s is the median, over the shards above, of a shard's seconds a mutant, and it already includes the mutants that took the whole suite; the 493 s is the one slowest shard, which the timeout cut and which is estimated; the ceiling charges the dearer 561 s, so no mutant is dealt dearer than it is charged. They are different statistics, so the ratio is rough, and 145 s is a proxy for a narrowed launch and not a measurement of one: the repo pins no narrowed-only figure. The plan has no baseline, so it cannot know which areas `narrowable` declines (those over a third of the baseline's test time) nor which narrowed mutants survive and take the whole suite as well, and a previous campaign's timings are not kept (the ledger holds verdicts, not seconds); a mutant dealt as narrowed may therefore cost more than its figure, which skews the balance and never the ceiling, since no mutant is charged above what the ceiling charges it. A shard is never given more than `SHARD_CEILING` mutants however cheap they are, so a shard of cheap mutants can hold as many as the ceiling, and makes the reach run like any shard of `REACH_MIN_MUTANTS` or more whose every mutant is placed, which `ShardCeilingTests` charges. A plan over ten shards of the ceiling is refused.
+**Mutants are dealt by expected cost, not by position.** `--plan` and every `--shard` job compute the same assignment from the mutant list alone: `deal` takes the mutants longest first and gives each to the shard charged least so far, ties going to the lower shard and then the lower index, and prints each shard's mutant count and expected seconds with the spread between the cheapest and the dearest. A mutant under `Runtime/<Area>/` on EditMode is charged `NARROWED_COST`, 145 s, and any other mutant 493 s on EditMode, or 934 s on PlayMode, where nothing is narrowed and the deal comes to an even count. The 145 s is the median, over the shards above, of a shard's seconds a mutant, and it already includes the mutants that took the whole suite; the 493 s is the one slowest shard, which the timeout cut and which is estimated; the ceiling charges the dearer 561 s, so no mutant is dealt dearer than it is charged. They are different statistics, so the ratio is rough, and 145 s is a proxy for a narrowed launch and not a measurement of one: the repo pins no narrowed-only figure. The plan has no baseline, so it cannot know which areas `narrowable` declines (those over a third of the baseline's test time) nor which narrowed mutants survive and take the whole suite as well, and a previous campaign's timings are not kept (the record holds verdicts, not seconds); a mutant dealt as narrowed may therefore cost more than its figure, which skews the balance and never the ceiling, since no mutant is charged above what the ceiling charges it. A shard is never given more than `SHARD_CEILING` mutants however cheap they are, so a shard of cheap mutants can hold as many as the ceiling, and makes the reach run like any shard of `REACH_MIN_MUTANTS` or more whose every mutant is placed, which `ShardCeilingTests` charges. A plan over `--max-shards` shards of the ceiling is refused.
 
 `Test ▸ test-quality` holds the half that needs no editor: that the mutants can
 be generated at all, and that every declaration in the package is one the script would accept rather
@@ -1464,20 +1481,22 @@ runs on, which CI has already measured, the way
 of `main` that CI built rather than building a release of their own. Before anything is tagged,
 `upm.yml` runs `scripts/release/mutation_gate.py` over that commit, which refuses it unless:
 
-- on the default branch, the newest completed push run of each required workflow
-  (`red_base.REQUIRED_WORKFLOWS`) at the commit passed;
+- where the default branch holds the commit, whichever ref the release was dispatched from, the newest
+  completed push run of each required workflow (`red_base.REQUIRED_WORKFLOWS`) at the commit passed;
 - the record answers every mutant of the campaign's scope at the commit
   ([Checking that the tests can fail](#checking-that-the-tests-can-fail) owns the scope and the
   record): each holds an entry that still stands, and every survivor among them is answered by a
   declaration. A mutant past a run's cap, never measured, or measured to nothing is unresolved, and
   refuses the release.
 
-The gate runs the commit's own copy of the campaign's scripts, the copy its record runs measured
-with, since an entry's key carries the tool's digest, and refuses a commit whose tree has no record
-tooling. Its mutation half reads git and the record alone, so the same commit and record give it the
-same answer. Where it refuses, its log names each mutant: wait for the record
-runs to catch up, dispatch one (`gh workflow run mutation.yml --ref <branch>`), or answer the
-survivors by a pull request.
+The gate checks the commit out into a worktree of its own and reads that, so nothing uncommitted in
+the dispatch's checkout reaches it, and runs that commit's copy of the campaign's scripts, the copy its
+record runs measured with; it refuses a commit whose tree has no record tooling. It refuses a shallow
+repository too, where the scope's tag and cutover can be cut off the history and the scope comes out
+empty: `upm.yml` runs it before the step that fetches `main` at depth one. Its mutation half reads
+git and the record alone, so the same commit and record give it the same answer. Where it refuses,
+its log names each mutant: wait for the record runs to catch up, dispatch one
+(`gh workflow run mutation.yml --ref <branch>`), or answer the survivors by a pull request.
 
 **The way past it** is the dispatch's `skip_release_gate` input: a reason written there releases
 without either check, and the run's log carries it as a warning. It is for a record that cannot be had —
