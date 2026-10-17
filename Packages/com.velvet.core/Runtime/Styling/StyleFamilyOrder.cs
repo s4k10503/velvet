@@ -41,7 +41,7 @@ namespace Velvet
             (StyleShadowClass.IsInsetBoxShadowClass, s_noLane),
             (StyleRingClass.IsRingClass, RingLane),
             (token => StyleClipPathClass.IsClipPathClass(token), s_noLane),
-            (token => StyleSkewClass.IsSkewClass(token), s_noLane),
+            (token => StyleSkewClass.IsSkewClass(token), SkewLane),
             (IsBackgroundImageToken, s_noLane),
             (token => StyleBorderStyleClass.IsBorderStyleClass(token), s_noLane),
             (StyleAnimateClass.IsAnimateClass, s_noLane),
@@ -191,6 +191,10 @@ namespace Velvet
         // Same list: the ring's box-shadow properties come before the outline ones.
         private static int RingLane(string core)
             => core == "outline" || core.StartsWith("outline-", StringComparison.Ordinal) ? 1 : 0;
+
+        // Every skew-<n> goes ahead of every skew-x-* and skew-y-*, where Tailwind emits them (FamilyOrderTests):
+        // -skew-x-12 after skew-6 too, which the candidate name alone would put first.
+        private static int SkewLane(string core) => StyleSkewClass.IsAxisClass(core) ? 1 : 0;
 
         // A colour stop declares its own variables and is ordered apart. A shape that declares its position variable
         // once inside @supports as well (a keyword or integer bg-linear-*) counts three declarations, and

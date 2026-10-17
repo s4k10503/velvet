@@ -3,7 +3,7 @@ using System;
 
 namespace Velvet
 {
-    // Tailwind writes translate-*, scale-x-* / scale-y-*, skew-x-* / skew-y-* and the filter
+    // Tailwind writes translate-*, scale-x-* / scale-y-*, skew-* and the filter
     // utilities as custom properties that one declaration per family composes (translate: var(--tw-translate-x)
     // var(--tw-translate-y), filter: var(--tw-blur,) var(--tw-brightness,) …). A value the browser rejects in one
     // of them makes that declaration invalid at computed-value time once it holds its property, so the family draws
@@ -79,13 +79,17 @@ namespace Velvet
             return true;
         }
 
-        // Whether cls is a skew-x-[…] or skew-y-[…] whose angle the browser rejects, and which axis it holds.
-        internal static bool RejectsSkew(string cls, out bool isX)
+        // Whether core, without its important modifier, is a skew-x-[…], skew-y-[…] or skew-[…] whose angle the
+        // browser rejects, and which axes it holds.
+        internal static bool RejectsSkew(string core, out SkewAxis axis)
         {
-            var negated = cls.Length > 0 && cls[0] == '-';
-            isX = OpensBracket(cls, negated ? 1 : 0, "skew-x-");
-            return (isX || OpensBracket(cls, negated ? 1 : 0, "skew-y-"))
-                && TryReadValue(cls, negated, out var value) && !Accepts("angle", value);
+            var negated = core.Length > 0 && core[0] == '-';
+            var at = negated ? 1 : 0;
+            axis = OpensBracket(core, at, "skew-x-") ? SkewAxis.X
+                : OpensBracket(core, at, "skew-y-") ? SkewAxis.Y
+                : SkewAxis.Both;
+            return (axis != SkewAxis.Both || OpensBracket(core, at, "skew-"))
+                && TryReadValue(core, negated, out var value) && !Accepts("angle", value);
         }
 
         // Whether core holds prefix and a bracket from at.

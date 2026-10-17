@@ -41,8 +41,9 @@ Each layer follows CSS Backgrounds 3:
   anti-aliased edge, so a translucent background shows what is behind the element rather than its shadow.
 - **Order.** The first layer of a list is drawn on top.
 - **Transform.** On a `skew-*` element the whole layer shears with the element about its centre, offset
-  included. With both `skew-x-*` and `skew-y-*` the shear is Tailwind's `skewX() skewY()` product, which is also
-  how the element's own face, its bounds and its children's seating are sheared.
+  included. With both axes skewed, by `skew-x-*` and `skew-y-*` or by one `skew-<n>`, the shear is Tailwind's
+  `skewX() skewY()` product, which is also how the element's own face, its bounds and its children's seating are
+  sheared.
 
 Each corner keeps its own radius. A padding-box corner is the border-box radius less the wider of the two borders
 meeting there. Corner radii are circular: a corner has one radius, where CSS's `border-radius` takes a horizontal

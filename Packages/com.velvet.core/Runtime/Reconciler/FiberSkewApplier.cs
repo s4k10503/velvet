@@ -2,7 +2,7 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The wrapper-less PAINT layer for skew-x-*/skew-y-* utilities: a sheared silhouette drawn via the
+    // The wrapper-less PAINT layer for the skew-* utilities: a sheared silhouette drawn via the
     // element's own generateVisualContent, no structural element added. Also owns any bg-gradient-* on
     // the same element (SyncSkewGradient), since a skewed face must paint the gradient on its sheared
     // mesh rather than as an un-sheared background-image rectangle.
@@ -15,7 +15,7 @@ namespace Velvet
             _ctx = ctx;
         }
 
-        // Create-time entry point: when classNames resolves to an active skew-x-*/skew-y-* pair,
+        // Create-time entry point: when classNames resolves to an active skew,
         // wires the sheared-silhouette painter onto the element (no structural wrapper — the
         // silhouette is the element's own generateVisualContent). The first color stash is
         // event-driven (the element is not attached / style-resolved yet at create time).

@@ -145,6 +145,42 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_ABoxShadowCasterSkewedOnBothAxesByOneClass_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes()
+        {
+            // Arrange — skew-[20deg] is skewX(20deg) skewY(20deg), whose bottom edge falls by
+            // tan θ / (1 + tan² θ) ≈ 0.32px a column, about 9px between the sampled columns. Both columns sit on the
+            // bottom edge of the face and of the shadow, and on that of a shadow sheared by the x angle alone,
+            // which is level.
+            yield return MountOverBackdrop("BothAxesSkewedBoxShadowPanel", V.Div(
+                className: "w-[40px] h-[30px] bg-[#00ff00] skew-[20deg] shadow-[0px_14px_10px_0px_#ff0000]"));
+            var pixels = RenderTexturePixelReader.ReadPixels(
+                _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
+            Func<Color32, bool> face = p => p.g > 200 && p.r < 60 && p.b < 60;
+            Func<Color32, bool> shadow = p => p.r > 120 && p.g < 100 && p.b < 140;
+
+            // Act
+            var faceTilt = LastRowAt(pixels, 72, face) - LastRowAt(pixels, 45, face);
+            var shadowTilt = LastRowAt(pixels, 72, shadow) - LastRowAt(pixels, 45, shadow);
+
+            // Assert
+            Assert.That(faceTilt * shadowTilt, Is.GreaterThan(0), $"face tilt {faceTilt}, shadow tilt {shadowTilt}");
+        }
+
+        // The last row, in the reader's order, at which column x holds a pixel the predicate takes; -1 for none.
+        private static int LastRowAt(Color32[] pixels, int x, Func<Color32, bool> predicate)
+        {
+            var last = -1;
+            for (var y = 0; y < PanelSize; y++)
+            {
+                if (predicate(pixels[(y * PanelSize) + x]))
+                {
+                    last = y;
+                }
+            }
+            return last;
+        }
+
+        [UnityTest]
         public IEnumerator Given_AnInsetShadowOnAnElementUnderEightPixelsTall_When_RenderedOnARuntimePanel_Then_NothingIsPaintedBelowIt()
         {
             // Arrange — a 4px caster is under the 8px floor of a bake texture, and an inset layer with a 2px

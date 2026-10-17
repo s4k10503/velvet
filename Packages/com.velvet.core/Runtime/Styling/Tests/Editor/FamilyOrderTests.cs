@@ -94,6 +94,20 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
         }
 
+        [TestCase("skew-x-12 skew-6", "skew-6 skew-x-12")]
+        [TestCase("-skew-x-12 skew-6", "skew-6 -skew-x-12")]
+        [TestCase("-skew-y-3 skew-[3deg]", "skew-[3deg] -skew-y-3")]
+        [TestCase("!skew-x-12 !-skew-6", "!-skew-6 !skew-x-12")]
+        public void Given_APerAxisSkewWrittenBeforeABothAxesOne_When_ClassNamesAreParsed_Then_TheBothAxesOneIsPutFirst(
+            string className, string expected)
+        {
+            // Act
+            var tokens = V.ParseClassNames(className);
+
+            // Assert
+            Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
+        }
+
         // GREEN_ON_BASE(characterization): the base leaves every token of these lists as written.
         // Each is already in Tailwind's order, or ranked by another layer (a variant, the other importance), or in
         // a family no resolver folds, so putting every token of a prefix in one order reddens it.
