@@ -168,13 +168,13 @@ namespace Velvet
             return new Rect(-ox, -oy, w + (2f * ox), h + (2f * oy));
         }
 
-        // Grows a rect outward by the shear overhang its own extent produces (same model as ShearedAabb),
-        // so a shadow quad on a skewed caster — which shears with the caster — stays covered.
+        // Grows a rect outward, about its centre, by the overhang Tailwind's skewX() skewY() shear gives its own
+        // extent, so a shadow quad on a skewed caster — which shears with the caster — stays covered.
         internal static Rect ExpandForShear(Rect r, float tanX, float tanY)
         {
-            var ox = 0.5f * r.height * Mathf.Abs(tanX);
-            var oy = 0.5f * r.width * Mathf.Abs(tanY);
-            return new Rect(r.xMin - ox, r.yMin - oy, r.width + (2f * ox), r.height + (2f * oy));
+            var halfW = (0.5f * r.width * Mathf.Abs(1f + (tanX * tanY))) + (0.5f * r.height * Mathf.Abs(tanX));
+            var halfH = (0.5f * r.width * Mathf.Abs(tanY)) + (0.5f * r.height);
+            return new Rect(r.center.x - halfW, r.center.y - halfH, 2f * halfW, 2f * halfH);
         }
 
         // The left/top border width the class list implies, in px, so a caller can shift the paint AABB into

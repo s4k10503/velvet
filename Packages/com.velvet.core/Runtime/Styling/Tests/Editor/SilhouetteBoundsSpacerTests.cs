@@ -86,6 +86,21 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARectShearedOnBothAxes_When_ExpandedForShear_Then_ItCoversTheSkewXSkewYProduct()
+        {
+            // Arrange — skewX(θx) skewY(θy) carries a corner (±50, ±20) about the centre to
+            // ((1 + tanX·tanY)·dx + tanX·dy, tanY·dx + dy): half-extents 1.125·50 + 0.5·20 and 0.25·50 + 20.
+            var r = new Rect(0f, 0f, 100f, 40f);
+
+            // Act
+            var e = SilhouetteBoundsSpacer.ExpandForShear(r, 0.5f, 0.25f);
+
+            // Assert
+            Assert.That(new[] { e.xMin, e.yMin, e.width, e.height },
+                Is.EqualTo(new[] { -16.25f, -12.5f, 132.5f, 65f }).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_ContainerWithTrailingSpacer_When_Counted_Then_TheSpacerIsExcluded()
         {
             // Arrange — two rendered children then a spacer.

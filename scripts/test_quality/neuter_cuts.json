@@ -316,8 +316,8 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
-          "anchor": "public static bool TryExtract(string[] classNames, out ShadowSpec spec)",
-          "neuter": "spec = default; return false;"
+          "anchor": "public static bool TryExtract(string[] classNames, out ShadowSpec[] spec)",
+          "neuter": "spec = System.Array.Empty<ShadowSpec>(); return false;"
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
@@ -338,7 +338,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs",
-          "anchor": "float skewXDeg, bool canReleaseFace)",
+          "anchor": "SkewSpec skew, bool canReleaseFace)",
           "neuter": "return;"
         }
       ]

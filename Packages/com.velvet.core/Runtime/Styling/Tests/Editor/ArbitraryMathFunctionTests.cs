@@ -141,7 +141,7 @@ namespace Velvet.Tests
             StyleShadowClass.TryExtract(new[] { "shadow-[calc(1rem+4px)_4px_8px_#101820]" }, out var spec);
 
             // Assert
-            Assert.That(spec.OffsetX, Is.EqualTo(20f).Within(1e-3f));
+            Assert.That(spec[0].OffsetX, Is.EqualTo(20f).Within(1e-3f));
         }
 
         [Test]

@@ -167,8 +167,8 @@ namespace Velvet.Tests
             // Act
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg") });
 
-            // Assert: lg preset blur.
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Blur, Is.EqualTo(34f));
+            // Assert: the lg preset's front layer blur.
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Blur, Is.EqualTo(15f));
         }
 
         [Test]
@@ -180,8 +180,8 @@ namespace Velvet.Tests
             // Act
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg") });
 
-            // Assert: lg preset alpha (--color-shadow base, stepped per preset).
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Color.a, Is.EqualTo(0.28f).Within(0.001f));
+            // Assert: the lg preset's front layer alpha.
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Color.a, Is.EqualTo(0.1f).Within(0.001f));
         }
 
         [Test]
@@ -194,7 +194,7 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg") });
 
             // Assert
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Spread, Is.EqualTo(0f));
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Spread, Is.EqualTo(-3f));
         }
 
         [Test]
@@ -207,7 +207,7 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg rounded-2xl") });
 
             // Assert: --radius-2xl == 16px (the rounded-2xl scale value).
-            Assert.That(Binding(scope, scope.Root[0]).CornerRadius, Is.EqualTo(16f));
+            Assert.That(Binding(scope, scope.Root[0]).CornerRadii.x, Is.EqualTo(16f));
         }
 
         [Test]
@@ -283,13 +283,13 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: "shadow-lg", name: "card") };
             Mount(scope, before);
-            Assume.That(Binding(scope, scope.Root[0]).Spec.Blur, Is.EqualTo(34f));
+            Assume.That(Binding(scope, scope.Root[0]).Layers[0].Blur, Is.EqualTo(15f));
 
             // Act: lg → md on the same element (linear patch, no key change).
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Div(className: "shadow-md", name: "card") });
 
             // Assert
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Blur, Is.EqualTo(22f));
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Blur, Is.EqualTo(6f));
         }
 
         // Patch: class removal (detach)
@@ -437,6 +437,19 @@ namespace Velvet.Tests
             // Assert — the shadow paint is keyed by the element itself and carries the caster's skew angle.
             var element = scope.Root[0];
             Assert.That(scope.Reconciler.Context.ShadowBindings[element].SkewXDeg, Is.EqualTo(-6f));
+        }
+
+        [Test]
+        public void Given_AShadowedElementSkewedOnY_When_Reconciled_Then_TheShadowCarriesTheYAngle()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "skew-y-3 shadow-md", name: "card") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].SkewYDeg, Is.EqualTo(3f));
         }
 
         [Test]

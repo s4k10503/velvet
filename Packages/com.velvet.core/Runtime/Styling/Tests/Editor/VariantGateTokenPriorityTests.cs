@@ -55,7 +55,7 @@ namespace Velvet.Tests
 
         private static float BlurOf(ReconcilerScope scope, VisualElement element)
             => scope.Reconciler.Context.ShadowBindings.TryGetValue(element, out var binding)
-                ? binding.Spec.Blur
+                ? binding.Layers[0].Blur
                 : NoShadow;
 
         // Lights both layers of "bg-[#FFFFFF] dark:shadow-lg hover:shadow-sm" in the given order and reports
