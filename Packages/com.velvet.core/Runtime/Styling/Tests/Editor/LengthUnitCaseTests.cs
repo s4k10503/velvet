@@ -230,5 +230,22 @@ namespace Velvet.Tests
             // Assert
             Assert.That(inset, Is.EqualTo(2f));
         }
+
+        [Test]
+        public void Given_AParenthesisedUnitWithNoMathFunction_When_ItsUnitCaseIsAsked_Then_TailwindDoesNotTakeItForALength()
+        {
+            // Act
+            var length = StyleArbitraryValueResolver.SpellsUnitAsTailwindInfers("(2PX)".AsSpan());
+
+            // Assert
+            Assert.That(length, Is.False);
+        }
+
+        [Test]
+        public void Given_AnEmptyValue_When_ItsUnitCaseIsAsked_Then_NothingThrows()
+        {
+            // Assert
+            Assert.That(() => StyleArbitraryValueResolver.SpellsUnitAsTailwindInfers(string.Empty.AsSpan()), Throws.Nothing);
+        }
     }
 }
