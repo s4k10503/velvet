@@ -879,9 +879,9 @@ def delete_remote_ref(project, branch):
     branch that is already gone would be reported as a branch that survived. A read that fails for
     any reason other than the ref being absent falls through to the DELETE.
 
-    The repository deletes the head itself a moment after the merge, so the first read can precede
-    that deletion. A refused DELETE therefore re-reads the ref, `REF_REREADS` times
-    `REF_REREAD_SECONDS` apart, and reports survival only if the ref is still there.
+    Where `reference_already_gone` describes the repository deleting the head itself, the first read
+    can precede that deletion. A refused DELETE therefore re-reads the ref, `REF_REREADS` times
+    `REF_REREAD_SECONDS` apart, and reports survival unless a re-read finds the ref absent.
     """
     slug = repository(project)
     if remote_ref_absent(slug, branch):

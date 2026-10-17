@@ -2334,6 +2334,28 @@ class RemoteBranchDeletionTests(unittest.TestCase):
         # Assert
         self.assertEqual(failure, "")
 
+    # GREEN_ON_BASE(characterization): the base reported every refused delete, so a ref whose re-reads all fail for another reason is reported on both sides.
+    def test_Given_ARefWhoseEveryReReadFailsWithoutA404_When_TheDeleteIsRefused_Then_ItIsReportedAsSurviving(self):
+        # Arrange
+        reads = []
+
+        def run(command, timeout):
+            if "DELETE" in command:
+                return subprocess.CompletedProcess(command, 1, "", REFUSED_BY_PROXY)
+            reads.append(command)
+            if len(reads) == 1:
+                return subprocess.CompletedProcess(command, 0, "", "")
+            return subprocess.CompletedProcess(command, 1, "", "gh: Server Error (HTTP 502)")
+
+        # Act
+        with mock.patch.object(settle, "repository", lambda *_: "owner/name"), \
+                mock.patch.object(settle, "run_quietly", run), \
+                mock.patch.object(settle.time, "sleep", lambda _: None):
+            failure = settle.delete_remote_ref(Path("."), "topic")
+
+        # Assert
+        self.assertEqual(failure, REFUSED_BY_PROXY)
+
 
 class BranchDeletionTests(unittest.TestCase):
     def test_Given_ARefDeleteThatFoundNothing_When_Read_Then_ItIsNotReportedAsAFailure(self):
