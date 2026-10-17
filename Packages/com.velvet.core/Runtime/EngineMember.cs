@@ -113,6 +113,50 @@ namespace Velvet
         internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
             "UnityEngine.UIElements.StylePropertyName", "id", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
+        // NativeTransitionVelocity's read of a running transition's timing and values. The generic members declare
+        // the shape "*", which any type satisfies, because a field typed by a generic parameter has no spelling.
+        private const string AnimationSystemType = "UnityEngine.UIElements.StylePropertyAnimationSystem";
+        private const string StylePropertyIdShape = "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId";
+
+        internal static readonly EngineMember PanelStyleAnimationSystem = ReadProperty(UIElements,
+            "UnityEngine.UIElements.BaseVisualElementPanel", "styleAnimationSystem",
+            "UnityEngine.UIElements.IStylePropertyAnimationSystem");
+
+        internal static readonly EngineMember AnimationSystemValues = Field(UIElements, AnimationSystemType,
+            "m_PropertyToValues", "System.Collections.Generic.Dictionary`2[" + StylePropertyIdShape + ","
+            + AnimationSystemType + "+Values]");
+
+        internal static readonly EngineMember AnimationSystemTime =
+            Field(UIElements, AnimationSystemType, "m_CurrentTime", "System.Double");
+
+        internal static readonly EngineMember AnimationValuesRunning =
+            Field(UIElements, AnimationSystemType + "+Values`1", "running", "*");
+
+        internal static readonly EngineMember AnimationDataSetIndexOf = Method(UIElements,
+            AnimationSystemType + "+AnimationDataSet`2", "IndexOf", "System.Boolean",
+            "UnityEngine.UIElements.VisualElement", StylePropertyIdShape, "System.Int32&");
+
+        internal static readonly EngineMember AnimationDataSetTiming =
+            Field(UIElements, AnimationSystemType + "+AnimationDataSet`2", "timing", "*");
+
+        internal static readonly EngineMember AnimationDataSetStyle =
+            Field(UIElements, AnimationSystemType + "+AnimationDataSet`2", "style", "*");
+
+        internal static readonly EngineMember AnimationTimingStart =
+            Field(UIElements, AnimationSystemType + "+Values`1+TimingData", "startTime", "System.Double");
+
+        internal static readonly EngineMember AnimationTimingDuration =
+            Field(UIElements, AnimationSystemType + "+Values`1+TimingData", "duration", "System.Single");
+
+        internal static readonly EngineMember AnimationTimingEasing = Field(UIElements,
+            AnimationSystemType + "+Values`1+TimingData", "easingCurve", "System.Func`2[System.Single,System.Single]");
+
+        internal static readonly EngineMember AnimationStyleStart =
+            Field(UIElements, AnimationSystemType + "+Values`1+StyleData", "startValue", "*");
+
+        internal static readonly EngineMember AnimationStyleEnd =
+            Field(UIElements, AnimationSystemType + "+Values`1+StyleData", "endValue", "*");
+
         // FiberLayoutReflow's layout computation ahead of a commit's layout reads.
         private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";
         private const string UpdatePhaseShape = "enum:" + UpdatePhaseType;
@@ -156,6 +200,9 @@ namespace Velvet
         internal static readonly EngineMember PanelDuringLayoutPhase = ReadProperty(UIElements,
             "UnityEngine.UIElements.BaseVisualElementPanel", "duringLayoutPhase", "System.Boolean");
 
+        // A shape every type satisfies, for a member typed by a generic parameter.
+        private const string AnyShape = "*";
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
@@ -171,7 +218,7 @@ namespace Velvet
 
         /// <summary>A field's or a property's type, a type's base type, or a method's return type followed by its
         /// parameter types in parentheses. Names use <see cref="Type.FullName"/>, generic arguments use brackets,
-        /// arrays use <c>[]</c>, and by-ref parameters use <c>&amp;</c>. An <c>enum:</c> prefix requires an enum type.</summary>
+        /// arrays use <c>[]</c>, and by-ref parameters use <c>&amp;</c>; <c>*</c> accepts any type. An <c>enum:</c> prefix requires an enum type.</summary>
         internal readonly string Shape;
 
         /// <summary>A property whose setter is called as well as its getter.</summary>
@@ -270,6 +317,7 @@ namespace Velvet
         private static bool MatchesType(Type? type, string shape)
         {
             if (type == null) return false;
+            if (shape == AnyShape) return true;
             if (shape.StartsWith("enum:", StringComparison.Ordinal))
                 return type.IsEnum && MatchesType(type, shape.Substring(5));
             if (shape.EndsWith("&", StringComparison.Ordinal))

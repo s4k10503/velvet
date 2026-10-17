@@ -98,6 +98,7 @@ namespace Velvet.Tests
             Assert.That(composed, Is.EqualTo("drop-shadow(0 35 35 0,0,0,0.25) drop-shadow(-2 0 16 1,0,0,1)"));
         }
 
+        // GREEN_ON_BASE(characterization): the base resolves no drop-shadow-[...] token at all, so each malformed one is declined there along with every other drop-shadow-[...] token.
         [TestCase("drop-shadow-[0_1px_2px_3px_black]", TestName = "Given_AShadowWithASpread_When_Parsed_Then_ItDoesNotResolve")]
         [TestCase("drop-shadow-[0_1px_-2px_black]", TestName = "Given_ANegativeDeviation_When_Parsed_Then_ItDoesNotResolve")]
         [TestCase("drop-shadow-[0_10%_2px_black]", TestName = "Given_APercentOffset_When_Parsed_Then_ItDoesNotResolve")]

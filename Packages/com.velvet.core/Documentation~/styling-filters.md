@@ -79,7 +79,7 @@ shader) it runs. Velvet exposes such a definition to class strings through a reg
 assets out of the render path the same way `VelvetFonts` keeps font assets out of class names:
 
 ```csharp
-// Startup (before the consuming tree mounts):
+// Startup:
 VelvetFilters.Register("dissolve", dissolveDefinition);
 VelvetFilters.Register("glow", glowDefinition);
 
@@ -96,12 +96,15 @@ a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar
 ([styling-colors.md](styling-colors.md)). A missing tail is padded from the declaration's
 defaults — the same values the USS parser pads with — so a bare `filter-[name]` applies the
 declared defaults outright. Supplying more arguments than the declaration, or an argument that
-fails its slot's grammar, rejects the whole token. (UI Toolkit's `FilterFunction` holds at most 4
+fails its slot's grammar, refuses the arguments as a whole. (UI Toolkit's `FilterFunction` holds at most 4
 parameters, so a definition declaring more is rejected at registration.)
 
-A token that cannot resolve — an unregistered name (warned once), an extra argument, or an
-argument that fails its slot's grammar — is not claimed and stays an inert class, like any
-unrecognized utility.
+A name nothing is registered under is a reference to a missing filter: the element draws no filter at
+all, its built-in utilities included, as CSS ignores the whole chain when a `url()` names no filter. The
+name is warned about once, and a change into or out of that state applies at once, as CSS interpolates a list
+holding a `url()` discretely. An extra argument, or an argument that fails its slot's grammar, leaves the class
+adding nothing, as CSS drops an invalid declaration, so a layer of the same name under it still applies; a
+registration that accepts the arguments resolves it.
 
 ### Composition and layering
 
@@ -170,49 +173,31 @@ changes. The native filter types the utilities compose (`blur`, `contrast`, `gra
 `transition-filter duration-300` tweens `blur-0` → `blur-md` (or `brightness-100` → `brightness-150`) smoothly.
 A `drop-shadow` added or removed at the end fades from or to every length `0` and a transparent colour, as CSS
 pads it: those are the neutrals its definition declares.
-Under Velvet's tween:
 
-- **User custom filters interpolate** when both sides hold the *same registered definition* at a position with
-  the same number of arguments and matching argument types per slot — `filter-[glow:#f00:2]` →
-  `hover:filter-[glow:#00f:6]` cross-fades the color and lerps the amount. CSS applies a `url()` filter change at
-  once; this is a Velvet addition.
-- A user custom **added or removed at the end** fades from or to the neutral *your definition declares* — each
-  `FilterParameterDeclaration.interpolationDefaultValue`, the same value the engine pads its own filter-list
-  transitions with — so `filter-[glow:2]` appearing on hover fades up from the glow's declared default rather
-  than from zero. Declare those defaults deliberately; a slot left at the struct default fades from `0`.
-- A user custom **snaps** when its position cannot be paired: a different definition on each side, a differing
-  argument count, or a slot that is a color on one side and a float on the other. Every user custom composes
-  after the built-ins, so adding a built-in filter to an element carrying a custom one is a change before its end,
-  and snaps too.
-- A definition **destroyed mid-tween** drops out of the frames the tween paints instead of throwing;
-  the remaining filters keep animating. The value the tween settles on is the one composed when it
-  started, so a dead definition is cleared from the element by the next compose rather than at settle.
+A user custom filter is a `url()` reference in CSS's terms, and CSS interpolates a filter list holding one
+discretely. So a change where the element's filter holds a `filter-[name:args]` before or after it applies at
+once under either animator: `filter-[glow:#f00:2]` → `hover:filter-[glow:#00f:6]`, a custom appearing or going,
+and a built-in beside a custom (`blur-0 filter-[glow:2]` → `blur-md filter-[glow:2]`) alike. The same holds for
+the first filter utility written over a stylesheet `filter` that holds a custom filter function. Such a change
+stops a filter tween already running on the element.
 
 ### Contract
 
-- **Register before mount.** Resolution happens when a class is applied, and registration is not
-  reactive: `Register` re-resolves no element and raises no event. A class applied before its name
-  was registered does not resolve at that point.
+- **Registration reaches mounted elements.** `Register`, a re-registration and `Unregister` each resolve
+  every element carrying the name again, without starting a transition, by the `url()` rule under
+  [Transitions](#transitions). A class applied before its name was registered resolves when it is
+  registered, in the compose slot it took when applied.
 - The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
   `invert`, `saturate`, `sepia`, `drop-shadow`) are **reserved** and cannot be registered.
-- A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar).
-- Re-registering a name warns and overwrites; `Unregister` removes it. Removing a class (or a
-  variant turning off) still clears its layer after an unregister — the clear resolves the
-  name syntactically, not through the registry — but an element that keeps the class keeps its
-  already-resolved filter, so unregister after the consuming trees unmount.
-- A definition destroyed after registration stops rendering: the compose skips dead
-  definitions instead of throwing.
-
-### What a late registration does today
-
-Characterization, not contract. This is what the current implementation does; a release that made a
-registry change reach mounted trees would change it, so register before mount rather than building
-on any of it.
-
-A class applied before its name was registered stays on the USS class list instead of resolving to an
-inline value, and paints nothing. It resolves the next time some pass re-applies that element's
-inline values from the classes it still carries — a motion on the element settling, being cancelled
-or detaching does that, and so does a class change that removes another filter-family token.
+- A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar) and of `(` and `)`,
+  and must not be `none`: a `filter-[...]` body of that shape is CSS filter syntax (`filter-[blur(4px)]`,
+  `filter-[url(#x)]`, `filter-[none]`), which Velvet leaves as an inert class that costs the rest of the chain
+  nothing, and which a registration could never be reached through.
+- Re-registering a name warns and overwrites; `Unregister` removes it, and an element that keeps the
+  class draws no filter until the name is registered again. A re-registered definition that refuses a
+  class's arguments leaves that class inert, and the next registration that accepts them resolves it.
+- A definition destroyed after registration stops rendering, and the element's next compose drops its
+  whole filter, as for a name nothing is registered under.
 
 ### Authoring the definition
 

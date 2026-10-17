@@ -101,7 +101,8 @@ focus controller still holds of an element leaving it, an element's focus pseudo
 flag, UI Toolkit's internal property-change event, a text input's record of an open IME composition, the
 `@import`s of a stylesheet, the cached opacity
 and transition lists used by [layoutId crossfades](motion.md#shared-element-layout-animation-layoutid),
-native transition activity used by [current-value starts](motion.md#driven-channels-spring-and-bezier),
+native transition activity, and the timing and values of a running one, used by
+[current-value starts](motion.md#driven-channels-spring-and-bezier) and a spring's inherited velocity,
 and a panel's version, layout-phase flag, style updater and that updater's traversal flag, an element's layout
 node, last layout and version increment, and the node's layout computation, dirty flag and new-layout flag, which
 a commit uses to lay the panel out before its layout effects and callback refs read it

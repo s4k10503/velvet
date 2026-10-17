@@ -363,6 +363,8 @@ namespace Velvet.Tests
         #endregion
 
         // GREEN_ON_BASE(refactor): only how beta is left pending changed, since a Transition-lane render now commits it.
+        // The immediate drain after the call renders the pending state on the head and finds the tier empty on
+        // the base, where the transition lane stays queued for the flush that parks.
         [Test]
         public void Given_APendingValueUnderAParkedTransitionSlice_When_TheSliceResumes_Then_ItCommitsTheDeferredValue()
         {
@@ -378,6 +380,7 @@ namespace Velvet.Tests
             // Act — a second transition render parks on its first slice, so the child is reached only by the
             // resume rather than by the flush's own render
             s_slicedStart.Invoke(() => s_slicedSetTick.Invoke(1));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             parent.FlushStateWithTinyBudgetForTest();
             var parked = parent.HasPendingReconcileWorkForTest();
             parent.DrainTimeSlicedReconcileForTest();

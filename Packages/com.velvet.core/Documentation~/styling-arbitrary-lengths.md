@@ -176,7 +176,7 @@ The rule is made where a shorthand and a longhand meet in one `className` string
   applies. A base class beside an inline pose needs no such step, the inline value outranking it already; a pose class that is the narrower of a pair with an inline base token (`p-13` base, `pt-2` pose) is written inline like any other, so it holds its side and the base keeps the rest.
 - A class list assembled outside a `className` string, or beside a class list of another element, is not ordered this way.
 
-`z-<n>` takes any whole number an int holds the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).
+`z-<n>` takes a whole number the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).
 
 ### An inline value and a stylesheet class
 
