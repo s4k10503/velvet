@@ -56,7 +56,7 @@ namespace Velvet
         /// the 4 parameters a filter function can carry.</param>
         public static void Register(string name, FilterFunctionDefinition? definition)
         {
-            if (string.IsNullOrEmpty(name) || !IsNameShape(name.AsSpan()))
+            if (string.IsNullOrEmpty(name) || !IsNameShape(System.MemoryExtensions.AsSpan(name)))
             {
                 Debug.LogWarning($"[VelvetFilters] Cannot register \"{name}\": a filter name must be non-empty, free of whitespace, ':', '[', ']', '(' and ')', and not 'none'.");
                 return;
