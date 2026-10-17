@@ -89,6 +89,7 @@ def checks_of(cwd, number):
     """Keep a valid check list even when gh exits nonzero for pending or failed checks.
 
     The campaign's checks are left out by the workflow they belong to: a check list carries no suite.
+    Its old commit status is left out by its context, which a status carries with no workflow.
     """
     answer = repository.gh_answer(["pr", "checks", *([number] if number else []),
                                    "--json", "name,bucket,workflow"], cwd=cwd)
@@ -100,7 +101,8 @@ def checks_of(cwd, number):
             isinstance(entry, dict) and isinstance(entry.get("name"), str)
             and isinstance(entry.get("bucket"), str) for entry in listed):
         return None
-    return [entry for entry in listed if entry.get("workflow") != campaign.NAME]
+    return [entry for entry in listed if entry.get("workflow") != campaign.NAME
+            and not (entry["name"] == campaign.STATUS_CONTEXT and not entry.get("workflow"))]
 
 
 def campaign_runs(cwd, sha):

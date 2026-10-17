@@ -332,6 +332,29 @@ class HeadCheckVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(result.returncode, ALLOWED)
 
+    def test_Given_APendingStatusTheRemovedPublisherLeft_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
+        # Arrange / Act — a commit status, which a check list carries with no workflow.
+        checks = json.dumps([
+            {"name": "Required checks (Unity)", "bucket": "pass", "workflow": "Test"},
+            {"name": "Mutation campaign", "bucket": "pending", "workflow": ""}])
+        result = self.ask(checks=checks)
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    # GREEN_ON_BASE(characterization): the base refuses every pending check, this one included. What
+    # it pins is that the status is told by its missing workflow as well: dropping
+    # `not entry.get("workflow")` from `checks_of` reddens it.
+    def test_Given_APendingCheckOfAnotherWorkflowNamedLikeTheStatus_When_TheMergeIsAsked_Then_ItIsNamed(self):
+        # Arrange / Act — the status is left out by its context and its missing workflow together.
+        checks = json.dumps([
+            {"name": "Required checks (Unity)", "bucket": "pass", "workflow": "Test"},
+            {"name": "Mutation campaign", "bucket": "pending", "workflow": "Test"}])
+        result = self.ask(checks=checks)
+
+        # Assert
+        self.assertEqual((result.returncode, "not passing at" in result.stderr), (REFUSED, True))
+
     def test_Given_ALabelledHeadWhoseCampaignPassed_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
         # Arrange / Act
         result = self.ask(labels=LABELLED, runs=workflow_runs((2, "completed", "success")))

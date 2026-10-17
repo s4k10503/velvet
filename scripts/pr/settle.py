@@ -313,7 +313,7 @@ def check_results(runs, statuses, left_out=frozenset()):
     individual entries become buckets; its rollup state is not read at all.
 
     A page that did not carry everything raises rather than deciding; `whole_page` owns why. A check
-    run of a suite in `left_out` is left out.
+    run of a suite in `left_out` is left out, and so is a status `campaign.STATUS_CONTEXT` names.
     """
     listed = runs.get("check_runs", [])
     reported = statuses.get("statuses", [])
@@ -327,7 +327,7 @@ def check_results(runs, statuses, left_out=frozenset()):
                for run in listed]
     results.extend({"name": status.get("context", ""),
                     "bucket": _STATUS_BUCKET.get(status.get("state") or "", "fail")}
-                   for status in reported)
+                   for status in reported if status.get("context") != campaign.STATUS_CONTEXT)
     return results
 
 

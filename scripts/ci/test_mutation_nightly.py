@@ -8,11 +8,13 @@ import contextlib
 import importlib.util
 import io
 import json
+import re
 import shutil
 import subprocess
 import tempfile
 import textwrap
 import unittest
+import unittest.mock
 from pathlib import Path
 
 
@@ -76,10 +78,25 @@ class MarkerUploadTests(unittest.TestCase):
 
         # Act
         uploaded = "          name: {}\n".format(
-            nightly.REPORTED_ARTIFACT.format("${{ steps.report.outputs.head }}")) in workflow
+            nightly.REPORTED_ARTIFACT.format("${{ steps.report.outputs.reached }}")) in workflow
 
         # Assert
         self.assertTrue(uploaded)
+
+
+class NightlyBudgetTests(unittest.TestCase):
+    def test_Given_ANightsShards_When_TheirWavesAreTimed_Then_TheyEndInsideTheSchedulesDay(self):
+        # Arrange — the shard job's own limit and how many of them run at once, read off the workflow.
+        workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/mutation.yml").read_text()
+        job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
+        limit = int(re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE).group(1))
+        parallel = int(re.search(r"^      max-parallel: (\d+)$", job, re.MULTILINE).group(1))
+
+        # Act
+        minutes = -(-nightly.NIGHTLY_MAX_SHARDS // parallel) * limit
+
+        # Assert
+        self.assertLessEqual(minutes, 24 * 60)
 
 
 class PreviousHeadTests(unittest.TestCase):
@@ -126,42 +143,65 @@ def mutant(path, line):
 
 
 class ChooseTests(unittest.TestCase):
-    """The slice over `start`, then commits a, b and c, each adding one mutant."""
+    """Commits a, b, c and d after `start`, of 1, 1, 1 and 5 mutants, against a ceiling of 2."""
 
-    WINDOW = [mutant("A.cs", 1), mutant("B.cs", 1), mutant("C.cs", 1)]
+    SIZES = {"a": 1, "b": 1, "c": 1, "d": 5}
+    ORDER = ["start", "a", "b", "c", "d"]
 
-    def ask(self, fitting):
-        """`plan` over the slice from each candidate, fitting only the candidates in `fitting`."""
-        after = {"start": self.WINDOW, "a": self.WINDOW[1:], "b": self.WINDOW[2:]}
-        return lambda candidate: (candidate in fitting, after[candidate])
+    def ask(self, base, commit):
+        """`plan` over `base`..`commit`: the mutants of the commits after `base` up to `commit`."""
+        span = self.ORDER[self.ORDER.index(base) + 1:self.ORDER.index(commit) + 1]
+        mutants = [mutant(name + ".cs", line) for name in span for line in range(self.SIZES[name])]
+        return len(mutants) <= 2, mutants
 
-    def test_Given_AWindowOverTheCeiling_When_Chosen_Then_TheOldestBaseThatFitsIsTaken(self):
+    def test_Given_ABacklogOverTheCeiling_When_Chosen_Then_TheOldestCommitsThatFitAreMeasured(self):
         # Act
-        base, unmeasured, _, _ = nightly.choose("start", ["a", "b", "c"], self.ask({"a", "b"}))
+        base, reached, _, _ = nightly.choose("start", ["a", "b", "c", "d"], self.ask)
 
-        # Assert — the commits up to that base are what the night leaves unmeasured.
-        self.assertEqual((base, unmeasured), ("a", ["a"]))
+        # Assert — c and d are left for the nights that start where this one reached.
+        self.assertEqual((base, reached), ("start", "b"))
 
-    def test_Given_AWindowOverTheCeiling_When_Chosen_Then_TheWindowsMutantsAreTheFirstPlansList(self):
+    def test_Given_ACommitOverTheCeilingOnItsOwn_When_Chosen_Then_ItIsSkippedAndTheSliceStartsAfterIt(self):
         # Act
-        _, _, window, measured = nightly.choose("start", ["a", "b", "c"], self.ask({"b"}))
+        base, reached, measured, skipped = nightly.choose("c", ["d"], self.ask)
+
+        # Assert — the night reaches the skipped commit, so the next one does not stop on it again.
+        self.assertEqual((base, reached, measured, [commit for commit, _ in skipped]),
+                         ("d", "d", [], ["d"]))
+
+    def test_Given_ASkippedCommitBeforeOnesThatFit_When_Chosen_Then_TheyAreMeasuredFromIt(self):
+        # Act
+        base, reached, _, _ = nightly.choose("start", ["d", "a"], lambda base, commit: (
+            (False, [mutant("D.cs", 1)] * 5) if commit == "d" else (base == "d", [mutant("A.cs", 1)])))
 
         # Assert
-        self.assertEqual((len(window), measured), (3, self.WINDOW[2:]))
+        self.assertEqual((base, reached), ("d", "a"))
 
-    def test_Given_NoSliceThatFits_When_Chosen_Then_TheHeadIsTakenAndEveryCommitIsUnmeasured(self):
+    def test_Given_ACommitThatWouldFitOnlyAfterOneThatDoesNot_When_Chosen_Then_TheSliceStopsBefore(self):
+        # Arrange — c takes back what b added, so the slice through c fits where the one through b
+        # does not; what a night leaves behind has to be every commit after the one it reached.
+        fitting = {"a": True, "b": False, "c": True}
+
         # Act
-        base, unmeasured, _, measured = nightly.choose("start", ["a", "b", "c"], self.ask(set()))
+        _, reached, _, _ = nightly.choose("start", ["a", "b", "c"],
+                                          lambda base, commit: (fitting[commit], []))
 
         # Assert
-        self.assertEqual((base, unmeasured, measured), ("c", ["a", "b", "c"], []))
+        self.assertEqual(reached, "a")
+
+    def test_Given_NoCommitSinceTheLastNight_When_Chosen_Then_NothingIsMeasured(self):
+        # Act
+        chosen = nightly.choose("start", [], self.ask)
+
+        # Assert
+        self.assertEqual(chosen, ("start", "start", [], []))
 
 
 class WindowRepository:
     """A repository of three first-parent commits, the last two each adding a file of 60 mutants.
 
-    Together they are over the plan's ceiling of `MAX_SHARDS` shards of `SHARD_CEILING` mutants, and
-    either alone is under it.
+    Together they are over a ceiling of ten shards of `SHARD_CEILING` mutants, and either alone is
+    under it.
     """
 
     def __init__(self):
@@ -192,18 +232,20 @@ class WindowRepository:
         return self.git("rev-parse", "HEAD")
 
     def window(self):
-        """What `window` writes when the last reported night ended at `start`."""
+        """(what `window` writes, what it prints) where the last reported night reached `start`."""
         output = self.root.parent / (self.root.name + "-window.json")
         environ = {"GITHUB_REPOSITORY": "owner/name", "GITHUB_REF_NAME": "main", "GITHUB_RUN_ID": "9"}
         runs = {"workflow_runs": [{"id": 1, "run_number": 1}]}
 
         def read(path):
             return runs if "/runs?event=schedule" in path else listing(marker(self.start))
+        printed = io.StringIO()
         try:
-            with contextlib.redirect_stdout(io.StringIO()):
+            with contextlib.redirect_stdout(printed), contextlib.redirect_stderr(io.StringIO()), \
+                    unittest.mock.patch.object(nightly, "NIGHTLY_MAX_SHARDS", 10):
                 nightly.window_main(nightly.argparse.Namespace(project=str(self.root), output=str(output),
                                                                reuse_from=None), environ, read)
-            return json.loads(output.read_text())
+            return json.loads(output.read_text()), printed.getvalue()
         finally:
             output.unlink(missing_ok=True)
 
@@ -216,21 +258,73 @@ class WindowTests(unittest.TestCase):
         self.repository = WindowRepository()
         self.addCleanup(self.repository.remove)
 
-    def test_Given_TwoCommitsOverTheCeilingTogether_When_TheWindowIsRead_Then_TheNewestIsMeasured(self):
+    def test_Given_TwoCommitsOverTheCeilingTogether_When_TheWindowIsRead_Then_TheOlderIsReached(self):
         # Act
-        window = self.repository.window()
+        _, printed = self.repository.window()
 
         # Assert
-        self.assertEqual(window["base"], self.repository.first)
+        self.assertIn("reached={}\n".format(self.repository.first), printed)
 
-    def test_Given_TwoCommitsOverTheCeilingTogether_When_TheWindowIsRead_Then_TheOlderOnesMutantsAreUnmeasured(self):
+    def test_Given_TwoCommitsOverTheCeilingTogether_When_TheWindowIsRead_Then_TheNewerIsLeftBehind(self):
         # Act
-        window = self.repository.window()
+        window, _ = self.repository.window()
 
         # Assert
-        self.assertEqual(({record["path"] for record in window["unmeasured_mutants"]},
-                          len(window["unmeasured_mutants"])),
+        self.assertEqual([commit["sha"] for commit in window["behind"]], [self.repository.second])
+
+    def test_Given_TheOlderCommitReached_When_TheWindowIsRead_Then_ItsMutantsAloneAreMeasured(self):
+        # Act
+        window, _ = self.repository.window()
+
+        # Assert
+        self.assertEqual(({record["path"] for record in window["measured_mutants"]},
+                          len(window["measured_mutants"])),
                          ({"Packages/com.velvet.core/Runtime/First.cs"}, 60))
+
+    def test_Given_AWindowRead_When_ItIsDone_Then_TheCheckoutAndItsWorktreesAreAsTheyWere(self):
+        # Act
+        self.repository.window()
+
+        # Assert
+        self.assertEqual((self.repository.git("status", "--porcelain"),
+                          len(self.repository.git("worktree", "list").splitlines())), ("", 1))
+
+
+class TreeTests(unittest.TestCase):
+    def setUp(self):
+        self.repository = WindowRepository()
+        self.addCleanup(self.repository.remove)
+
+    def test_Given_TheReachedCommit_When_ItsTreeIsTaken_Then_TheFilesAfterItAreGone(self):
+        # Act
+        nightly.main(["--project", str(self.repository.root), "tree", "--source", self.repository.first])
+
+        # Assert
+        self.assertEqual(sorted(path.name for path in
+                                (self.repository.root / "Packages/com.velvet.core/Runtime").iterdir()),
+                         ["First.cs"])
+
+    def test_Given_AFileTheHeadDeleted_When_TheTreeOfACommitHoldingItIsTaken_Then_ItIsTracked(self):
+        # Arrange — an untracked source is one a campaign takes whole, whatever its diff.
+        self.repository.git("rm", "-q", "Packages/com.velvet.core/Runtime/First.cs")
+        self.repository.git("commit", "-qm", "delete First.cs")
+
+        # Act
+        nightly.main(["--project", str(self.repository.root), "tree", "--source", self.repository.first])
+
+        # Assert
+        self.assertEqual(self.repository.git("ls-files", "--others", "--exclude-standard"), "")
+
+    def test_Given_TheReachedCommit_When_ItsTreeIsTaken_Then_FilesOutsideTheRootsStayTheHeads(self):
+        # Arrange
+        (self.repository.root / "README.md").write_text("the head's\n")
+        self.repository.git("commit", "-qam", "readme")
+
+        # Act
+        nightly.main(["--project", str(self.repository.root), "tree", "--source", self.repository.first])
+
+        # Assert
+        self.assertEqual((self.repository.root / "README.md").read_text(), "the head's\n")
 
 
 VERDICT = textwrap.dedent("""\
@@ -249,7 +343,7 @@ VERDICT = textwrap.dedent("""\
     """)
 
 WINDOW = {"head": HEAD, "start": OLDER, "source": "the night reported by run 1", "base": OLDER,
-          "unmeasured_commits": [], "unmeasured_mutants": [], "measured_mutants": [mutant("A.cs", 5)]}
+          "reached": HEAD, "skipped": [], "behind": [], "measured_mutants": [mutant("A.cs", 5)]}
 
 PASSED = [("mutation-plan", "success"), ("mutation-verdict", "success")]
 
@@ -270,14 +364,14 @@ class SectionTests(unittest.TestCase):
 class ComposeTests(unittest.TestCase):
     def test_Given_ANightThatLeftNothingToAnswer_When_Composed_Then_NoCommentIsOwed(self):
         # Act
-        text = nightly.compose(WINDOW, "killed: 1\n", PASSED, "", "https://run")
+        _, owed = nightly.compose(WINDOW, "killed: 1\n", PASSED, "", "https://run")
 
         # Assert
-        self.assertIsNone(text)
+        self.assertFalse(owed)
 
     def test_Given_AnUnansweredSurvivor_When_Composed_Then_TheCommentNamesItsLine(self):
         # Act
-        text = nightly.compose(WINDOW, VERDICT, PASSED, "", "https://run")
+        text, _ = nightly.compose(WINDOW, VERDICT, PASSED, "", "https://run")
 
         # Assert
         self.assertIn("### Unanswered survivors\n- `Runtime/A.cs:5 <= -> < (boundary) — nothing above",
@@ -288,32 +382,44 @@ class ComposeTests(unittest.TestCase):
         results = [("mutation-plan", "success"), ("mutation-shard", "failure")]
 
         # Act
-        text = nightly.compose(WINDOW, None, results, "", "https://run")
+        text, _ = nightly.compose(WINDOW, None, results, "", "https://run")
 
         # Assert
         self.assertIn("- `A.cs:5 <= -> < (boundary)`", text.partition("### Not measured")[2])
 
     def test_Given_AJobThatFailed_When_Composed_Then_TheCommentNamesIt(self):
         # Act
-        text = nightly.compose(WINDOW, "killed: 1\n", [("mutation-plan", "failure")], "", "https://run")
+        text, _ = nightly.compose(WINDOW, "killed: 1\n", [("mutation-plan", "failure")], "", "https://run")
 
         # Assert
         self.assertIn("### Jobs that did not pass\n- `mutation-plan concluded failure`", text)
 
-    def test_Given_CommitsLeftOutsideTheSlice_When_Composed_Then_TheirMutantsAreNamedUnmeasured(self):
+    def test_Given_ACommitSkippedOverTheCeiling_When_Composed_Then_ItsMutantsAreNamedAndOwed(self):
         # Arrange
-        window = dict(WINDOW, unmeasured_commits=[{"sha": OLDER, "subject": "an older change"}],
-                      unmeasured_mutants=[mutant("Old.cs", 3)])
+        window = dict(WINDOW, skipped=[{"sha": OLDER, "subject": "a large change",
+                                         "mutants": [mutant("Old.cs", 3)]}])
 
         # Act
-        text = nightly.compose(window, "killed: 1\n", PASSED, "", "https://run")
+        text, owed = nightly.compose(window, "killed: 1\n", PASSED, "", "https://run")
 
         # Assert
-        self.assertIn("### Their mutants, unmeasured\n- `Old.cs:3 <= -> < (boundary)`", text)
+        self.assertEqual(("### Their mutants, unmeasured\n- `Old.cs:3 <= -> < (boundary)`" in text, owed),
+                         (True, True))
+
+    def test_Given_CommitsLeftForLaterNights_When_Composed_Then_TheyAreListedAndOweNothing(self):
+        # Arrange
+        window = dict(WINDOW, behind=[{"sha": HEAD, "subject": "a newer change"}])
+
+        # Act
+        text, owed = nightly.compose(window, "killed: 1\n", PASSED, "", "https://run")
+
+        # Assert
+        self.assertEqual(("### Left for later nights\n- `eeeeeeeeeeee a newer change`" in text, owed),
+                         (True, False))
 
     def test_Given_NoWindow_When_Composed_Then_TheCommentSaysNothingWasMeasured(self):
         # Act
-        text = nightly.compose(None, None, [("mutation-plan", "failure")], "", "https://run")
+        text, _ = nightly.compose(None, None, [("mutation-plan", "failure")], "", "https://run")
 
         # Assert
         self.assertIn("nothing was measured", text)
@@ -384,19 +490,22 @@ class ReportTests(unittest.TestCase):
                                 {"RESULTS": "mutation-plan=success"}, Issues([]).read, Issues([]).write)
         return printed.getvalue()
 
-    def test_Given_ANightWhoseWindowWasRead_When_Reported_Then_ItsHeadIsPrintedForTheMarker(self):
+    def test_Given_ANightWhoseWindowWasRead_When_Reported_Then_TheCommitItReachedIsPrintedForTheMarker(self):
+        # Arrange — a slice that reached an older commit than the head.
+        window = dict(WINDOW, reached=OLDER)
+
         # Act
-        printed = self.report(WINDOW)
+        printed = self.report(window)
 
         # Assert
-        self.assertIn("\nhead={}\n".format(HEAD), "\n" + printed)
+        self.assertIn("\nreached={}\n".format(OLDER), "\n" + printed)
 
-    def test_Given_ANightWhoseWindowWasNotRead_When_Reported_Then_NoHeadIsPrinted(self):
+    def test_Given_ANightWhoseWindowWasNotRead_When_Reported_Then_NoCommitIsPrinted(self):
         # Act
         printed = self.report(None)
 
         # Assert — so no marker is uploaded, and the next night measures these commits again.
-        self.assertNotIn("head=", printed)
+        self.assertNotIn("reached=", printed)
 
 
 if __name__ == "__main__":

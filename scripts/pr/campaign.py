@@ -3,8 +3,8 @@
 The campaign runs nightly on the default branch and on a branch dispatched by hand; no pull request
 waits on it, and CONTRIBUTING.md ▸ Checking that the tests can fail owns why. A run of `WORKFLOW` on a
 pull request's head is therefore no evidence about its merge: `settle.py` and
-`refuse/merge_unproven_head.py` leave its runs and its checks out of what they read (`others`,
-`suites`, `NAME`).
+`refuse/merge_unproven_head.py` leave its runs, its checks and its old commit status out of what they
+read (`others`, `suites`, `NAME`, `STATUS_CONTEXT`).
 
 A campaign that passes leaves its key in the name of an artifact (`key_artifact_name`), and a later
 run on the same branch whose key is the same reuses that verdict instead of measuring (`reusable`).
@@ -21,6 +21,11 @@ PATH = ".github/workflows/" + WORKFLOW
 
 # The `name:` the workflow declares, which a check listing carries as the workflow a check belongs to.
 NAME = "Mutation campaign"
+
+# The commit-status context a publisher wrote on pull request heads while a campaign gated their
+# merge. The publisher is gone and writes no new one, but a head can still carry one, pending
+# included, so it is left out as the campaign's checks are.
+STATUS_CONTEXT = "Mutation campaign"
 
 # The artifact a passing campaign uploads: its key, and for a run that reused a verdict the run that
 # measured it. A name rather than a file, so a REST listing of the run's artifacts carries it.

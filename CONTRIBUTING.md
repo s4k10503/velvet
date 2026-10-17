@@ -225,17 +225,29 @@ that branch's change against its merge base with `base`, as a local run does. No
 requires either, and [Merging a pull request](#merging-a-pull-request) says how a merge leaves a
 campaign on its head out.
 
-A night measures a window of the default branch's first-parent commits.
-`scripts/ci/mutation_nightly.py` starts it at the head the last reported night measured up to — the
-`Mutation nightly reported <sha>` artifact of the newest of the last 20 scheduled runs that carries
-one and whose head the checkout contains — or, where none does, at the newest first-parent commit at least 24 hours old. The
-window's change can hold more mutants than the ceiling below lets a plan through, so the night measures
-the newest slice that fits: of the window's start and each first-parent commit after it, the oldest
-whose plan the ceiling passes, counted with the kills the plan reuses. The commits before that slice,
-and their mutants by line, are left unmeasured and named in the report, and the next night starts at
-this night's head, so no later night measures them. A night whose newest commit alone is over the
-ceiling measures nothing and names every mutant. The plan job writes the window to a file, and
-`scripts/ci/change_base.py` reads the slice's base back from it in every job of the run.
+A night measures a slice of the default branch's first-parent commits, oldest first.
+`scripts/ci/mutation_nightly.py` starts it at the commit the last reported night reached — named by
+the `Mutation nightly reported <sha>` artifact of the newest of the last 20 scheduled runs that
+carries one and whose commit the checkout contains — or, where none does, at the newest first-parent
+commit at least 24 hours old. It adds the commits after that start one at a time while the slice's
+plan fits a night's ceiling, `NIGHTLY_MAX_SHARDS` shards of `SHARD_CEILING`, counted with the kills
+the plan reuses, and stops before the first commit that would take it over. The commits after the
+slice are left for later nights, which start where this one reached, so a backlog is measured in
+order; the report lists them. A commit over the ceiling on its own is skipped, and named with its
+mutants by line as unmeasured, so that it does not stop every later night. The slice is measured on
+its own tree: the plan, Library, shard and verdict jobs each put `Packages/`, `Assets/` and
+`ProjectSettings/` back to the commit the slice reached (`mutation_nightly.py tree`) and keep the head's
+`scripts/`, and `scripts/ci/change_base.py` reads the slice's base back from the window file.
+
+A night's ceiling is larger than a dispatch's because nobody waits on a night: forty shards, which
+`Mutation campaign ▸ mutation-shard` runs at most ten at a time (`max-parallel`), so a night is four
+waves of shard jobs. Ten at a time is the count campaign shards have run at beside other licensed jobs;
+four waves at the shard job's 360-minute limit hold the shard jobs to 24 hours at the very worst, and
+a scheduled run that comes while a night still runs waits in the night's concurrency group rather
+than cancelling it. Forty shards are
+400 mutants, against 288 a day that the first-parent commits of the seven days to 2026-10-17
+generated. `NIGHTLY_MAX_SHARDS` holds the figure, and `NightlyBudgetTests` holds it to the four waves; every job of a night passes it to
+`mutation_check.py --max-shards`, and a dispatch takes the default, `MAX_SHARDS`.
 
 `Mutation campaign ▸ mutation-plan` generates the mutants of the change, taking the readings `--list`
 takes, and stops there when there are none — because no mutable package source changed, or because
@@ -281,10 +293,12 @@ be recorded against that branch's tip rather than the head it measured.
 scheduled run where a licence is configured, whatever the jobs before it concluded, and comments on the
 issue labelled `mutation-nightly` — opening it the first time and reopening it where it was closed —
 with each unanswered survivor and stale declaration the verdict printed, each mutant nothing measured,
-each job that did not pass, and the commits and mutants the window left outside its slice. A night
-with none of those, whose window was read, writes nothing. The report then uploads the window as `Mutation nightly reported <sha>`,
-which is where the next night starts; a night whose report was not written uploads none, and the next
-night's window still starts where the last reported one ended. A survivor is answered as above, by a
+each job that did not pass, and each commit skipped over the ceiling with its mutants. The commits
+left for later nights are listed too, and owe no comment of their own: a night with nothing else,
+whose window was read, writes none. The report then uploads the window as
+`Mutation nightly reported <sha>`, naming the commit the slice reached, which is where the next night
+starts; a night whose report was not written uploads none, and the next night starts where the last
+reported one reached. A survivor is answered as above, by a
 pull request that writes the test or the declaration. A declaration a change writes brings the lines it
 answers for into that change's mutants, so the next night, or a dispatch onto the branch, measures them:
 it answers the survivor, or is stale where the mutant now dies. Running the campaign locally, or
@@ -1322,8 +1336,9 @@ does not create the label; it has to exist in the repository.
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's branch runs on its
 head like any other workflow, and `settle.py merge`, the automerge runs through it, and
 `refuse/merge_unproven_head.py` leave its runs and its checks out of what they read, so one that failed
-or is still running holds nothing; `scripts/pr/campaign.py` says which runs and checks are a
-campaign's. [Checking that the tests can fail](#checking-that-the-tests-can-fail) owns where a survivor
+or is still running holds nothing. They leave out the `Mutation campaign` commit status as well,
+which a publisher wrote on pull request heads while the campaign gated their merge, and which a head
+can still carry. `scripts/pr/campaign.py` says which runs, checks and status are a campaign's. [Checking that the tests can fail](#checking-that-the-tests-can-fail) owns where a survivor
 is reported instead.
 
 Adding the label hands the pull request off, and so does marking a labelled draft ready for review:

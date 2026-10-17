@@ -1091,6 +1091,21 @@ class CampaignMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [])
 
+    # GREEN_ON_BASE(characterization): the base left this status out as the campaign's display beside
+    # the run it read. What it pins is that the status a removed publisher left on a head still holds
+    # nothing: dropping the `STATUS_CONTEXT` filter from `check_results` reddens it.
+    def test_Given_APendingStatusTheRemovedPublisherLeft_When_TheMergeIsDecided_Then_ItIsNotRead(self):
+        # Arrange
+        statuses = {"total_count": 1, "statuses": [{"context": "Mutation campaign", "state": "pending"}]}
+
+        # Act
+        with rest_readings([check_run("Required checks (Unity)", "success", 7)], [], labels=(),
+                           statuses=statuses):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
     def test_Given_AFailedCheckOfTheCampaignsSuite_When_TheMergeIsDecided_Then_ItIsNotRead(self):
         # Arrange — the run reads as passed, so the check in its suite is all that could refuse.
         checks = [check_run("Required checks (Unity)", "success", 7),

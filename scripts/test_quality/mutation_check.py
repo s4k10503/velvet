@@ -4698,14 +4698,14 @@ def list_mismatch(expected, mutants, project):
     return "the plan's list holds {} mutants and this tree generates {}".format(len(expected), len(mine))
 
 
-def unreported_shards(chosen, platform, mutants, project):
+def unreported_shards(chosen, platform, mutants, project, most=MAX_SHARDS):
     """{shard K: the mutant indices it was dealt} for the shards `--collect` found no record from.
 
     A shard that died, was cancelled, or timed its baseline out writes nothing for any of its
     mutants, and one that stopped part way writes for some. Only a shard none of whose mutants
     has a verdict is named: a partial one names its own missing mutants through the verdict list.
     """
-    count = shard_count(len(chosen), platform)
+    count = shard_count(len(chosen), platform, most)
     named = {}
     for shard in range(count):
         dealt = sharded(chosen, (shard, count), mutants, project, platform)
@@ -4832,8 +4832,8 @@ def in_ranges(ranges, path, line):
     return any(there == path and first <= line <= last for there, first, last in ranges)
 
 
-def shard_count(mutants, platform="EditMode"):
-    return min(MAX_SHARDS, -(-mutants // SHARD_SIZE[platform]))
+def shard_count(mutants, platform="EditMode", most=MAX_SHARDS):
+    return min(most, -(-mutants // SHARD_SIZE[platform]))
 
 
 def mutant_cost(mutant, project, platform):
@@ -5407,21 +5407,21 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
             len(chosen), len(mutants), first, args.platform))
         print("mutants={}".format(len(chosen)))
         return 0
-    if len(chosen) > MAX_SHARDS * per:
+    if len(chosen) > args.max_shards * per:
         print("{} mutants survived the {} suite, more than {} shards of {} can measure on {} inside "
               "the shard job's timeout.\nWrite the tests they ask for, or split the pull request."
-              .format(len(chosen), first, MAX_SHARDS, per, args.platform))
+              .format(len(chosen), first, args.max_shards, per, args.platform))
         return CEILING_REFUSAL
     print("{} of {} mutant(s) survived the {} suite and are measured on {}".format(
         len(chosen), len(mutants), first, args.platform))
-    count = shard_count(len(chosen), args.platform)
+    count = shard_count(len(chosen), args.platform, args.max_shards)
     print(spread_report(chosen, mutants, project, args.platform, count))
     print("mutants={}".format(len(chosen)))
     print("shards={}".format(json.dumps(list(range(count)))))
     return 0
 
 
-def unreported_survivor_shards(first_chosen, survivors, first, mutants, project):
+def unreported_survivor_shards(first_chosen, survivors, first, mutants, project, most=MAX_SHARDS):
     """{first-pass shard K: the survivors it left} for the second-pass groups `--collect` found no
     record from, and the first pass's shard count.
 
@@ -5429,7 +5429,7 @@ def unreported_survivor_shards(first_chosen, survivors, first, mutants, project)
     is named by the shard it belongs to. Named only where none of its survivors has a verdict, as
     `unreported_shards` names a shard.
     """
-    count = shard_count(len(first_chosen), first)
+    count = shard_count(len(first_chosen), first, most)
     named = {}
     for shard in range(count):
         dealt = [index for index in sharded(first_chosen, (shard, count), mutants, project, first)
@@ -5496,6 +5496,10 @@ def main():
                         help="write every mutant this package generates as {path, line, text} and "
                              "stop, for a reader that parses them with something other than this "
                              "script's own model of C#")
+    parser.add_argument("--max-shards", type=int, default=MAX_SHARDS, metavar="N",
+                        help="split a pass across at most N shards, which with --plan sets the ceiling "
+                             "at N shards' worth; every job of one campaign passes the same N "
+                             "(default: {})".format(MAX_SHARDS))
     parser.add_argument("--plan", action="store_true",
                         help="print how many mutants the diff generates and the shards a split run "
                              "would use, as mutants=N and shards=[...] lines, and stop")
@@ -5790,10 +5794,10 @@ def main():
 
     if args.plan and args.survivors_of is None:
         owed = len(mutants) - len(reused)
-        if owed > MAX_SHARDS * SHARD_CEILING[args.platform]:
+        if owed > args.max_shards * SHARD_CEILING[args.platform]:
             print(coverage)
             print("{} mutants is more than {} shards of {} can measure inside the shard job's "
-                  "timeout.\nSplit the pull request.".format(owed, MAX_SHARDS,
+                  "timeout.\nSplit the pull request.".format(owed, args.max_shards,
                                                              SHARD_CEILING[args.platform]))
             return CEILING_REFUSAL
         print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
@@ -5808,7 +5812,7 @@ def main():
         print("mutants={}".format(len(mutants)))
         if reading:
             print("reusing={}".format(len(reused)))
-        count = shard_count(owed, args.platform)
+        count = shard_count(owed, args.platform, args.max_shards)
         dealt = [number for number in range(1, len(mutants) + 1) if number not in reused]
         print(spread_report(dealt, mutants, project, args.platform, count))
         print("shards={}".format(json.dumps(list(range(count)))))
@@ -5871,7 +5875,8 @@ def main():
         firsts = {index: mutant.verdict for index, mutant in enumerate(mutants, start=1)}
         # Read here, before the collect below overwrites the verdicts: a first-pass shard that died
         # left its mutants UNRECORDED, and they are in no pass's `chosen`.
-        dead_first, first_count = unreported_shards(first_chosen, first, mutants, project)
+        dead_first, first_count = unreported_shards(first_chosen, first, mutants, project,
+                                                    args.max_shards)
     if args.collect is not None:
         print(coverage)
         for index in chosen:
@@ -5957,9 +5962,10 @@ def main():
         print("Re-run only the failed jobs; the verdict job then decides again over every record.")
     elif args.collect is not None:
         if first is not None:
-            named, count = unreported_survivor_shards(first_chosen, set(chosen), first, mutants, project)
+            named, count = unreported_survivor_shards(first_chosen, set(chosen), first, mutants, project,
+                                                      args.max_shards)
         else:
-            named, count = unreported_shards(chosen, args.platform, mutants, project)
+            named, count = unreported_shards(chosen, args.platform, mutants, project, args.max_shards)
         if named:
             # Not a survivor and not a stale declaration: the shard never reached the mutants, so
             # nothing is known about them. Re-running the failed jobs of the run records them.

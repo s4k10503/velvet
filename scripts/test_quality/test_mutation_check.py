@@ -7226,6 +7226,32 @@ class CampaignPlanTests(unittest.TestCase):
                           "mutants=" in campaign.printed),
                          (getattr(mutation_check, "CEILING_REFUSAL", None), True, False))
 
+    def test_Given_MoreMutantsThanTheDefaultShardsCarry_When_PlannedWithMoreShards_Then_TheyArePlanned(self):
+        # Arrange — two mutants against a ceiling of one shard of one, which a run given two shards lifts.
+        campaign = ParityKilledCampaign()
+
+        # Act
+        with mock.patch.object(mutation_check, "MAX_SHARDS", 1), \
+                mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 1}), \
+                mock.patch.dict(mutation_check.SHARD_SIZE, {"EditMode": 1}):
+            code = campaign.run_over_diff("--plan", "--max-shards", "2")
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^(?:mutants|shards)=.*$", campaign.printed, re.MULTILINE)),
+                         (0, ["mutants=2", "shards=[0, 1]"]))
+
+    def test_Given_AShardCountGivenToTheDecision_When_ItsDeadShardsAreCounted_Then_ItIsTheOneDealtOver(self):
+        # Arrange — thirty mutants make five shards by default, and three where the run said three.
+        mutants = [survivor(Path("probe.cs"), number, verdict=mutation_check.UNRECORDED)
+                   for number in range(1, 31)]
+
+        # Act
+        _, count = mutation_check.unreported_shards(list(range(1, 31)), "EditMode", mutants,
+                                                   project=Path("/p"), most=3)
+
+        # Assert
+        self.assertEqual(count, 3)
+
     def test_Given_MutantCounts_When_Sharded_Then_EachShardHoldsAtMostItsShareUpToTheCap(self):
         # Arrange
         per, cap = mutation_check.SHARD_SIZE["EditMode"], mutation_check.MAX_SHARDS
