@@ -28,11 +28,22 @@ namespace Velvet
         public bool Active => XDeg != 0f || YDeg != 0f;
     }
 
-    // Parses Velvet's skew utility classes: skew-x-6 / -skew-x-6 (the numeric
-    // suffix is DEGREES) and the arbitrary form skew-x-[8deg] / -skew-x-[8deg],
-    // same for skew-y-*. skew-x-0 is a recognized reset (it overrides an earlier skew-x-6 in the
-    // cascade). Same shape as StyleClipPathClass: a cheap gate plus a cascade-correct extractor
-    // (last recognized class per axis wins).
+    internal enum SkewAxis
+    {
+        Both,
+        X,
+        Y,
+    }
+
+    // Parses the skew utilities as Tailwind writes them: skew-x-6 / -skew-x-6 (the numeric suffix is DEGREES),
+    // the arbitrary form skew-x-[8deg], the same for skew-y-*, and skew-6 / -skew-6 / skew-[8deg], which write
+    // both axes. skew-x-0 is a recognized reset (it overrides an earlier skew-x-6 in the cascade). Same shape as
+    // StyleClipPathClass: a cheap gate plus a cascade-correct extractor.
+    //
+    // An axis takes the last class that writes it among those of the highest importance, a skew-<n> writing both.
+    // Normalize has put the base classes in Tailwind's order (StyleFamilyOrder), and a variant payload is appended
+    // after them, so the last one is the one Tailwind emits last: skew-6 beneath skew-x-12 whichever is
+    // written first, and a payload over the base.
     //
     // PARITY NOTE: CSS transform: skewX() shears the element AND its descendants. UI Toolkit's
     // transform supports only translate / rotate / scale — shear is unrepresentable — so Velvet's
@@ -46,17 +57,18 @@ namespace Velvet
     {
         private const string XPrefix = "skew-x-";
         private const string YPrefix = "skew-y-";
+        private const string BothPrefix = "skew-";
 
         // True when cls is a skew utility this layer owns (recognized or not-yet-valid).
         public static bool IsSkewClass(string? cls)
         {
-            if (string.IsNullOrEmpty(cls))
+            var core = StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out _);
+            if (core.Length == 0)
             {
                 return false;
             }
-            var body = cls[0] == '-' ? cls.Substring(1) : cls;
-            return body.StartsWith(XPrefix, StringComparison.Ordinal)
-                || body.StartsWith(YPrefix, StringComparison.Ordinal);
+            var body = core[0] == '-' ? core.Substring(1) : core;
+            return body.StartsWith(BothPrefix, StringComparison.Ordinal);
         }
 
         // Cheap early-out gate: true when ANY class is a skew utility.
@@ -76,11 +88,10 @@ namespace Velvet
             return false;
         }
 
-        // Allocation-free cascade probe: the LAST PARSEABLE skew token per axis (mirroring the token
-        // TryExtract stores in SkewSpec.SourceX / SourceY), or false when neither axis has one. The patch
-        // path compares these against the live binding's SourceX / SourceY to skip the parse in the steady
-        // state — gating on the same TryParse predicate keeps the two probes from diverging on a trailing
-        // unparseable token (e.g. ["skew-x-6", "skew-x-junk"]), which otherwise defeats the fast path.
+        // The winning skew token per axis (the token TryExtract stores in SkewSpec.SourceX / SourceY), or false when
+        // neither axis has one. The patch path compares these against the live binding's SourceX / SourceY to skip
+        // the parse in the steady state; both read Resolve, so a trailing unparseable token (e.g. ["skew-x-6",
+        // "skew-x-junk"]) cannot make them disagree and defeat the fast path.
         public static bool TryGetWinningSkewClasses(string[]? classNames, out string? winnerX, out string? winnerY)
         {
             winnerX = null;
@@ -89,27 +100,14 @@ namespace Velvet
             {
                 return false;
             }
-            foreach (var cls in classNames)
-            {
-                if (!TryParse(cls, out var isX, out _))
-                {
-                    continue;
-                }
-                if (isX)
-                {
-                    winnerX = cls;
-                }
-                else
-                {
-                    winnerY = cls;
-                }
-            }
+            Resolve(classNames, out var x, out var y);
+            winnerX = x.Source;
+            winnerY = y.Source;
             return winnerX != null || winnerY != null;
         }
 
-        // Resolves the cascade (last recognized class per axis wins) into a SkewSpec. Returns true
-        // only when the result is ACTIVE (a non-zero angle on at least one axis) — skew-x-0 resets
-        // its axis, so a list ending in resets extracts to false.
+        // Resolves the cascade into a SkewSpec. Returns true only when the result is ACTIVE (a non-zero angle on at
+        // least one axis) — skew-x-0 resets its axis, so a list ending in resets extracts to false.
         public static bool TryExtract(string[]? classNames, out SkewSpec spec)
         {
             spec = default;
@@ -117,37 +115,62 @@ namespace Velvet
             {
                 return false;
             }
-
-            float x = 0f, y = 0f;
-            string? sourceX = null, sourceY = null;
-            foreach (var cls in classNames)
-            {
-                if (!TryParse(cls, out var isX, out var deg))
-                {
-                    continue;
-                }
-                if (isX)
-                {
-                    x = deg;
-                    sourceX = cls;
-                }
-                else
-                {
-                    y = deg;
-                    sourceY = cls;
-                }
-            }
-
-            spec = new SkewSpec(x, y, sourceX, sourceY);
+            Resolve(classNames, out var x, out var y);
+            spec = new SkewSpec(x.Deg, y.Deg, x.Source, y.Source);
             return spec.Active;
         }
 
-        // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<angle>] (+ y variants).
-        // Returns false for anything else (the cascade ignores unrecognized tokens).
-        internal static bool TryParse(string? cls, out bool isX, out float deg)
+        private struct Pick
         {
-            isX = false;
+            public float Deg;
+            public string? Source;
+            public bool Important;
+        }
+
+        private static void Resolve(string[] classNames, out Pick x, out Pick y)
+        {
+            x = default;
+            y = default;
+            foreach (var cls in classNames)
+            {
+                if (!TryParse(cls, out var axis, out var deg, out var important))
+                {
+                    continue;
+                }
+                var pick = new Pick { Deg = deg, Source = cls, Important = important };
+                if (axis != SkewAxis.Y)
+                {
+                    Offer(ref x, pick);
+                }
+                if (axis != SkewAxis.X)
+                {
+                    Offer(ref y, pick);
+                }
+            }
+        }
+
+        // An important token takes an axis from a plain one, and between two of one importance the later does.
+        private static void Offer(ref Pick held, Pick offered)
+        {
+            if (offered.Important || !held.Important)
+            {
+                held = offered;
+            }
+        }
+
+        // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<angle>] (+ the y and both-axes forms), with or
+        // without the important modifier. Returns false for anything else (the cascade ignores unrecognized tokens).
+        internal static bool TryParse(string? cls, out SkewAxis axis, out float deg, out bool important)
+        {
+            axis = SkewAxis.Both;
             deg = 0f;
+            // MUTANT_SURVIVES(equivalent, literal): the value is read only where the method returned true, and StripImportant overwrites it first.
+            important = false;
+            if (string.IsNullOrEmpty(cls))
+            {
+                return false;
+            }
+            cls = StyleArbitraryValueResolver.StripImportant(cls, out important);
             if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
@@ -158,12 +181,17 @@ namespace Velvet
             string suffix;
             if (body.StartsWith(XPrefix, StringComparison.Ordinal))
             {
-                isX = true;
+                axis = SkewAxis.X;
                 suffix = body.Substring(XPrefix.Length);
             }
             else if (body.StartsWith(YPrefix, StringComparison.Ordinal))
             {
+                axis = SkewAxis.Y;
                 suffix = body.Substring(YPrefix.Length);
+            }
+            else if (body.StartsWith(BothPrefix, StringComparison.Ordinal))
+            {
+                suffix = body.Substring(BothPrefix.Length);
             }
             else
             {

@@ -79,11 +79,17 @@ namespace Velvet
 
         private const float Kappa = 0.5522848f; // cubic-bezier quarter-circle constant
 
-        // CSS skew about the box center (transform-origin: center, the default skew origin):
-        // x' = x + (y − h/2)·tan(θx), y' = y + (x − w/2)·tan(θy). With tanX = tanY = 0 this is the identity, so
-        // the same path builder draws an upright box (the drop-shadow fill) and a sheared one (the skew face).
+        // Tailwind's transform, skewX(θx) skewY(θy), about the box center (transform-origin: center, the default
+        // skew origin): with (dx, dy) the point's offset from the center, x' = x + tanX·tanY·dx + tanX·dy and
+        // y' = y + tanY·dx — the product [[1, tanX], [0, 1]]·[[1, 0], [tanY, 1]], whose tanX·tanY term a single
+        // skew(θx, θy) would lack. With tanX = tanY = 0 this is the identity, so the same path builder draws an
+        // upright box (the drop-shadow fill) and a sheared one (the skew face).
         internal static Vector2 Shear(Vector2 p, float w, float h, float tanX, float tanY)
-            => new(p.x + ((p.y - (h * 0.5f)) * tanX), p.y + ((p.x - (w * 0.5f)) * tanY));
+        {
+            var dx = p.x - (w * 0.5f);
+            var dy = p.y - (h * 0.5f);
+            return new(p.x + (tanX * tanY * dx) + (tanX * dy), p.y + (tanY * dx));
+        }
 
         // Builds the rounded-rect path (inset on all sides) onto a Painter2D, shearing every point. A thin
         // wrapper over EmitShearedRoundedRectPath: BeginPath, emit the outline through a passthrough sink,

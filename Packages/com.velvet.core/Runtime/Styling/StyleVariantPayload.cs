@@ -235,7 +235,7 @@ namespace Velvet
         // Records a toggled payload that is one of the gate tokens, returning true when the tracked set
         // changed. Returns false without touching anything for the parameterless callers (no context to
         // record into) and for the overwhelmingly common non-gate payload. An important font, text-effect, gap,
-        // divide or pointer-events token keeps its bang, which is what lets it outrank the element's own important
+        // divide, pointer-events or skew token keeps its bang, which is what lets it outrank the element's own important
         // base token in the composed source; the other gate families read the bare core.
         private static bool TrackVariantGate(ReconcilerContext? ctx, VisualElement target, string payload,
             long priority, int declaration, bool on)
@@ -249,6 +249,7 @@ namespace Velvet
         private static bool IsImportanceAware(string core)
             => StyleFontClass.IsFontToken(core) || StyleTextEffectClass.IsTextEffectToken(core)
                 || StylePointerEventsClass.IsPointerEventsToken(core)
+                || StyleSkewClass.IsSkewClass(core)
                 || (StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core))
                 || StyleDivideClass.IsDivideToken(core);
 

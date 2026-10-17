@@ -56,6 +56,34 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APerAxisSkewAndADarkPlainSkew_When_TheThemeTurnsDark_Then_ThePayloadTakesTheXAxis()
+        {
+            // Arrange — a rule behind a variant outranks the base while the variant holds, whichever of the two is per-axis.
+            using var scope = new ReconcilerScope();
+            var card = Mount(scope, "skew-x-12 dark:skew-6");
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.SkewBindings[card].Spec.XDeg, Is.EqualTo(6f));
+        }
+
+        [Test]
+        public void Given_AnImportantSkewAndADarkImportantSkew_When_TheThemeTurnsDark_Then_ThePayloadTakesTheAxis()
+        {
+            // Arrange — a plain payload would lose to the important base, so the payload keeps its bang.
+            using var scope = new ReconcilerScope();
+            var card = Mount(scope, "!skew-x-12 dark:!skew-x-6");
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.SkewBindings[card].Spec.XDeg, Is.EqualTo(6f));
+        }
+
+        [Test]
         public void Given_ADarkGatedSkewApplied_When_TheThemeTurnsLight_Then_TheFaceIsReturned()
         {
             // Arrange

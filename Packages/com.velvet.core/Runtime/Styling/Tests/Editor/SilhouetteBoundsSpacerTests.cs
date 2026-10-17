@@ -49,6 +49,17 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_BothSkewAxes_When_AabbComputed_Then_ItHoldsTheComposedShear()
+        {
+            // Act — skewX·skewY carries the corner (50, 20) from the centre to (72.5, 45).
+            var aabb = SilhouetteBoundsSpacer.ShearedAabb(100f, 40f, 0.5f, 0.5f);
+
+            // Assert
+            Assert.That(new[] { aabb.xMin, aabb.yMin, aabb.width, aabb.height },
+                Is.EqualTo(new[] { -22.5f, -25f, 145f, 90f }).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_NoSkew_When_AabbComputed_Then_ItIsExactlyTheBox()
         {
             // Act

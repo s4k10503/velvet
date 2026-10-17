@@ -7,9 +7,8 @@ namespace Velvet
     // Approximates CSS skewX / skewY's descendant shear on a skewed caster's direct children. UI Toolkit's
     // transform has no shear, so SkewSilhouette paints only the caster's own box sheared while its children
     // stay axis-aligned; without compensation they float free of the slanted frame. This manipulator writes
-    // each in-flow child a translate that seats its CENTROID where the shear would carry it, using the same
-    // model SilhouetteBoundsSpacer.ShearedAabb documents: a point (x, y) maps to
-    // (x + (y - h/2)*tanX, y + (x - w/2)*tanY). The compensation is exact only at each child's centroid and
+    // each in-flow child a translate that seats its CENTROID where SilhouetteFace.Shear carries it. The
+    // compensation is exact only at each child's centroid and
     // piecewise-constant across the child (a real shear also rotates it), so a child large relative to the
     // caster reads slightly off at its far corners. It is the manual counter-translate a CSS author would
     // otherwise hand-write per row, made automatic.
@@ -189,15 +188,13 @@ namespace Velvet
             _hasSignature = true;
         }
 
-        // The sheared displacement of a child centroid on a caster of the given box and shear tangents, from
-        // the model SilhouetteBoundsSpacer.ShearedAabb documents: x' = x + (y - h/2)*tanX, y' = y + (x - w/2)*tanY.
+        // The sheared displacement of a child centroid on a caster of the given box and shear tangents.
         // Pure and panel-independent so the seat math is unit-testable without a layout pass.
         internal static Vector2 ComputeOffset(float childCenterX, float childCenterY,
             float containerWidth, float containerHeight, float tanX, float tanY)
         {
-            var dx = (childCenterY - (containerHeight * 0.5f)) * tanX;
-            var dy = (childCenterX - (containerWidth * 0.5f)) * tanY;
-            return new Vector2(dx, dy);
+            var center = new Vector2(childCenterX, childCenterY);
+            return SilhouetteFace.Shear(center, containerWidth, containerHeight, tanX, tanY) - center;
         }
 
         // Restores the captured translate onto every child the manipulator wrote a shear to, then stops tracking
