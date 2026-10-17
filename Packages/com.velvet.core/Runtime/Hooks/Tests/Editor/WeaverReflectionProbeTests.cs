@@ -1685,6 +1685,192 @@ namespace Velvet.Tests
             AssignSequentialOffsets(component);
         }
 
+        // A second assembly the probe module resolves through: `Foreign.Holder` with instance getters shaped like an
+        // auto-property, a hand-written read of a field, and a read of an auto-property that falls back to a default.
+        private static void AddForeignGetters(ModuleDefinition module)
+        {
+            var other = AssemblyDefinition.CreateAssembly(new AssemblyNameDefinition("ForeignProbe", new Version(1, 0)), "ForeignProbe", ModuleKind.Dll);
+            var main = other.MainModule;
+            var holder = new TypeDefinition("Foreign", "Holder", Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class, main.TypeSystem.Object);
+            main.Types.Add(holder);
+            var backing = new FieldDefinition("<Title>k__BackingField", Mono.Cecil.FieldAttributes.Private, main.TypeSystem.String);
+            var plain = new FieldDefinition("_title", Mono.Cecil.FieldAttributes.Private, main.TypeSystem.String);
+            holder.Fields.Add(backing);
+            holder.Fields.Add(plain);
+            AddInstanceGetter(holder, "get_Auto", main, il =>
+            {
+                il.Append(Instruction.Create(OpCodes.Ldarg_0));
+                il.Append(Instruction.Create(OpCodes.Ldfld, backing));
+                il.Append(Instruction.Create(OpCodes.Ret));
+            });
+            AddInstanceGetter(holder, "get_Written", main, il =>
+            {
+                il.Append(Instruction.Create(OpCodes.Ldarg_0));
+                il.Append(Instruction.Create(OpCodes.Ldfld, plain));
+                il.Append(Instruction.Create(OpCodes.Ret));
+            });
+            AddInstanceGetter(holder, "get_Fallback", main, il =>
+            {
+                var done = Instruction.Create(OpCodes.Ret);
+                il.Append(Instruction.Create(OpCodes.Ldarg_0));
+                il.Append(Instruction.Create(OpCodes.Ldfld, backing));
+                il.Append(Instruction.Create(OpCodes.Dup));
+                il.Append(Instruction.Create(OpCodes.Brtrue_S, done));
+                il.Append(Instruction.Create(OpCodes.Pop));
+                il.Append(Instruction.Create(OpCodes.Ldstr, "default"));
+                il.Append(done);
+            });
+            ((BaseAssemblyResolver)module.AssemblyResolver).ResolveFailure += (_, name) => name.Name == "ForeignProbe" ? other : null;
+        }
+
+        private static MethodDefinition AddInstanceGetter(TypeDefinition type, string name, ModuleDefinition module, Action<ILProcessor> body)
+        {
+            var getter = new MethodDefinition(name, Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.HideBySig, module.TypeSystem.String);
+            type.Methods.Add(getter);
+            body(getter.Body.GetILProcessor());
+            return getter;
+        }
+
+        // `var id = Hooks.UseId(null); return V.Div("root", V.Caption(id, id), V.Caption(id, <second>));` where the
+        // instructions pushing <second> are the case.
+        private static void AssembleCaptionsOneReading(ModuleDefinition module, MethodDefinition component,
+            MethodReference useId, TypeDefinition factory, MethodReference div, Action<ILProcessor> second)
+        {
+            var caption = factory.Methods.Single(each => each.Name == "Caption");
+            var id = new VariableDefinition(module.TypeSystem.String);
+            component.Body.Variables.Add(id);
+            var il = component.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc, id));
+            il.Append(Instruction.Create(OpCodes.Ldstr, "root"));
+            il.Append(Instruction.Create(OpCodes.Ldc_I4, 2));
+            il.Append(Instruction.Create(OpCodes.Newarr, component.ReturnType));
+            foreach (var index in new[] { 0, 1 })
+            {
+                il.Append(Instruction.Create(OpCodes.Dup));
+                il.Append(Instruction.Create(OpCodes.Ldc_I4, index));
+                il.Append(Instruction.Create(OpCodes.Ldloc, id));
+                if (index == 0) il.Append(Instruction.Create(OpCodes.Ldloc, id));
+                else second(il);
+                il.Append(Instruction.Create(OpCodes.Call, caption));
+                il.Append(Instruction.Create(OpCodes.Stelem_Ref));
+            }
+            il.Append(Instruction.Create(OpCodes.Call, div));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(component);
+        }
+
+        private static int ScopeGatesAfterWeaving(string moduleName, Action<ModuleDefinition, ILProcessor> second)
+        {
+            using var module = BuildHookShapeProbeModule(moduleName, out var method, out var useId, out _, out _);
+            var factory = AddFactoryType(module, out _, out var div);
+            AddScopeGates(module);
+            AddForeignGetters(module);
+            AssembleCaptionsOneReading(module, method, useId, factory, div, il => second(module, il));
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+            return CallsTo(method, "TryGetMemoizedScope");
+        }
+
+        private static MethodReference ForeignGetter(ModuleDefinition module, string name)
+        {
+            var other = ((BaseAssemblyResolver)module.AssemblyResolver).Resolve(new AssemblyNameReference("ForeignProbe", new Version(1, 0)));
+            return module.ImportReference(other.MainModule.GetType("Foreign.Holder").Methods.Single(each => each.Name == name));
+        }
+
+        private static void CallForeignGetter(ModuleDefinition module, ILProcessor il, string name)
+        {
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, ForeignGetter(module, name)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads any getter outside two namespaces as a plain read, so it gives
+        // the child a scope gate too.
+        // What it pins is the auto-property of another assembly staying a read: `false` in place of the
+        // `IsAutoPropertyGetter(definition)` test ending `IsPlainGetter` refuses it.
+        [Test]
+        public void Given_AChildReadingAnAutoPropertyOfAnotherAssembly_When_CompilerWeaverRuns_Then_BothChildrenGetAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesAfterWeaving("AutoGetterProbe", (module, il) => CallForeignGetter(module, il, "get_Auto"));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base counts the same here.
+        // What it pins is a hand-written getter of another assembly not being a plain read: removing the `field.Name.EndsWith(">k__BackingField"…)` clause from `IsAutoPropertyGetter` gives the child a gate.
+        [Test]
+        public void Given_AChildReadingAHandWrittenFieldGetterOfAnotherAssembly_When_CompilerWeaverRuns_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesAfterWeaving("WrittenGetterProbe", (module, il) => CallForeignGetter(module, il, "get_Written"));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base counts the same here.
+        // What it pins is a getter that reads an auto-property and then does more not being a plain read: removing the `SequenceEqual` test from `IsAutoPropertyGetter` gives the child a gate.
+        [Test]
+        public void Given_AChildReadingAGetterFallingBackToADefaultOfAnotherAssembly_When_CompilerWeaverRuns_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesAfterWeaving("FallbackGetterProbe", (module, il) => CallForeignGetter(module, il, "get_Fallback"));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body calling a method it cannot resolve unwoven too.
+        // What it pins is the premise `IsPlainGetter` rests on when `TryResolve` finds no definition: `0` in place of the
+        // `value = 1` assignment ahead of the `Resolve()` call in `NonSafeHookFold` weaves it.
+        [Test]
+        public void Given_AChildReadingAGetterWhoseAssemblyCannotBeResolved_When_CompilerWeaverRuns_Then_TheMethodIsLeftUnwoven()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("UnresolvedGetterProbe", out var method, out var useId, out _, out _);
+            var factory = AddFactoryType(module, out _, out var div);
+            AddScopeGates(module);
+            var missing = new TypeReference("Nowhere", "Thing", module, new AssemblyNameReference("MissingProbe", new Version(1, 0)));
+            AssembleCaptionsOneReading(module, method, useId, factory, div, il =>
+            {
+                il.Append(Instruction.Create(OpCodes.Ldnull));
+                il.Append(Instruction.Create(OpCodes.Call, new MethodReference("get_Name", module.TypeSystem.String, missing) { HasThis = true }));
+            });
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(CallsTo(method, "TryGetMemoizedVNode"), Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads only a method named get_ or set_ as a property, so a method of
+        // this assembly that is not one is no read there either.
+        // What it pins is the test that a plain getter is named get_: `&&` in place of the `||` joining
+        // `!method.HasThis` and the name test in `IsPlainGetter` reads every instance method of this assembly as one.
+        [Test]
+        public void Given_AChildCallingAnInstanceMethodOfThisAssemblyThatIsNoGetter_When_CompilerWeaverRuns_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesAfterWeaving("LocalMethodProbe", (module, il) =>
+            {
+                var local = new TypeDefinition("Local", "Holder", Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class, module.TypeSystem.Object);
+                module.Types.Add(local);
+                var describe = AddInstanceGetter(local, "Describe", module, body =>
+                {
+                    body.Append(Instruction.Create(OpCodes.Ldstr, "x"));
+                    body.Append(Instruction.Create(OpCodes.Ret));
+                });
+                il.Append(Instruction.Create(OpCodes.Ldnull));
+                il.Append(Instruction.Create(OpCodes.Call, describe));
+            });
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
         private static int CallsTo(MethodDefinition method, string name)
             => method.Body.Instructions.Count(instr => instr.OpCode == OpCodes.Call
                 && instr.Operand is MethodReference callee && callee.Name == name);
@@ -1762,6 +1948,8 @@ namespace Velvet.Tests
             Assert.That(CallsTo(method, "TryGetMemoizedScope"), Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base counts the same here.
+        // What it pins is an expression made of the first instruction of the method being a span: `<=` in place of `<` in the `end < 0` test of `SpanEndingAt` gives it none.
         [Test]
         public void Given_AFactoryCallWithNoArgumentThatIsTheFirstInstruction_When_CompilerWeaverRuns_Then_ItGetsAScopeGate()
         {
@@ -1783,6 +1971,8 @@ namespace Velvet.Tests
             Assert.That(CallsTo(method, "TryGetMemoizedScope"), Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base counts the same here.
+        // What it pins is a span reaching back to the first instruction: `>` in place of `>=` on `start` in `SpanEndingAt` gives it none.
         [Test]
         public void Given_AChildWhoseExpressionStartsTheMethod_When_CompilerWeaverRuns_Then_ItGetsAScopeGate()
         {
@@ -1855,6 +2045,8 @@ namespace Velvet.Tests
             il.Append(Instruction.Create(OpCodes.Call, label));
         }
 
+        // GREEN_ON_BASE(characterization): the base counts the same here.
+        // What it pins is the jumps that ended the expression going to the store: `landing` in place of `store[0]` in the `RetargetBranches` call of `InjectScope` sends the arm past the commit as well.
         [Test]
         public void Given_AChildWhoseTwoArmsMeetAtTheStore_When_CompilerWeaverRuns_Then_OnlyTheCacheHitJumpsPastTheCommit()
         {
@@ -1903,6 +2095,8 @@ namespace Velvet.Tests
                 Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base counts the same here.
+        // What it pins is a local whose uses all lie inside the expression being private to it: `>` in place of `>=` on `span.First` in `IsPrivateTo` gives it none.
         [Test]
         public void Given_AChildWhoseOnlyLocalIsPassedByAddressAtItsStart_When_CompilerWeaverRuns_Then_ItGetsAScopeGate()
         {

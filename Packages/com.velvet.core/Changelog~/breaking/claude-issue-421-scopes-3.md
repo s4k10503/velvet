@@ -6,7 +6,8 @@
   read (a member of a type of your own assembly, or an auto-property) and the members of `System`,
   `System.Collections`, `System.Collections.Generic`, `System.Linq`, `System.Text` and
   `System.Runtime.CompilerServices`, and read a `readonly` static of a value type or `string`, and a local of a
-  value type or `string`. `Random`, `Environment`, `WeakReference` and `Lazy<T>` and the
+  value type or `string`. `Random`, `Environment`, `WeakReference` and `Lazy<T>`, a call that changes a collection (`Add`,
+  `Remove`, `Sort`) and the
   static members of `DateTime`, `DateTimeOffset`, `Guid` and `TimeZoneInfo` are left out, and so is any other
   property read (`Rigidbody.velocity`, `Task.IsCompleted`, `Stopwatch.Elapsed`, `Store<T>.Current`): a scope calling
   one is built on every render the component's own cache misses, as it was. A property read or a `System` member

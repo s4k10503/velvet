@@ -2318,7 +2318,7 @@ namespace Velvet.Tests
             var (n, _) = Hooks.UseState(0);
             string caption;
             return V.Div("root",
-                V.Label(data: new CaptionedCard(V.Label(text: caption = title.ToUpper()), caption)),
+                V.Label(data: new CaptionedCard(V.Label(text: caption = title.ToUpper()), caption + n)),
                 V.Label(text: n.ToString()));
         }
 
@@ -2328,6 +2328,14 @@ namespace Velvet.Tests
             var (a, _) = Hooks.UseState("");
             var (n, _) = Hooks.UseState(0);
             return V.Div("root", V.Suspense(V.Label(text: a), new VNode?[] { V.Label(text: a) }), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildAddingToASetComponent()
+        {
+            var (seen, _) = Hooks.UseState(new System.Collections.Generic.HashSet<int>());
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: seen.Add(n).ToString()), V.Label(text: n.ToString()));
         }
 
         [Component]
@@ -2607,6 +2615,8 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(2));
         }
 
+        // GREEN_ON_BASE(characterization): the base counts the same here.
+        // What it pins is a scope that begins where its enclosing scope begins being left to it: `<` in place of `<=` on `each.Region.Start` in `RepeatsEnclosingScope` gives the fallback a gate of its own.
         [Test]
         public void Given_ASuspenseWhoseChildrenReadWhatItReads_When_Woven_Then_OnlyItAndTheOtherChildGetAScopeGate()
         {
@@ -2615,6 +2625,16 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildAddingToASetInState_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildAddingToASetComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1), "A hit would skip the Add");
         }
 
         [Test]
