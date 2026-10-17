@@ -179,8 +179,10 @@ namespace Velvet.Tests
             Assert.That(TranslateX(Root.Q<VisualElement>("c1")), Is.EqualTo(100f).Within(1e-3f));
         }
 
-        [Test]
-        public void Given_AStaggeredChildWhoseTargetPoseAloneNamesATranslate_When_ItsLabelChangesToAnInstantSpring_Then_ItHoldsItsValueThroughItsStaggerThenLands()
+        [TestCase(1, 0f)]
+        [TestCase(21, 100f)]
+        public void Given_AStaggeredChildWhoseTargetPoseAloneNamesATranslate_When_ItsLabelChangesToAnInstantSpring_Then_ItHoldsItsValueThroughItsStaggerThenLands(
+            int ticks, float expected)
         {
             // Arrange — at rest on hidden, which names no translate.
             s_children = s_toSideOnly;
@@ -189,16 +191,14 @@ namespace Velvet.Tests
             Ticks(1);
             var c1 = Root.Q<VisualElement>("c1");
 
-            // Act — to visible: a frame into the second child's 0.2 s slot, then past it.
+            // Act — to visible: a frame into the second child's 0.2 s slot, or past it.
             s_labels.Set("visible");
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-            Ticks(1);
-            var during = TranslateX(c1);
-            Ticks(20);
+            Ticks(ticks);
 
             // Assert — the 0 the element showed through the slot, as Framer's delayed instant animation leaves the
             // value, and the pose's 100 after it.
-            Assert.That(new[] { during, TranslateX(c1) }, Is.EqualTo(new[] { 0f, 100f }).Within(1e-3f));
+            Assert.That(TranslateX(c1), Is.EqualTo(expected).Within(1e-3f));
         }
 
         // GREEN_ON_BASE(characterization): the base plays the spring, which carries nothing either.
@@ -223,40 +223,26 @@ namespace Velvet.Tests
                 Is.EqualTo(string.Empty));
         }
 
-        [Test]
-        public void Given_APresenceStaggeringTwoInstantSpringExits_When_BothAreRemoved_Then_TheSecondIsHeldThroughItsSlotAndTheFirstIsNot()
+        [TestCase(6, "a", false)]
+        [TestCase(6, "b", true)]
+        [TestCase(20, "a", false)]
+        [TestCase(20, "b", false)]
+        public void Given_APresenceStaggeringTwoInstantSpringExits_When_BothAreRemoved_Then_AChildIsHeldOnlyThroughItsOwnSlot(
+            int ticks, string key, bool held)
         {
             // Arrange
             s_keys = new KeysStore();
             using var mounted = V.Mount(Root, V.Component(Presence, key: "root"));
             Ticks(1);
 
-            // Act — both removed, then 0.1 s: past the first exit's slot at 0 and inside the second's at 0.2 s.
+            // Act — both removed, then 0.1 s: past the first exit's slot at 0 and inside the second's at 0.2 s; or
+            // 0.32 s, past both.
             s_keys.Set(string.Empty);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-            Ticks(6);
+            Ticks(ticks);
 
             // Assert
-            Assert.That((Root.Q<VisualElement>("a") != null, Root.Q<VisualElement>("b") != null),
-                Is.EqualTo((false, true)));
-        }
-
-        [Test]
-        public void Given_APresenceStaggeringTwoInstantSpringExits_When_TheSecondSlotHasRun_Then_BothAreRemoved()
-        {
-            // Arrange
-            s_keys = new KeysStore();
-            using var mounted = V.Mount(Root, V.Component(Presence, key: "root"));
-            Ticks(1);
-
-            // Act — past the second exit's slot.
-            s_keys.Set(string.Empty);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            Ticks(20);
-
-            // Assert
-            Assert.That((Root.Q<VisualElement>("a") != null, Root.Q<VisualElement>("b") != null),
-                Is.EqualTo((false, false)));
+            Assert.That(Root.Q<VisualElement>(key) != null, Is.EqualTo(held));
         }
     }
 }

@@ -547,24 +547,40 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", swapped), Is.EqualTo("True,False,False"));
         }
 
-        [Test]
-        public void Given_ACoordinatorWhoseExitSpringsBeforeChildrenOnADuration_When_TheKeyIsRemoved_Then_ItsChildStartsOnceThatDurationHasRun()
+        [TestCase(1, false)]
+        [TestCase(21, true)]
+        public void Given_ACoordinatorWhoseExitSpringsBeforeChildrenOnADuration_When_TheKeyIsRemoved_Then_ItsChildHasStartedOnlyOnceThatDurationHasRun(
+            int frames, bool expected)
         {
             // Arrange
             using var mounted = MountSettled("coordinator-spring", "a");
             using var keys = s_keyStore;
 
-            // Act — one frame, inside the spring's 0.05 s, then twenty, past it and well short of the 1.05 s the
+            // Act — one frame is inside the spring's 0.05 s, twenty-one are past it and well short of the 1.05 s the
             // default physics would take.
             keys.Set(string.Empty);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-            Frames(1);
-            var startedEarly = HasClass("child0", "opacity-0");
-            Frames(20);
+            Frames(frames);
 
-            // Assert — the coordinator's own exit has swapped, and its inheriting child started its own only after it.
-            Assert.That((HasClass("spring-coordinator", "opacity-0"), startedEarly, HasClass("child0", "opacity-0")),
-                Is.EqualTo((true, false, true)));
+            // Assert
+            Assert.That(HasClass("child0", "opacity-0"), Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's coordinator swaps its own exit within these frames too.
+        [Test]
+        public void Given_ACoordinatorWhoseExitSpringsBeforeChildrenOnADuration_When_TheKeyIsRemoved_Then_ItsOwnExitHasSwapped()
+        {
+            // Arrange
+            using var mounted = MountSettled("coordinator-spring", "a");
+            using var keys = s_keyStore;
+
+            // Act
+            keys.Set(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Frames(21);
+
+            // Assert
+            Assert.That(HasClass("spring-coordinator", "opacity-0"), Is.True);
         }
 
         [Test]

@@ -423,29 +423,16 @@ namespace Velvet
                 => channel == null ? null
                     : (At(channel, now, length), (At(channel, after, length) - At(channel, before, length)) * moving);
 
-            var drawn = new MotionDrawnValues
-            {
-                Opacity = Of(state.Opacity), TranslateX = Of(state.TranslateX), TranslateY = Of(state.TranslateY),
-                Scale = Of(state.Scale), Rotate = Of(state.Rotate),
-            };
-            if (state.Colors != null)
-            {
-                drawn.Colors = new List<(ArbitraryProperty, Color)>(state.Colors.Count);
-                foreach (var c in state.Colors)
-                {
-                    drawn.Colors.Add((c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, At(c.Progress, now, null))));
-                }
-            }
-            if (state.Lengths != null)
-            {
-                drawn.Lengths = new List<(ArbitraryProperty, LengthUnit, float, float)>(state.Lengths.Count);
-                foreach (var l in state.Lengths)
+            return MotionDrawnValues.Of(
+                Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate),
+                state.Colors,
+                c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, At(c.Progress, now, null))),
+                state.Lengths,
+                l =>
                 {
                     var (value, velocity) = Of(l.Value, l.Property)!.Value;
-                    drawn.Lengths.Add((l.Property, l.Unit, value, velocity));
-                }
-            }
-            return drawn;
+                    return (l.Property, l.Unit, value, velocity);
+                });
         }
 
         private const float DrawnSlopeStepSec = 1f / 1000f;
@@ -472,20 +459,12 @@ namespace Velvet
                     }
                 }
             }
-            if (next.Colors == null)
+            interrupted.ContinueColors(next.Colors, color => color.Property, (color, drawn) =>
             {
-                return;
-            }
-            for (var i = 0; i < next.Colors.Count; i++)
-            {
-                var color = next.Colors[i];
-                if (interrupted.ColorOf(color.Property) is { } drawn)
-                {
-                    var continued = new BezierColorChannel(color.Property, drawn, color.To);
-                    continued.Progress.Timing = color.Progress.Timing;
-                    next.Colors[i] = continued;
-                }
-            }
+                var continued = new BezierColorChannel(color.Property, drawn, color.To);
+                continued.Progress.Timing = color.Progress.Timing;
+                return continued;
+            });
         }
 
         private static void Continue(BezierTweenChannel? next, (float Value, float Velocity)? interrupted)

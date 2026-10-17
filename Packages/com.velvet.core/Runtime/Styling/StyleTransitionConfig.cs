@@ -319,9 +319,8 @@ namespace Velvet
         /// <summary>
         /// Whether an AnimatePresence exit gated by this config should be treated as animated (kept mounted as
         /// an exiting ghost) rather than removed instantly. A spring counts as animated whatever its duration — an
-        /// instant one (<see cref="SpringIsInstant"/>) included, since Framer Motion completes an instant animation
-        /// on the next frame rather than synchronously, and waits out its delay and stagger first — and so does the
-        /// degenerate case where the exit's variant pair touches no spring-animatable channel at all, which still
+        /// instant one (<see cref="SpringIsInstant"/>) included, which lands once its delay and stagger have run — and
+        /// so does the degenerate case where the exit's variant pair touches no spring-animatable channel at all, which still
         /// plays through the spring machinery (completing on its own, deferred, rather than being pre-empted by an
         /// instant-removal gate keyed on this flag).
         /// </summary>

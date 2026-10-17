@@ -20,6 +20,45 @@ namespace Velvet
         public List<(ArbitraryProperty Property, Color Color)>? Colors;
         public List<(ArbitraryProperty Property, LengthUnit Unit, float Value, float Velocity)>? Lengths;
 
+        // What a driver's channels draw, read through the selectors each driver gives for its own channel types.
+        public static MotionDrawnValues Of<TColor, TLength>(
+            (float, float)? opacity, (float, float)? translateX, (float, float)? translateY, (float, float)? scale,
+            (float, float)? rotate,
+            List<TColor>? colors, System.Func<TColor, (ArbitraryProperty, Color)> drawnColor,
+            List<TLength>? lengths, System.Func<TLength, (ArbitraryProperty, LengthUnit, float, float)> drawnLength)
+        {
+            var drawn = new MotionDrawnValues
+            {
+                Opacity = opacity, TranslateX = translateX, TranslateY = translateY, Scale = scale, Rotate = rotate,
+            };
+            if (colors != null)
+            {
+                drawn.Colors = colors.ConvertAll(drawnColor.Invoke);
+            }
+            if (lengths != null)
+            {
+                drawn.Lengths = lengths.ConvertAll(drawnLength.Invoke);
+            }
+            return drawn;
+        }
+
+        // Replaces each channel of channels this draws a color for with continued(channel, color drawn).
+        public void ContinueColors<TColor>(List<TColor>? channels, System.Func<TColor, ArbitraryProperty> property,
+            System.Func<TColor, Color, TColor> continued)
+        {
+            if (channels == null)
+            {
+                return;
+            }
+            for (var i = 0; i < channels.Count; i++)
+            {
+                if (ColorOf(property(channels[i])) is { } drawn)
+                {
+                    channels[i] = continued(channels[i], drawn);
+                }
+            }
+        }
+
         public Color? ColorOf(ArbitraryProperty property)
         {
             if (Colors != null)

@@ -492,28 +492,12 @@ namespace Velvet
         public static MotionDrawnValues Drawn(MotionSpringState state)
         {
             static (float, float)? Of(SpringChannel? c) => c == null ? null : (c.Integrator.Value, c.Integrator.Velocity);
-            var drawn = new MotionDrawnValues
-            {
-                Opacity = Of(state.Opacity), TranslateX = Of(state.TranslateX), TranslateY = Of(state.TranslateY),
-                Scale = Of(state.Scale), Rotate = Of(state.Rotate),
-            };
-            if (state.Colors != null)
-            {
-                drawn.Colors = new List<(ArbitraryProperty, Color)>(state.Colors.Count);
-                foreach (var c in state.Colors)
-                {
-                    drawn.Colors.Add((c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)));
-                }
-            }
-            if (state.Lengths != null)
-            {
-                drawn.Lengths = new List<(ArbitraryProperty, LengthUnit, float, float)>(state.Lengths.Count);
-                foreach (var l in state.Lengths)
-                {
-                    drawn.Lengths.Add((l.Property, l.Unit, l.Value.Integrator.Value, l.Value.Integrator.Velocity));
-                }
-            }
-            return drawn;
+            return MotionDrawnValues.Of(
+                Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate),
+                state.Colors,
+                c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)),
+                state.Lengths,
+                l => (l.Property, l.Unit, l.Value.Integrator.Value, l.Value.Integrator.Velocity));
         }
 
         /// <summary>
@@ -544,20 +528,16 @@ namespace Velvet
                     }
                 }
             }
-            if (!fromDrawn || next.Colors == null)
+            if (!fromDrawn)
             {
                 return;
             }
-            for (var i = 0; i < next.Colors.Count; i++)
+            interrupted.ContinueColors(next.Colors, color => color.Property, (color, drawn) =>
             {
-                var color = next.Colors[i];
-                if (interrupted.ColorOf(color.Property) is { } drawn)
-                {
-                    var continued = new SpringColorChannel(color.Property, drawn, color.To);
-                    Release(next, continued.Progress, 0f, 0f);
-                    next.Colors[i] = continued;
-                }
-            }
+                var continued = new SpringColorChannel(color.Property, drawn, color.To);
+                Release(next, continued.Progress, 0f, 0f);
+                return continued;
+            });
         }
 
         private static void Continue(MotionSpringState next, SpringChannel? channel,

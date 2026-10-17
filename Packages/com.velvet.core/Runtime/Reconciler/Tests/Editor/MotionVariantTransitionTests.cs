@@ -776,8 +776,10 @@ namespace Velvet.Tests
                 Is.EqualTo(("visible", "hidden")));
         }
 
-        [Test]
-        public void Given_BeforeChildrenOnASpringPoseItsDurationDescribes_When_ItsLabelFlips_Then_ChildrenWaitOutThatDurationOnly()
+        [TestCase(0f, "hidden")]
+        [TestCase(0.3f, "visible")]
+        public void Given_BeforeChildrenOnASpringPoseItsDurationDescribes_When_ItsLabelFlips_Then_ChildrenWaitOutThatDurationOnly(
+            float seconds, string expected)
         {
             // Arrange
             using var labels = new LabelStore();
@@ -786,16 +788,14 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             Tick();
 
-            // Act — one frame, inside the spring's 0.05 s, then 0.3 s, past it and well short of the 1.05 s the
+            // Act — one frame, inside the spring's 0.05 s, or 0.3 s, past it and well short of the 1.05 s the
             // default physics would take.
             labels.Set("visible");
             scheduler.DrainImmediateForTest();
-            Tick();
-            var waiting = PoseOf(Root.Q<VisualElement>("c"));
-            Advance(0.3f);
+            Advance(seconds);
 
             // Assert — parked through the duration, swapped once it has run.
-            Assert.That((waiting, PoseOf(Root.Q<VisualElement>("c"))), Is.EqualTo(("hidden", "visible")));
+            Assert.That(PoseOf(Root.Q<VisualElement>("c")), Is.EqualTo(expected));
         }
 
         [Test]
