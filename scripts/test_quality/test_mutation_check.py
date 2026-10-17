@@ -4650,6 +4650,73 @@ class DeclarationOnlyChangeTests(unittest.TestCase):
         self.assertEqual(re.findall(r"^mutants=(\d+)$", campaign.printed, re.MULTILINE), ["1"])
 
 
+class NightSliceTests(unittest.TestCase):
+    """`--through`: the changed lines a night's slice of commits wrote, read on the head's tree."""
+
+    READY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b) => a <= b;
+            }
+        }
+        """)
+
+    def commit(self, campaign, text):
+        campaign.source.write_text(text)
+        for command in (["add", campaign.SOURCE],
+                        ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "probe"],):
+            subprocess.run(["git", "-C", str(campaign.project), *command], capture_output=True, check=True)
+        return subprocess.run(["git", "-C", str(campaign.project), "rev-parse", "HEAD"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+
+    def slices(self, later=None):
+        """(the campaign, the base commit, the commit adding `READY`), with `later` committed after
+        where it is given."""
+        campaign = StubbedCampaign(self.READY)
+        base = subprocess.run(["git", "-C", str(campaign.project), "rev-parse", "HEAD"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+        ready = self.commit(campaign, self.READY)
+        if later is not None:
+            self.commit(campaign, later)
+        return campaign, base, ready
+
+    def test_Given_ASliceEndingBeforeALaterCommit_When_Planned_Then_OnlyItsLinesAreMutated(self):
+        # Arrange — the later commit adds a second method, which the slice does not reach.
+        later = self.READY.replace("a <= b;", "a <= b;\n\n        internal static bool Other(int a, int b) => a < b;")
+        campaign, base, ready = self.slices(later)
+
+        # Act
+        campaign.drive("--base", base, "--through", ready, "--plan")
+
+        # Assert
+        self.assertEqual(re.findall(r"^mutants=(\d+)$", campaign.printed, re.MULTILINE), ["1"])
+
+    def test_Given_ALineALaterCommitRewrote_When_TheEarlierSliceIsPlanned_Then_ItIsLeftToTheLaterOne(self):
+        # Arrange
+        campaign, base, ready = self.slices(self.READY.replace("a <= b;", "a < b;"))
+
+        # Act
+        campaign.drive("--base", base, "--through", ready, "--plan")
+
+        # Assert
+        self.assertEqual(re.findall(r"^mutants=(\d+)$", campaign.printed, re.MULTILINE), ["0"])
+
+    def test_Given_ASliceOverTheCeiling_When_Planned_Then_ItAsksForAShorterSlice(self):
+        # Arrange
+        campaign, base, ready = self.slices()
+
+        # Act
+        with mock.patch.object(mutation_check, "MAX_SHARDS", 1), \
+                mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 0}):
+            campaign.drive("--base", base, "--through", ready, "--plan")
+
+        # Assert
+        self.assertEqual(("Measure a shorter slice" in campaign.printed,
+                          "Split the pull request" in campaign.printed), (True, False))
+
+
 class SignalledCampaignTests(unittest.TestCase):
     """The campaign's own restore-on-signal, rather than the helper's.
 

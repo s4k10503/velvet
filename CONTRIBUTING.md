@@ -225,28 +225,35 @@ that branch's change against its merge base with `base`, as a local run does. No
 requires either, and [Merging a pull request](#merging-a-pull-request) says how a merge leaves a
 campaign on its head out.
 
-A night measures a slice of the default branch's first-parent commits, oldest first.
-`scripts/ci/mutation_nightly.py` starts it at the commit the last reported night reached — named by
-the `Mutation nightly reported <sha>` artifact of the newest of the last 20 scheduled runs that
-carries one and whose commit the checkout contains — or, where none does, at the newest first-parent
-commit at least 24 hours old. It adds the commits after that start one at a time while the slice's
-plan fits a night's ceiling, `NIGHTLY_MAX_SHARDS` shards of `SHARD_CEILING`, counted with the kills
-the plan reuses, and stops before the first commit that would take it over. The commits after the
-slice are left for later nights, which start where this one reached, so a backlog is measured in
-order; the report lists them. A commit over the ceiling on its own is skipped, and named with its
-mutants by line as unmeasured, so that it does not stop every later night. The slice is measured on
-its own tree: the plan, Library, shard and verdict jobs each put `Packages/`, `Assets/` and
-`ProjectSettings/` back to the commit the slice reached (`mutation_nightly.py tree`) and keep the head's
-`scripts/`, and `scripts/ci/change_base.py` reads the slice's base back from the window file.
+A night measures a slice of the default branch's first-parent commits, oldest first, always on the
+head's own tree. `scripts/ci/mutation_nightly.py` starts it at the commit the last complete night
+reached — named by the `Mutation nightly reported <sha>` artifact of the newest of the last 20
+scheduled runs that carries one and whose commit the checkout contains — or, where none does, at the
+first-parent commit that added `scripts/ci/mutation_nightly.py`, so nothing that landed since the
+nights began is passed over. A slice's mutants are the changed lines that `git blame --first-parent`
+gives to its commits (`mutation_check.py --through`), so a line a later commit rewrote is measured
+with that later commit. The script adds commits one at a time while the slice's plan fits a night's
+ceiling, `NIGHTLY_MAX_SHARDS` shards of `SHARD_CEILING`, counted with the kills the plan reuses, and
+stops before the first commit that would take it over. The commits after the slice are left for later
+nights, and the report lists them. A commit over the ceiling on its own is skipped, and named with its
+mutants by line as unmeasured, so that it does not stop every later night. Every job that runs
+`mutation_check.py` hands it the slice's last commit as `--through`, and `scripts/ci/change_base.py`
+reads the slice's base back from the window file.
+
+**A night moves the next one on only with a complete verdict.** Where the plan, the Library and every
+shard passed or were skipped and the verdict job decided with no mutant nothing measured — or every
+mutant was reused, or the slice has none — the report uploads the marker naming the commit the slice
+reached, and the next night starts after it. A night with a shard that failed, was cancelled or
+recorded nothing uploads no marker, so the next night measures the same slice again with whatever
+landed since behind it.
 
 A night's ceiling is larger than a dispatch's because nobody waits on a night: forty shards, which
 `Mutation campaign ▸ mutation-shard` runs at most ten at a time (`max-parallel`), so a night is four
 waves of shard jobs. Ten at a time is the count campaign shards have run at beside other licensed jobs;
 four waves at the shard job's 360-minute limit hold the shard jobs to 24 hours at the very worst, and
 a scheduled run that comes while a night still runs waits in the night's concurrency group rather
-than cancelling it. Forty shards are
-400 mutants, against 288 a day that the first-parent commits of the seven days to 2026-10-17
-generated. `NIGHTLY_MAX_SHARDS` holds the figure, and `NightlyBudgetTests` holds it to the four waves; every job of a night passes it to
+than cancelling it. Forty shards are 400 mutants. `NIGHTLY_MAX_SHARDS` holds the figure, and
+`NightlyBudgetTests` holds it to the four waves; every job of a night passes it to
 `mutation_check.py --max-shards`, and a dispatch takes the default, `MAX_SHARDS`.
 
 `Mutation campaign ▸ mutation-plan` generates the mutants of the change, taking the readings `--list`
@@ -295,14 +302,15 @@ issue labelled `mutation-nightly` — opening it the first time and reopening it
 with each unanswered survivor and stale declaration the verdict printed, each mutant nothing measured,
 each job that did not pass, and each commit skipped over the ceiling with its mutants. The commits
 left for later nights are listed too, and owe no comment of their own: a night with nothing else,
-whose window was read, writes none. The report then uploads the window as
-`Mutation nightly reported <sha>`, naming the commit the slice reached, which is where the next night
-starts; a night whose report was not written uploads none, and the next night starts where the last
-reported one reached. A survivor is answered as above, by a
+whose window was read, writes none. Where the verdict is complete, as above, and any comment it owes was
+written, the report then uploads the window as `Mutation nightly reported <sha>`, naming the commit the
+slice reached. A survivor is answered as above, by a
 pull request that writes the test or the declaration. A declaration a change writes brings the lines it
-answers for into that change's mutants, so the next night, or a dispatch onto the branch, measures them:
-it answers the survivor, or is stale where the mutant now dies. Running the campaign locally, or
-dispatching it onto the branch, answers the same question before the merge.
+answers for into that change's mutants, so the night whose slice holds that change, or a dispatch onto
+its branch, measures them: it answers the survivor, or is stale where the mutant now dies. A change to
+tests alone generates no mutant, so neither a night nor a dispatch measures a survivor that a new test
+answers; measure its line on the branch with a local run, which needs an editor:
+`mutation_check.py --files <file> --lines <file>:<line>-<line>`.
 
 **A kill an earlier campaign recorded is not measured again, and a head whose whole key was passed is not
 measured at all.** Two readings follow: reusing a kill at a time, which is what a run after a change
@@ -1183,7 +1191,6 @@ on every platform.
 | `Benchmarks ▸ benchmarks` (PlayMode) | push (filtered) to `main` / every PR labelled `benchmarks` / manual | **required** (skipped if absent) | no |
 | `Benchmarks ▸ trend-main` | push (filtered) to `main`, after `benchmarks` | not required | no |
 | `Benchmarks ▸ trend-pull-request` | every PR labelled `benchmarks`, after `benchmarks` | not required | no |
-| `Mutation campaign` (plan, Library, shards, verdict, nightly report) | nightly on `main` / manual (`workflow_dispatch` onto a branch) | **required** (skipped if absent) | no |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages; also carries the benchmark chart, as of its last deployment) | push (filtered) / release / manual | **required** (skipped if absent) | no |
 
@@ -1199,7 +1206,9 @@ merge of that head. Where that cancellation is refused or does not land, it fail
 the merge group a cancelled dependency fails them whatever the branch holds now.
 `scripts/ci/aggregate_results.py` owns the decision, for both aggregates.
 
-The mutation campaign gates no merge: no branch-protection rule requires a check of it, and
+The mutation campaign has no row: `.github/workflows/mutation.yml` starts on a schedule and on a
+dispatch, neither of which a contributor's push or pull request causes, and it gates no merge, since
+no branch-protection rule requires a check of it.
 [Checking that the tests can fail](#checking-that-the-tests-can-fail) owns when it runs and where it
 reports.
 

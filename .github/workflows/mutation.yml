@@ -6,10 +6,9 @@ name: Mutation campaign
 # can fail owns what a night measures, how it reports, and what a dispatch is for.
 #
 # A dispatch's checkout is the branch's head rather than a test merge, so change_base.py reads the
-# change against the merge base of that head and `base`. A night measures the slice
-# mutation_nightly.py chose in the plan job: the plan, Library, shard and verdict jobs each take the
-# slice's tree with a `tree` step, keeping this checkout's scripts, and change_base.py reads the
-# slice's base back.
+# change against the merge base of that head and `base`. A night measures, on the head's own tree,
+# the slice of commits mutation_nightly.py chose in the plan job: every job that runs mutation_check.py
+# hands it the slice's last commit as `--through`, and change_base.py reads the slice's base back.
 on:
   schedule:
     # 03:17 UTC, a minute picked off the hour.
@@ -86,9 +85,9 @@ jobs:
       actions: read
     outputs:
       mutants: ${{ steps.plan.outputs.mutants }}
-      # On a night, the commit the slice reached, whose tree every later job measures, and the shard
-      # count a night splits across. Both empty on a dispatch, which measures its checkout at the
-      # default count.
+      # On a night, the commit the slice reached, which every later job passes as --through, and the
+      # shard count a night splits across. Both empty on a dispatch, which measures its whole change at
+      # the default count.
       reached: ${{ steps.window.outputs.reached }}
       max-shards: ${{ steps.window.outputs.max-shards }}
       # Empty where a verdict is reused, which is what skips every job that measures.
@@ -117,12 +116,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/ci/mutation_nightly.py window --output window.json --reuse-from Logs/mutation-ledgers >> "$GITHUB_OUTPUT"
 
-      # The slice's tree, before anything below reads it.
-      - if: steps.window.outputs.reached != ''
-        env:
-          REACHED: ${{ steps.window.outputs.reached }}
-        run: python3 scripts/ci/mutation_nightly.py tree --source "$REACHED"
-
       - id: base
         env:
           MUTATION_WINDOW: window.json
@@ -136,10 +129,11 @@ jobs:
           BASE: ${{ steps.base.outputs.sha }}
           HAS_LICENSE: ${{ needs.license-check.outputs.has_license }}
           MAX_SHARDS: ${{ steps.window.outputs.max-shards }}
+          THROUGH: ${{ steps.window.outputs.reached }}
         run: |
           set +e
           python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan --emit-mutants mutants.json \
-            ${MAX_SHARDS:+--max-shards "$MAX_SHARDS"} \
+            ${MAX_SHARDS:+--max-shards "$MAX_SHARDS"} ${THROUGH:+--through "$THROUGH"} \
             --reuse-from Logs/mutation-ledgers --emit-reuse reuse.json > plan.txt 2>&1
           status=$?
           cat plan.txt
@@ -181,8 +175,10 @@ jobs:
           && needs.license-check.outputs.has_license == 'true'
         env:
           BASE: ${{ steps.base.outputs.sha }}
+          THROUGH: ${{ steps.window.outputs.reached }}
         run: |
-          python3 scripts/test_quality/mutation_check.py --base "$BASE" --key | tee key.txt
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" ${THROUGH:+--through "$THROUGH"} --key \
+            | tee key.txt
           { echo '### Mutation campaign key'; echo '```'; cat key.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           grep -E '^campaign-key=' key.txt >> "$GITHUB_OUTPUT"
 
@@ -210,14 +206,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           lfs: true
-
-      # Before the cache key below hashes the tree.
-      - if: needs.mutation-plan.outputs.reached != ''
-        env:
-          REACHED: ${{ needs.mutation-plan.outputs.reached }}
-        run: python3 scripts/ci/mutation_nightly.py tree --source "$REACHED"
 
       - id: restore
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -269,11 +258,6 @@ jobs:
           fetch-depth: 0
           lfs: true
 
-      - if: needs.mutation-plan.outputs.reached != ''
-        env:
-          REACHED: ${{ needs.mutation-plan.outputs.reached }}
-        run: python3 scripts/ci/mutation_nightly.py tree --source "$REACHED"
-
       # Restore only: a campaign leaves Library compiled from its last mutant, which is not the tree
       # the key names.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -302,6 +286,7 @@ jobs:
           BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
           SHARDS: ${{ needs.mutation-plan.outputs.shards }}
+          THROUGH: ${{ needs.mutation-plan.outputs.reached }}
         # safe.directory names the workspace alone: DocumentationDriftTests arranges checkouts elsewhere
         # that git has to refuse, and a wider value lifts that refusal inside the suite. The editor's
         # version is read from the project, and EditorVersionTests holds unity-tests' to the same.
@@ -314,7 +299,7 @@ jobs:
             --env PYTHONDONTWRITEBYTECODE=1 \
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \
-              --base "$BASE" --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
+              --base "$BASE" ${THROUGH:+--through "$THROUGH"} --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
               --reuse Logs/mutation-list/reuse.json \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
               --output Logs/mutation-shard
@@ -336,9 +321,10 @@ jobs:
           BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
           SHARDS: ${{ needs.mutation-plan.outputs.shards }}
+          THROUGH: ${{ needs.mutation-plan.outputs.reached }}
         run: |
           set +e
-          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" --plan \
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" ${THROUGH:+--through "$THROUGH"} --max "$MUTANTS" --plan \
             --mutants Logs/mutation-list/mutants.json --reuse Logs/mutation-list/reuse.json \
             --platform PlayMode --survivors-of Logs/mutation-shard \
             --survivors-shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" > survivors.txt 2>&1
@@ -358,6 +344,7 @@ jobs:
           BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
           SHARDS: ${{ needs.mutation-plan.outputs.shards }}
+          THROUGH: ${{ needs.mutation-plan.outputs.reached }}
         run: |
           version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
           docker run --rm --init --workdir /github/workspace \
@@ -367,7 +354,7 @@ jobs:
             --env PYTHONDONTWRITEBYTECODE=1 \
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \
-              --base "$BASE" --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
+              --base "$BASE" ${THROUGH:+--through "$THROUGH"} --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
               --reuse Logs/mutation-list/reuse.json --platform PlayMode --survivors-of Logs/mutation-shard \
               --survivors-shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" --shard 0/1 \
               --output Logs/mutation-playmode-shard
@@ -402,11 +389,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-
-      - if: needs.mutation-plan.outputs.reached != ''
-        env:
-          REACHED: ${{ needs.mutation-plan.outputs.reached }}
-        run: python3 scripts/ci/mutation_nightly.py tree --source "$REACHED"
 
       # The head's key is a key a campaign already passed on: no mutant is measured here, and the run
       # cited is the one that measured it.
@@ -453,10 +435,11 @@ jobs:
           BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
           MAX_SHARDS: ${{ needs.mutation-plan.outputs.max-shards }}
+          THROUGH: ${{ needs.mutation-plan.outputs.reached }}
         run: |
           set +e
           python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" \
-            ${MAX_SHARDS:+--max-shards "$MAX_SHARDS"} \
+            ${MAX_SHARDS:+--max-shards "$MAX_SHARDS"} ${THROUGH:+--through "$THROUGH"} \
             --mutants Logs/mutation-list/mutants.json --reuse Logs/mutation-list/reuse.json \
             --platform PlayMode --survivors-of Logs/mutation-shards \
             --collect Logs/mutation-playmode-shards --output Logs/mutation-verdict \
@@ -505,9 +488,9 @@ jobs:
   # ---------------------------------------------------------------------------
   # A night's report: what the verdict left to answer, what the window left unmeasured and any job
   # that did not pass, as a comment on the tracking issue (scripts/ci/mutation_nightly.py). always(),
-  # so a night whose plan or shards failed still says so. The marker it uploads last names the commit
-  # the slice reached, where the next night's window starts, so a night whose report was not written
-  # is measured again by the next.
+  # so a night whose plan or shards failed still says so. The marker it uploads last, only where every
+  # mutant of the slice has a verdict (mutation_nightly.py's `complete`), names the commit the slice
+  # reached, where the next night's window starts; any other night is measured again by the next.
   # ---------------------------------------------------------------------------
   report:
     name: Mutation campaign (nightly report)

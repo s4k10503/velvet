@@ -198,18 +198,17 @@ class ChooseTests(unittest.TestCase):
 
 
 class WindowRepository:
-    """A repository of three first-parent commits, the last two each adding a file of 60 mutants.
-
-    Together they are over a ceiling of ten shards of `SHARD_CEILING` mutants, and either alone is
-    under it.
-    """
+    """Three first-parent commits after the one that adds `ORIGIN`, the last two each adding a file of
+    60 mutants. Together they are over a ceiling of ten shards of `SHARD_CEILING` mutants, and either
+    alone is under it."""
 
     def __init__(self):
         self.root = Path(tempfile.mkdtemp(prefix="velvet-nightly-"))
         self.git("init", "-q", "-b", "main")
         self.git("config", "user.email", "probe@example.com")
         self.git("config", "user.name", "Probe")
-        self.start = self.commit("README.md", "probe\n")
+        self.commit("README.md", "probe\n")
+        self.start = self.commit(nightly.ORIGIN, "# the nightly\n")
         self.first = self.commit("Packages/com.velvet.core/Runtime/First.cs", self.source("First"))
         self.second = self.commit("Packages/com.velvet.core/Runtime/Second.cs", self.source("Second"))
 
@@ -231,14 +230,17 @@ class WindowRepository:
         self.git("commit", "-qm", "add " + name)
         return self.git("rev-parse", "HEAD")
 
-    def window(self):
-        """(what `window` writes, what it prints) where the last reported night reached `start`."""
+    def window(self, reported=True):
+        """(what `window` writes, what it prints), where the last complete night reached `start` if
+        `reported`, and no night reported otherwise."""
         output = self.root.parent / (self.root.name + "-window.json")
         environ = {"GITHUB_REPOSITORY": "owner/name", "GITHUB_REF_NAME": "main", "GITHUB_RUN_ID": "9"}
         runs = {"workflow_runs": [{"id": 1, "run_number": 1}]}
 
         def read(path):
-            return runs if "/runs?event=schedule" in path else listing(marker(self.start))
+            if "/runs?event=schedule" in path:
+                return runs
+            return listing(*([marker(self.start)] if reported else []))
         printed = io.StringIO()
         try:
             with contextlib.redirect_stdout(printed), contextlib.redirect_stderr(io.StringIO()), \
@@ -272,7 +274,7 @@ class WindowTests(unittest.TestCase):
         # Assert
         self.assertEqual([commit["sha"] for commit in window["behind"]], [self.repository.second])
 
-    def test_Given_TheOlderCommitReached_When_TheWindowIsRead_Then_ItsMutantsAloneAreMeasured(self):
+    def test_Given_TheOlderCommitReached_When_TheWindowIsRead_Then_ItsLinesAloneAreMeasuredOnTheHeadsTree(self):
         # Act
         window, _ = self.repository.window()
 
@@ -281,50 +283,36 @@ class WindowTests(unittest.TestCase):
                           len(window["measured_mutants"])),
                          ({"Packages/com.velvet.core/Runtime/First.cs"}, 60))
 
-    def test_Given_AWindowRead_When_ItIsDone_Then_TheCheckoutAndItsWorktreesAreAsTheyWere(self):
+    def test_Given_NoNightThatReported_When_TheWindowIsRead_Then_ItStartsAtTheCommitThatAddedTheNightly(self):
         # Act
-        self.repository.window()
+        window, _ = self.repository.window(reported=False)
 
         # Assert
-        self.assertEqual((self.repository.git("status", "--porcelain"),
-                          len(self.repository.git("worktree", "list").splitlines())), ("", 1))
+        self.assertEqual(window["start"], self.repository.start)
 
-
-class TreeTests(unittest.TestCase):
-    def setUp(self):
-        self.repository = WindowRepository()
-        self.addCleanup(self.repository.remove)
-
-    def test_Given_TheReachedCommit_When_ItsTreeIsTaken_Then_TheFilesAfterItAreGone(self):
-        # Act
-        nightly.main(["--project", str(self.repository.root), "tree", "--source", self.repository.first])
-
-        # Assert
-        self.assertEqual(sorted(path.name for path in
-                                (self.repository.root / "Packages/com.velvet.core/Runtime").iterdir()),
-                         ["First.cs"])
-
-    def test_Given_AFileTheHeadDeleted_When_TheTreeOfACommitHoldingItIsTaken_Then_ItIsTracked(self):
-        # Arrange — an untracked source is one a campaign takes whole, whatever its diff.
-        self.repository.git("rm", "-q", "Packages/com.velvet.core/Runtime/First.cs")
-        self.repository.git("commit", "-qm", "delete First.cs")
-
-        # Act
-        nightly.main(["--project", str(self.repository.root), "tree", "--source", self.repository.first])
-
-        # Assert
-        self.assertEqual(self.repository.git("ls-files", "--others", "--exclude-standard"), "")
-
-    def test_Given_TheReachedCommit_When_ItsTreeIsTaken_Then_FilesOutsideTheRootsStayTheHeads(self):
+    def test_Given_TheNightlyRemovedAndAddedAgain_When_ItsOriginIsAsked_Then_ItIsTheFirstAdd(self):
         # Arrange
-        (self.repository.root / "README.md").write_text("the head's\n")
-        self.repository.git("commit", "-qam", "readme")
+        self.repository.git("rm", "-q", nightly.ORIGIN)
+        self.repository.git("commit", "-qm", "remove the nightly")
+        self.repository.commit(nightly.ORIGIN, "# the nightly again\n")
 
         # Act
-        nightly.main(["--project", str(self.repository.root), "tree", "--source", self.repository.first])
+        found = nightly.origin(self.repository.root)
 
         # Assert
-        self.assertEqual((self.repository.root / "README.md").read_text(), "the head's\n")
+        self.assertEqual(found, self.repository.start)
+
+    def test_Given_AHistoryWithoutTheNightly_When_ItsOriginIsAsked_Then_ItRefusesRatherThanGuessing(self):
+        # Arrange
+        root = Path(tempfile.mkdtemp(prefix="velvet-nightly-bare-"))
+        self.addCleanup(shutil.rmtree, root, True)
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        subprocess.run(["git", "-C", str(root), "-c", "user.email=p@e", "-c", "user.name=P", "commit", "-q",
+                        "--allow-empty", "-m", "empty"], check=True)
+
+        # Act / Assert
+        with self.assertRaises(RuntimeError):
+            nightly.origin(root)
 
 
 VERDICT = textwrap.dedent("""\
@@ -425,6 +413,67 @@ class ComposeTests(unittest.TestCase):
         self.assertIn("nothing was measured", text)
 
 
+DECIDED = [("mutation-plan", "success"), ("library", "success"), ("mutation-shard", "success"),
+           ("mutation-verdict", "failure")]
+
+
+class CompleteTests(unittest.TestCase):
+    """Whether a night's slice has a verdict for every mutant, which alone moves the next night on."""
+
+    def test_Given_AVerdictWithSurvivorsAndNothingUnmeasured_When_Judged_Then_ItIsComplete(self):
+        # Act
+        done = nightly.complete(WINDOW, VERDICT.replace(
+            "--- mutants nothing was asked of the suite about ---\nRuntime/B.cs:9 == -> != (equality)  "
+            "not measured (timed out)\n", ""), DECIDED, "")
+
+        # Assert
+        self.assertTrue(done)
+
+    def test_Given_AVerdictNamingAMutantNothingMeasured_When_Judged_Then_ItIsNotComplete(self):
+        # Act
+        done = nightly.complete(WINDOW, VERDICT, DECIDED, "")
+
+        # Assert
+        self.assertFalse(done)
+
+    def test_Given_AShardJobThatFailed_When_Judged_Then_ItIsNotComplete(self):
+        # Arrange — the verdict job decided over what the other shards recorded.
+        results = [(job, "failure" if job == "mutation-shard" else result) for job, result in DECIDED]
+
+        # Act
+        done = nightly.complete(WINDOW, "killed: 1\n", results, "")
+
+        # Assert
+        self.assertFalse(done)
+
+    def test_Given_AVerdictJobThatWasCancelled_When_Judged_Then_ItIsNotComplete(self):
+        # Arrange
+        results = [(job, "cancelled" if job == "mutation-verdict" else result) for job, result in DECIDED]
+
+        # Act
+        done = nightly.complete(WINDOW, "killed: 1\n", results, "")
+
+        # Assert
+        self.assertFalse(done)
+
+    def test_Given_ASliceWithNoMutant_When_Judged_Then_ItIsCompleteWithoutAVerdict(self):
+        # Arrange — the verdict job is skipped where the plan dealt no shard.
+        window = dict(WINDOW, measured_mutants=[])
+
+        # Act
+        done = nightly.complete(window, None, [("mutation-plan", "success"), ("mutation-verdict", "skipped")], "")
+
+        # Assert
+        self.assertTrue(done)
+
+    def test_Given_APlanThatFailed_When_Judged_Then_ItIsNotComplete(self):
+        # Act
+        done = nightly.complete(dict(WINDOW, measured_mutants=[]), None, [("mutation-plan", "failure")], "")
+
+        # Assert
+        self.assertFalse(done)
+
+
 class Issues:
     """The issues API: `existing` is what the label listing answers, and every write is recorded."""
 
@@ -476,7 +525,7 @@ class PostTests(unittest.TestCase):
 
 
 class ReportTests(unittest.TestCase):
-    def report(self, window):
+    def report(self, window, results="mutation-plan=success mutation-verdict=success"):
         directory = Path(tempfile.mkdtemp(prefix="velvet-nightly-report-"))
         self.addCleanup(shutil.rmtree, directory, True)
         path = directory / "window.json"
@@ -487,7 +536,7 @@ class ReportTests(unittest.TestCase):
         with contextlib.redirect_stdout(printed):
             nightly.report_main(nightly.argparse.Namespace(window=str(path),
                                                            verdict=str(directory / "verdict.txt")),
-                                {"RESULTS": "mutation-plan=success"}, Issues([]).read, Issues([]).write)
+                                {"RESULTS": results}, Issues([]).read, Issues([]).write)
         return printed.getvalue()
 
     def test_Given_ANightWhoseWindowWasRead_When_Reported_Then_TheCommitItReachedIsPrintedForTheMarker(self):
@@ -499,6 +548,13 @@ class ReportTests(unittest.TestCase):
 
         # Assert
         self.assertIn("\nreached={}\n".format(OLDER), "\n" + printed)
+
+    def test_Given_ANightWhoseShardFailed_When_Reported_Then_NoCommitIsPrinted(self):
+        # Act
+        printed = self.report(WINDOW, "mutation-plan=success mutation-shard=failure mutation-verdict=failure")
+
+        # Assert — so no marker is uploaded, and the next night measures this slice again.
+        self.assertNotIn("reached=", printed)
 
     def test_Given_ANightWhoseWindowWasNotRead_When_Reported_Then_NoCommitIsPrinted(self):
         # Act

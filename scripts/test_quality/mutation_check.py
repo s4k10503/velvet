@@ -1980,6 +1980,33 @@ def changed_files_and_lines(project, base):
     return changed
 
 
+def attributed(project, base, through, changed):
+    """`changed`'s mutable lines that `git blame --first-parent` gives to a commit of the slice.
+
+    The slice is the first-parent commits after the merge base with `base` up to and including
+    `through`. A line a later commit rewrote is that commit's, so it is measured with the slice that
+    holds it; the declarations are still read against the whole of `changed`.
+    """
+    since = merge_base_of(project, base)
+    listed = subprocess.run(["git", "-C", str(project), "rev-list", "--first-parent",
+                             "{}..{}".format(since, through)], capture_output=True, text=True)
+    if listed.returncode != 0:
+        raise SystemExit("cannot list the slice {}..{}: {}".format(since, through, listed.stderr.strip()))
+    commits = set(listed.stdout.split())
+    kept = {}
+    for path, lines in changed.items():
+        if not mutable(path, project):
+            continue
+        blamed = subprocess.run(["git", "-C", str(project), "blame", "--first-parent", "-l", "-s", "--",
+                                 str(path)], capture_output=True, text=True)
+        if blamed.returncode != 0:
+            raise SystemExit("cannot blame {}: {}".format(path, blamed.stderr.strip()))
+        owners = [line.split(" ", 1)[0].lstrip("^") for line in blamed.stdout.splitlines()]
+        kept[path] = {number for number in lines
+                      if number <= len(owners) and owners[number - 1] in commits}
+    return kept
+
+
 def mutable(path, project):
     if path.suffix != ".cs" or not path.exists():
         return False
@@ -5392,6 +5419,12 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
               flush=True)
 
 
+def smaller_change(args, joiner, capital=False):
+    """What a run over the ceiling asks for: a smaller pull request, or on a night a shorter slice."""
+    asked = "measure a shorter slice of the night's commits." if args.through else "split the pull request."
+    return joiner + (asked[0].upper() + asked[1:] if capital else asked)
+
+
 def plan_survivors(args, coverage, mutants, chosen, first, project):
     """The second pass's plan: the shards its platform needs for the first pass's survivors."""
     print(coverage)
@@ -5400,8 +5433,8 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
         # One job measures them all, after its own first pass.
         if len(chosen) > per:
             print("{} mutants of this shard survived the {} suite, more than the {} one job can measure on "
-                  "{} after it.\nWrite the tests they ask for, or split the pull request."
-                  .format(len(chosen), first, per, args.platform))
+                  "{} after it.\nWrite the tests they ask for{}"
+                  .format(len(chosen), first, per, args.platform, smaller_change(args, ", or ")))
             return CEILING_REFUSAL
         print("{} of {} mutant(s) survived the {} suite in this shard and are measured on {}".format(
             len(chosen), len(mutants), first, args.platform))
@@ -5409,8 +5442,8 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
         return 0
     if len(chosen) > args.max_shards * per:
         print("{} mutants survived the {} suite, more than {} shards of {} can measure on {} inside "
-              "the shard job's timeout.\nWrite the tests they ask for, or split the pull request."
-              .format(len(chosen), first, args.max_shards, per, args.platform))
+              "the shard job's timeout.\nWrite the tests they ask for{}"
+              .format(len(chosen), first, args.max_shards, per, args.platform, smaller_change(args, ", or ")))
         return CEILING_REFUSAL
     print("{} of {} mutant(s) survived the {} suite and are measured on {}".format(
         len(chosen), len(mutants), first, args.platform))
@@ -5496,6 +5529,10 @@ def main():
                         help="write every mutant this package generates as {path, line, text} and "
                              "stop, for a reader that parses them with something other than this "
                              "script's own model of C#")
+    parser.add_argument("--through", metavar="COMMIT",
+                        help="keep only the changed lines the tree attributes, by `git blame "
+                             "--first-parent`, to the first-parent commits after the merge base with "
+                             "--base up to and including COMMIT: the slice of a night's commits")
     parser.add_argument("--max-shards", type=int, default=MAX_SHARDS, metavar="N",
                         help="split a pass across at most N shards, which with --plan sets the ceiling "
                              "at N shards' worth; every job of one campaign passes the same N "
@@ -5555,6 +5592,8 @@ def main():
         parser.error("--survivors-shard narrows what --survivors-of reads; it goes with it")
     if args.lines and not args.files:
         parser.error("--lines narrows what --files names")
+    if args.through and args.files:
+        parser.error("--through narrows a diff; --files names none")
     if args.shard is not None and args.collect is not None:
         parser.error("--shard measures and --collect decides; a run does one of them")
     if args.survivors_of is not None:
@@ -5694,8 +5733,10 @@ def main():
             else:
                 print("skipping {}: not a mutable package source".format(name))
     else:
+        sliced = ({path: lines for path, lines in changed.items() if mutable(path, project)}
+                  if not args.through else attributed(project, args.base, args.through, changed))
         targets = {path: lines | declared_subjects(path.read_text(), lines)
-                   for path, lines in changed.items() if mutable(path, project)}
+                   for path, lines in sliced.items() if mutable(path, project)}
 
     # A file the mask misreads has offsets no mutant is ever generated from, and the campaign reports
     # that as a line with nothing to ask rather than as a reading it could not take.
@@ -5797,18 +5838,19 @@ def main():
         if owed > args.max_shards * SHARD_CEILING[args.platform]:
             print(coverage)
             print("{} mutants is more than {} shards of {} can measure inside the shard job's "
-                  "timeout.\nSplit the pull request.".format(owed, args.max_shards,
-                                                             SHARD_CEILING[args.platform]))
+                  "timeout.\n{}".format(owed, args.max_shards, SHARD_CEILING[args.platform],
+                                         smaller_change(args, "", capital=True)))
             return CEILING_REFUSAL
         print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
         if reading and mutants:
             print(reuse_report(mutants, reused, reasons, project))
         if unreached and not mutants:
             # Passed rather than refused, where a local run refuses: a change with nothing to ask
-            # cannot earn a pass any other way, so the lines are named and the pull request says why.
+            # cannot earn a pass any other way, so the lines are named, and a pull request says why.
             print("No operator reaches any of the changed code lines above, so nothing is measured "
-                  "and the\ncampaign passes. Say in the pull request why the change is not something "
-                  "a mutation\ncan ask about.")
+                  "and the\ncampaign passes." + ("" if args.through else
+                                                  " Say in the pull request why the change is not "
+                                                  "something a mutation\ncan ask about."))
         print("mutants={}".format(len(mutants)))
         if reading:
             print("reusing={}".format(len(reused)))

@@ -1546,7 +1546,7 @@ class RedBaseMergeTests(unittest.TestCase):
         self.assertEqual(decided, [RED_REASON])
 
     # GREEN_ON_BASE(characterization): an unlabelled head behind a green base still merges.
-    # This change only drops the `campaign_backing` double settle no longer reads; the arranged verdict is unchanged.
+    # This change only drops a double of a reading settle no longer takes; the arranged verdict is unchanged.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
