@@ -257,7 +257,7 @@ class TrustTests(unittest.TestCase):
         self.assertIn("{}: GitHub does not report it signed".format(odd), found)
 
     def test_Given_AVerifiedCommitByAPerson_When_Read_Then_TheRecordIsRefusedNamingIt(self):
-        # Arrange — a person's own signed commit is verified too, and is still not the writer's.
+        # Arrange — a commit that is verified and authored by the bot, but committed by someone other than web-flow.
         self.origin.publish("two", b='{"v": 2}')
         human = self.origin.head()
         self.origin.api.signed[human] = dict(BOT, login="someone")
@@ -281,7 +281,7 @@ class TrustTests(unittest.TestCase):
         self.assertIn("{}: authored by someone".format(human), found)
 
     def test_Given_AVerifiedCommitCommittedByTheBot_When_Read_Then_TheRecordIsRefusedNamingIt(self):
-        # Arrange — the bot as committer is what a commit pushed by the workflow's git identity carries.
+        # Arrange — a verified commit authored by the bot whose committer is the bot rather than web-flow.
         self.origin.publish("two", b='{"v": 2}')
         pushed = self.origin.head()
         self.origin.api.signed[pushed] = dict(BOT, login="github-actions[bot]")
