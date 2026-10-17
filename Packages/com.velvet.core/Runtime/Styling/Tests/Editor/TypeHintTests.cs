@@ -58,19 +58,32 @@ namespace Velvet.Tests
             Assert.That(s.Color, Is.EqualTo(new Color(1f, 0f, 0f, 0.5f)));
         }
 
-        // GREEN_ON_BASE(characterization): the base read no hint, so each of these failed both its parses there too.
-        [TestCase("border-[color:2px]", "border-[2px]")]
-        [TestCase("text-[color:16px]", "text-[16px]")]
-        [TestCase("border-[length:red]", "border-[red]")]
-        [TestCase("text-[length:red]/50", "text-[red]/50")]
-        public void Given_AHintNamingTheOtherBranch_When_Parsed_Then_TheClassIsDeclined(string hinted, string unhinted)
+        // GREEN_ON_BASE(characterization): the base read no hint, so each of these was declined there too.
+        [TestCase("border-[color:2px]")]
+        [TestCase("text-[color:16px]")]
+        [TestCase("border-[length:red]")]
+        [TestCase("text-[length:red]/50")]
+        public void Given_AHintNamingTheOtherBranch_When_Parsed_Then_TheClassIsDeclined(string hinted)
         {
             // Act
-            var declined = !StyleArbitraryValueResolver.TryParse(hinted, out _);
-            var resolved = StyleArbitraryValueResolver.TryParse(unhinted, out _);
+            var parsed = StyleArbitraryValueResolver.TryParse(hinted, out _);
 
             // Assert
-            Assert.That((declined, resolved), Is.EqualTo((true, true)));
+            Assert.That(parsed, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base read each of these unhinted spellings, the control for the declining cases above.
+        [TestCase("border-[2px]")]
+        [TestCase("text-[16px]")]
+        [TestCase("border-[red]")]
+        [TestCase("text-[red]/50")]
+        public void Given_TheValueWithoutAHint_When_Parsed_Then_TheClassResolves(string unhinted)
+        {
+            // Act
+            var parsed = StyleArbitraryValueResolver.TryParse(unhinted, out _);
+
+            // Assert
+            Assert.That(parsed, Is.True);
         }
 
         [Test]
