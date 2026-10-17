@@ -865,9 +865,18 @@ def delete_merged_branch(project, branch):
 
 
 def delete_remote_ref(project, branch):
-    """Deletes the branch on the remote, and answers with what stderr said when it did not."""
-    removed = run_quietly(["gh", "api", "-X", "DELETE", "repos/{}/git/refs/heads/{}".format(
-        repository(project), branch)], GH_TIMEOUT)
+    """Deletes the branch on the remote, and answers with what stderr said when it did not.
+
+    The ref is read first, because a proxy can refuse the DELETE outright, and a refusal for a
+    branch that is already gone would be reported as a branch that survived. A read that fails for
+    any reason other than the ref being absent falls through to the DELETE.
+    """
+    slug = repository(project)
+    looked = run_quietly(["gh", "api", "repos/{}/git/ref/heads/{}".format(slug, branch)], GH_TIMEOUT)
+    if looked.returncode != 0 and "HTTP 404" in looked.stderr:
+        return ""
+    removed = run_quietly(["gh", "api", "-X", "DELETE",
+                           "repos/{}/git/refs/heads/{}".format(slug, branch)], GH_TIMEOUT)
     if removed.returncode == 0 or reference_already_gone(removed.stderr):
         return ""
     return removed.stderr.strip()
