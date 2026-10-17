@@ -82,13 +82,34 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 });
 ```
 
-- `onExitComplete` runs when the last removed child is gone. Where the render that removed it had no exit to play,
-  that is the passive-effect flush after the render, which runs after the layout effects of its commit, as
-  Framer's `PresenceChild` calls it from an effect; a removal that render never committed completes nothing.
-  Where an exit played, it is the end of the last exit's animation. An error it throws goes to the nearest error
-  boundary at or above the component rendering the presence, except where an exit played or a `V.Motion` child
-  was removed: Framer calls it from that exit's promise, so no boundary takes it and it is logged. An error from
-  a Motion's `onEnterComplete` is logged the same way, as Framer's `onAnimationComplete` runs in a promise.
+- A removed child leaves on a render after the one that removed it, never in that render, as Framer's
+  `AnimatePresence` drops a child only on the render its exit's completion asks for. A child with nothing to
+  animate — no `V.Motion`, or a `StyleTransitionConfig.None` or zero-duration exit — stays for the commit that
+  removed it, and its exit completes in the passive-effect flush after that render, which runs after the layout
+  effects of its commit: Framer completes a child holding no motion component from `PresenceChild`'s effect, and
+  a motion component's exit with nothing to animate from that exit's promise. A removal that render never
+  committed completes nothing, and the next render that still removes the child completes it after its commit.
+- Under `AnimatePresenceMode.Wait`, while any removed child is exiting, the presence renders the exiting children
+  alone, as Framer's `mode="wait"` does: a present child is not rendered until the render that drops them, one
+  already mounted unmounting with no exit of its own and mounting again with its enter. A child with nothing to
+  animate holds them back for that one render.
+- `onExitComplete` runs when the last removed child's exit completes, ahead of the render that drops it: the
+  passive-effect flush above, or the end of the last exit's animation. An error it throws goes to the nearest
+  error boundary at or above the component rendering the presence, except where an exit played or the child
+  whose exit completed last holds a `V.Motion`: Framer calls it from that exit's promise, so no boundary takes it
+  and it is logged. The exits one render leaves with nothing to animate complete in Framer's order: a Motion whose
+  exit names no target, or one a zero-duration or `StyleTransitionConfig.None` exit reaches at once, completes
+  from its promise, and a child holding no Motion from its effect. A removal from a discrete event (the Urgent
+  lane) settles the effects first, as React flushes the passive effects of a synchronous commit before any promise
+  reaction runs; any other removal settles the promises first. Tree order within each. Disposing the mounted tree
+  first completes an exit still waiting on the passive-effect flush, as React flushes a root's pending passive
+  effects before the render that unmounts it. A presence that leaves the tree while exits play, disposed with it
+  or no longer rendered by its parent, completes those exits as it goes and its `onExitComplete` runs once, as
+  Framer lets them play out and then calls it. An exit also waiting on a `layoutId` landing stays owed: Framer
+  removes a relegated node only through its lead's layout animation, which no longer reaches it once it unmounts.
+  An error from
+  a Motion's `onEnterComplete` reaches no boundary and is logged, as Framer's `onAnimationComplete` runs in a
+  promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the
   parent, so put `flex` / `gap-*` / wrapping on the parent.
 - **Framer's splice semantics:** while a ghost exits, surviving siblings keep their positions;
@@ -149,7 +170,9 @@ completed.
 - A key added to the inner presence while the enclosing child is leaving mounts already leaving, as Framer's
   `PresenceChild` mounts it with `isPresent=false`: its Motions start at their `initial` pose, with no enter, and
   play their `exit` from there. The key counts in the enclosing child's wait while the inner presence's exits
-  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have.
+  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have. A key
+  that places nothing mounts as well, its effects with it, and its exit completes as one with nothing to animate
+  does.
 - The inner presence is found wherever it sits under the enclosing child: written inline under elements, rendered
   by a component, at the top of the child, or inside a `V.Portal`, and whether it mounted with the child or in a
   later render of its own component. When it mounts that way, the nearest enclosing child is the one that
@@ -279,7 +302,7 @@ new StyleTransitionConfig
   transition's rate at that moment, read off the panel's style animation system. When the interrupted `Bezier` play is on
   a `MotionPlayback`, the velocity is scaled by that playback's rate, and a paused playback hands on none,
   whatever the spring is on. A native transition's velocity is handed on only where its unit is the spring
-  channel's. An exit whose delta resolves no channel at all completes immediately.
+  channel's. An exit whose delta resolves no channel at all completes after the commit of the render that removed its child, as an exit with nothing to animate does.
 - `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
   slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
   so a frame that arrives late moves the spring as far as the time it covers.
@@ -519,14 +542,16 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   variants and drivers give it. While it is written, an element whose transitions cover opacity has them
   suspended as a play's are (see [Driven channels](#driven-channels-spring-and-bezier)), element-wide
   unless a variant tween holds the list, and Velvet carries a change of that opacity itself — a class
-  change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — from where the
-  opacity stands, with the duration, delay and easing the element declares for it, running one that
-  outlasts the move on to its end. The others fade from
+  change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — on the transition the
+  element declares for opacity, as UI Toolkit runs it: one already running when the fade starts runs on
+  from where it had got, inside its delay or past it, and a change back towards where a running one
+  started is shortened by how far that one had got. One that outlasts the move runs on to its end. The others fade from
   the opacity the holder the lead took its box from was drawn at, if that holder was itself moving from
   another's box, or else from its own opacity as it is now, and take no pointer while they are drawn. A
   lead alone under its id instead mixes its opacity from that holder's to its own over the move, written
   the same way. A move of
-  the lead's own that interrupts the crossfade holds the opacities it had reached until that move lands.
+  the lead's own that interrupts its crossfade or its mix holds the opacities they had reached until that
+  move lands.
   The others are hidden again once the lead lands. When the lead leaves the tree, the holder of those
   left that took the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts
   its exit, the latest holder that took the id before it and is not exiting takes the lead, as Framer's
@@ -852,9 +877,8 @@ Three consequences worth knowing:
   to the `Fade` preset's timing, so even a bare Motion tweens its label swaps. Pass
   `transition: StyleTransitionConfig.None` for an instant, non-animated swap — and because the
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
-  means exactly that pose animates and the rest are instant. Whether a removal is held as an
-  exiting ghost at all is decided by the same resolved config, so such an exit is not dropped for
-  the node's `None`. A label change into a `None` pose, or one whose bezier transition has zero
+  means exactly that pose animates and the rest are instant. Whether a removal animates is
+  decided by the same resolved config, so such an exit plays the pose despite the node's `None`. A label change into a `None` pose, or one whose bezier transition has zero
   duration, while an earlier swap is still moving the Motion lands the properties that pose names
   within two frames, and leaves the rest moving. One exception: a value the pose repeats from a moving
   tween's target in another kind of spelling — a stylesheet class for an arbitrary value, such as

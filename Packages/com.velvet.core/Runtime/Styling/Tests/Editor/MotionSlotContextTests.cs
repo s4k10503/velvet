@@ -828,6 +828,8 @@ namespace Velvet.Tests
             return props.Render(stage);
         }
 
+        // GREEN_ON_BASE(characterization): the base parked the fragment in its completed-exit window.
+        // The passive flush added is the one the completion now settles in.
         [Test]
         public void Given_ACompletedFragmentExit_When_ReentryHasOnlyATweenedInitialPose_Then_AnInstantClassicEnterKeepsThePoseHeldUntilItsSwap()
         {
@@ -854,6 +856,7 @@ namespace Velvet.Tests
             var ctx = _mounted.Root.Reconciler.Context;
             store.Set(1);
             _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
             var presence = ctx.PresenceStates.Values.Single();
             var completedGhost = presence.ExitComplete.Contains("entry");
             var attachedGhost = element.parent == parent;

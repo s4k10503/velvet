@@ -171,12 +171,12 @@ namespace Velvet
             }
             float scale;
             string num;
-            if (s.EndsWith("ms", StringComparison.Ordinal))
+            if (s.EndsWith("ms", StringComparison.OrdinalIgnoreCase))
             {
                 num = s.Substring(0, s.Length - 2);
                 scale = 0.001f;
             }
-            else if (s.EndsWith("s", StringComparison.Ordinal))
+            else if (s.EndsWith("s", StringComparison.OrdinalIgnoreCase))
             {
                 num = s.Substring(0, s.Length - 1);
                 scale = 1f;

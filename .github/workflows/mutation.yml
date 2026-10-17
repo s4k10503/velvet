@@ -1,35 +1,45 @@
 name: Mutation campaign
 
-# The mutation campaign over a pull request's change, once per labelled head rather than on every push.
-# scripts/pr/automerge.py's hand-off dispatches it onto the head's branch as soon as the head carries the
-# `automerge` label, beside its Test run rather than after it; CONTRIBUTING.md's continuous-integration section owns
-# when, what the label means and what a merge requires of this workflow's runs.
-#
-# The hand-off dispatches no head on another repository. The checkout is the branch's head rather than
-# a test merge, so change_base.py reads the change against the merge base of that head and `base`.
+# The mutation campaign, in the shape cargo-mutants and StrykerJS run theirs: every run on the default
+# branch or a dispatched line measures the mutants of the campaign's scope that the record does not
+# answer yet and writes what it measured into the record; a pull request's run measures its own change
+# against that record and writes nothing. No pull request waits on either, and no branch-protection rule
+# requires a check of this workflow. CONTRIBUTING.md ▸ Checking that the tests can fail owns the scope,
+# the record, the cap and the catch-up, and the release gate that reads the record.
 on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # 03:17 UTC, a minute picked off the hour.
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       base:
-        description: "The branch the pull request merges into"
-        required: true
-        default: main
-      number:
-        description: "The pull request whose merge run the aggregate dispatches once the campaign passes"
+        description: "Empty to measure the campaign's scope and write the record; a branch to measure the change since the merge base with it"
         required: false
+        default: ""
 
-# A newer head's dispatch cancels the campaign still measuring an older one. Not test.yml's group, so
-# no run of Test cancels a campaign.
+# A pull request's newer head cancels the run still measuring its older one. Every other run on a ref
+# waits for the one in progress rather than cancelling it, so a run's measurement is never thrown away
+# before its record is written; GitHub keeps only the newest of the waiting ones, which measures from
+# the newest head. Not test.yml's group, so no run of Test cancels a campaign.
 concurrency:
-  group: mutation-campaign-${{ github.ref }}
-  cancel-in-progress: true
+  group: mutation-${{ github.event_name == 'pull_request' && 'advisory' || 'record' }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
-# Same reason test.yml gives.
+# PYTHONDONTWRITEBYTECODE for the reason test.yml gives. The caps are how many unanswered mutants one
+# run deals at most, and the shard counts what it splits them across; RecordBudgetTests holds each cap
+# inside its shards' ceiling and a record run's shard waves inside a day.
 env:
   PYTHONDONTWRITEBYTECODE: "1"
+  RECORD_CAP: "400"
+  RECORD_SHARDS: "40"
+  ADVISORY_CAP: "100"
+  ADVISORY_SHARDS: "10"
 
 # Timeouts sized as test.yml's are, but for the shard jobs', which ShardCeilingTests holds against the
 # plan's ceiling.
@@ -55,8 +65,8 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # The campaign decides as a local run over the same diff does, except that it measures every mutant
-  # where a local run stops at --max, and passes a change no operator reaches where a local run refuses
-  # one; CONTRIBUTING.md owns what it asks and what fails it.
+  # the record does not answer, up to the cap, where a local run stops at --max, and passes a change no
+  # operator reaches where a local run refuses one; CONTRIBUTING.md owns what it asks and what fails it.
   #
   # Two passes, because a mutant is killed when either suite fails on it and the two suites hold
   # different tests. Every mutant runs against the EditMode suite; only the EditMode survivors run
@@ -77,32 +87,28 @@ jobs:
     needs: license-check
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # actions: read, for the earlier campaigns the reuse step lists.
-    permissions:
-      contents: read
-      actions: read
     outputs:
       mutants: ${{ steps.plan.outputs.mutants }}
-      # Empty where a verdict is reused, which is what skips every job that measures.
-      shards: ${{ steps.reuse.outputs.reused == '' && steps.plan.outputs.shards || '[]' }}
-      key: ${{ steps.key.outputs.campaign-key }}
-      reused: ${{ steps.reuse.outputs.reused }}
-      # How many mutants an earlier campaign's kill answers for. Empty where the plan decided no reuse.
+      shards: ${{ steps.plan.outputs.shards }}
+      max-shards: ${{ steps.plan.outputs.max-shards }}
+      # How many mutants the record answers for, and how many the cap left to a later run.
       reusing: ${{ steps.plan.outputs.reusing }}
+      pending: ${{ steps.plan.outputs.pending }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - id: base
-        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
-
-      # The per-mutant ledgers of the branch's earlier campaigns, failed ones included. A fetch that
-      # fails leaves the directory short, and the plan then measures what it cannot find a kill for.
-      - if: needs.license-check.outputs.has_license == 'true'
-        env:
+      # Empty where the branch does not exist yet, and every mutant is then unanswered. Refused where
+      # the branch holds a commit its writer did not make.
+      - env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/ci/reuse_verdict.py --ledgers Logs/mutation-ledgers
+        run: python3 scripts/ci/mutation_record.py fetch Logs/mutation-record
+
+      - id: base
+        env:
+          MUTATION_SCOPE: ${{ github.event_name != 'pull_request' && '1' || '' }}
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
       # The summary is written before the status is read, and carries stderr, where a refusal other
       # than the ceiling's is printed, so a refused plan names why in it. Over the ceiling with no
@@ -111,22 +117,27 @@ jobs:
         env:
           BASE: ${{ steps.base.outputs.sha }}
           HAS_LICENSE: ${{ needs.license-check.outputs.has_license }}
+          CAP: ${{ github.event_name == 'pull_request' && env.ADVISORY_CAP || env.RECORD_CAP }}
+          MAX_SHARDS: ${{ github.event_name == 'pull_request' && env.ADVISORY_SHARDS || env.RECORD_SHARDS }}
         run: |
           set +e
           python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan --emit-mutants mutants.json \
-            --reuse-from Logs/mutation-ledgers --emit-reuse reuse.json > plan.txt 2>&1
+            --max-shards "$MAX_SHARDS" --cap "$CAP" \
+            --reuse-from Logs/mutation-record --emit-reuse reuse.json > plan.txt 2>&1
           status=$?
           cat plan.txt
           { echo '### Mutation campaign plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "max-shards=$MAX_SHARDS" >> "$GITHUB_OUTPUT"
           if [ "$status" -eq 4 ] && [ "$HAS_LICENSE" != true ]; then
             echo 'shards=[]' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           [ "$status" -eq 0 ] || exit "$status"
-          grep -E '^(mutants|shards|reusing)=' plan.txt >> "$GITHUB_OUTPUT"
+          grep -E '^(mutants|shards|reusing|pending)=' plan.txt >> "$GITHUB_OUTPUT"
 
       # The list every shard and the verdict job hands back to mutation_check.py, which refuses a tree
-      # that generates another, and the kills the plan reused, which each of them measures around.
+      # that generates another, and the plan's decision of what the record answers and what the cap
+      # leaves, which each of them measures around.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: >-
           (steps.plan.outputs.shards != '[]' || (steps.plan.outputs.reusing || '0') != '0')
@@ -138,29 +149,8 @@ jobs:
             reuse.json
           overwrite: true
 
-      # What the head asks of the campaign, as one hash. CONTRIBUTING.md owns what goes into it.
-      - id: key
-        if: >-
-          (steps.plan.outputs.shards != '[]' || (steps.plan.outputs.reusing || '0') != '0')
-          && needs.license-check.outputs.has_license == 'true'
-        env:
-          BASE: ${{ steps.base.outputs.sha }}
-        run: |
-          python3 scripts/test_quality/mutation_check.py --base "$BASE" --key | tee key.txt
-          { echo '### Mutation campaign key'; echo '```'; cat key.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          grep -E '^campaign-key=' key.txt >> "$GITHUB_OUTPUT"
-
-      # An earlier passing campaign on this branch that measured the same key. A lookup that fails
-      # reuses nothing, and the campaign then measures.
-      - id: reuse
-        if: steps.key.outputs.campaign-key != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          KEY: ${{ steps.key.outputs.campaign-key }}
-        run: python3 scripts/ci/reuse_verdict.py --key "$KEY" | tee -a "$GITHUB_OUTPUT"
-
   # ---------------------------------------------------------------------------
-  # The Library every EditMode shard restores. Test's unity-tests jobs save theirs under the pull
+  # The Library every EditMode shard restores. Test's unity-tests jobs save theirs under a pull
   # request's own ref, which is not this run's, so this restores what the branch and the default branch
   # hold, imports the head once where no entry carries its exact key, and saves the result under that
   # key for the shards and for the next campaign on the branch.
@@ -213,8 +203,10 @@ jobs:
     # The two measuring steps' timeouts and the checkout, restore and upload around them; ShardCeilingTests
     # holds each step's timeout against its platform's ceiling.
     timeout-minutes: 360
+    # Ten at once whatever the run's shard count; RecordBudgetTests sizes RECORD_SHARDS against this.
     strategy:
       fail-fast: false
+      max-parallel: 10
       matrix:
         shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}
     steps:
@@ -238,6 +230,8 @@ jobs:
           path: Logs/mutation-list
 
       - id: base
+        env:
+          MUTATION_SCOPE: ${{ github.event_name != 'pull_request' && '1' || '' }}
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
       - name: Measure EditMode
@@ -341,8 +335,7 @@ jobs:
     if: >-
       !cancelled() && needs.license-check.outputs.has_license == 'true'
       && needs.mutation-plan.result == 'success'
-      && (needs.mutation-plan.outputs.shards != '[]' || needs.mutation-plan.outputs.reused != ''
-          || (needs.mutation-plan.outputs.reusing || '0') != '0')
+      && (needs.mutation-plan.outputs.shards != '[]' || (needs.mutation-plan.outputs.reusing || '0') != '0')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -350,31 +343,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The head's key is a key a campaign already passed on: no mutant is measured here, and the run
-      # cited is the one that measured it. scripts/pr/settle.py reads that citation before a merge.
-      - if: needs.mutation-plan.outputs.reused != ''
-        env:
-          REUSED: ${{ needs.mutation-plan.outputs.reused }}
-          KEY: ${{ needs.mutation-plan.outputs.key }}
-        run: |
-          { echo '### Mutation campaign'; echo "Verdict reused from run $REUSED: its head asked the same mutants of the same code, tests and tool (key $KEY). No mutant was measured in this run."; } | tee -a "$GITHUB_STEP_SUMMARY"
-
-      - if: needs.mutation-plan.outputs.reused == ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: Mutation mutant list
           path: Logs/mutation-list
 
-      # Only where a shard ran: a campaign whose every mutant was reused has no shard artifact for a
+      # Only where a shard ran: a run whose every mutant the record answered has no shard artifact for a
       # pattern to match, and what the action does with a pattern that matches nothing is not relied on.
-      - if: needs.mutation-plan.outputs.reused == '' && needs.mutation-shard.result != 'skipped'
+      - if: needs.mutation-shard.result != 'skipped'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: Mutation EditMode shard *
           path: Logs/mutation-shards
           merge-multiple: true
 
-      - if: needs.mutation-plan.outputs.reused == '' && needs.mutation-shard.result != 'skipped'
+      - if: needs.mutation-shard.result != 'skipped'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: Mutation PlayMode shard *
@@ -382,113 +365,127 @@ jobs:
           merge-multiple: true
 
       - id: base
-        if: needs.mutation-plan.outputs.reused == ''
+        env:
+          MUTATION_SCOPE: ${{ github.event_name != 'pull_request' && '1' || '' }}
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
-      # A mutant the plan reused a kill for keeps it, once its killing cases are found unchanged in
-      # this tree. A mutant the EditMode pass killed keeps that verdict; one it left surviving takes the
-      # PlayMode pass's, and a survivor no PlayMode shard recorded is unmeasured.
-      - if: needs.mutation-plan.outputs.reused == ''
-        env:
+      # A mutant the record answered keeps that verdict once it is found still standing in this tree. A
+      # mutant the EditMode pass killed keeps that verdict; one it left surviving takes the PlayMode
+      # pass's, and a survivor no PlayMode shard recorded is unmeasured. A mutant past the cap is left to
+      # a later run and fails nothing here.
+      - env:
           BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
+          MAX_SHARDS: ${{ needs.mutation-plan.outputs.max-shards }}
         run: |
           set +e
-          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" \
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" --max-shards "$MAX_SHARDS" \
             --mutants Logs/mutation-list/mutants.json --reuse Logs/mutation-list/reuse.json \
             --platform PlayMode --survivors-of Logs/mutation-shards \
             --collect Logs/mutation-playmode-shards --output Logs/mutation-verdict \
-            --emit-ledger Logs/mutation-ledger/ledger.json | tee verdict.txt
+            --emit-record Logs/mutation-record | tee verdict.txt
           status=${PIPESTATUS[0]}
           { echo '### Mutation campaign'; echo '```'; cat verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
-      # Uploaded whether the decision passed or failed: a campaign that failed on a survivor is the one
-      # whose kills the next round reuses. What a ledger holds is checked against the tree that reads it.
-      - if: ${{ !cancelled() && needs.mutation-plan.outputs.reused == '' && hashFiles('Logs/mutation-ledger/ledger.json') != '' }}
+      # Both uploaded whether the decision passed or failed: a run that failed on a survivor still
+      # measured every mutant it records, and the report reads its findings from the verdict.
+      - if: ${{ !cancelled() && hashFiles('verdict.txt') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Mutation campaign ledger
-          path: Logs/mutation-ledger/ledger.json
+          name: Mutation campaign verdict
+          path: verdict.txt
           overwrite: true
 
-      # Recorded only once the steps above passed, so a key names a campaign that passed. A run that
-      # reused one cites the run that measured it, not the one it read the key from.
-      - id: recorded
-        env:
-          KEY: ${{ needs.mutation-plan.outputs.key }}
-          REUSED: ${{ needs.mutation-plan.outputs.reused }}
-        run: |
-          if [ -n "$REUSED" ]; then
-            python3 scripts/ci/reuse_verdict.py --name "$KEY" --from "$REUSED" >> "$GITHUB_OUTPUT"
-          else
-            python3 scripts/ci/reuse_verdict.py --name "$KEY" >> "$GITHUB_OUTPUT"
-          fi
-          echo "$KEY" > campaign-key.txt
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - if: ${{ !cancelled() && github.event_name != 'pull_request' && hashFiles('Logs/mutation-record/*.json') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ steps.recorded.outputs.name }}
-          path: campaign-key.txt
+          name: Mutation campaign record entries
+          path: Logs/mutation-record
           overwrite: true
 
   # ---------------------------------------------------------------------------
-  # The merge reads the run's conclusion rather than this job's, through scripts/pr/campaign.py; this
-  # job asks for the merge once every other job passed or was skipped. always(), so a campaign with
-  # nothing to measure still asks. A skipped dependency counts as passing, as in test.yml's
-  # required-checks: a job after the plan skips where no licence is configured or nothing is left for
-  # it to measure.
-  #
-  # The merge run it dispatches waits out this run, since settle refuses a head whose checks are still
-  # running. continue-on-error, because a merge run that did not start is not a campaign that failed.
+  # What the run measured goes onto the record branch (scripts/ci/mutation_record.py), as a commit this
+  # job's token creates through the Git Data API, which is the only kind a reader of the branch trusts.
+  # A pull request's run writes nothing. Where the cap left mutants to a later run, this
+  # run recorded something, and every shard passed, the run dispatches the next one onto the same ref,
+  # which waits in the concurrency group for nothing but this run: the next measures the following
+  # mutants in the same order, since the ones this run answered are now in the record. A run that
+  # recorded nothing dispatches nothing, so a mutant no run can measure stops the chain rather than
+  # being dealt to it forever.
   # ---------------------------------------------------------------------------
-  campaign:
-    name: Mutation campaign
-    if: always()
-    needs: [license-check, mutation-plan, library, mutation-shard, mutation-verdict]
+  record:
+    name: Mutation campaign (record)
+    needs: [license-check, mutation-plan, mutation-shard, mutation-verdict]
+    if: >-
+      !cancelled() && github.event_name != 'pull_request'
+      && (needs.mutation-verdict.result == 'success' || needs.mutation-verdict.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # pull-requests: read for the head scripts/ci/aggregate_results.py compares against.
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Absent where the verdict recorded nothing, which publishes nothing.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: Mutation campaign record entries
+          path: Logs/mutation-record
+
+      - id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          mkdir -p Logs/mutation-record
+          python3 scripts/ci/mutation_record.py publish Logs/mutation-record \
+            --message "Record run $GITHUB_RUN_ID at $GITHUB_SHA" | tee published.txt
+          echo "published=$(sed -n 's/^\([0-9]*\) record entries published$/\1/p' published.txt)" >> "$GITHUB_OUTPUT"
+
+      - if: >-
+          (needs.mutation-plan.outputs.pending || '0') != '0'
+          && (steps.publish.outputs.published || '0') != '0'
+          && needs.mutation-shard.result == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_INPUT: ${{ inputs.base }}
+        run: gh workflow run mutation.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" ${BASE_INPUT:+-f base="$BASE_INPUT"}
+
+  # ---------------------------------------------------------------------------
+  # What a record run left to answer, as a comment on the tracking issue (scripts/ci/mutation_report.py).
+  # always(), so a run whose plan or shards failed still says so. Nothing decides on the issue: the
+  # release gate reads the record.
+  # ---------------------------------------------------------------------------
+  report:
+    name: Mutation campaign (report)
+    if: always() && github.event_name != 'pull_request' && needs.license-check.outputs.has_license == 'true'
+    needs: [license-check, mutation-plan, library, mutation-shard, mutation-verdict, record]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
-      pull-requests: read
+      issues: write
     steps:
-      # Decided here without a checkout, so a run whose every result passed cannot be reddened by one.
-      - id: results
-        env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.mutation-plan.result }} ${{ needs.library.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-verdict.result }}
-        run: |
-          passed=true
-          [ -n "$RESULTS" ] || passed=false
-          for result in $RESULTS; do
-            case "$result" in
-              success|skipped) ;;
-              *) passed=false ;;
-            esac
-          done
-          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - if: steps.results.outputs.passed != 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          sparse-checkout: scripts/ci
-
-      - if: steps.results.outputs.passed != 'true'
-        env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.mutation-plan.result }} ${{ needs.library.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-verdict.result }}
-          HEAD: ${{ github.sha }}
-          NUMBER: ${{ inputs.number }}
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/ci/aggregate_results.py
-
-      - if: inputs.number != ''
+      # Absent where the verdict job did not run, which the report names.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
-        env:
+        with:
+          name: Mutation campaign verdict
+          path: Logs/mutation-verdict
+
+      - env:
           GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ inputs.number }}
-          RUN: ${{ github.run_id }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: >-
-          gh workflow run automerge.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
-          -f number="$NUMBER" -f after_run="$RUN"
+          PENDING: ${{ needs.mutation-plan.outputs.pending }}
+          RESULTS: >-
+            license-check=${{ needs.license-check.result }} mutation-plan=${{ needs.mutation-plan.result }}
+            library=${{ needs.library.result }} mutation-shard=${{ needs.mutation-shard.result }}
+            mutation-verdict=${{ needs.mutation-verdict.result }} record=${{ needs.record.result }}
+        run: |
+          set -o pipefail
+          python3 scripts/ci/mutation_report.py --verdict Logs/mutation-verdict/verdict.txt | tee report.txt
+          { echo '### Mutation campaign report'; echo '```'; cat report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

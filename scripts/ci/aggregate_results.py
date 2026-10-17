@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Decide an aggregate job from the results of the jobs it needs.
 
-test.yml's and generators.yml's `required-checks` and mutation.yml's `campaign` run this where
-their inline step did not pass the results. It passes where every result is `success` or
+test.yml's and generators.yml's `required-checks` run this where their inline step did not pass
+the results. It passes where every result is `success` or
 `skipped`, and otherwise fails, except in one case: a `pull_request` or `workflow_dispatch`
 run whose other results are all `cancelled`, and whose pull request (or, with no NUMBER, branch)
 now points at a commit other than HEAD — a newer push, or a force-push to any other commit — asks

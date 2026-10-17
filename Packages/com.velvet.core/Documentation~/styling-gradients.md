@@ -22,10 +22,10 @@ or column and 512 by 512 for any other, and again when the element's size crosse
 | Utility | Shape |
 |---|---|
 | `bg-gradient-to-{dir}` / `bg-linear-to-{dir}` | linear, toward `t` `tr` `r` `br` `b` `bl` `l` `tl` |
-| `bg-linear-{n}` / `-bg-linear-{n}` / `bg-linear-[{n}deg]` | linear at an angle in degrees, 0 pointing up, clockwise |
+| `bg-linear-{n}` / `-bg-linear-{n}` / `bg-linear-[{angle}]` | linear at an angle in degrees, 0 pointing up, clockwise; the bracket takes a CSS angle in `deg`, `grad`, `rad` or `turn` in any case, or a bare `0`, and `-bg-linear-[…]` only a lower-case unit, as Tailwind's angle test does |
 | `bg-radial` / `bg-radial-[at_{position}]` | radial from a centre (default the middle), an ellipse out to the farthest corner |
 | `bg-radial-[{shape} {size} at_{position}]` | `circle` or `ellipse`; `closest-side`, `closest-corner`, `farthest-side`, `farthest-corner`, or radii: a circle's length, an ellipse's two lengths or percentages (`circle_40px`, `ellipse_50%_1in`), a length being a non-negative `px`, `rem` or absolute unit, or a math function that comes to one |
-| `bg-conic` / `bg-conic-{n}` / `bg-conic-[from_{n}deg]` | conic, sweeping clockwise from a start angle |
+| `bg-conic` / `bg-conic-{n}` / `bg-conic-[from_{angle}]` | conic, sweeping clockwise from a start angle; a bracket without `from` names none |
 
 A position is keywords (`top`, `left`, `center`, …) or percentages, which may lie outside the box, x before y: `at_top_left`,
 `at_25%_75%`. A utility class interpolates in OKLab, as Tailwind's do, and a trailing `/srgb`, `/srgb-linear`, `/oklab`, `/oklch`, `/lab`, `/lch` or `/hsl`
