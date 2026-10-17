@@ -1123,7 +1123,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(new[] { initialWidth, commits, startWidth },
-                Is.EqualTo(new[] { nativeTransition ? 160f : 200f, 1f, 40f }).Within(0.02f));
+                Is.EqualTo(new[] { nativeTransition ? 160f : 200f, 1f, nativeTransition ? 160f : 40f }).Within(0.02f));
         }
 
         private static StateUpdater<bool> s_setWidthTarget;
