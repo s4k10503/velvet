@@ -30,8 +30,9 @@ namespace Velvet.Tests
     /// first, and a drain's commit that shows a fallback commits it before the drain returns.</item>
     /// <item>Boundaries reporting in one commit report in tree order, whatever order they caught in, each after
     /// the layout effects of its own fallback.</item>
-    /// <item>A boundary a parked transition has mounted reports in the commit that completes the transition, and
-    /// one the transition parked short of reports without waiting for it.</item>
+    /// <item>A boundary a parked transition has mounted catches its child's passive-effect error only once the
+    /// pass has completed, the effect being held with the pass, and one the transition parked short of reports
+    /// without waiting for it.</item>
     /// <item>Once a chain of follow-up commits reaches its bound, the next entry neither runs the chain again
     /// nor delivers the report it left, and a parked transition still runs the layout effects it held.</item>
     /// </list>
@@ -401,10 +402,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionMounted_When_ItCatchesAPassiveEffectsErrorBeforeThePassCompletes_Then_ItReportsInTheCommitThatCompletesThePass()
+        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionMounted_When_ItsChildsPassiveEffectThrowsOnlyOnceThePassHasCompleted_Then_ItReportsInTheCommitThatFollows()
         {
             // Arrange — the boundary's row is the first the transition builds, and its child's render outlasts
-            // the slice's budget, so the batch drain's slice parks right after that row.
+            // the slice's budget, so the batch drain's slice parks right after that row. The child's passive
+            // effect is held with the pass, so the flush that finds the pass parked runs nothing.
             s_child = () => V.Component(SlowThrowInPassiveEffectRender, key: "child");
             _mounted = V.Mount(_root, V.Component(BoundaryFirstListRender, key: "list"), RecordingOrder);
             s_listTick = 1;
@@ -415,11 +417,12 @@ namespace Velvet.Tests
 
             // Act
             s_listFiber.DrainTimeSlicedReconcileForTest();
+            _mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(
                 $"{beforeCompletion}; {string.Join(", ", s_order)}",
-                Is.EqualTo("True | fallback; fallback, caught"));
+                Is.EqualTo("True | ; fallback, caught"));
         }
 
         [Test]

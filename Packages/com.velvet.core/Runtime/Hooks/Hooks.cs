@@ -2136,7 +2136,8 @@ namespace Velvet
         /// 2-tuple in the order (<c>isPending</c>, <c>startTransition</c>):
         /// - <c>isPending</c>: true while an update this starter's callback scheduled is queued or being
         ///   committed — through the terminal reconcile slice, wherever the state it wrote lives — and across
-        ///   an async transition's awaits.
+        ///   an async transition's awaits. The component renders it true on the Urgent lane as soon as the
+        ///   call returns with it lit, ahead of the transition's own render.
         /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>, reference-stable across renders. Call
         ///   <c>startTransition.Invoke(() =&gt; ...)</c>
         ///   for synchronous updates or <c>startTransition.Invoke(async () =&gt; ...)</c> for async actions whose

@@ -180,6 +180,7 @@ namespace Velvet.Tests
         public void Given_MixedNormalAndTransition_When_Batched_Then_EachLaneSitsOnItsOwnTier()
         {
             // Arrange — Fiber A on the Normal lane (immediate tier), Fiber B on the Transition lane (delayed tier)
+            // and, for the pending state its call asks for, on the Urgent lane (immediate tier)
             using var mounted = MountThree();
 
             // Act
@@ -188,12 +189,13 @@ namespace Velvet.Tests
 
             // Assert
             var scheduler = mounted.GetSchedulerForTest();
-            Assert.AreEqual((1, 1), (scheduler.ImmediatePendingCount, scheduler.DelayedPendingCount),
-                "The Normal-lane fiber sits on the immediate tier and the Transition-lane fiber on the delayed tier");
+            Assert.AreEqual((2, 1), (scheduler.ImmediatePendingCount, scheduler.DelayedPendingCount),
+                "Both fibers sit on the immediate tier, the Transition-lane fiber for its pending state, and the "
+                + "Transition-lane fiber also on the delayed tier");
         }
 
         [Test]
-        public void Given_MixedNormalAndTransition_When_ImmediateDrained_Then_OnlyNormalLaneFiberFlushes()
+        public void Given_MixedNormalAndTransition_When_ImmediateDrained_Then_TheTransitionLaneFiberRendersOnlyItsPendingState()
         {
             // Arrange
             using var mounted = MountThree();
@@ -204,8 +206,9 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.AreEqual((2, 1), (s_renderCountA, s_renderCountB),
-                "The immediate drain flushes the Normal-lane fiber and leaves the Transition-lane fiber pending");
+            Assert.AreEqual((2, 2, "b"), (s_renderCountA, s_renderCountB, s_lastB),
+                "The immediate drain flushes the Normal-lane fiber and renders the Transition-lane fiber's pending "
+                + "state, leaving its transition content pending");
         }
 
         [Test]
@@ -221,8 +224,9 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
-            Assert.AreEqual((3, "b-transition"), (s_renderCountB, s_lastB),
-                "The delayed drain commits the Transition-lane value, then renders the cleared pending state");
+            Assert.AreEqual((4, "b-transition"), (s_renderCountB, s_lastB),
+                "The delayed drain commits the Transition-lane value, then renders the cleared pending state, after the "
+                + "immediate drain's pending render");
         }
 
         [Test]
