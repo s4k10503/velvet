@@ -244,7 +244,7 @@ namespace Velvet
         private bool HasLitVariantGateTokens(VisualElement element)
             => _ctx.VariantGateClasses.Count != 0
                 && _ctx.VariantGateClasses.TryGetValue(element, out var state)
-                && state.Tokens.Count != 0;
+                && state.Composes;
 
         private void PatchElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
         {
@@ -260,6 +260,7 @@ namespace Velvet
             // manipulator's container-margin writes are never clobbered by a later inline-style diff on
             // the same element. (No StyleOverrides member writes a margin today, but the invariant must
             // hold if one is ever added.)
+            _ctx.ExpectPlayGates(element, null);
             ApplyPostChildrenClassPasses(element, oldNode.ClassNames, newNode.ClassNames, clipActive);
         }
 
@@ -657,6 +658,7 @@ namespace Velvet
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
             // children) directly. A Motion carries no clip wrapper, so no clip suppresses a paint here.
+            _ctx.ExpectPlayGates(element, newNode);
             ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, clipActive: false);
 
             // Shared-element layout animation (layoutId): independent of the variant swap
@@ -3277,7 +3279,7 @@ namespace Velvet
             var previous = state?.Resolved;
             var resolved = reconciled == null ? LiveClasses(element)
                 : state == null ? reconciled
-                : ComposeVariantClasses(reconciled, state.Tokens, state.Resolved);
+                : ComposeVariantClasses(reconciled, state, state.Resolved);
             var classesChanged = !ReferenceEquals(previous, resolved);
             if (state != null)
             {
@@ -3286,10 +3288,9 @@ namespace Velvet
             // Font and text effects run only from a RECORDED array, never from the live-list stand-in the
             // layout gates accept above. Both resolvers rewrite unconditionally, and the live list is not a
             // narrower version of their source but a different one: the reconciler keeps a DECLARED font-[…]
-            // / leading-[…] off it, since those two are resolver-owned, and the writers that raise no signal
-            // (the animation scheduler, the presence exit) put utilities on it that no reconcile ever saw.
-            // Handing it over would not lose the payload, it would resolve some other answer over the
-            // element's correct one with nothing left to put it back.
+            // / leading-[…] off it, since those two are resolver-owned. Handing it over would not lose the
+            // payload, it would resolve some other answer over the element's correct one with nothing left to
+            // put it back.
             // Their order is the reconcile path's own (SyncClassDrivenStyling ahead of
             // ApplyPostChildrenClassPasses), so a re-sync cannot resolve a pass against a different
             // predecessor than a patch would.
@@ -3423,9 +3424,9 @@ namespace Velvet
             // An element that DECLARES a gated payload but has none applied right now reads its reconciled
             // array unchanged — there is no token to append — so the common `hover:shadow-lg` element pays
             // the composition only while it is actually hovered, and a dictionary probe the rest of the time.
-            var resolved = state.Tokens.Count == 0
+            var resolved = !state.Composes
                 ? newClassNames
-                : ComposeVariantClasses(newClassNames, state.Tokens, state.Resolved);
+                : ComposeVariantClasses(newClassNames, state, state.Resolved);
             changed = !ReferenceEquals(oldClassNames, newClassNames)
                 || !ReferenceEquals(state.Resolved, resolved);
             state.Reconciled = newClassNames;
@@ -3450,9 +3451,9 @@ namespace Velvet
         private string[] ResolveGateClasses(VisualElement element, string[] classNames)
             => _ctx.VariantGateClasses.Count == 0
                 || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
-                || state.Tokens.Count == 0
+                || !state.Composes
                     ? classNames
-                    : ComposeVariantClasses(classNames, state.Tokens, state.Resolved);
+                    : ComposeVariantClasses(classNames, state, state.Resolved);
 
         // Builds classNames plus every variant-applied gate token, handing back reuse unchanged when the
         // result would match it token for token, and classNames itself when no payload is lit.
@@ -3460,10 +3461,10 @@ namespace Velvet
         // The tracked tokens rather than the element's live class list: they are the same set for every
         // family these passes read, they are already ranked by the priority each payload was applied at, and
         // reading them costs no enumerator — where walking the live list costs one per element per patch,
-        // plus a membership test per class on it. The narrowing that buys is real and deliberate: a bare utility
-        // written by a subsystem that raises no signal (the animation scheduler, the presence exit) is on the
-        // live list but never in this source, so it drives no gate. Only a signalling writer can, and a writer
-        // with no signal could not keep a pass correct across the toggle back off anyway.
+        // plus a membership test per class on it. The narrowing that buys is deliberate: a utility on the live
+        // list drives a gate only when its writer signals it, as StyleVariantPayload.Apply and
+        // ReconcilerContext.TrackPlayGate do, and a writer with no signal could not keep a pass correct across
+        // the toggle back off anyway.
         //
         // A token the reconciled array ALREADY names is appended again rather than left where it sits.
         // Declaring one literally and behind a variant is legal (gap-4 md:gap-4), and the duplicate is inert
@@ -3473,11 +3474,21 @@ namespace Velvet
         //
         // The reuse compare runs before anything is built, so the steady state allocates NOTHING. This runs
         // on every patch of every element a variant has a gate token applied to.
-        private static string[] ComposeVariantClasses(string[] classNames, List<string> tokens, string[]? reuse)
+        //
+        // A token a play withheld (VariantGateState.Withheld) is left out of the head.
+        private static string[] ComposeVariantClasses(string[] classNames, VariantGateState state, string[]? reuse)
         {
+            var tokens = state.Tokens;
+            if (state.Withheld.Count != 0)
+            {
+                classNames = Array.FindAll(classNames, cls => string.IsNullOrEmpty(cls)
+                    || !state.Withheld.Contains(StyleArbitraryValueResolver.StripImportant(cls, out _)));
+            }
             if (tokens.Count == 0)
             {
-                return classNames;
+                return reuse != null && state.Withheld.Count != 0 && SequenceEqual(reuse, classNames)
+                    ? reuse
+                    : classNames;
             }
             var total = classNames.Length + tokens.Count;
             if (reuse != null && reuse.Length == total && TailEquals(reuse, classNames.Length, tokens)

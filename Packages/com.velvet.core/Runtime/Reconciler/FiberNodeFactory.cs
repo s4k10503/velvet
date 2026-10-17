@@ -178,6 +178,7 @@ namespace Velvet
             // lines up — has-[.class]:shadow-lg over a matching child, structural, data-/aria-,
             // supports- — and not dark: or md:, which are still off while the element is detached and
             // arrive later through attach.
+            _ctx.ExpectPlayGates(element, null);
             var paintClasses = _patcher.ResolveVariantClassesOnCreate(element, elementNode.ClassNames);
             // Skew is wrapper-less (the sheared silhouette is the element's own painted
             // content), so it attaches before — and composes with — any wrap layer below,
@@ -361,6 +362,7 @@ namespace Velvet
             // patch-time entries rather than ApplyShadowOnCreate / ApplyRingOnCreate, whose clip-path gates would
             // suppress them for a clip-path this Motion ignores (WarnIgnoredMotionUtilities); a Motion's patch
             // passes no active clip either.
+            _ctx.ExpectPlayGates(element, motionNode);
             var motionPaintClasses = _patcher.ResolveVariantClassesOnCreate(element, appliedClasses);
             _patcher.Appliers.ApplySkewOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyGradientOnCreate(element, motionPaintClasses);

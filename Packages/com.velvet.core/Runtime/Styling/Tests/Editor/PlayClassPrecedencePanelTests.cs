@@ -341,5 +341,131 @@ namespace Velvet.Tests
             // Assert
             Assert.That(element.ClassListContains("opacity-50"), Is.True);
         }
+
+        private ReconcilerContext Context => _mounted.Root.Reconciler.Context;
+
+        [Test]
+        public void Given_AnEnterShowingAShadowClass_When_ItPlays_Then_TheShadowPaintsWhileItShows()
+        {
+            // Arrange / Act
+            var element = MountOnFakeClock(ClassicEnter("", "shadow-lg", "opacity-100"));
+
+            // Assert
+            Assert.That(Context.ShadowBindings.ContainsKey(element), Is.True);
+        }
+
+        [Test]
+        public void Given_AnEnterShowingAShadowClass_When_ItEnds_Then_TheShadowGoes()
+        {
+            // Arrange
+            var element = MountOnFakeClock(ClassicEnter("", "shadow-lg", "opacity-100"));
+            Assume.That(Context.ShadowBindings.ContainsKey(element), Is.True, "Precondition: the shadow paints while the enter shows it");
+
+            // Act
+            Step(element);
+            Step(element);
+
+            // Assert
+            Assert.That(Context.ShadowBindings.ContainsKey(element), Is.False);
+        }
+
+        // A row Motion entering from gap-4, with two children.
+        private VisualElement MountGapEnter()
+            => MountOnFakeClock(V.AnimatePresence(children: new VNode[]
+            {
+                V.Motion(key: "b", name: "b", className: "flex flex-row w-[60px] h-[20px]",
+                    transition: new StyleTransitionConfig
+                    {
+                        DurationSec = 0.2f, EnterFromClass = "gap-4", EnterToClass = "opacity-100",
+                    },
+                    children: new VNode[] { V.Div("w-[10px] h-[10px]"), V.Div("w-[10px] h-[10px]") }),
+            }));
+
+        [Test]
+        public void Given_AnEnterShowingAGapClass_When_ItPlays_Then_TheGapAppliesWhileItShows()
+        {
+            // Arrange / Act
+            var element = MountGapEnter();
+
+            // Assert
+            Assert.That(Context.GapManipulators.ContainsKey(element), Is.True);
+        }
+
+        [Test]
+        public void Given_AnEnterShowingAGapClass_When_ItEnds_Then_TheGapGoes()
+        {
+            // Arrange
+            var element = MountGapEnter();
+            Assume.That(Context.GapManipulators.ContainsKey(element), Is.True, "Precondition: the gap applies while the enter shows it");
+
+            // Act
+            Step(element);
+            Step(element);
+
+            // Assert
+            Assert.That(Context.GapManipulators.ContainsKey(element), Is.False);
+        }
+
+        [Test]
+        public void Given_AnEnterShowingABracketWidth_When_ItPlays_Then_TheWidthAppliesWhileItShows()
+        {
+            // Arrange / Act
+            var element = MountOnFakeClock(ClassicEnter("", "w-[40px]", "opacity-100"));
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(40f));
+        }
+
+        [Test]
+        public void Given_AnEnterShowingABracketWidth_When_ItsSwapLands_Then_TheElementsOwnWidthHolds()
+        {
+            // Arrange
+            var element = MountOnFakeClock(ClassicEnter("", "w-[40px]", "opacity-100"));
+            Assume.That(element.style.width.value.value, Is.EqualTo(40f), "Precondition: the play's width applies while it shows");
+
+            // Act
+            Step(element);
+
+            // Assert — ClassicEnter's own w-[20px] holds the width once the play's class is gone.
+            Assert.That(element.style.width.value.value, Is.EqualTo(20f));
+        }
+
+        // A variant enter into a pose carrying shadow-lg, from one that does not.
+        private VisualElement MountEnterIntoShadowedPose()
+        {
+            var poses = new Dictionary<string, MotionVariant>
+            {
+                ["hidden"] = "opacity-0", ["visible"] = "opacity-100 shadow-lg",
+            };
+            return MountOnFakeClock(V.Motion(name: "b", className: "w-[20px] h-[20px]",
+                variants: poses, initial: "hidden", animate: "visible", transition: Tween()));
+        }
+
+        [Test]
+        public void Given_AVariantEnterIntoAShadowedPose_When_ItPlays_Then_NoShadowPaintsBeforeThePoseIsShown()
+        {
+            // Arrange / Act — the resting pose carries the shadow and the pose entered from does not, so the
+            // shadow waits for the swap, as the pose's class does.
+            var element = MountEnterIntoShadowedPose();
+
+            // Assert
+            Assert.That(Context.ShadowBindings.ContainsKey(element), Is.False);
+        }
+
+        [Test]
+        public void Given_AVariantEnterIntoAShadowedPose_When_ItsSwapLands_Then_TheShadowPaints()
+        {
+            // Arrange
+            var element = MountEnterIntoShadowedPose();
+            Assume.That(Context.ShadowBindings.ContainsKey(element), Is.False,
+                "Precondition: the shadow waits for the swap");
+
+            // Act
+            Step(element);
+            Step(element);
+
+            // Assert
+            Assert.That(Context.ShadowBindings.ContainsKey(element), Is.True);
+        }
     }
 }
