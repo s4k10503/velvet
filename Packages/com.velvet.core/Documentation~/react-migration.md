@@ -515,22 +515,23 @@ It follows React's `useSyncExternalStore`:
 
 - **Snapshots are compared with `Object.is` and must be cached.** A notification re-renders the
   component when `getSnapshot` then returns a value that is not `Object.is`-equal to the one it last
-  rendered, or throws (the render repeats the call, so the exception reaches the error boundary). So
+  committed, or throws (the render repeats the call, so the exception reaches the error boundary). So
   `getSnapshot` returns the same instance until the store changes, and in the Editor the hook logs an
   error the first time two consecutive reads in one render differ. A `getSnapshot` that projects a field
   (`() => model.Current.Count`) re-renders when that field changes, not when another one does. A render
   that returns another snapshot than the previous one, or that subscribes, checks the snapshot again
-  once it commits, so a `getSnapshot` that builds a new snapshot on every read
+  in its passive effects, so a `getSnapshot` that builds a new snapshot on every read
   re-renders the component after every render until the scheduler's update-depth limit drops the update
   and logs an error.
-- **`subscribe` is called on mount and whenever its identity changes.** The hook compares it with the
+- **`subscribe` is called in the passive effects of the first commit and whenever its identity changes.** The hook compares it with the
   previous render's using delegate equality, so a method group on the same instance
   (`inventory.Subscribe`) keeps one subscription across renders, while a lambda capturing a local is a
   new closure every render and re-subscribes every render, as an inline subscribe function does in
-  React; the StrictMode diagnostic render does not subscribe. Switching to another store's `subscribe`
+  React. A render that fails or is discarded subscribes and unsubscribes nothing, and the StrictMode
+  diagnostic render does not subscribe. Switching to another store's `subscribe`
   removes the previous subscription first. Unmounting removes it; an unsubscribe that throws there is
-  handled as a throwing effect cleanup is, and the component's other subscriptions are still removed. A change the store raises while
-  `subscribe` runs is rendered by the render that subscribed.
+  handled as a throwing effect cleanup is, and the component's other subscriptions are still removed. A change the store makes between
+  the render and the subscription, or while `subscribe` runs, re-renders the component once it is subscribed.
 - **The change callback must be invoked on the Unity main thread.** Invoked from another thread it
   throws `InvalidOperationException` back to the invoker and schedules nothing; marshal the
   notification to the main thread first. The re-render it schedules takes the Urgent lane and never the
@@ -540,11 +541,11 @@ It follows React's `useSyncExternalStore`:
   delegates — the same method group on the same instance — read the snapshot the pass's first read
   pinned, even when the store changes partway through it, the same guarantee `Hooks.UseStore` gives
   readers of one `Store<T>`; the change re-renders them in a later pass, which pins afresh, the delayed
-  tier's included. A reader that first subscribes after the store moved
-  past the pin renders the pin, then asks for that re-render itself once the render commits. Readers
+  tier's included. A reader whose pin the store has moved past renders the pin,
+  then asks for that re-render itself in its passive effects. Readers
   holding different closures are not pinned to each other. A render outside a drain — the initial
   mount, a synchronous flush, or a time-sliced render resumed after its drain returned — reads the
-  live snapshot, and so does a render whose `subscribe` raises a change while it runs. The scheduler's
+  live snapshot. The scheduler's
   resume of a parked time-sliced pass flushes such a re-render first, so readers the pass committed in an
   earlier slice show the changed snapshot before the next slice renders it.
 
