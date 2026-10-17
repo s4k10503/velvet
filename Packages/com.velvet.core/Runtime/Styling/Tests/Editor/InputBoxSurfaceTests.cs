@@ -811,6 +811,41 @@ namespace Velvet.Tests
             Assert.That(Box(scope.Root[0]).Q<TextElement>().ClassListContains("truncate"), Is.True);
         }
 
+        [TestCase("text-ellipsis")]
+        [TestCase("text-clip")]
+        public void Given_ATextOverflowUtilityOnATextField_When_Reconciled_Then_TheInputBoxAndItsTextClip(string token)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: token) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var box = Box(scope.Root[0]);
+
+            // Assert
+            Assert.That(
+                (box.ClassListContains("overflow-hidden"), box.Q<TextElement>().ClassListContains("overflow-hidden")),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AnEllipsisOnATextField_When_ItIsDropped_Then_TheTextGivesUpItsClip()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var first = new VNode[] { V.TextField(className: "text-ellipsis") };
+            var second = new VNode[] { V.TextField(className: "w-64") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+            var text = Box(scope.Root[0]).Q<TextElement>();
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, first, second);
+
+            // Assert
+            Assert.That(text.ClassListContains("overflow-hidden"), Is.False);
+        }
+
         // GREEN_ON_BASE(characterization): the base put no truncate on that text, so none is left to give up; the
         // case before this one holds that the box's text takes it.
         [Test]
