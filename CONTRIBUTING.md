@@ -264,12 +264,10 @@ commits give no author, committer or signature of their own, and GitHub's docume
 app, with no custom author, committer or signature, as signed and verified as its bot. Every read —
 each run's plan and the release gate — walks the branch's first-parent history and asks GitHub's
 commits API about each commit; one not reported `verified` with reason
-`valid` and committed by `github-actions[bot]` refuses the whole record, naming it. The limit: anyone
+`valid`, authored by `github-actions[bot]` and committed by `web-flow` refuses the whole record, naming it. The limit: anyone
 with write access can still push to the branch, and an administrator can rewrite it, but neither can
 make GitHub sign a commit as the bot, so whatever they put there is refused rather than trusted —
-the record stops answering until the foreign commits are gone. Nothing here has watched GitHub sign a
-`record` job's commit yet; if it does not, the first read after the first write refuses, and the record
-is unused rather than trusted. A mutant measured to nothing — no shard recorded it, the project lock or the build
+the record stops answering until the foreign commits are gone. The first write was read back from the commits API as authored by `github-actions[bot]`, committed by `web-flow` and verified with reason `valid`. A mutant measured to nothing — no shard recorded it, the project lock or the build
 system kept its suite from running, its assembly was never rebuilt — writes no entry, so the next run
 measures it.
 

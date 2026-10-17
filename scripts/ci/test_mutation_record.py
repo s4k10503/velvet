@@ -28,12 +28,14 @@ def load_module():
 record = load_module()
 
 SLUG = "owner/name"
-BOT = {"verified": True, "reason": "valid", "login": record.TRUSTED_COMMITTER}
+# What the commits API reports for a commit the workflow's token created: the bot as author, web-flow as
+# committer. `login` is the committer's.
+BOT = {"verified": True, "reason": "valid", "login": "web-flow", "author": "github-actions[bot]"}
 
 
 class FakeGitHub:
     """The Git Data API calls `publish` makes and the commit read `foreign_commits` makes, over a bare
-    repository. `signed` maps a commit to {verified, reason, login}; one it does not name reads as
+    repository. `signed` maps a commit to {verified, reason, login, author}; one it does not name reads as
     `BOT`. `before_update`, where set, runs once before the next ref update, as another run would."""
 
     def __init__(self, bare):
@@ -86,7 +88,7 @@ class FakeGitHub:
         if method == "GET" and rest.startswith("commits/"):
             held = self.signed.get(rest[len("commits/"):], BOT)
             return {"commit": {"verification": {"verified": held["verified"], "reason": held["reason"]}},
-                    "committer": {"login": held["login"]}}
+                    "author": {"login": held["author"]}, "committer": {"login": held["login"]}}
         raise AssertionError("unexpected call {} {}".format(method, path))
 
 
@@ -223,7 +225,7 @@ class TrustTests(unittest.TestCase):
             return str(refusal)
         return sorted(path.name for path in directory.glob("*.json"))
 
-    def test_Given_AVerifiedBotCommit_When_Read_Then_ItsEntriesAreTrusted(self):
+    def test_Given_ACommitAuthoredByTheBotAndCommittedByWebFlow_When_Read_Then_ItsEntriesAreTrusted(self):
         # Act
         found = self.read()
 
@@ -265,6 +267,30 @@ class TrustTests(unittest.TestCase):
 
         # Assert
         self.assertIn("{}: committed by someone".format(human), found)
+
+    def test_Given_AVerifiedCommitAuthoredByAPerson_When_Read_Then_TheRecordIsRefusedNamingIt(self):
+        # Arrange — web-flow signs a person's commit made in the web interface just the same.
+        self.origin.publish("two", b='{"v": 2}')
+        human = self.origin.head()
+        self.origin.api.signed[human] = dict(BOT, author="someone")
+
+        # Act
+        found = self.read()
+
+        # Assert
+        self.assertIn("{}: authored by someone".format(human), found)
+
+    def test_Given_AVerifiedCommitCommittedByTheBot_When_Read_Then_TheRecordIsRefusedNamingIt(self):
+        # Arrange — the bot as committer is what a commit pushed by the workflow's git identity carries.
+        self.origin.publish("two", b='{"v": 2}')
+        pushed = self.origin.head()
+        self.origin.api.signed[pushed] = dict(BOT, login="github-actions[bot]")
+
+        # Act
+        found = self.read()
+
+        # Assert
+        self.assertIn("{}: committed by github-actions[bot]".format(pushed), found)
 
     def test_Given_AForeignCommitUnderABotOne_When_Read_Then_TheRecordIsRefused(self):
         # Arrange — a later commit by the writer does not launder what came before it.
