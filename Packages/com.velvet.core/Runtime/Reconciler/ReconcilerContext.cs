@@ -2394,6 +2394,7 @@ namespace Velvet
 
             private readonly DescendantStatus[] _statuses;
             private int _pending;
+            private bool _settled;
             private readonly System.Action _onSettled;
             private readonly System.Action<VisualElement?> _onSettledByTeardown;
 
@@ -2432,13 +2433,23 @@ namespace Velvet
             // StartPresenceExit holds a layoutId landing's slot apart from it, and that one is still owed.
             internal void SettleForTeardown()
             {
-                if (System.Threading.Interlocked.Exchange(ref _pending, 0) <= 0) return;
+                if (!TrySettle()) return;
+                _pending = 0;
                 _onSettled();
+            }
+
+            // Claims the wait's one settle. Reaching a pending count of zero does not claim it: a teardown's settle is
+            // deferred, and a retirement in between has to find the wait still owed.
+            internal bool TrySettle()
+            {
+                if (_settled) return false;
+                _settled = true;
+                return true;
             }
 
             internal void CompleteRegistration()
             {
-                if (Settles()) _onSettled();
+                if (Settles() && TrySettle()) _onSettled();
             }
 
             internal void TearDownRegistration()
@@ -2450,13 +2461,13 @@ namespace Velvet
 
             internal void CompleteAnchor()
             {
-                if (Settles()) _onSettled();
+                if (Settles() && TrySettle()) _onSettled();
             }
 
             internal void CompleteDescendant(VisualElement element)
             {
                 _statuses[IndexOf(element)] = DescendantStatus.Completed;
-                if (Settles()) _onSettled();
+                if (Settles() && TrySettle()) _onSettled();
             }
 
             // A descendant leaving the tree is marked whatever its exit had reached, so nothing touches its
