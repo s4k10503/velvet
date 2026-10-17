@@ -800,10 +800,10 @@ could not be taken — rather than passed.
 `scripts/test_quality/assume_gate_baseline.txt` carries what is here now, for the reason
 `neuter_holes.txt` does — a total nets a fix off against a new one — and both a new entry and one the
 scan no longer finds fail the check. It runs in `Test ▸ test-quality` and needs no licence. What to do
-about an entry is the fold the fixture conventions above prescribe, and the check prints it. Not every
+about an entry is what [AGENTS.md ▸ Tests](AGENTS.md#tests) prescribes, and the check prints it. Not every
 entry is a defect: the reading is a shape, so an environment precondition reached through a local the
 Act declared is in the record too — the panel root's resolved width, read through the element the Act
-mounted. Where inspection says an entry is that, fold the other new ones first — `--write-baseline`
+mounted. Where inspection says an entry is that, answer the other new ones first — `--write-baseline`
 rewrites the whole record from the tree and cannot take one entry — then regenerate it, check the lines
 it added are the ones being answered for, and say so in the pull request.
 

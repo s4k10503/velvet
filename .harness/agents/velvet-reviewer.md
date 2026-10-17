@@ -36,7 +36,7 @@ Run `git status --short` and **read any untracked file** rather than assuming it
 3. **Correctness in states the change did not consider.** Enumerate them explicitly — first run versus steady state, on-panel versus off, an element leaving the tree, a pooled element reused, a variant toggled while something is mid-flight, several of them at once. State ghosting across pool reuse is this repository's recurring bug.
 4. **A mirror that has drifted.** C# that restates a fact the stylesheets or the engine own is the source of several shipped bugs. If the change adds one, say so; if it relies on one, check it still holds.
 5. **A universal that does not hold.** Sweep the universals the change adds against the sets they quantify over, **taking the diff from the merge base** rather than from `origin/main`, which moves and will hand you somebody else's prose to audit as the change's. The `unity-tests` skill owns which words to sweep for. The pull request body becomes the squash commit message, so read it as shipped prose rather than as a summary.
-6. **Convention.** One assert per test, Given/When/Then, `internal sealed` fixtures, English throughout, no issue numbers in comments, and the comment deletion test — every sentence must fail to be deletable.
+6. **Convention.** One assert per test with no tuple packed into it, a gating `Assume` replaced the way `AGENTS.md`'s **Tests** section gives, Given/When/Then, `internal sealed` fixtures, English throughout, no issue numbers in comments, and the comment deletion test — every sentence must fail to be deletable.
 
 ## Your own findings are claims too
 

@@ -5,9 +5,9 @@ An `Assume` that turns out false reports Inconclusive, which the runner does not
 Where the assumption is somebody else's business -- a component with its own tests, an environment
 that may or may not grant focus -- that is the right answer. Where it gates what the case exists to
 pin, the day the behaviour breaks is the day the case stops saying so: the regression arrives as an
-Inconclusive nothing counts, and only the last step of the run reports it. CLAUDE.md's remedy is to
-fold the gated state into the assertion instead, as one comparison over a tuple of it and the state
-under test.
+Inconclusive nothing counts, and only the last step of the run reports it. AGENTS.md's Tests section
+owns the remedy, which is not a tuple fold. Neither of its two forms leaves an `Assume` behind, which is
+all this reads, so a case that has taken either has no entry.
 
 `assert_no_inconclusive.py` reddens on one that has fired, which is that day and no earlier. What is
 checked here is the shape, by inspection, so that the case is sharpened before the day arrives.
@@ -264,10 +264,12 @@ def main():
               file=sys.stderr)
     if added:
         print("\nAn Assume that gates the behaviour a case is named for turns that case's regression "
-              "into an\nInconclusive, which the runner does not count. Fold the gated state into the "
-              "assertion as one\ncomparison over a tuple of it and the state under test; delete it "
-              "only where the assertion alone\nwould still fail on the broken behaviour. CONTRIBUTING.md "
-              "says when an entry is a precondition\nto record here instead.",
+              "into an\nInconclusive, which the runner does not count. Do not fold it into a tuple "
+              "comparison. Arrange the\ncase so the precondition cannot be false, or make the asserted "
+              "value carry it: a sentinel the\nexpected value can never equal where it fails. Delete it "
+              "only where the assertion alone would still\nfail on the broken behaviour. AGENTS.md's "
+              "Tests section owns these forms; CONTRIBUTING.md says\nwhen an entry is a precondition to "
+              "record here instead.",
               file=sys.stderr)
     return 1 if added or removed else 0
 

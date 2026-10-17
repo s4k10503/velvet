@@ -51,7 +51,7 @@ Then four questions the review will ask. Answering them yourself is cheaper than
 
 - `Given_..._When_..._Then_...` naming, `// Arrange` / `// Act` / `// Assert` sections, **exactly one assert per test**, `internal sealed` fixtures.
 - `Assume.That` is only for a fact about a **different, already-tested** component, or a genuine environment precondition. It must never gate the behaviour the test exists to pin: a regression would then report Inconclusive, which the runner does not count as a failure.
-- Deciding between deleting an `Assume` and folding it: delete it and ask whether the assertion alone still fails on the broken behaviour. If yes, deletion is fine. **If no, it must be folded** into the assertion as a tuple comparing the gated state and the state under test at once — deleting it would turn an inconclusive into a silent pass.
+- No tuple is packed into an assertion, and an `Assume` that gates the behaviour under test is not folded into one: `AGENTS.md`'s **Tests** section owns the two forms that replace it, and when deleting it is correct instead.
 - No `*ForTest` members on production types. Reach private state by reflection inside the test.
 
 ## Comments and documentation
