@@ -10,9 +10,13 @@ An argument packs when it is a tuple or a list display of two or more elements a
 compared argument is a display too, or it is the first argument and holds an element that is not a
 literal. The second clause is what reaches `assertEqual((red, asked), expected)`; the literal exemption
 is what leaves `assertEqual(["2.1", "2.0", "1"], series)` alone, an expected sequence written first.
-A computed value compared with a display, `assertEqual(read(), (FIRST, SECOND))`, is one value and is
-not read as packing -- and neither, since the text cannot tell the two apart, is a display of several
-values written second against a name.
+A name argument is followed to the last assignment of a display to it earlier in the same function (or
+an enclosing one), so `got = (code, "x" in said)` then `assertEqual(got, (2, True))` reads as the
+packing it is; the display it resolves to then counts as one written in the call, except that a bound
+display written second packs only against a display written first. A computed value compared with a
+display written in the call, `assertEqual(read(), (FIRST, SECOND))`, is one value and is not read as
+packing -- the text of the call cannot tell it from a packed one, and a name bound some other way is not
+followed.
 
 The record lists what is here rather than a count, for the reason assume_gate_check.py's does: a total
 nets a rewrite off against a new one. An entry the scan no longer finds fails too, so the record shrinks
@@ -24,7 +28,9 @@ Run: python3 scripts/test_quality/tuple_assert_check.py
 import argparse
 import ast
 import collections
+import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 DEFAULT_BASELINE = "scripts/test_quality/tuple_assert_baseline.txt"
@@ -47,16 +53,51 @@ def is_literal(node):
     return True
 
 
-def packs(call):
-    """Whether one assertion call compares a packed display."""
+def display_of(arg, bindings):
+    """(the display `arg` stands for, the assignment that bound it or None).
+
+    A display written in the call stands for itself; a name stands for the display last assigned to
+    it before the call, unless a later assignment in that scope bound something else.
+    """
+    if is_display(arg):
+        return arg, None
+    if isinstance(arg, ast.Name):
+        bound = None
+        for scope in reversed(bindings):
+            if arg.id in scope:
+                bound = scope[arg.id]
+                break
+        if bound is not None and is_display(bound.value):
+            return bound.value, bound
+    return None, None
+
+
+def packs(call, bindings=()):
+    """The assignment a packed argument was bound by ("" for a display written in the call), or None."""
     if not (isinstance(call.func, ast.Attribute) and call.func.attr.startswith("assert") and call.args):
-        return False
-    first = call.args[0]
-    if not is_display(first):
-        return False
-    if len(call.args) > 1 and is_display(call.args[1]):
-        return True
-    return not all(is_literal(element) for element in first.elts)
+        return None
+    first, first_bound = display_of(call.args[0], bindings)
+    second, _ = display_of(call.args[1], bindings) if len(call.args) > 1 else (None, None)
+    if first is not None:
+        if second is not None or not all(is_literal(element) for element in first.elts):
+            return first_bound or ""
+    return None
+
+
+def last_assignments(function):
+    """name -> its assignment, ordered by line, over the function's own body (nested defs excluded)."""
+    found = []
+
+    def walk(node):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                continue
+            if isinstance(child, ast.Assign):
+                found.append(child)
+            walk(child)
+
+    walk(function)
+    return sorted(found, key=lambda assign: assign.lineno)
 
 
 def entries_of(text, relative):
@@ -64,29 +105,68 @@ def entries_of(text, relative):
     tree = ast.parse(text)
     found = []
 
-    def visit(node, owner):
+    def bindings_before(assigns, line):
+        scope = {}
+        for assign in assigns:
+            if assign.lineno >= line:
+                break
+            for target in assign.targets:
+                if isinstance(target, ast.Name):
+                    scope[target.id] = assign
+                else:
+                    for name in ast.walk(target):
+                        if isinstance(name, ast.Name):
+                            scope.pop(name.id, None)
+        return scope
+
+    def visit(node, owner, assigns_stack):
         for child in ast.iter_child_nodes(node):
-            name = owner
+            name, stack = owner, assigns_stack
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 name = child.name if owner is None else owner + "." + child.name
-            if isinstance(child, ast.Call) and packs(child):
-                written = " ".join(ast.get_source_segment(text, child).split())
-                found.append("\t".join((relative, owner or "<module>", written)))
-            visit(child, name)
+                if not isinstance(child, ast.ClassDef):
+                    stack = assigns_stack + [last_assignments(child)]
+            if isinstance(child, ast.Call):
+                scopes = [bindings_before(assigns, child.lineno) for assigns in stack]
+                bound = packs(child, scopes)
+                if bound is not None:
+                    written = " ".join(ast.get_source_segment(text, child).split())
+                    if bound:
+                        written += "  with  " + " ".join(ast.get_source_segment(text, bound).split())
+                    found.append("\t".join((relative, owner or "<module>", written)))
+            visit(child, name, stack)
 
-    visit(tree, None)
+    visit(tree, None, [])
     return found
 
 
+def tracked_tests(project):
+    """The tracked test_*.py paths under the source roots, or None where `project` is not a git work tree."""
+    try:
+        done = subprocess.run(["git", "-C", str(project), "ls-files", "-z", "--"] + list(SOURCE_ROOTS),
+                              capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    paths = [project / name for name in done.stdout.split("\0") if name]
+    return sorted(path for path in paths if path.name.startswith("test_") and path.suffix == ".py")
+
+
 def scan(project):
-    """(a multiset of entries, files read) over every Python test file under the source roots."""
-    entries, read = collections.Counter(), 0
-    for root in SOURCE_ROOTS:
-        for path in sorted((project / root).rglob("test_*.py")):
-            read += 1
-            relative = path.relative_to(project).as_posix()
+    """(a multiset of entries, files read) over the tracked Python test files under the source roots.
+
+    An untracked file is not read where `project` is a git work tree, so a scratch suite does not
+    change the answer; outside one, every test_*.py under the roots is.
+    """
+    paths = tracked_tests(project)
+    if paths is None:
+        paths = sorted(path for root in SOURCE_ROOTS for path in (project / root).rglob("test_*.py"))
+    entries = collections.Counter()
+    for path in paths:
+        relative = path.relative_to(project).as_posix()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
             entries.update(entries_of(path.read_text(encoding="utf-8"), relative))
-    return entries, read
+    return entries, len(paths)
 
 
 def read_baseline(path):

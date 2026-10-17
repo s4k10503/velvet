@@ -842,11 +842,15 @@ python3 scripts/test_quality/tuple_assert_check.py --write-baseline scripts/test
 
 It reports an assertion whose first argument is a tuple or list display of two or more elements,
 where the other compared argument is a display too or the first holds an element that is not a
-literal. `scripts/test_quality/tuple_assert_baseline.txt` records the ones written before the rule, for
+literal. A name argument is followed to the display last assigned to it earlier in the same function,
+so `got = (code, "x" in said)` then `assertEqual(got, (2, True))` is reported; a name bound any other
+way is not followed. It reads the tracked `test_*.py` files under those roots where the project is a git
+work tree, and every such file otherwise.
+`scripts/test_quality/tuple_assert_baseline.txt` records the ones written before the rule, for
 the reason `assume_gate_baseline.txt` does, and both a new entry and one the scan no longer finds fail
 the check; a rewrite regenerates the record in the same change. It runs in `Test ▸ test-quality`. It
-does not read C#, and it does not read a display written second against a name, which the text cannot
-tell from a computed value compared with an expected tuple.
+does not read C#, and it does not read a display written in the call second against a computed value,
+which the text cannot tell from a computed value compared with an expected tuple.
 
 ### Checking that a removal did not strand its name
 
