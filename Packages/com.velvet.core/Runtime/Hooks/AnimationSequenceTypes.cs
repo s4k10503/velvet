@@ -121,7 +121,10 @@ namespace Velvet
         /// <summary>
         /// The transition that accompanied <see cref="CurrentLabel"/>: a copy of the step's own, equal to it in
         /// every setting, that also ties the <c>Spring</c> and <c>Bezier</c> plays a <c>V.Motion</c> handed it
-        /// starts to this sequence's <see cref="AnimationSequenceControls"/>.
+        /// starts to this sequence's <see cref="AnimationSequenceControls"/>. A <see cref="TransitionType.Spring"/>
+        /// with a <see cref="StyleTransitionConfig.DurationSec"/> of exactly 0 and no
+        /// <see cref="StyleTransitionConfig.RepeatDelaySec"/> is the exception: it arrives with a
+        /// duration of 0.01 s, the spring Framer Motion's sequence plays it on, so it plays rather than landing.
         /// </summary>
         public StyleTransitionConfig? CurrentTransition { get; }
 

@@ -303,9 +303,24 @@ new StyleTransitionConfig
   a `MotionPlayback`, the velocity is scaled by that playback's rate, and a paused playback hands on none,
   whatever the spring is on. A native transition's velocity is handed on only where its unit is the spring
   channel's. An exit whose delta resolves no channel at all completes after the commit of the render that removed its child, as an exit with nothing to animate does.
-- `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
-  slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
-  so a frame that arrives late moves the spring as far as the time it covers.
+- A spring its `DurationSec` describes (below) released with a velocity solves its stiffness and
+  damping for that velocity, channel by channel, as Framer's `findSpring` does for each value.
+- A spring setting none of `Stiffness`, `Damping` and `Mass` can be described by `DurationSec` and
+  `Bounce` instead, as Framer's spring `duration` and `bounce` describe one: `Bounce` is how far it
+  overshoots (0 not at all, 0.3 when left null), and the stiffness and damping are the ones Framer's
+  `findSpring` solves for, `DurationSec` held between 0.01 and 10 seconds (0.8 when only `Bounce` is
+  set). Its play lands on its target once `DurationSec` has passed (see *Repeating a play* for the
+  pass), a `layoutId` move on it included. Any of the three physics knobs takes precedence over both.
+- A `DurationSec` of exactly 0 makes any spring instant, physics knobs or not, as Framer makes a
+  transition with a zero duration and no `repeatDelay` instant: it lands on its pose once its
+  `DelaySec` and the stagger its play is given (`StaggerChildrenSec` / `DelayChildrenSec`, or
+  `V.AnimatePresence`'s) have run, at once where both are none. A presence keeps a child whose exit is
+  such a spring until that exit has landed and removes it on the render after; Framer's
+  `animateMotionValue` (motion-dom) resolves the exit of one with no delay in a microtask, without
+  waiting for a frame, and of one with a delay once that delay has run. It repeats nothing. A `RepeatDelaySec` above 0 keeps it a spring, as Framer's
+  does. Outside these two cases a spring's play ends when its slowest channel's spring has run the
+  duration Framer measures for it (see *Repeating a play*), so a frame that arrives late moves the
+  spring as far as the time it covers.
 - Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
@@ -313,9 +328,13 @@ new StyleTransitionConfig
 ## Driven channels (Spring and Bezier)
 
 Both non-CSS drivers write inline styles every tick. A play reads its targets from the swapped-in
-classes and the element's classes left in place. A slot that a running Spring or Bezier play, or a
-native transition, is moving starts from the value on screen: that play's current frame, or the
-transition's displayed value sampled before cancellation or the class swap. A slot a `controls.Cancel()`
+classes and the element's classes left in place. A slot that a running Spring or Bezier play (a Tween
+on a clock other than the panel's, *Clocks*, counting as a Bezier), or a native transition, is moving
+starts from the value on screen: that play's current frame, or the transition's displayed value sampled
+before cancellation or the class swap. On an element that is off its panel, where the screen cannot be
+read, an enter or label change on a Spring or a Bezier that interrupts such a play starts each channel the
+two share from the value that play has reached, as Framer animates every value from the one it has; a length the two hold in
+different units keeps the start below. A slot a `controls.Cancel()`
 hold has taken starts from the held value on the channels both name (see *Timelines*). Any other slot
 starts from the swapped-out value when the swapped-out classes name one. Otherwise, on a mounted element,
 the start is the current inline value, or the resolved value when no inline value is set. A transition
@@ -468,7 +487,8 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
 - A spring's pass is the duration Framer measures for it, which also ends a play that does not
   repeat: the first 50 ms sample at which the spring rests, within 0.5 of its target and moving at
   no more than 2 per second over a travel of 5 or more, within 0.005 and at 0.01 per second under it.
-  Framer hands an opacity and a background color to the browser unless the repeat mirrors or waits
+  A spring its `DurationSec` describes (*Springs*) consults no rest threshold: its pass is that duration
+  on Framer's main thread, and the first 50 ms sample at or past it on the browser. Framer hands an opacity and a background color to the browser unless the repeat mirrors or waits
   between passes. There the spring becomes an easing over a travel of 100, cut at 20 s, onto which
   the value's velocity is carried unscaled, so an opacity on the default spring ends at 1.05 s. Any
   other channel — a translate, scale or rotate among them, since Framer's `x`, `y`, `scale` and
@@ -713,8 +733,12 @@ A step is exactly one of:
   `DelaySec` plus the duration Framer Motion's sequence gives the same spring (clamped to zero when
   the negative delay consumes the hold): a travel of 100,
   sampled every 50ms until it is within 0.5 of its target and moving at no more than 2 per second, and
-  at most 20 seconds. A label does not tell the sequence how far anything moves, and 100 is the travel
-  Framer takes when it cannot read the distance.
+  at most 20 seconds — or, for a spring its `DurationSec` describes, the first 50ms sample at or past
+  that duration. A label does not tell the sequence how far anything moves, and 100 is the travel
+  Framer takes when it cannot read the distance. Framer's sequence hands a spring's duration to the
+  spring rather than making the segment instant, so a step whose spring has a `DurationSec` of exactly
+  0 (and no `RepeatDelaySec`) plays on its physics knobs where it sets any, and otherwise on the spring
+  a 0.01s duration describes, holding 50ms; `state.CurrentTransition` carries that 0.01s duration.
 - **`AnimationSequenceStep.Wait(seconds)`** -- holds the current label for `seconds` with no effect of
   its own.
 - **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances
@@ -757,8 +781,8 @@ offered. They drive the sequence's own timeline -- its step cursor and its clock
 play is the sequence's when it starts on a Motion handed `state.CurrentTransition`, or on a descendant
 taking its label from that Motion (see "Label inheritance" above), whichever transition the swap itself
 plays -- a descendant's mount enter, and a presence child's enter, included when it mounts part-way through.
-`state.CurrentTransition` is a copy of the step's transition for that reason: equal to it in every setting,
-but not the same instance.
+`state.CurrentTransition` is a copy of the step's transition for that reason: equal to it in every setting
+but the zero spring duration the `To` bullet above names, and not the same instance.
 
 - `controls.Pause()` freezes the cursor and holds those plays where they are, their delays included;
   `controls.Play()` resumes both. A play a step starts while the sequence is paused, such as step 0's under

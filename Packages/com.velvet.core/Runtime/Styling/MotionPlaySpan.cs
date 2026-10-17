@@ -13,9 +13,12 @@ namespace Velvet
                     // A zero duration lands the pose at once, so its repeat delay never runs.
                     return config.DurationSec > 0f ? MotionRepeat.Of(config).TotalSec(config.DurationSec) : 0.0;
                 case TransitionType.Spring:
-                    return SpringIntegrator.AreValidParameters(config.Stiffness, config.Damping, config.Mass)
+                    // An instant spring ends where its delay does.
+                    return !config.SpringIsInstant
+                        && SpringIntegrator.AreValidParameters(config.Stiffness, config.Damping, config.Mass)
                         ? MotionSpringDriver.SpanSec(MotionSpringClassParser.Resolve(fromClasses, toClasses),
-                            config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config))
+                            config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config),
+                            config.SpringSettleSec)
                         : 0.0;
                 default:
                     return config.DurationSec;
