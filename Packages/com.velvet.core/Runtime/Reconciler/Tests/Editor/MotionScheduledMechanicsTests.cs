@@ -4120,7 +4120,7 @@ namespace Velvet.Tests
             var counted = GCAllocationProbe.MedianBlocksDuring(canary) > 0;
 
             // Assert — none, where the canary's are counted.
-            Assert.That(counted ? blocks : -1, Is.Zero);
+            Assert.That(counted ? blocks : -1, Is.Zero, $"{blocks} blocks per refresh; the canary's counted: {counted}");
         }
 
 
