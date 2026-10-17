@@ -33,5 +33,17 @@ namespace Velvet.Tests
             // Assert
             Assert.That(ok, Is.True);
         }
+
+        // GREEN_ON_BASE(characterization): the base declined a sign spaced on one side only, whichever side.
+        [TestCase("calc(1px+ 2px)")]
+        [TestCase("calc(1px +2px)")]
+        public void Given_ASignSpacedOnOneSideOnly_When_Parsed_Then_ItIsDeclined(string text)
+        {
+            // Act
+            var parsed = StyleLengthExpression.TryParse(text, out _);
+
+            // Assert
+            Assert.That(parsed, Is.False);
+        }
     }
 }
