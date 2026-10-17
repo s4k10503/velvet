@@ -99,9 +99,9 @@ assume either has happened — a first-run failure there is worse than either nu
 Some engine members Velvet depends on have no public API, so it reaches them by name: what a panel's
 focus controller still holds of an element leaving it, an element's focus pseudo-state and composite-root
 flag, UI Toolkit's internal property-change event, a text input's record of an open IME composition, the
-`@import`s of a stylesheet, the cached opacity, rotate
-and transition lists and the transitions a panel is running, used by
-[layoutId crossfades](motion.md#shared-element-layout-animation-layoutid),
+`@import`s of a stylesheet, the cached opacity, rotate, corner radii
+and transition lists, the transitions a panel is running and which longhands a shorthand covers, used by
+[layoutId moves](motion.md#shared-element-layout-animation-layoutid),
 native transition activity used by [current-value starts](motion.md#driven-channels-spring-and-bezier),
 and a panel's version, layout-phase flag, style updater and that updater's traversal flag, an element's layout
 node, last layout and version increment, and the node's layout computation, dirty flag and new-layout flag, which

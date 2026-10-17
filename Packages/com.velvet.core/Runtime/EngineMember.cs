@@ -113,6 +113,23 @@ namespace Velvet
         internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
             "UnityEngine.UIElements.StylePropertyName", "id", StylePropertyIdShape);
 
+        // StyleCascade's cascaded corner radii, and the longhands a shorthand in a transition list stands for.
+        internal static readonly EngineMember ComputedStyleBorderTopLeftRadius =
+            ReadProperty(UIElements, ComputedStyleType, "borderTopLeftRadius", "UnityEngine.UIElements.Length");
+
+        internal static readonly EngineMember ComputedStyleBorderTopRightRadius =
+            ReadProperty(UIElements, ComputedStyleType, "borderTopRightRadius", "UnityEngine.UIElements.Length");
+
+        internal static readonly EngineMember ComputedStyleBorderBottomRightRadius =
+            ReadProperty(UIElements, ComputedStyleType, "borderBottomRightRadius", "UnityEngine.UIElements.Length");
+
+        internal static readonly EngineMember ComputedStyleBorderBottomLeftRadius =
+            ReadProperty(UIElements, ComputedStyleType, "borderBottomLeftRadius", "UnityEngine.UIElements.Length");
+
+        internal static readonly EngineMember IsMatchingShorthand = Method(UIElements,
+            "UnityEngine.UIElements.StyleSheets.StylePropertyUtil", "IsMatchingShorthand", "System.Boolean",
+            StylePropertyIdShape, StylePropertyIdShape);
+
         // RunningStyleTransition's read of the transitions a panel's style animation system is running.
         private const string AnimationSystemType = "UnityEngine.UIElements.StylePropertyAnimationSystem";
         private const string AnimatedValuesType = AnimationSystemType + "+Values`1";
@@ -132,6 +149,9 @@ namespace Velvet
 
         internal static readonly EngineMember AnimatedRotates =
             Field(UIElements, AnimationSystemType, "m_Rotate", AnimationSystemType + "+ValuesRotate");
+
+        internal static readonly EngineMember AnimatedLengths =
+            Field(UIElements, AnimationSystemType, "m_Lengths", AnimationSystemType + "+ValuesLength");
 
         internal static readonly EngineMember RunningAnimations = Field(UIElements, AnimatedValuesType, "running",
             AnimationDataSetType + "[" + AnimatedValuesType + "+TimingData[generic:T]," + AnimatedValuesType
@@ -170,11 +190,26 @@ namespace Velvet
         internal static readonly EngineMember AnimationReversingStartValue =
             Field(UIElements, AnimatedValuesType + "+StyleData", "reversingAdjustedStartValue", "generic:T");
 
+        internal static readonly EngineMember AnimationCurrentValue =
+            Field(UIElements, AnimatedValuesType + "+StyleData", "currentValue", "generic:T");
+
         internal static readonly EngineMember OpacityPropertyId =
             Field(UIElements, StylePropertyIdType, "Opacity", StylePropertyIdShape);
 
         internal static readonly EngineMember RotatePropertyId =
             Field(UIElements, StylePropertyIdType, "Rotate", StylePropertyIdShape);
+
+        internal static readonly EngineMember BorderTopLeftRadiusPropertyId =
+            Field(UIElements, StylePropertyIdType, "BorderTopLeftRadius", StylePropertyIdShape);
+
+        internal static readonly EngineMember BorderTopRightRadiusPropertyId =
+            Field(UIElements, StylePropertyIdType, "BorderTopRightRadius", StylePropertyIdShape);
+
+        internal static readonly EngineMember BorderBottomRightRadiusPropertyId =
+            Field(UIElements, StylePropertyIdType, "BorderBottomRightRadius", StylePropertyIdShape);
+
+        internal static readonly EngineMember BorderBottomLeftRadiusPropertyId =
+            Field(UIElements, StylePropertyIdType, "BorderBottomLeftRadius", StylePropertyIdShape);
 
         // FiberLayoutReflow's layout computation ahead of a commit's layout reads.
         private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";

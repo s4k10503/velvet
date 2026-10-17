@@ -41,3 +41,26 @@
     transition-duration: 1s;
     transition-timing-function: linear;
 }
+
+.layout-id-test-round {
+    border-radius: 10px;
+}
+
+.layout-id-test-rounder {
+    border-radius: 20px;
+}
+
+.layout-id-test-uneven {
+    border-top-left-radius: 90px;
+    border-top-right-radius: 30px;
+}
+
+.layout-id-test-radius-transition {
+    transition-property: border-radius;
+    transition-duration: 1s;
+    transition-timing-function: linear;
+}
+
+.layout-id-test-half-round {
+    border-radius: 50%;
+}

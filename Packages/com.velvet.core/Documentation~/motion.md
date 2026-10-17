@@ -520,8 +520,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   the opacity the holder the lead took its box from was drawn at, if that holder was itself moving from
   another's box, or else from its own opacity as it is now, and take no pointer while they are drawn. A
   lead alone under its id instead mixes its opacity from that holder's to its own over the move, written
-  the same way. The lead also mixes its rotate from that holder's to its own over the move, and the others
-  are drawn with the lead's. A move of
+  the same way. The lead also mixes its rotate and border radius from that holder's to its own over the move,
+  a radius not below zero and a pixel radius not mixing with a percent one, the lead's being taken, and the
+  others are drawn with the lead's. A move of
   the lead's own that interrupts its crossfade or its mix holds the values they had reached until that
   move lands.
   The others are hidden again once the lead lands. When the lead leaves the tree, the holder of those
@@ -548,13 +549,20 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   the stretch as for any change of size. The scale holds the element's transform origin still (its
   centre unless an `origin-*` class or style moves it), and the translate places the element so that it
   starts over the old box.
-- **A rotate mixes with the box.** A Motion that takes its box from another holder mixes its `rotate` from
-  that holder's to its own over the move, as Framer's `mixValues` does, and leaves the slot alone where both
-  are unrotated. A rotate the Motion is given meanwhile is drawn as it is given, on the transition it changes by,
-  such as a variant swap's, and at once while a Spring or Bezier play writes it; a running `animate-spin`
-  turns it on as the loops below describe. One already running as the tween starts writing it runs on from
-  where it had got, and one still running as the tween lands runs on to its end, through any tween that
-  starts on the Motion meanwhile.
+- **A rotate and a border radius mix with the box.** A Motion that takes its box from another holder mixes
+  its `rotate` and its border radius from that holder's to its own over the move, as Framer's `mixValues`
+  does, and leaves the slots alone where both holders match. A scaled Motion's pixel border radius is divided
+  by the scale it is drawn at; a percent radius, which scales with the box, is left as it is. Where the two axes
+  scale differently Velvet deviates from Framer, which writes each corner's radius per axis (`x% y%`): a style
+  takes one length per corner, so the radius is divided by the geometric mean of the two scales and the
+  corner is drawn elliptical, its horizontal and vertical radii in the ratio of the two scales — 1:2 for a
+  lead laid out at 400×200 starting over a 100×100 holder's box. Radii Velvet fits at rest — those a
+  `rounded-*` class or its bracket form gives — that would overlap on a side are scaled down together, as CSS
+  scales them. A radius or rotate the Motion is given meanwhile is drawn as it is given, on the transition it
+  changes by, such as a variant swap's, and at once while a Spring or Bezier play writes it; a running
+  `animate-spin` turns it on as the loops below describe. One already running as the tween starts writing it
+  runs on from where it had got, and one still running as the tween lands runs on to its end, through any
+  tween that starts on the Motion meanwhile.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
   `.layout` before the mutation that invalidates it" pattern); the new rect is captured on the
   element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's
@@ -663,8 +671,8 @@ frame's worth:
   transitions naming no such property, `transition-filter` among them, are left running. The play
   completes once its slowest `PropertyOverrides` entry has run, whether or not a channel plays that entry's property, and an exit cancelled part-way
   reverses over the shortened timing UI Toolkit gives a reversed transition.
-- **A `layoutId` move**, the opacity a crossfade hands back as it ends, and the rotate a move runs on past its
-  landing.
+- **A `layoutId` move**, the opacity a crossfade hands back as it ends, and the rotate and border radius a move
+  runs on past its landing.
 - **A `filter-*` transition**, including one UI Toolkit would animate itself on the default clock
   ([styling-filters.md](styling-filters.md#transitions)).
 - **The `animate-*` loops**, which show the phase of the distance since they started.

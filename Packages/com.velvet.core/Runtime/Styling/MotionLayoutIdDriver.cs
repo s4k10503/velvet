@@ -357,26 +357,33 @@ namespace Velvet
             }
         }
 
-        // Draws the element at the rotate its id's lead mixes in from the box it took, and a member behind a crossfading
-        // lead at the lead's, as Framer draws every node of a shared animation with the lead's values.
+        // Draws the element at the rotate and radii its id's lead mixes in from the box it took, and a member behind
+        // a crossfading lead at the lead's, as Framer draws every node of a shared animation with the lead's values.
         private static void WriteLook(VisualElement element, LayoutIdProjection projection, ReconcilerContext ctx)
         {
             LayoutIdLook.Adopt(element, projection);
             LayoutIdLook.Narrow(element, projection);
             var rotate = float.NaN;
+            Length[]? radii = null;
             if (projection.Leader != null)
             {
-                rotate = LayoutIdLook.RotateOf(projection.Leader, ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader));
+                var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
+                rotate = LayoutIdLook.RotateOf(projection.Leader, leading);
+                radii = LayoutIdLook.RadiiOf(projection.Leader, leading, projection.LeadRadii);
             }
             else if (projection is { Shared: true, Moving: true, Held: { } held })
             {
-                rotate = held.Rotate;
+                (rotate, radii) = (held.Rotate, held.Radii);
             }
             else if (projection is { Shared: true, Moving: true, FromLook: { } from })
             {
-                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection, s_passDt), CrossfadeProgress(projection));
+                var progress = CrossfadeProgress(projection);
+                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection, s_passDt), progress);
+                radii = LayoutIdLook.Mix(from.Radii, LayoutIdLook.OwnRadii(element, projection, s_passDt, projection.OwnRadiiBuffer), progress,
+                    projection.MixedRadii);
             }
             LayoutIdLook.WriteRotate(element, projection, rotate, s_passDt);
+            LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale, s_passDt);
         }
 
         // Read before the projection takes its new tween. A move of the lead's own that interrupts its shared move
@@ -1041,8 +1048,24 @@ namespace Velvet
         public float StartRotate;
         public float DrawnRotate;
         public StyleRotate WrittenRotate;
-        // How the own rotate is carried while the projection writes it (LayoutIdLook.OwnRotate).
+
+        public bool WritesRadii;
+        public StyleLength[] OwnInlineRadii = System.Array.Empty<StyleLength>();
+        // The corners whose inline value is the element's own rather than one CornerRadiusFit wrote.
+        public bool[] InlineRadii = System.Array.Empty<bool>();
+        // The radii the element had as the projection first wrote them.
+        public Length[] StartRadii = System.Array.Empty<Length>();
+        public Length[] DrawnRadii = System.Array.Empty<Length>();
+        public StyleLength[] WrittenRadii = System.Array.Empty<StyleLength>();
+        // What a pass reads the radii into rather than allocating: the lead's, the element's own and their mix.
+        public readonly Length[] LeadRadii = new Length[4];
+        public readonly Length[] OwnRadiiBuffer = new Length[4];
+        public readonly Length[] MixedRadii = new Length[4];
+        // How the own rotate and each corner's own radius are carried while the projection writes them
+        // (LayoutIdLook.OwnRotate, OwnRadii), and the unit each corner's is carried in.
         public LayoutIdCarry RotateCarry = new();
+        public LayoutIdCarry[] RadiusCarries = { new(), new(), new(), new() };
+        public LengthUnit[] RadiusUnits = new LengthUnit[4];
 
         // Each element of a member's subtree whose picking it holds off while drawn over the lead (LayoutIdPicking).
         public HashSet<VisualElement>? Picking;
