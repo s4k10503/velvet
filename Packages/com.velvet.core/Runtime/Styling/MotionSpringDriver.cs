@@ -493,7 +493,8 @@ namespace Velvet
         {
             static (float, float)? Of(SpringChannel? c) => c == null ? null : (c.Integrator.Value, c.Integrator.Velocity);
             return MotionDrawnValues.Of(
-                Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate),
+                new MotionDrawnValues.Channels(
+                    Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate)),
                 state.Colors,
                 c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)),
                 state.Lengths,

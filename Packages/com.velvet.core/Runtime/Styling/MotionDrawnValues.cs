@@ -20,16 +20,36 @@ namespace Velvet
         public List<(ArbitraryProperty Property, Color Color)>? Colors;
         public List<(ArbitraryProperty Property, LengthUnit Unit, float Value, float Velocity)>? Lengths;
 
+        /// <summary>The value and velocity a driver draws on each of the transform quartet's channels, null where it has none.</summary>
+        public readonly struct Channels
+        {
+            public readonly (float, float)? Opacity;
+            public readonly (float, float)? TranslateX;
+            public readonly (float, float)? TranslateY;
+            public readonly (float, float)? Scale;
+            public readonly (float, float)? Rotate;
+
+            public Channels((float, float)? opacity, (float, float)? translateX, (float, float)? translateY,
+                (float, float)? scale, (float, float)? rotate)
+            {
+                Opacity = opacity;
+                TranslateX = translateX;
+                TranslateY = translateY;
+                Scale = scale;
+                Rotate = rotate;
+            }
+        }
+
         // What a driver's channels draw, read through the selectors each driver gives for its own channel types.
         public static MotionDrawnValues Of<TColor, TLength>(
-            (float, float)? opacity, (float, float)? translateX, (float, float)? translateY, (float, float)? scale,
-            (float, float)? rotate,
+            Channels channels,
             List<TColor>? colors, System.Func<TColor, (ArbitraryProperty, Color)> drawnColor,
             List<TLength>? lengths, System.Func<TLength, (ArbitraryProperty, LengthUnit, float, float)> drawnLength)
         {
             var drawn = new MotionDrawnValues
             {
-                Opacity = opacity, TranslateX = translateX, TranslateY = translateY, Scale = scale, Rotate = rotate,
+                Opacity = channels.Opacity, TranslateX = channels.TranslateX, TranslateY = channels.TranslateY,
+                Scale = channels.Scale, Rotate = channels.Rotate,
             };
             if (colors != null)
             {

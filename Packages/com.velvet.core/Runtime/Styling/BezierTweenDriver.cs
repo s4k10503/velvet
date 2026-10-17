@@ -408,7 +408,8 @@ namespace Velvet
                     : (ValueAt(state, channel, state.ElapsedSec, length), VelocityOf(state, channel, length) * timeScale);
 
             return MotionDrawnValues.Of(
-                Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate),
+                new MotionDrawnValues.Channels(
+                    Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate)),
                 state.Colors,
                 c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, ValueAt(state, c.Progress, state.ElapsedSec, null))),
                 state.Lengths,
