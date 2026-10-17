@@ -3214,79 +3214,120 @@ class StubbedCampaign:
 class UnbuiltBaselineTests(unittest.TestCase):
     """A baseline whose build stopped writes no result, and the job log is all a failed CI step shows."""
 
+    DIAGNOSTIC = "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS0103: The name 'x' does not exist"
+
     def refusal(self, log):
         campaign = StubbedCampaign()
         campaign.baseline_log = log
         return str(campaign.run("--max", "1"))
 
-    def test_Given_ABaselineLogWithACompilerError_When_TheRunStops_Then_TheErrorIsQuoted(self):
+    @staticmethod
+    def quoted(refusal):
+        """The excerpt's lines, without the indent that sets them apart from the refusal's own."""
+        return [line[2:] for line in refusal.splitlines() if line.startswith("  ")]
+
+    def test_Given_AnIndentedCompilerError_When_TheRunStops_Then_ItIsTheOneLineQuoted(self):
         # Arrange
-        log = ("Start importing\n"
-               "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS0103: The name 'x' does not exist\n"
-               "Scripts have compiler errors.\n")
+        log = "Start importing\n\t  {}\nScripts have compiler errors.\n".format(self.DIAGNOSTIC)
 
         # Act
         refusal = self.refusal(log)
 
         # Assert
-        self.assertIn("  Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS0103: The name 'x' does not exist",
-                      refusal)
+        self.assertEqual(self.quoted(refusal), [self.DIAGNOSTIC])
 
     def test_Given_ACompilerErrorTheLogRepeats_When_TheRunStops_Then_ItIsQuotedOnce(self):
         # Arrange
-        line = "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS0103: The name 'x' does not exist"
-        log = "\n".join([line, "Scripts have compiler errors.", line]) + "\n"
+        log = "\n".join([self.DIAGNOSTIC, "Scripts have compiler errors.", self.DIAGNOSTIC]) + "\n"
 
         # Act
         refusal = self.refusal(log)
 
         # Assert
-        self.assertEqual(refusal.count(line), 1)
+        self.assertEqual(refusal.count(self.DIAGNOSTIC), 1)
 
-    def test_Given_MoreCompilerErrorsThanTheExcerptHolds_When_TheRunStops_Then_OnlyTheFirstAreQuoted(self):
+    def test_Given_ACompilerErrorBesideALineNamingAnError_When_TheRunStops_Then_OneLineIsQuoted(self):
         # Arrange
-        log = "".join("Packages/com.velvet.core/Runtime/Probe.cs({},9): error CS0103: missing\n".format(number)
-                      for number in range(1, 31))
+        log = "[Licensing::Client] Error: a token was refreshed\n{}\n".format(self.DIAGNOSTIC)
 
         # Act
         refusal = self.refusal(log)
 
         # Assert
-        self.assertEqual(("Probe.cs(20,9)" in refusal, "Probe.cs(21,9)" in refusal), (True, False))
+        self.assertEqual(len(self.quoted(refusal)), 1)
 
-    def test_Given_ABaselineLogWithCompilerErrorsAndOtherErrorWords_When_TheRunStops_Then_OnlyTheDiagnosticsAreQuoted(self):
+    def test_Given_MoreCompilerErrorsThanTheExcerptHolds_When_TheRunStops_Then_TheFirstOnesAreQuoted(self):
         # Arrange
-        log = ("[Licensing::Client] Error: a token was refreshed\n"
-               "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS0103: The name 'x' does not exist\n")
+        errors = ["Packages/com.velvet.core/Runtime/Probe.cs({},9): error CS0103: missing".format(number)
+                  for number in range(1, 31)]
+
+        # Act
+        refusal = self.refusal("\n".join(errors) + "\n")
+
+        # Assert
+        self.assertEqual(self.quoted(refusal), errors[:20])
+
+    def test_Given_AnErrorInCapitalsFarFromTheEnd_When_TheRunStops_Then_ItIsQuoted(self):
+        # Arrange — more lines follow it than the excerpt's tail holds.
+        log = "Start importing\nERROR: the packages did not resolve\n" + "".join(
+            "Shutting down {}\n".format(number) for number in range(30))
 
         # Act
         refusal = self.refusal(log)
 
         # Assert
-        self.assertNotIn("a token was refreshed", refusal)
+        self.assertIn("  ERROR: the packages did not resolve\n", refusal)
 
-    def test_Given_ABaselineLogNamingAnErrorInWords_When_TheRunStops_Then_ThatLineIsQuoted(self):
-        # Arrange — an error stated in words, with more lines after it than the excerpt quotes.
-        log = ("Start importing\n"
-               "An error occurred while resolving packages:\n"
-               + "".join("Shutting down {}\n".format(number) for number in range(30)))
-
-        # Act
-        refusal = self.refusal(log)
-
-        # Assert
-        self.assertIn("  An error occurred while resolving packages:", refusal)
-
-    def test_Given_ABaselineLogNamingNoError_When_TheRunStops_Then_ItsLastLinesAreQuoted(self):
+    def test_Given_AnIncidentalErrorWordFarFromTheEnd_When_TheRunStops_Then_TheLastLineIsStillQuoted(self):
         # Arrange
-        log = "".join("line {}\n".format(number) for number in range(1, 31))
+        log = "Error: a token was refreshed\n" + "".join(
+            "step {}\n".format(number) for number in range(30)) + "the editor stopped\n"
 
         # Act
         refusal = self.refusal(log)
 
         # Assert
-        self.assertEqual(("  line 10\n" in refusal, "  line 11\n" in refusal, refusal.endswith("  line 30")),
-                         (False, True, True))
+        self.assertTrue(refusal.endswith("  the editor stopped"))
+
+    def test_Given_ALastLineNamingAnError_When_TheRunStops_Then_ItIsQuotedOnceAheadOfTheRest(self):
+        # Arrange
+        log = "Start importing\nShutting down\nError: the editor stopped\n"
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertEqual(self.quoted(refusal),
+                         ["Error: the editor stopped", "Start importing", "Shutting down"])
+
+    def test_Given_MoreLinesNamingAnErrorThanTheExcerptHolds_When_TheRunStops_Then_TheFirstOnesAndTheTailAreQuoted(self):
+        # Arrange — the tail holds none of the lines naming an error.
+        worded = ["Error {}".format(number) for number in range(30)]
+        tail = ["step {}".format(number) for number in range(25)]
+
+        # Act
+        refusal = self.refusal("\n".join(worded + tail) + "\n")
+
+        # Assert
+        self.assertEqual(self.quoted(refusal), worded[:20] + tail[-20:])
+
+    def test_Given_ALogWhereErrorIsOnlyPartOfAWord_When_TheRunStops_Then_ItsLastLinesAloneAreQuoted(self):
+        # Arrange — `error` inside a longer word at either end names no error.
+        lines = ["GLX_ARB_create_context_no_error", "Scripts have compiler errors."] + [
+            "line {}".format(number) for number in range(1, 31)]
+
+        # Act
+        refusal = self.refusal("\n".join(lines) + "\n")
+
+        # Assert
+        self.assertEqual(self.quoted(refusal), lines[-20:])
+
+    def test_Given_ABaselineLogOfBlankLines_When_TheRunStops_Then_TheRefusalSaysItIsEmpty(self):
+        # Act
+        refusal = self.refusal("\n   \n\t\n")
+
+        # Assert
+        self.assertIn("baseline.log is empty", refusal)
 
     def test_Given_ABaselineThatLeftNoLog_When_TheRunStops_Then_TheRefusalSaysSo(self):
         # Arrange

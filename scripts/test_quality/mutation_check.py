@@ -3088,21 +3088,24 @@ WORDED_ERROR = re.compile(r"\berror\b", re.IGNORECASE)
 
 
 def log_excerpt(log, limit=EXCERPT_LINES):
-    """For the job log: CI keeps `log` inside an artifact, and where a build stopped the editor's banner
-    in the job log says no more than that scripts had compiler errors."""
+    """For the job log, since CI keeps `log` inside an artifact.
+
+    The last lines ride beside the lines naming an error, since one of those can be incidental to what
+    stopped the launch."""
     try:
         lines = [line.strip() for line in Path(log).read_text(errors="replace").splitlines() if line.strip()]
     except OSError:
         return "{} could not be read".format(log)
-    for heading, chosen in (("its errors", [line for line in lines if ": error " in line]),
-                            ("its lines naming an error",
-                             [line for line in lines if WORDED_ERROR.search(line)]),
-                            ("it names no error; its last lines", lines[-limit:])):
-        unique = list(dict.fromkeys(chosen))
-        if unique:
-            return "\n".join(["{}, from {}:".format(heading, log)]
-                             + ["  " + line for line in unique[:limit]])
-    return "{} is empty".format(log)
+    errors = list(dict.fromkeys(line for line in lines if ": error " in line))
+    if errors:
+        heading, chosen = "its errors", errors[:limit]
+    else:
+        worded = [line for line in lines if WORDED_ERROR.search(line)][:limit]
+        heading, chosen = "its lines naming an error, then its last lines", list(
+            dict.fromkeys(worded + lines[-limit:]))
+    if not chosen:
+        return "{} is empty".format(log)
+    return "\n".join(["{}, from {}:".format(heading, log)] + ["  " + line for line in chosen])
 
 
 # Any compiler or analyzer error line. The editor log can cut the front off one -- measured,
