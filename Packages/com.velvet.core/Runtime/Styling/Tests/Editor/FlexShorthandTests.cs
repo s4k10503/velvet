@@ -344,6 +344,18 @@ namespace Velvet.Tests
             return scope.Root[0];
         }
 
+        [TestCase("grow-0", "grow-[0]")]
+        [TestCase("shrink-0", "shrink-[0]")]
+        public void Given_AFlexFactorPoseClassOverAnInlineFlexShorthandBase_When_TheNarrowerPoseIsInlined_Then_TheClassTakesItsBracketForm(
+            string pose, string expected)
+        {
+            // Act
+            var inlined = StyleSpacingPrecedence.InlineNarrowerPose(new[] { "flex-[3]" }, new[] { pose });
+
+            // Assert
+            Assert.That(string.Join(" ", inlined), Is.EqualTo(expected));
+        }
+
         [Test]
         public void Given_AMotionWhosePoseRepeatsItsClassNamesShorthand_When_MountedAtThePose_Then_ThePoseSetsTheGrow()
         {

@@ -3063,6 +3063,7 @@ namespace Velvet
                     flex.flexGrow = StyleKeyword.Null;
                     flex.flexShrink = StyleKeyword.Null;
                     flex.flexBasis = StyleKeyword.Null;
+                    // MUTANT_SURVIVES(equivalent, literal): the flex shorthand has no entry in the fallback setter tables ClearInline reads.
                     return true;
                 }
                 // translate and scale are each a single shorthand for both axes (and scale composes the uniform

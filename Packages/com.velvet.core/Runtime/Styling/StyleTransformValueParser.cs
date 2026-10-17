@@ -252,6 +252,7 @@ namespace Velvet
                 return false;
             }
             parts.HasBasis = true;
+            // MUTANT_SURVIVES(equivalent, line removed): the guard above returns once HasBasis is set, and only a part that sets HasBasis writes Basis, so Basis still holds its default zero here.
             parts.Basis = 0f;
             parts.Unit = LengthUnit.Pixel;
             return true;
