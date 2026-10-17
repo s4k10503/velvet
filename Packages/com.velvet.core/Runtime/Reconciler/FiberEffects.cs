@@ -293,11 +293,11 @@ namespace Velvet
                 {
                     ScheduleRunEffects(roots[i].Fiber, roots[i].IsMount);
                 }
-                StageReleasedPassiveEffects(ctx);
             }
             finally
             {
                 ctx.EffectCommitDepth--;
+                StageReleasedPassiveEffects(ctx);
             }
         }
 
@@ -376,6 +376,9 @@ namespace Velvet
                 // A tree a Suspense hides commits none of the layout work its render queued, as React discards
                 // that work; ShowLayoutEffects queues all of it again for the commit that reveals it.
                 if (entry.Fiber.LayoutEffectsHidden) continue;
+                // A fiber this commit takes as a root has its own render committed here, so an entry a parked pass left
+                // for it no longer holds its passive work back.
+                if (IsHeld(entry.Pass) && roots.Exists(root => ReferenceEquals(root.Fiber, entry.Fiber))) continue;
                 if (!IsHeld(entry.Pass) && IsInScope(entry.Fiber, scope))
                 {
                     taken.Add((entry.Fiber, entry.IsMount));
@@ -694,9 +697,9 @@ namespace Velvet
             return false;
         }
 
-        // Runs at the end of every layout commit, since the commit that completes a pass is the one that takes its
-        // entries off the deferred stack. A fiber whose entry is still there keeps waiting: the commit that takes
-        // it is the one whose layout effects run first.
+        // Runs when a layout commit ends, a throwing one included, since the commit that completes a pass is the one
+        // that takes its entries off the deferred stack. A fiber whose entry is still there keeps waiting: the
+        // commit that takes it is the one whose layout effects run first.
         private static void StageReleasedPassiveEffects(ReconcilerContext ctx)
         {
             var held = ctx.PassiveEffectFibersHeldByParkedPass;

@@ -1024,7 +1024,8 @@ namespace Velvet
                 // the scope closes exactly where it hands the task back. Pinned by the completion case for an
                 // action that never suspended, which fails if that stops answering.
                 suspended = action.Status == VelvetTaskStatus.Pending;
-                if (opensTransition && slot.OwnerGeneration == ownerGeneration && (suspended || slot.HasQueuedWork))
+                if (opensTransition && slot.OwnerGeneration == ownerGeneration
+                    && (suspended || slot.HasQueuedWork || slot.OwnerDepth > 1))
                 {
                     RequestPendingRender(fiber);
                 }

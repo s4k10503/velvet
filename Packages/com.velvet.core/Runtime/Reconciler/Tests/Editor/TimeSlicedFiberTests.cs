@@ -548,6 +548,29 @@ namespace Velvet.Tests
                 "The commit that completes the pass lets the effect it held run");
         }
 
+        // GREEN_ON_BASE(characterization): the base runs the effect at the earlier flush, so the click's own
+        // commit finds it run already. Drop the `IsHeld(entry.Pass) && roots.Exists(...)` line from TakeBatch and
+        // this reddens.
+        [Test]
+        public void Given_AParkedTransitionPassThatMountedAComponentRow_When_ThatRowCommitsAloneBeforeItCompletes_Then_ItsPassiveEffectRunsWithoutWaitingForThePass()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            s_slowRowsShown = true;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            mounted.FlushEffectsForTest();
+            s_slowRowSetOwn.Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_slowRowOwnRuns, Is.GreaterThan(0),
+                "A discrete commit of the row's own render runs its passive effect while the pass is still parked");
+        }
+
         [Test]
         public void Given_AParkedTransitionPassThatMountedAComponentRow_When_ThePassCompletes_Then_ThePassiveDrainIsArmedForTheRowsEffect()
         {
@@ -566,6 +589,8 @@ namespace Velvet.Tests
                 "The commit that releases the held effect arms the drain that runs it, as staging it does");
         }
 
+        // GREEN_ON_BASE(characterization): the base ran the effect at the flush in between, so it has run by the
+        // end. Drop `held[kept++] = fiber;` from StageReleasedPassiveEffects and this reddens.
         [Test]
         public void Given_AParkedTransitionPassThatMountedAComponentRow_When_AnUnrelatedComponentCommitsBeforeItCompletes_Then_TheRowsPassiveEffectRunsOnceItHas()
         {
@@ -584,9 +609,11 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_slowRowPassiveRuns, Is.GreaterThan(0),
-                "A commit that does not take the row's entry does not release its passive effect, and the one that does releases it");
+                "The row's passive effect runs once the pass has completed, after a commit in between");
         }
 
+        // GREEN_ON_BASE(characterization): the base holds nothing, so the effect runs in the one drain. Drop
+        // `|| !IsHeld(entry.Pass)` from HoldWhileParked and this reddens.
         [Test]
         public void Given_AComponentWhoseEntryWaitsUnderAPassThatIsNotParked_When_APassiveDrainRuns_Then_ItsPassiveEffectRuns()
         {
@@ -1527,6 +1554,8 @@ namespace Velvet.Tests
         private static bool s_slowRowsProbed;
         private static int s_slowRowTick;
         private static int s_slowRowPassiveRuns;
+        private static int s_slowRowOwnRuns;
+        private static StateUpdater<int> s_slowRowSetOwn;
         private static FiberUpdatePriority s_slowRowProbeLane;
         private static ComponentFiber s_slowRowListFiber;
         private static readonly System.Collections.Generic.List<string> s_slowRowLog = new();
@@ -1538,6 +1567,8 @@ namespace Velvet.Tests
             s_slowRowsProbed = false;
             s_slowRowTick = 0;
             s_slowRowPassiveRuns = 0;
+            s_slowRowOwnRuns = 0;
+            s_slowRowSetOwn = default;
             s_passiveCountingRuns = 0;
             s_passiveCountingFiber = null;
             s_slowRowListFiber = null;
@@ -1599,6 +1630,8 @@ namespace Velvet.Tests
         private static VNode SlowRowRender(int tick)
         {
             System.Threading.Thread.Sleep(SlowRowRenderMs);
+            var (own, setOwn) = Hooks.UseState(0);
+            s_slowRowSetOwn = setOwn;
             Hooks.UseLayoutEffect(() =>
             {
                 s_slowRowLog.Add(s_slowRowRef.Current != null ? "ref attached" : "ref null");
@@ -1607,8 +1640,9 @@ namespace Velvet.Tests
             Hooks.UseEffect(() =>
             {
                 s_slowRowPassiveRuns++;
+                if (own > 0) s_slowRowOwnRuns++;
                 return (Action)null;
-            }, new object[] { tick });
+            }, new object[] { tick, own });
             return V.Label(text: "slow", refCallback: s_slowRowRef.SetElement);
         }
 

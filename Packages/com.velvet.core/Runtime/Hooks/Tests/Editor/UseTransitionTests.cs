@@ -16,7 +16,7 @@ namespace Velvet.Tests
     /// <item>Calling the starter renders the declaring component with <c>isPending == true</c> on the Urgent
     /// lane, ahead of the transition's own render and showing the state from before its writes, whichever
     /// component the writes land on and inside a discrete handler's own flush. It is owed for a flag still lit as
-    /// the call returns: an <c>async</c> action that suspended or queued work, not a callback that queued
+    /// the call returns: an <c>async</c> action that suspended, queued work or left a joined call open, not a callback that queued
     /// nothing, a call joining a transition already open, or a call whose component unmounted meanwhile.</item>
     /// <item>The render that commits a transition observes <c>isPending == true</c> until its terminal commit
     /// completes, then a follow-up render observes it false. It stays lit while something else still is: an
@@ -258,6 +258,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnAsyncActionThatReturnedACompletedTaskBesideAJoinedCallStillOpen_When_ItsCallReturns_Then_AnUrgentRenderIsOwed()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var gate = new VelvetTaskCompletionSource();
+
+            // Act — the outer action finishes at once, and the call it joined is the one holding the flag
+            s_transitionStarter.Invoke(async () =>
+            {
+                s_transitionStarter.Invoke(async () => await gate.Task);
+                await Task.CompletedTask;
+            });
+
+            // Assert
+            Assert.That(s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Urgent), Is.True,
+                "The flag is lit past the outer call's return, so the render that shows it is owed");
+        }
+
+        [Test]
         public void Given_AnAsyncActionThatNeverSuspendedButWrote_When_ItsCallReturns_Then_AnUrgentRenderIsOwed()
         {
             // Arrange
@@ -400,8 +419,10 @@ namespace Velvet.Tests
                     s_transitionStarter.Invoke(() => s_transitionSetValue.Invoke(5))));
         }
 
+        // GREEN_ON_BASE(refactor): one drain of both tiers stands where one flush of the lane stood, and the
+        // base commits the inner update by either.
         [Test]
-        public void Given_NestedStartTransition_When_Flushed_Then_InnerUpdateCommits()
+        public void Given_NestedStartTransition_When_Drained_Then_InnerUpdateCommits()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
@@ -412,8 +433,23 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
-            Assert.That((s_transitionLastValue, s_transitionRenderCount), Is.EqualTo((5, 4)),
-                "The nested transition's update commits on the drain, for the render count a single transition costs");
+            Assert.That(s_transitionLastValue, Is.EqualTo(5), "The nested transition's update commits on the drain");
+        }
+
+        [Test]
+        public void Given_NestedStartTransition_When_Drained_Then_ItCostsTheRendersOfASingleTransition()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            s_transitionStarter.Invoke(() =>
+                s_transitionStarter.Invoke(() => s_transitionSetValue.Invoke(5)));
+
+            // Act
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.That(s_transitionRenderCount, Is.EqualTo(4),
+                "The mount, the pending render, the content commit and the clear are all a nested call adds up to");
         }
 
         // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
