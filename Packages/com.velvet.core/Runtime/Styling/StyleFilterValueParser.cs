@@ -165,7 +165,9 @@ namespace Velvet
         // its slot's grammar, or an empty segment refuse the arguments, and the layer composes nothing — a
         // registered name must not half-apply. A name nothing is registered under resolves to a reference
         // with no definition, the url() to a missing filter that makes CSS ignore the whole chain. Either
-        // keeps its bracket body for a registration change to read again. Never negated: "-filter-[..]" has
+        // keeps its bracket body for a registration change to read again. A body whose name is not a name the
+        // registry accepts (CSS's own filter syntax: a function, url(), none) is not claimed, so it stays an
+        // inert class beside the rest of the chain. Never negated: "-filter-[..]" has
         // no meaning for a named reference.
         internal static bool? TryParseCustomFilter(string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
@@ -177,7 +179,7 @@ namespace Velvet
 
             var colon = valueSpan.IndexOf(':');
             var nameSpan = colon < 0 ? valueSpan : valueSpan.Slice(0, colon);
-            if (nameSpan.Length == 0)
+            if (!VelvetFilters.IsNameShape(nameSpan))
             {
                 return false;
             }

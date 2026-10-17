@@ -164,7 +164,10 @@ stops a filter tween already running on the element.
   registered, in the compose slot it took when applied.
 - The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
   `invert`, `saturate`, `sepia`) are **reserved** and cannot be registered.
-- A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar).
+- A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar) and of `(` and `)`,
+  and must not be `none`: a `filter-[...]` body of that shape is CSS filter syntax (`filter-[blur(4px)]`,
+  `filter-[url(#x)]`, `filter-[none]`), which Velvet leaves as an inert class that costs the rest of the chain
+  nothing, and which a registration could never be reached through.
 - Re-registering a name warns and overwrites; `Unregister` removes it, and an element that keeps the
   class draws no filter until the name is registered again. A re-registered definition that refuses a
   class's arguments leaves that class inert, and the next registration that accepts them resolves it.

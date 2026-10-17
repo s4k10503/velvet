@@ -431,6 +431,22 @@ namespace Velvet.Tests
             Assert.That(discrete, Is.True);
         }
 
+        [Test]
+        public void Given_ACustomDefinitionNamedAsAFirstPartyOne_When_TheChangeIsJudged_Then_ItIsNotDiscrete()
+        {
+            // Arrange — a first-party builder that does not go through BuiltInFilterDefinitions.Build is known by
+            // its filter name alone.
+            var definition = CreateUserDefinition(new FilterParameter(0f));
+            definition.filterName = BuiltInFilterDefinitions.FilterNamePrefix + "other";
+            var shown = CustomList(definition, new FilterParameter(1f));
+
+            // Act
+            var discrete = StyleFilterTransitionDriver.ChangeIsDiscrete(null, shown, BlurList(12f));
+
+            // Assert
+            Assert.That(discrete, Is.False);
+        }
+
         // GREEN_ON_BASE(characterization): saturate beside a blur interpolated on the base, which the url() rule keeps.
         [Test]
         public void Given_ASaturateBesideABlur_When_ChannelsBuilt_Then_BothInterpolate()
@@ -443,10 +459,10 @@ namespace Velvet.Tests
             var to = new List<FilterFunction>(BlurList(12f)) { SaturateFunction(1.5f) };
 
             // Act
-            var built = StyleFilterTransitionDriver.TryBuildChannels(from, to, out var channels);
+            StyleFilterTransitionDriver.TryBuildChannels(from, to, out var channels);
 
             // Assert
-            Assert.That((built, channels.Length), Is.EqualTo((true, 2)));
+            Assert.That(channels.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -477,33 +493,57 @@ namespace Velvet.Tests
             to.Add(gray);
 
             // Act
-            var built = StyleFilterTransitionDriver.TryBuildChannels(from, to, out var channels);
+            StyleFilterTransitionDriver.TryBuildChannels(from, to, out var channels);
 
             // Assert — each blur pairs with the one at its position, and the grayscale fades in from 0.
-            Assert.That((built, string.Join(",", channels.Select(c => c.From[0].floatValue + "->" + c.To[0].floatValue))),
-                Is.EqualTo((true, "2->4,4->8,0->1")));
+            Assert.That(string.Join(",", channels.Select(c => c.From[0].floatValue + "->" + c.To[0].floatValue)),
+                Is.EqualTo("2->4,4->8,0->1"));
+        }
+
+        // The cached brightness definition's pass material destroyed, as a shader reimport does, so the next read
+        // builds another while the returned function still holds the first.
+        private static FilterFunction BrightnessFromBeforeItsRebuild(out FilterFunctionDefinition stale, out FilterFunctionDefinition? rebuilt)
+        {
+            stale = BuiltInFilterDefinitions.Brightness!;
+            var brightness = new FilterFunction(stale);
+            brightness.AddParameter(new FilterParameter(1.5f));
+            Object.DestroyImmediate(stale.passes[0].material);
+            rebuilt = BuiltInFilterDefinitions.Brightness;
+            return brightness;
+        }
+
+        [Test]
+        public void Given_ABrightnessWhosePassMaterialWasDestroyed_When_TheDefinitionIsRead_Then_AnotherIsBuilt()
+        {
+            // Arrange
+            Assume.That(BuiltInFilterDefinitions.Brightness, Is.Not.Null,
+                "Precondition: the brightness shader resolved into a definition");
+            _spawned.Add(BuiltInFilterDefinitions.Brightness);
+
+            // Act
+            BrightnessFromBeforeItsRebuild(out var stale, out var rebuilt);
+
+            // Assert
+            Assert.That(ReferenceEquals(rebuilt, stale), Is.False);
         }
 
         // GREEN_ON_BASE(characterization): a brightness composed before its definition was rebuilt faded out on the base.
         [Test]
         public void Given_ABrightnessComposedBeforeItsDefinitionWasRebuilt_When_ItIsRemoved_Then_ItFadesOut()
         {
-            // Arrange — the pass material destroyed under the cached definition, as a shader reimport does, so the
-            // next read builds another while the element still holds the first.
-            var stale = BuiltInFilterDefinitions.Brightness;
-            Assume.That(stale, Is.Not.Null, "Precondition: the brightness shader resolved into a definition");
-            _spawned.Add(stale);
-            var brightness = new FilterFunction(stale);
-            brightness.AddParameter(new FilterParameter(1.5f));
+            // Arrange — the rebuild itself is pinned by the case above.
+            Assume.That(BuiltInFilterDefinitions.Brightness, Is.Not.Null,
+                "Precondition: the brightness shader resolved into a definition");
+            _spawned.Add(BuiltInFilterDefinitions.Brightness);
+            var brightness = BrightnessFromBeforeItsRebuild(out var stale, out var rebuilt);
+            Assume.That(ReferenceEquals(rebuilt, stale), Is.False, "Precondition: the definition was rebuilt");
             var from = new List<FilterFunction>(BlurList(0f)) { brightness };
-            Object.DestroyImmediate(stale.passes[0].material);
-            var rebuilt = BuiltInFilterDefinitions.Brightness;
 
             // Act
-            var built = StyleFilterTransitionDriver.TryBuildChannels(from, BlurList(12f), out var channels);
+            StyleFilterTransitionDriver.TryBuildChannels(from, BlurList(12f), out var channels);
 
             // Assert
-            Assert.That((ReferenceEquals(rebuilt, stale), built, channels.Length), Is.EqualTo((false, true, 2)));
+            Assert.That(channels.Length, Is.EqualTo(2));
         }
 
         // GREEN_ON_BASE(characterization): a tint Velvet did not write faded out to white on the base, as it still does.
@@ -606,11 +646,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TransitionFilterAndANameRegisteredAfterApply_When_Registered_Then_ItsFilterIsWrittenWithoutATween()
+        public void Given_TransitionFilterAndANameRegisteredAfterApply_When_Registered_Then_ItsFilterIsWrittenAtOnce()
         {
             // Arrange — the element draws no filter while its custom names nothing registered.
             var element = MountResolved("transition-filter");
-            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
             var definition = CreateUserDefinition(new FilterParameter(0f));
             StyleArbitraryValueResolver.ApplyClassToken(element, "filter-[late-tween:1]", StyleLayerPriority.Base);
 
@@ -621,8 +660,7 @@ namespace Velvet.Tests
 
                 // Assert
                 var written = element.style.filter.value;
-                Assert.That((binding.Scheduled == null, written?.Count == 1 ? written[0].GetParameter(0).floatValue : float.NaN),
-                    Is.EqualTo((true, 1f)));
+                Assert.That(written?.Count == 1 ? written[0].GetParameter(0).floatValue : float.NaN, Is.EqualTo(1f));
             }
             finally
             {
@@ -635,36 +673,41 @@ namespace Velvet.Tests
         {
             // Arrange — CSS interpolates a list holding a url() discretely, so the change applies at once.
             var element = MountResolved("transition-filter blur-[4px]");
-            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
 
             // Act
             StyleArbitraryValueResolver.ApplyClassToken(element, "filter-[never-registered-tween:1]", StyleLayerPriority.Base);
 
             // Assert
-            Assert.That((binding.Scheduled == null, element.style.filter.value?.Count ?? 0), Is.EqualTo((true, 0)));
+            Assert.That(element.style.filter.value?.Count ?? 0, Is.EqualTo(0));
+        }
+
+        // A shown custom whose name is registered again under another definition; returns the element and its
+        // binding, with the new definition through `second`.
+        private VisualElement ElementShowingACustomRegisteredAgain(FilterFunctionDefinition second, out StyleFilterTransitionBinding binding)
+        {
+            var element = MountResolved("transition-filter");
+            binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            StyleArbitraryValueResolver.ApplyClassToken(element, "filter-[rebind-tween:1]", StyleLayerPriority.Base);
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[VelvetFilters\].*already registered"));
+            VelvetFilters.Register("rebind-tween", second);
+            return element;
         }
 
         [Test]
-        public void Given_TransitionFilterAndAShownCustom_When_ItsNameIsRegisteredAgain_Then_TheNewDefinitionIsWrittenWithoutATween()
+        public void Given_TransitionFilterAndAShownCustom_When_ItsNameIsRegisteredAgain_Then_TheNewDefinitionIsWritten()
         {
             // Arrange
-            var element = MountResolved("transition-filter");
-            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
             var first = CreateUserDefinition(new FilterParameter(0f));
             var second = CreateUserDefinition(new FilterParameter(0f));
             VelvetFilters.Register("rebind-tween", first);
             try
             {
-                StyleArbitraryValueResolver.ApplyClassToken(element, "filter-[rebind-tween:1]", StyleLayerPriority.Base);
-                LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[VelvetFilters\].*already registered"));
-
                 // Act
-                VelvetFilters.Register("rebind-tween", second);
+                var element = ElementShowingACustomRegisteredAgain(second, out _);
 
                 // Assert
                 var written = element.style.filter.value;
-                Assert.That((binding.Scheduled == null, written?.Count == 1 && written[0].customDefinition == second),
-                    Is.EqualTo((true, true)));
+                Assert.That(written?.Count == 1 && written[0].customDefinition == second, Is.True);
             }
             finally
             {
@@ -673,7 +716,28 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AFilterTransitionAndAUserCustomAtRest_When_TheBlurBesideItChanges_Then_TheBlurIsWrittenWithoutATween()
+        public void Given_TransitionFilterAndAShownCustom_When_ItsNameIsRegisteredAgain_Then_NoTweenRuns()
+        {
+            // Arrange
+            var first = CreateUserDefinition(new FilterParameter(0f));
+            var second = CreateUserDefinition(new FilterParameter(0f));
+            VelvetFilters.Register("rebind-tween", first);
+            try
+            {
+                // Act
+                ElementShowingACustomRegisteredAgain(second, out var binding);
+
+                // Assert
+                Assert.That(binding.Scheduled, Is.Null);
+            }
+            finally
+            {
+                VelvetFilters.Unregister("rebind-tween");
+            }
+        }
+
+        [Test]
+        public void Given_AFilterTransitionAndAUserCustomAtRest_When_TheBlurBesideItChanges_Then_TheBlurIsWrittenAtOnce()
         {
             // Arrange — the list is composed before the transition is declared, so it is at rest.
             var element = AddBareElement();
@@ -686,8 +750,7 @@ namespace Velvet.Tests
 
             // Assert
             var written = element.style.filter.value;
-            Assert.That((DriverBinding(element)?.Scheduled == null, written?.Count == 2 ? written[0].GetParameter(0).floatValue : float.NaN),
-                Is.EqualTo((true, 12f)));
+            Assert.That(written?.Count == 2 ? written[0].GetParameter(0).floatValue : float.NaN, Is.EqualTo(12f));
         }
 
         [Test]

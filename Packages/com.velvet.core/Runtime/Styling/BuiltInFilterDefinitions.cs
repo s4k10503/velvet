@@ -32,8 +32,14 @@ namespace Velvet
         // below both replace the cached one while elements still hold the one they were composed with.
         private static readonly ConditionalWeakTable<FilterFunctionDefinition, object> s_built = new();
 
+        // First-party is what Build handed out, or what carries the filter-name prefix the first-party builders give
+        // their definitions, so a builder that does not go through Build still counts.
+        internal const string FilterNamePrefix = "velvet-";
+
         internal static bool IsFirstParty(FilterFunctionDefinition? definition)
-            => definition is not null && s_built.TryGetValue(definition, out _);
+            => definition is not null
+                && (s_built.TryGetValue(definition, out _)
+                    || (definition.filterName?.StartsWith(FilterNamePrefix, System.StringComparison.Ordinal) ?? false));
 
         // A cached definition is reusable only while both it and the material its single pass binds are live.
         // A shader reimport can destroy the pass material out from under a surviving definition; UI Toolkit's
