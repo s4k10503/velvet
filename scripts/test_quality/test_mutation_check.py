@@ -10729,7 +10729,8 @@ class ReuseDecisionTests(unittest.TestCase):
             path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
 
     def decided(self, campaign):
-        return mutation_check.decide_reuse(self.mutants_of(campaign), campaign.record, campaign.project)
+        return mutation_check.decide_reuse(self.mutants_of(campaign), directory=campaign.record,
+                                           project=campaign.project)
 
     def test_Given_AnEmptyRecord_When_Decided_Then_NothingIsReusedAndEveryMutantSaysWhy(self):
         # Act
@@ -10802,7 +10803,7 @@ class ReuseDecisionTests(unittest.TestCase):
             mutant.verdict, mutant.killers = verdict, killers
             directory = campaign.project / "record-{}".format(number)
             mutation_check.write_record(directory, [mutant], {}, campaign.project)
-            reused, reasons = mutation_check.decide_reuse([mutant], directory, campaign.project)
+            reused, reasons = mutation_check.decide_reuse([mutant], directory=directory, project=campaign.project)
             if 1 not in reused:
                 refused.append("{} {}: {}".format(verdict, killers, reasons.get(1)))
 
@@ -10841,7 +10842,7 @@ class RecordContextTests(unittest.TestCase):
         path = campaign.source
         mutants = mutation_check.one_per_line(mutation_check.mutations_for(
             path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
-        reused, reasons = mutation_check.decide_reuse(mutants, campaign.record, campaign.project)
+        reused, reasons = mutation_check.decide_reuse(mutants, directory=campaign.record, project=campaign.project)
         return sorted(number for number, entry in reused.items() if entry["verdict"] == mutation_check.KILLED), reasons
 
     def append(self, relative, text="// edit\nclass Edited { }\n"):
@@ -11400,16 +11401,17 @@ class CappedPlanTests(unittest.TestCase):
         self.assertEqual((code, len(campaign.written_record()["records"])), (0, 1))
 
     def test_Given_TheSameTreeAndRecord_When_PlannedTwiceWithACap_Then_TheDecisionFilesAreEqual(self):
-        # Arrange
+        # Arrange — a plan that refused writes no file, and two absent files are not a match.
         campaign = RecordCampaign()
+        decision = campaign.project / "reuse.json"
         campaign.plan("--cap", "1")
-        first = (campaign.project / "reuse.json").read_text()
+        first = decision.read_text() if decision.is_file() else None
 
         # Act
         campaign.plan("--cap", "1")
 
         # Assert
-        self.assertEqual((campaign.project / "reuse.json").read_text(), first)
+        self.assertEqual((first is not None, decision.read_text() if decision.is_file() else None), (True, first))
 
 
 class LineRangeTests(unittest.TestCase):
@@ -11542,42 +11544,45 @@ class RecordBudgetTests(unittest.TestCase):
 
     @staticmethod
     def declared(name):
+        """The figure mutation.yml declares as `name`, or None where it declares none."""
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
-        return int(re.search(r'^  {}: "(\d+)"$'.format(name), workflow, re.MULTILINE).group(1))
+        found = re.search(r'^  {}: "(\d+)"$'.format(name), workflow, re.MULTILINE)
+        return int(found.group(1)) if found else None
+
+    def fits(self, cap, shards):
+        """Whether `cap` mutants fit `shards` shards of the EditMode ceiling; False where either is undeclared."""
+        cap, shards = self.declared(cap), self.declared(shards)
+        return cap is not None and shards is not None and cap <= shards * mutation_check.SHARD_CEILING["EditMode"]
 
     def test_Given_ARecordRunsCap_When_ItsShardsCeilingIsTaken_Then_TheCapFitsInsideIt(self):
-        # Arrange — a cap over the ceiling would make every full run's plan refuse.
-        ceiling = self.declared("RECORD_SHARDS") * mutation_check.SHARD_CEILING["EditMode"]
-
-        # Act
-        cap = self.declared("RECORD_CAP")
+        # Act — a cap over the ceiling would make every full run's plan refuse.
+        fits = self.fits("RECORD_CAP", "RECORD_SHARDS")
 
         # Assert
-        self.assertLessEqual(cap, ceiling)
+        self.assertTrue(fits)
 
     def test_Given_AnAdvisoryRunsCap_When_ItsShardsCeilingIsTaken_Then_TheCapFitsInsideIt(self):
-        # Arrange
-        ceiling = self.declared("ADVISORY_SHARDS") * mutation_check.SHARD_CEILING["EditMode"]
-
         # Act
-        cap = self.declared("ADVISORY_CAP")
+        fits = self.fits("ADVISORY_CAP", "ADVISORY_SHARDS")
 
         # Assert
-        self.assertLessEqual(cap, ceiling)
+        self.assertTrue(fits)
 
     def test_Given_ARecordRunsShards_When_TheirWavesAreTimed_Then_TheyEndInsideTheSchedulesDay(self):
-        # Arrange — the shard job's own limit and how many of them run at once, read off the workflow,
-        # so a full run is over before the next scheduled one queues behind it.
+        # Arrange — the shard job's own limit and how many of them run at once, read off the workflow;
+        # a figure it does not declare leaves no number to time.
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
-        limit = int(re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE).group(1))
-        parallel = int(re.search(r"^      max-parallel: (\d+)$", job, re.MULTILINE).group(1))
+        figures = [re.search(pattern, job, re.MULTILINE)
+                   for pattern in (r"^    timeout-minutes: (\d+)$", r"^      max-parallel: (\d+)$")]
+        limit, parallel = [int(found.group(1)) if found else None for found in figures]
+        shards = self.declared("RECORD_SHARDS")
 
         # Act
-        minutes = -(-self.declared("RECORD_SHARDS") // parallel) * limit
+        minutes = -(-shards // parallel) * limit if None not in (limit, parallel, shards) else None
 
         # Assert
-        self.assertLessEqual(minutes, 24 * 60)
+        self.assertEqual(minutes is not None and minutes <= 24 * 60, True)
 
 
 if __name__ == "__main__":
