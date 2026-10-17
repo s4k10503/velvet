@@ -1325,6 +1325,9 @@ namespace Velvet
             // apply a custom filter.
             public List<(string Name, SortedList<long, ArbitraryStyle> Stack)>? Customs;
 
+            // Whether the filter last composed from this map was dropped for a name no live definition answers.
+            public bool FilterChainDropped;
+
             // The class-list half of the same cascade (StyleClassProjection). It lives here because the two
             // halves decide one outcome together — an inline layer a USS class outranks has to stop
             // painting, and a class an inline layer outranks has to stop counting — and because sharing this
@@ -1577,6 +1580,10 @@ namespace Velvet
             var map = s_layers.GetValue(element, static _ => new LayerMap());
             if (style.Property == ArbitraryProperty.FilterCustom)
             {
+                if (FindCustomStack(map, style.Custom!.Name) == null)
+                {
+                    AddCustomFilterHost(style.Custom.Name, element);
+                }
                 ApplyCustomFilterLayer(map, style, priority);
             }
             else
@@ -1605,6 +1612,79 @@ namespace Velvet
                 StyleClassProjection.OnInlineLayersChanged(element, map.Projection);
                 RefreshScaleClassFallback(element, map, previousUniform);
             }
+        }
+
+        // Per registered name, the elements holding a layer stack under it: a registration change re-resolves
+        // those and no others. An element joins a name when its map first holds that name's stack and leaves when
+        // ClearAll drops the map, so it is listed once per name. One the collector took without a ClearAll is
+        // pruned when its name next grows past twice the size it had at the last prune, or is re-resolved.
+        private static readonly Dictionary<string, (List<WeakReference<VisualElement>> Hosts, int Pruned)> s_customFilterHosts = new();
+
+#if UNITY_EDITOR
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetCustomFilterHosts() => s_customFilterHosts.Clear();
+#endif
+
+        private static void AddCustomFilterHost(string name, VisualElement element)
+        {
+            if (!s_customFilterHosts.TryGetValue(name, out var entry))
+            {
+                entry = (new List<WeakReference<VisualElement>>(), 0);
+            }
+            if (entry.Hosts.Count >= 2 * Math.Max(entry.Pruned, 8))
+            {
+                entry.Hosts.RemoveAll(host => !host.TryGetTarget(out _));
+                entry.Pruned = entry.Hosts.Count;
+            }
+            entry.Hosts.Add(new WeakReference<VisualElement>(element));
+            s_customFilterHosts[name] = entry;
+        }
+
+        private static void RemoveCustomFilterHosts(VisualElement element, LayerMap map)
+        {
+            if (map.Customs == null)
+            {
+                return;
+            }
+            foreach (var (name, _) in map.Customs)
+            {
+                if (s_customFilterHosts.TryGetValue(name, out var entry))
+                {
+                    entry.Hosts.RemoveAll(host => !host.TryGetTarget(out var held) || held == element);
+                }
+            }
+        }
+
+        // Parses every filter-[name:args] layer held under name again against what VelvetFilters now has
+        // registered under it, and recomposes each element holding one.
+        internal static void ReresolveCustomFilter(string name)
+        {
+            if (!s_customFilterHosts.TryGetValue(name, out var entry))
+            {
+                return;
+            }
+            var hosts = entry.Hosts;
+            for (var i = hosts.Count - 1; i >= 0; i--)
+            {
+                if (!hosts[i].TryGetTarget(out var element) || !s_layers.TryGetValue(element, out var map))
+                {
+                    hosts.RemoveAt(i);
+                    continue;
+                }
+                var stack = FindCustomStack(map, name);
+                if (stack == null || stack.Count == 0)
+                {
+                    continue;
+                }
+                for (var k = 0; k < stack.Count; k++)
+                {
+                    StyleFilterValueParser.TryParseCustomFilter("filter-", stack.Values[k].Custom!.Token.AsSpan(), false, out var style);
+                    stack[stack.Keys[k]] = style;
+                }
+                ApplyCombinedFilter(element, map);
+            }
+            entry.Pruned = hosts.Count;
+            s_customFilterHosts[name] = entry;
         }
 
         // Registers a filter-[name:args] layer at priority under its own per-name stack (LayerMap.Customs),
@@ -1688,8 +1768,7 @@ namespace Velvet
         // Clears the layer an ArbitraryStyle applied, using the parsed value itself rather than just its
         // property. The only case this matters today is FilterCustom, whose value carries the NAME that
         // keys the layer stack to remove — and the name is ALL it reads (never the definition or the
-        // arguments), which is what lets the unregistered-name clear fallback synthesize a name-only
-        // style; every other property clears exactly like the (property, priority) overload.
+        // arguments); every other property clears exactly like the (property, priority) overload.
         public static void Clear(VisualElement element, in ArbitraryStyle style, long priority = StyleLayerPriority.Base)
         {
             if (style.Property != ArbitraryProperty.FilterCustom)
@@ -2244,7 +2323,11 @@ namespace Velvet
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
         {
-            if (element != null && s_layers.TryGetValue(element, out var map)) map.RelativePoll?.Stop();
+            if (element != null && s_layers.TryGetValue(element, out var map))
+            {
+                map.RelativePoll?.Stop();
+                RemoveCustomFilterHosts(element, map);
+            }
             if (element != null) s_layers.Remove(element);
             // What the fit records the radius layers as declaring goes with them.
             if (element != null) CornerRadiusFit.Release(element);
@@ -2280,52 +2363,14 @@ namespace Velvet
             {
                 Clear(element, in style, priority);
             }
-            else if (!TryClearUnregisteredFilterToken(element, core, priority))
+            else if (StyleBackgroundImageResolver.TryParse(core, out _))
             {
-                if (StyleBackgroundImageResolver.TryParse(core, out _))
-                {
-                    StyleBackgroundImageResolver.Clear(element);
-                }
-                else
-                {
-                    element.RemoveFromClassList(core);
-                }
+                StyleBackgroundImageResolver.Clear(element);
             }
-        }
-
-        // Clears a filter-[name:args] token whose name is not (or no longer) registered. The
-        // registry-gated parse does not claim such a token, but a layer applied while the name WAS
-        // registered is still composed and must leave; the name alone identifies the layer, so it is
-        // resolved syntactically. The class-list removal mirrors the never-registered apply, which
-        // fell through to the class list — each action is a no-op in the other's scenario. Returns
-        // false when the token is not a custom-filter shape at all.
-        internal static bool TryClearUnregisteredFilterToken(VisualElement element, string core, long priority)
-        {
-            if (!TryResolveUnregisteredFilterClear(core, out var style))
+            else
             {
-                return false;
+                element.RemoveFromClassList(core);
             }
-            Clear(element, in style, priority);
-            element.RemoveFromClassList(core);
-            return true;
-        }
-
-        // Fallback clear resolution for a filter-[name:args] token whose name is NOT (or no longer)
-        // registered. Apply-side resolution (TryParse) is registry-gated — an unregistered name is not
-        // claimed — but the layer a previous apply registered must stay clearable after an unregister,
-        // or it would ghost in the composed filter forever. The token's shape alone carries everything a
-        // clear needs: the ArbitraryStyle-aware Clear reads only the NAME, so a name-only synthetic style
-        // (null definition, no arguments) suffices. Purely syntactic — no registry lookup, no warning.
-        internal static bool TryResolveUnregisteredFilterClear(string core, out ArbitraryStyle style)
-        {
-            if (StyleFilterValueParser.TryExtractCustomFilterName(core, out var name))
-            {
-                style = new ArbitraryStyle(ArbitraryProperty.FilterCustom,
-                    new CustomFilterValue(name, null!, Array.Empty<FilterParameter>()));
-                return true;
-            }
-            style = default;
-            return false;
         }
 
         // Prefixes classifying a core token as part of the composed filter family (the built-in filter
@@ -2719,8 +2764,37 @@ namespace Velvet
             }
         }
 
+        // CSS interpolates a filter list holding a url() discretely, so a change into or out of a dropped chain is
+        // written at once rather than handed to either animator.
         private static void ApplyCombinedFilter(VisualElement element, LayerMap map)
         {
+            var wasDropped = map.FilterChainDropped;
+            var functions = ComposeFilter(map, out var dropped);
+            map.FilterChainDropped = dropped;
+            if (wasDropped || dropped)
+            {
+                using (StyleFilterEngineWrite.WithoutTransition())
+                {
+                    WriteComposedFilter(element, functions);
+                }
+                return;
+            }
+            WriteComposedFilter(element, functions);
+        }
+
+        private static void WriteComposedFilter(VisualElement element, List<FilterFunction>? functions)
+        {
+            // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
+            // from-side, so it must run BEFORE the instant write below (never observing its own write).
+            if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
+            {
+                StyleFilterEngineWrite.Write(element, functions);
+            }
+        }
+
+        private static List<FilterFunction>? ComposeFilter(LayerMap map, out bool dropped)
+        {
+            dropped = false;
             List<FilterFunction>? functions = null;
             foreach (var prop in s_filterOrder)
             {
@@ -2737,32 +2811,42 @@ namespace Velvet
             // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
             // SortedList wins" rule the built-ins use above, just keyed by name instead of by
             // ArbitraryProperty. An empty stack is a tombstone holding its name's compose slot (see
-            // LayerMap.Customs). A winning layer whose definition has been DESTROYED since it was applied
-            // compares equal to null (a dead asset) and is skipped: the engine's FilterFunction
-            // constructor throws on a dead definition, and a function bound to one could not render
-            // anything anyway.
-            if (map.Customs != null)
+            // LayerMap.Customs). A layer whose registration refuses its arguments is an invalid declaration's,
+            // which CSS drops at parse time, so the layer under it wins. A winning layer with no definition
+            // names no live filter — never registered, unregistered, or DESTROYED since it was applied, which
+            // compares equal to null — and CSS ignores the whole chain when a url() names no filter.
+            if (map.Customs == null)
             {
-                foreach (var (_, stack) in map.Customs)
+                return functions;
+            }
+            foreach (var (_, stack) in map.Customs)
+            {
+                var top = TopAcceptedLayer(stack);
+                if (top < 0)
                 {
-                    if (stack.Count == 0)
-                    {
-                        continue;
-                    }
-                    var custom = stack.Values[stack.Count - 1].Custom!;
-                    if (custom.Definition == null)
-                    {
-                        continue;
-                    }
-                    (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
+                    continue;
+                }
+                var custom = stack.Values[top].Custom!;
+                if (custom.Definition == null)
+                {
+                    dropped = true;
+                    return null;
+                }
+                (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
+            }
+            return functions;
+        }
+
+        private static int TopAcceptedLayer(SortedList<long, ArbitraryStyle> stack)
+        {
+            for (var i = stack.Count - 1; i >= 0; i--)
+            {
+                if (!stack.Values[i].Custom!.Rejected)
+                {
+                    return i;
                 }
             }
-            // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
-            // from-side, so it must run BEFORE the instant write below (never observing its own write).
-            if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
-            {
-                StyleFilterEngineWrite.Write(element, functions);
-            }
+            return -1;
         }
 
         // Builds the FilterFunction for a filter-[name:args] custom filter. The public
