@@ -221,7 +221,6 @@ namespace Velvet.CodeGen
         private static bool WritesAClosureField(Instruction instr)
         {
             var field = instr.Operand as FieldReference;
-            // MUTANT_SURVIVES(equivalent, clause removed): no scope looks up a link field, so counting its stores changes no answer.
             return field != null && !IsParentLink(field)
                 && (instr.OpCode.Code == Code.Stfld || (instr.OpCode.Code == Code.Ldflda && WritesThroughAddress(instr, field)));
         }
