@@ -50,7 +50,7 @@ namespace Velvet
     // Bakes a GradientSpec into a small Texture2D and applies it as an element's background-image,
     // stretched to fill (UI Toolkit then clips it to the element's border-radius). USS has no
     // linear-gradient, so a gradient has to be painted. A baked texture is chosen over a live custom
-    // material NOT to avoid URP, but for the same reason DropShadowBaker bakes its (URP) shader rather
+    // material NOT to avoid URP, but for the same reason BoxShadowBaker bakes its (URP) shader rather
     // than binding it: UI Toolkit freezes a custom-material element's draw-command order at first
     // generation, so a live gradient material would composite in front of its own content under an
     // animating ancestor transform. A texture goes through the normal background-image path and orders
@@ -67,7 +67,7 @@ namespace Velvet
     // height. Those can take as many keys as an element has sizes, so an entry is reference-counted by the
     // bindings that show it, and once none does it joins an LRU of at most MaxIdleBoxed entries whose
     // eldest is destroyed — an entry a mounted element still shows is never evicted, so unlike
-    // DropShadowBaker's silhouette cache there is no use-after-evict hazard to accept. The editor reset
+    // BoxShadowBaker's silhouette cache there is no use-after-evict hazard to accept. The editor reset
     // hook drops the cache each play session (textures are HideAndDontSave and would otherwise persist
     // with Reload-Domain off).
     internal static class GradientBackground
@@ -112,7 +112,7 @@ namespace Velvet
 #if UNITY_EDITOR
         // Baked textures are HideAndDontSave and persist across play-mode cycles without a Domain
         // Reload; drop them so a fresh run re-bakes rather than serving a stale texture (and so they do not
-        // accumulate). Mirrors DropShadowBaker.ResetStaticCaches.
+        // accumulate). Mirrors BoxShadowBaker.ResetStaticCaches.
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticCaches()
         {

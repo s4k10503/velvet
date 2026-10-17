@@ -37,8 +37,6 @@ namespace Velvet.Tests
             new object[] { "h-[15%]", ArbitraryProperty.Height, 15f, LengthUnit.Percent },
             // Given_MinHeightPixelClass_When_Parsed_Then_ResolvesMinHeightAsPixelLength
             new object[] { "min-h-[60px]", ArbitraryProperty.MinHeight, 60f, LengthUnit.Pixel },
-            // Given_AZeroWidthWithoutUnit_When_Parsed_Then_ResolvesAZeroPixelLength
-            new object[] { "w-[0]", ArbitraryProperty.Width, 0f, LengthUnit.Pixel },
             // Given_MaxWidthPercentClass_When_Parsed_Then_ResolvesMaxWidthAsPercentLength
             new object[] { "max-w-[50%]", ArbitraryProperty.MaxWidth, 50f, LengthUnit.Percent },
             // Given_MaxHeightPixelClass_When_Parsed_Then_ResolvesMaxHeightAsPixelLength

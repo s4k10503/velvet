@@ -599,7 +599,7 @@ namespace Velvet
             // element's own, which the OLD "inside real's own subtree" test would wrongly accept as an escape
             // — so the walk is scoped to the whole CONTAINER (any co-tenant's real), not just `real`. A
             // landing on a NEIGHBOUR's PLACEHOLDER is unaffected: a placeholder lives in the stacking parent's
-            // own slot range, never as a child of the container (see InsertSorted / Place), so it is never
+            // own slot range, never as a child of the container (see InsertByZ / Place), so it is never
             // "inside container" and the walk correctly stops there — the legitimate adjacent-sibling handoff
             // (OnFocusIn forwards from a placeholder to its own real) that the existing backward test relies
             // on. Keep walking past any container landing until it is genuinely outside the container

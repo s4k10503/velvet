@@ -1,0 +1,16 @@
+### Changed
+
+- A `filter-[name]` whose name nothing is registered under leaves the element drawing no filter, its other
+  filter utilities included, as CSS ignores a filter chain whose `url()` names no filter. It was an inert
+  class, and the element's other filters still drew. The same holds after `VelvetFilters.Unregister`, which
+  left an element's resolved filter in place, and for a definition destroyed after registration, which the
+  compose skipped.
+- `VelvetFilters.Register`, a re-registration and `VelvetFilters.Unregister` resolve every element carrying the
+  name again, at once. A class applied before its name was registered resolved only when some later pass
+  re-applied the element's classes, and a re-registration left elements on the definition they had.
+- A filter change where the element's filter holds a user `filter-[name:args]` before or after it applies at
+  once, under `transition-filter` and under the engine's own filter transition alike, as CSS interpolates a
+  filter list holding a `url()` discretely. So does the first filter utility written over a stylesheet `filter`
+  holding a custom filter function. Velvet's filter tween ran a custom's arguments between two
+  argument sets of one definition, faded a custom in or out from its declared defaults, and tweened a built-in
+  filter beside a custom.

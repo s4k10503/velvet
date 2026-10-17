@@ -1,0 +1,37 @@
+.layout-id-test-fade {
+    transition-property: opacity;
+    transition-duration: 1s;
+    transition-timing-function: linear;
+}
+
+.layout-id-test-fade-delayed {
+    transition-property: opacity;
+    transition-duration: 1s;
+    transition-delay: 0.2s;
+    transition-timing-function: linear;
+}
+
+.layout-id-test-fade-early {
+    transition-property: opacity;
+    transition-duration: 1s;
+    transition-delay: -0.2s;
+    transition-timing-function: linear;
+}
+
+.layout-id-test-two {
+    transition-property: background-color, opacity;
+    transition-duration: 0.2s, 1s;
+    transition-timing-function: linear;
+}
+
+.layout-id-test-move-two {
+    transition-property: translate, background-color;
+    transition-duration: 1s, 0.2s;
+    transition-timing-function: linear;
+}
+
+.layout-id-test-delay-only {
+    transition-property: translate;
+    transition-duration: 0s;
+    transition-delay: 0.3s;
+}

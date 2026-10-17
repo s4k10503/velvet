@@ -308,7 +308,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADefaultStash_When_Stashed_Then_BothBackgroundAndBorderAreSuppressed()
         {
-            // Arrange — the default (includeBackground:true) stash pins SkewBinding / DropShadowBinding's
+            // Arrange — the default (includeBackground:true) stash pins SkewBinding / BoxShadowBinding's
             // existing behavior: it owns the whole face.
             var element = ColoredElement();
             var stash = new SilhouetteFaceStash();

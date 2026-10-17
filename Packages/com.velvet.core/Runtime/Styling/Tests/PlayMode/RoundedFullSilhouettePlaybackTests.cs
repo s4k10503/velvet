@@ -237,39 +237,7 @@ namespace Velvet.Tests
             Assert.That((radiusExceededTheBox, oversized > bare, lg > bare), Is.EqualTo((true, true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already bounds an oversized radius in the shadow bake.
-        // Unbounding it, `Mathf.Min(binding.CornerRadius, bound)` -> `binding.CornerRadius`, reddens it.
-        [UnityTest]
-        public IEnumerator Given_ABoxWithAnOversizedInlineRadiusWearingADropShadow_When_Painted_Then_ItsHaloReachesTheScreen()
-        {
-            // Arrange — the radius as in the shadow-[…] case. The drop-shadow presets paint the dark shadow
-            // colour, which the red channel cannot tell from the cleared frame, so where that case reads red this
-            // one reads coverage: the frame is cleared transparent and only paint raises its alpha outside the box.
-            static void Oversize(VisualElement box)
-            {
-                box.style.borderTopLeftRadius = 9999f;
-                box.style.borderTopRightRadius = 9999f;
-                box.style.borderBottomRightRadius = 9999f;
-                box.style.borderBottomLeftRadius = 9999f;
-            }
-            yield return MountBox("NoDropShadow", CasterGeometry, Oversize);
-            var bare = HaloMean(Box.worldBound, AlphaOf);
-
-            yield return MountBox("DropShadowLg", $"{CasterGeometry} rounded-lg drop-shadow-2xl");
-            var lg = HaloMean(Box.worldBound, AlphaOf);
-
-            // Act
-            yield return MountBox("DropShadowOversized", $"{CasterGeometry} drop-shadow-2xl", Oversize);
-            var radiusExceededTheBox = Box.resolvedStyle.borderTopLeftRadius > Box.layout.height;
-            var oversized = HaloMean(Box.worldBound, AlphaOf);
-
-            // Assert
-            Assert.That((radiusExceededTheBox, oversized > bare, lg > bare), Is.EqualTo((true, true, true)));
-        }
-
         private static float RedOf(Color32 p) => p.r;
-
-        private static float AlphaOf(Color32 p) => p.a;
 
         // Mean of one channel over a strip just outside the caster's LEFT edge at its vertical centre, where
         // only the shadow paints and where a pill's boundary and an 8px-rounded box's lie within a pixel of

@@ -375,6 +375,13 @@ namespace Velvet
             // three own the edge and must win, exactly as they already win over a child's own explicit margin
             // — running [&>*]: first makes it behave as if the child itself carried the wrapped class.
             ApplyChildVariantManipulator(element, newClassNames);
+            // A field's input box decides its bounds-spacers from the payloads routed to it, applied or not
+            // (WrapperInfrastructure.CarriesFilter), and a routed payload that is not applied re-syncs nothing.
+            if (!ReferenceEquals(oldClassNames, newClassNames) && StyleInputBoxSurface.IsControl(element)
+                && StyleInputBoxSurface.TryGetBox(element, out var box) && _ctx.VariantGateClasses.ContainsKey(box))
+            {
+                ReSyncVariantGatedPasses(box);
+            }
             ApplyLayoutManipulators(element, newClassNames);
             ApplyStructuralVariants(element);
             ApplyHasClassVariants(element);
@@ -641,10 +648,11 @@ namespace Velvet
             // Runtime variant swap: PatchBaseElement above already synced the class list to the final resting
             // state (appliedNew) via a plain, instant diff, less the inline-resolved tokens ResolveInlineHold
             // holds for the swap to write. When the effective label actually changed WHICH
-            // variant classes are applied AND a transition resolved for the destination pose, replay that same
-            // swap as a VISUAL tween on the scheduler instead — a transition should apply to every animate
-            // update, not just the first. No resolved transition keeps the plain, instant diff (Velvet applies
-            // no implicit default transition).
+            // variant classes are applied, replay that same swap on the scheduler on the destination pose's
+            // transition (ResolvePlayedSwap) — a transition should apply to every animate update, not just the
+            // first. V.Motion gives a Motion that declares none StyleTransition.Fade; a swap whose transition
+            // lands at once (StyleAnimationScheduler.LandsAtOnce), StyleTransitionConfig.None among them, plays
+            // nothing.
             // Gated off an element the scheduler already treats as EXITING (not off PresenceAnchorMotion
             // identity — that field is set for every current AnimatePresence child, including a plain
             // PERSISTING one this swap must still drive when its ambient label changes, e.g. a coordinator
@@ -747,7 +755,7 @@ namespace Velvet
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
                 ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Value4}|{style.PercentEdges}|{style.Color}|{style.Auto}"
-                    + $"|{(style.Custom == null && style.Expression == null ? string.Empty : rawCls)}"
+                    + $"|{(style.Custom == null && style.Expression == null && style.DropShadow == null ? string.Empty : rawCls)}"
                 : rawCls;
 
         private StyleTransitionConfig? ResolvePlayedSwap(VisualElement element, StyleTransitionConfig? swapTransition,

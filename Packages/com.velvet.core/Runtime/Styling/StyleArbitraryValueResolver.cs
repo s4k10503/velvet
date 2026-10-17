@@ -120,6 +120,12 @@ namespace Velvet
                 return true;
             }
 
+            // The drop-shadow family takes a modifier after its bracket, which the bracket path below rejects.
+            if (StyleFilterValueParser.TryParseDropShadow(className, out result))
+            {
+                return true;
+            }
+
             var negate = className.Length > 0 && className[0] == '-';
             var offset = negate ? 1 : 0;
 
@@ -289,11 +295,11 @@ namespace Velvet
                 if (slice.HasValue) return slice.Value;
             }
 
-            return TryParseLengthBracket(prefix, valueSpan, negate, lengthHinted, out result);
+            return TryParseLengthBracket(prefix, valueSpan, negate, hint, out result);
         }
 
         private static bool TryParseLengthBracket(
-            string prefix, ReadOnlySpan<char> valueSpan, bool negate, bool lengthHinted, out ArbitraryStyle result)
+            string prefix, ReadOnlySpan<char> valueSpan, bool negate, string? hint, out ArbitraryStyle result)
         {
             result = default;
             if (!TryGetProperty(prefix, out var property)
@@ -340,19 +346,23 @@ namespace Velvet
         // A type hint replaces the tests: StyleColorValueParser.HintSelectsNonColour names the hints that pick
         // the length.
         private static bool TailwindReadsAsLength(ArbitraryProperty property, ReadOnlySpan<char> value, string? hint)
-            => property switch
+        {
+            if (IsBorderWidth(property))
             {
-                ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth or ArbitraryProperty.BorderRightWidth
-                    or ArbitraryProperty.BorderBottomWidth or ArbitraryProperty.BorderLeftWidth
-                    => hint != null ? StyleColorValueParser.HintSelectsNonColour("border", hint)
-                        : TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsNumber(value)
-                            || TailwindDataTypes.IsLineWidthKeyword(value),
-                ArbitraryProperty.FontSize
-                    => hint != null ? StyleColorValueParser.HintSelectsNonColour("text", hint)
-                        : TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsPercentage(value)
-                            || TailwindDataTypes.IsFontSizeKeyword(value),
-                _ => true,
-            };
+                return hint != null
+                    ? StyleColorValueParser.HintSelectsNonColour("border", hint)
+                    : TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsNumber(value)
+                        || TailwindDataTypes.IsLineWidthKeyword(value);
+            }
+            if (property == ArbitraryProperty.FontSize)
+            {
+                return hint != null
+                    ? StyleColorValueParser.HintSelectsNonColour("text", hint)
+                    : TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsPercentage(value)
+                        || TailwindDataTypes.IsFontSizeKeyword(value);
+            }
+            return true;
+        }
 
         private static bool IsBorderWidth(ArbitraryProperty property)
             => property is ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth
@@ -544,8 +554,27 @@ namespace Velvet
         internal static bool StartsWithRadiusPrefix(string text)
             => text.StartsWith(RadiusUtilityName, StringComparison.Ordinal);
 
-        internal static bool IsSpacingOrRadiusProperty(ArbitraryProperty property)
-            => IsSpacingProperty(property) || RadiusCornersOf.ContainsKey(property);
+        // The families StyleSpacingPrecedence orders: spacing, size, inset, radius, and the flex shorthand with the
+        // two factors it contains besides the basis.
+        internal static bool IsSpacingRadiusOrFlexProperty(ArbitraryProperty property)
+            => IsSpacingProperty(property) || RadiusCornersOf.ContainsKey(property)
+                || property is ArbitraryProperty.Flex or ArbitraryProperty.FlexGrow or ArbitraryProperty.FlexShrink;
+
+        // True when text begins with the prefix of a flex shorthand or factor utility: the cheap test that a token
+        // can be one, which allocates nothing.
+        internal static bool StartsWithFlexPrefix(string text)
+            => text.StartsWith("flex-", StringComparison.Ordinal) || text.StartsWith("grow", StringComparison.Ordinal)
+                || text.StartsWith("shrink", StringComparison.Ordinal);
+
+        // The flex factor classes and the bracket token each equals. FlexFactorClassMirrorTests holds the values
+        // against _layout.uss.
+        private static readonly (string Class, ArbitraryProperty Property, string InlineForm)[] s_flexFactorClasses =
+        {
+            ("grow", ArbitraryProperty.FlexGrow, "grow-[1]"),
+            ("grow-0", ArbitraryProperty.FlexGrow, "grow-[0]"),
+            ("shrink", ArbitraryProperty.FlexShrink, "shrink-[1]"),
+            ("shrink-0", ArbitraryProperty.FlexShrink, "shrink-[0]"),
+        };
 
         internal static bool IsRadiusProperty(ArbitraryProperty property) => RadiusCornersOf.ContainsKey(property);
 
@@ -558,6 +587,9 @@ namespace Velvet
         // `-full` for sizes and basis, and nothing else in these families. A radius class is read off the radius
         // scale instead (TryReadRadiusClass); RadiusPrecedenceTests checks that the sheets declare a rule for every
         // step of every family, and the magnitudes are pinned by StyleUtilitiesUssTests and CornerRadiusFitPanelTests.
+        // A flex factor class is read off s_flexFactorClasses. The flex shorthand's own classes (flex-1, flex-none)
+        // are not read: each writes all three longhands, and Tailwind emits the shorthand ahead of the longhands, so
+        // StyleSpacingPrecedence never finds one the narrower of a pair.
         internal static bool TryReadStylesheetClass(string cls, out ArbitraryProperty property, out string inlineForm)
         {
             property = default;
@@ -571,6 +603,15 @@ namespace Velvet
             if (TryReadRadiusClass(cls, out property, out inlineForm))
             {
                 return true;
+            }
+            foreach (var (name, factorProperty, form) in s_flexFactorClasses)
+            {
+                if (cls == name)
+                {
+                    property = factorProperty;
+                    inlineForm = form;
+                    return true;
+                }
             }
             // MUTANT_SURVIVES(equivalent, boundary): the shortest name read here is a family prefix of two characters and `auto` or `full`, six in all, so a bound of 4 turns away only names none of the loop's rows match.
             if (cls.Length < 4 || !StyleUtilityProperties.TryGet(cls, out _))
@@ -776,7 +817,7 @@ namespace Velvet
             {
                 return SuffixInKeys(cls.AsSpan("scale-x-".Length), s_axisScale); // "scale-x-" and "scale-y-" share a length
             }
-            return TryGetFlexFactorPreset(cls, out _, out _);
+            return TryGetFlexFactorPreset(cls, out _, out _) || TryGetFlexPreset(cls, out _);
         }
 
         // The physical margin utilities, whose negated names no selector can spell. -max-w-4 and -min-h-4 start
@@ -814,8 +855,41 @@ namespace Velvet
             return whole != 0;
         }
 
+        // flex-<N> / flex-<a>/<b>: Tailwind's `flex: <N>` (grow N, shrink 1, basis 0%) and
+        // `flex: calc(<a>/<b> * 100%)` (grow 1, shrink 1, that basis). flex-1 is a USS class, so it is left to
+        // the class list.
+        private static bool TryGetFlexPreset(string cls, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!cls.StartsWith("flex-", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var body = cls.AsSpan("flex-".Length);
+            var slash = body.IndexOf('/');
+            if (slash == -1)
+            {
+                if (!TryParseWhole(body, out var grow))
+                {
+                    return false;
+                }
+                result = ArbitraryStyle.Flex(grow, 1f, 0f, LengthUnit.Percent);
+                return grow != 1;
+            }
+            if (!TryParseWhole(body.Slice(0, slash), out var numerator))
+            {
+                return false;
+            }
+            if (!TryParseWhole(body.Slice(slash + 1), out var denominator))
+            {
+                return false;
+            }
+            result = ArbitraryStyle.Flex(1f, 1f, 100f * numerator / denominator, LengthUnit.Percent);
+            return denominator != 0;
+        }
+
         // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero. Shared by
-        // the flex factors and z-<n>.
+        // the flex factors, the flex shorthand and z-<n>.
         internal static bool TryParseWhole(ReadOnlySpan<char> digits, out int whole)
         {
             whole = 0;
@@ -860,6 +934,10 @@ namespace Velvet
             if (TryGetFlexFactorPreset(className, out var factorProperty, out var factor))
             {
                 result = new ArbitraryStyle(factorProperty, factor, LengthUnit.Pixel);
+                return true;
+            }
+            if (TryGetFlexPreset(className, out result))
+            {
                 return true;
             }
             if (TryParseSpacingStep(className, out result))
@@ -1403,6 +1481,9 @@ namespace Velvet
             // apply a custom filter.
             public List<(string Name, SortedList<long, ArbitraryStyle> Stack)>? Customs;
 
+            // Whether the filter last composed from this map was dropped for a name no live definition answers.
+            public bool FilterChainDropped;
+
             // The class-list half of the same cascade (StyleClassProjection). It lives here because the two
             // halves decide one outcome together — an inline layer a USS class outranks has to stop
             // painting, and a class an inline layer outranks has to stop counting — and because sharing this
@@ -1655,6 +1736,10 @@ namespace Velvet
             var map = s_layers.GetValue(element, static _ => new LayerMap());
             if (style.Property == ArbitraryProperty.FilterCustom)
             {
+                if (FindCustomStack(map, style.Custom!.Name) == null)
+                {
+                    AddCustomFilterHost(style.Custom.Name, element);
+                }
                 ApplyCustomFilterLayer(map, style, priority);
             }
             else
@@ -1683,6 +1768,79 @@ namespace Velvet
                 StyleClassProjection.OnInlineLayersChanged(element, map.Projection);
                 RefreshScaleClassFallback(element, map, previousUniform);
             }
+        }
+
+        // Per registered name, the elements holding a layer stack under it: a registration change re-resolves
+        // those and no others. An element joins a name when its map first holds that name's stack and leaves when
+        // ClearAll drops the map, so it is listed once per name. One the collector took without a ClearAll is
+        // pruned when its name next grows past twice the size it had at the last prune, or is re-resolved.
+        private static readonly Dictionary<string, (List<WeakReference<VisualElement>> Hosts, int Pruned)> s_customFilterHosts = new();
+
+#if UNITY_EDITOR
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetCustomFilterHosts() => s_customFilterHosts.Clear();
+#endif
+
+        private static void AddCustomFilterHost(string name, VisualElement element)
+        {
+            if (!s_customFilterHosts.TryGetValue(name, out var entry))
+            {
+                entry = (new List<WeakReference<VisualElement>>(), 0);
+            }
+            if (entry.Hosts.Count >= 2 * Math.Max(entry.Pruned, 8))
+            {
+                entry.Hosts.RemoveAll(host => !host.TryGetTarget(out _));
+                entry.Pruned = entry.Hosts.Count;
+            }
+            entry.Hosts.Add(new WeakReference<VisualElement>(element));
+            s_customFilterHosts[name] = entry;
+        }
+
+        private static void RemoveCustomFilterHosts(VisualElement element, LayerMap map)
+        {
+            if (map.Customs == null)
+            {
+                return;
+            }
+            foreach (var (name, _) in map.Customs)
+            {
+                if (s_customFilterHosts.TryGetValue(name, out var entry))
+                {
+                    entry.Hosts.RemoveAll(host => !host.TryGetTarget(out var held) || held == element);
+                }
+            }
+        }
+
+        // Parses every filter-[name:args] layer held under name again against what VelvetFilters now has
+        // registered under it, and recomposes each element holding one.
+        internal static void ReresolveCustomFilter(string name)
+        {
+            if (!s_customFilterHosts.TryGetValue(name, out var entry))
+            {
+                return;
+            }
+            var hosts = entry.Hosts;
+            for (var i = hosts.Count - 1; i >= 0; i--)
+            {
+                if (!hosts[i].TryGetTarget(out var element) || !s_layers.TryGetValue(element, out var map))
+                {
+                    hosts.RemoveAt(i);
+                    continue;
+                }
+                var stack = FindCustomStack(map, name);
+                if (stack == null || stack.Count == 0)
+                {
+                    continue;
+                }
+                for (var k = 0; k < stack.Count; k++)
+                {
+                    StyleFilterValueParser.TryParseCustomFilter("filter-", stack.Values[k].Custom!.Token.AsSpan(), false, out var style);
+                    stack[stack.Keys[k]] = style;
+                }
+                ApplyCombinedFilter(element, map);
+            }
+            entry.Pruned = hosts.Count;
+            s_customFilterHosts[name] = entry;
         }
 
         // Registers a filter-[name:args] layer at priority under its own per-name stack (LayerMap.Customs),
@@ -1766,8 +1924,7 @@ namespace Velvet
         // Clears the layer an ArbitraryStyle applied, using the parsed value itself rather than just its
         // property. The only case this matters today is FilterCustom, whose value carries the NAME that
         // keys the layer stack to remove — and the name is ALL it reads (never the definition or the
-        // arguments), which is what lets the unregistered-name clear fallback synthesize a name-only
-        // style; every other property clears exactly like the (property, priority) overload.
+        // arguments); every other property clears exactly like the (property, priority) overload.
         public static void Clear(VisualElement element, in ArbitraryStyle style, long priority = StyleLayerPriority.Base)
         {
             if (style.Property != ArbitraryProperty.FilterCustom)
@@ -2322,7 +2479,11 @@ namespace Velvet
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
         {
-            if (element != null && s_layers.TryGetValue(element, out var map)) map.RelativePoll?.Stop();
+            if (element != null && s_layers.TryGetValue(element, out var map))
+            {
+                map.RelativePoll?.Stop();
+                RemoveCustomFilterHosts(element, map);
+            }
             if (element != null) s_layers.Remove(element);
             // What the fit records the radius layers as declaring goes with them.
             if (element != null) CornerRadiusFit.Release(element);
@@ -2358,84 +2519,19 @@ namespace Velvet
             {
                 Clear(element, in style, priority);
             }
-            else if (!TryClearUnregisteredFilterToken(element, core, priority))
+            else if (StyleBackgroundImageResolver.TryParse(core, out _))
             {
-                if (StyleBackgroundImageResolver.TryParse(core, out _))
-                {
-                    StyleBackgroundImageResolver.Clear(element);
-                }
-                else
-                {
-                    element.RemoveFromClassList(core);
-                }
+                StyleBackgroundImageResolver.Clear(element);
+            }
+            else
+            {
+                element.RemoveFromClassList(core);
             }
         }
 
-        // Clears a filter-[name:args] token whose name is not (or no longer) registered. The
-        // registry-gated parse does not claim such a token, but a layer applied while the name WAS
-        // registered is still composed and must leave; the name alone identifies the layer, so it is
-        // resolved syntactically. The class-list removal mirrors the never-registered apply, which
-        // fell through to the class list — each action is a no-op in the other's scenario. Returns
-        // false when the token is not a custom-filter shape at all.
-        internal static bool TryClearUnregisteredFilterToken(VisualElement element, string core, long priority)
-        {
-            if (!TryResolveUnregisteredFilterClear(core, out var style))
-            {
-                return false;
-            }
-            Clear(element, in style, priority);
-            element.RemoveFromClassList(core);
-            return true;
-        }
-
-        // Fallback clear resolution for a filter-[name:args] token whose name is NOT (or no longer)
-        // registered. Apply-side resolution (TryParse) is registry-gated — an unregistered name is not
-        // claimed — but the layer a previous apply registered must stay clearable after an unregister,
-        // or it would ghost in the composed filter forever. The token's shape alone carries everything a
-        // clear needs: the ArbitraryStyle-aware Clear reads only the NAME, so a name-only synthetic style
-        // (null definition, no arguments) suffices. Purely syntactic — no registry lookup, no warning.
-        internal static bool TryResolveUnregisteredFilterClear(string core, out ArbitraryStyle style)
-        {
-            if (StyleFilterValueParser.TryExtractCustomFilterName(core, out var name))
-            {
-                style = new ArbitraryStyle(ArbitraryProperty.FilterCustom,
-                    new CustomFilterValue(name, null!, Array.Empty<FilterParameter>()));
-                return true;
-            }
-            style = default;
-            return false;
-        }
-
-        // Prefixes classifying a core token as part of the composed filter family (the built-in filter
-        // utilities' bracket forms plus filter-[name:…] customs) without resolving it — the class-diff
-        // reapply's skip decision must not itself pay the parse it is avoiding.
-        private static readonly string[] s_filterFamilyTokenPrefixes = BuildFilterFamilyTokenPrefixes();
-
-        private static string[] BuildFilterFamilyTokenPrefixes()
-        {
-            var families = StyleFilterValueParser.BuiltInFamilyNames;
-            var prefixes = new string[families.Length + 1];
-            for (var i = 0; i < families.Length; i++)
-            {
-                prefixes[i] = families[i] + "-[";
-            }
-            prefixes[families.Length] = "filter-[";
-            return prefixes;
-        }
-
-        // True for tokens whose resolved property lands in the composed filter family. Purely
-        // syntactic on the bracket prefix: cheap enough to gate a skip without parsing the value.
-        internal static bool IsFilterFamilyToken(string core)
-        {
-            foreach (var prefix in s_filterFamilyTokenPrefixes)
-            {
-                if (core.StartsWith(prefix, System.StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+        // True for tokens whose resolved property lands in the composed filter family, named presets included.
+        // Purely syntactic, so the class-diff reapply's skip decision does not pay the parse it is avoiding.
+        internal static bool IsFilterFamilyToken(string core) => StyleFilterValueParser.IsFilterLeaf(core);
 
         // Applies the winning layer for a property. Translate and scale are special: their axis layers share
         // one inline `translate` / `scale`, so their winners must be composed before that write.
@@ -2760,8 +2856,6 @@ namespace Velvet
             }
         }
 
-        // The filter members share one source of truth with the compose order (s_filterOrder), so a new
-        // filter added there is automatically recognized here — no parallel membership list to keep in sync.
         private static bool IsFilter(ArbitraryProperty p) => s_filterSet.Contains(p);
 
         // CSS composes filter functions left-to-right into one `filter` property; UITK matches (one
@@ -2780,9 +2874,14 @@ namespace Velvet
             ArbitraryProperty.FilterSepia,
         };
 
-        // Built from s_filterOrder (declared after it so the textual static-init order is satisfied) so the
-        // filter set is single-sourced — see IsFilter.
-        private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder);
+        // s_filterOrder's members plus the drop-shadow pair, whose two stacks AppendDropShadows reads together
+        // rather than one function per property. Declared after s_filterOrder so the textual static-init order
+        // is satisfied.
+        private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder)
+        {
+            ArbitraryProperty.FilterDropShadow,
+            ArbitraryProperty.FilterDropShadowColor,
+        };
 
         // Writes the filter the element's layers compose, variant layers included, or clears it where none remain.
         internal static void RecomposeFilter(VisualElement element)
@@ -2797,8 +2896,37 @@ namespace Velvet
             }
         }
 
+        // CSS interpolates a filter list holding a url() discretely, so a change into or out of a dropped chain is
+        // written at once rather than handed to either animator.
         private static void ApplyCombinedFilter(VisualElement element, LayerMap map)
         {
+            var wasDropped = map.FilterChainDropped;
+            var functions = ComposeFilter(element, map, out var dropped);
+            map.FilterChainDropped = dropped;
+            if (wasDropped || dropped)
+            {
+                using (StyleFilterEngineWrite.WithoutTransition())
+                {
+                    WriteComposedFilter(element, functions);
+                }
+                return;
+            }
+            WriteComposedFilter(element, functions);
+        }
+
+        private static void WriteComposedFilter(VisualElement element, List<FilterFunction>? functions)
+        {
+            // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
+            // from-side, so it must run BEFORE the instant write below (never observing its own write).
+            if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
+            {
+                StyleFilterEngineWrite.Write(element, functions);
+            }
+        }
+
+        private static List<FilterFunction>? ComposeFilter(VisualElement element, LayerMap map, out bool dropped)
+        {
+            dropped = false;
             List<FilterFunction>? functions = null;
             foreach (var prop in s_filterOrder)
             {
@@ -2811,36 +2939,135 @@ namespace Velvet
                     (functions ??= new List<FilterFunction>()).Add(fn);
                 }
             }
+            AppendDropShadows(element, map, ref functions);
             // Customs compose AFTER every built-in, in first-application order — each entry contributing
             // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
             // SortedList wins" rule the built-ins use above, just keyed by name instead of by
             // ArbitraryProperty. An empty stack is a tombstone holding its name's compose slot (see
-            // LayerMap.Customs). A winning layer whose definition has been DESTROYED since it was applied
-            // compares equal to null (a dead asset) and is skipped: the engine's FilterFunction
-            // constructor throws on a dead definition, and a function bound to one could not render
-            // anything anyway.
-            if (map.Customs != null)
+            // LayerMap.Customs). A layer whose registration refuses its arguments is an invalid declaration's,
+            // which CSS drops at parse time, so the layer under it wins. A winning layer with no definition
+            // names no live filter — never registered, unregistered, or DESTROYED since it was applied, which
+            // compares equal to null — and CSS ignores the whole chain when a url() names no filter.
+            if (map.Customs == null)
             {
-                foreach (var (_, stack) in map.Customs)
+                return functions;
+            }
+            foreach (var (_, stack) in map.Customs)
+            {
+                var top = TopAcceptedLayer(stack);
+                if (top < 0)
                 {
-                    if (stack.Count == 0)
-                    {
-                        continue;
-                    }
-                    var custom = stack.Values[stack.Count - 1].Custom!;
-                    if (custom.Definition == null)
-                    {
-                        continue;
-                    }
-                    (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
+                    continue;
+                }
+                var custom = stack.Values[top].Custom!;
+                if (custom.Definition == null)
+                {
+                    dropped = true;
+                    return null;
+                }
+                (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
+            }
+            return functions;
+        }
+
+        private static int TopAcceptedLayer(SortedList<long, ArbitraryStyle> stack)
+        {
+            for (var i = stack.Count - 1; i >= 0; i--)
+            {
+                if (!stack.Values[i].Custom!.Rejected)
+                {
+                    return i;
                 }
             }
-            // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
-            // from-side, so it must run BEFORE the instant write below (never observing its own write).
-            if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
+            return -1;
+        }
+
+        // Tailwind's drop-shadow utilities write variables rather than the filter. A size writes
+        // --tw-drop-shadow-size, its colours reading --tw-drop-shadow-color, and a colour writes that colour, scaled by
+        // the --tw-drop-shadow-alpha a size's modifier writes. --tw-drop-shadow, which the filter reads, is written by
+        // all of them: a literal size writes its own shadows, none writes an empty one, and every other token
+        // var(--tw-drop-shadow-size), which none leaves to the size under it. At one rank the colour's rule sorts
+        // after the others and wins, so the comparison reads ranks alone, never the rule's place in a key.
+        private static void AppendDropShadows(VisualElement element, LayerMap map, ref List<FilterFunction>? functions)
+        {
+            if (!map.TryGetValue(ArbitraryProperty.FilterDropShadow, out var sizes) || sizes.Count == 0)
             {
-                StyleFilterEngineWrite.Write(element, functions);
+                return;
             }
+            var definition = BuiltInFilterDefinitions.DropShadow;
+            if (definition == null || sizes.Values[sizes.Count - 1].DropShadow is not { } top)
+            {
+                return;
+            }
+            Color? variable = null;
+            var colorWrites = false;
+            if (map.TryGetValue(ArbitraryProperty.FilterDropShadowColor, out var colors) && colors.Count > 0)
+            {
+                var color = colors.Values[colors.Count - 1].Color;
+                color.a *= AlphaVariable(sizes) ?? 1f;
+                variable = color;
+                colorWrites = StyleLayerPriority.RankOf(colors.Keys[colors.Count - 1])
+                    >= StyleLayerPriority.RankOf(sizes.Keys[sizes.Count - 1]);
+            }
+            var literal = top.Literal && !colorWrites;
+            var size = literal ? top : SizeVariable(sizes);
+            if (size == null)
+            {
+                return;
+            }
+            foreach (var shadow in size.Shadows)
+            {
+                var color = shadow.Color;
+                if (!literal)
+                {
+                    if (variable != null)
+                    {
+                        color = variable.Value;
+                    }
+                    else if (size.Alpha != null)
+                    {
+                        color.a = size.Alpha.Value;
+                    }
+                }
+                if (float.IsNaN(color.r))
+                {
+                    var current = element.resolvedStyle.color;
+                    current.a *= color.a;
+                    color = current;
+                }
+                var function = new FilterFunction(definition!);
+                function.AddParameter(new FilterParameter(shadow.X));
+                function.AddParameter(new FilterParameter(shadow.Y));
+                function.AddParameter(new FilterParameter(shadow.Deviation));
+                function.AddParameter(new FilterParameter(color));
+                (functions ??= new List<FilterFunction>()).Add(function);
+            }
+        }
+
+        // The highest layer writing --tw-drop-shadow-size, which none does not.
+        private static DropShadowValue? SizeVariable(SortedList<long, ArbitraryStyle> sizes)
+        {
+            for (var i = sizes.Count - 1; i >= 0; i--)
+            {
+                if (sizes.Values[i].DropShadow is { Shadows: { Length: > 0 } } size)
+                {
+                    return size;
+                }
+            }
+            return null;
+        }
+
+        // The highest layer declaring a modifier: a size without one leaves --tw-drop-shadow-alpha alone.
+        private static float? AlphaVariable(SortedList<long, ArbitraryStyle> sizes)
+        {
+            for (var i = sizes.Count - 1; i >= 0; i--)
+            {
+                if (sizes.Values[i].DropShadow?.Alpha is { } alpha)
+                {
+                    return alpha;
+                }
+            }
+            return null;
         }
 
         // Builds the FilterFunction for a filter-[name:args] custom filter. The public
@@ -2930,7 +3157,8 @@ namespace Velvet
             {
                 // Among transform properties, scale (uniform + per-axis) and both translate axes are composed
                 // by ResolveAndApply's combined appliers and never reach here; what lands is every transform
-                // property written in one go — rotate, transform-origin — plus aspect-ratio and the four-edge Slice.
+                // property written in one go — rotate, transform-origin — plus aspect-ratio, the four-edge Slice and
+                // the flex shorthand's three longhands.
                 case ArbitraryProperty.Rotate:
                     element.style.rotate = new Rotate(new Angle(style.Value, AngleUnit.Degree));
                     return;
@@ -2957,6 +3185,15 @@ namespace Velvet
                 case ArbitraryProperty.SliceType:
                     WriteSliceType(element, style);
                     return;
+                case ArbitraryProperty.Flex:
+                {
+                    var flex = ClipPathLayoutBox.StyleFor(element, style.Property);
+                    flex.flexGrow = style.Value;
+                    flex.flexShrink = style.Value3;
+                    // The basis is written as basis-[…] writes its own, a measured length included.
+                    WriteLength(element, flex, FlexBasisOf(style), PropertySetters[ArbitraryProperty.FlexBasis]);
+                    return;
+                }
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)
@@ -3015,6 +3252,12 @@ namespace Velvet
 
             WriteLength(element, ClipPathLayoutBox.BoxFor(element, style.Property).style, style, setters);
         }
+
+        // A Flex result's basis as the FlexBasis result basis-[…] parses to.
+        private static ArbitraryStyle FlexBasisOf(in ArbitraryStyle flex)
+            => flex.Expression != null ? new ArbitraryStyle(ArbitraryProperty.FlexBasis, flex.Expression)
+                : float.IsNaN(flex.Value2) ? ArbitraryStyle.AutoLength(ArbitraryProperty.FlexBasis)
+                : new ArbitraryStyle(ArbitraryProperty.FlexBasis, flex.Value2, flex.Unit2);
 
         // A relative length is measured per setter, since each carries its own axis and its own stand-in for an
         // indefinite one; a length that cannot be measured yet leaves that slot as it is.
@@ -3119,6 +3362,15 @@ namespace Velvet
                 case ArbitraryProperty.AspectRatio:
                     ClipPathLayoutBox.StyleFor(element, property).aspectRatio = StyleKeyword.Null;
                     return true;
+                case ArbitraryProperty.Flex:
+                {
+                    var flex = ClipPathLayoutBox.StyleFor(element, property);
+                    flex.flexGrow = StyleKeyword.Null;
+                    flex.flexShrink = StyleKeyword.Null;
+                    flex.flexBasis = StyleKeyword.Null;
+                    // MUTANT_SURVIVES(equivalent, literal): the flex shorthand has no entry in the fallback setter tables ClearInline reads.
+                    return true;
+                }
                 // translate and scale are each a single shorthand for both axes (and scale composes the uniform
                 // + per-axis layers), so clearing any one reverts the whole property. In the class-diff reconcile
                 // path the survivors are restored by FiberNodePatcher.ReapplyArbitraryValues; a direct Clear (or a
