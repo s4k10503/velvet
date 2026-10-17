@@ -8,8 +8,9 @@ Only what git tracks is read, files and the directories holding them alike. A di
 tracked file is not part of the project as anyone else receives it, so its `.meta` is reported as an
 orphan rather than its absence excused.
 
-A path with any component below its root that starts with `.` or ends with `~` is out of scope, and
-so is a `.meta` naming one.
+A path is out of scope, as is a `.meta` naming one, when a component below its root starts with `.`,
+ends with `~` or is named `cvs`, or when its last component, a file, ends with `.tmp`: the names
+Unity does not import.
 """
 
 import argparse
@@ -27,9 +28,10 @@ def tracked(project, root):
 
 
 def in_scope_prefix(parts):
-    """The leading components of a root-relative path that come before any `.` or `~` one."""
+    """The leading components of a root-relative path that come before any one Unity does not import."""
     for index, part in enumerate(parts):
-        if part.startswith(".") or part.endswith("~"):
+        if (part.startswith(".") or part.endswith("~") or part == "cvs"
+                or (index == len(parts) - 1 and part.endswith(".tmp"))):
             return parts[:index]
     return parts
 

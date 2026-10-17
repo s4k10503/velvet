@@ -52,7 +52,7 @@ class AssetMetaCheckTests(unittest.TestCase):
         # Assert
         self.assertEqual([ROOT + "Runtime"], missing)
 
-    def test_Given_EveryFileAndDirectoryWithAMeta_When_Checked_Then_NothingIsReported(self):
+    def test_Given_EveryFileAndDirectoryWithAMeta_When_Checked_Then_NothingIsMissing(self):
         # Arrange
         project = self.repository_holding([
             ROOT + "package.json", ROOT + "package.json.meta",
@@ -60,9 +60,21 @@ class AssetMetaCheckTests(unittest.TestCase):
             ROOT + "Runtime/Hooks/A.cs", ROOT + "Runtime/Hooks/A.cs.meta",
         ])
         # Act
-        found = asset_meta_check.findings(project)
+        found = asset_meta_check.findings(project)[0]
         # Assert
-        self.assertEqual(([], []), found)
+        self.assertEqual([], found)
+
+    def test_Given_EveryFileAndDirectoryWithAMeta_When_Checked_Then_NothingIsOrphaned(self):
+        # Arrange
+        project = self.repository_holding([
+            ROOT + "package.json", ROOT + "package.json.meta",
+            ROOT + "Runtime.meta", ROOT + "Runtime/Hooks.meta",
+            ROOT + "Runtime/Hooks/A.cs", ROOT + "Runtime/Hooks/A.cs.meta",
+        ])
+        # Act
+        found = asset_meta_check.findings(project)[1]
+        # Assert
+        self.assertEqual([], found)
 
     def test_Given_AMetaWhoseFileIsNotTracked_When_Checked_Then_ItIsReportedOrphaned(self):
         # Arrange
@@ -88,25 +100,99 @@ class AssetMetaCheckTests(unittest.TestCase):
         # Assert
         self.assertEqual([ROOT + "README.md"], missing)
 
-    def test_Given_FilesUnderATildeDirectoryNestedInTheRuntime_When_Checked_Then_NothingIsReported(self):
+    def test_Given_FilesUnderATildeDirectoryNestedInTheRuntime_When_Checked_Then_NothingIsMissing(self):
         # Arrange
         project = self.repository_holding([
             ROOT + "Runtime.meta", ROOT + "Runtime/Notes~/a.md", ROOT + "Runtime/Notes~.meta",
         ])
         # Act
-        found = asset_meta_check.findings(project)
+        found = asset_meta_check.findings(project)[0]
         # Assert
-        self.assertEqual(([], []), found)
+        self.assertEqual([], found)
 
-    def test_Given_ADotFileInsideTheRuntime_When_Checked_Then_NothingIsReported(self):
+    def test_Given_FilesUnderATildeDirectoryNestedInTheRuntime_When_Checked_Then_NothingIsOrphaned(self):
+        # Arrange
+        project = self.repository_holding([
+            ROOT + "Runtime.meta", ROOT + "Runtime/Notes~/a.md", ROOT + "Runtime/Notes~.meta",
+        ])
+        # Act
+        found = asset_meta_check.findings(project)[1]
+        # Assert
+        self.assertEqual([], found)
+
+    def test_Given_ADotFileInsideTheRuntime_When_Checked_Then_NothingIsMissing(self):
         # Arrange
         project = self.repository_holding([
             ROOT + "Runtime.meta", ROOT + "Runtime/.gitkeep", ROOT + "Runtime/.hidden/a.cs",
         ])
         # Act
-        found = asset_meta_check.findings(project)
+        found = asset_meta_check.findings(project)[0]
         # Assert
-        self.assertEqual(([], []), found)
+        self.assertEqual([], found)
+
+    def test_Given_ADotFileInsideTheRuntime_When_Checked_Then_NothingIsOrphaned(self):
+        # Arrange
+        project = self.repository_holding([
+            ROOT + "Runtime.meta", ROOT + "Runtime/.gitkeep", ROOT + "Runtime/.hidden/a.cs",
+        ])
+        # Act
+        found = asset_meta_check.findings(project)[1]
+        # Assert
+        self.assertEqual([], found)
+
+    def test_Given_FilesUnderACvsDirectoryInsideTheRuntime_When_Checked_Then_NothingIsMissing(self):
+        # Arrange
+        project = self.repository_holding([ROOT + "Runtime.meta", ROOT + "Runtime/cvs/a.cs"])
+        # Act
+        missing = asset_meta_check.findings(project)[0]
+        # Assert
+        self.assertEqual([], missing)
+
+    def test_Given_AMetaNamingACvsDirectoryInsideTheRuntime_When_Checked_Then_NothingIsOrphaned(self):
+        # Arrange
+        project = self.repository_holding([
+            ROOT + "Runtime.meta", ROOT + "Runtime/A.cs", ROOT + "Runtime/A.cs.meta", ROOT + "Runtime/cvs.meta",
+        ])
+        # Act
+        orphaned = asset_meta_check.findings(project)[1]
+        # Assert
+        self.assertEqual([], orphaned)
+
+    def test_Given_FilesUnderADirectoryOnlyStartingWithCvs_When_Checked_Then_ItIsReportedMissing(self):
+        # Arrange
+        project = self.repository_holding([
+            ROOT + "Runtime.meta", ROOT + "Runtime/cvsx/a.cs", ROOT + "Runtime/cvsx/a.cs.meta",
+        ])
+        # Act
+        missing = asset_meta_check.findings(project)[0]
+        # Assert
+        self.assertEqual([ROOT + "Runtime/cvsx"], missing)
+
+    def test_Given_ATmpFileInsideTheRuntime_When_Checked_Then_NothingIsMissing(self):
+        # Arrange
+        project = self.repository_holding([ROOT + "Runtime.meta", ROOT + "Runtime/build.tmp"])
+        # Act
+        missing = asset_meta_check.findings(project)[0]
+        # Assert
+        self.assertEqual([], missing)
+
+    def test_Given_AMetaNamingATmpFileInsideTheRuntime_When_Checked_Then_NothingIsOrphaned(self):
+        # Arrange
+        project = self.repository_holding([
+            ROOT + "Runtime.meta", ROOT + "Runtime/A.cs", ROOT + "Runtime/A.cs.meta", ROOT + "Runtime/build.tmp.meta",
+        ])
+        # Act
+        orphaned = asset_meta_check.findings(project)[1]
+        # Assert
+        self.assertEqual([], orphaned)
+
+    def test_Given_AFileOnlyContainingTmpInItsName_When_Checked_Then_ItIsReportedMissing(self):
+        # Arrange
+        project = self.repository_holding([ROOT + "Runtime.meta", ROOT + "Runtime/a.tmp.cs"])
+        # Act
+        missing = asset_meta_check.findings(project)[0]
+        # Assert
+        self.assertEqual([ROOT + "Runtime/a.tmp.cs"], missing)
 
     def test_Given_AFileUnderAssetsWithoutAMeta_When_Checked_Then_ItIsReportedMissing(self):
         # Arrange
@@ -116,26 +202,47 @@ class AssetMetaCheckTests(unittest.TestCase):
         # Assert
         self.assertEqual(["Assets/Scene.unity"], missing)
 
-    def test_Given_AssetsWithEveryFileAndDirectoryMetaButNoneForItself_When_Checked_Then_NothingIsReported(self):
+    def test_Given_AssetsWithEveryFileAndDirectoryMetaButNoneForItself_When_Checked_Then_NothingIsMissing(self):
         # Arrange
         project = self.repository_holding([
             "Assets/Scene.unity", "Assets/Scene.unity.meta",
             "Assets/UI Toolkit.meta", "Assets/UI Toolkit/Panel.asset", "Assets/UI Toolkit/Panel.asset.meta",
         ])
         # Act
-        found = asset_meta_check.findings(project)
+        found = asset_meta_check.findings(project)[0]
         # Assert
-        self.assertEqual(([], []), found)
+        self.assertEqual([], found)
 
-    def test_Given_FilesOutsideBothRootsWithoutAMeta_When_Checked_Then_NothingIsReported(self):
+    def test_Given_AssetsWithEveryFileAndDirectoryMetaButNoneForItself_When_Checked_Then_NothingIsOrphaned(self):
+        # Arrange
+        project = self.repository_holding([
+            "Assets/Scene.unity", "Assets/Scene.unity.meta",
+            "Assets/UI Toolkit.meta", "Assets/UI Toolkit/Panel.asset", "Assets/UI Toolkit/Panel.asset.meta",
+        ])
+        # Act
+        found = asset_meta_check.findings(project)[1]
+        # Assert
+        self.assertEqual([], found)
+
+    def test_Given_FilesOutsideBothRootsWithoutAMeta_When_Checked_Then_NothingIsMissing(self):
         # Arrange
         project = self.repository_holding([
             "Packages/manifest.json", "ProjectSettings/ProjectSettings.asset", "scripts/x.py",
         ])
         # Act
-        found = asset_meta_check.findings(project)
+        found = asset_meta_check.findings(project)[0]
         # Assert
-        self.assertEqual(([], []), found)
+        self.assertEqual([], found)
+
+    def test_Given_FilesOutsideBothRootsWithoutAMeta_When_Checked_Then_NothingIsOrphaned(self):
+        # Arrange
+        project = self.repository_holding([
+            "Packages/manifest.json", "ProjectSettings/ProjectSettings.asset", "scripts/x.py",
+        ])
+        # Act
+        found = asset_meta_check.findings(project)[1]
+        # Assert
+        self.assertEqual([], found)
 
 
 if __name__ == "__main__":
