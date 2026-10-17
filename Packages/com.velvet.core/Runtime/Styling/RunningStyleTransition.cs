@@ -15,22 +15,22 @@ namespace Velvet
     internal static class RunningStyleTransition
     {
         private static readonly PropertyInfo? s_system = EngineMember.PanelStyleAnimationSystem.ResolveProperty();
-        private static readonly FieldInfo? s_now = EngineMember.AnimationSystemCurrentTime.ResolveField();
-        private static readonly FieldInfo? s_floats = EngineMember.AnimatedFloats.ResolveField();
-        private static readonly FieldInfo? s_rotates = EngineMember.AnimatedRotates.ResolveField();
-        // Declared on the generic definitions; read through the members of the constructed type a value is (Closed).
-        private static readonly FieldInfo? s_running = EngineMember.RunningAnimations.ResolveField();
-        private static readonly MethodInfo? s_indexOf = EngineMember.RunningAnimationIndexOf.ResolveMethod();
-        private static readonly FieldInfo? s_timings = EngineMember.RunningAnimationTimings.ResolveField();
-        private static readonly FieldInfo? s_styles = EngineMember.RunningAnimationStyles.ResolveField();
-        private static readonly FieldInfo? s_startTime = EngineMember.AnimationStartTime.ResolveField();
-        private static readonly FieldInfo? s_duration = EngineMember.AnimationDuration.ResolveField();
-        private static readonly FieldInfo? s_curve = EngineMember.AnimationEasingCurve.ResolveField();
-        private static readonly FieldInfo? s_eased = EngineMember.AnimationEasedProgress.ResolveField();
-        private static readonly FieldInfo? s_shortening = EngineMember.AnimationReversingShortening.ResolveField();
-        private static readonly FieldInfo? s_from = EngineMember.AnimationStartValue.ResolveField();
-        private static readonly FieldInfo? s_to = EngineMember.AnimationEndValue.ResolveField();
-        private static readonly FieldInfo? s_reversingStart = EngineMember.AnimationReversingStartValue.ResolveField();
+        private static readonly FieldInfo? s_now = EngineMember.AnimationSystemTime.ResolveField();
+        private static readonly FieldInfo? s_floats = EngineMember.AnimationSystemFloats.ResolveField();
+        private static readonly FieldInfo? s_rotates = EngineMember.AnimationSystemRotates.ResolveField();
+        // Declared on the generic definitions; read through the members of the constructed type a value is (Close).
+        private static readonly FieldInfo? s_running = EngineMember.AnimationValuesRunning.ResolveField();
+        private static readonly MethodInfo? s_indexOf = EngineMember.AnimationDataSetIndexOf.ResolveMethod();
+        private static readonly FieldInfo? s_timings = EngineMember.AnimationDataSetTiming.ResolveField();
+        private static readonly FieldInfo? s_styles = EngineMember.AnimationDataSetStyle.ResolveField();
+        private static readonly FieldInfo? s_startTime = EngineMember.AnimationTimingStart.ResolveField();
+        private static readonly FieldInfo? s_duration = EngineMember.AnimationTimingDuration.ResolveField();
+        private static readonly FieldInfo? s_curve = EngineMember.AnimationTimingEasing.ResolveField();
+        private static readonly FieldInfo? s_eased = EngineMember.AnimationTimingEased.ResolveField();
+        private static readonly FieldInfo? s_shortening = EngineMember.AnimationTimingReversingShortening.ResolveField();
+        private static readonly FieldInfo? s_from = EngineMember.AnimationStyleStart.ResolveField();
+        private static readonly FieldInfo? s_to = EngineMember.AnimationStyleEnd.ResolveField();
+        private static readonly FieldInfo? s_reversingStart = EngineMember.AnimationStyleReversingStart.ResolveField();
         private static readonly object? s_opacityId = EngineMember.OpacityPropertyId.ResolveField()?.GetValue(null);
         private static readonly object? s_rotateId = EngineMember.RotatePropertyId.ResolveField()?.GetValue(null);
         private static readonly bool s_readable = Array.TrueForAll(
@@ -111,8 +111,8 @@ namespace Velvet
             }
             if (constructed == null) throw new InvalidOperationException($"{type} is not constructed from {definition}");
             closed = member is FieldInfo field
-                ? FieldInfo.GetFieldFromHandle(field.FieldHandle, constructed.TypeHandle)
-                : MethodBase.GetMethodFromHandle(((MethodInfo)member).MethodHandle, constructed.TypeHandle)!;
+                ? NativeTransitionVelocity.Closed(field, constructed)
+                : NativeTransitionVelocity.Closed((MethodInfo)member, constructed);
             s_closed[(member, type)] = closed;
             return closed;
         }
