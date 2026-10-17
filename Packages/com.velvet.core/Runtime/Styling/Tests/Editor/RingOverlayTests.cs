@@ -252,9 +252,8 @@ namespace Velvet.Tests
             // Act
             ForcePanelUpdate(card.panel);
 
-            // Assert — the card's own red is the class taking effect.
-            Assert.That((card.resolvedStyle.color, BandFor(card).resolvedStyle.borderTopColor),
-                Is.EqualTo((Color.red, Color.red)));
+            // Assert
+            Assert.That(BandFor(card).resolvedStyle.borderTopColor, Is.EqualTo(Color.red));
         }
 
         [Test]

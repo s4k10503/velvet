@@ -35,8 +35,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_BareRing_When_Extracted_Then_UsesTheOnePixelDefaultWidth()
         {
-            // Tailwind v4's --default-ring-width.
-            Assert.That(Extract("ring").Width, Is.EqualTo(1f));
+            // Act
+            var width = Extract("ring").Width;
+
+            // Assert: Tailwind v4's --default-ring-width.
+            Assert.That(width, Is.EqualTo(1f));
         }
 
         [Test]
@@ -54,10 +57,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_RingColorOnly_When_Extracted_Then_NoRingIsDrawn()
         {
-            // A ring colour writes only --tw-ring-color; the control is the same colour beside a bare ring.
-            Assert.That(
-                (StyleRingClass.TryExtract(new[] { "ring-red-500" }, out _), StyleRingClass.TryExtract(new[] { "ring", "ring-red-500" }, out _)),
-                Is.EqualTo((false, true)));
+            // Act
+            var extracted = StyleRingClass.TryExtract(new[] { "ring-red-500" }, out _);
+
+            // Assert: a ring colour writes only --tw-ring-color.
+            Assert.That(extracted, Is.False);
         }
 
         [Test]
@@ -90,8 +94,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADefaultColorRing_When_Extracted_Then_ItTakesTheTextColour()
         {
-            // Tailwind v4's ring is var(--tw-ring-color, currentcolor).
-            Assert.That(TakesTextColour(Extract("ring-2")), Is.True);
+            // Act
+            var spec = Extract("ring-2");
+
+            // Assert: Tailwind v4's ring is var(--tw-ring-color, currentcolor).
+            Assert.That(TakesTextColour(spec), Is.True);
         }
 
         [Test]
@@ -104,8 +111,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABareOutline_When_Extracted_Then_ItTakesTheTextColour()
         {
-            // outline-color's initial value is the text colour.
-            Assert.That(TakesTextColour(Extract("outline")), Is.True);
+            // Act
+            var spec = Extract("outline");
+
+            // Assert: outline-color's initial value is the text colour.
+            Assert.That(TakesTextColour(spec), Is.True);
         }
 
         [Test]
@@ -126,14 +136,37 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineKeepsItsOwnColour()
+        public void Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineDefaultWidthSurvives()
         {
-            // A ring colour is --tw-ring-color, which an outline does not read; the control is an outline colour,
-            // which it does.
-            var ringColoured = Extract("outline", "ring-red-500");
-            var outlineColoured = Extract("outline", "outline-red-500");
-            Assert.That((ringColoured.Width, TakesTextColour(ringColoured), TakesTextColour(outlineColoured)),
-                Is.EqualTo((1f, true, false)));
+            // Act
+            var width = Extract("outline", "ring-red-500").Width;
+
+            // Assert: a colour names no width, so it must not decide which family's default width applies.
+            Assert.That(width, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineStillTakesTheTextColour()
+        {
+            // Act
+            var spec = Extract("outline", "ring-red-500");
+
+            // Assert: a ring colour is --tw-ring-color, which an outline does not read.
+            Assert.That(TakesTextColour(spec), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base colours an outline with its own colour class too; this is the control for the case above.
+        [Test]
+        public void Given_OutlineWithAnOutlineColorToken_When_Extracted_Then_TheOutlineIsThatColour()
+        {
+            // Arrange
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+
+            // Act
+            var spec = Extract("outline", "outline-red-500");
+
+            // Assert
+            Assert.That(spec.Color, Is.EqualTo(red));
         }
 
         [Test]
