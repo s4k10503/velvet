@@ -83,23 +83,48 @@ namespace Velvet.Tests
             return $"{pixel.r},{pixel.g},{pixel.b}";
         }
 
+        // The shadow is the ink shifted 10px right and down, so the ink's centre lies inside it, the corner past the
+        // ink's bottom-right holds the shadow alone, and the caster's own box shadows nothing.
         [UnityTest]
-        public IEnumerator Given_AHardOffsetShadow_When_Rendered_Then_ItFollowsTheInkBelowRightAndTheInkStaysOverIt()
+        public IEnumerator Given_AHardOffsetShadow_When_Rendered_Then_TheInkStaysOverIt()
         {
-            // Arrange — the shadow is the ink shifted 10px right and down, so the ink's centre lies inside it, the
-            // corner past the ink's bottom-right holds the shadow alone, and the caster's own box shadows nothing.
+            // Arrange
             yield return Mount("drop-shadow-[10px_10px_0_#ff0000]");
             var ink = Bounds("ink");
+
+            // Act
+            var centre = Classify(PixelAt(Frame(), ink.center.x, ink.center.y));
+
+            // Assert
+            Assert.That(centre, Is.EqualTo("blue"), $"ink={ink}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AHardOffsetShadow_When_Rendered_Then_ItFollowsTheInkBelowRight()
+        {
+            // Arrange
+            yield return Mount("drop-shadow-[10px_10px_0_#ff0000]");
+            var ink = Bounds("ink");
+
+            // Act
+            var past = Classify(PixelAt(Frame(), ink.xMax + 5f, ink.yMax + 5f));
+
+            // Assert
+            Assert.That(past, Is.EqualTo("red"), $"ink={ink}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AHardOffsetShadow_When_Rendered_Then_TheCastersBoxShadowsNothing()
+        {
+            // Arrange
+            yield return Mount("drop-shadow-[10px_10px_0_#ff0000]");
             var caster = Bounds("caster");
 
             // Act
-            var frame = Frame();
-            var reading = (Classify(PixelAt(frame, ink.center.x, ink.center.y)),
-                Classify(PixelAt(frame, ink.xMax + 5f, ink.yMax + 5f)),
-                Classify(PixelAt(frame, caster.xMax + 5f, caster.yMax + 5f)));
+            var past = Classify(PixelAt(Frame(), caster.xMax + 5f, caster.yMax + 5f));
 
             // Assert
-            Assert.That(reading, Is.EqualTo(("blue", "red", "white")), $"ink={ink} caster={caster}");
+            Assert.That(past, Is.EqualTo("white"), $"caster={caster}");
         }
 
         [UnityTest]

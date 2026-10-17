@@ -98,22 +98,28 @@ namespace Velvet.Tests
             Assert.That(composed, Is.EqualTo("drop-shadow(0 35 35 0,0,0,0.25) drop-shadow(-2 0 16 1,0,0,1)"));
         }
 
-        // Each is paired with a spelling that resolves, so a grammar that resolves nothing fails here too.
-        [TestCase("drop-shadow-[0_1px_2px_3px_black]", TestName = "Given_AShadowWithASpread_When_Parsed_Then_OnlyTheThreeLengthSpellingResolves")]
-        [TestCase("drop-shadow-[0_1px_-2px_black]", TestName = "Given_ANegativeDeviation_When_Parsed_Then_OnlyTheNonNegativeSpellingResolves")]
-        [TestCase("drop-shadow-[0_10%_2px_black]", TestName = "Given_APercentOffset_When_Parsed_Then_OnlyThePixelSpellingResolves")]
-        [TestCase("drop-shadow-[0_1px_2px_black_white]", TestName = "Given_TwoColours_When_Parsed_Then_OnlyTheOneColourSpellingResolves")]
-        [TestCase("drop-shadow-none/50", TestName = "Given_NoneWithAModifier_When_Parsed_Then_OnlyTheSizeSpellingResolves")]
-        public void Given_AMalformedDropShadow_When_Parsed_Then_OnlyTheWellFormedSpellingResolves(string token)
+        [TestCase("drop-shadow-[0_1px_2px_3px_black]", TestName = "Given_AShadowWithASpread_When_Parsed_Then_ItDoesNotResolve")]
+        [TestCase("drop-shadow-[0_1px_-2px_black]", TestName = "Given_ANegativeDeviation_When_Parsed_Then_ItDoesNotResolve")]
+        [TestCase("drop-shadow-[0_10%_2px_black]", TestName = "Given_APercentOffset_When_Parsed_Then_ItDoesNotResolve")]
+        [TestCase("drop-shadow-[0_1px_2px_black_white]", TestName = "Given_TwoColours_When_Parsed_Then_ItDoesNotResolve")]
+        [TestCase("drop-shadow-none/50", TestName = "Given_NoneWithAModifier_When_Parsed_Then_ItDoesNotResolve")]
+        public void Given_AMalformedDropShadow_When_Parsed_Then_ItDoesNotResolve(string token)
         {
-            // Arrange
-            var malformed = token;
-
             // Act
-            var parsed = (StyleArbitraryValueResolver.TryParse(malformed, out _), StyleArbitraryValueResolver.TryParse(Control, out _));
+            var parsed = StyleArbitraryValueResolver.TryParse(token, out _);
 
             // Assert
-            Assert.That(parsed, Is.EqualTo((false, true)));
+            Assert.That(parsed, Is.False);
+        }
+
+        [Test]
+        public void Given_AWellFormedDropShadow_When_Parsed_Then_ItResolves()
+        {
+            // Act
+            var parsed = StyleArbitraryValueResolver.TryParse(Control, out _);
+
+            // Assert
+            Assert.That(parsed, Is.True);
         }
 
         [Test]

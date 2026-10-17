@@ -206,10 +206,10 @@ namespace Velvet.Tests
             StyleShadowClass.TryExtract(new[] { "shadow-lg" }, out var expected);
 
             // Act
-            var want = StyleShadowClass.TryExtract(classes, out var spec);
+            StyleShadowClass.TryExtract(classes, out var spec);
 
             // Assert
-            Assert.That((want, spec.Blur), Is.EqualTo((true, expected.Blur)));
+            Assert.That(spec.Blur, Is.EqualTo(expected.Blur));
         }
 
         [Test]

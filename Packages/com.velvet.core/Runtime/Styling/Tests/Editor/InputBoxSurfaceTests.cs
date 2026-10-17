@@ -591,33 +591,34 @@ namespace Velvet.Tests
             return string.Join(" ", types);
         }
 
-        [Test]
-        public void Given_ABlurOnALabelledTextField_When_Reconciled_Then_OnlyTheInputBoxIsFiltered()
+        [TestCase("blur-sm", "Blur")]
+        [TestCase("drop-shadow-lg", "Custom")]
+        public void Given_AFilterOnALabelledTextField_When_Reconciled_Then_TheInputBoxIsFiltered(string token, string expected)
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { V.TextField(className: "blur-sm", label: "Name") };
+            var tree = new VNode[] { V.TextField(className: token, label: "Name") };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That((FilterTypes(Box(scope.Root[0])), FilterTypes(scope.Root[0])), Is.EqualTo(("Blur", "none")));
+            Assert.That(FilterTypes(Box(scope.Root[0])), Is.EqualTo(expected));
         }
 
-        [Test]
-        public void Given_ADropShadowOnALabelledTextField_When_Reconciled_Then_OnlyTheInputBoxIsFiltered()
+        [TestCase("blur-sm")]
+        [TestCase("drop-shadow-lg")]
+        public void Given_AFilterOnALabelledTextField_When_Reconciled_Then_TheControlIsNotFiltered(string token)
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { V.TextField(className: "drop-shadow-lg", label: "Name") };
+            var tree = new VNode[] { V.TextField(className: token, label: "Name") };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That((FilterTypes(Box(scope.Root[0])), FilterTypes(scope.Root[0])),
-                Is.EqualTo(("Custom", "none")));
+            Assert.That(FilterTypes(scope.Root[0]), Is.EqualTo("none"));
         }
 
         #endregion
