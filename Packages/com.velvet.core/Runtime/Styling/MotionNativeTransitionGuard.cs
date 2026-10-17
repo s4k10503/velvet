@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
@@ -251,7 +250,7 @@ namespace Velvet
             // next tick, which narrows again
             // (Given_AFollowerMountedWithItsLead_When_ItsBackgroundChanges_Then_TheBackgroundTransitions).
             var read = StyleCascade.Lists(element);
-            if (read == null) element.schedule.Execute(() => Renarrow(element));
+            if (read == null) ScheduleRenarrow(element);
             var lists = read ?? new TransitionLists(null, null, null, null);
             var count = lists.Properties.Count;
             var excluded = StyleLonghandSet.Empty;
@@ -282,6 +281,11 @@ namespace Velvet
             }
             (suspension.Written, suspension.Rules, suspension.Stale) = (new List<StylePropertyName>(names), rules, read == null);
         }
+
+        // Kept out of WriteNarrowed: a lambda there capturing its parameter would allocate its closure on every call,
+        // the early exits a steady pass takes included
+        // (Given_ANarrowedLeadMidMove_When_ItsProjectionRefreshes_Then_NothingIsAllocated).
+        private static void ScheduleRenarrow(VisualElement element) => element.schedule.Execute(() => Renarrow(element));
 
         private static void Renarrow(VisualElement element)
         {
@@ -836,7 +840,11 @@ namespace Velvet
         {
             var longhand = Array.IndexOf(s_longhandNames, new StylePropertyName(property));
             if (longhand < 0 || !s_suspensions.TryGetValue(element, out var suspension)) return false;
-            return suspension.Driven.Values.Any(slots => LonghandsOf(slots).Contains((StyleLonghand)longhand));
+            foreach (var slots in suspension.Driven.Values)
+            {
+                if (LonghandsOf(slots).Contains((StyleLonghand)longhand)) return true;
+            }
+            return false;
         }
 
         /// <summary>

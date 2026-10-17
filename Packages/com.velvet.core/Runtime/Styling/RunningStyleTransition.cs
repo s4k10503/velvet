@@ -1,6 +1,5 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine.UIElements;
 
@@ -41,8 +40,6 @@ namespace Velvet
             },
             m => m != null);
 
-        // A member of a generic definition as declared on a type constructed from it, keyed by both.
-        private static readonly Dictionary<(MemberInfo, Type), MemberInfo> s_closed = new();
         private static readonly object?[] s_args = new object?[3];
 
         // Has the carry run on from the element's running opacity transition, if it has one.
@@ -60,7 +57,7 @@ namespace Velvet
             {
                 var (system, timing, style) = found;
                 var (from, to, reversingStart) = (read(Read(s_from!, style)), read(Read(s_to!, style)), read(Read(s_reversingStart!, style)));
-                if (float.IsNaN(from + to + reversingStart)) return;
+                if (!AllNumbers(from, to, reversingStart)) return;
                 var elapsedSec = (double)s_now!.GetValue(system) - (double)Read(s_startTime!, timing);
                 carry.TakeOver((from, to, (float)Read(s_duration!, timing), (float)elapsedSec), (Func<float, float>)Read(s_curve!, timing),
                     (reversingStart, (float)Read(s_shortening!, timing), (float)Read(s_eased!, timing)));
@@ -96,25 +93,24 @@ namespace Velvet
             }
         }
 
+        internal static bool AllNumbers(float from, float to, float reversingStart) =>
+            !float.IsNaN(from) && !float.IsNaN(to) && !float.IsNaN(reversingStart);
+
         private static object Read(FieldInfo field, object owner) => ((FieldInfo)Close(field, owner.GetType())).GetValue(owner);
 
-        // The member as the constructed type the value is, or one it derives from, declares it.
+        // The member as the constructed type the value is, or one it derives from, declares it. Every member read here is
+        // declared on a generic definition (EngineMember).
         private static MemberInfo Close(MemberInfo member, Type type)
         {
             var definition = member.DeclaringType!;
-            if (!definition.IsGenericTypeDefinition) return member;
-            if (s_closed.TryGetValue((member, type), out var closed)) return closed;
-            var constructed = type;
-            while (constructed != null && !(constructed.IsGenericType && constructed.GetGenericTypeDefinition() == definition))
+            for (var constructed = type; constructed != null; constructed = constructed.BaseType)
             {
-                constructed = constructed.BaseType;
+                if (!constructed.IsGenericType || constructed.GetGenericTypeDefinition() != definition) continue;
+                return member is FieldInfo field
+                    ? NativeTransitionVelocity.Closed(field, constructed)
+                    : NativeTransitionVelocity.Closed((MethodInfo)member, constructed);
             }
-            if (constructed == null) throw new InvalidOperationException($"{type} is not constructed from {definition}");
-            closed = member is FieldInfo field
-                ? NativeTransitionVelocity.Closed(field, constructed)
-                : NativeTransitionVelocity.Closed((MethodInfo)member, constructed);
-            s_closed[(member, type)] = closed;
-            return closed;
+            throw new InvalidOperationException($"{type} is not constructed from {definition}");
         }
     }
 }

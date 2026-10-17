@@ -11,21 +11,23 @@ namespace Velvet
     // Documentation~/player-builds.md owns that mechanism and what it costs.
     internal static class VelvetShaders
     {
-        internal const string DropShadow = "Velvet/DropShadow";
+        internal const string BoxShadow = "Velvet/BoxShadow";
         internal const string GradientSilhouette = "Velvet/GradientSilhouette";
         internal const string FilterBrightness = "Velvet/FilterBrightness";
         internal const string FilterSaturate = "Velvet/FilterSaturate";
+        internal const string FilterDropShadow = "Velvet/FilterDropShadow";
 
         internal static readonly string[] Names =
         {
-            DropShadow,
+            BoxShadow,
             GradientSilhouette,
             FilterBrightness,
             FilterSaturate,
+            FilterDropShadow,
         };
 
         // Every lookup goes through here so a name that does not resolve is reported once per run rather than
-        // once per ask: nothing caches a failed lookup, so a drop-shadow caster asks again on every bake and a
+        // once per ask: nothing caches a failed lookup, so a box-shadow caster asks again on every bake and a
         // filter definition asks again on every resolve.
         private static readonly HashSet<string> s_missingWarned = new();
 

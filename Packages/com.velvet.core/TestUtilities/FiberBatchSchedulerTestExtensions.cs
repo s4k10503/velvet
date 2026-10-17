@@ -21,7 +21,7 @@ namespace Velvet.TestUtilities
         private const string RunImmediateCallbackMethodName = "RunImmediateCallback";
 
         /// <summary>Drains the Normal / Urgent tier.</summary>
-        // Bypasses: the panel scheduler callback: production registers RunImmediateCallback, which also retires the tier's registration and marks a scheduler pass; this drains as FlushImmediate and the Transition tier's drain do, doing neither (RunImmediateCallbackForTest runs the callback itself).
+        // Bypasses: the panel scheduler callback: production registers RunImmediateCallback, which also retires the tier's registration and marks a scheduler pass; this runs DrainImmediate as FlushImmediate does, doing neither (RunImmediateCallbackForTest runs the callback itself).
         internal static void DrainImmediateForTest(this FiberBatchScheduler scheduler)
             => Drain(scheduler, DrainImmediateMethodName);
 

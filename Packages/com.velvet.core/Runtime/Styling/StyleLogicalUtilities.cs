@@ -207,8 +207,8 @@ namespace Velvet
             return true;
         }
 
-        // The widths _borders.uss declares for border-l (LogicalUtilityStyleSheetMirrorTests pins them), plus 0,
-        // which border-0 declares for all four sides.
+        // The widths _borders.uss declares for border-l: LogicalUtilityStyleSheetMirrorTests pins those it writes
+        // in px, and border-l-0 declares the unitless 0.
         private static bool TryParseBorderWidth(ArbitraryProperty property, ReadOnlySpan<char> suffix, out ArbitraryStyle result)
         {
             result = default;

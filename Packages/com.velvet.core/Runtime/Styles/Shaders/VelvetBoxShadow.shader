@@ -1,11 +1,11 @@
-Shader "Velvet/DropShadow"
+Shader "Velvet/BoxShadow"
 {
-    // Soft, iOS/macOS-style drop shadow rendered with an SDF rounded box so the blur follows the
+    // Soft, iOS/macOS-style box shadow rendered with an SDF rounded box so the blur follows the
     // target's corner radius. The C# side passes a small TARGET size in _ElementSize; this pass inflates it by
     // (_BlurRadius + extraPadding) so the blur has room to fade inside the quad, and outputs white RGB with the
     // falloff in alpha (the shadow color/strength is applied later as a tint).
     //
-    // This pass is BAKED once into a texture (DropShadowBaker uses Graphics.Blit) and that texture is drawn as
+    // This pass is BAKED once into a texture (BoxShadowBaker uses Graphics.Blit) and that texture is drawn as
     // a single quad in the caster element's OWN generateVisualContent — FIRST, before the binding repaints the
     // caster's upright fill + border, so the silhouette sits behind the caster's chrome. The bake is the FULL
     // soft silhouette (interior opaque); the repainted opaque fill covers the interior and the offset-up
@@ -27,7 +27,7 @@ Shader "Velvet/DropShadow"
         _Spread("Spread", Range(0, 50)) = 0
         _ElementSize("Element Size", Vector) = (100, 100, 0, 0)
         // tan() of the caster's skew-x angle. Non-zero shears the silhouette so the shadow follows
-        // a skew-x-* caster (baked full-size by DropShadowBaker).
+        // a skew-x-* caster (baked full-size by BoxShadowBaker).
         _SkewX("Skew X (tan)", Range(-2, 2)) = 0
     }
 
@@ -43,7 +43,7 @@ Shader "Velvet/DropShadow"
 
         Pass
         {
-            Name "VelvetDropShadow"
+            Name "VelvetBoxShadow"
             Cull Off
             ZWrite Off
             ZTest Always
@@ -128,7 +128,7 @@ Shader "Velvet/DropShadow"
                 // OPAQUE on purpose: the in-element paint draws this offset silhouette FIRST, then repaints the
                 // caster's UPRIGHT fill + border over it, so the opaque fill covers the silhouette's interior
                 // and its offset-up overlap, leaving only the outer soft halo (mostly below the offset-down
-                // box) — exactly the visible part of a behind-the-element drop shadow, with no top shadow and
+                // box) — exactly the visible part of a behind-the-element box shadow, with no top shadow and
                 // no hard edge.
                 half softness = max(_BlurRadius, 1.0);
                 half alpha = 1.0 - smoothstep(-softness * 0.5, softness * 0.5, dist);
@@ -136,8 +136,8 @@ Shader "Velvet/DropShadow"
                 // This pass is NOT applied as a live per-element UITK material (style.unityMaterial): UI Toolkit
                 // freezes a custom-material element's draw-command order at first generation and never re-derives
                 // it, so a shadow whose subtree is first generated under an animating ancestor transform composites
-                // IN FRONT of its caster and stays wrong. Instead DropShadowBaker BAKES this pass once into an
-                // RGBA texture (Graphics.Blit) and DropShadowSilhouette draws it as a single quad in the caster's
+                // IN FRONT of its caster and stays wrong. Instead BoxShadowBaker BAKES this pass once into an
+                // RGBA texture (Graphics.Blit) and BoxShadowSilhouette draws it as a single quad in the caster's
                 // own generateVisualContent — FIRST, before it repaints the caster's upright fill + border, so the
                 // silhouette renders BEHIND the caster's chrome in plain depth-first order with no custom-material
                 // command to misorder. The baked texture is the FULL silhouette (interior included and opaque);

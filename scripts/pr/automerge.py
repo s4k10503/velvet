@@ -3,10 +3,9 @@
 
 `.github/workflows/automerge.yml` runs this from a checkout of the default branch, never of the
 pull request. Settle decides the merge; what this adds is which pull request to ask it about, and,
-handed a pull_request_target event, what the labelled head is waiting on: `campaign.py`'s workflow
-where the head has no campaign, and where its campaign ended, the merge run. A refusal is an ordinary outcome
-here — CONTRIBUTING.md's "Merging a pull request" section says what asks again — so it exits 0,
-where a reading or a dispatch that failed, or a hand-off run that never finished, exits 1. A
+handed a pull_request_target event, the merge run for the labelled pull request it names. A refusal
+is an ordinary outcome here — CONTRIBUTING.md's "Merging a pull request" section says what asks
+again — so it exits 0, where a reading or a dispatch that failed, or a hand-off run that never finished, exits 1. A
 pull_request_target hand-off whose reading or dispatch gh refuses exits 0 with a warning instead: its
 job is a check on the head, and a failed one would have settle and the hook refuse that head, a merge
 by hand without the label included.
@@ -26,10 +25,6 @@ from pathlib import Path
 # CONTRIBUTING.md's continuous-integration section owns why this is not the workflow's own token.
 TOKEN = "GH_TOKEN"
 
-# The workflow's own token, which the merge job and the sweep dispatch a campaign with, since the
-# one above may read Actions and not write them.
-DISPATCH_TOKEN = "DISPATCH_TOKEN"
-
 AFTER_RUN_TIMEOUT = 600
 AFTER_RUN_POLL = 10
 
@@ -44,7 +39,7 @@ def load_settle():
 
 settle = load_settle()
 
-LABEL = settle.campaign.LABEL
+LABEL = "automerge"
 
 MERGE_WORKFLOW = "automerge.yml"
 
@@ -122,152 +117,37 @@ def wait_for_run(project, run_id, read=None, clock=time.monotonic, sleep=time.sl
         sleep(AFTER_RUN_POLL)
 
 
-def settle_one(project, number, tested=None, dispatch_token=None):
-    """Merges one pull request if nothing blocks it, and says what happened.
-
-    Handed `dispatch_token`, a labelled head settle would refuse for want of a campaign, and whose
-    `campaign.AFTER` has passed, gets the campaign instead: the hand-off dispatches one only when its
-    own event reaches it, and this asks whatever event started the run. A head whose `campaign.AFTER`
-    has not passed is left alone here, since the hand-off dispatched at push time and a failed one
-    cancels the campaign it started.
-    """
+def settle_one(project, number, tested=None):
+    """Merges one pull request if nothing blocks it, and says what happened."""
     pull = settle.rest_json(f"repos/{settle.repository(project)}/pulls/{number}")
     reason = pull_skip_reason(pull, tested)
     if reason:
         print(f"PR#{number} left alone: {reason}")
-    elif dispatch_token and recover_campaign(project, number, pull, dispatch_token):
-        return
     elif settle.merge(project, number, None, dry_run=False):
         print(f"PR#{number} not merged: settle refused it, above. CONTRIBUTING.md's \"Merging a pull "
               f"request\" section says what asks again.")
 
 
-def recover_campaign(project, number, pull, token):
-    if dispatch_skip_reason(project, pull, ask_base=True):
-        return False
-    found, ready = campaign_reading(project, pull["head"]["sha"])
-    if not (settle.campaign.dispatch_owed(found) and ready):
-        return False
-    dispatch_campaign(project, number, pull, token)
-    return True
-
-
-def dispatch(project, workflow, ref, token=None, **inputs):
-    """Starts `workflow` on `ref` with `inputs`, raising settle's RuntimeError when gh refuses.
-
-    `token`, where given, stands in for $GH_TOKEN for this call alone.
-    """
+def dispatch(project, workflow, ref, **inputs):
+    """Starts `workflow` on `ref` with `inputs`, raising settle's RuntimeError when gh refuses."""
     fields = [argument for name, value in inputs.items() for argument in ("-f", f"{name}={value}")]
-    held = os.environ.get(TOKEN)
-    if token:
-        os.environ[TOKEN] = token
-    try:
-        settle.gh("workflow", "run", workflow, "--repo", settle.repository(project), "--ref", ref,
-                  *fields)
-    finally:
-        if token:
-            if held is None:
-                del os.environ[TOKEN]
-            else:
-                os.environ[TOKEN] = held
+    settle.gh("workflow", "run", workflow, "--repo", settle.repository(project), "--ref", ref, *fields)
 
 
-def dispatch_campaign(project, number, pull, token=None):
-    head, base = pull["head"], pull["base"]
-    try:
-        dispatch(project, settle.campaign.WORKFLOW, head["ref"], token, base=base["ref"],
-                 number=number)
-    except RuntimeError as error:
-        raise RuntimeError(f"{error}. If {head['ref']} predates {settle.campaign.WORKFLOW}, "
-                           f"take the base in with `settle.py update`")
-    print(f"PR#{number}: a campaign is dispatched onto {head['ref']}, whose run asks for the "
-          f"merge once it passes")
+def hand_off(project, number, run_id):
+    """Dispatches the merge run for a labelled pull request, which waits out `run_id`, this run.
 
-
-def dispatch_skip_reason(project, pull, ask_base):
-    """Why no campaign is dispatched onto `pull`'s head whatever its runs hold, or None.
-
-    A head on another repository gets none: a dispatch names a branch of this repository, which that
-    head's branch name does not address, and settle refuses that head anyway. `ask_base` is False
-    only for a pull_request_target event, which ran the base's own automerge.yml; anything else runs
-    the default branch's, so it asks whether the base holds one.
-    """
-    head, base = pull.get("head") or {}, pull.get("base") or {}
-    if (head.get("repo") or {}).get("full_name") != (base.get("repo") or {}).get("full_name"):
-        return "its head is on another repository, which no campaign is dispatched onto"
-    if ask_base and not base_holds(project, base.get("ref"), MERGE_WORKFLOW):
-        return (f"its base {base.get('ref')} holds no {MERGE_WORKFLOW}, so no hand-off reaches it "
-                f"and the label comes off before a merge by hand")
-    return None
-
-
-def campaign_reading(project, sha):
-    """(`campaign.state` over the head's runs, whether `campaign.AFTER` has passed there)."""
-    runs = settle.campaign_runs(project, sha)
-    now = time.time()
-    jobs = settle.run_jobs(project, runs, now)
-    return settle.campaign_state(runs, jobs, now), settle.campaign.after_passed(
-        runs, lambda run: settle.expected_checks.conclusion(run, jobs, now), jobs)
-
-
-def hand_off(project, number, run_id, event_sha=None):
-    """Dispatches what a labelled pull request's head waits on, and says which.
-
-    `run_id` is this run's own, which the merge run waits out for the reason `wait_for_run` gives.
-    The campaign is dispatched without waiting for the head's other workflows: the merge run settle
-    decides refuses a head any of them has not passed, and the campaign's own group cancels the run
-    over an older head. `event_sha` is the head the event carries; the pull request read over REST can
-    name another while it lags, and the dispatch targets the branch, so it lands on the tip either way.
+    `wait_for_run` says why it waits. Adding the label and marking a labelled draft ready start no
+    run of a workflow automerge.yml subscribes to, so without this nothing would ask.
     """
     pull = settle.rest_json(f"repos/{settle.repository(project)}/pulls/{number}")
-    reason = pull_skip_reason(pull) or dispatch_skip_reason(project, pull, ask_base=False)
+    reason = pull_skip_reason(pull)
     if reason:
         print(f"PR#{number} left alone: {reason}")
         return
-    head, base = pull["head"], pull["base"]
-    sha = event_sha or head["sha"]
-    found, _ = campaign_reading(project, sha)
-    if found == settle.campaign.RUNNING:
-        print(f"PR#{number}: the campaign on {sha[:7]} is still running, and asks for the "
-              f"merge once it passes")
-    elif not settle.campaign.dispatch_owed(found):
-        dispatch(project, MERGE_WORKFLOW, base["repo"]["default_branch"], number=number,
-                 after_run=run_id)
-        print(f"PR#{number}: the campaign on {sha[:7]} {found}, so the merge run is "
-              f"dispatched")
-    else:
-        dispatch_campaign(project, number, pull)
-
-
-def cancel_red(project, event):
-    """The ids of the campaigns cancelled because `campaign.AFTER` failed on their head.
-
-    A campaign over a head whose suites fail cannot merge, and under a cap on concurrent jobs it
-    holds runners another pull request's jobs wait for. Only a failed `pull_request` run counts: a
-    cancelled one says nothing about the head, and a push run is another commit.
-    """
-    run = event.get("workflow_run") or {}
-    branch, head = run.get("head_branch"), run.get("head_sha")
-    if not (run.get("conclusion") == "failure" and run.get("event") == "pull_request"
-            and run.get("path") == settle.campaign.AFTER and branch and head):
-        print(f"Nothing to cancel: this is not a failed pull_request run of {settle.campaign.AFTER}.")
-        return []
-    slug = settle.repository(project)
-    payload = settle.rest_json(f"repos/{slug}/actions/workflows/{settle.campaign.WORKFLOW}/runs"
-                               f"?branch={branch}&per_page=100")
-    open_here = [entry.get("id") for entry in settle.expected_checks.open_runs(
-        payload.get("workflow_runs") or [], time.time()) if entry.get("head_sha") == head]
-    for run_id in open_here:
-        settle.gh("run", "cancel", str(run_id), "--repo", slug)
-    print(f"{settle.campaign.AFTER} failed on {head[:7]}; cancelled the campaign run "
-          f"{', '.join(map(str, open_here)) or '(none open)'}.")
-    return open_here
-
-
-def base_holds(project, base, workflow):
-    listed = settle.rest_json(f"repos/{settle.repository(project)}/contents/.github/workflows"
-                              f"?ref={base}")
-    return any(entry.get("name") == workflow for entry in listed)
+    dispatch(project, MERGE_WORKFLOW, pull["base"]["repo"]["default_branch"], number=number,
+             after_run=run_id)
+    print(f"PR#{number}: the merge run is dispatched")
 
 
 def list_open_pulls(project):
@@ -310,8 +190,6 @@ def main(argv=None, environ=None):
     parser.add_argument("--after-run", type=optional_int, default=None,
                         help="a workflow run to wait for before reading anything about the head")
     parser.add_argument("--event", default=None, help="event payload (default: $GITHUB_EVENT_PATH)")
-    parser.add_argument("--cancel-red", action="store_true",
-                        help="handed a workflow_run event, cancel the campaign of a head whose Test failed")
     parser.add_argument("--hand-off", action="store_true",
                         help="the hand-off job: a missing token warns rather than fails")
     args = parser.parse_args(argv)
@@ -333,7 +211,6 @@ def main(argv=None, environ=None):
               f"jobs would read as pending checks on the head. Dispatch this workflow again for it.")
         return 1
 
-    dispatch_token = environ.get(DISPATCH_TOKEN)
     if args.number is not None:
         numbers, tested = [args.number], None
     else:
@@ -341,17 +218,9 @@ def main(argv=None, environ=None):
         event = json.loads(Path(path).read_text())
         if "pull_request" in event:
             try:
-                hand_off(project, event["pull_request"]["number"], environ.get("GITHUB_RUN_ID", ""),
-                         ((event["pull_request"].get("head") or {}).get("sha")))
+                hand_off(project, event["pull_request"]["number"], environ.get("GITHUB_RUN_ID", ""))
             except RuntimeError as error:
                 print(f"::warning::PR#{event['pull_request']['number']}: {error}")
-            return 0
-        if args.cancel_red:
-            try:
-                cancel_red(project, event)
-            except RuntimeError as error:
-                print(f"::error::{error}")
-                return 1
             return 0
         if args.hand_off:
             print("Nothing to hand off: this is not a pull_request_target event.")
@@ -361,7 +230,7 @@ def main(argv=None, environ=None):
     failed = False
     for number in numbers:
         try:
-            settle_one(project, number, tested, dispatch_token)
+            settle_one(project, number, tested)
         except RuntimeError as error:
             print(f"::error::PR#{number}: {error}")
             failed = True

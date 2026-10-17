@@ -98,6 +98,9 @@ namespace Velvet
         public static long WithRule(long priority, int declaration)
             => priority | System.Math.Min(System.Math.Max(declaration + 1, 0), RuleMask);
 
+        // The rank a layer's key carries, without the rule's place.
+        public static long RankOf(long key) => key & ~RuleMask;
+
         #region Important
         // The important band (!utility / utility!) sits above every ordinary rank while important-versus-
         // important keeps the ordinary order: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats
@@ -288,6 +291,12 @@ namespace Velvet
         // or a base layer and a hover layer of the SAME name, never clobber each other. The Custom field
         // on ArbitraryStyle carries the resolved definition and parsed arguments; Value/Unit/Color are unused.
         FilterCustom,     // filter-[dissolve:0.4] -> filter: <custom function>(0.4) (payload = Custom)
+        // drop-shadow-md / drop-shadow-[0_2px_4px_#000] -> one drop-shadow function per shadow (payload =
+        // DropShadow), composed after the s_filterOrder members and before the customs.
+        FilterDropShadow,
+        // drop-shadow-red-500/50 -> the colour every drop-shadow takes where Tailwind's colour variable reaches
+        // it (Color).
+        FilterDropShadowColor,
         #endregion
 
         // Size shorthand (StyleLength; fans out to width + height, like Inset).
@@ -305,6 +314,10 @@ namespace Velvet
         // through the prefix table, which is the length grammar — see TryParseFlexFactor.
         FlexGrow,     // grow-[2]         -> flex-grow
         FlexShrink,   // shrink-[2]       -> flex-shrink
+
+        // The flex shorthand: Value is the grow factor, Value3 the shrink factor, and Value2 / Unit2 the basis,
+        // NaN for auto.
+        Flex,         // flex-3, flex-1/2, flex-[2_1_0%] -> flex-grow + flex-shrink + flex-basis
 
         // Transition (StyleList<TimeValue>; handled out-of-band like the filter list)
         TransitionDuration,   // duration-[400ms] -> transition-duration. Value carries SECONDS.
@@ -340,7 +353,8 @@ namespace Velvet
         // its own class; a pair here arrives from ONE class and has no spelling that sets half of it.
         public float Value2 { get; }
         public LengthUnit Unit2 { get; }
-        // TransformOrigin's z, a length in pixels; Slice's bottom inset; 0 for every other property.
+        // TransformOrigin's z, a length in pixels; Slice's bottom inset; Flex's shrink factor; 0 for every other
+        // property.
         public float Value3 { get; }
         // Slice's left inset; 0 for every other property. Slice carries its four edges in Value (top), Value2
         // (right), Value3 and Value4, because one slice-[…] class sets all four in the border-image-slice order.
@@ -350,8 +364,11 @@ namespace Velvet
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
         // null for every other property.
         public CustomFilterValue? Custom { get; }
+        // Payload for FilterDropShadow; null for every other property.
+        public DropShadowValue? DropShadow { get; }
         // A length an element has to measure (em, a viewport unit, a percentage beside a pixel length), for a
-        // property PropertySetters writes; Value and Unit then carry nothing. Null for every other result.
+        // property PropertySetters writes, where Value and Unit then carry nothing, or for Flex's basis, where
+        // Value2 and Unit2 do. Null for every other result.
         public StyleLengthExpression? Expression { get; }
         // True for the `auto` keyword of a length property; Value and Unit then carry nothing.
         public bool Auto { get; }
@@ -391,6 +408,7 @@ namespace Velvet
             Value4 = 0f;
             Color = default;
             Custom = null;
+            DropShadow = null;
             Expression = null;
         }
 
@@ -409,7 +427,22 @@ namespace Velvet
             Value4 = 0f;
             Color = default;
             Custom = null;
+            DropShadow = null;
             Expression = null;
+        }
+
+        // Creates a Flex result: grow, shrink, and the basis (NaN for auto).
+        public static ArbitraryStyle Flex(float grow, float shrink, float basis, LengthUnit basisUnit)
+            => new(ArbitraryProperty.Flex, grow, basisUnit, basis, basisUnit, shrink);
+
+        // Creates a Flex result whose basis only the element it is written to can measure.
+        public static ArbitraryStyle Flex(float grow, float shrink, StyleLengthExpression basis)
+            => new(grow, shrink, basis);
+
+        private ArbitraryStyle(float grow, float shrink, StyleLengthExpression basis)
+            : this(ArbitraryProperty.Flex, grow, LengthUnit.Pixel, 0f, LengthUnit.Pixel, shrink)
+        {
+            Expression = basis;
         }
 
         // Creates a pair-valued length result.
@@ -428,6 +461,7 @@ namespace Velvet
             Value4 = 0f;
             Color = default;
             Custom = null;
+            DropShadow = null;
             Expression = null;
         }
 
@@ -458,6 +492,7 @@ namespace Velvet
             Value3 = 0f;
             Value4 = 0f;
             Custom = null;
+            DropShadow = null;
             Expression = null;
         }
 
@@ -469,6 +504,7 @@ namespace Velvet
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
             Custom = custom;
+            DropShadow = null;
             Expression = null;
             Value = 0f;
             Unit = LengthUnit.Pixel;
@@ -479,6 +515,13 @@ namespace Velvet
             Color = default;
         }
 
+        // Creates a FilterDropShadow result.
+        public ArbitraryStyle(ArbitraryProperty property, DropShadowValue dropShadow)
+            : this(property, auto: default)
+        {
+            DropShadow = dropShadow;
+        }
+
         // Creates a length result only the element it is written to can measure (see ApplyInline).
         public ArbitraryStyle(ArbitraryProperty property, StyleLengthExpression expression)
             : this(property, 0f, LengthUnit.Pixel)
@@ -487,24 +530,67 @@ namespace Velvet
         }
     }
 
-    // The resolved payload for a filter-[name:args] custom filter token: the registered NAME (the
-    // per-name layer-stack key, and the ONLY field the clear path reads — a clear synthesized for a
-    // no-longer-registered name carries a null Definition and empty Args), the FilterFunctionDefinition
-    // VelvetFilters.Register stored under that name, and the arguments in declaration order — the
-    // explicitly supplied segments followed by a tail padded from the declaration's defaults, so the
-    // composed function always carries the full declared parameter count (an under-filled function
-    // reads stale material-property state at render time instead of the declared defaults).
+    // A drop-shadow-* size token's shadows. Literal marks the tokens whose Tailwind rule writes the shadows'
+    // own colours into the filter, whatever a drop-shadow colour token says; Alpha is the /N modifier, which
+    // also scales that colour token's colour.
+    internal sealed class DropShadowValue
+    {
+        public readonly DropShadowLayer[] Shadows;
+        public readonly bool Literal;
+        public readonly float? Alpha;
+
+        public DropShadowValue(DropShadowLayer[] shadows, bool literal, float? alpha)
+        {
+            Shadows = shadows;
+            Literal = literal;
+            Alpha = alpha;
+        }
+    }
+
+    // One drop-shadow() function: the offset and standard deviation in pixels, and the colour.
+    internal readonly struct DropShadowLayer
+    {
+        // currentcolor, its alpha a factor on the element's colour: the compose reads the colour as it writes.
+        public static readonly Color CurrentColor = new(float.NaN, 0f, 0f, 1f);
+
+        public readonly float X;
+        public readonly float Y;
+        public readonly float Deviation;
+        public readonly Color Color;
+
+        public DropShadowLayer(float x, float y, float deviation, Color color)
+        {
+            X = x;
+            Y = y;
+            Deviation = deviation;
+            Color = color;
+        }
+    }
+
+    // The resolved payload for a filter-[name:args] custom filter token: the registered NAME (the per-name
+    // layer-stack key, and the ONLY field the clear path reads), the FilterFunctionDefinition
+    // VelvetFilters.Register stored under that name, the arguments in declaration order — the explicitly
+    // supplied segments followed by a tail padded from the declaration's defaults, so the composed function
+    // always carries the full declared parameter count (an under-filled function reads stale
+    // material-property state at render time instead of the declared defaults) — and the bracket body it was
+    // parsed from, which a registration change parses again. A null Definition is a name no registration
+    // answers, unless Rejected says the registration answering it refuses the arguments.
     internal sealed class CustomFilterValue
     {
         public readonly string Name;
         public readonly FilterFunctionDefinition Definition;
         public readonly FilterParameter[] Args;
+        public readonly string Token;
+        public readonly bool Rejected;
 
-        public CustomFilterValue(string name, FilterFunctionDefinition definition, FilterParameter[] args)
+        public CustomFilterValue(string name, FilterFunctionDefinition definition, FilterParameter[] args, string token = "",
+            bool rejected = false)
         {
             Name = name;
             Definition = definition;
             Args = args;
+            Token = token;
+            Rejected = rejected;
         }
     }
 }

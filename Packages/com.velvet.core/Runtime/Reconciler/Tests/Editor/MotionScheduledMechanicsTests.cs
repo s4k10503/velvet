@@ -80,11 +80,13 @@ namespace Velvet.Tests
             (s_modalLeft, s_moverLeft) = (300, -1);
             s_cardTransition = null;
             (s_cardMounted, s_m1Open, s_m2Open) = (false, false, false);
+            s_closeRead = null;
         }
 
         [TearDown]
         public override void TearDown()
         {
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = false;
             _moveMount?.Dispose();
             _moveMount = null;
             base.TearDown();
@@ -4137,7 +4139,7 @@ namespace Velvet.Tests
             var counted = GCAllocationProbe.MedianBlocksDuring(canary) > 0;
 
             // Assert — none, where the canary's are counted.
-            Assert.That(counted ? blocks : -1, Is.Zero);
+            Assert.That(counted ? blocks : -1, Is.Zero, $"{blocks} blocks per refresh; the canary's counted: {counted}");
         }
 
 
@@ -5311,7 +5313,7 @@ namespace Velvet.Tests
             var a = Root.Q<VisualElement>("a");
             var written = WrittenOpacity(a);
             var own = written / (1f - (BProgress() - 0.5f) / 0.45f);
-            Assert.That((own > 0.78f && own < 0.95f, Mathf.Abs(a.resolvedStyle.opacity - written) < 0.1f), Is.EqualTo((true, true)));
+            Assert.That(a.resolvedStyle.opacity, Is.EqualTo(own > 0.78f && own < 0.95f ? written : float.NaN).Within(0.1f));
         }
 
         // GREEN_ON_BASE(characterization): the base hands a transition-all lead's transitions back once its move lands.
@@ -5330,7 +5332,7 @@ namespace Velvet.Tests
             AdvancePast(1f);
 
             // Assert
-            Assert.That((suspended, b.style.transitionProperty.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+            Assert.That(suspended ? b.style.transitionProperty.keyword : StyleKeyword.Auto, Is.EqualTo(StyleKeyword.Null));
         }
 
         [Test]
@@ -5401,7 +5403,7 @@ namespace Velvet.Tests
 
             // Assert
             var reused = Root.Q<VisualElement>("reused");
-            Assert.That((ReferenceEquals(original, reused), reused.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+            Assert.That(ReferenceEquals(original, reused) ? reused.style.opacity.keyword : StyleKeyword.Auto, Is.EqualTo(StyleKeyword.Null));
         }
 
         // GREEN_ON_BASE(characterization): the base leaves a class's opacity transition to UI Toolkit, which runs it past any layoutId move.
@@ -5813,7 +5815,44 @@ namespace Velvet.Tests
                             className: $"absolute left-[{s_modalLeft}px] top-[0px] w-[100px] h-[100px]"),
                     }
                     : Array.Empty<VNode>()),
+                s_closeRead == null ? null : V.Component(CloseReaderRender, s_modalOpen, key: "reader"),
             });
+        }
+
+        // Set before a case that suspends the render closing the modal: the read that render waits for.
+        private static VelvetTaskCompletionSource<int> s_closeRead;
+
+        // Reads nothing pending while the modal is open, and s_closeRead once it closes, with no Suspense above.
+        [Component(Compiler = false)]
+        private static VNode CloseReaderRender(bool open)
+        {
+            Hooks.Use<int>(_ => open ? VelvetTask.FromResult(0) : s_closeRead.Task, open);
+            return V.Div(name: "reader");
+        }
+
+        [Test]
+        public void Given_AModalWithNothingToAnimateRelegatingTheCard_When_TheRenderClosingItSuspendsAndIsTakenAgain_Then_TheCardIsRelegatedOnce()
+        {
+            // Arrange — the modal's exit plays nothing, so it waits for the card to land and for its commit.
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            s_modalTransition = StyleTransitionConfig.None;
+            s_closeRead = new VelvetTaskCompletionSource<int>();
+            s_modalOpen = false;
+            using var mounted = V.Mount(Root, V.Component(CardModalRender, key: "root"));
+            Tick();
+            s_modalOpen = true;
+            RenderShared(mounted);
+            AdvancePast(1f);
+            s_modalOpen = false;
+            RenderShared(mounted);
+
+            // Act — the read resolves, and the render it suspended is taken again.
+            s_closeRead.TrySetResult(0);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — one landing waited for: a second relegation would add the card's landing again.
+            Assert.That(mounted.Root.Reconciler.Context.LayoutIdLandings.Count, Is.EqualTo(1));
         }
 
         // Mounts the card, opens the modal over it and lets its tween end, then closes it and plays the frame after.

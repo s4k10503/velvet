@@ -90,12 +90,13 @@ namespace Velvet.Tests
         private int CountDesaturatedFill() => CountPixels(p => Mathf.Abs(p.r - p.g) < 12
             && Mathf.Abs(p.r - p.b) < 12 && p.r > 0x20 && p.r < 0xc0);
 
+        // GREEN_ON_BASE(refactor): only the case and its panel are renamed for the box-shadow pipeline's rename.
         [UnityTest]
-        public IEnumerator Given_ADropShadowCaster_When_RenderedOnARuntimePanel_Then_TheShadowPaintsItsColour()
+        public IEnumerator Given_ABoxShadowCaster_When_RenderedOnARuntimePanel_Then_TheShadowPaintsItsColour()
         {
             // Arrange — a caster the same colour as the backdrop, so the only thing that can put red on the
             // frame is the shadow. Offset rather than spread, so the halo lands clear of the caster's own box.
-            yield return MountOverBackdrop("DropShadowPanel", V.Div(
+            yield return MountOverBackdrop("BoxShadowPanel", V.Div(
                 className: "w-[40px] h-[40px] bg-[#0000ff] shadow-[10px_10px_0px_0px_#ff0000]"));
 
             // Act

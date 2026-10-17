@@ -3,9 +3,9 @@ using UnityEngine;
 
 namespace Velvet
 {
-    // Bakes the Velvet/DropShadow SDF shader into a full-size shadow texture and caches the result.
-    // UI Toolkit (6000.3) has no native box-shadow, so a shadow-*/drop-shadow-* utility paints a baked
-    // shadow texture behind its caster (DropShadowSilhouette draws it as a single quad in the caster's own
+    // Bakes the Velvet/BoxShadow SDF shader into a full-size shadow texture and caches the result.
+    // UI Toolkit (6000.3) has no native box-shadow, so a shadow-* utility paints a baked
+    // shadow texture behind its caster (BoxShadowSilhouette draws it as a single quad in the caster's own
     // generateVisualContent). The shader is BAKED once (Graphics.Blit) rather than applied as a live
     // per-element material: UITK freezes a custom-material element's draw-command order at first generation,
     // so a shadow first generated under an animating ancestor transform would composite in FRONT of its
@@ -15,7 +15,7 @@ namespace Velvet
     // The texture is the FULL silhouette at the caster's pixel size (target + padding per side), upright OR
     // sheared (skewXDeg follows a skew-x-* caster). A full-size bake is used for every case because the
     // in-element paint draws ONE quad; the size-keyed LRU cache below bounds the per-size bakes.
-    internal static class DropShadowBaker
+    internal static class BoxShadowBaker
     {
         // Bleed margin added around the blur so the soft edge is not clipped by the quad. Public so the paint
         // binding can size and offset the draw quad to match the bake.
@@ -138,7 +138,7 @@ namespace Velvet
             }
             if (s_shader == null)
             {
-                s_shader = VelvetShaders.Find(VelvetShaders.DropShadow, "DropShadow", "shadow");
+                s_shader = VelvetShaders.Find(VelvetShaders.BoxShadow, "BoxShadow", "shadow");
             }
             if (s_shader == null)
             {
@@ -192,7 +192,7 @@ namespace Velvet
                 RtReadWrite = RenderTextureReadWrite.Default,
                 TextureFormat = TextureFormat.RGBA32,
                 Linear = false,
-                Name = "VelvetDropShadowSilhouette",
+                Name = "VelvetBoxShadowSilhouette",
                 WrapMode = TextureWrapMode.Clamp,
                 FilterMode = FilterMode.Bilinear,
                 HideFlags = HideFlags.None,
