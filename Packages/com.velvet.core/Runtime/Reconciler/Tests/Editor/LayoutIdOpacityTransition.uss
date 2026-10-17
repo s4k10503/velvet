@@ -10,3 +10,10 @@
     transition-delay: 0.2s;
     transition-timing-function: linear;
 }
+
+.layout-id-test-fade-early {
+    transition-property: opacity;
+    transition-duration: 1s;
+    transition-delay: -0.2s;
+    transition-timing-function: linear;
+}

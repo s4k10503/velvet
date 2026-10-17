@@ -184,7 +184,7 @@ namespace Velvet
         // tween's own teardown, through RestoreAfterForeignWrite. Compared by CONTENT rather than by list
         // identity, which the read back out of the slot does not preserve — MotionNativeTransitionGuardSuspensionTests
         // holds that.
-        private static bool HoldsAForeignValue(VisualElement element)
+        internal static bool HoldsAForeignValue(VisualElement element)
         {
             var current = element.style.transitionProperty;
             if (current.keyword != StyleKeyword.Null)

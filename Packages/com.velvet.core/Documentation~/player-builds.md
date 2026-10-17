@@ -100,7 +100,8 @@ Some engine members Velvet depends on have no public API, so it reaches them by 
 focus controller still holds of an element leaving it, an element's focus pseudo-state and composite-root
 flag, UI Toolkit's internal property-change event, a text input's record of an open IME composition, the
 `@import`s of a stylesheet, the cached opacity
-and transition lists used by [layoutId crossfades](motion.md#shared-element-layout-animation-layoutid),
+and transition lists and the transitions a panel is running, used by
+[layoutId crossfades](motion.md#shared-element-layout-animation-layoutid),
 native transition activity used by [current-value starts](motion.md#driven-channels-spring-and-bezier),
 and a panel's version, layout-phase flag, style updater and that updater's traversal flag, an element's layout
 node, last layout and version increment, and the node's layout computation, dirty flag and new-layout flag, which
@@ -122,7 +123,9 @@ A member that no longer resolves leaves the feature reading it undone rather tha
 editor running the suite, so a Unity upgrade that renames or retypes one fails there and names it.
 Shape matching checks type metadata, generic arguments, vector elements and by-ref parameters rather
 than a type's display string. Method declarations include their return and parameter types; focus
-pseudo-state declarations also require an enum.
+pseudo-state declarations also require an enum. A member of a generic engine type is declared on the type's
+definition, naming the definition's type parameters where its type uses them, and read on the constructed type the
+value it is read from is.
 
 `ImportedStyleSheetPlayerTests` checks the `@import` lookup from a macOS IL2CPP player with High managed
 stripping. It mounts a target carrying an importing USS, then a real asset-bundle copy, then a bare control, and

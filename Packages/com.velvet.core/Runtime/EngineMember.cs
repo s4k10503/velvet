@@ -111,7 +111,64 @@ namespace Velvet
             VisualElementType, "HasRunningAnimation", "System.Boolean", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
         internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
-            "UnityEngine.UIElements.StylePropertyName", "id", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
+            "UnityEngine.UIElements.StylePropertyName", "id", StylePropertyIdShape);
+
+        // RunningStyleTransition's read of the transitions a panel's style animation system is running.
+        private const string AnimationSystemType = "UnityEngine.UIElements.StylePropertyAnimationSystem";
+        private const string AnimatedValuesType = AnimationSystemType + "+Values`1";
+        private const string AnimationDataSetType = AnimationSystemType + "+AnimationDataSet`2";
+        private const string StylePropertyIdType = "UnityEngine.UIElements.StyleSheets.StylePropertyId";
+        private const string StylePropertyIdShape = "enum:" + StylePropertyIdType;
+
+        internal static readonly EngineMember PanelStyleAnimationSystem = ReadProperty(UIElements,
+            "UnityEngine.UIElements.BaseVisualElementPanel", "styleAnimationSystem",
+            "UnityEngine.UIElements.IStylePropertyAnimationSystem");
+
+        internal static readonly EngineMember AnimationSystemCurrentTime =
+            Field(UIElements, AnimationSystemType, "m_CurrentTime", "System.Double");
+
+        internal static readonly EngineMember AnimatedFloats =
+            Field(UIElements, AnimationSystemType, "m_Floats", AnimationSystemType + "+ValuesFloat");
+
+        internal static readonly EngineMember RunningAnimations = Field(UIElements, AnimatedValuesType, "running",
+            AnimationDataSetType + "[" + AnimatedValuesType + "+TimingData[generic:T]," + AnimatedValuesType
+            + "+StyleData[generic:T]]");
+
+        internal static readonly EngineMember RunningAnimationIndexOf = Method(UIElements, AnimationDataSetType, "IndexOf",
+            "System.Boolean", VisualElementType, StylePropertyIdShape, "System.Int32&");
+
+        internal static readonly EngineMember RunningAnimationTimings =
+            Field(UIElements, AnimationDataSetType, "timing", "generic:TTimingData[]");
+
+        internal static readonly EngineMember RunningAnimationStyles =
+            Field(UIElements, AnimationDataSetType, "style", "generic:TStyleData[]");
+
+        internal static readonly EngineMember AnimationStartTime =
+            Field(UIElements, AnimatedValuesType + "+TimingData", "startTime", "System.Double");
+
+        internal static readonly EngineMember AnimationDuration =
+            Field(UIElements, AnimatedValuesType + "+TimingData", "duration", "System.Single");
+
+        internal static readonly EngineMember AnimationEasingCurve = Field(UIElements, AnimatedValuesType + "+TimingData",
+            "easingCurve", "System.Func`2[System.Single,System.Single]");
+
+        internal static readonly EngineMember AnimationEasedProgress =
+            Field(UIElements, AnimatedValuesType + "+TimingData", "easedProgress", "System.Single");
+
+        internal static readonly EngineMember AnimationReversingShortening =
+            Field(UIElements, AnimatedValuesType + "+TimingData", "reversingShorteningFactor", "System.Single");
+
+        internal static readonly EngineMember AnimationStartValue =
+            Field(UIElements, AnimatedValuesType + "+StyleData", "startValue", "generic:T");
+
+        internal static readonly EngineMember AnimationEndValue =
+            Field(UIElements, AnimatedValuesType + "+StyleData", "endValue", "generic:T");
+
+        internal static readonly EngineMember AnimationReversingStartValue =
+            Field(UIElements, AnimatedValuesType + "+StyleData", "reversingAdjustedStartValue", "generic:T");
+
+        internal static readonly EngineMember OpacityPropertyId =
+            Field(UIElements, StylePropertyIdType, "Opacity", StylePropertyIdShape);
 
         // FiberLayoutReflow's layout computation ahead of a commit's layout reads.
         private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";
@@ -156,6 +213,8 @@ namespace Velvet
         internal static readonly EngineMember PanelDuringLayoutPhase = ReadProperty(UIElements,
             "UnityEngine.UIElements.BaseVisualElementPanel", "duringLayoutPhase", "System.Boolean");
 
+        private const string GenericParameterPrefix = "generic:";
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
@@ -171,7 +230,8 @@ namespace Velvet
 
         /// <summary>A field's or a property's type, a type's base type, or a method's return type followed by its
         /// parameter types in parentheses. Names use <see cref="Type.FullName"/>, generic arguments use brackets,
-        /// arrays use <c>[]</c>, and by-ref parameters use <c>&amp;</c>. An <c>enum:</c> prefix requires an enum type.</summary>
+        /// arrays use <c>[]</c>, and by-ref parameters use <c>&amp;</c>. An <c>enum:</c> prefix requires an enum type, and a
+        /// <c>generic:</c> one the declaring generic type's parameter of that name.</summary>
         internal readonly string Shape;
 
         /// <summary>A property whose setter is called as well as its getter.</summary>
@@ -277,6 +337,10 @@ namespace Velvet
             if (shape.EndsWith("[]", StringComparison.Ordinal))
                 return type.IsSZArray
                     && MatchesType(type.GetElementType(), shape.Substring(0, shape.Length - 2));
+            // A member of a generic type is declared on its definition, where its type can be one of the definition's
+            // parameters, named by the name the engine gives it.
+            if (shape.StartsWith(GenericParameterPrefix, StringComparison.Ordinal))
+                return type.IsGenericParameter && type.Name == shape.Substring(GenericParameterPrefix.Length);
             var opening = shape.IndexOf('[');
             // MUTANT_SURVIVES(equivalent, boundary): an opening at zero still compares an empty prefix with the nonempty definition names required by the positive generic-resolution controls.
             if (opening < 0)

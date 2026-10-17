@@ -227,6 +227,34 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AGenericParameter_When_ItsOwnNameIsCheckedAsAGenericParameterShape_Then_ItMatches()
+        {
+            // Arrange — List<T>'s own T.
+            var parameter = typeof(List<>).GetGenericArguments()[0];
+
+            // Act
+            var matches = MatchesShape(parameter, "generic:T");
+
+            // Assert
+            Assert.That(matches, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base has no generic-parameter shape, so it matches no type to one.
+        // Matching the shape must still leave a class that shares the parameter's name out.
+        [Test]
+        public void Given_ATypeNamedLikeAGenericParameter_When_AGenericParameterShapeIsChecked_Then_ItDoesNotMatch()
+        {
+            // Arrange — a class whose name is also T.
+            var named = typeof(T);
+
+            // Act
+            var matches = MatchesShape(named, "generic:T");
+
+            // Assert
+            Assert.That(matches, Is.False);
+        }
+
+        [Test]
         public void Given_ANonEnumWithTheDeclaredName_When_AnEnumShapeIsChecked_Then_OnlyTheEnumMatches()
         {
             // Arrange
@@ -245,6 +273,8 @@ namespace Velvet.Tests
         [TestCase("Field", "UnityEngine.UIElements.FocusController", "m_FocusedElements", "System.Collections.Generic.List`1[UnityEngine.UIElements.FocusController+FocusedElement]", "System.Collections.Generic.List`1[UnityEngine.UIElements.FocusController+FocusedElement)")]
         [TestCase("Field", "UnityEngine.UIElements.FocusController", "m_FocusedElements", "System.Collections.Generic.List`1[UnityEngine.UIElements.FocusController+FocusedElement]", "System.Collections.Generic.HashSet`1[UnityEngine.UIElements.FocusController+FocusedElement]")]
         [TestCase("ReadProperty", "UnityEngine.UIElements.VisualElement", "isCompositeRoot", "System.Boolean", "System.Boolean[System.Boolean]")]
+        [TestCase("Field", "UnityEngine.UIElements.StylePropertyAnimationSystem+Values`1+StyleData", "endValue", "generic:T", "generic:U")]
+        [TestCase("Field", "UnityEngine.UIElements.StylePropertyAnimationSystem+AnimationDataSet`2", "timing", "generic:TTimingData[]", "generic:TStyleData[]")]
         public void Given_AChangedShapeDiscriminator_When_ADeclaredMemberIsResolved_Then_OnlyTheControlMatches(
             string factory, string type, string name, string controlShape, string changedShape)
         {
@@ -346,6 +376,10 @@ namespace Velvet.Tests
         private static bool MatchesShape(Type type, string shape)
             => typeof(EngineMember).GetMethod("MatchesType", BindingFlags.NonPublic | BindingFlags.Static)
                 ?.Invoke(null, new object[] { type, shape }) is true;
+
+        private sealed class T
+        {
+        }
 
         private sealed class ChangedDisplayType : TypeDelegator
         {
