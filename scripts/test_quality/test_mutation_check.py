@@ -11401,17 +11401,22 @@ class CappedPlanTests(unittest.TestCase):
         self.assertEqual((code, len(campaign.written_record()["records"])), (0, 1))
 
     def test_Given_TheSameTreeAndRecord_When_PlannedTwiceWithACap_Then_TheDecisionFilesAreEqual(self):
-        # Arrange — a plan that refused writes no file, and two absent files are not a match.
+        # Arrange — a plan that refused writes no file, and an absent file reads as a value of its own,
+        # so two absent files are not a match.
         campaign = RecordCampaign()
         decision = campaign.project / "reuse.json"
+
+        def read():
+            return decision.read_text() if decision.is_file() else object()
+
         campaign.plan("--cap", "1")
-        first = decision.read_text() if decision.is_file() else None
+        first = read()
 
         # Act
         campaign.plan("--cap", "1")
 
         # Assert
-        self.assertEqual((first is not None, decision.read_text() if decision.is_file() else None), (True, first))
+        self.assertEqual(read(), first)
 
 
 class LineRangeTests(unittest.TestCase):
