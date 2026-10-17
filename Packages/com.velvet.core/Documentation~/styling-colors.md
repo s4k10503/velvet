@@ -17,6 +17,14 @@ colour is drawn in the text colour. A size's opacity modifier (`shadow-lg/20`) s
 scales a shadow colour beside it. `inset-shadow-*` colours work the same way with `--tw-inset-shadow-color`,
 `inset-shadow-inherit` included.
 
+`text-current`, `border-current`, `bg-current`, `ring-current` and `ring-offset-current` are the element's own text
+colour (`text-current` reads the inherited one), with an opacity modifier on `bg-` and `border-` (`bg-current/25`).
+`text-inherit`, `border-inherit`, `bg-inherit`, `ring-inherit`, `ring-offset-inherit`, `inset-ring-inherit` and
+`outline-inherit` take the parent's value of the same colour; each follows a change of the colour it reads. An
+opacity modifier past 100% leaves the property at its unset value: transparent for a background, the parent's
+colour for the text, `currentcolor` for a border. An element with a border width utility and no border colour draws
+the border in the text colour, as Tailwind's preflight does.
+
 ## Accepted forms
 
 | Form | Example |

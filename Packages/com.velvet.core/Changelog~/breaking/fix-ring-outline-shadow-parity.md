@@ -1,0 +1,4 @@
+### Fixed
+
+- `text-current`, `text-inherit`, `border-current`, `border-inherit`, `bg-current`, `bg-inherit`, `ring-current`, `ring-inherit`, `ring-offset-current`, `ring-offset-inherit`, `inset-ring-inherit` and `outline-inherit` resolve as in Tailwind v4: `current` is the element's own text colour and `inherit` the parent's value of the same colour, both following a later change of the colour they read. A text colour modifier past 100% (`text-red-500/150`) takes the parent's colour and a border colour modifier past 100% is `currentcolor`, rather than the class being ignored.
+- An element with a border width utility (`border`, `border-2`, `border-t-4`, under any variant) and no border colour utility draws its border in the text colour, as Tailwind's preflight makes it, instead of UI Toolkit's transparent border.

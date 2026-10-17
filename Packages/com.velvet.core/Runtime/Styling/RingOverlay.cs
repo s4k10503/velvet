@@ -30,6 +30,7 @@ namespace Velvet
         public Color RingTint;
         public Color OutlineTint;
         public Color InsetRingTint;
+        public Color OffsetTint;
         // Paints the bands ring-inset, inset-ring-* and inset-shadow-* put inside the padding box, in the
         // element's own content, so the element's children paint over them.
         public Action<MeshGenerationContext>? OnGenerateInside;
@@ -146,7 +147,7 @@ namespace Velvet
             RingBinding binding = null!;
             binding = new RingBinding(overlay,
                 NewBand(overlay, RingBandName, mgc => PaintSpread(mgc, binding, binding.Spec.RingSpread, binding.RingTint)),
-                NewBand(overlay, OffsetBandName, mgc => PaintSpread(mgc, binding, binding.Spec.OffsetSpread, binding.Spec.OffsetColor)),
+                NewBand(overlay, OffsetBandName, mgc => PaintSpread(mgc, binding, binding.Spec.OffsetSpread, binding.OffsetTint)),
                 outlineOverlay,
                 NewBand(outlineOverlay, OutlineBandName, mgc => PaintOutline(mgc, binding)))
             {
@@ -290,15 +291,23 @@ namespace Velvet
         {
             var spec = binding.Spec;
             var text = element.resolvedStyle.color;
-            var ring = spec.Ring.CurrentColor ? text : spec.Ring.Color;
-            var outline = spec.Outline.CurrentColor ? text : spec.Outline.Color;
-            var insetRing = spec.InsetRing.CurrentColor ? text : spec.InsetRing.Color;
-            var changed = ring != binding.RingTint || outline != binding.OutlineTint || insetRing != binding.InsetRingTint;
-            binding.RingTint = ring;
-            binding.OutlineTint = outline;
-            binding.InsetRingTint = insetRing;
+            var ring = TintOf(element, spec.Ring, BandColourInheritance.Family.Ring, text);
+            var outline = TintOf(element, spec.Outline, BandColourInheritance.Family.Outline, text);
+            var insetRing = TintOf(element, spec.InsetRing, BandColourInheritance.Family.InsetRing, text);
+            var offset = spec.OffsetSource switch
+            {
+                ColorReference.Current => text,
+                ColorReference.Inherit => BandColourInheritance.Resolve(element, BandColourInheritance.Family.Offset),
+                _ => spec.OffsetColor,
+            };
+            var changed = ring != binding.RingTint || outline != binding.OutlineTint || insetRing != binding.InsetRingTint
+                || offset != binding.OffsetTint;
+            (binding.RingTint, binding.OutlineTint, binding.InsetRingTint, binding.OffsetTint) = (ring, outline, insetRing, offset);
             return changed;
         }
+
+        private static Color TintOf(VisualElement element, in RingBand band, BandColourInheritance.Family family, Color text)
+            => band.InheritColor ? BandColourInheritance.Resolve(element, family) : band.CurrentColor ? text : band.Color;
 
         // Re-homes both overlays and re-sizes them. The hosts are re-derived on every call rather than captured at
         // attach: a keyed move, a z-* relocation into a layer container, or an attach that had not happened yet at
@@ -388,6 +397,7 @@ namespace Velvet
             if (ResolveTints(element, binding))
             {
                 binding.RingElement.MarkDirtyRepaint();
+                binding.OffsetElement.MarkDirtyRepaint();
                 binding.OutlineElement.MarkDirtyRepaint();
                 if (binding.Spec.PaintsInside)
                 {
@@ -471,7 +481,7 @@ namespace Velvet
             if (spec.Inset)
             {
                 PaintInsetBand(painter, padding, radii, spec.RingSpread, binding.RingTint);
-                PaintInsetBand(painter, padding, radii, spec.OffsetSpread, spec.OffsetColor);
+                PaintInsetBand(painter, padding, radii, spec.OffsetSpread, binding.OffsetTint);
             }
             PaintInsetBand(painter, padding, radii, spec.InsetRing.Width, binding.InsetRingTint);
             if (spec.HasInsetShadow)

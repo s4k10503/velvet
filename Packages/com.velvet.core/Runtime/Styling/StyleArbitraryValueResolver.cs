@@ -74,7 +74,8 @@ namespace Velvet
         // overwhelming majority — are added to the USS class list verbatim and skip the resolvers. The
         // caller strips the important bang first; an empty token resolves to false.
         public static bool IsInlineResolved(string core)
-            => core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core);
+            => core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core)
+                || StyleColorValueParser.IsColourKeywordUtility(core);
 
         // TryParse for a token that becomes a layer: a logical radius takes the property of its own that Tailwind's
         // order ranks it by (StyleLogicalUtilities.AsLayer), where TryParse reads it as the physical property it
@@ -99,7 +100,8 @@ namespace Velvet
             }
 
             if (StyleBorderSideColor.TryParse(className, out result)
-                || StyleLogicalUtilities.TryParse(className, out result))
+                || StyleLogicalUtilities.TryParse(className, out result)
+                || StyleColorValueParser.TryParseColourKeywordUtility(className, out result))
             {
                 return true;
             }
@@ -1345,6 +1347,58 @@ namespace Velvet
             [ArbitraryProperty.BorderBlockEndColor] = new Action<IStyle, StyleColor>[] { (s, v) => s.borderBottomColor = v },
         };
 
+        // Where each of ColorSetters' setters reads the value it inherits: the same longhand, read off the parent.
+        private static readonly Dictionary<ArbitraryProperty, Func<IResolvedStyle, Color>[]> ColorSources = new()
+        {
+            [ArbitraryProperty.TextColor] = new Func<IResolvedStyle, Color>[] { s => s.color },
+            [ArbitraryProperty.BackgroundColor] = new Func<IResolvedStyle, Color>[] { s => s.backgroundColor },
+            [ArbitraryProperty.BorderColor] = new Func<IResolvedStyle, Color>[]
+            {
+                s => s.borderTopColor, s => s.borderRightColor, s => s.borderBottomColor, s => s.borderLeftColor,
+            },
+            [ArbitraryProperty.BorderTopColor] = new Func<IResolvedStyle, Color>[] { s => s.borderTopColor },
+            [ArbitraryProperty.BorderRightColor] = new Func<IResolvedStyle, Color>[] { s => s.borderRightColor },
+            [ArbitraryProperty.BorderBottomColor] = new Func<IResolvedStyle, Color>[] { s => s.borderBottomColor },
+            [ArbitraryProperty.BorderLeftColor] = new Func<IResolvedStyle, Color>[] { s => s.borderLeftColor },
+            [ArbitraryProperty.BorderXColor] = new Func<IResolvedStyle, Color>[] { s => s.borderLeftColor, s => s.borderRightColor },
+            [ArbitraryProperty.BorderYColor] = new Func<IResolvedStyle, Color>[] { s => s.borderTopColor, s => s.borderBottomColor },
+            [ArbitraryProperty.BorderInlineStartColor] = new Func<IResolvedStyle, Color>[] { s => s.borderLeftColor },
+            [ArbitraryProperty.BorderInlineEndColor] = new Func<IResolvedStyle, Color>[] { s => s.borderRightColor },
+            [ArbitraryProperty.BorderBlockStartColor] = new Func<IResolvedStyle, Color>[] { s => s.borderTopColor },
+            [ArbitraryProperty.BorderBlockEndColor] = new Func<IResolvedStyle, Color>[] { s => s.borderBottomColor },
+        };
+
+        // A colour read off a live source, which ColorReferencePoll writes again as the source moves. currentcolor is
+        // the element's own text colour, except on the text colour itself, where CSS reads it as the inherited one.
+        // inherit is the parent's value of the same longhand; the parent is the one the element is laid out in, past
+        // a clip-path wrapper (ClipPathLayoutBox), whose own colours mirror the element's rather than the parent's.
+        private static void WriteReferencedColor(VisualElement element, in ArbitraryStyle style,
+            Action<IStyle, StyleColor>[] setters)
+        {
+            var sources = ColorSources[style.Property];
+            var parent = ClipPathLayoutBox.Of(element).hierarchy.parent;
+            var cs = element.style;
+            for (var i = 0; i < setters.Length; i++)
+            {
+                var fromParent = style.Reference == ColorReference.Inherit || style.Property == ArbitraryProperty.TextColor;
+                Color color;
+                if (!fromParent)
+                {
+                    color = element.resolvedStyle.color;
+                }
+                else if (parent == null)
+                {
+                    continue; // no parent yet: the poll writes it once there is one
+                }
+                else
+                {
+                    color = sources[i](parent.resolvedStyle);
+                }
+                color.a *= style.Color.a;
+                setters[i](cs, new StyleColor(color));
+            }
+        }
+
         // Float-valued counterpart to PropertySetters. Border widths are
         // StyleFloat (pixels) rather than StyleLength; the value's unit
         // is ignored (percent border widths are not meaningful).
@@ -1431,6 +1485,10 @@ namespace Velvet
             // Set while a winning layer holds a relative length (ArbitraryStyle.Expression) — see
             // ReresolveRelativeLengths.
             public RelativeLengthPoll? RelativePoll;
+
+            // Set while a winning layer reads its colour off a live source (ArbitraryStyle.Reference) — see
+            // ReresolveColorReferences.
+            public ColorReferencePoll? ColorPoll;
 
             // What each writer of the background image last asked for — see WriteBackgroundImage. Lazily
             // allocated: only an element something writes a background image to gets one.
@@ -2089,6 +2147,11 @@ namespace Velvet
                 && map.TryGetValue(property, out var layers)
                 && layers.Count > 0;
 
+        internal static bool HasLayerAt(VisualElement element, ArbitraryProperty property, long priority)
+            => s_layers.TryGetValue(element, out var map)
+                && map.TryGetValue(property, out var layers)
+                && layers.ContainsKey(priority);
+
         // The element's own writers of the background image: a StyleOverrides member and the utilities
         // (bg-[addr:…] and the gradients, which coordinate between themselves). Neither is an ArbitraryProperty
         // layer, since a StyleBackground is no ArbitraryStyle payload, so they are ranked here instead, as
@@ -2306,7 +2369,11 @@ namespace Velvet
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
         {
-            if (element != null && s_layers.TryGetValue(element, out var map)) map.RelativePoll?.Stop();
+            if (element != null && s_layers.TryGetValue(element, out var map))
+            {
+                map.RelativePoll?.Stop();
+                map.ColorPoll?.Stop();
+            }
             if (element != null) s_layers.Remove(element);
             // What the fit records the radius layers as declaring goes with them.
             if (element != null) CornerRadiusFit.Release(element);
@@ -2454,6 +2521,10 @@ namespace Velvet
             {
                 map.RelativePoll ??= new RelativeLengthPoll(element, ReresolveRelativeLengths);
             }
+            else if (winner.Reference != ColorReference.None)
+            {
+                map.ColorPoll ??= new ColorReferencePoll(element, ReresolveColorReferences);
+            }
             var rewritten = ResolveSharedLonghands(element, property, map);
             ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property) | rewritten);
         }
@@ -2500,6 +2571,39 @@ namespace Velvet
             finally
             {
                 hold.Release();
+            }
+        }
+
+        // The poll's tick for colours read off a live source: re-writes each property such a colour wins once the
+        // colours it reads have moved, and stops the poll once none wins.
+        private static void ReresolveColorReferences(VisualElement element)
+        {
+            // MUTANT_SURVIVES(unreachable): a ticking poll always finds its element's map holding a poll.
+            if (!s_layers.TryGetValue(element, out var map) || map.ColorPoll == null)
+            {
+                return;
+            }
+            s_relativeWinners.Clear();
+            foreach (var property in map.Keys)
+            {
+                if (TryWinningLayer(map, property, out var style) && style.Reference != ColorReference.None)
+                {
+                    s_relativeWinners.Add(property);
+                }
+            }
+            if (s_relativeWinners.Count == 0)
+            {
+                map.ColorPoll.Stop();
+                map.ColorPoll = null;
+                return;
+            }
+            if (!map.ColorPoll.Moved())
+            {
+                return;
+            }
+            foreach (var property in s_relativeWinners)
+            {
+                ResolveAndApply(element, property, map);
             }
         }
 
@@ -2951,6 +3055,11 @@ namespace Velvet
 
             if (ColorSetters.TryGetValue(style.Property, out var colorSetters))
             {
+                if (style.Reference != ColorReference.None)
+                {
+                    WriteReferencedColor(element, style, colorSetters);
+                    return;
+                }
                 var color = style.Keyword == StyleKeyword.Undefined
                     ? new StyleColor(style.Color)
                     : new StyleColor(style.Keyword);

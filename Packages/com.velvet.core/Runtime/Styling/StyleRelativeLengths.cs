@@ -227,6 +227,54 @@ namespace Velvet
             UnityEngine.Vector2 Viewport, bool Unlaid);
     }
 
+    // Re-writes an element's colours read off a live source (ArbitraryStyle.Reference) once the colours they read
+    // have moved: the element's own text colour and its parent's text, background and border colours, sampled at
+    // the tick RelativeLengthPoll samples at.
+    internal sealed class ColorReferencePoll
+    {
+        private const long TickMs = 16;
+
+        private readonly VisualElement _element;
+        private readonly IVisualElementScheduledItem _item;
+        private readonly UnityEngine.Color[] _last = new UnityEngine.Color[7];
+        private bool _sampled;
+
+        public ColorReferencePoll(VisualElement element, Action<VisualElement> reresolve)
+        {
+            _element = element;
+            _item = element.schedule.Execute(() => reresolve(element)).Every(TickMs);
+        }
+
+        // Whether a colour the element's references read has changed since the last call; true on the first.
+        public bool Moved()
+        {
+            var own = _element.resolvedStyle;
+            var parent = ClipPathLayoutBox.Of(_element).hierarchy.parent?.resolvedStyle;
+            var moved = !_sampled;
+            moved |= Take(0, own.color);
+            if (parent != null)
+            {
+                moved |= Take(1, parent.color);
+                moved |= Take(2, parent.backgroundColor);
+                moved |= Take(3, parent.borderTopColor);
+                moved |= Take(4, parent.borderRightColor);
+                moved |= Take(5, parent.borderBottomColor);
+                moved |= Take(6, parent.borderLeftColor);
+            }
+            _sampled = true;
+            return moved;
+        }
+
+        private bool Take(int slot, UnityEngine.Color value)
+        {
+            var changed = _last[slot] != value;
+            _last[slot] = value;
+            return changed;
+        }
+
+        public void Stop() => _item.Pause();
+    }
+
     // Re-resolves an element's relative lengths on the panel's scheduler tick after anything they measure has
     // moved, comparing a Capture each tick. Rejected: LeadingLengthProbe's style-resolved event, which needs the
     // bundled sheet on the panel, and would still leave the parent's and the panel's sizes to listen for.

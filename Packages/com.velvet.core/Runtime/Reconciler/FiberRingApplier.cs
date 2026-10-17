@@ -57,6 +57,7 @@ namespace Velvet
             if (!StyleRingClass.HasRingClass(classNames))
             {
                 ShadowColorInheritance.Forget(element, inset: true);
+                BandColourInheritance.Forget(element);
                 if (!bound)
                 {
                     return;

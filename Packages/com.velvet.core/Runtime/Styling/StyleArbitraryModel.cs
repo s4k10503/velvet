@@ -28,6 +28,10 @@ namespace Velvet
 
         public const long Base = 0;
 
+        // Below every utility and every class: preflight's own declarations (PreflightBorderColor). Not MinValue,
+        // which the winner searches start from, and with no bit of the important band or the variant set.
+        public const long Preflight = long.MinValue + 1;
+
         #region One selector the utility carries alone: a media or feature query adds nothing
         // supports-[…]: is STATIC in UI Toolkit (always-applied when well-formed; see StyleSupportsVariantClass),
         // so this layer never toggles off at runtime; the priority only orders it against other layers.
@@ -329,6 +333,14 @@ namespace Velvet
 
     // A parsed arbitrary-value result: the target Property plus its length payload
     // (Value + Unit) or its Expression, its Color, or (FilterCustom only) its Custom payload.
+    // Where a colour result reads its value from (ArbitraryStyle.Reference).
+    internal enum ColorReference : byte
+    {
+        None,
+        Current,
+        Inherit,
+    }
+
     internal readonly struct ArbitraryStyle
     {
         public ArbitraryProperty Property { get; }
@@ -362,6 +374,10 @@ namespace Velvet
         // the one edge an edge property writes), bit 1 Value2, bit 2 Value3, bit 3 Value4, in the order Slice
         // carries them. 0 for every other property.
         public int PercentEdges { get; }
+        // A colour property's value read off a live source rather than written: the element's own text colour
+        // (currentcolor, with Color.a the factor an opacity modifier scales its alpha by) or the parent's value of
+        // the same property (inherit). None for every other result.
+        public ColorReference Reference { get; }
 
         // A keyword value for property.
         public ArbitraryStyle(ArbitraryProperty property, StyleKeyword keyword)
@@ -392,6 +408,7 @@ namespace Velvet
             Color = default;
             Custom = null;
             Expression = null;
+            Reference = ColorReference.None;
         }
 
         // Creates a length/angle result.
@@ -410,6 +427,7 @@ namespace Velvet
             Color = default;
             Custom = null;
             Expression = null;
+            Reference = ColorReference.None;
         }
 
         // Creates a pair-valued length result.
@@ -429,6 +447,7 @@ namespace Velvet
             Color = default;
             Custom = null;
             Expression = null;
+            Reference = ColorReference.None;
         }
 
         // Creates a four-edge result (Slice, or one edge in top), with the edges percentEdges marks as percentages.
@@ -459,6 +478,14 @@ namespace Velvet
             Value4 = 0f;
             Custom = null;
             Expression = null;
+            Reference = ColorReference.None;
+        }
+
+        // Creates a colour result read off source, Color.a scaling a currentcolor's alpha.
+        public ArbitraryStyle(ArbitraryProperty property, Color color, ColorReference reference)
+            : this(property, color)
+        {
+            Reference = reference;
         }
 
         // Creates a FilterCustom result.
@@ -470,6 +497,7 @@ namespace Velvet
             PercentEdges = 0;
             Custom = custom;
             Expression = null;
+            Reference = ColorReference.None;
             Value = 0f;
             Unit = LengthUnit.Pixel;
             Value2 = 0f;

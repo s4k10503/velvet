@@ -91,10 +91,14 @@ namespace Velvet
                         && cls.StartsWith(name, System.StringComparison.Ordinal))
                     {
                         family = candidate;
-                        if (StyleColorValueParser.HintSelectsNonColour("border", StyleArbitraryValueResolver.TypeHintOf(cls))
-                            || !StyleColorValueParser.TryParseColorValue(cls, name.Length + 1, out var color))
+                        if (StyleColorValueParser.HintSelectsNonColour("border", StyleArbitraryValueResolver.TypeHintOf(cls)))
                         {
                             return false;
+                        }
+                        if (!StyleColorValueParser.TryParseColorValue(cls, name.Length + 1, out var color))
+                        {
+                            // current, inherit, and a colour whose modifier leaves it invalid once computed.
+                            return StyleColorValueParser.TryParseColourKeyword(candidate.Property, cls, name.Length + 1, out result);
                         }
                         result = new ArbitraryStyle(candidate.Property, color);
                         return true;

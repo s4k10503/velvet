@@ -84,10 +84,16 @@ namespace Velvet
             => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
 
         internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
-            => _ring.ApplyRingOnCreate(element, classNames);
+        {
+            PreflightBorderColor.Sync(element, classNames);
+            _ring.ApplyRingOnCreate(element, classNames);
+        }
 
         internal void ApplyRingOnPatch(VisualElement element, string[] classNames, bool clipActive)
-            => _ring.ApplyRingOnPatch(element, classNames, clipActive);
+        {
+            PreflightBorderColor.Sync(element, classNames);
+            _ring.ApplyRingOnPatch(element, classNames, clipActive);
+        }
 
         // USS class on the structural wrapper Velvet emits to host a clip-path-* element. UI Toolkit
         // (6000.3) has no USS clip-path; the supported arbitrary-shape mask is an overflow-hidden

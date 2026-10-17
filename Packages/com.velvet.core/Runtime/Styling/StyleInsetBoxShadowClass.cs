@@ -27,6 +27,7 @@ namespace Velvet
             public float RingWidth;
             public bool RingColorSet;
             public Color RingColor;
+            public ColorReference RingColorRef;
             // An inset-shadow size, inset-shadow-none included: the class that writes --tw-inset-shadow.
             public bool ShadowDeclared;
             public bool WantShadow;
@@ -79,10 +80,13 @@ namespace Velvet
                 slots.RingWidthSet = true;
                 slots.RingWidth = width;
             }
+            else if (StyleRingClass.TryParseColourReference(suffix, out var reference))
+            {
+                (slots.RingColorSet, slots.RingColorRef) = (false, reference);
+            }
             else if (StyleRingClass.TryParseColorValue("inset-ring", suffix, out var color))
             {
-                slots.RingColorSet = true;
-                slots.RingColor = color;
+                (slots.RingColorSet, slots.RingColor, slots.RingColorRef) = (true, color, ColorReference.None);
             }
         }
 
@@ -121,10 +125,15 @@ namespace Velvet
             StyleShadowClass.TrySizeColourScale(suffix, out slots.ShadowAlpha);
         }
 
+        internal static BandColourInheritance.Own OwnRingColour(in Slots slots)
+            => new(slots.RingColorSet, slots.RingColorRef, slots.RingColor);
+
         // The inset ring: Tailwind v4's inset-ring is 1px in var(--tw-inset-ring-color, currentcolor).
         internal static RingBand RingOf(in Slots slots)
             => slots.RingDeclared
-                ? new RingBand(slots.RingWidthSet ? slots.RingWidth : 1f, 0f, slots.RingColor, currentColor: !slots.RingColorSet)
+                ? new RingBand(slots.RingWidthSet ? slots.RingWidth : 1f, 0f, slots.RingColor,
+                    currentColor: !slots.RingColorSet && slots.RingColorRef != ColorReference.Inherit,
+                    inheritColor: !slots.RingColorSet && slots.RingColorRef == ColorReference.Inherit)
                 : default;
 
         // The inset shadow in the colour an inset-shadow colour class names, scaled by the size's modifier as

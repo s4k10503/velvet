@@ -17,13 +17,16 @@ namespace Velvet
         // No class named the colour, so the band takes the element's text colour, as Tailwind v4's
         // var(--tw-ring-color, currentcolor) and outline-color's initial value do.
         public readonly bool CurrentColor;
+        // `-inherit`: the parent's value of the family's colour property (BandColourInheritance).
+        public readonly bool InheritColor;
 
-        public RingBand(float width, float offset, Color color, bool currentColor)
+        public RingBand(float width, float offset, Color color, bool currentColor, bool inheritColor = false)
         {
             Width = width;
             Offset = offset;
             Color = color;
             CurrentColor = currentColor;
+            InheritColor = inheritColor;
         }
     }
 
@@ -39,6 +42,8 @@ namespace Velvet
         // Tailwind writes for a shadow-* lists it as the ring's does, so a shadow-* draws it as well.
         public readonly bool HasOffsetFill;
         public readonly Color OffsetColor;
+        // ring-offset-current and ring-offset-inherit; None where OffsetColor is the fill's colour.
+        public readonly ColorReference OffsetSource;
         // ring-inset: the ring and its offset fill are drawn inside the element edge rather than outset around it.
         public readonly bool Inset;
         // Width 0 is no outline.
@@ -50,8 +55,10 @@ namespace Velvet
         public readonly ShadowSpec InsetShadow;
 
         public RingSpec(bool hasRing, RingBand ring, bool hasOffsetFill, Color offsetColor, bool inset, RingBand outline,
-            RingBand insetRing = default, bool hasInsetShadow = false, ShadowSpec insetShadow = default)
+            RingBand insetRing = default, bool hasInsetShadow = false, ShadowSpec insetShadow = default,
+            ColorReference offsetSource = ColorReference.None)
         {
+            OffsetSource = offsetSource;
             HasRing = hasRing;
             Ring = ring;
             HasOffsetFill = hasOffsetFill;
@@ -152,9 +159,12 @@ namespace Velvet
             public float RingWidth;
             public bool RingColorSet;
             public Color RingColor;
+            // current or inherit where a class named one in place of a colour; RingColorSet is then false.
+            public ColorReference RingColorRef;
             public float RingOffset;
             public bool RingOffsetColorSet;
             public Color RingOffsetColor;
+            public ColorReference RingOffsetColorRef;
             public bool Inset;
             // A shadow-* other than a shadow colour, which writes a box-shadow carrying the ring-offset fill.
             public bool ShadowDeclared;
@@ -165,6 +175,7 @@ namespace Velvet
             public bool OutlineBare;       // bare `outline`, which declares its 1px width
             public bool OutlineColorSet;
             public Color OutlineColor;
+            public ColorReference OutlineColorRef;
             public float OutlineOffset;
         }
 
@@ -192,7 +203,8 @@ namespace Velvet
                 slots.RingWidthSet ? slots.RingWidth : DefaultRingWidth,
                 Mathf.Max(0f, slots.RingOffset),
                 slots.RingColor,
-                currentColor: !slots.RingColorSet);
+                currentColor: !slots.RingColorSet && slots.RingColorRef != ColorReference.Inherit,
+                inheritColor: !slots.RingColorSet && slots.RingColorRef == ColorReference.Inherit);
             var outlineWidth = !slots.OutlineDeclared
                 ? 0f
                 : slots.OutlineWidthSet
@@ -202,7 +214,8 @@ namespace Velvet
                 outlineWidth,
                 slots.OutlineOffset,
                 slots.OutlineColor,
-                currentColor: !slots.OutlineColorSet);
+                currentColor: !slots.OutlineColorSet && slots.OutlineColorRef != ColorReference.Inherit,
+                inheritColor: !slots.OutlineColorSet && slots.OutlineColorRef == ColorReference.Inherit);
             var hasInsetShadow = StyleInsetBoxShadowClass.TryShadowOf(inset, out var insetShadow);
             spec = new RingSpec(
                 slots.RingDeclared,
@@ -214,7 +227,8 @@ namespace Velvet
                 outline,
                 StyleInsetBoxShadowClass.RingOf(inset),
                 hasInsetShadow,
-                insetShadow);
+                insetShadow,
+                slots.RingOffsetColorSet ? ColorReference.None : slots.RingOffsetColorRef);
             if (spec.RingSpread > 0f || spec.OffsetSpread > 0f || outline.Width > 0f || spec.PaintsInside)
             {
                 return true;
@@ -227,16 +241,34 @@ namespace Velvet
         // (ShadowColorInheritance). A discarded box-shadow leaves the property itself standing, so it is read whole.
         internal static void RecordOwnInsetColor(VisualElement element, string[] classNames, int baseCount)
         {
+            var slots = default(RingSlots);
             var inset = default(StyleInsetBoxShadowClass.Slots);
             foreach (var cls in InEmitOrder(classNames, baseCount))
             {
-                if (!string.IsNullOrEmpty(cls) && StyleInsetBoxShadowClass.IsInsetBoxShadowClass(cls))
+                if (string.IsNullOrEmpty(cls))
                 {
-                    StyleInsetBoxShadowClass.TryAccumulate(cls, ref inset);
+                    continue;
+                }
+                if (!StyleInsetBoxShadowClass.IsInsetBoxShadowClass(cls) || !StyleInsetBoxShadowClass.TryAccumulate(cls, ref inset))
+                {
+                    Accumulate(cls, ref slots);
                 }
             }
             var set = StyleInsetBoxShadowClass.TryOwnColor(inset, out var kind, out var color);
             ShadowColorInheritance.Record(element, inset: true, set, kind, color);
+            // The family colour properties a descendant's -inherit reads (BandColourInheritance).
+            BandColourInheritance.Record(element,
+                new(slots.RingColorSet, slots.RingColorRef, slots.RingColor),
+                new(slots.RingOffsetColorSet, slots.RingOffsetColorRef, slots.RingOffsetColor),
+                StyleInsetBoxShadowClass.OwnRingColour(inset),
+                new(slots.OutlineColorSet, slots.OutlineColorRef, slots.OutlineColor));
+        }
+
+        // `current` and `inherit` in place of a colour.
+        internal static bool TryParseColourReference(string? suffix, out ColorReference reference)
+        {
+            reference = suffix == "current" ? ColorReference.Current : suffix == "inherit" ? ColorReference.Inherit : ColorReference.None;
+            return reference != ColorReference.None;
         }
 
         // classNames in the order InEmitOrder gives, read into the ring and outline slots and the inset ones. A
@@ -288,6 +320,11 @@ namespace Velvet
                 if (TryParseWidthValue(ringOffSuffix, out var off))
                 {
                     slots.RingOffset = off;
+                }
+                else if (TryParseColourReference(ringOffSuffix, out var offReference))
+                {
+                    slots.RingOffsetColorSet = false;
+                    slots.RingOffsetColorRef = offReference;
                 }
                 else if (TryParseColorValue("ring-offset", ringOffSuffix, out var offColor))
                 {
@@ -393,28 +430,42 @@ namespace Velvet
                 return;
             }
 
-            // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]), which sets its own family's
-            // colour and names no band: in Tailwind v4 it writes only the colour property.
-            if (TryParseColorValue(isRingFamily ? "ring" : "outline", ringSuffix, out var c))
+            AccumulateColour(ringSuffix!, isRingFamily, ref slots);
+        }
+
+        // A color token (ring-red-500 / outline-white / ring-[#abc] / ring-current), which sets its own family's
+        // colour and names no band: in Tailwind v4 it writes only the colour property. An unrecognized suffix is
+        // ignored (not a known utility).
+        private static void AccumulateColour(string suffix, bool isRingFamily, ref RingSlots slots)
+        {
+            if (TryParseColourReference(suffix, out var reference))
             {
                 if (isRingFamily)
                 {
-                    slots.RingColorSet = true;
-                    slots.RingColor = c;
+                    (slots.RingColorSet, slots.RingColorRef) = (false, reference);
                 }
                 else
                 {
-                    slots.OutlineColorSet = true;
-                    slots.OutlineColor = c;
+                    (slots.OutlineColorSet, slots.OutlineColorRef) = (false, reference);
                 }
             }
-            else if (isOutlineFamily && StyleColorValueParser.VerdictOfColourValue(ringSuffix!, 0) == StyleColorValueParser.ColourVerdict.Rejected)
+            else if (TryParseColorValue(isRingFamily ? "ring" : "outline", suffix, out var c))
+            {
+                if (isRingFamily)
+                {
+                    (slots.RingColorSet, slots.RingColor, slots.RingColorRef) = (true, c, ColorReference.None);
+                }
+                else
+                {
+                    (slots.OutlineColorSet, slots.OutlineColor, slots.OutlineColorRef) = (true, c, ColorReference.None);
+                }
+            }
+            else if (!isRingFamily && StyleColorValueParser.VerdictOfColourValue(suffix, 0) == StyleColorValueParser.ColourVerdict.Rejected)
             {
                 // outline-red-500/150: an outline-color the browser rejects once computed, which leaves it at its initial
                 // currentcolor. A rejected ring colour discards the box-shadow instead (BoxShadowDiscard).
-                slots.OutlineColorSet = false;
+                (slots.OutlineColorSet, slots.OutlineColorRef) = (false, ColorReference.Current);
             }
-            // An unrecognized ring-*/outline-* suffix is ignored (not a known utility).
         }
 
         // An outline-[…] that Tailwind's type tests (or a length, number or percentage hint) take for a width, which
