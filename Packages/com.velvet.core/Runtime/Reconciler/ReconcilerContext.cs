@@ -2135,7 +2135,8 @@ namespace Velvet
                 (added ??= new()).Add(key);
             }
             if (added == null) return;
-            foreach (var key in added) RetirePresenceState(key);
+            // A render the boundary took back committed none of these presences, so none of their exits settles.
+            foreach (var key in added) RetirePresenceState(key, settlesExits: false);
         }
 
         internal readonly record struct SuspenseFallbackRecord(SuspenseNode Node, bool HidesPrimary);
@@ -2426,9 +2427,14 @@ namespace Velvet
                 return registrations;
             }
 
-            // Settles the wait whatever is still pending. A slot completing after it can settle the wait again, and
-            // the exit still completes once, since GeneralPathReconciler.CompletePresenceExit takes the key out of Exiting.
-            internal void SettleForTeardown() => _onSettled();
+            // Settles a wait that has not settled yet, whatever is still pending, and leaves nothing for a slot
+            // completing after it to settle. A wait that has settled is not settled again: the exit's own count in
+            // StartPresenceExit holds a layoutId landing's slot apart from it, and that one is still owed.
+            internal void SettleForTeardown()
+            {
+                if (System.Threading.Interlocked.Exchange(ref _pending, 0) <= 0) return;
+                _onSettled();
+            }
 
             internal void CompleteRegistration()
             {
@@ -2548,9 +2554,12 @@ namespace Velvet
         // The one place an AnimatePresence entry leaves PresenceStates before the whole table is dropped. An inner
         // presence retired while an enclosing child waits on it stops holding that child, as a descendant Motion
         // torn down does (FiberElementCleaner).
-        private void RetirePresenceState((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
+        private void RetirePresenceState(
+            (ComponentFiber? boundary, VisualElement? parent, long presenceKey) key, bool settlesExits = true)
         {
-            if (PresenceStates.Remove(key, out var state)) state.Registration?.Gone();
+            if (!PresenceStates.Remove(key, out var state)) return;
+            if (settlesExits) SettleExitsOf(state);
+            state.Registration?.Gone();
         }
 
         // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a boundary that
@@ -2781,18 +2790,23 @@ namespace Velvet
         // Reset to false when the top-level Reconcile completes.
         public bool IsAborted { get; internal set; }
 
-        // Framer lets an AnimatePresence unmounted with its tree run its exit animations out and then calls its
-        // onExitComplete. Disposal cancels the animations, so the exits still in flight complete here, ahead of the
-        // unmount that retires their presences.
-        internal void SettleExitsForTeardown()
+        // Framer lets the exit animations of an AnimatePresence unmounted with its tree, or by its parent, run out and
+        // then calls its onExitComplete; Velvet ends those animations with the presence, so its exits settle as it is
+        // retired. An exit also waiting on a layoutId landing stays owed, as Framer's relegated node is removed only
+        // by its lead's layout animation, which the unmount stops reaching it.
+        private static void SettleExitsOf(PresenceBoundaryState state)
         {
-            foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values))
+            foreach (var entry in new List<KeyValuePair<string, PresenceExitWait>>(state.ExitWaits))
             {
-                foreach (var entry in new List<KeyValuePair<string, PresenceExitWait>>(state.ExitWaits))
-                {
-                    if (state.Exiting.Contains(entry.Key)) entry.Value.SettleForTeardown();
-                }
+                if (state.Exiting.Contains(entry.Key)) entry.Value.SettleForTeardown();
             }
+        }
+
+        // Retires the whole table, as the owning Reconciler's disposal does.
+        internal void RetireAllPresenceStates()
+        {
+            foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values)) SettleExitsOf(state);
+            PresenceStates.Clear();
         }
 
         internal void MarkDisposed()

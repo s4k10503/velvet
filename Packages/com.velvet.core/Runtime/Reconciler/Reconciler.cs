@@ -956,7 +956,7 @@ namespace Velvet
             }
 
             _ctx.VirtualListControllers.Clear();
-            _ctx.PresenceStates.Clear();
+            _ctx.RetireAllPresenceStates();
         }
     }
 }

@@ -28,7 +28,7 @@ namespace Velvet.Tests
     /// <item>On exit, a child with a real transition stays in the DOM until the transition completes (and is
     /// retained if re-added meanwhile), whereas a child with no transition or
     /// <see cref="StyleTransitionConfig.None"/> stays for the reconcile that removed it and leaves on the next; under
-    /// mode="wait" it holds the new child back until then.</item>
+    /// mode="wait" it holds the new child back until then. A reconciler disposed during an exit completes it once.</item>
     /// <item><c>initial: false</c> suppresses the enter animation on the very first mount only — later additions
     /// still animate; the resolved Motion's <c>OnEnterComplete</c> fires immediately when the enter animation is
     /// skipped.</item>
@@ -808,6 +808,30 @@ namespace Velvet.Tests
 
             // Act + Assert
             Assert.DoesNotThrow(() => Reconciler.Dispose());
+        }
+
+        // Framer lets an unmounted presence's exit animation run out and then calls onExitComplete; the disposal
+        // cancels the animation, so it completes the exit itself, and nothing completes it after.
+        [Test]
+        public void Given_ExitInProgress_When_ReconcilerDisposed_Then_OnExitCompleteRunsOnce()
+        {
+            // Arrange — the root is on no panel, so the exit never plays out
+            var completions = 0;
+            VNode[] Tree(bool shown) => new VNode[]
+            {
+                V.AnimatePresence(onExitComplete: () => completions++, children: shown
+                    ? new VNode[] { V.Motion(key: "a", transition: StyleTransition.Fade, children: Label("A")) }
+                    : Array.Empty<VNode>()),
+            };
+            var shownTree = Tree(true);
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), shownTree);
+            Reconciler.Reconcile(Root, shownTree, Tree(false));
+
+            // Act
+            Reconciler.Dispose();
+
+            // Assert
+            Assert.That(completions, Is.EqualTo(1));
         }
 
         #endregion

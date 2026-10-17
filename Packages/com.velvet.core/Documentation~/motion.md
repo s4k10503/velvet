@@ -103,9 +103,11 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   lane) settles the effects first, as React flushes the passive effects of a synchronous commit before any promise
   reaction runs; any other removal settles the promises first. Tree order within each. Disposing the mounted tree
   first completes an exit still waiting on the passive-effect flush, as React flushes a root's pending passive
-  effects before the render that unmounts it, and then the exits still playing, whose animations the disposal
-  cancels: Framer lets a presence unmounted with its tree play its exits out and then calls `onExitComplete`, so
-  it runs once there. An error from
+  effects before the render that unmounts it. A presence that leaves the tree while exits play, disposed with it
+  or no longer rendered by its parent, completes those exits as it goes and its `onExitComplete` runs once, as
+  Framer lets them play out and then calls it. An exit also waiting on a `layoutId` landing stays owed: Framer
+  removes a relegated node only through its lead's layout animation, which no longer reaches it once it unmounts.
+  An error from
   a Motion's `onEnterComplete` reaches no boundary and is logged, as Framer's `onAnimationComplete` runs in a
   promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the

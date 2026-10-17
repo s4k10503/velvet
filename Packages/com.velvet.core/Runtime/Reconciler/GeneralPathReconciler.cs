@@ -2834,9 +2834,10 @@ namespace Velvet
         // A torn-down descendant settles the wait from inside FiberElementCleaner, which unmounting the whole
         // presence reaches as well, and so does an inner presence retired while the wait holds a slot for it
         // (tornDown is null then, and ghostAnchor is the only element to read a panel from). Where an element
-        // has a panel the check waits for the next frame: a presence unmounted whole has retired its state by
-        // then and fires no onExitComplete, while one still mounted, an enclosing presence whose inner presence
-        // was retired alone, does fire it. With no panel the check runs at the teardown itself.
+        // has a panel the check waits for the next frame: a presence unmounted whole has settled its exits as it
+        // retired (ReconcilerContext.SettleExitsOf) and is not read again, while one still mounted, an enclosing
+        // presence whose inner presence was retired alone, settles here. With no panel the check runs at the
+        // teardown itself.
         private void SettleExitWaitByTeardown(
             ReconcilerContext.PresenceBoundaryState state,
             ReconcilerContext.PresenceExitWait wait,

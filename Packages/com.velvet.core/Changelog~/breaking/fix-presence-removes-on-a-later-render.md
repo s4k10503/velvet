@@ -20,6 +20,8 @@
   so its `onExitComplete` runs, as React flushes a root's pending passive effects before unmounting it. It used to
   be left to the panel's passive-effect tick after the tree was gone.
 
-- Disposing a mounted tree while an `AnimatePresence` exit is still playing now completes that exit, and its
-  `onExitComplete` runs once, as Framer Motion lets an unmounted presence's exit animations run out and then calls
-  it. It used to run only on a root with no panel, and only for an exit played by a Motion below the child's own.
+- An `AnimatePresence` that leaves the tree while an exit is still playing, whether its tree is disposed (a mounted
+  tree or a bare `Reconciler`) or its parent stops rendering it, now completes that exit, and its `onExitComplete`
+  runs once, as Framer Motion lets an unmounted presence's exit animations run out and then calls it. It used to
+  run only on a root with no panel, and only for an exit played by a Motion below the child's own. An exit also
+  waiting on a `layoutId` landing still does not complete.

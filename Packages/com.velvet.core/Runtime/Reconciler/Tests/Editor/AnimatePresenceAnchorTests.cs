@@ -919,9 +919,10 @@ namespace Velvet.Tests
             Assert.That((HasClass("item", "opacity-0"), HasClass("other", "opacity-0")), Is.EqualTo((true, false)));
         }
 
-        // GREEN_ON_BASE(characterization): no onExitComplete follows the whole presence leaving the tree.
+        // Framer lets the exit animation of a presence its parent stops rendering run out and then calls
+        // onExitComplete; the presence's removal ends the animation, so it completes the exit itself, once.
         [Test]
-        public void Given_AComponentChildExiting_When_TheWholePresenceUnmounts_Then_NoExitCompletionFollows()
+        public void Given_AComponentChildExiting_When_TheWholePresenceUnmounts_Then_OnExitCompleteRunsOnce()
         {
             // Arrange
             s_wrapper = "component";
@@ -942,7 +943,7 @@ namespace Velvet.Tests
             Drain(mounted);
 
             // Assert
-            Assert.That(s_exitsCompleted, Is.EqualTo(completedBefore));
+            Assert.That(s_exitsCompleted, Is.EqualTo(completedBefore + 1));
         }
 
         [Test]

@@ -37,7 +37,7 @@ namespace Velvet.Tests
             _sim.ResetTimePerSimulatedFrameToDefault();
             s_setHostTick = null;
             s_setInnerShown = null;
-            s_setShown = null;
+            s_setStep = null;
             s_exitCompletions = 0;
         }
 
@@ -75,7 +75,7 @@ namespace Velvet.Tests
         {
             // Arrange — the exit is a second long, and no frame passes before the disposal
             var mounted = V.Mount(_sim.rootVisualElement, V.Component(PlayingExitHostRender, key: "host"));
-            s_setShown.Invoke(false);
+            s_setStep.Invoke(1);
             mounted.FlushStateForTest();
 
             // Act
@@ -86,21 +86,26 @@ namespace Velvet.Tests
             Assert.That(s_exitCompletions, Is.EqualTo(1));
         }
 
-        private static Action<bool> s_setShown;
+        private static Action<int> s_setStep;
         private static int s_exitCompletions;
 
+        // The child at step 0 and its exit from step 1.
         [Component(Compiler = false)]
         private static VNode PlayingExitHostRender()
         {
-            var (shown, setShown) = Hooks.UseState(true);
-            s_setShown = setShown;
-            return V.AnimatePresence(key: "p", onExitComplete: () => s_exitCompletions++, children: shown
-                ? new VNode[]
-                {
-                    V.Motion(key: "a", variants: s_fade, animate: "visible", exit: "hidden",
-                        transition: new StyleTransitionConfig { DurationSec = 1f }),
-                }
-                : Array.Empty<VNode>());
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.AnimatePresence(key: "p", onExitComplete: () => s_exitCompletions++,
+                    children: step == 0
+                        ? new VNode[]
+                        {
+                            V.Motion(key: "a", variants: s_fade, animate: "visible", exit: "hidden",
+                                transition: new StyleTransitionConfig { DurationSec = 1f }),
+                        }
+                        : Array.Empty<VNode>()),
+            });
         }
 
         [Component(Compiler = false)]
