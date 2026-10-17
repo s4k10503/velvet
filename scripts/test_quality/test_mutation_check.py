@@ -10470,6 +10470,7 @@ class FixtureTraceTests(unittest.TestCase):
     def trace(self, campaign, case):
         return mutation_check.fixture_hashes(campaign.project, case, mutation_check.test_index(campaign.project))
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_ACaseOfAFixture_When_Traced_Then_TheFixturesFileIsHashed(self):
         # Arrange
         campaign = RecordCampaign()
@@ -10480,6 +10481,7 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertEqual(sorted(traced or {}), ["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"])
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_ACaseNoFixtureDeclares_When_Traced_Then_ItIsUntraceable(self):
         # Arrange
         campaign = RecordCampaign()
@@ -10490,6 +10492,7 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertIsNone(traced)
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_ACaseNamedOnlyInAComment_When_Traced_Then_ItIsUntraceable(self):
         # Arrange -- the method was deleted and its name left in prose.
         campaign = RecordCampaign()
@@ -10504,6 +10507,7 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertIsNone(traced)
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_AnotherFileSpellingTheFixturesClassInAString_When_Traced_Then_OnlyTheFixturesFileIsHashed(self):
         # Arrange -- a generator test holding C# source as text declares no class.
         campaign = RecordCampaign()
@@ -10517,6 +10521,7 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertEqual(sorted(traced or {}), ["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"])
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_AFixtureDerivedFromABaseInAnotherFile_When_Traced_Then_BothFilesAreHashed(self):
         # Arrange
         campaign = RecordCampaign()
@@ -10532,6 +10537,7 @@ class FixtureTraceTests(unittest.TestCase):
         self.assertEqual(sorted(name.rsplit("/", 1)[1] for name in traced or {}),
                          ["BaseTests.cs", "ProbeTests.cs"])
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_AParameterisedCaseWithADottedArgument_When_Traced_Then_ItsFixtureIsFound(self):
         # Arrange -- the argument's dot must not be read as a namespace separator.
         campaign = RecordCampaign()
@@ -10542,6 +10548,7 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(traced or {}), 1)
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_ACaseOfANestedFixture_When_Traced_Then_TheDeclaringFileIsHashed(self):
         # Arrange
         campaign = RecordCampaign()
@@ -11460,8 +11467,8 @@ class RecordGateTests(unittest.TestCase):
         # Act
         first, second = self.gate(campaign), self.gate(campaign)
 
-        # Assert
-        self.assertEqual(first, second)
+        # Assert — the summary line is held too, so two refusals of an unknown flag are not a match.
+        self.assertEqual((first == second, "\ngate: " in first[1]), (True, True))
 
 
 class CappedPlanTests(unittest.TestCase):
