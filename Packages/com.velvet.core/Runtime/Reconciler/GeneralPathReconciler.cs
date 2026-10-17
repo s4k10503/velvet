@@ -2279,10 +2279,9 @@ namespace Velvet
                     // one with nothing to animate does.
                     var presence = pass.Presence;
                     var boundary = pass.BoundaryFiber;
-                    var holdsAMotion = HoldsAMotion(state, key);
                     SettleAfterTheRemovingCommit(in pass, key, () => CompletePresenceExit(
-                            state, key, boundary, presence.OnExitComplete, holdsAMotion),
-                        holdsAMotion ? ReconcilerContext.ExitSettlePhase.Promise : ReconcilerContext.ExitSettlePhase.Effect);
+                            state, key, boundary, presence.OnExitComplete, HoldsAMotion(state, key)),
+                        QuietExitPhase(state, key));
                 }
             }
             else if (commit != null)
@@ -2702,10 +2701,12 @@ namespace Velvet
             var capturedState = pass.State;
             var capturedBoundary = pass.BoundaryFiber;
             var capturedOnExitComplete = presence.OnExitComplete;
-            // An exit that plays is a V.Motion's; DispatchPresenceExits says whether one does.
-            var fromAMotion = true;
+            // An exit that plays is a V.Motion's; DispatchPresenceExits says whether one does. A quiet exit reads the
+            // child when it settles: the walk that staged it may have been aborted and its roots recorded again since.
+            var playsAnExit = true;
             void RunExitComplete()
-                => CompletePresenceExit(capturedState, capturedKey, capturedBoundary, capturedOnExitComplete, fromAMotion);
+                => CompletePresenceExit(capturedState, capturedKey, capturedBoundary, capturedOnExitComplete,
+                    playsAnExit || HoldsAMotion(capturedState, capturedKey));
             // The child is removed once its exits have played and each lead its layoutIds passed to has landed. A key
             // coming back drops its landings (MotionLayoutIdDriver.Present), and a presence retired since completes
             // nothing, by the check SettleIfStillExiting makes.
@@ -2719,7 +2720,7 @@ namespace Velvet
                 if (_ctx.PresenceStates.ContainsValue(capturedState)) Settle();
             });
             if (DispatchPresenceExits(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode, Settle)) return true;
-            fromAMotion = HoldsAMotion(pass.State, key);
+            playsAnExit = false;
             return false;
         }
 
