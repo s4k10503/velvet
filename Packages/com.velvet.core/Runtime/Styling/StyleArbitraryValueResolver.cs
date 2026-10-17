@@ -284,16 +284,19 @@ namespace Velvet
         // the length; a value they do not is written as a colour, which a browser discards. Every other property
         // here takes the bracket as written.
         private static bool TailwindReadsAsLength(ArbitraryProperty property, ReadOnlySpan<char> value)
-            => property switch
+        {
+            if (IsBorderWidth(property))
             {
-                ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth or ArbitraryProperty.BorderRightWidth
-                    or ArbitraryProperty.BorderBottomWidth or ArbitraryProperty.BorderLeftWidth
-                    => TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsNumber(value)
-                        || TailwindDataTypes.IsLineWidthKeyword(value),
-                ArbitraryProperty.FontSize => TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsPercentage(value)
-                    || TailwindDataTypes.IsFontSizeKeyword(value),
-                _ => true,
-            };
+                return TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsNumber(value)
+                    || TailwindDataTypes.IsLineWidthKeyword(value);
+            }
+            if (property == ArbitraryProperty.FontSize)
+            {
+                return TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsPercentage(value)
+                    || TailwindDataTypes.IsFontSizeKeyword(value);
+            }
+            return true;
+        }
 
         private static bool IsBorderWidth(ArbitraryProperty property)
             => property is ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth
