@@ -2299,14 +2299,58 @@ class RemoteBranchDeletionTests(unittest.TestCase):
         # Assert
         self.assertEqual(failure, "")
 
-    # GREEN_ON_BASE(characterization): the base reported every refused delete, so a ref that exists was reported too.
+    # GREEN_ON_BASE(characterization): the base reported every refused delete, so a ref still present after the re-reads is reported on both sides.
     def test_Given_ARefThatExistsAndADeleteTheProxyRefuses_When_Deleted_Then_ItIsReportedAsSurviving(self):
         # Arrange
         read = remote_answering("")
 
         # Act
         with mock.patch.object(settle, "repository", lambda *_: "owner/name"), \
-                mock.patch.object(settle, "run_quietly", read):
+                mock.patch.object(settle, "run_quietly", read), \
+                mock.patch.object(settle.time, "sleep", lambda _: None):
+            failure = settle.delete_remote_ref(Path("."), "topic")
+
+        # Assert
+        self.assertEqual(failure, REFUSED_BY_PROXY)
+
+    def test_Given_ARefThatTheRepositoryDeletesAfterTheFirstRead_When_TheDeleteIsRefused_Then_NothingSurvivedIsReported(self):
+        # Arrange
+        reads = []
+
+        def run(command, timeout):
+            if "DELETE" in command:
+                return subprocess.CompletedProcess(command, 1, "", REFUSED_BY_PROXY)
+            reads.append(command)
+            gone = len(reads) > 1
+            return subprocess.CompletedProcess(command, 1 if gone else 0, "",
+                                               "gh: Not Found (HTTP 404)" if gone else "")
+
+        # Act
+        with mock.patch.object(settle, "repository", lambda *_: "owner/name"), \
+                mock.patch.object(settle, "run_quietly", run), \
+                mock.patch.object(settle.time, "sleep", lambda _: None):
+            failure = settle.delete_remote_ref(Path("."), "topic")
+
+        # Assert
+        self.assertEqual(failure, "")
+
+    # GREEN_ON_BASE(characterization): the base reported every refused delete, so a ref whose re-reads all fail for another reason is reported on both sides.
+    def test_Given_ARefWhoseEveryReReadFailsWithoutA404_When_TheDeleteIsRefused_Then_ItIsReportedAsSurviving(self):
+        # Arrange
+        reads = []
+
+        def run(command, timeout):
+            if "DELETE" in command:
+                return subprocess.CompletedProcess(command, 1, "", REFUSED_BY_PROXY)
+            reads.append(command)
+            if len(reads) == 1:
+                return subprocess.CompletedProcess(command, 0, "", "")
+            return subprocess.CompletedProcess(command, 1, "", "gh: Server Error (HTTP 502)")
+
+        # Act
+        with mock.patch.object(settle, "repository", lambda *_: "owner/name"), \
+                mock.patch.object(settle, "run_quietly", run), \
+                mock.patch.object(settle.time, "sleep", lambda _: None):
             failure = settle.delete_remote_ref(Path("."), "topic")
 
         # Assert
