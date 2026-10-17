@@ -34,9 +34,10 @@ namespace Velvet.Tests
             Assert.That(ok, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base declined a sign spaced on one side only, whichever side.
-        [TestCase("calc(1px+ 2px)")]
-        [TestCase("calc(1px +2px)")]
+        // GREEN_ON_BASE(characterization): the base declined a sign spaced on one side only, whichever side. The
+        // function is upper case because Tailwind spaces the operators of a lower-case one before this reads them.
+        [TestCase("CALC(1px+ 2px)")]
+        [TestCase("CALC(1px +2px)")]
         public void Given_ASignSpacedOnOneSideOnly_When_Parsed_Then_ItIsDeclined(string text)
         {
             // Act
