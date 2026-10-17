@@ -84,11 +84,19 @@ namespace Velvet
             var from = magnitude(Closed(s_from!, styleType).GetValue(running.Style)!);
             var to = magnitude(Closed(s_to!, styleType).GetValue(running.Style)!);
             if (from == null || to == null) return null;
-            if (running.Now < startTime || running.Now >= startTime + duration) return 0f;
-            var progress = (float)((running.Now - startTime) / duration);
+            return Rate(running.Now, startTime, duration, easing, from.Value, to.Value);
+        }
+
+        // The slope of `easing` over the transition's run, in the units of `from` to `to` per second; zero before it
+        // starts and from its end on.
+        internal static float Rate(double now, double startTime, float duration, Func<float, float> easing,
+            float from, float to)
+        {
+            if (now < startTime || now >= startTime + duration) return 0f;
+            var progress = (float)((now - startTime) / duration);
             var before = Mathf.Max(0f, progress - (float)SlopeStep);
             var after = Mathf.Min(1f, progress + (float)SlopeStep);
-            return (to.Value - from.Value) * (easing(after) - easing(before)) / (after - before) / duration;
+            return (to - from) * (easing(after) - easing(before)) / (after - before) / duration;
         }
 
         private static Type ClosedValues(object values)

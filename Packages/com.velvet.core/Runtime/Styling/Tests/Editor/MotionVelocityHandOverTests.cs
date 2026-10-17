@@ -129,5 +129,29 @@ namespace Velvet.Tests
             // Assert
             Assert.That(state.ElapsedSec, Is.EqualTo(0f));
         }
+
+        [Test]
+        public void Given_ATransitionAtTheEndOfItsDelay_When_ItsRateIsRead_Then_ItIsTheForwardSlope()
+        {
+            // Arrange — a linear run of 10 units over 2 s, read at the instant it starts.
+
+            // Act
+            var rate = NativeTransitionVelocity.Rate(1.0, 1.0, 2f, t => t, 0f, 10f);
+
+            // Assert
+            Assert.That(rate, Is.EqualTo(5f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AnEaseInTransitionAQuarterThrough_When_ItsRateIsRead_Then_ItIsTheCurvesSlopeThere()
+        {
+            // Arrange — t squared has slope 0.5 a quarter through, so 10 units over 2 s move at 10 * 0.5 / 2.
+
+            // Act
+            var rate = NativeTransitionVelocity.Rate(1.5, 1.0, 2f, t => t * t, 0f, 10f);
+
+            // Assert
+            Assert.That(rate, Is.EqualTo(2.5f).Within(0.01f));
+        }
     }
 }
