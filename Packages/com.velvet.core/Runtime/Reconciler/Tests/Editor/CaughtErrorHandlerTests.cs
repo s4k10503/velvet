@@ -466,16 +466,21 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
         }
 
+        // GREEN_ON_BASE(characterization): the base reports a passive error caught while the pass is parked the same way.
+        // The throwing effect is staged by the child's own commit after the pass parks, since an effect the mount
+        // left pending would run before the transition renders and be caught before there is a parked pass.
         [Test]
         public void Given_ABoundaryCommittedBeforeATransitionThatParksAheadOfIt_When_ItCatchesAPassiveEffectsErrorWhileThePassIsParked_Then_ItReportsAfterItsFallbacksLayoutEffectWithoutWaitingForThePass()
         {
             // Arrange — the transition puts a slow row ahead of the boundary's, so its slice parks before it
-            // reaches the boundary.
-            s_child = () => V.Component(ThrowInPassiveEffectRender, key: "child");
+            // reaches the boundary; the child then commits on its own, staging an effect that throws.
+            s_child = () => V.Component(ThrowInPassiveSetupOnUpdateRender, key: "child");
             _mounted = V.Mount(_root, V.Component(SlowRowAheadOfBoundaryListRender, key: "list"), RecordingOrder);
             s_listTick = 1;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_setFirstTick.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
             var parked = s_listFiber.HasPendingReconcileWorkForTest();
 
             // Act

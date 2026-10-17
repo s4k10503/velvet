@@ -49,7 +49,7 @@ namespace Velvet
                     }
                     finally
                     {
-                        batchScheduler?.FlushImmediate();
+                        batchScheduler?.FlushSyncLane();
                     }
                 }
             }

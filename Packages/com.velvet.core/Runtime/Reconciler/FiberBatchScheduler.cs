@@ -305,12 +305,16 @@ namespace Velvet
             }
         }
 
-        private void DrainImmediate()
+        private void DrainImmediate() => DrainImmediateTier(syncLane: false);
+
+        // syncLane: every pass of this drain renders work React gives the sync lane (FlushSyncLane names which), not
+        // only the follow-up passes.
+        private void DrainImmediateTier(bool syncLane)
         {
             var completed = false;
             try
             {
-                DrainImmediatePasses();
+                DrainImmediatePasses(syncLane);
                 completed = true;
             }
             finally
@@ -336,8 +340,10 @@ namespace Velvet
             }
         }
 
-        private void DrainImmediatePasses()
+        private void DrainImmediatePasses(bool syncLane)
         {
+            // The flag marks an external store's update in the queue, which React renders at the sync lane.
+            var firstPassIsSyncLane = syncLane || _externalStoreRenderQueued;
             // Commit-phase state writes (a callback ref invoked during the patch, an event
             // dispatched from a detach) re-enqueue their fiber mid-drain. Keep draining until the
             // queue is quiet so the follow-up render commits before this frame callback yields —
@@ -376,6 +382,10 @@ namespace Velvet
                 totalPasses++;
                 Drain(_immediateOrder, _immediateSet, immediateTier: true);
             }
+            // React flushes the passive effects of a sync-lane commit as that commit ends, and a pass rendering what
+            // a commit wrote is one, a commit running its writes at discrete priority. An update one of those effects
+            // schedules waits for the tier's next drain, as a default-lane update waits for React's next task.
+            if (totalPasses > (firstPassIsSyncLane ? 0 : 1)) FlushPendingPassiveEffects();
         }
 
         // Which lanes go, and why only these, is the nested-update cap's comment in DrainImmediatePasses.
@@ -431,7 +441,7 @@ namespace Velvet
             // only a drain of every admission picks it up below.
             try
             {
-                DrainImmediate();
+                DrainImmediateAheadOfTheTransition();
             }
             catch
             {
@@ -466,7 +476,23 @@ namespace Velvet
             // desync for the next immediate callback to converge.
             if (_immediateWorkArrivedMidDrain && _immediateOrder.Count > 0)
             {
+                DrainImmediateTier(syncLane: true);
+            }
+        }
+
+        // React's task for a transition flushes pending passive effects before it picks its lanes, and an update
+        // one of them schedules outranks the transition, so it renders first and the transition waits for a later
+        // task. Each round renders what the round before it scheduled. Bounded like the immediate drain's passes,
+        // since an effect that sets state on every commit would otherwise hold the transition in this callback
+        // forever; past the bound the transition renders, and what is still queued waits for the tier's callback.
+        private void DrainImmediateAheadOfTheTransition()
+        {
+            for (var rounds = 0; ; rounds++)
+            {
                 DrainImmediate();
+                if (rounds == NestedUpdateLimit) return;
+                FlushPendingPassiveEffects();
+                if (_immediateOrder.Count == 0) return;
             }
         }
 
@@ -603,6 +629,15 @@ namespace Velvet
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
             DrainImmediate();
+        }
+
+        // FlushImmediate for work React renders at the sync lane — a discrete event's update, the writes a commit
+        // made — whose commit flushes its passive effects as it ends, rather than leaving them to the next frame
+        // (DrainImmediatePasses).
+        internal void FlushSyncLane()
+        {
+            if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
+            DrainImmediateTier(syncLane: true);
         }
 
         // Gated like FlushImmediate so it never re-enters a live drain / reconcile.

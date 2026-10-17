@@ -736,7 +736,7 @@ namespace Velvet
                     // pattern), and the resume runs outside any batch drain — flush now so the write
                     // commits before the frame yields. Safe here: the pass completed (no pending
                     // work) and the reconcile-active bracket was exited by ContinueReconcile above.
-                    fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
+                    fiber.Reconciler?.Context.BatchScheduler.FlushSyncLane();
                 }
                 FiberEffects.CommitStrandedLayoutWork(resumeContext);
             }

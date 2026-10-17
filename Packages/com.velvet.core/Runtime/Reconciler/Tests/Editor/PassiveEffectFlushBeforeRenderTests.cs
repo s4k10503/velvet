@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -7,12 +8,19 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins React's flush of pending passive effects before a render starts: a prior commit's pending effect, or a
-    /// presence's exit completion, runs before the next render rather than after it, whichever of the scheduler's
-    /// renders that is — the immediate tier's scheduled drain, the Transition tier's drain, the follow-up pass a
-    /// layout effect's write asks for, or the resumed slice of a parked time-sliced pass — and a discrete event
-    /// still runs it when it renders nothing. The EditMode scheduler never ticks, so what a commit stages stays
-    /// pending until one of those runs it.
+    /// Pins when React runs pending passive effects, against React v19.1.0's work loop:
+    /// <list type="bullet">
+    /// <item>before a render starts, so a prior commit's pending effect, or a presence's exit completion, runs
+    /// before the next render — the immediate tier's scheduled drain, the Transition tier's drain, the follow-up
+    /// pass a layout effect's write asks for, a resumed slice of a parked time-sliced pass and a VirtualList range
+    /// rendered outside a pass — and a discrete event runs it when it renders nothing;</item>
+    /// <item>as a sync-lane commit ends — a click's, a commit-phase write's on a drain, a mount or a resumed pass,
+    /// a store change's — while a default-lane drain of one pass leaves its effects pending;</item>
+    /// <item>ahead of a transition, an update one of them schedules rendering before the transition does;</item>
+    /// <item>never from inside a passive drain already running, so what an effect's own render stages waits for
+    /// that drain to return.</item>
+    /// </list>
+    /// The EditMode scheduler never ticks, so what a commit stages stays pending until one of those runs it.
     /// </summary>
     [TestFixture]
     internal sealed class PassiveEffectFlushBeforeRenderTests
@@ -128,11 +136,12 @@ namespace Velvet.Tests
                 setMeasured.Invoke(input);
                 return (Action)null;
             }, new object[] { input });
+            // Keyed on the input alone, so the follow-up pass stages no effect of its own for its commit's end.
             Hooks.UseEffect(() =>
             {
-                s_log.Add($"effect:i{input}:m{measured}");
+                s_log.Add($"effect:i{input}");
                 return (Action)null;
-            }, new object[] { input, measured });
+            }, new object[] { input });
             return V.Label(text: "measured");
         }
 
@@ -149,7 +158,7 @@ namespace Velvet.Tests
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(s_log, Is.EqualTo(new[] { "render:i1:m0", "effect:i1:m0", "render:i1:m1" }));
+            Assert.That(s_log, Is.EqualTo(new[] { "render:i1:m0", "effect:i1", "render:i1:m1" }));
         }
 
         // Measured's write, made by the mount's layout effect, which the mount commits in a follow-up pass before
@@ -164,11 +173,12 @@ namespace Velvet.Tests
                 setMeasured.Invoke(1);
                 return (Action)null;
             }, Array.Empty<object>());
+            // A mount effect only, so the follow-up pass stages no effect of its own for its commit's end.
             Hooks.UseEffect(() =>
             {
-                s_log.Add($"effect:m{measured}");
+                s_log.Add("effect:mount");
                 return (Action)null;
-            }, new object[] { measured });
+            }, Array.Empty<object>());
             return V.Label(text: "measured");
         }
 
@@ -182,7 +192,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(_root, tree);
 
             // Assert
-            Assert.That(s_log, Is.EqualTo(new[] { "render:m-1", "effect:m-1", "render:m1" }));
+            Assert.That(s_log, Is.EqualTo(new[] { "render:m-1", "effect:mount", "render:m1" }));
         }
 
         private static StateUpdater<int> s_setPresenceTick;
@@ -221,6 +231,7 @@ namespace Velvet.Tests
         }
 
         private static bool s_resumeRowsShown;
+        private static Func<VNode> s_lateRow = LateRowRender;
         private static ComponentFiber s_resumeListFiber;
         private static StateUpdater<int> s_setSiblingDep;
 
@@ -237,7 +248,7 @@ namespace Velvet.Tests
                 V.Div(key: "slow", children: new VNode[] { V.Component(SlowRowRender, key: "row") }),
                 V.Div(key: "row1", children: new VNode[] { V.Label(text: "row-1") }),
                 V.Div(key: "row2", children: new VNode[] { V.Label(text: "row-2") }),
-                V.Div(key: "late", children: new VNode[] { V.Component(LateRowRender, key: "late-row") }),
+                V.Div(key: "late", children: new VNode[] { V.Component(s_lateRow, key: "late-row") }),
             });
         }
 
@@ -281,6 +292,7 @@ namespace Velvet.Tests
         {
             // Arrange — the sibling commits on its own while the list's pass is parked
             s_resumeRowsShown = false;
+            s_lateRow = LateRowRender;
             _mounted = V.Mount(_root, V.Component(ResumeHostRender, key: "host"));
             _mounted.FlushEffectsForTest();
             s_resumeRowsShown = true;
@@ -295,6 +307,475 @@ namespace Velvet.Tests
 
             // Assert — a pass that had not parked rendered the late row before the log was cleared
             Assert.That(s_log, Is.EqualTo(new[] { "effect:d1", "render:late" }));
+        }
+
+        // --- The end of a sync-lane commit ---
+
+        // GREEN_ON_BASE(characterization): the base leaves a scheduled drain's effects to the next frame as well.
+        // What this pins is that only a sync-lane commit flushes its effects as it ends, as React flushes them for
+        // a sync lane alone: make every drain flush at its end and this reddens.
+        [Test]
+        public void Given_AnUpdateTheScheduledDrainRendersInOnePass_When_TheDrainEnds_Then_ItsEffectIsStillPending()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(Counter, key: "c"));
+            _mounted.FlushEffectsForTest();
+            s_log.Clear();
+            s_setDep.Invoke(1);
+
+            // Act
+            _mounted.GetSchedulerForTest().RunImmediateCallbackForTest();
+
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "render:t0:d1" }));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ClickBumpedRender()
+        {
+            var (dep, setDep) = Hooks.UseState(0);
+            s_log.Add($"render:d{dep}");
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add($"effect:d{dep}");
+                return (Action)null;
+            }, new object[] { dep });
+            return V.Button(name: "bump", onClick: () => setDep.Invoke(d => d + 1));
+        }
+
+        [Test]
+        public void Given_AClickThatChangesAnEffectsDep_When_ItsCommitEnds_Then_TheEffectHasRun()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(ClickBumpedRender, key: "c"));
+            _mounted.FlushEffectsForTest();
+            s_log.Clear();
+
+            // Act
+            _root.Q<Button>("bump").SimulateClick();
+
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "render:d1", "effect:d1" }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's discrete flush stands down while a reconcile is on the stack too.
+        // What this pins is that the sync-lane flush a click now takes keeps that gate.
+        [Test]
+        public void Given_AReconcileOnTheStack_When_AClickSchedulesAnUpdate_Then_NothingRendersOrRuns()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(ClickBumpedRender, key: "c"));
+            _mounted.FlushEffectsForTest();
+            s_log.Clear();
+            _mounted.GetSchedulerForTest().SetReconcileActiveProbe(() => true);
+
+            // Act
+            _root.Q<Button>("bump").SimulateClick();
+
+            // Assert
+            Assert.That(s_log, Is.Empty);
+        }
+
+        private static StateUpdater<int> s_setFollowUpInput;
+
+        // The measured value is what the effect is keyed on, so only the follow-up pass's commit stages it.
+        [Component(Compiler = false)]
+        private static VNode FollowUpEffectRender()
+        {
+            var (input, setInput) = Hooks.UseState(0);
+            var (measured, setMeasured) = Hooks.UseState(0);
+            s_setFollowUpInput = setInput;
+            s_log.Add($"render:i{input}:m{measured}");
+            Hooks.UseLayoutEffect(() =>
+            {
+                setMeasured.Invoke(input);
+                return (Action)null;
+            }, new object[] { input });
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add($"effect:m{measured}");
+                return (Action)null;
+            }, new object[] { measured });
+            return V.Label(text: "follow-up");
+        }
+
+        [Test]
+        public void Given_ALayoutEffectWritingStateInADrain_When_TheFollowUpPassCommits_Then_ItsEffectRunsBeforeTheDrainReturns()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(FollowUpEffectRender, key: "f"));
+            _mounted.FlushEffectsForTest();
+            s_log.Clear();
+            s_setFollowUpInput.Invoke(1);
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "render:i1:m0", "render:i1:m1", "effect:m1" }));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode MountFollowUpEffectRender()
+        {
+            var (measured, setMeasured) = Hooks.UseState(-1);
+            s_log.Add($"render:m{measured}");
+            Hooks.UseLayoutEffect(() =>
+            {
+                setMeasured.Invoke(1);
+                return (Action)null;
+            }, Array.Empty<object>());
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add($"effect:m{measured}");
+                return (Action)null;
+            }, new object[] { measured });
+            return V.Label(text: "mount-follow-up");
+        }
+
+        // The last entry alone, since the mount's own effect is the pre-render flush's, which the case above pins.
+        [Test]
+        public void Given_ALayoutEffectWritingStateOnMount_When_TheFollowUpPassCommits_Then_ItsEffectRunsBeforeTheMountReturns()
+        {
+            // Arrange
+            var tree = V.Component(MountFollowUpEffectRender, key: "m");
+
+            // Act
+            _mounted = V.Mount(_root, tree);
+
+            // Assert
+            Assert.That(s_log[s_log.Count - 1], Is.EqualTo("effect:m1"));
+        }
+
+        private static bool s_writeOnNextCommit;
+        private static ComponentFiber s_transitionWriterFiber;
+
+        // Writes from the first commit after s_writeOnNextCommit is set, whichever lane rendered it.
+        [Component(Compiler = false)]
+        private static VNode TransitionWriterRender()
+        {
+            var (measured, setMeasured) = Hooks.UseState(0);
+            s_transitionWriterFiber = FiberAmbientStack.Current;
+            s_log.Add($"render:m{measured}");
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (s_writeOnNextCommit)
+                {
+                    s_writeOnNextCommit = false;
+                    setMeasured.Invoke(1);
+                }
+                return (Action)null;
+            });
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add($"effect:m{measured}");
+                return (Action)null;
+            }, new object[] { measured });
+            return V.Label(text: "transition-writer");
+        }
+
+        [Test]
+        public void Given_ATransitionCommitWhoseLayoutEffectWritesState_When_TheDrainCommitsTheWrite_Then_ItsEffectRunsBeforeTheDrainReturns()
+        {
+            // Arrange
+            s_writeOnNextCommit = false;
+            _mounted = V.Mount(_root, V.Component(TransitionWriterRender, key: "w"));
+            _mounted.FlushEffectsForTest();
+            s_log.Clear();
+            s_writeOnNextCommit = true;
+            s_transitionWriterFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "render:m0", "render:m1", "effect:m1" }));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode LateWritingRowRender()
+        {
+            var (written, setWritten) = Hooks.UseState(0);
+            s_log.Add($"render:late:{written}");
+            Hooks.UseLayoutEffect(() =>
+            {
+                setWritten.Invoke(1);
+                return (Action)null;
+            }, Array.Empty<object>());
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add($"effect:late:{written}");
+                return (Action)null;
+            }, new object[] { written });
+            return V.Label(text: "late");
+        }
+
+        // The last entry alone, since the row's mount effect is the pre-render flush's.
+        [Test]
+        public void Given_AParkedPassWhoseLastSliceMountsARowWritingStateFromItsLayoutEffect_When_ThePassCompletes_Then_TheWritesEffectRunsBeforeTheResumeReturns()
+        {
+            // Arrange
+            s_resumeRowsShown = false;
+            s_lateRow = LateWritingRowRender;
+            _mounted = V.Mount(_root, V.Component(ResumeHostRender, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_resumeRowsShown = true;
+            s_resumeListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_log.Clear();
+
+            // Act
+            s_resumeListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(s_log[s_log.Count - 1], Is.EqualTo("effect:late:1"));
+        }
+
+        private sealed class ExternalCounter
+        {
+            private Action _listeners;
+            private int _value;
+
+            public Action Subscribe(Action onStoreChange)
+            {
+                _listeners += onStoreChange;
+                return () => _listeners -= onStoreChange;
+            }
+
+            public int GetSnapshot() => _value;
+
+            public void Set(int value)
+            {
+                _value = value;
+                _listeners?.Invoke();
+            }
+        }
+
+        private static ExternalCounter s_externalCounter;
+
+        [Component(Compiler = false)]
+        private static VNode ExternalReaderRender()
+        {
+            var value = Hooks.UseSyncExternalStore(s_externalCounter.Subscribe, s_externalCounter.GetSnapshot);
+            s_log.Add($"render:v{value}");
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add($"effect:v{value}");
+                return (Action)null;
+            }, new object[] { value });
+            return V.Label(text: "external");
+        }
+
+        [Test]
+        public void Given_AStoreChangeTheMainThreadRenders_When_ItsCommitEnds_Then_TheReadersEffectHasRun()
+        {
+            // Arrange
+            s_externalCounter = new ExternalCounter();
+            _mounted = V.Mount(_root, V.Component(ExternalReaderRender, key: "r"));
+            _mounted.FlushEffectsForTest();
+            s_log.Clear();
+            s_externalCounter.Set(5);
+
+            // Act
+            VelvetMainThread.RunHandoffs();
+
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "render:v5", "effect:v5" }));
+        }
+
+        // --- Work a passive flush schedules ahead of a transition ---
+
+        private static StateUpdater<int> s_setWriterDep;
+        private static StateUpdater<int> s_setOtherValue;
+        private static ComponentFiber s_transitionTargetFiber;
+
+        [Component(Compiler = false)]
+        private static VNode EffectWriterRender()
+        {
+            var (dep, setDep) = Hooks.UseState(0);
+            s_setWriterDep = setDep;
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add($"effect:d{dep}");
+                if (dep > 0) s_setOtherValue.Invoke(dep);
+                return (Action)null;
+            }, new object[] { dep });
+            return V.Label(text: "writer");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OtherRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_setOtherValue = setValue;
+            s_log.Add($"render:other:{value}");
+            return V.Label(text: "other");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode TransitionTargetRender()
+        {
+            s_transitionTargetFiber = FiberAmbientStack.Current;
+            s_log.Add("render:transition");
+            return V.Label(text: "target");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode WriterOtherTargetHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(EffectWriterRender, key: "writer"),
+                V.Component(OtherRender, key: "other"),
+                V.Component(TransitionTargetRender, key: "target"),
+            });
+
+        [Test]
+        public void Given_APendingEffectThatSetsState_When_TheTransitionTierDrains_Then_ThatUpdateRendersBeforeTheTransition()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(WriterOtherTargetHostRender, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_setWriterDep.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_log.Clear();
+            s_transitionTargetFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "effect:d1", "render:other:1", "render:transition" }));
+        }
+
+        // Sets state from every commit's effect, so each flush the transition tier makes schedules another render.
+        [Component(Compiler = false)]
+        private static VNode RunawayRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            Hooks.UseEffect(() =>
+            {
+                setTick.Invoke(tick + 1);
+                return (Action)null;
+            }, new object[] { tick });
+            return V.Label(text: "runaway");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RunawayAndTargetHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(RunawayRender, key: "runaway"),
+                V.Component(TransitionTargetRender, key: "target"),
+            });
+
+        // GREEN_ON_BASE(characterization): the base renders the transition without flushing anything ahead of it.
+        // What this pins is that an effect setting state on every commit cannot hold the transition back for good.
+        [Test]
+        public void Given_AnEffectThatSetsStateOnEveryCommit_When_TheTransitionTierDrains_Then_TheTransitionStillRenders()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(RunawayAndTargetHostRender, key: "host"));
+            s_log.Clear();
+            s_transitionTargetFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.That(s_log, Does.Contain("render:transition"));
+        }
+
+        // --- A flush reached from inside a running passive drain ---
+
+        private static StateUpdater<int> s_setNestedTarget;
+        private static MountedTree s_nestedMounted;
+        private static VisualElement s_nestedRoot;
+
+        [Component(Compiler = false)]
+        private static VNode NestedTargetRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_setNestedTarget = setValue;
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add($"target:v{value}");
+                return (Action)null;
+            }, new object[] { value });
+            return V.Button(name: "nested-idle", onClick: () => { });
+        }
+
+        // Renders the target from inside its own mount effect, then clicks a button whose handler sets nothing,
+        // whose discrete boundary is a passive flush of its own.
+        [Component(Compiler = false)]
+        private static VNode NestedFlusherRender()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add("flusher:start");
+                s_setNestedTarget.Invoke(1);
+                s_nestedMounted.GetSchedulerForTest().FlushImmediate();
+                s_nestedRoot.Q<Button>("nested-idle").SimulateClick();
+                s_log.Add("flusher:end");
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "flusher");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode NestedHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(NestedTargetRender, key: "target"),
+                V.Component(NestedFlusherRender, key: "flusher"),
+            });
+
+        [Test]
+        public void Given_AnEffectThatRendersAndClicksWhileThePassiveFlushRunsIt_When_TheFlushRuns_Then_TheEffectsThatRenderStagedWaitForItToReturn()
+        {
+            // Arrange
+            s_nestedRoot = _root;
+            _mounted = V.Mount(_root, V.Component(NestedHostRender, key: "host"));
+            s_nestedMounted = _mounted;
+
+            // Act
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "target:v0", "flusher:start", "flusher:end", "target:v1" }));
+        }
+
+        // --- A VirtualList range rendered outside a pass ---
+
+        [Component(Compiler = false)]
+        private static VNode VirtualRowRender(string id)
+        {
+            s_log.Add("render:row-" + id);
+            return V.Label(text: id);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ListBesideAnEffectRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(EffectSiblingRender, key: "sibling"),
+                V.VirtualList(items: new[] { "a", "b", "c", "d", "e", "f" }, keySelector: item => item,
+                    itemHeight: 50f, renderer: item => V.Component<string>(VirtualRowRender, item, key: item),
+                    overscan: 0, key: "list"),
+            });
+
+        [Test]
+        public void Given_APendingPassiveEffect_When_AVirtualListRendersARangeOutsideAPass_Then_TheEffectRunsBeforeTheRows()
+        {
+            // Arrange — the sibling's mount effect is pending, and no layout pass has given the list a range
+            _mounted = V.Mount(_root, V.Component(ListBesideAnEffectRender, key: "host"));
+            var controller = _mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            s_log.Clear();
+
+            // Act — what a scroll to the top of a 100-unit viewport renders
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+
+            // Assert
+            Assert.That(s_log.FirstOrDefault(), Is.EqualTo("effect:d0"));
         }
     }
 }

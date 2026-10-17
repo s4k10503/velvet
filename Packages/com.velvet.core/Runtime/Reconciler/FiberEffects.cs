@@ -828,6 +828,11 @@ namespace Velvet
 
         internal static void FlushPendingPassiveEffects(ReconcilerContext context)
         {
+            // React refuses to flush passive effects inside a commit ("Cannot flush passive effects while already
+            // rendering"), a passive flush being one. Reached from a layout commit or from an effect this context's
+            // drain is running, what is pending is left to the drain its staging armed, or to the loop below where
+            // that loop is the caller.
+            if (context.EffectCommitDepth > 0) return;
             // An effect setup may setState and stage a fresh batch synchronously; drain until quiescent.
             // Bounded to surface a runaway effect-stages-effect loop as a test failure rather than a hang.
             var guard = 0;

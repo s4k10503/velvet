@@ -474,6 +474,8 @@ namespace Velvet
 
         void IReconcilerBridge.CleanupElementForController(VisualElement element) => _cleaner.CleanupElement(element);
 
+        void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffects();
+
         void IReconcilerBridge.HoldRowLayoutEffects()
             => _ctx.HeldRowLayoutEffects.Push(new List<(ComponentFiber fiber, bool mountDoubleInvoke)>());
 
