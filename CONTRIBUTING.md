@@ -277,8 +277,9 @@ the campaign decided: the mutant (file, line, column, operator and both texts), 
 bytes, its verdict and the platform whose pass gave it, and for a kill the run that measured it
 and up to `MAX_RECORDED_KILLERS` of its behavioural killing cases (the first by name), each with the
 hash of every source file that declares the case's fixture or one it derives from, and of every test
-source declaring a type, outside any other type, that one of those spells in its code, followed through
-such sources in turn — so a static helper in a file that also declares tests is among them. Comments
+source declaring a type, outside any other type, or an extension method that one of those spells in its
+code, followed through such sources in turn — so a static helper in a file that also declares tests is
+among them. Comments
 are left out of each hash. The ledger's header holds the `tool` digest below and two more, `build-inputs` and
 `test-support`. `mutation-plan` fetches the ledgers of the newest 20 finished runs of the workflow on
 the head's branch (`scripts/ci/reuse_verdict.py`; a run that left no ledger counts against the 20),

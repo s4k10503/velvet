@@ -4243,12 +4243,14 @@ BASE_LIST = re.compile(r":\s*([^{]*?)\s*(?:\bwhere\b|$)", re.DOTALL)
 # A parameterised case's name carries its arguments in parentheses, and an argument may hold a dot.
 CASE_NAME = re.compile(r"^([^()]*)(?:\(.*)?$", re.DOTALL)
 IDENTIFIER = re.compile(r"[A-Za-z_]\w*")
+# An extension method is called as `x.Name()`, which never spells the class declaring it.
+EXTENSION_METHOD = re.compile(r"@?([A-Za-z_]\w*)\s*(?:<[^<>()]*>)?\s*\(\s*(?:\[[^\]]*\]\s*)*this\s")
 
 
 def test_index(project):
     """({class name: [(relative path, base type names)]}, {relative path: comment-free text},
-    {relative path: the other test sources declaring a top-level type it spells}), over the test
-    sources a killing case can be declared in.
+    {relative path: the other test sources declaring a top-level type or an extension method it
+    spells}), over the test sources a killing case can be declared in.
 
     A class is found by its simple name: a case's full name carries the namespace, which does not
     track folders, and a nested fixture's carries `Outer+Inner`, whose source is the outer's.
@@ -4268,7 +4270,7 @@ def test_index(project):
             names = [re.sub(r"<.*", "", part).strip().split(".")[-1]
                      for part in (bases.group(1).split(",") if bases else ())]
             classes.setdefault(match.group(1), []).append((relative, [name for name in names if name]))
-        for name in top_level_types(code):
+        for name in top_level_types(code) | set(EXTENSION_METHOD.findall(code)):
             declarers.setdefault(name, set()).add(relative)
     uses = {}
     for relative, text in texts.items():
@@ -4279,8 +4281,9 @@ def test_index(project):
 
 def fixture_hashes(project, case, index):
     """{relative path: sha256} of the files declaring a case's fixture and the fixtures it derives
-    from, and of every test source declaring a top-level type one of those spells, followed through
-    such sources in turn; or None where the case cannot be traced into the tree.
+    from, and of every test source declaring a top-level type or an extension method one of those
+    spells, followed through such sources in turn; or None where the case cannot be traced into the
+    tree.
 
     A case whose method none of those files declares is untraceable too, which is how a killing case
     that was renamed or deleted reads. An untraceable case is never reused. Hashed in the form
