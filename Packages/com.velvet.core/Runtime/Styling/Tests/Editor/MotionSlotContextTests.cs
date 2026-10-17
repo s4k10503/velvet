@@ -255,19 +255,17 @@ namespace Velvet.Tests
 
             // Act
             var plan = Resolve(element, new string[0], new[] { "border-[#0000ff]" });
-            var channel = plan.Colors?.Find(c => c.Property == ArbitraryProperty.BorderColor);
+            var channel = plan.Colors?.Find(c => c.Property == ArbitraryProperty.BorderTopColor);
 
             // Assert
             Assert.That((channel?.From, !nativeTransition || paint != element.style.borderTopColor.value),
                 Is.EqualTo(((Color?)(nativeTransition ? paint : Color.red), true)));
         }
 
-        // GREEN_ON_BASE(characterization, nativeHolder=false): the base already leaves target-only colors undriven.
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Given_CurrentBorderColorsWithAnIncompatibleEdge_When_OnlyTheTargetNamesBorderColor_Then_NoUniformChannelIsBuilt(bool nativeHolder)
+        // An element whose right edge paints a color of its own beside three that match, the three held by a
+        // running native transition when nativeHolder.
+        private VisualElement MountEdgesThatDiffer(bool nativeHolder)
         {
-            // Arrange
             var element = MountInFixedParent();
             element.style.borderTopColor = element.style.borderBottomColor = element.style.borderLeftColor = Color.red;
             element.style.borderRightColor = Color.blue;
@@ -287,18 +285,50 @@ namespace Velvet.Tests
                 ForcePanelUpdate(element.panel);
             }
             var painted = element.resolvedStyle;
-            var control = nativeHolder
-                ? painted.borderTopColor != element.style.borderTopColor.value
-                    && painted.borderTopColor == painted.borderRightColor
-                    && painted.borderTopColor == painted.borderBottomColor
-                    && painted.borderTopColor == painted.borderLeftColor
-                : painted.borderTopColor != painted.borderRightColor;
+            Assume.That(nativeHolder
+                    ? painted.borderTopColor != element.style.borderTopColor.value
+                        && painted.borderTopColor == painted.borderRightColor
+                        && painted.borderTopColor == painted.borderBottomColor
+                        && painted.borderTopColor == painted.borderLeftColor
+                    : painted.borderTopColor != painted.borderRightColor,
+                Is.True, "Precondition: the edges paint as the arrangement says");
+            return element;
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_CurrentBorderColorsThatDifferByEdge_When_OnlyTheTargetNamesBorderColor_Then_TheTopEdgeStartsFromItsOwn(bool nativeHolder)
+        {
+            // Arrange
+            var element = MountEdgesThatDiffer(nativeHolder);
 
             // Act
             var plan = Resolve(element, new string[0], new[] { nativeHolder ? "border-black" : "border-[#0000ff]" });
 
             // Assert
-            Assert.That((plan.Colors, control), Is.EqualTo(((List<MotionSpringClassParser.ColorChannelPlan>)null, true)));
+            Assert.That(ColorFrom(plan, ArbitraryProperty.BorderTopColor),
+                Is.EqualTo(nativeHolder ? element.resolvedStyle.borderTopColor : Color.red));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_CurrentBorderColorsThatDifferByEdge_When_OnlyTheTargetNamesBorderColor_Then_TheRightEdgeStartsFromItsOwn(bool nativeHolder)
+        {
+            // Arrange
+            var element = MountEdgesThatDiffer(nativeHolder);
+
+            // Act
+            var plan = Resolve(element, new string[0], new[] { nativeHolder ? "border-black" : "border-[#0000ff]" });
+
+            // Assert — under border-black the right edge's inline color of the element's own outranks the class.
+            Assert.That(ColorFrom(plan, ArbitraryProperty.BorderRightColor),
+                Is.EqualTo(nativeHolder ? (Color?)null : Color.blue));
+        }
+
+        private static Color? ColorFrom(MotionSpringClassParser.SpringPlan plan, ArbitraryProperty property)
+        {
+            var index = plan.Colors?.FindIndex(channel => channel.Property == property) ?? -1;
+            return index >= 0 ? plan.Colors![index].From : null;
         }
 
         [TestCase(0.75f, false)]
@@ -1061,6 +1091,95 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(plan.Lengths, Is.Null);
+        }
+
+        private MotionSpringClassParser.SpringPlan ResolveBorderColorSwapUnderAnImportantTop()
+        {
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "border-t-[#ff0000]",
+                StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            return Resolve(element, new[] { "border-[#000000]" }, new[] { "border-[#0000ff]" });
+        }
+
+        [Test]
+        public void Given_AnImportantTopBorderColorOfTheElementsOwn_When_ABorderColorSwapIsResolved_Then_TheTopEdgeIsLeftOut()
+        {
+            // Act
+            var plan = ResolveBorderColorSwapUnderAnImportantTop();
+
+            // Assert
+            Assert.That(ColorFrom(plan, ArbitraryProperty.BorderTopColor), Is.Null);
+        }
+
+        [Test]
+        public void Given_AnImportantTopBorderColorOfTheElementsOwn_When_ABorderColorSwapIsResolved_Then_TheRightEdgeStillPlays()
+        {
+            // Act
+            var plan = ResolveBorderColorSwapUnderAnImportantTop();
+
+            // Assert
+            Assert.That(ColorFrom(plan, ArbitraryProperty.BorderRightColor), Is.EqualTo((Color?)Color.black));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_AnImportantWidthOfTheElementsOwn_When_ABeforeChildrenWidthSwapOrchestrates_Then_ChildrenDoNotWait(
+            TransitionType type)
+        {
+            // Arrange — the important width keeps the swap's only channel out of the play, so nothing animates.
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "w-[40px]", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var swap = new StyleTransitionConfig
+            {
+                Type = type, DurationSec = 0.5f, DelaySec = 0.1f, When = TransitionWhen.BeforeChildren,
+            };
+            var from = new[] { "w-[10px]" };
+            var to = new[] { "w-[120px]" };
+
+            // Act
+            var frame = FiberNodePatcher.ResolveChildOrchestration(V.Motion(), swap, childLabelChanged: true,
+                ambientOrchestration: null, extraDelaySec: 0f, from, to, element, new StyleAnimationScheduler());
+            var delay = frame?.ClaimNextChildDelaySec() ?? float.NaN;
+
+            // Assert
+            Assert.That(delay, Is.EqualTo(0f));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_AnImportantWidthOfAnOffPanelElementsOwn_When_AWidthEnterStarts_Then_TheImportantWidthStands(TransitionType type)
+        {
+            // Arrange — a Motion's enter plays while it mounts, before the element is on a panel.
+            var element = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "w-[80px]", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var scheduler = new StyleAnimationScheduler();
+
+            // Act
+            scheduler.PlayVariantEnter(element, new[] { "w-[10px]" }, new[] { "w-[120px]" }, 1f, EasingMode.Linear, 0f,
+                type: type);
+            var width = element.style.width.value.value;
+            scheduler.CancelAll();
+
+            // Assert
+            Assert.That(width, Is.EqualTo(80f));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_AnImportantPaddingEdgeClassOfAnOffPanelElementsOwn_When_APaddingEnterStarts_Then_ThatEdgeKeepsTheImportantValue(TransitionType type)
+        {
+            // Arrange — pt-8 is a class, which no inline layer stands for, and writes one edge of the four p-4 does.
+            var element = new VisualElement();
+            StyleClassProjection.Add(element, "pt-8", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var scheduler = new StyleAnimationScheduler();
+
+            // Act
+            scheduler.PlayVariantEnter(element, new[] { "p-0" }, new[] { "p-4" }, 1f, EasingMode.Linear, 0f, type: type);
+            var top = element.style.paddingTop.value.value;
+            scheduler.CancelAll();
+
+            // Assert
+            Assert.That(top, Is.EqualTo(32f));
         }
 
         [Test]

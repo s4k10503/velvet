@@ -34,6 +34,25 @@ namespace Velvet.Tests
                 "PaddingBottom:0->8 PaddingLeft:0->8 PaddingRight:0->8 PaddingTop:0->2", 2f, 2f)));
         }
 
+        [TestCase("border-t", "BorderTopColor")]
+        [TestCase("border-x", "BorderLeftColor BorderRightColor")]
+        [TestCase("border-y", "BorderBottomColor BorderTopColor")]
+        [TestCase("border-s", "BorderLeftColor")]
+        public void Given_APalettePerSideBorderColorPair_When_Resolved_Then_OnlyThoseSidesAreDriven(string family, string sides)
+        {
+            // Arrange
+            var from = new[] { family + "-red-500" };
+            var to = new[] { family + "-blue-500" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to);
+            var driven = plan.Colors?.Select(channel => channel.Property.ToString())
+                .OrderBy(name => name, System.StringComparer.Ordinal) ?? Enumerable.Empty<string>();
+
+            // Assert
+            Assert.That(string.Join(" ", driven), Is.EqualTo(sides));
+        }
+
         [Test]
         public void Given_TwoPresetOpacitiesInOneVariant_When_Resolved_Then_TheOneDeclaredLaterInTheStylesheetIsTheTarget()
         {

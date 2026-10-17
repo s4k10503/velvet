@@ -620,7 +620,8 @@ namespace Velvet
             if (childLabel != null)
             {
                 var childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
-                    ambientOrchestration, extraDelaySec, oldVariantClasses, newVariantClasses);
+                    ambientOrchestration, extraDelaySec, oldVariantClasses, newVariantClasses, element,
+                    _ctx.StyleAnimationScheduler);
                 MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel,
                     MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
                     childOrchestration, playback);
@@ -981,11 +982,12 @@ namespace Velvet
         //   it and are numbered from zero; an ambient frame never reaches past a node with variants or a label
         //   of its own.
         // fromClasses / toClasses: the pose classes this node's own play moves between, from which a spring's span is
-        // measured.
+        // measured; element and scheduler: where it plays, read for the span before the play's swap lands.
         internal static MotionOrchestrationFrame? ResolveChildOrchestration(
             MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
             MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec,
-            string[]? fromClasses = null, string[]? toClasses = null)
+            string[]? fromClasses = null, string[]? toClasses = null,
+            VisualElement? element = null, StyleAnimationScheduler? scheduler = null)
         {
             var hasOwnOrchestration = swapTransition != null
                 && (swapTransition.StaggerChildrenSec > 0f || swapTransition.DelayChildrenSec > 0f
@@ -999,7 +1001,8 @@ namespace Velvet
                         + "children animate as if When = Together (no wait for the parent's own transition).");
                 }
                 var extraBeforeChildrenSec = swapTransition.When == TransitionWhen.BeforeChildren
-                    ? swapTransition.DelaySec + (float)MotionPlaySpan.Of(swapTransition, fromClasses, toClasses)
+                    ? (float)MotionPlaySpan.HeldBy(swapTransition, fromClasses, toClasses,
+                        element != null ? scheduler?.SlotContext(element, fromClasses, toClasses) : null)
                     : 0f;
                 return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
                     swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec);

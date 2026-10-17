@@ -126,7 +126,9 @@ itself, which costs them on a child that also carries `overflow-hidden` — see 
 table in [styling-variants.md](styling-variants.md). The dash is drawn at whichever border width and in
 whichever color win the divided edge under the specificity rule above, so a child's own `border-r-4` that
 wins the edge is drawn dashed. A panel holding such a divider runs one check per frame, which masks a color
-the child's own code writes over the divided edge.
+the child's own code writes over the divided edge. A transition entry of the child's own that covers that
+edge's color (`border-color`, the edge's own color property, or `all`) runs on the dash too, from the color
+the dash shows to the one it heads for, with the entry's duration, delay and easing.
 
 ### How re-spacing stays correct
 

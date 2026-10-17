@@ -1152,6 +1152,58 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ADashTransitionInsideItsDelay_When_Eased_Then_ItHasNotStarted()
+        {
+            // Arrange
+            var binding = new DivideDashChildBinding { DelaySec = 0.2f, DurationSec = 1f, Easing = EasingMode.Linear };
+
+            // Act
+            var eased = DivideDashPainter.Eased(binding, 0.1, out _);
+
+            // Assert
+            Assert.That(eased, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_ALinearDashTransitionHalfwayThrough_When_Eased_Then_ItIsHalfway()
+        {
+            // Arrange
+            var binding = new DivideDashChildBinding { DelaySec = 0.25f, DurationSec = 1f, Easing = EasingMode.Linear };
+
+            // Act
+            var eased = DivideDashPainter.Eased(binding, 0.75, out _);
+
+            // Assert
+            Assert.That(eased, Is.EqualTo(0.5f));
+        }
+
+        [Test]
+        public void Given_ADashTransitionPastItsEnd_When_Eased_Then_ItIsAtTheEnd()
+        {
+            // Arrange
+            var binding = new DivideDashChildBinding { DurationSec = 1f, Easing = EasingMode.Linear };
+
+            // Act
+            var eased = DivideDashPainter.Eased(binding, 2.0, out _);
+
+            // Assert
+            Assert.That(eased, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_ADashTransitionPastItsEnd_When_Eased_Then_ItHasEnded()
+        {
+            // Arrange
+            var binding = new DivideDashChildBinding { DurationSec = 1f, Easing = EasingMode.Linear };
+
+            // Act
+            DivideDashPainter.Eased(binding, 2.0, out var ended);
+
+            // Assert
+            Assert.That(ended, Is.True);
+        }
+
+        [Test]
         public void Given_ADividedChild_When_ItGainsABorderWidthClassOfItsOwn_Then_TheDividerGivesWayToIt()
         {
             // Arrange — the class reaches the child alone, so only the container watching the child re-applies.
@@ -2222,5 +2274,258 @@ namespace Velvet.Tests
             Assert.That(width, Is.EqualTo(2f));
         }
 
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_ADividedChildsBorderColorEnterNamesNoStart_Then_ItStartsFromTheDashColor()
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "flex flex-row divide-x divide-dashed divide-gray-200", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px]"),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            var from = System.Array.Empty<string>();
+            var to = new[] { "border-[#0000ff]" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, MotionSlotContext.Read(child, from, to, _ => false));
+
+            // Assert
+            Assert.That(plan.Colors?.Find(channel => channel.Property == ArbitraryProperty.BorderRightColor).From,
+                Is.EqualTo((Color?)gray200));
+        }
+
+        [TestCase("divide-x divide-gray-200", ArbitraryProperty.BorderTopColor)]
+        [TestCase("divide-x divide-dashed divide-gray-200", ArbitraryProperty.BorderRightColor)]
+        [TestCase("divide-x divide-dashed", ArbitraryProperty.BorderRightColor)]
+        public void Given_ADividedChild_When_APaletteBorderColorEnterNamesNoStart_Then_TheHeldEdgeIsDriven(string divide,
+            ArbitraryProperty edge)
+        {
+            // Arrange — a divide color's hold, or the dash's mask, on edge; both give way to a class of the child's own.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "flex flex-row " + divide, children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px]"),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            var from = System.Array.Empty<string>();
+            var to = new[] { "border-blue-500" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, MotionSlotContext.Read(child, from, to, _ => false));
+
+            // Assert
+            Assert.That(plan.Colors?.Exists(channel => channel.Property == edge), Is.True);
+        }
+
+        // The dash of the middle child of a dashed row without a divide color, painted once; the child runs a linear
+        // border-color transition of a second after delaySec.
+        private (VisualElement Child, DivideDashChildBinding Binding) MountTransitionDash(float delaySec)
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "flex flex-row divide-x divide-dashed", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px]"),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }));
+            var child = _window.rootVisualElement.Q("b");
+            child.style.transitionProperty = new List<StylePropertyName> { new("border-color") };
+            child.style.transitionDuration = new List<TimeValue> { new(1f, TimeUnit.Second) };
+            child.style.transitionDelay = new List<TimeValue> { new(delaySec, TimeUnit.Second) };
+            child.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+            ForcePanelUpdate(child.panel);
+            return (child, _mounted.Root.Reconciler.Context.DivideDashBindings[child]);
+        }
+
+        [Test]
+        public void Given_ARunningDashTransition_When_TheColorChangesBackPartWay_Then_TheWayBackIsShortened()
+        {
+            // Arrange — a quarter of the way to red.
+            var (_, binding) = MountTransitionDash(0f);
+            var start = binding.Target!.Value;
+            DivideDashPainter.Advance(binding, Color.red, 100.0);
+
+            // Act
+            DivideDashPainter.Advance(binding, start, 100.25);
+
+            // Assert
+            Assert.That(binding.DurationSec, Is.EqualTo(0.25f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ARunningDashTransition_When_TheColorChangesToAThirdOne_Then_TheNewOneRunsWhole()
+        {
+            // Arrange
+            var (_, binding) = MountTransitionDash(0f);
+            DivideDashPainter.Advance(binding, Color.red, 100.0);
+
+            // Act
+            DivideDashPainter.Advance(binding, Color.blue, 100.25);
+
+            // Assert
+            Assert.That(binding.DurationSec, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_ARunningDashTransitionWithANegativeDelay_When_TheColorChangesBack_Then_TheDelayIsShortenedToo()
+        {
+            // Arrange — 0.45 of the way to red: a quarter of a second in, plus the 0.2 second the delay skips.
+            var (_, binding) = MountTransitionDash(-0.2f);
+            var start = binding.Target!.Value;
+            DivideDashPainter.Advance(binding, Color.red, 100.0);
+
+            // Act
+            DivideDashPainter.Advance(binding, start, 100.25);
+
+            // Assert
+            Assert.That(binding.DelaySec, Is.EqualTo(-0.09f).Within(1e-4f));
+        }
+
+        // A dash on a child carrying border-default transition-colors, just after its class changed to
+        // border-accent, and the two colors the classes resolve to.
+        private (VisualElement Child, DivideDashChildBinding Binding, Color Old, Color New) MountChangedColorClassDash()
+        {
+            var (child, references) = MountColoredDashRow("border-default transition-colors", "border-default",
+                "border-accent");
+            var oldColor = references[0].resolvedStyle.borderRightColor;
+            var newColor = references[1].resolvedStyle.borderRightColor;
+            Assume.That(oldColor, Is.Not.EqualTo(newColor), "Precondition: equal colors would pass either way");
+            StyleClassProjection.Remove(child, "border-default", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-accent", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+            return (child, _mounted.Root.Reconciler.Context.DivideDashBindings[child], oldColor, newColor);
+        }
+
+        // Past the end of the transition.
+        private static void FinishDashTransition(VisualElement child, DivideDashChildBinding binding)
+        {
+            binding.StartTime = double.NegativeInfinity;
+            child.MarkDirtyRepaint();
+            ForcePanelUpdate(child.panel);
+        }
+
+        [Test]
+        public void Given_ADashOnAChildWithAColorTransition_When_ItsColorClassChanges_Then_TheDashStartsFromTheOldColor()
+        {
+            // Arrange / Act
+            var (child, _, oldColor, _) = MountChangedColorClassDash();
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(oldColor));
+        }
+
+        [Test]
+        public void Given_ADashOnAChildWithAColorTransition_When_TheTransitionHasRun_Then_TheDashIsTheNewColor()
+        {
+            // Arrange
+            var (child, binding, _, newColor) = MountChangedColorClassDash();
+
+            // Act
+            FinishDashTransition(child, binding);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(newColor));
+        }
+
+        [Test]
+        public void Given_ADashOnAChildWithAColorTransition_When_TheTransitionHasRun_Then_TheTickStopsRepainting()
+        {
+            // Arrange
+            var (child, binding, _, _) = MountChangedColorClassDash();
+
+            // Act
+            FinishDashTransition(child, binding);
+
+            // Assert
+            Assert.That(binding.Tick.isActive, Is.False);
+        }
+
+        // A dash on a child carrying border-default transition-colors, part way through its transition to
+        // border-accent.
+        private (VisualElement Child, DivideDashChildBinding Binding, VisualElement[] References)
+            MountRunningDashTransition()
+        {
+            var (child, references) = MountColoredDashRow("border-default transition-colors", "border-default",
+                "border-accent", "border-strong");
+            StyleClassProjection.Remove(child, "border-default", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-accent", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+            return (child, _mounted.Root.Reconciler.Context.DivideDashBindings[child], references);
+        }
+
+        [Test]
+        public void Given_ARunningDashTransition_When_TheColorChangesWithTheTransitionRemoved_Then_TheDashTakesTheNewColorAtOnce()
+        {
+            // Arrange
+            var (child, binding, references) = MountRunningDashTransition();
+            Assume.That(binding.Tick.isActive, Is.True, "Precondition: a transition that never ran would leave nothing to stop");
+            var strong = references[2].resolvedStyle.borderRightColor;
+
+            // Act
+            StyleClassProjection.Remove(child, "transition-colors", StyleLayerPriority.Base);
+            StyleClassProjection.Remove(child, "border-accent", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-strong", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(strong));
+        }
+
+        // The same dash with its transition entry removed while it runs: the tick the running transition repaints on,
+        // then the paint; the transition is made long enough to be running still whatever time the run takes.
+        private (VisualElement Child, DivideDashChildBinding Binding, Color Accent) MountDashWhoseEntryIsRemoved()
+        {
+            var (child, binding, references) = MountRunningDashTransition();
+            Assume.That(binding.Tick.isActive, Is.True, "Precondition: a transition that never ran would leave nothing to end");
+            var accent = references[1].resolvedStyle.borderRightColor;
+            binding.DurationSec = 1000f;
+            StyleClassProjection.Remove(child, "transition-colors", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+            return (child, binding, accent);
+        }
+
+        [Test]
+        public void Given_ARunningDashTransition_When_ItsTransitionEntryIsRemoved_Then_TheDashLandsAtTheTarget()
+        {
+            // Arrange / Act
+            var (child, _, accent) = MountDashWhoseEntryIsRemoved();
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(accent));
+        }
+
+        [Test]
+        public void Given_ARunningDashTransition_When_ItsTransitionEntryIsRemoved_Then_TheTickStopsRepainting()
+        {
+            // Arrange / Act
+            var (_, binding, _) = MountDashWhoseEntryIsRemoved();
+
+            // Assert
+            Assert.That(binding.Tick.isActive, Is.False);
+        }
+
+        [Test]
+        public void Given_ARunningDashTransition_When_TheDashIsDetached_Then_ItsTickStops()
+        {
+            // Arrange
+            var (child, binding, _) = MountRunningDashTransition();
+            Assume.That(binding.Tick.isActive, Is.True, "Precondition: a tick that never ran would stop for no reason of the detach");
+
+            // Act
+            DivideDashPainter.Detach(child, binding);
+
+            // Assert
+            Assert.That(binding.Tick.isActive, Is.False);
+        }
     }
 }

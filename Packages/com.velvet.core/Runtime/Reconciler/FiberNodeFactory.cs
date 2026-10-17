@@ -326,7 +326,8 @@ namespace Velvet
                 if (childLabel != null)
                 {
                     var childOrchestration = FiberNodePatcher.ResolveChildOrchestration(motionNode,
-                        enter.Transition, enter.Resolved, enter.Ambient, enter.DelaySec, enter.From, enter.To);
+                        enter.Transition, enter.Resolved, enter.Ambient, enter.DelaySec, enter.From, enter.To, element,
+                        _ctx.StyleAnimationScheduler);
                     MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel, enter.InitialLabel,
                         childOrchestration, MotionVariantResolver.PlaybackForChildren(motionNode,
                             _ctx.ComponentContextStack.Get(MotionContext.Playback)));
