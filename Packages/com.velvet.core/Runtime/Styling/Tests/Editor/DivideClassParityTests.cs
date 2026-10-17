@@ -1055,6 +1055,47 @@ namespace Velvet.Tests
         #endregion
 
         [Test]
+        public void Given_AMotionDriverWritingABorderColorTheDividerGivesWayFor_When_TheDividerAppliesAgain_Then_TheDrivenColorStands()
+        {
+            // Arrange — border-[#0000ff] is a layer of the child's own, which the divide color's hold on its other
+            // edges gives way to.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-gray-200", "border-[#0000ff]"),
+            });
+            var child = scope.Root[0][1];
+            Assume.That(child.style.borderLeftColor.value, Is.EqualTo(Color.blue),
+                "Precondition: the child's own color stands on the divide's other edges");
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
+
+            // Act
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+
+            // Assert
+            Assert.That(child.style.borderLeftColor.value, Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_AnImportantDivideColor_When_AMotionDriverWritesTheChildsBorderColor_Then_TheDivideColorStands()
+        {
+            // Arrange — !important outranks an animation in CSS, and Tailwind emits the divide color !important.
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x !divide-gray-200", ""),
+            });
+            var child = scope.Root[0][1];
+
+            // Act
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
+
+            // Assert
+            Assert.That(child.style.borderRightColor.value, Is.EqualTo(gray200));
+        }
+
+        [Test]
         public void Given_ADividedChild_When_ItGainsABorderWidthClassOfItsOwn_Then_TheDividerGivesWayToIt()
         {
             // Arrange — the class reaches the child alone, so only the container watching the child re-applies.

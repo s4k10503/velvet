@@ -77,6 +77,92 @@ namespace Velvet.Tests
             return false;
         }
 
+        // A width drive holding its from pose, as a play's first write does until a delay ends.
+        private static VisualElement HoldingFromPose()
+        {
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "w-[10px]" }, new[] { "w-[120px]" });
+            var state = BezierTweenDriver.Create(plan, LinearX1, LinearY1, LinearX2, LinearY2, durationSec: 1f);
+            BezierTweenDriver.ApplyCurrentValues(element, state!);
+            return element;
+        }
+
+        [Test]
+        public void Given_AWidthDriveHoldingItsFromPose_When_AVariantWidthLayerComes_Then_TheDrivenWidthStands()
+        {
+            // Arrange
+            var element = HoldingFromPose();
+
+            // Act — a dark: width toggling on.
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                StyleLayerPriority.Dark);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(10f));
+        }
+
+        [Test]
+        public void Given_AWidthDriveHoldingItsFromPose_When_AVariantWidthLayerGoes_Then_TheDrivenWidthStands()
+        {
+            // Arrange
+            var element = HoldingFromPose();
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                StyleLayerPriority.Dark);
+
+            // Act — the dark: width toggling back off.
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.Width, StyleLayerPriority.Dark);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(10f));
+        }
+
+        [Test]
+        public void Given_AnImportantWidthLayerAlreadyOnTheElement_When_AWidthDriveWrites_Then_TheDrivenWidthShows()
+        {
+            // Arrange — the play's own important pose lands before its first frame, as !w-[80px] does here.
+            var element = new VisualElement();
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var plan = MotionSpringClassParser.Resolve(new[] { "w-[10px]" }, new[] { "w-[120px]" });
+            var state = BezierTweenDriver.Create(plan, LinearX1, LinearY1, LinearX2, LinearY2, durationSec: 1f);
+
+            // Act
+            BezierTweenDriver.ApplyCurrentValues(element, state!);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(10f));
+        }
+
+        [Test]
+        public void Given_AWidthDriveHoldingItsFromPose_When_AnImportantWidthLayerComes_Then_ItWinsWhileItLasts()
+        {
+            // Arrange
+            var element = HoldingFromPose();
+
+            // Act
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                StyleLayerPriority.ImportantOf(StyleLayerPriority.Dark));
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(80f));
+        }
+
+        [Test]
+        public void Given_AWidthDriveHoldingItsFromPose_When_AnImportantWidthLayerGoes_Then_TheDrivenWidthComesBack()
+        {
+            // Arrange
+            var element = HoldingFromPose();
+            var important = StyleLayerPriority.ImportantOf(StyleLayerPriority.Dark);
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                important);
+
+            // Act
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.Width, important);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(10f));
+        }
+
         [Test]
         public void Given_ABackgroundColorPair_When_SteppedToHalfTheDuration_Then_TheInlineBackgroundColorIsTheExactMidpoint()
         {
