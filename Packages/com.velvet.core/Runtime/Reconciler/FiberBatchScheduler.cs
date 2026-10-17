@@ -400,9 +400,7 @@ namespace Velvet
                 // MUTANT_SURVIVES(unreachable, equality): a fiber left dirty with an empty queue is re-enrolled by a Normal update; see IsDirty below.
                 if (dropped.LaneQueue.Count == 0)
                 {
-                    // MUTANT_SURVIVES(unreachable): a Normal update re-enrols a dirty fiber whose queue is empty, and only a Transition one would be stranded, which no fixture's dropped fiber with an empty queue issues.
                     dropped.IsDirty = false;
-                    // MUTANT_SURVIVES(unreachable): no fixture's dropped fiber with an empty queue declares UseTransition, so this call finds no slot and no enrolment to settle.
                     dropped.SettleTransitionPending();
                 }
                 // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on
