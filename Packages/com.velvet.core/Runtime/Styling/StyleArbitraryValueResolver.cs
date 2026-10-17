@@ -16,8 +16,8 @@ namespace Velvet
     // form is handled by StyleBackgroundImageResolver).
     internal static class StyleArbitraryValueResolver
     {
-        // Strips the important modifier and reports whether it was present: a leading '!' (!bg-red-500)
-        // or a trailing '!' (bg-red-500!). The bare core is returned so the caller routes
+        // Strips the important modifier and reports whether it was present: a leading '!' (!bg-red-500), one
+        // after the variants (hover:!bg-red-500) or a trailing '!' (bg-red-500!). The bare core is returned so the caller routes
         // it normally; when important, the caller elevates the (inline-resolvable) utility to the Important
         // layer so it wins conflicts. A class-only utility (no inline form) cannot be elevated in UI Toolkit,
         // so its '!' is accepted but inert. Returns the input unchanged when no modifier is present.
@@ -46,6 +46,17 @@ namespace Velvet
             {
                 important = true;
                 return className.Substring(0, className.Length - 1);
+            }
+
+            // Tailwind's spelling behind variants (hover:!w-4), whose bang opens the utility after the last variant.
+            if (className.IndexOf(":!", StringComparison.Ordinal) >= 0)
+            {
+                var variants = StyleSpacingPrecedence.VariantsLength(className);
+                if (variants > 0 && variants < className.Length && className[variants] == '!')
+                {
+                    important = true;
+                    return className.Remove(variants, 1);
+                }
             }
 
             return className;
