@@ -402,6 +402,18 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode AddsToAListWithACollectionCall()
+        {
+            var (items, _) = Hooks.UseState(new List<int>());
+            var (other, setOther) = Hooks.UseState(0);
+            s_setOther = setOther;
+            items.Add(items.Count);
+            return V.Div("root",
+                V.Label(name: "count", text: items.Count.ToString()),
+                V.Label(name: "other", text: other.ToString()));
+        }
+
+        [Component]
         private static VNode ReadsAMutation()
         {
             var mutation = Hooks.UseMutation(new MutationOptions<int, int>(
@@ -1022,6 +1034,22 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(GrowsACopyOfAList, key: "grows-copy"));
+
+            // Act
+            s_setOther(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("count"), Is.EqualTo("2"));
+        }
+
+        // What it pins is a collection call outside every scope giving the list away: `false` in place of the
+        // `ChangesACollection(method, declaring)` test in `IsRepeatableCall` caches the child on the list's identity.
+        [Test]
+        public void Given_AListAddedToByACollectionCall_When_AnotherStateChanges_Then_TheChildCountingItShowsTheCurrentCount()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(AddsToAListWithACollectionCall, key: "adds"));
 
             // Act
             s_setOther(1);

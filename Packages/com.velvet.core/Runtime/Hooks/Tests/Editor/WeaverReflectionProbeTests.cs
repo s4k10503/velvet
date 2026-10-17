@@ -1442,6 +1442,134 @@ namespace Velvet.Tests
             Assert.That(messages, Is.Empty);
         }
 
+        private static List<string> ReportAfterAssembling(string moduleName, Action<ModuleDefinition, MethodDefinition, MethodReference> shape)
+        {
+            using var module = BuildHookShapeProbeModule(moduleName, out var method, out var useId, out _, out _);
+            shape(module, method, useId);
+            return InvokeWeaveAndReport(module);
+        }
+
+        // `return null;` after one ordinary hook, so that the body is a candidate unless the shape under test says otherwise.
+        private static void AssembleStoredHook(MethodDefinition method, MethodReference useId, ModuleDefinition module)
+        {
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+        }
+
+        [Test]
+        public void Given_AComponentOptedOutOfTheCompiler_When_BailoutsAreReported_Then_TheMessageNamesTheOptOut()
+        {
+            // Act
+            var messages = ReportAfterAssembling("ReportedOptOutProbe", (module, method, useId) =>
+            {
+                AssembleStoredHook(method, useId, module);
+                method.CustomAttributes[0].Properties.Add(new Mono.Cecil.CustomAttributeNamedArgument("Compiler",
+                    new Mono.Cecil.CustomAttributeArgument(module.TypeSystem.Boolean, false)));
+            });
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("Compiler = false"));
+        }
+
+        [Test]
+        public void Given_AComponentWithAByReferenceParameter_When_BailoutsAreReported_Then_TheMessageNamesTheParameter()
+        {
+            // Act
+            var messages = ReportAfterAssembling("ReportedByRefProbe", (module, method, useId) =>
+            {
+                AssembleStoredHook(method, useId, module);
+                method.Parameters.Add(new ParameterDefinition("p", Mono.Cecil.ParameterAttributes.None, new ByReferenceType(module.TypeSystem.Int32)));
+            });
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("ref, out or in parameter"));
+        }
+
+        [Test]
+        public void Given_AComponentThatIsNotStatic_When_BailoutsAreReported_Then_TheMessageSaysSo()
+        {
+            // Act
+            var messages = ReportAfterAssembling("ReportedInstanceProbe", (module, method, useId) =>
+            {
+                AssembleStoredHook(method, useId, module);
+                method.IsStatic = false;
+                method.HasThis = true;
+            });
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("it is not static"));
+        }
+
+        [Test]
+        public void Given_AComponentNotReturningAVNode_When_BailoutsAreReported_Then_TheMessageSaysSo()
+        {
+            // Act
+            var messages = ReportAfterAssembling("ReportedReturnProbe", (module, method, useId) =>
+            {
+                AssembleStoredHook(method, useId, module);
+                method.ReturnType = module.TypeSystem.Object;
+            });
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("does not return Velvet.VNode"));
+        }
+
+        [Test]
+        public void Given_ABodyThatAlreadyCallsTheGate_When_BailoutsAreReported_Then_TheMessageSaysSo()
+        {
+            // Act
+            var messages = ReportAfterAssembling("ReportedMemoizedProbe", (module, method, useId) =>
+            {
+                var gate = module.Types.Single(type => type.FullName == "Velvet.Hooks").Methods.Single(each => each.Name == "TryGetMemoizedVNode");
+                var il = method.Body.GetILProcessor();
+                il.Append(Instruction.Create(OpCodes.Call, gate));
+                il.Append(Instruction.Create(OpCodes.Pop));
+                il.Append(Instruction.Create(OpCodes.Ldnull));
+                il.Append(Instruction.Create(OpCodes.Ret));
+                AssignSequentialOffsets(method);
+            });
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("already calls Hooks.TryGetMemoizedVNode"));
+        }
+
+        private static List<string> ReportAfterReadingAStaticField()
+        {
+            using var module = BuildHookShapeProbeModule("ReportedStaticProbe", out var method, out var useId, out _, out _);
+            var factory = AddFactoryType(module, out _, out var div);
+            AddScopeGates(module);
+            var counter = new FieldDefinition("Counter", Mono.Cecil.FieldAttributes.Public | Mono.Cecil.FieldAttributes.Static, module.TypeSystem.String);
+            module.Types.Single(type => type.FullName == "Probe.Fixture").Fields.Add(counter);
+            AssembleCaptionsOneReading(module, method, useId, factory, div, il => il.Append(Instruction.Create(OpCodes.Ldsfld, counter)));
+            return InvokeWeaveAndReport(module);
+        }
+
+        [Test]
+        public void Given_AChildReadingAMutableStatic_When_BailoutsAreReported_Then_TheMessageCountsTheExpressionsLeftUncached()
+        {
+            // Act
+            var messages = ReportAfterReadingAStaticField();
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("2 expression(s) left uncached"));
+        }
+
+        [Test]
+        public void Given_AChildReadingAMutableStatic_When_BailoutsAreReported_Then_TheMessageNamesTheField()
+        {
+            // Act
+            var messages = ReportAfterReadingAStaticField();
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("the static field 'Counter'"));
+        }
+
         [Test]
         public void Given_AWovenBody_When_BailoutsAreReported_Then_TheMessageCountsItsScopes()
         {

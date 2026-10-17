@@ -60,7 +60,7 @@ namespace Velvet.CodeGen
             {
                 var reasons = refusals.GroupBy(reason => reason).OrderByDescending(group => group.Count()).ThenBy(group => group.Key, System.StringComparer.Ordinal)
                     .Select(group => group.Count() == 1 ? group.Key : $"{group.Key} (x{group.Count()})");
-                parts.Add($"{refusals.Count} child/derived expression(s) left uncached: {string.Join(", ", reasons)}");
+                parts.Add($"{refusals.Count} expression(s) left uncached: {string.Join(", ", reasons)}");
             }
             if (analysis.Volatile) parts.Add("its gate never hits, because it reaches a hook no comparison stands for");
             if (analysis.OpaqueCalls.Count > 0) parts.Add($"{analysis.OpaqueCalls.Count} call(s) ahead of the gate bracketed");

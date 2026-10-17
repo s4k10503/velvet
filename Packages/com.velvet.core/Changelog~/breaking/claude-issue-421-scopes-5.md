@@ -13,7 +13,8 @@
 
 ### Added
 
-- `VELVET_REPORT_AUTOMEMO`, an assembly scripting define symbol that makes the post-processor emit one warning per
-  `[Component]` saying why it is left unwoven or what was woven into it.
+- `VELVET_REPORT_AUTOMEMO`, an assembly scripting define symbol that makes the post-processor emit one warning for
+  each `[Component]` method that has a body, saying why it is left unwoven or what was woven into it, including why
+  each expression that is not a scope was left uncached.
 - `Hooks.BeginOpaqueCall` and `Hooks.EndOpaqueCall`, the bracket the compiler transform weaves around a call it
   cannot prove runs no hook. They are not for calling by hand.
