@@ -2275,6 +2275,43 @@ class LocalBranchDeletionTests(unittest.TestCase):
             self.assertEqual(failures, ["the remote branch topic survived: HTTP 403"])
 
 
+REFUSED_BY_PROXY = "gh: Write access to this GitHub API path is not permitted through this proxy. (HTTP 403)"
+
+
+def remote_answering(read_stderr):
+    """A `run_quietly` whose ref read answers `read_stderr` (empty: the ref exists) and whose DELETE the proxy refuses."""
+    def answer(command, timeout):
+        stderr = REFUSED_BY_PROXY if "DELETE" in command else read_stderr
+        return subprocess.CompletedProcess(command, 1 if stderr else 0, "", stderr)
+    return answer
+
+
+class RemoteBranchDeletionTests(unittest.TestCase):
+    def test_Given_ARefAlreadyGoneAndADeleteTheProxyRefuses_When_Deleted_Then_NothingSurvivedIsReported(self):
+        # Arrange
+        read = remote_answering("gh: Not Found (HTTP 404)")
+
+        # Act
+        with mock.patch.object(settle, "repository", lambda *_: "owner/name"), \
+                mock.patch.object(settle, "run_quietly", read):
+            failure = settle.delete_remote_ref(Path("."), "topic")
+
+        # Assert
+        self.assertEqual(failure, "")
+
+    def test_Given_ARefThatExistsAndADeleteTheProxyRefuses_When_Deleted_Then_ItIsReportedAsSurviving(self):
+        # Arrange
+        read = remote_answering("")
+
+        # Act
+        with mock.patch.object(settle, "repository", lambda *_: "owner/name"), \
+                mock.patch.object(settle, "run_quietly", read):
+            failure = settle.delete_remote_ref(Path("."), "topic")
+
+        # Assert
+        self.assertEqual(failure, REFUSED_BY_PROXY)
+
+
 class BranchDeletionTests(unittest.TestCase):
     def test_Given_ARefDeleteThatFoundNothing_When_Read_Then_ItIsNotReportedAsAFailure(self):
         # Arrange — the repository deletes the head on merge, so this DELETE usually arrives second.
