@@ -6,10 +6,10 @@ namespace Velvet.Tests
     /// Specifies two bare <c>TryExtract</c>-shaped className parsers, colocated because the border-style tests
     /// mirror the skew-class tests' shape (no SetUp, plain static parser calls, last-token-wins cascade).
     /// <list type="bullet">
-    /// <item>The <c>skew-x-*</c> / <c>skew-y-*</c> utility parser (<see cref="StyleSkewClass"/>): the numeric
-    /// scale is degrees (<c>skew-x-6</c>), a leading dash negates (<c>-skew-x-6</c>), the arbitrary form requires
-    /// the unit (<c>skew-x-[8.5deg]</c>), the cascade is last-wins per axis, and <c>skew-x-0</c> is a recognized
-    /// reset.</item>
+    /// <item>The <c>skew-x-*</c> / <c>skew-y-*</c> / <c>skew-*</c> utility parser (<see cref="StyleSkewClass"/>):
+    /// the numeric scale is degrees (<c>skew-x-6</c>), a leading dash negates (<c>-skew-x-6</c>), the arbitrary
+    /// form requires the unit (<c>skew-x-[8.5deg]</c>), the cascade is last-wins per axis among the classes of the
+    /// highest importance, <c>skew-x-0</c> is a recognized reset, and <c>skew-6</c> writes both axes.</item>
     /// <item>The <c>border-dashed</c> / <c>border-dotted</c> / <c>border-solid</c> utility parser
     /// (<see cref="StyleBorderStyleClass"/>): dashed / dotted are ACTIVE (a painted outline), border-solid is a
     /// recognized RESET (it overrides an earlier dashed / dotted, keeping the native solid border), and the
@@ -137,6 +137,219 @@ namespace Velvet.Tests
 
             // Assert — equal, so ApplySkewOnPatch's steady-state guard fires (no per-patch re-parse thrash).
             Assert.That(winnerX, Is.EqualTo(spec.SourceX));
+        }
+
+        // --- skew-<n>: both axes ---
+
+        // A class list as the reconciler hands it to the extractor: Normalize has put the base classes in Tailwind's
+        // order, which is what makes the last class of an axis the one Tailwind emits last.
+        private static SkewSpec Resolved(string classes)
+        {
+            StyleSkewClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out var spec);
+            return spec;
+        }
+
+        // The same, with payload appended after the base classes as the variant gate appends the class a variant adds.
+        private static SkewSpec ResolvedWithVariant(string classes, string payload)
+        {
+            var composed = new System.Collections.Generic.List<string>(StyleSpacingPrecedence.Normalize(classes.Split(' ')))
+            {
+                payload,
+            };
+            StyleSkewClass.TryExtract(composed.ToArray(), out var spec);
+            return spec;
+        }
+
+        [TestCase("skew-6", 6f)]
+        [TestCase("-skew-6", -6f)]
+        [TestCase("skew-[10deg]", 10f)]
+        [TestCase("skew-x-12 skew-6", 12f)]
+        [TestCase("skew-6 skew-x-12", 12f)]
+        [TestCase("skew-6 -skew-6", 6f)]
+        [TestCase("-skew-6 skew-6", 6f)]
+        [TestCase("!skew-6 skew-x-12", 6f)]
+        [TestCase("skew-6! skew-x-12", 6f)]
+        [TestCase("!skew-6 !skew-x-12", 12f)]
+        [TestCase("!skew-x-12 skew-x-6!", 6f)]
+        [TestCase("skew-x-6! !skew-x-12", 6f)]
+        [TestCase("-skew-x-6! skew-x-12", -6f)]
+        [TestCase("!-skew-x-6 skew-x-12", -6f)]
+        [TestCase("!skew-x-6 skew-x-[8]", 6f)]
+        [TestCase("skew-x-[8] !skew-x-6", 6f)]
+        public void Given_AClassListOfSkews_When_Resolved_Then_TheXAngleIsThatOfTheClassTailwindEmitsLast(
+            string classes, float expected)
+        {
+            // Act
+            var spec = Resolved(classes);
+
+            // Assert
+            Assert.That(spec.XDeg, Is.EqualTo(expected));
+        }
+
+        [TestCase("skew-6", 6f)]
+        [TestCase("-skew-6", -6f)]
+        [TestCase("skew-x-12 skew-6", 6f)]
+        [TestCase("skew-y-3 skew-6", 3f)]
+        [TestCase("skew-6 skew-y-3", 3f)]
+        [TestCase("!skew-6 skew-y-3", 6f)]
+        [TestCase("!skew-6 !skew-y-3", 3f)]
+        public void Given_AClassListOfSkews_When_Resolved_Then_TheYAngleIsThatOfTheClassTailwindEmitsLast(
+            string classes, float expected)
+        {
+            // Act
+            var spec = Resolved(classes);
+
+            // Assert
+            Assert.That(spec.YDeg, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AnEmptyClassAfterASkew_When_Extracted_Then_TheSkewStands()
+        {
+            // Act
+            StyleSkewClass.TryExtract(new[] { "skew-x-6", string.Empty }, out var spec);
+
+            // Assert
+            Assert.That(spec.XDeg, Is.EqualTo(6f));
+        }
+
+        [Test]
+        public void Given_APlainSkewBracket_When_Extracted_Then_BothAxesTakeTheAngleInItsUnit()
+        {
+            // Act
+            var spec = Resolved("skew-[.25turn]");
+
+            // Assert
+            Assert.That(spec.XDeg, Is.EqualTo(90f).Within(1e-3f));
+        }
+
+        [TestCase("skew-x-12", "skew-6", 6f)]
+        [TestCase("skew-6", "skew-x-12", 12f)]
+        [TestCase("skew-x-12", "!skew-6", 6f)]
+        [TestCase("!skew-x-12", "!skew-x-6", 6f)]
+        [TestCase("!skew-x-12", "skew-x-6", 12f)]
+        public void Given_ABaseSkewAndAVariantPayload_When_Resolved_Then_TheXAngleIsThatOfTheOneThatWins(
+            string classes, string payload, float expected)
+        {
+            // Act
+            var spec = ResolvedWithVariant(classes, payload);
+
+            // Assert
+            Assert.That(spec.XDeg, Is.EqualTo(expected));
+        }
+
+        [TestCase("skew-x-12", "skew-6", 6f)]
+        [TestCase("skew-y-3", "skew-6", 6f)]
+        [TestCase("skew-6", "skew-y-3", 3f)]
+        public void Given_ABaseSkewAndAVariantPayload_When_Resolved_Then_TheYAngleIsThatOfTheOneThatWins(
+            string classes, string payload, float expected)
+        {
+            // Act
+            var spec = ResolvedWithVariant(classes, payload);
+
+            // Assert
+            Assert.That(spec.YDeg, Is.EqualTo(expected));
+        }
+
+        [TestCase("skew-1.5")]
+        [TestCase("skew-[8]")]
+        public void Given_APlainSkewThatIsNoWholeNumberOfDegrees_When_Extracted_Then_ItIsDeclined(string utility)
+        {
+            // Act
+            var want = StyleSkewClass.TryExtract(new[] { utility }, out _);
+
+            // Assert — Tailwind takes a bare skew value only as a positive integer, and a bracket only as an angle or 0.
+            Assert.That(want, Is.False);
+        }
+
+        [Test]
+        public void Given_APlainSkewOfAWholeNumberOfDegrees_When_Extracted_Then_ItIsWanted()
+        {
+            // Act
+            var want = StyleSkewClass.TryExtract(new[] { "skew-2" }, out _);
+
+            // Assert
+            Assert.That(want, Is.True);
+        }
+
+        [Test]
+        public void Given_APlainSkewBesideAPerAxisSkew_When_Probed_Then_TheXWinnerIsThePerAxisClass()
+        {
+            // Arrange — the patch fast path compares the probe's winners against the spec's sources per axis.
+            var classes = StyleSpacingPrecedence.Normalize(new[] { "skew-6", "skew-x-12" });
+
+            // Act
+            StyleSkewClass.TryGetWinningSkewClasses(classes, out var winnerX, out _);
+
+            // Assert
+            Assert.That(winnerX, Is.EqualTo("skew-x-12"));
+        }
+
+        [Test]
+        public void Given_APlainSkewBesideAPerAxisSkew_When_Probed_Then_TheYWinnerIsThePlainClass()
+        {
+            // Arrange
+            var classes = StyleSpacingPrecedence.Normalize(new[] { "skew-6", "skew-x-12" });
+
+            // Act
+            StyleSkewClass.TryGetWinningSkewClasses(classes, out _, out var winnerY);
+
+            // Assert
+            Assert.That(winnerY, Is.EqualTo("skew-6"));
+        }
+
+        [Test]
+        public void Given_APlainSkewBesideAPerAxisSkew_When_ProbedAndExtracted_Then_TheXWinnerMatchesItsSource()
+        {
+            // Arrange
+            var classes = StyleSpacingPrecedence.Normalize(new[] { "skew-6", "skew-x-12" });
+
+            // Act
+            StyleSkewClass.TryGetWinningSkewClasses(classes, out var winnerX, out _);
+            StyleSkewClass.TryExtract(classes, out var spec);
+
+            // Assert
+            Assert.That(winnerX, Is.EqualTo(spec.SourceX));
+        }
+
+        [Test]
+        public void Given_APlainSkewBesideAPerAxisSkew_When_ProbedAndExtracted_Then_TheYWinnerMatchesItsSource()
+        {
+            // Arrange
+            var classes = StyleSpacingPrecedence.Normalize(new[] { "skew-6", "skew-x-12" });
+
+            // Act
+            StyleSkewClass.TryGetWinningSkewClasses(classes, out _, out var winnerY);
+            StyleSkewClass.TryExtract(classes, out var spec);
+
+            // Assert
+            Assert.That(winnerY, Is.EqualTo(spec.SourceY));
+        }
+
+        [Test]
+        public void Given_APlainSkewBesideARejectedPerAxisBracket_When_Normalized_Then_NoSkewIsWanted()
+        {
+            // Arrange — skew-<n> and skew-x-[…] write one transform declaration, which a bare 8 invalidates.
+            var normalized = StyleSpacingPrecedence.Normalize(new[] { "skew-6", "skew-x-[8]" });
+
+            // Act
+            var want = StyleSkewClass.TryExtract(normalized, out _);
+
+            // Assert
+            Assert.That(want, Is.False);
+        }
+
+        [Test]
+        public void Given_APlainSkewBesideAZeroPerAxisBracket_When_Normalized_Then_ASkewIsWanted()
+        {
+            // Arrange
+            var normalized = StyleSpacingPrecedence.Normalize(new[] { "skew-6", "skew-x-[0]" });
+
+            // Act
+            var want = StyleSkewClass.TryExtract(normalized, out _);
+
+            // Assert
+            Assert.That(want, Is.True);
         }
 
         // --- border-dashed / border-dotted / border-solid utility parser ---

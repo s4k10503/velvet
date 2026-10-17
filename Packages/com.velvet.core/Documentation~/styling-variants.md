@@ -328,10 +328,17 @@ the element the renderer applies that opacity to.
 An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element's **own**
 `overflow-hidden` does not — so `overflow-hidden rounded-full ring-2`, the avatar pattern, renders.
 
+`skew-<n>`, `-skew-<n>` and `skew-[…]` shear both axes by one angle. They compose with `skew-x-*` and
+`skew-y-*` as Tailwind's `skewX() skewY()` does, so x is also stretched by 1 + tan θx · tan θy. Each axis takes
+the class Tailwind emits last: a per-axis class over `skew-<n>`
+whichever is written first (`skew-6 skew-x-12` and `skew-x-12 skew-6` both give 12° on x and 6° on y), a class
+behind a variant over the base ones (`skew-x-12 hover:skew-6` gives 6° on both axes while hovered), and an
+important one (`!skew-6`, `skew-6!`, `hover:!skew-6`) over every plain one (`!skew-6 skew-x-12` gives 6° on both).
+
 **Where `skew-*` deviates from CSS.** UI Toolkit's transform carries rotation, scale and translation and
 no shear, so a skew here is not a transform: the caster's own face is repainted sheared in its generated
 content, and each direct in-flow child is seated with an inline `translate` that puts its centroid where
-the shear would carry it. Four things follow that a CSS `skewX()` does not do.
+the shear would carry it. Five things follow that a CSS `skewX()` does not do.
 
 - **The caster's hit region does not lean with its face.** Its layout box stays axis-aligned and that box
   is what answers a pointer, so a click near an edge lands by the upright rectangle while the paint has
@@ -345,6 +352,9 @@ the shear would carry it. Four things follow that a CSS `skewX()` does not do.
 - **Descendants are seated, not sheared.** The seat is exact at each direct child's centroid and constant
   across that child, so a child large relative to the caster reads off at its far corners, and a
   grandchild moves only because its parent did.
+- **A `shadow-*` on the caster follows its x angle alone.** The shadow is baked sheared by `skew-x-*`, or by
+  `skew-<n>`'s x angle, and not by the y angle or the stretch a skew on both axes adds, so under `skew-y-6` it is
+  upright and under `skew-6` it leans as `skew-x-6` would.
 - **The seat shares each direct child's inline `translate` slot.** The seat and a child's own
   `translate-x-*`, a `V.Motion` translation, or a drag offset follow last-writer-wins behavior. Velvet runs
   a seat pass when the caster attaches, when its geometry changes, and from caster reconciliation. Attachment

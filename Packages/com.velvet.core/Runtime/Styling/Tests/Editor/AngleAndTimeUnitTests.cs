@@ -81,7 +81,7 @@ namespace Velvet.Tests
         public void Given_ASkewBracketInAnyAngleUnit_When_Parsed_Then_ItIsThatManyDegrees(string utility, float degrees)
         {
             // Act
-            var ok = StyleSkewClass.TryParse(utility, out _, out var deg);
+            var ok = StyleSkewClass.TryParse(utility, out _, out var deg, out _);
 
             // Assert
             Assert.That(ok ? deg : float.NaN, Is.EqualTo(degrees).Within(1e-3f));
@@ -92,7 +92,7 @@ namespace Velvet.Tests
         public void Given_ABareNonZeroSkew_When_Parsed_Then_TheClassIsDeclined()
         {
             // Act
-            var parsed = StyleSkewClass.TryParse("skew-x-[10]", out _, out _);
+            var parsed = StyleSkewClass.TryParse("skew-x-[10]", out _, out _, out _);
 
             // Assert
             Assert.That(parsed, Is.False);
@@ -103,7 +103,7 @@ namespace Velvet.Tests
         public void Given_ASkewInDegrees_When_Parsed_Then_ItIsRead()
         {
             // Act
-            var parsed = StyleSkewClass.TryParse("skew-x-[10deg]", out _, out _);
+            var parsed = StyleSkewClass.TryParse("skew-x-[10deg]", out _, out _, out _);
 
             // Assert
             Assert.That(parsed, Is.True);

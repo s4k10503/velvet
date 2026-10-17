@@ -409,6 +409,112 @@ namespace Velvet.Tests
             Assert.That(binding.Spec.XDeg, Is.EqualTo(-6f));
         }
 
+        private static float SkewAngle(ReconcilerScope scope, bool xAxis)
+            => scope.Reconciler.Context.SkewBindings.TryGetValue(scope.Root[0], out var binding)
+                ? (xAxis ? binding.Spec.XDeg : binding.Spec.YDeg)
+                : float.NaN;
+
+        [Test]
+        public void Given_APlainSkewClass_When_Reconciled_Then_TheBindingCarriesTheAngleOnX()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "skew-6", name: "card") });
+
+            // Act
+            var xDeg = SkewAngle(scope, xAxis: true);
+
+            // Assert
+            Assert.That(xDeg, Is.EqualTo(6f));
+        }
+
+        [Test]
+        public void Given_APlainSkewClass_When_Reconciled_Then_TheBindingCarriesTheAngleOnY()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "skew-6", name: "card") });
+
+            // Act
+            var yDeg = SkewAngle(scope, xAxis: false);
+
+            // Assert
+            Assert.That(yDeg, Is.EqualTo(6f));
+        }
+
+        [Test]
+        public void Given_APlainSkew_When_APerAxisSkewIsAddedByPatch_Then_ItTakesOverItsAxis()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: "skew-6", name: "card") };
+            Mount(scope, oldTree);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, oldTree,
+                new VNode[] { V.Div(className: "skew-6 skew-x-12", name: "card") });
+
+            // Assert
+            Assert.That(SkewAngle(scope, xAxis: true), Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_APlainSkew_When_APerAxisSkewIsAddedByPatch_Then_TheOtherAxisKeepsThePlainAngle()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: "skew-6", name: "card") };
+            Mount(scope, oldTree);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, oldTree,
+                new VNode[] { V.Div(className: "skew-6 skew-x-12", name: "card") });
+
+            // Assert
+            Assert.That(SkewAngle(scope, xAxis: false), Is.EqualTo(6f));
+        }
+
+        [Test]
+        public void Given_AnImportantSkewXBeforeALargerPlainOne_When_Reconciled_Then_TheImportantOneHoldsTheAxis()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "!skew-x-6 skew-x-12", name: "card") });
+
+            // Act
+            var xDeg = SkewAngle(scope, xAxis: true);
+
+            // Assert
+            Assert.That(xDeg, Is.EqualTo(6f));
+        }
+
+        // A shadow under a skewed caster takes the caster's x angle alone (styling-variants.md).
+        [Test]
+        public void Given_ASkewYCasterWithAShadow_When_Reconciled_Then_TheShadowIsNotSheared()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "skew-y-6 shadow-md", name: "card") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].SkewXDeg, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_ABothAxesSkewCasterWithAShadow_When_Reconciled_Then_TheShadowTakesTheXAngle()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "skew-6 shadow-md", name: "card") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].SkewXDeg, Is.EqualTo(6f));
+        }
+
         [Test]
         public void Given_ASkewedElement_When_TheClassIsRemovedByPatch_Then_TheBindingIsUntracked()
         {

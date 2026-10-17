@@ -404,11 +404,11 @@ namespace Velvet.Tests
 
     /// <summary>
     /// Pins the pure centroid-shear math behind <see cref="StyleSkewChildTranslateManipulator"/>: the
-    /// approximate descendant-shear offset a skewed caster writes onto a direct child. The model is the one
-    /// <c>SilhouetteBoundsSpacer.ShearedAabb</c> documents — <c>x' = x + (y - h/2)*tanX</c>,
-    /// <c>y' = y + (x - w/2)*tanY</c> — so a child ABOVE the box centre leans one way under positive
-    /// <c>skewX</c> and a child BELOW it the other, the axes never cross-couple, and a child exactly at the
-    /// centre (or a zero angle) gets no offset. Panel-free and layout-free: it drives
+    /// approximate descendant-shear offset a skewed caster writes onto a direct child, carried by
+    /// <c>SilhouetteFace.Shear</c> — so a child ABOVE the box centre leans one way under positive
+    /// <c>skewX</c> and a child BELOW it the other, <c>skewY</c> alone moves only the vertical offset, both
+    /// together compose as <c>skewX() skewY()</c>, and a child exactly at the centre (or a zero angle) gets no
+    /// offset. Panel-free and layout-free: it drives
     /// <see cref="StyleSkewChildTranslateManipulator.ComputeOffset"/> directly. GWT, one assert per case.
     /// </summary>
     [TestFixture]
@@ -452,6 +452,20 @@ namespace Velvet.Tests
 
             // Assert — an unskewed frame seats every child at its own position (the post-unskew numeric path).
             Assert.That(offset, Is.EqualTo(Vector2.zero));
+        }
+
+        [Test]
+        public void Given_BothSkewAxes_When_ComputingOffset_Then_TheyComposeAsSkewXThenSkewY()
+        {
+            // Arrange — a child 50px right of the centre on its row, under tanX = tanY = 0.5. skewX·skewY moves
+            // it right by tanX·tanY·50 and down by tanY·50.
+            const float w = 100f, h = 100f, tanX = 0.5f, tanY = 0.5f;
+
+            // Act
+            var offset = StyleSkewChildTranslateManipulator.ComputeOffset(w, h * 0.5f, w, h, tanX, tanY);
+
+            // Assert
+            Assert.That(new[] { offset.x, offset.y }, Is.EqualTo(new[] { 12.5f, 25f }).Within(1e-4f));
         }
 
         [Test]
