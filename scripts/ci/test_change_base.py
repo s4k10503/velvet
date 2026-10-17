@@ -155,6 +155,8 @@ class ResolverTests(unittest.TestCase):
         # Assert
         self.assertEqual((done.returncode, done.stdout), (0, "sha=\n"))
 
+    # GREEN_ON_BASE(characterization): the base names nothing for a push either. What it pins is that the
+    # campaign's scope is read only when asked for: resolving the scope for every event reddens it.
     def test_Given_APushEvent_When_Resolved_Then_ItNamesNothing(self):
         # Arrange
         repository = self.repository

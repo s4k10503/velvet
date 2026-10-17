@@ -358,6 +358,8 @@ class HeadCheckVerdictTests(unittest.TestCase):
         # Assert
         self.assertIn("not passing at", refusal)
 
+    # GREEN_ON_BASE(characterization): the base lets a labelled head whose campaign passed through too,
+    # after as many readings. One more reading in the guard reddens it.
     def test_Given_ALabelledHeadWhoseCampaignPassed_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
         # Arrange / Act
         result = self.ask(labels=LABELLED, runs=workflow_runs((2, "completed", "success")))
