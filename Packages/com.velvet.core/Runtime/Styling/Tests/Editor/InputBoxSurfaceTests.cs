@@ -813,7 +813,7 @@ namespace Velvet.Tests
 
         [TestCase("text-ellipsis")]
         [TestCase("text-clip")]
-        public void Given_ATextOverflowUtilityOnATextField_When_Reconciled_Then_TheInputBoxAndItsTextClip(string token)
+        public void Given_ATextOverflowUtilityOnATextField_When_Reconciled_Then_TheInputBoxClips(string token)
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -821,12 +821,24 @@ namespace Velvet.Tests
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
-            var box = Box(scope.Root[0]);
 
             // Assert
-            Assert.That(
-                (box.ClassListContains("overflow-hidden"), box.Q<TextElement>().ClassListContains("overflow-hidden")),
-                Is.EqualTo((true, true)));
+            Assert.That(Box(scope.Root[0]).ClassListContains("overflow-hidden"), Is.True);
+        }
+
+        [TestCase("text-ellipsis")]
+        [TestCase("text-clip")]
+        public void Given_ATextOverflowUtilityOnATextField_When_Reconciled_Then_TheTextTheInputBoxDrawsClips(string token)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: token) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Box(scope.Root[0]).Q<TextElement>().ClassListContains("overflow-hidden"), Is.True);
         }
 
         [Test]
