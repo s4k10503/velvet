@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 85 case(s) that ran the site: Given_ProviderBoundaryDisappearsBetweenRenders_When_Patch_Then_ConsumerRemountsAtOuterContext",
+ "file": "aec14ba6cd55bfd414a01630f126b9fd28672f8f8cedccfae30cd0b326a8faf5",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceProviderTests.Given_ProviderBoundaryDisappearsBetweenRenders_When_Patch_Then_ConsumerRemountsAtOuterContext",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceProviderTests.cs": "d966c5c6670734690a79d2e0161441bb95c66f5054b1327c96ef7decac55ef5a",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  }
+ ],
+ "measured_by": "39031313557",
+ "mutant": {
+  "after": ";",
+  "before": "Settle = settle;",
+  "column": 16,
+  "line": 2226,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d8caee10d5327a14b5add4afde97b1e10b9ce7320f0922c823a6ae382c8d3527",
+ "verdict": "killed"
+}

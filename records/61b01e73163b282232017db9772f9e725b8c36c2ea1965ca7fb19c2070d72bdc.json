@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "aec14ba6cd55bfd414a01630f126b9fd28672f8f8cedccfae30cd0b326a8faf5",
+ "killers": [],
+ "measured_by": "39031313557",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 78,
+  "line": 2150,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d8caee10d5327a14b5add4afde97b1e10b9ce7320f0922c823a6ae382c8d3527",
+ "verdict": "survived"
+}

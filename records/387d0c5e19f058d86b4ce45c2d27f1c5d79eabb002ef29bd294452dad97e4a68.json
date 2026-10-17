@@ -1,0 +1,56 @@
+{
+ "detail": "EditMode: 4 failed in Velvet.Tests.Reconciler.Editor: Given_AComponentChildExiting_When_TheWholePresenceUnmounts_Then_OnExitCompleteRunsOnce, Given_AKeyLeavingThroughADescendantsExit_When_TheTreeIsDisposed_Then_OnExitCompleteRunsOnce, Given_AKeyWhoseExitIsPlaying_When_TheTreeIsDisposed_Then_OnExitCompleteRuns",
+ "file": "aec14ba6cd55bfd414a01630f126b9fd28672f8f8cedccfae30cd0b326a8faf5",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AComponentChildExiting_When_TheWholePresenceUnmounts_Then_OnExitCompleteRunsOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "d25be81c78a3f23d3525fcd361d28db855ce74101762af07c20c2deccaa8eee4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PresenceKeyRecordTests.Given_AKeyLeavingThroughADescendantsExit_When_TheTreeIsDisposed_Then_OnExitCompleteRunsOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "5eccea92861f1caf73f155d4793a34a1e5a48640fba1c46c19e757424a6e63cd",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "238e9c3e9e7388a5d6456b1953e97f85f7f00ec02bb385bb81fff41f5de30d20",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PresenceKeyRecordTests.Given_AKeyWhoseExitIsPlaying_When_TheTreeIsDisposed_Then_OnExitCompleteRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "5eccea92861f1caf73f155d4793a34a1e5a48640fba1c46c19e757424a6e63cd",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "238e9c3e9e7388a5d6456b1953e97f85f7f00ec02bb385bb81fff41f5de30d20",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PresenceSkippedRemovalWaitTests.Given_APresenceOnAPanelWithAnExitPlaying_When_TheTreeIsDisposed_Then_OnExitCompleteRunsOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceSkippedRemovalWaitTests.cs": "46c553e7ccab48e53f34c74504357aa11f918030b67acf0ce2b1934154747cc9",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "238e9c3e9e7388a5d6456b1953e97f85f7f00ec02bb385bb81fff41f5de30d20",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  }
+ ],
+ "measured_by": "39031313557",
+ "mutant": {
+  "after": ";",
+  "before": "_onSettled();",
+  "column": 16,
+  "line": 2449,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d8caee10d5327a14b5add4afde97b1e10b9ce7320f0922c823a6ae382c8d3527",
+ "verdict": "killed"
+}

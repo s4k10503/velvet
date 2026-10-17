@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 107 case(s) that ran the site: Given_AKeyWhoseDescendantExited_When_ItsLeavesAreDropped_Then_NothingIsKeptForIt, Given_AKeyWithNothingToPlay_When_ItsLeavesAreDropped_Then_NothingIsKeptForIt",
+ "file": "b4667ea6265e3a50ebc544df24237135fa5fcec94cc230c4e1618b80894cfc0d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceDescendantExitStateTests.Given_AKeyWhoseDescendantExited_When_ItsLeavesAreDropped_Then_NothingIsKeptForIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceDescendantExitStateTests.cs": "41d721dd699ed2383f90b76b17b4bf36934e8e1214c3a567e6ba826b6daac8b3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceDescendantExitStateTests.Given_AKeyWithNothingToPlay_When_ItsLeavesAreDropped_Then_NothingIsKeptForIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceDescendantExitStateTests.cs": "41d721dd699ed2383f90b76b17b4bf36934e8e1214c3a567e6ba826b6daac8b3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  }
+ ],
+ "measured_by": "39031313557",
+ "mutant": {
+  "after": ";",
+  "before": "DropExitedGhost(in pass, key, node);",
+  "column": 16,
+  "line": 2238,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d8caee10d5327a14b5add4afde97b1e10b9ce7320f0922c823a6ae382c8d3527",
+ "verdict": "killed"
+}

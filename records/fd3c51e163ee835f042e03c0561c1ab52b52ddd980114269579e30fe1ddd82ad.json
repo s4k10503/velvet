@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 143 case(s) that ran the site: Given_ExitInProgress_When_ReconcilerDisposed_Then_OnExitCompleteRunsOnce",
+ "file": "aec14ba6cd55bfd414a01630f126b9fd28672f8f8cedccfae30cd0b326a8faf5",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_ExitInProgress_When_ReconcilerDisposed_Then_OnExitCompleteRunsOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d7d62dd7147aba84595c63a536d4596773156cd39b71f22adb4ce88cbf934110",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "39031313557",
+ "mutant": {
+  "after": ";",
+  "before": "if (state.Exiting.Contains(entry.Key)) entry.Value.SettleForTeardown();",
+  "column": 16,
+  "line": 2823,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d8caee10d5327a14b5add4afde97b1e10b9ce7320f0922c823a6ae382c8d3527",
+ "verdict": "killed"
+}

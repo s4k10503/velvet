@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Reconciler.Editor: Given_AKeyWhoseQuietExitItsReturnCutShort_When_ItLeavesAgainWithAnExitAndThePassiveFlushRuns_Then_TheRunningExitKeepsItOnScreen",
+ "file": "b4667ea6265e3a50ebc544df24237135fa5fcec94cc230c4e1618b80894cfc0d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PresenceKeyRecordTests.Given_AKeyWhoseQuietExitItsReturnCutShort_When_ItLeavesAgainWithAnExitAndThePassiveFlushRuns_Then_TheRunningExitKeepsItOnScreen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "5eccea92861f1caf73f155d4793a34a1e5a48640fba1c46c19e757424a6e63cd",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "238e9c3e9e7388a5d6456b1953e97f85f7f00ec02bb385bb81fff41f5de30d20",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "39031313557",
+ "mutant": {
+  "after": ";",
+  "before": "state.PendingSettles.Remove(key);",
+  "column": 16,
+  "line": 2926,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d8caee10d5327a14b5add4afde97b1e10b9ce7320f0922c823a6ae382c8d3527",
+ "verdict": "killed"
+}
