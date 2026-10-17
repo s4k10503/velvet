@@ -11,9 +11,10 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>The first render returns the initial state.</item>
     /// <item>Dispatching an action schedules a re-render that observes the reducer's next state.</item>
-    /// <item>When the reducer returns a state equal to the current one, no re-render is scheduled.</item>
+    /// <item>A dispatch whose reducer returns a state equal to the current one still re-renders the component, as
+    /// React's <c>dispatch</c> never computes the result ahead of the render.</item>
     /// <item>The dispatch identity is stable across re-renders.</item>
-    /// <item>The reducer is pure with respect to rendering: it is invoked only on dispatch, never on an unrelated re-render.</item>
+    /// <item>The reducer is pure with respect to rendering: it is invoked only to fold a dispatch, never on an unrelated re-render.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -93,7 +94,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ActionLeavingStateUnchanged_When_Dispatched_Then_NoRerender()
+        public void Given_ActionLeavingStateUnchanged_When_Dispatched_Then_TheComponentStillRenders()
         {
             // Arrange
             s_counterReducerInitial = 0;
@@ -105,8 +106,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.AreEqual(renderCountBefore, s_counterReducerRenderCount,
-                "A reducer returning an equal state schedules no re-render");
+            Assert.AreEqual(renderCountBefore + 1, s_counterReducerRenderCount,
+                "A dispatch renders the component whatever the reducer returns, as React's does");
         }
 
         [Test]

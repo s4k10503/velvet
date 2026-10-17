@@ -432,6 +432,10 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_stranded_name_check.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/unity/test_asset_meta_check.py
+
+      - run: python3 scripts/unity/asset_meta_check.py
+
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_change_base.py
 
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_reuse_verdict.py

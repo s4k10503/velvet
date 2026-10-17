@@ -276,8 +276,11 @@ campaign that failed on a survivor is the one whose kills the next round needs. 
 the campaign decided: the mutant (file, line, column, operator and both texts), a hash of the mutated file's
 bytes, its verdict and the platform whose pass gave it, and for a kill the run that measured it
 and up to `MAX_RECORDED_KILLERS` of its behavioural killing cases (the first by name), each with the
-hash of every source file that declares the case's fixture or one it derives from, comments left
-out. The ledger's header holds the `tool` digest below and two more, `build-inputs` and
+hash of every source file that declares the case's fixture or one it derives from, and of every test
+source declaring a type, outside any other type, or an extension method that one of those spells in its
+code, followed through such sources in turn — so a static helper in a file that also declares tests is
+among them. Comments
+are left out of each hash. The ledger's header holds the `tool` digest below and two more, `build-inputs` and
 `test-support`. `mutation-plan` fetches the ledgers of the newest 20 finished runs of the workflow on
 the head's branch (`scripts/ci/reuse_verdict.py`; a run that left no ledger counts against the 20),
 and `mutation_check.py --reuse-from` decides each mutant from the newest ledger that holds it:
@@ -285,7 +288,14 @@ and `mutation_check.py --reuse-from` decides each mutant from the newest ledger 
 - the ledger's `tool`, `build-inputs` and `test-support` digests equal this tree's, and the mutant's
   record is a kill;
 - the mutated file has the same bytes, and the mutant is the same one;
-- every recorded killing case is still declared in the tree, and no code of its fixture has changed.
+- every recorded killing case is still declared in the tree, and no code in the files recorded for it
+  has changed;
+- no file among those recorded for a killing case reads another test file through an assembly: it
+  spells one of the reads `ACROSS_ASSEMBLIES` lists, an IL read, its own assembly
+  (`OWN_ASSEMBLY`), or the assembly of a type a test source declares (`ASSEMBLY_OF_TYPE`) — or names
+  a type declared outside any other type by a C# file that is not a fixture and that spells one or
+  names such a type in turn, a `using static` of it included. Comments and string literals other than
+  interpolated ones are not read for it, nor for the helpers above.
 
 `build-inputs` is the key's component of that name, with the mutated files in it: every file the editor
 compiles or imports other than a test source, so an edit to any production file, stylesheet, assembly
@@ -293,15 +303,19 @@ definition, project setting or package manifest, and a merged-in base that chang
 kill of the ledger. `test-support` hashes every test-side file that is not a fixture: everything under
 `Packages/com.velvet.core/TestUtilities/`, every assembly definition and reference with its `.meta`,
 every other non-C# file under a `Tests/` directory except a `.meta` (a guid only, which a new fixture
-file brings along), and every C# file there that declares no test attribute or declares a
-NUnit set-up fixture (the SetUpFixture attribute). A test attribute is read anywhere in an attribute list, in the file with its comments
+file brings along), and every C# file there that declares no test attribute, declares a
+NUnit set-up fixture (the SetUpFixture attribute), or spells outside its comments and string literals
+one of the domain-load hooks `DOMAIN_HOOKS` lists. A file gaining
+or losing a hook therefore moves the digest as well. A test attribute is read anywhere in an attribute list, in the file with its comments
 removed; a C# file is hashed that way too, so a comment edited in a helper moves nothing. Any other
 change to it lapses every kill of the ledger, and the plan's summary says which of the two moved.
 What stays reusable across a change is therefore a fixture file's: an edit
-to a fixture that killed nothing, or a comment in one that did.
+to a fixture file that no kill recorded and that holds no domain-load hook, or a comment in one that a
+kill did record.
 
 Everything else is measured: a survivor, a declared one included, a mutant no ledger holds, one on a
-file that changed, one whose killing case was renamed, deleted or whose fixture was edited, and any
+file that changed, one whose killing case was renamed, deleted or had one of its recorded files edited
+or reading another test file through an assembly, and any
 record that cannot be read in full — a ledger that is missing, expired, listed twice or not JSON
 is only a measurement owed. The plan's summary says how many verdicts were reused and, for each mutant it
 measures again, why. A reused kill reaches no shard: the plan writes its decision into the
@@ -315,10 +329,6 @@ run fails, and a reuse never turns a survivor into a pass. The ledger it uploads
 with the run that measured it, so a kill stays reusable for as long as its fixtures stand, not for as
 long as the artifacts of one run do. A campaign that reused kills records its key below as one it
 measured, since it decided every mutant in its own run.
-
-What the digests leave uncovered is a test file that declares tests and is not on the killing case's
-fixture chain, but that the fixture's code calls: a static helper declared in a file that also holds
-tests of its own. A kill that depends on one stays reused after that file changes.
 
 **A head whose whole key was passed is not measured at all.** `mutation_check.py --key` prints
 a campaign key: one hash over six components, each printed beside it so a miss can say which moved.
@@ -847,7 +857,9 @@ need the identifier to say what it says.
 proves, and what the sources carry), `release/` (cutting a release and publishing it), `hooks/` (the
 suites for the guards under `.claude/hooks/`, and the checks holding those guards to their
 contracts), `generators/` (the committed generator DLLs), `pr/` (settling a pull request), `ci/`
-(which commit a workflow job reads its change against) and `unity/` (sample sync). Two rules keep
+(which commit a workflow job reads its change against) and `unity/` (the Library seed, sample sync,
+and `asset_meta_check.py`, which `Test ▸ test-quality` runs to refuse an asset under `Assets` or
+the package and its `.meta` committed apart). Two rules keep
 the tree readable:
 
 - **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather

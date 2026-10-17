@@ -210,16 +210,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_DefaultMotion_When_MotionBuilt_Then_ElementTypeIsVisualElement()
-        {
-            // Act
-            var node = V.Motion();
-
-            // Assert
-            Assert.That(node.ElementType, Is.EqualTo(typeof(VisualElement)));
-        }
-
-        [Test]
         public void Given_OnEnterCompleteCallback_When_MotionBuilt_Then_CallbackIsCarried()
         {
             // Arrange

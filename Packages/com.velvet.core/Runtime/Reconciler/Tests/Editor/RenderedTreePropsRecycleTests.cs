@@ -335,6 +335,127 @@ namespace Velvet.Tests
                 "A UseState-held node's props bag must stay rented out while the slot can re-emit it");
         }
 
+        // The same pattern with writes queued: a Normal render that skips a transition write replaces the node a
+        // state held, while the write, or the state it is replayed over, still names it. Each test below leaves the
+        // initial node reachable through one of them only.
+        private static StateUpdater<VNode> s_setShownNode;
+        private static StateUpdater<VNode> s_setSecondNode;
+        private static TransitionStarter s_queuedStart;
+        private static VNode s_shownNode;
+
+        [Component]
+        private static VNode QueuedNodeHost()
+        {
+            var (shown, setShown) = Hooks.UseState(() => s_shownNode = V.Button(text: "queued-initial"));
+            var (_, setSecond) = Hooks.UseState((VNode)null);
+            var (_, start) = Hooks.UseTransition();
+            s_setShownNode = setShown;
+            s_setSecondNode = setSecond;
+            s_queuedStart = start;
+            return V.Div(name: "queued-host", children: new VNode[] { shown });
+        }
+
+        [Test]
+        public void Given_ATransitionWriteSkippedFirst_When_TheNormalRenderRetiresTheOldTree_Then_TheNodeItIsReplayedOverStaysOutOfThePool()
+        {
+            // Arrange — the transition write comes first, so the state it is replayed over is the initial node
+            using var mounted = V.Mount(_root, V.Component(QueuedNodeHost, key: "queued-host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var initialBag = ((ElementNode)s_shownNode).Props;
+            s_queuedStart.Invoke(() => s_setShownNode.Invoke(V.Button(text: "transition-target")));
+            s_setShownNode.Invoke(V.Button(text: "normal-target"));
+
+            // Act
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(OwnedPropsContains(initialBag), Is.True,
+                "The node a skipped write is replayed over must stay rented out while that write is queued");
+        }
+
+        // GREEN_ON_BASE(characterization): the base wrote the Normal state at the call, so no queued write was left to carry the node.
+        [Test]
+        public void Given_ATransitionWriteCarryingTheNodeSkippedAfterANormalOne_When_TheNormalRenderRetiresTheOldTree_Then_TheNodeStaysOutOfThePool()
+        {
+            // Arrange — the Normal write replaces the node, and the transition write brings it back
+            using var mounted = V.Mount(_root, V.Component(QueuedNodeHost, key: "queued-host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var initialNode = s_shownNode;
+            var initialBag = ((ElementNode)initialNode).Props;
+            s_setShownNode.Invoke(V.Button(text: "normal-target"));
+            s_queuedStart.Invoke(() => s_setShownNode.Invoke(initialNode));
+
+            // Act
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(OwnedPropsContains(initialBag), Is.True,
+                "A node a skipped write carries must stay rented out while the render that reaches the write can emit it");
+        }
+
+        // GREEN_ON_BASE(characterization): the base wrote the resolved node into its slot at the call, which kept it out of the pool.
+        [Test]
+        public void Given_ATransitionUpdaterThatResolvedToTheNodeAtTheCall_When_TheNormalRenderRetiresTheOldTree_Then_TheNodeStaysOutOfThePool()
+        {
+            // Arrange — another slot's updater picks the node up at the call, and that write is skipped while the
+            // slot that held the node drops it
+            using var mounted = V.Mount(_root, V.Component(QueuedNodeHost, key: "queued-host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var initialNode = s_shownNode;
+            var initialBag = ((ElementNode)initialNode).Props;
+            s_queuedStart.Invoke(() => s_setSecondNode.Invoke(previous => previous ?? initialNode));
+            s_setShownNode.Invoke(V.Button(text: "normal-target"));
+
+            // Act
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(OwnedPropsContains(initialBag), Is.True,
+                "A node a skipped updater already resolved to must stay rented out while the render that reaches it can emit it");
+        }
+
+        // A parent's write that its next render has not folded in yet, while a child renders alone and drops the node.
+        private static StateUpdater<VNode> s_setHeldNode;
+        private static ComponentFiber s_heldChildFiber;
+        private static VNode s_heldNode;
+
+        [Component]
+        private static VNode HeldNodeParent()
+        {
+            var (_, setHeld) = Hooks.UseState((VNode)null);
+            s_setHeldNode = setHeld;
+            return V.Component(HeldNodeChild, s_heldNode, key: "held-child");
+        }
+
+        [Component]
+        private static VNode HeldNodeChild(VNode held)
+        {
+            s_heldChildFiber = FiberAmbientStack.Current;
+            var count = Hooks.UseStore(s_store, x => x);
+            return V.Div(name: "held-child", children: new VNode[] { count % 2 == 0 ? held : null });
+        }
+
+        // GREEN_ON_BASE(characterization): the base wrote the parent's state at the call, so its slot already held the node.
+        [Test]
+        public void Given_AParentWriteCarryingTheNodeNotYetFolded_When_TheChildRendersAloneAndDropsIt_Then_TheNodeStaysOutOfThePool()
+        {
+            // Arrange
+            using var store = new CounterStore();
+            s_store = store;
+            s_heldNode = V.Button(text: "held");
+            var heldBag = ((ElementNode)s_heldNode).Props;
+            using var mounted = V.Mount(_root, V.Component(HeldNodeParent, key: "held-parent"));
+            s_setHeldNode.Invoke(s_heldNode);
+            store.Increment();
+
+            // Act — the child's own flush retires the tree that held the node, ahead of any render of the parent
+            FiberWorkLoop.FlushState(s_heldChildFiber);
+
+            // Assert
+            Assert.That(OwnedPropsContains(heldBag), Is.True,
+                "A node an ancestor's unfolded write carries must stay rented out while that ancestor's slot can emit it");
+        }
+
         // A memoized LIST of nodes (List<VNode> satisfies the covariant IReadOnlyList probe) toggled
         // out and back: the slot protection must see through the list wrapper.
         [Component]

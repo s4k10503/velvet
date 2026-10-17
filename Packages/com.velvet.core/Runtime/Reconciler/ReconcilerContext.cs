@@ -1075,6 +1075,8 @@ namespace Velvet
         public Dictionary<VisualElement, DndScopeBinding> DndScopeBindings { get; } = new();
         public Dictionary<VisualElement, DndDraggableBinding> DraggableBindings { get; } = new();
         public Dictionary<VisualElement, DndDroppableBinding> DroppableBindings { get; } = new();
+        // Next DndDroppableBinding.Order; only ever increases.
+        public long NextDroppableOrder;
         public Dictionary<VisualElement, DndOverlayBinding> DragOverlayBindings { get; } = new();
         // Elements carrying FiberElementProps.NoDrag. A side-table only: nothing is written to the element.
         public HashSet<VisualElement> NoDragElements { get; } = new();

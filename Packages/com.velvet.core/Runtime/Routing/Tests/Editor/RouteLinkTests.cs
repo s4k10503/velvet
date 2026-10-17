@@ -102,6 +102,84 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_LinkWithState_When_Clicked_Then_TheCommittedLocationCarriesIt()
+        {
+            // Arrange
+            using var mounted = MountAt("/home", V.Link(to: "/home", text: "Home", state: "carried"));
+            var button = FindButton(_root);
+            Assume.That(button, Is.Not.Null, "Precondition: the link rendered a button");
+
+            // Act
+            button!.SimulateClick();
+
+            // Assert
+            Assert.That(Router.Current!.CurrentLocation.State, Is.EqualTo("carried"));
+        }
+
+        [Test]
+        public void Given_NavLinkWithState_When_Clicked_Then_TheCommittedLocationCarriesIt()
+        {
+            // Arrange
+            using var mounted = MountAt("/home",
+                V.NavLink(to: "/home", activeClass: "is-active", text: "Home", state: "carried"));
+            var button = FindButton(_root);
+            Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
+
+            // Act
+            button!.SimulateClick();
+
+            // Assert
+            Assert.That(Router.Current!.CurrentLocation.State, Is.EqualTo("carried"));
+        }
+
+        [Test]
+        public void Given_NavLinkWhoseTargetCarriesAFragment_When_LocationMatchesItsPath_Then_AppliesActiveClass()
+        {
+            // Arrange
+
+            // Act
+            using var mounted = MountAt("/home",
+                V.NavLink(to: "/home#top", activeClass: "is-active", text: "Home", end: true));
+
+            // Assert
+            Assert.That(FindButton(_root)!.ClassListContains("is-active"), Is.True);
+        }
+
+        [Test]
+        public void Given_LinkWithPathRelativeRouting_When_Clicked_Then_DotDotDropsOneSegment()
+        {
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("/", children: new[] { Route("team/:id/settings"), Route("team/:id") }),
+            });
+            using var mounted = MountUnder(router, "/team/7/settings",
+                V.Link(to: "..", text: "Up", relative: RelativeRoutingType.Path));
+            var button = FindButton(_root);
+
+            // Act
+            button!.SimulateClick();
+
+            // Assert
+            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/team/7"));
+        }
+
+        [Test]
+        public void Given_NavLinkWithPathRelativeRouting_When_TargetResolvesToTheLocation_Then_AppliesActiveClass()
+        {
+            // Arrange
+            var router = new Router(new[] { Route("/", children: new[] { Route("team/:id") }) });
+
+            // Act
+            using var mounted = MountUnder(router, "/team/7",
+                V.NavLink(to: "../7", activeClass: "is-active", text: "Me", end: true,
+                    relative: RelativeRoutingType.Path));
+
+            // Assert
+            Assert.That(FindButton(_root)!.ClassListContains("is-active"), Is.True);
+        }
+
+        [Test]
         public void Given_NavLink_When_LocationMatchesTarget_Then_AppliesActiveClass()
         {
             // Arrange
