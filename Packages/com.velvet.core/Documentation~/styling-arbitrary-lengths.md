@@ -89,13 +89,19 @@ that is no colour (`from-[1IN]`) leaves its stop transparent, and a position tha
 
 Tailwind composes four more families through one declaration each: `translate-*`; `scale-x-*`, `scale-y-*` and
 the uniform `scale-<n>` (a bracketed `scale-[…]` is written as `scale` alone); `skew-*`; and the filters, `blur-*`
-to `sepia-*`, `hue-rotate-*` and `drop-shadow-*`. A value the browser rejects in one of them leaves the family
-at its identity — no translation, a scale of 1, no skew, no filter — wherever the rejecting class applies, as the
-browser discards the declaration they share: `translate-x-4 translate-y-[10]` translates nowhere,
-`blur-sm brightness-[abc]` filters nothing, and `drop-shadow-lg blur-[2]` loses its drop shadow. A rejection
-without a variant holds under every variant (`translate-y-[10] hover:translate-x-4` never translates), and one
-behind a variant holds while the variant does (`translate-x-4 hover:translate-y-[10]` translates until hovered).
-A rejection without a variant in an element's own `className` holds under its `V.Motion` poses and under the
+to `sepia-*`, `hue-rotate-*` and `drop-shadow-*`. Each utility sets a custom property the shared declaration
+reads, and a value the browser rejects leaves the family at its identity — no translation, a scale of 1, no
+skew, no filter — wherever it is the value its property takes, as the browser discards the shared declaration
+there: `translate-x-4 translate-y-[10]` translates nowhere, `blur-sm brightness-[abc]` filters nothing, and
+`drop-shadow-lg blur-[2]` loses its drop shadow. A property takes the value of the class that wins it: an
+important one over a plain one, then one behind a variant while the variant holds, then the later in
+Tailwind's order. So a rejected value another class outranks takes nothing: `blur-[-2px] blur-sm` blurs,
+and `translate-y-[10] hover:translate-y-4` translates on hover alone, while
+`translate-y-[10] hover:translate-x-4` never translates and `translate-x-4 hover:translate-y-[10]` translates
+until hovered. A `translate-z-*` or `scale-z-*` class adds z to the declaration, so its rejected value takes
+the family only where its declaration is the one that wins: `translate-x-4 translate-z-[10]` translates
+nowhere, `!translate-x-4 translate-z-[10]` along x.
+A family an element's own `className` discards without a variant stays discarded under its `V.Motion` poses and under the
 stylesheet classes `whileHoverClass` and the other class channels add, and a pose that rejects a value holds
 the element's own family at its identity while the element rests at that pose.
 A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with them.
