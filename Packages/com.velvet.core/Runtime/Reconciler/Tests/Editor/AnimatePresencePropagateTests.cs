@@ -130,16 +130,21 @@ namespace Velvet.Tests
             // Rests at a pose of its own when mounted leaving, so the swap to its exit pose is readable.
             "s" => V.Motion(name: "inner-s", key: key, variants: s_staged, initial: "start", animate: "visible",
                 exit: "hidden", transition: new StyleTransitionConfig { DurationSec = s_innerDurationSec }),
-            "c" => V.Component(PlacingRender, key: key),
-            "n" => V.Component(EmptyRender, key: key),
+            // Places nothing, and counts its effect's mounts.
+            "n" => V.Component(EffectOnlyRender, key: key),
             _ => InnerChildOfKind(key),
         };
 
         [Component]
-        private static VNode PlacingRender() => V.Div(name: "inner-c");
-
-        [Component]
-        private static VNode EmptyRender() => null;
+        private static VNode EffectOnlyRender()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_mounts++;
+                return (System.Action)(() => s_cleanups++);
+            }, System.Array.Empty<object>());
+            return null;
+        }
 
         private static readonly Dictionary<string, MotionVariant> s_staged = new()
         {
@@ -612,9 +617,10 @@ namespace Velvet.Tests
             Assert.That(staged != null && staged.ClassListContains("pose-exit"), Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base took back an emission that placed nothing the way it does now.
+        // Framer's AnimatePresence renders a child added while it propagates a leaving parent as a PresenceChild with
+        // isPresent false, which mounts it whatever it renders.
         [Test]
-        public void Given_AKeyPlacingNothingMountedLeavingAfterAComponentThatPlaces_When_TheInnerPresenceRenders_Then_TheEarlierComponentStillMounts()
+        public void Given_AKeyPlacingNothingAddedWhileTheOuterChildLeaves_When_ItMountsLeaving_Then_ItsEffectRuns()
         {
             // Arrange
             using var mounted = MountSettled("wrapper");
@@ -622,12 +628,36 @@ namespace Velvet.Tests
             Drain(mounted);
             Frames(2);
 
-            // Act — "c" and then "n" mount leaving, and the emission of "n" places nothing, so it is taken back
-            s_innerKeys.Set("xcn");
+            // Act
+            s_innerKeys.Set("xn");
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_mounts, Is.GreaterThan(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never mounted the key, so nothing of it held the outer child.
+        [Test]
+        public void Given_AKeyPlacingNothingAddedWhileTheOuterChildLeaves_When_TheOtherExitEnds_Then_TheOuterChildLeaves()
+        {
+            // Arrange
+            using var mounted = MountSettled("wrapper");
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            Frames(2);
+            s_innerKeys.Set("xn");
+            Drain(mounted);
+
+            // Act — the passive flush the added key settles in, then well past the inner Motion's 300ms exit
+            mounted.FlushEffectsForTest();
+            Frames(40);
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
             Drain(mounted);
 
             // Assert
-            Assert.That(Root.Q<VisualElement>("inner-c"), Is.Not.Null);
+            Assert.That(HostChildCount, Is.EqualTo(0));
         }
 
         [TestCase("wrapper")]

@@ -101,7 +101,9 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   exit names no target, or one a zero-duration or `StyleTransitionConfig.None` exit reaches at once, completes
   from its promise, and a child holding no Motion from its effect. A removal from a discrete event (the Urgent
   lane) settles the effects first, as React flushes the passive effects of a synchronous commit before any promise
-  reaction runs; any other removal settles the promises first. Tree order within each. An error from
+  reaction runs; any other removal settles the promises first. Tree order within each. Disposing the mounted tree
+  first completes an exit still waiting on the passive-effect flush, as React flushes a root's pending passive
+  effects before the render that unmounts it. An error from
   a Motion's `onEnterComplete` reaches no boundary and is logged, as Framer's `onAnimationComplete` runs in a
   promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the
@@ -164,7 +166,9 @@ completed.
 - A key added to the inner presence while the enclosing child is leaving mounts already leaving, as Framer's
   `PresenceChild` mounts it with `isPresent=false`: its Motions start at their `initial` pose, with no enter, and
   play their `exit` from there. The key counts in the enclosing child's wait while the inner presence's exits
-  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have.
+  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have. A key
+  that places nothing mounts as well, its effects with it, and its exit completes as one with nothing to animate
+  does.
 - The inner presence is found wherever it sits under the enclosing child: written inline under elements, rendered
   by a component, at the top of the child, or inside a `V.Portal`, and whether it mounted with the child or in a
   later render of its own component. When it mounts that way, the nearest enclosing child is the one that

@@ -397,6 +397,10 @@ namespace Velvet
                 return;
             }
 
+            // React flushes a root's pending passive effects before the render that unmounts it, so an exit settling
+            // in that flush completes before the tree goes.
+            if (fiber.Reconciler is { OwnsContext: true } root) FiberEffects.RunPassiveCompletions(root.Context);
+
             // Make remaining setters / store subscriptions / async OnCompleted into no-ops.
             // Closures captured by Hooks.UseXxx are gated through this flag.
             fiber.IsDisposed = true;

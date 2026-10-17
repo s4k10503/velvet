@@ -596,7 +596,7 @@ namespace Velvet
 
         // Run whether or not the presence's owner has unmounted since staging: an inner presence that leaves with
         // its enclosing child is gone by the flush, and Framer Motion still calls its onExitComplete.
-        private static void RunPassiveCompletions(ReconcilerContext context)
+        internal static void RunPassiveCompletions(ReconcilerContext context)
         {
             if (context.PendingPassiveCompletions.Count == 0) return;
             var completions = context.PendingPassiveCompletions.ToArray();

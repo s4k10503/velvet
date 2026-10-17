@@ -17,6 +17,9 @@ namespace Velvet.Tests
     /// withheld key whose exit had finished gives its exited node back to the pool.</item>
     /// <item>Where an abort stopped that render before its removals, the presence puts back its committed children in
     /// their order, and a withheld key's exit, its pending settle and its initial: false record.</item>
+    /// <item>Such a render stopped by an abort leaves a withheld key's descendant exit running, so the key's exit
+    /// can still settle, and a tree disposed while an exit waits on the passive flush completes that exit first, as
+    /// React flushes a root's pending passive effects before unmounting it.</item>
     /// <item>A key removed, added again and removed again before the passive flush completes its last exit with the
     /// onExitComplete the last removing render gave, and the quiet exit its return cut short completes nothing of an
     /// exit it plays after.</item>
@@ -265,12 +268,70 @@ namespace Velvet.Tests
             Assert.That(_root.Query<Label>().ToList().Any(label => label.text == "a"), Is.True);
         }
 
-        private MountedTree Mount() =>V.Mount(_root, V.Component(HostRender, key: "host"), CaughtErrors.Unlogged);
+        // Its descendant's exit is what the key's exit waits on, so cancelling it leaves the key's exit nothing to
+        // settle on.
+        [Test]
+        public void Given_AWaitModeRenderWithholdingAKeyWhoseDescendantIsLeavingThatAnAbortStopped_When_ItsRemovalsArePutBack_Then_TheDescendantsExitIsStillRunning()
+        {
+            // Arrange — "x" and "k" leave with exits no frame here plays out, "x" through a descendant of its own
+            s_mode = AnimatePresenceMode.Wait;
+            s_children = tick => tick switch
+            {
+                0 => new[] { WithLeavingDescendant("x"), Fading("k") },
+                1 => Array.Empty<VNode>(),
+                _ => new[] { WithLeavingDescendant("x") },
+            };
+            s_abortAt = 2;
+            using var mounted = Mount();
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act — "x" comes back while "k" is still leaving, so the render withholds it, and the boundary aborts it
+            s_setTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            var descendant = _root.Q<VisualElement>("x-descendant");
+            Assert.That(descendant != null && mounted.Root.Reconciler.Context.StyleAnimationScheduler.IsExiting(descendant),
+                Is.True);
+        }
+
+        [Test]
+        public void Given_AnExitWaitingOnThePassiveFlush_When_TheTreeIsDisposed_Then_OnExitCompleteRunsFirst()
+        {
+            // Arrange — "a" leaves with nothing to animate, so its exit waits on a passive flush nothing here runs
+            s_children = tick => tick == 0 ? new[] { Plain("a") } : Array.Empty<VNode>();
+            var mounted = Mount();
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(s_exitCallbacks.Count, Is.EqualTo(1));
+        }
+
+        private MountedTree Mount() => V.Mount(_root, V.Component(HostRender, key: "host"), CaughtErrors.Unlogged);
 
         private static VNode Plain(string key) => V.Label(text: key, key: key);
 
         // Its exit never plays out here: the root is on no panel, so the exit waits to attach to one.
         private static VNode Fading(string key) => V.Motion(key: key, children: new VNode[] { V.Label(text: key) });
+
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = "opacity-100",
+        };
+
+        // A Motion with nothing of its own to exit, around one whose exit pose no frame here plays out.
+        private static VNode WithLeavingDescendant(string key) => V.Motion(key: key, transition: StyleTransitionConfig.None,
+            children: new VNode[]
+            {
+                V.Motion(name: key + "-descendant", variants: s_fade, animate: "visible", exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 1f }),
+            });
 
         // "x" and "k" leave with exits no frame here plays out, and "x" alone comes back.
         private static VNode[] WithholdOnTheThirdRender(int tick) => tick switch

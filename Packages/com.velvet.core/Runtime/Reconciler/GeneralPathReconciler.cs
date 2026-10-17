@@ -2130,7 +2130,7 @@ namespace Velvet
 
         // The child mounts at its initial pose with no enter, and plays its exit from there as a ghost does, so it
         // counts in the enclosing child's wait while the presence's exits are running. A child that places nothing
-        // is not kept.
+        // mounts all the same, effects and all, as Framer's PresenceChild mounts it with isPresent false.
         private void MountChildLeaving(in PresenceExpansion pass, string key, VNode node)
         {
             var state = pass.State;
@@ -2140,18 +2140,17 @@ namespace Velvet
                 Walk = pass.Walk, Position = pass.Position, State = state, Absent = true, SuppressInitial = true,
                 MountsLeaving = true,
             };
-            var before = SnapshotEmission(pass.Walk);
             var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement, out _);
-            if (anchor == null)
-            {
-                UndoEmission(pass.Walk, before);
-                return;
-            }
             state.LeavingMounts.Add(key);
             if (motionElement != null) state.MotionElements[key] = motionElement;
-            state.ExitAnchors[key] = anchor;
             state.Exiting.Add(key);
             pass.NextCommitted.Add((key, node));
+            if (anchor == null)
+            {
+                SettlePlacingNothing(in pass, key);
+                return;
+            }
+            state.ExitAnchors[key] = anchor;
             if (StartPresenceExit(in pass, key, node, anchor, motionElement, motion)) pass.Tally.ExitIndex++;
         }
 
@@ -2272,13 +2271,7 @@ namespace Velvet
                 }
                 else
                 {
-                    // StartPresenceExit needs the anchor a child that placed nothing lacks; its exit settles as
-                    // one with nothing to animate does.
-                    var presence = pass.Presence;
-                    var boundary = pass.BoundaryFiber;
-                    SettleAfterTheRemovingCommit(in pass, key, () => CompletePresenceExit(
-                            state, key, boundary, presence.OnExitComplete, HoldsAMotion(state, key)),
-                        QuietExitPhase(state, key));
+                    SettlePlacingNothing(in pass, key);
                 }
             }
             else if (commit != null)
@@ -2287,6 +2280,18 @@ namespace Velvet
             }
 
             pass.NextCommitted.Add((key, node));
+        }
+
+        // StartPresenceExit needs the anchor a child that placed nothing lacks; its exit settles as one with nothing
+        // to animate does.
+        private void SettlePlacingNothing(in PresenceExpansion pass, string key)
+        {
+            var state = pass.State;
+            var presence = pass.Presence;
+            var boundary = pass.BoundaryFiber;
+            SettleAfterTheRemovingCommit(in pass, key, () => CompletePresenceExit(
+                    state, key, boundary, presence.OnExitComplete, HoldsAMotion(state, key)),
+                QuietExitPhase(state, key));
         }
 
         // Framer Motion completes an exit that animates nothing after the commit that removed the child, never
@@ -2401,19 +2406,6 @@ namespace Velvet
                     && HoldsAMotionUnder(target.hierarchy[physical], roots)) return true;
             }
             return false;
-        }
-
-        private static (HashSet<ComponentFiber> Fibers, int Placements) SnapshotEmission(InlineWalk walk)
-            => (new HashSet<ComponentFiber>(walk.NewFibers), walk.Commit!.Placements.Count);
-
-        // Takes back an emission that placed nothing: the fibers it walked leave the walk, so the orphan
-        // cleanups and the sweep dispose them as they do a child removed without being emitted, and the
-        // placements it recorded for them go.
-        private void UndoEmission(InlineWalk walk, (HashSet<ComponentFiber> Fibers, int Placements) before)
-        {
-            DropFibersTheFailedOutputAdded(walk, before.Fibers);
-            var placements = walk.Commit!.Placements;
-            placements.RemoveRange(before.Placements, placements.Count - before.Placements);
         }
 
         // Records what a removal of this walk is about to take from the presence's state, so a walk whose removals
@@ -2983,8 +2975,9 @@ namespace Velvet
         }
 
         // A committed child mode="wait" does not render while exits run leaves as an unmounted one does, with no
-        // exit of its own, and whatever exit it was still running ends with it. A walk whose removals never run puts
-        // it all back.
+        // exit of its own. Whatever exit it was still running ends with its elements, which the commit removes, so
+        // nothing here cancels one: a walk whose removals never run puts the rest back, and the next walk reads an
+        // exit that is still running.
         private void WithholdCommittedChild(in PresenceExpansion pass, string key)
         {
             var state = pass.State;
@@ -3003,7 +2996,6 @@ namespace Velvet
                 if (pending != null) state.PendingSettles[key] = pending;
             });
             DisposeGhostFibersOnceCommitted(commit, state, key);
-            if (wasExiting || wasExitComplete) ReleaseDescendantExits(state, key);
             RemovePresenceCommittedEntry(state.Committed, key);
             RetirePresenceKeyEntries(state, key);
             // A ghost's node is the presence's alone to keep; a present child's belongs to the render that gave it.
