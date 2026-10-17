@@ -115,6 +115,8 @@ TERMINAL_FAIL = frozenset({"fail", "cancel"})
 # a terminal that is gone. `watch` holds the watcher lock while it polls, so an unbounded call there
 # stops the only watcher there can be, and `hold_the_watch` then refuses the replacement.
 GH_TIMEOUT = 60
+REF_REREADS = 5
+REF_REREAD_SECONDS = 2
 GIT_TIMEOUT = 300
 
 
@@ -864,21 +866,34 @@ def delete_merged_branch(project, branch):
     return failures
 
 
+def remote_ref_absent(slug, branch):
+    """True when reading the branch's ref answers 404; a read that fails otherwise says nothing."""
+    looked = run_quietly(["gh", "api", "repos/{}/git/ref/heads/{}".format(slug, branch)], GH_TIMEOUT)
+    return looked.returncode != 0 and "HTTP 404" in looked.stderr
+
+
 def delete_remote_ref(project, branch):
     """Deletes the branch on the remote, and answers with what stderr said when it did not.
 
     The ref is read first, because a proxy can refuse the DELETE outright, and a refusal for a
     branch that is already gone would be reported as a branch that survived. A read that fails for
     any reason other than the ref being absent falls through to the DELETE.
+
+    The repository deletes the head itself a moment after the merge, so the first read can precede
+    that deletion. A refused DELETE therefore re-reads the ref, `REF_REREADS` times
+    `REF_REREAD_SECONDS` apart, and reports survival only if the ref is still there.
     """
     slug = repository(project)
-    looked = run_quietly(["gh", "api", "repos/{}/git/ref/heads/{}".format(slug, branch)], GH_TIMEOUT)
-    if looked.returncode != 0 and "HTTP 404" in looked.stderr:
+    if remote_ref_absent(slug, branch):
         return ""
     removed = run_quietly(["gh", "api", "-X", "DELETE",
                            "repos/{}/git/refs/heads/{}".format(slug, branch)], GH_TIMEOUT)
     if removed.returncode == 0 or reference_already_gone(removed.stderr):
         return ""
+    for _ in range(REF_REREADS):
+        time.sleep(REF_REREAD_SECONDS)
+        if remote_ref_absent(slug, branch):
+            return ""
     return removed.stderr.strip()
 
 
