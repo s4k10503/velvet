@@ -2331,6 +2331,15 @@ namespace Velvet.Tests
         }
 
         [Component]
+        public static VNode ChildAskingAListWhetherItContainsComponent()
+        {
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: items.Contains(n).ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
         public static VNode ChildAddingToASetComponent()
         {
             var (seen, _) = Hooks.UseState(new System.Collections.Generic.HashSet<int>());
@@ -2622,6 +2631,16 @@ namespace Velvet.Tests
         {
             // Act
             var gates = ScopeGatesOf(nameof(SuspenseReadingOneStateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildAskingAListWhetherItContains_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildAskingAListWhetherItContainsComponent));
 
             // Assert
             Assert.That(gates, Is.EqualTo(2));
