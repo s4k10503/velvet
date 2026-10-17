@@ -46,7 +46,7 @@ physically reorders the declaring children list. Instead:
   child; the **back** layer (negative z) is always its *first* child.
 - A z-marked element's real content relocates into its layer container, sorted by resolved z and,
   among equal values, by declared position, as CSS stacks equal z in tree order (a keyed reorder of
-  equal-z siblings re-sorts the layer once the pass ends), while a hidden, zero-footprint **placeholder** — a real, displayed,
+  equal-z siblings re-sorts the layer when the pass or time-sliced slice ends), while a hidden, zero-footprint **placeholder** — a real, displayed,
   zero-size element (not `display: none`, which would drop it from the focus ring) — is left at
   its declared position so the reconciler, `first:`/`last:`/`odd:`/`even:`/`nth-child` structural
   variants, and Tab order all still see it there.

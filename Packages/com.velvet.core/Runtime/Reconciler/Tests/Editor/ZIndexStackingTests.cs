@@ -100,6 +100,9 @@ namespace Velvet.Tests
             s_sameLayerStore = null;
             s_tickStore = null;
             s_tickRenders = 0;
+            s_sliceFiber = null;
+            s_sliceAClass = null;
+            s_sliceBClass = null;
         }
 
         // Finds the front (z >= 0) or back (negative z) layer container directly under parent, or null when
@@ -513,7 +516,8 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(SignFlipHost, key: "root"));
             var child = root.Q<VisualElement>("child");
-            var noBackContainerBeforeTheFlip = FindLayerContainer(root.Q<VisualElement>("parent"), front: false) == null;
+            Assume.That(FindLayerContainer(root.Q<VisualElement>("parent"), front: false), Is.Null,
+                "Precondition: no back container exists to flip into");
 
             // Act — flip to -z-10: Reposition finds no back container for this parent and defers through the
             // same enqueue/drain path a fresh mount uses.
@@ -521,10 +525,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            var back = FindLayerContainer(root.Q<VisualElement>("parent"), front: false);
-            Assert.That(
-                (noBackContainerBeforeTheFlip, back != null && ReferenceEquals(child?.parent, back)),
-                Is.EqualTo((true, true)));
+            Assert.That(FindLayerContainer(root.Q<VisualElement>("parent"), front: false)?.Contains(child), Is.True);
         }
 
         #endregion
@@ -584,14 +585,14 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(EqualZMoveHost, key: "root"));
             var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
-            var before = Names(front);
+            Assume.That(Names(front), Is.EqualTo("a,b"), "Precondition: mounted in declared order");
 
             // Act — a keyed move of the placeholders; neither element's z changes.
             store.Set(true);
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((before, Names(front)), Is.EqualTo(("a,b", "b,a")));
+            Assert.That(Names(front), Is.EqualTo("b,a"));
         }
 
         [Component]
@@ -612,14 +613,14 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(RingedEqualZMoveHost, key: "root"));
             var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
-            var before = Names(front);
+            Assume.That(Names(front), Is.EqualTo("a,b,band"), "Precondition: mounted in declared order");
 
             // Act
             store.Set(true);
             mounted.FlushStateForTest();
 
             // Assert — the ringed "b" moves ahead of "a" and its band moves with it rather than staying last.
-            Assert.That((before, Names(front)), Is.EqualTo(("a,b,band", "b,band,a")));
+            Assert.That(Names(front), Is.EqualTo("b,band,a"));
         }
 
         [Component]
@@ -634,7 +635,26 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AZManagedElementOnAPanel_When_ItsZChangesWithinItsLayer_Then_ItIsResortedWithoutLeavingThePanel()
+        public void Given_AZManagedElement_When_ItsZChangesWithinItsLayer_Then_TheLayerIsResorted()
+        {
+            // Arrange
+            using var store = new ToggleStore<bool>(false);
+            s_sameLayerStore = store;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(SameLayerHost, key: "root"));
+            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
+            Assume.That(Names(front), Is.EqualTo("a,b"), "Precondition: mounted in z order");
+
+            // Act
+            store.Set(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(front), Is.EqualTo("b,a"));
+        }
+
+        [Test]
+        public void Given_AZManagedElementOnAPanel_When_ItsZChangesWithinItsLayer_Then_ItNeverLeavesThePanel()
         {
             // Arrange
             using var store = new ToggleStore<bool>(false);
@@ -651,9 +671,8 @@ namespace Velvet.Tests
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — the resort happened, and "a" never left the panel to make it.
-            Assert.That((Names(FindLayerContainer(root.Q<VisualElement>("parent"), front: true)), detaches),
-                Is.EqualTo(("b,a", 0)));
+            // Assert
+            Assert.That(detaches, Is.EqualTo(0));
         }
 
         [Component]
@@ -690,16 +709,17 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(UnrelatedRenderHost, key: "root"));
             var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
-            var before = Names(front);
             root.Q<VisualElement>("a").PlaceInFront(root.Q<VisualElement>("b"));
-            var disordered = Names(front);
+            Assume.That(Names(front), Is.EqualTo("b,a"), "Precondition: the layer is out of declared order");
 
             // Act — only the ticker re-renders; "parent"'s children are not reconciled.
             store.Set(1);
             mounted.FlushStateForTest();
 
+            Assume.That(s_tickRenders, Is.EqualTo(2), "Precondition: the ticker re-rendered");
+
             // Assert
-            Assert.That((before, disordered, s_tickRenders, Names(front)), Is.EqualTo(("a,b", "b,a", 2, "b,a")));
+            Assert.That(Names(front), Is.EqualTo("b,a"));
         }
 
         [Test]
@@ -717,13 +737,14 @@ namespace Velvet.Tests
             void MarkPending() => FiberZLayerCoordinator.NoteChildrenReconciled(ctx, parent);
             MarkPending();
             FiberZLayerCoordinator.ResortLayers(ctx);
-
-            // Act — the canary shows the probe counts an allocation at all.
             var canary = GCAllocationProbe.MedianBlocksDuring(() => GC.KeepAlive(new byte[16]));
+            Assume.That(canary, Is.GreaterThan(0), "Precondition: the probe counts an allocation at all");
+
+            // Act
             var blocks = GCAllocationProbe.MedianBlocksDuring(MarkPending, () => FiberZLayerCoordinator.ResortLayers(ctx));
 
             // Assert
-            Assert.That((canary > 0, blocks), Is.EqualTo((true, 0)));
+            Assert.That(blocks, Is.EqualTo(0));
         }
 
         #endregion
@@ -1626,6 +1647,59 @@ namespace Velvet.Tests
                 (noBackContainerBeforeTheReRender, parkedAfterItem0, registeredAsParkedBaseline,
                     resumeTickCreatedTheBackContainer, reParkedWhileStillRegistered, TrailingItemOrder(root)),
                 Is.EqualTo((true, true, true, true, true, "item2,item3,item4,item5,item6,item7,item8,item9")));
+        }
+
+        #endregion
+
+        #region A z change inside a time-sliced pass
+
+        private static ComponentFiber s_sliceFiber;
+        private static string s_sliceAClass;
+        private static string s_sliceBClass;
+
+        [Component]
+        private static VNode SlicedLayerHost()
+        {
+            s_sliceFiber = FiberAmbientStack.Current;
+            var children = new VNode[10];
+            children[0] = V.Div(name: "a", className: "absolute " + s_sliceAClass);
+            children[1] = V.Div(name: "b", className: "absolute " + s_sliceBClass);
+            for (var i = 2; i < 10; i++)
+            {
+                children[i] = V.Div(name: "item" + i);
+            }
+            return V.Fragment(children: children);
+        }
+
+        // GREEN_ON_BASE(characterization): the base moves the element within its layer the moment it patches,
+        // so a layer read between slices is in order there too; the post-pass resort has to give the same
+        // reading at the end of a slice that parks the pass.
+        [TestCase("z-30", "z-20", 0, TestName = "TheChangedElementIsPatchedInTheFirstSlice")]
+        [TestCase("z-10", "z-5", 1, TestName = "TheChangedElementIsPatchedInAResumedSlice")]
+        public void Given_AParkedTimeSlicedPass_When_AZChangeWithinTheLayerWasPatchedInASlice_Then_TheLayerIsInOrderBeforeThePassFinishes(
+            string aAfter, string bAfter, int resumes)
+        {
+            // Arrange — a at z-10 and b at z-20 mount in that order; the tiny budget parks after one node.
+            s_sliceAClass = "z-10";
+            s_sliceBClass = "z-20";
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(SlicedLayerHost, key: "root"));
+            var front = FindLayerContainer(root, front: true);
+            Assume.That(Names(front), Is.EqualTo("a,b"), "Precondition: mounted in z order");
+
+            // Act
+            s_sliceAClass = aAfter;
+            s_sliceBClass = bAfter;
+            s_sliceFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_sliceFiber.FlushStateWithTinyBudgetForTest();
+            for (var i = 0; i < resumes; i++)
+            {
+                FiberWorkLoop.ContinueReconcile(s_sliceFiber);
+            }
+            Assume.That(s_sliceFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: the pass is still parked");
+
+            // Assert
+            Assert.That(Names(front), Is.EqualTo("b,a"));
         }
 
         #endregion

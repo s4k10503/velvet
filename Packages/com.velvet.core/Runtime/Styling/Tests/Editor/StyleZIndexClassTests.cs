@@ -152,10 +152,10 @@ namespace Velvet.Tests
         {
             // Act — Tailwind v4 emits calc(5 * -1) for -z-[5] and prints a large bare value unchanged; CSS clamps
             // an integer beyond the range it supports.
-            var ok = StyleZIndexClass.TryParse(cls, out var z);
+            StyleZIndexClass.TryParse(cls, out var z);
 
-            // Assert
-            Assert.That((ok, z), Is.EqualTo((true, (int?)expected)));
+            // Assert — a declined class leaves z null, which no expected value here equals.
+            Assert.That(z, Is.EqualTo((int?)expected));
         }
 
         // GREEN_ON_BASE(characterization): the base declines each of these spellings too, and a bare number spelled any other way stays declined.

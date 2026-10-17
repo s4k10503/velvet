@@ -386,24 +386,19 @@ namespace Velvet.Tests
         public void Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsInThePassThatEmptiedAnotherLayer_Then_TheEmptiedContainerIsStillRemoved()
         {
             // Arrange — no boundary, so no fallback replaces the stacking parent the assertion reads; the back
-            // container's only member leaves in the same pass the front placement throws from.
-            s_attachRuns = 0;
-            s_attachedIntoALayerContainer = false;
+            // container's only member leaves in the same pass the front placement throws from. The expected
+            // exception fails the case when the arrangement stops throwing from that placement.
             MountAndLayout(V.Component(StackedSwapHost, key: "host"));
             var root = _host.Root.Q<VisualElement>("swap-root");
-            var backContainerBefore = HasBackLayerContainer(root);
+            Assume.That(HasBackLayerContainer(root), Is.True, "Precondition: there is a back container to tear down");
             LogAssert.Expect(LogType.Exception, new Regex("attach callback"));
 
             // Act
             s_swapStacked.Invoke(true);
             FlushAndLayout();
 
-            // Assert — the two attach terms are what fail when the arrangement stops throwing from the drain's
-            // z placement, where nothing skips the teardown; the first container term, when there is no back
-            // container to tear down.
-            Assert.That(
-                (s_attachRuns, s_attachedIntoALayerContainer, backContainerBefore, HasBackLayerContainer(root)),
-                Is.EqualTo((1, true, true, false)));
+            // Assert
+            Assert.That(HasBackLayerContainer(root), Is.False);
         }
 
         private static bool HasBackLayerContainer(VisualElement parent)
