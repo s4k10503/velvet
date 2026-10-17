@@ -161,9 +161,10 @@ class ResolverTests(unittest.TestCase):
 
         # Act
         done = repository.resolve("push", {"before": repository.moved, "after": repository.merge})
+        printed = done.stdout if done.returncode == 0 else None
 
-        # Assert
-        self.assertEqual((done.returncode, done.stdout), (0, "sha=\n"))
+        # Assert — a script that failed prints nothing it could be held to.
+        self.assertEqual(printed, "sha=\n")
 
 
 class ScopeRepository:

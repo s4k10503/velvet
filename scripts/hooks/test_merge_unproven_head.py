@@ -319,8 +319,10 @@ class HeadCheckVerdictTests(unittest.TestCase):
         result = self.ask(runs=runs, jobs=json.dumps({"total_count": 1, "jobs": [
             {"name": "Mutation campaign (verdict)", "status": "completed", "conclusion": "success"}]}))
 
+        readings = self.consulted() if result.returncode == ALLOWED else None
+
         # Assert — the reading count is the case: a guard reading the run's jobs reads one more.
-        self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS))
+        self.assertEqual(readings, READINGS)
 
     def test_Given_AFailedCheckOfTheCampaignsWorkflow_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
         # Arrange / Act
@@ -351,16 +353,18 @@ class HeadCheckVerdictTests(unittest.TestCase):
             {"name": "Required checks (Unity)", "bucket": "pass", "workflow": "Test"},
             {"name": "Mutation campaign", "bucket": "pending", "workflow": "Test"}])
         result = self.ask(checks=checks)
+        refusal = result.stderr if result.returncode == REFUSED else ""
 
         # Assert
-        self.assertEqual((result.returncode, "not passing at" in result.stderr), (REFUSED, True))
+        self.assertIn("not passing at", refusal)
 
     def test_Given_ALabelledHeadWhoseCampaignPassed_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
         # Arrange / Act
         result = self.ask(labels=LABELLED, runs=workflow_runs((2, "completed", "success")))
+        readings = self.consulted() if result.returncode == ALLOWED else None
 
         # Assert — the reading count rides along for the reason the passing case above states.
-        self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS))
+        self.assertEqual(readings, READINGS)
 
     def test_Given_ANewerCampaignThatPassedListedFirst_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
         # Arrange / Act — the older one was cancelled on the same head, and a reader taking the

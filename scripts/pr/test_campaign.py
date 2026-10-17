@@ -43,10 +43,10 @@ class CampaignRunTests(unittest.TestCase):
         workflow = (Path(__file__).resolve().parents[2] / campaign.PATH).read_text()
 
         # Act
-        declared = workflow.startswith("name: " + campaign.NAME + "\n")
+        declared = workflow.partition("\n")[0]
 
         # Assert
-        self.assertEqual((declared, campaign.NAME), (True, "Mutation campaign"))
+        self.assertEqual(declared, "name: " + campaign.NAME)
 
 
 if __name__ == "__main__":

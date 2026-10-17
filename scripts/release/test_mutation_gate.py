@@ -169,9 +169,10 @@ class GateTests(unittest.TestCase):
 
         # Act
         code, printed = self.decide()
+        refusal = printed if code == 1 else ""
 
         # Assert
-        self.assertEqual((code, "abc123: committed by someone" in printed), (1, True))
+        self.assertIn("abc123: committed by someone", refusal)
 
     def test_Given_ACommitWithoutTheRecordTooling_When_Gated_Then_TheReleaseIsRefused(self):
         # Arrange — a line cut before the record existed.
@@ -231,9 +232,10 @@ class GateTests(unittest.TestCase):
     def test_Given_AReleaseCommitTheRepositoryDoesNotHold_When_Gated_Then_TheReleaseIsRefusedNamingIt(self):
         # Act
         code, printed = self.decide(release=SHA)
+        refusal = printed if code == 1 else ""
 
         # Assert — named, so the refusal is not the missing-tooling one a tree that is not there gives too.
-        self.assertEqual((code, "no worktree of {}".format(SHA) in printed), (1, True))
+        self.assertIn("no worktree of {}".format(SHA), refusal)
 
     def test_Given_AReasonToSkip_When_TheRecordLeavesAMutantUnanswered_Then_TheReleasePasses(self):
         # Arrange
@@ -250,11 +252,16 @@ class GateTests(unittest.TestCase):
         self.verdict("1")
         record = ("--record", str(self.project.root.parent / (self.project.root.name + "-record")))
 
+        def answer():
+            """The gate's exit and output, or a value equal to nothing where it decided other than once."""
+            code, printed = self.decide(record=record)
+            return "{}\n{}".format(code, printed) if printed.count("--gate") == 1 else object()
+
         # Act
-        first, second = self.decide(record=record), self.decide(record=record)
+        first, second = answer(), answer()
 
         # Assert
-        self.assertEqual((first, first[1].count("--gate")), (second, 1))
+        self.assertEqual(first, second)
 
 
 if __name__ == "__main__":

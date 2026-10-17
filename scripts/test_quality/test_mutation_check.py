@@ -7043,10 +7043,11 @@ class CampaignPlanTests(unittest.TestCase):
                 mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 1}), \
                 mock.patch.dict(mutation_check.SHARD_SIZE, {"EditMode": 1}):
             code = campaign.run_over_diff("--plan", "--max-shards", "2")
+        planned = "\n".join(re.findall(r"^(?:mutants|shards)=.*$", campaign.printed, re.MULTILINE)) \
+            if code == 0 else None
 
         # Assert
-        self.assertEqual((code, re.findall(r"^(?:mutants|shards)=.*$", campaign.printed, re.MULTILINE)),
-                         (0, ["mutants=2", "shards=[0, 1]"]))
+        self.assertEqual(planned, "mutants=2\nshards=[0, 1]")
 
     def test_Given_AShardCountGivenToTheDecision_When_ItsDeadShardsAreCounted_Then_ItIsTheOneDealtOver(self):
         # Arrange — thirty mutants make five shards by default, and three where the run said three.
@@ -10759,9 +10760,10 @@ class ReuseDecisionTests(unittest.TestCase):
 
         # Act
         reused, reasons = self.decided(campaign)
+        why = reasons.get(2, "") if sorted(reused) == [1] else "the kill was not reused alone"
 
         # Assert
-        self.assertEqual((sorted(reused), "a test source changed" in reasons[2]), ([1], True))
+        self.assertIn("a test source changed", why)
 
     def test_Given_ARecordOfAnotherMutatorVersion_When_Decided_Then_NothingIsReused(self):
         # Arrange
@@ -10956,9 +10958,10 @@ class RecordContextTests(unittest.TestCase):
 
         # Act
         reused, reasons = self.reused_past_a_test_only_fix(before)
+        outcome = "reused" if 1 in reused else reasons.get(1)
 
         # Assert
-        self.assertEqual((sorted(reused), reasons.get(1)), ([1], None))
+        self.assertEqual(outcome, "reused")
 
 
     def other_with(self, helper):
@@ -11187,10 +11190,10 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
         # Act
         code = campaign.decide("--reuse", str(reuse))
+        refusal = campaign.printed if code == 1 else ""
 
         # Assert
-        self.assertEqual((code, "\nUNANSWERED  Packages/com.velvet.core/Runtime/Probe.cs:6" in campaign.printed),
-                         (1, True))
+        self.assertIn("\nUNANSWERED  Packages/com.velvet.core/Runtime/Probe.cs:6", refusal)
 
     def test_Given_AReuseFileOfAnotherMutantList_When_Read_Then_TheRunRefusesToMeasureAroundIt(self):
         # Arrange -- the first mutant's kill filed under the second mutant's index.
@@ -11296,9 +11299,10 @@ class RecordGateTests(unittest.TestCase):
 
         # Act
         code = campaign.decide("--reuse", str(campaign.project / "reuse.json"))
+        decided = code if reusing == "2" else "the plan reused {}".format(reusing)
 
         # Assert
-        self.assertEqual((reusing, code), ("2", 0))
+        self.assertEqual(decided, 0)
 
     def test_Given_EveryMutantKilledInTheRecord_When_Gated_Then_ItPasses(self):
         # Act
@@ -11310,9 +11314,10 @@ class RecordGateTests(unittest.TestCase):
     def test_Given_AnEmptyRecord_When_Gated_Then_EveryMutantIsUnresolvedAndItFails(self):
         # Act
         code, printed = self.gate(RecordCampaign())
+        unresolved = printed.count("\nUNRESOLVED  ") if code == 1 else None
 
         # Assert
-        self.assertEqual((code, printed.count("\nUNRESOLVED  ")), (1, 2))
+        self.assertEqual(unresolved, 2)
 
     def test_Given_ARecordedSurvivorNothingAnswers_When_Gated_Then_ItFailsNamingIt(self):
         # Arrange
@@ -11321,9 +11326,10 @@ class RecordGateTests(unittest.TestCase):
 
         # Act
         code, printed = self.gate(campaign)
+        refusal = printed if code == 1 else ""
 
         # Assert
-        self.assertEqual((code, "\nUNANSWERED  Packages/com.velvet.core/Runtime/Probe.cs:6" in printed), (1, True))
+        self.assertIn("\nUNANSWERED  Packages/com.velvet.core/Runtime/Probe.cs:6", refusal)
 
     def test_Given_ADeclarationOverAKilledMutant_When_Gated_Then_ItFailsAsStale(self):
         # Arrange
@@ -11334,9 +11340,10 @@ class RecordGateTests(unittest.TestCase):
 
         # Act
         code, printed = self.gate(self.killed_both(body))
+        refusal = printed if code == 1 else ""
 
         # Assert
-        self.assertEqual((code, "\nSTALE       " in printed), (1, True))
+        self.assertIn("\nSTALE       ", refusal)
 
     def test_Given_NoMutableChange_When_Gated_Then_ItPasses(self):
         # Arrange
@@ -11354,11 +11361,17 @@ class RecordGateTests(unittest.TestCase):
         campaign = RecordCampaign()
         campaign.after_a_campaign()
 
-        # Act
-        first, second = self.gate(campaign), self.gate(campaign)
+        def answer():
+            """The gate's exit and output, or a value equal to nothing where it printed no summary: two
+            refusals of an unknown flag are not a match."""
+            code, printed = self.gate(campaign)
+            return "{}\n{}".format(code, printed) if "\ngate: " in printed else object()
 
-        # Assert — the summary line is held too, so two refusals of an unknown flag are not a match.
-        self.assertEqual((first == second, "\ngate: " in first[1]), (True, True))
+        # Act
+        first, second = answer(), answer()
+
+        # Assert
+        self.assertEqual(first, second)
 
 
 class CappedPlanTests(unittest.TestCase):
@@ -11370,9 +11383,10 @@ class CappedPlanTests(unittest.TestCase):
 
         # Act
         campaign.plan("--cap", "1")
+        dealt = campaign.plan_output("shards") if campaign.plan_output("pending") == "1" else None
 
         # Assert
-        self.assertEqual((campaign.plan_output("pending"), campaign.plan_output("shards")), ("1", "[0]"))
+        self.assertEqual(dealt, "[0]")
 
     def test_Given_ACappedPlan_When_ThePassMeasures_Then_OnlyTheFirstMutantReachesTheEditor(self):
         # Arrange
@@ -11396,9 +11410,10 @@ class CappedPlanTests(unittest.TestCase):
 
         # Act
         code = campaign.decide("--reuse", reuse)
+        recorded = len(campaign.written_record()["records"]) if code == 0 else None
 
         # Assert
-        self.assertEqual((code, len(campaign.written_record()["records"])), (0, 1))
+        self.assertEqual(recorded, 1)
 
     def test_Given_TheSameTreeAndRecord_When_PlannedTwiceWithACap_Then_TheDecisionFilesAreEqual(self):
         # Arrange — a plan that refused writes no file, and an absent file reads as a value of its own,

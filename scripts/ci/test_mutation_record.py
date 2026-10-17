@@ -282,11 +282,16 @@ class TrustTests(unittest.TestCase):
         # Arrange
         self.origin.api.signed[self.origin.head()] = dict(BOT, login="someone")
 
+        def refusal():
+            """The refusal a read gave, or a value equal to nothing where it gave none."""
+            answer = self.read()
+            return answer if isinstance(answer, str) else object()
+
         # Act
-        first, second = self.read(), self.read()
+        first, second = refusal(), refusal()
 
         # Assert
-        self.assertEqual((first, isinstance(first, str)), (second, True))
+        self.assertEqual(first, second)
 
     def test_Given_ABranchOfSeveralCommits_When_Read_Then_EachIsAskedAboutOnce(self):
         # Arrange

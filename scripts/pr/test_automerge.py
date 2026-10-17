@@ -456,9 +456,10 @@ class HandOffTests(unittest.TestCase):
 
         # Act
         ran = Invocation({7: pull()}, event=handed(), **refused)
+        passed = ran.printed if ran.code == 0 else ""
 
         # Assert
-        self.assertEqual((ran.code, "::warning::" in ran.printed), (0, True))
+        self.assertIn("::warning::", passed)
 
 
 class HandOffJobTests(unittest.TestCase):
