@@ -8,6 +8,8 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class LayoutIdShareTests
     {
+        // GREEN_ON_BASE(refactor): the base already withheld crossfade progress from a shared restart; this pins the
+        // clause the branch rewrote.
         [Test]
         public void Given_ALeadMovingSharedFromAHolder_When_ItStartsAgainTakingABoxFromAnotherHolder_Then_ItHoldsNoCrossfadeProgress()
         {
