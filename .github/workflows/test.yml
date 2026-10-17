@@ -440,6 +440,8 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_reuse_verdict.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_aggregate_results.py
+
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_job_timeouts.py
 
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_platform_base_red.py
@@ -563,7 +565,9 @@ jobs:
   # skipped counts as passing, which is what lets a fork with no UNITY_LICENSE
   # merge anything: unity-tests is skipped in exactly that case. cancelled does
   # not, because a superseded run and a run somebody stopped both arrive here
-  # with nothing having been tested.
+  # with nothing having been tested. A run whose pull request has moved to a
+  # newer head ends cancelled rather than failed; scripts/ci/aggregate_results.py
+  # owns when.
   # ---------------------------------------------------------------------------
   required-checks:
     name: Required checks (Unity)
@@ -571,15 +575,20 @@ jobs:
     needs: [license-check, unity-tests, player-compile, newest-editor-compile, release-notes, publication, test-quality, base-red-python]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # actions: write so a run whose head was superseded can cancel itself; pull-requests: read for
+    # the head it compares against. scripts/ci/aggregate_results.py owns when it does.
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/ci
+
       - env:
           RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.player-compile.result }} ${{ needs.newest-editor-compile.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }}
-        run: |
-          failed=0
-          for result in $RESULTS; do
-            case "$result" in
-              success|skipped) ;;
-              *) echo "::error::dependency finished as '$result'"; failed=1 ;;
-            esac
-          done
-          exit "$failed"
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/aggregate_results.py

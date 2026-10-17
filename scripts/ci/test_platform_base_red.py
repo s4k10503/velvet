@@ -118,19 +118,20 @@ class PlatformContinuationTests(unittest.TestCase):
         # Assert
         self.assertEqual((retained, ordered), (True, True))
 
-    # GREEN_ON_BASE(characterization): the existing aggregate already rejects failed Unity jobs.
-    # What shows the case can fail is removing `needs.unity-tests.result` from its RESULTS expression.
+    # GREEN_ON_BASE(characterization): the base's inline loop rejected a failed Unity job as well, and
+    # this branch moves the decision into a script without changing that answer. What shows the case
+    # can fail is removing `needs.unity-tests.result` from its RESULTS expression.
     def test_Given_AFailedPlatformReading_When_TheRequiredAggregateRuns_Then_ItRejectsTheUnityResult(self):
-        # Arrange
+        # Arrange — run from the repository root, which is where the job's checkout puts it.
         aggregate = job(WORKFLOW.read_text(), "required-checks")
         references = re.findall(r"needs\.([\w-]+)\.result", aggregate)
-        command = textwrap.dedent(aggregate.partition("        run: |\n")[2])
+        command = textwrap.dedent(re.split(r"^        run: \|?", aggregate, maxsplit=1, flags=re.MULTILINE)[-1])
         outcomes = ["failure" if name == "unity-tests" else "success" for name in references]
 
         # Act
-        result = subprocess.run(["bash", "-c", command], capture_output=True, text=True,
+        result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, cwd=REPO_ROOT,
                                 env={**os.environ, "RESULTS": " ".join(outcomes)})
-        control = subprocess.run(["bash", "-c", command], capture_output=True, text=True,
+        control = subprocess.run(["bash", "-c", command], capture_output=True, text=True, cwd=REPO_ROOT,
                                  env={**os.environ, "RESULTS": " ".join("success" for _ in references)})
 
         # Assert

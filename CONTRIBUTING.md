@@ -1160,7 +1160,13 @@ The two required checks are aggregates, and the real jobs are not required thems
 that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
 a trigger filter, a matrix change or a rename would each cause. The aggregates carry no trigger filter, `needs:`
 the real jobs, and pass when every dependency is `success` **or** `skipped` — the second is what lets a
-fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
+fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case. Any other
+result fails them, except in a run whose results besides those are all `cancelled` and whose pull
+request, or for a dispatch its branch, has since moved to a newer head: that run cancels itself, so
+the superseded head carries a cancelled aggregate rather than a red one, which still blocks a merge
+of that head. On `push` and in the merge group a cancelled dependency fails them whatever the branch
+holds now. `scripts/ci/aggregate_results.py` decides for both aggregates and for
+the mutation campaign's.
 
 The mutation campaign has no row: `.github/workflows/mutation.yml` starts on a dispatch alone, once a
 pull request carries the `automerge` label, beside its `Test` run rather than after it, and no

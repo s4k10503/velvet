@@ -448,20 +448,22 @@ jobs:
     needs: [license-check, mutation-plan, library, mutation-shard, mutation-verdict]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # pull-requests: read for the head scripts/ci/aggregate_results.py compares against.
     permissions:
+      contents: read
       actions: write
+      pull-requests: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/ci
+
       - env:
           RESULTS: ${{ needs.license-check.result }} ${{ needs.mutation-plan.result }} ${{ needs.library.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-verdict.result }}
-        run: |
-          failed=0
-          for result in $RESULTS; do
-            case "$result" in
-              success|skipped) ;;
-              *) echo "::error::dependency finished as '$result'"; failed=1 ;;
-            esac
-          done
-          exit "$failed"
+          HEAD: ${{ github.sha }}
+          NUMBER: ${{ inputs.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/aggregate_results.py
 
       - if: inputs.number != ''
         continue-on-error: true
