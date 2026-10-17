@@ -20,8 +20,8 @@
   flush after the render that removed them, after that commit's layout effects, and no longer while that render
   is still going on. It does not run for a removal that render never committed. One whose exit plays runs when
   the last exit's animation ends. An error it throws goes to the nearest error boundary at or above the component
-  rendering the presence, as Framer Motion's `PresenceChild` calls it from an effect. Where an exit played, or a
-  `V.Motion` child is among the children removed, no boundary takes the error and it is logged, as Framer Motion
+  rendering the presence, as Framer Motion's `PresenceChild` calls it from an effect. Where an exit played, or the
+  child whose exit completed last holds a `V.Motion`, no boundary takes the error and it is logged, as Framer Motion
   calls it from that exit's promise. It used to go to the nearest boundary above the component rendering the
   presence, and a render removing a child with no exit animation stopped at that catch.
 

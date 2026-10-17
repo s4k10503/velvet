@@ -397,8 +397,9 @@ namespace Velvet.Tests
             Assert.That((driving, _scheduler.IsDriving(element)), Is.EqualTo((true, false)));
         }
 
-        // The replacing play is on no playback, so the cancel has to leave it running: four frames into its linear
-        // second from 1 it reads 0.936, where a cancel taking it would hold it at 1.
+        // The replacing play is on no playback, so the cancel has to leave it running: it starts from the first
+        // play's frame, and four frames into its linear second toward 0 it has lost 6.4% of that, where a cancel
+        // taking it would hold it at the frame.
         [Test]
         public void Given_APlaybackWhosePlayAnotherPlayReplaced_When_ThePlaybackCancelsItsPlays_Then_TheReplacingPlayRunsOn()
         {
@@ -406,7 +407,8 @@ namespace Velvet.Tests
             var element = OnPanel("replaced");
             var playback = new MotionPlayback();
             _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
-            Ticks(2);
+            Ticks(10);
+            var frame = Opacity(element);
             _scheduler.PlayVariantEnter(element, s_visible, s_hidden, Linear());
             Ticks(2);
 
@@ -414,8 +416,8 @@ namespace Velvet.Tests
             playback.CancelPlays();
             Ticks(2);
 
-            // Assert — the replacing play started from the 0.032 the first had drawn and has run four frames toward 0.
-            Assert.That(Opacity(element), Is.EqualTo(2 * 0.016f * (1f - 4 * 0.016f)).Within(1e-4f));
+            // Assert
+            Assert.That(Opacity(element), Is.EqualTo(frame * (1f - 4 * 0.016f)).Within(1e-4f));
         }
 
         [Test]
@@ -471,8 +473,8 @@ namespace Velvet.Tests
             // Act
             first.ReleaseHeldPlays();
 
-            // Assert — the second play's start, the 0.032 the first had drawn when it took over; NaN where no inline
-            // opacity is held.
+            // Assert — NaN unless the held play's inline opacity is still set; the second play started from the
+            // first's frame after two ticks.
             var opacity = element.style.opacity;
             Assert.That(opacity.keyword == StyleKeyword.Undefined ? opacity.value : float.NaN,
                 Is.EqualTo(2 * 0.016f).Within(1e-4f));

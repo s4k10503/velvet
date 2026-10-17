@@ -122,10 +122,13 @@ Four consequences worth knowing:
   `StyleSheetTailwindOrderTests` fails when a rule's place in a sheet stops agreeing with it. The `anim-*`
   presets are the exception: the animation scheduler applies them to outrank the utilities they animate.
   One utility that resolves inline beside the bundled classes is ordered the same way ([An inline value and a stylesheet class](styling-arbitrary-lengths.md#an-inline-value-and-a-stylesheet-class)
-  has the cases). Two utilities that both resolve inline are ordered as Tailwind emits them only in the spacing, size,
-  inset and radius families ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)) and among per-side border colours
-  ([react-migration.md §4-1b](react-migration.md#4-1b-per-side-border-colors)); any other pair goes to the last class
-  written, the font facets (`font-light font-bold`, `not-italic italic`) among them.
+  has the cases). Two utilities that both resolve inline are ordered as Tailwind emits them when they write one property
+  ([Two inline utilities of one property](styling-arbitrary-lengths.md#two-inline-utilities-of-one-property)), when a
+  shorthand meets its longhand in the spacing, size, inset, radius and border-width families
+  ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)), and among per-side border colours
+  ([react-migration.md §4-1b](react-migration.md#4-1b-per-side-border-colors)); the families a C# resolver folds from
+  the class list, the font facets (`font-light font-bold`, `not-italic italic`) among them, and the nine-slice
+  utilities are put in Tailwind's order too ([the list](styling-arbitrary-lengths.md#utilities-a-c-resolver-folds-from-the-class-list)).
 - **A payload only displaces a class whose properties it wholly covers.** A base utility writing
   something the payload does not keeps its place, and the two then settle their shared properties in
   Tailwind's order. That is reliable where one set contains the other — `size-8 md:w-4` resolves the
@@ -283,7 +286,7 @@ utilities have to be re-derived when the variant toggles.
 utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`; the picking
 Velvet writes down a subtree — `pointer-events-none` / `pointer-events-auto`
 ([styling-pointer-events.md](styling-pointer-events.md)); the wrapper-less paints — `skew-*`,
-`shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its `from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
+`shadow-*`, gradients (`bg-gradient-*` and its `from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
 `outline-*`; the inline font layer — `font-<family>`, `font-<weight>`, `italic` / `not-italic` and the
 `font-[…]` forms; and the axes Velvet writes into the displayed string — `uppercase` / `lowercase` /
 `capitalize` / `normal-case`, `underline` / `line-through` / `overline` / `no-underline`,
@@ -369,7 +372,7 @@ without `overflow-hidden` appearing anywhere in its className.
 
 | Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
-| `shadow-*` / `drop-shadow-*` | the whole shadow is gone. The paint is not removed — it is cut at the padding box like every other — but the only part of it you see is the halo outside the box, the interior being hidden under the element's own fill by design |
+| `shadow-*` | the whole shadow is gone. The paint is not removed — it is cut at the padding box like every other — but the only part of it you see is the halo outside the box, the interior being hidden under the element's own fill by design |
 | `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders. Children are clipped to the upright box, not to the sheared face CSS clips them to |
 | `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
@@ -456,7 +459,9 @@ these to the box:
   the nine-slice ones (`slice-*`, [styling-backgrounds.md](styling-backgrounds.md));
 - borders, including the line style (`border`, `border-*`, `border-solid` / `-dashed` / `-dotted`);
 - radius (`rounded`, `rounded-*`) and padding (`p-*`, `px-*`, `py-*`, `pt-*` … `pe-*`);
-- `shadow-*`, `drop-shadow-*`, `ring-*` and `outline-*`;
+- `shadow-*`, `ring-*` and `outline-*`;
+- the filter utilities, `drop-shadow-*` and `filter-[…]` among them
+  ([styling-filters.md](styling-filters.md));
 - the caret and selection colours, `caret-*`, `selection:bg-*` and `selection:text-*`.
 
 **A text input's caret and selection colours follow CSS and Tailwind.**

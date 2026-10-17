@@ -3,8 +3,8 @@
 UI Toolkit 6.3 renders the USS `filter` property — a list of filter functions applied to an
 element's rendered output, the CSS `filter` equivalent. Velvet exposes it two ways:
 
-- **Built-in utilities** (`blur-*`, `contrast-*`, `grayscale-*`, …) mirroring Tailwind's filter
-  scale, resolved to inline filter functions.
+- **Built-in utilities** (`blur-*`, `contrast-*`, `grayscale-*`, …, `drop-shadow-*`) mirroring
+  Tailwind's filter scale, resolved to inline filter functions.
 - **The custom filter registry** (`VelvetFilters`), which exposes user-authored
   `FilterFunctionDefinition` assets (custom filter shaders) to class strings as
   `filter-[name:args]` — the CSS `filter: url(#name)` parity point.
@@ -38,9 +38,32 @@ over-darken). Only negative amounts are rejected, as CSS disallows them. Both sh
 build by the step [player-builds.md](player-builds.md) describes, which needs nothing from you.
 
 Stacked filters compose in a fixed order (blur, brightness, contrast, grayscale, hue-rotate, invert,
-saturate, sepia) regardless of class order, as Tailwind composes its filter utilities into one `filter`
-value. A browser applies a `filter` list in the order it is written, and the list Tailwind writes is in this
-order.
+saturate, sepia, drop-shadow) regardless of class order, as Tailwind composes its filter utilities into one
+`filter` value. A browser applies a `filter` list in the order it is written, and the list Tailwind writes is in
+this order.
+
+### `drop-shadow-*`
+
+| Utility | Shadows |
+|---|---|
+| `drop-shadow` | `0 1px 2px` black at 10% and `0 1px 1px` black at 6%, Tailwind's deprecated default |
+| `drop-shadow-xs` / `-sm` / `-md` / `-lg` / `-xl` / `-2xl` | `0 1px 1px` 5% / `0 1px 2px` 15% / `0 3px 3px` 12% / `0 4px 4px` 15% / `0 9px 7px` 10% / `0 25px 25px` 15%, in black |
+| `drop-shadow-none` | none |
+| `drop-shadow-[<shadow>(,<shadow>)*]` | each shadow two or three lengths in the units `blur-[…]` takes (the offsets may be negative, the deviation may not), and an optional colour, the element's `color` where none is given, with `_` for spaces: `drop-shadow-[0_35px_35px_rgba(0,0,0,0.25)]` |
+| `drop-shadow-<color>` / `drop-shadow-[<color>]` | a palette name, an arbitrary colour, or `current` / `[currentcolor]` for the element's `color`, which colours the size beside it |
+
+The third length is the standard deviation of the blur, as CSS reads `drop-shadow()`. The shadow follows what
+the element draws, children and transparency included, and is drawn below it; `Velvet/FilterDropShadow` renders
+it, and the build step [player-builds.md](player-builds.md) describes ships it. `drop-shadow-*` and `shadow-*`
+are separate properties, as `filter` and `box-shadow` are in CSS: both render on one element, and neither's
+`-none` removes the other.
+
+A size and a colour on one element combine as Tailwind's do. The colour replaces each shadow's colour, except
+under the bare `drop-shadow`, a theme size without a modifier, or `drop-shadow-none`, that outranks it: those
+write their own colours, or none, so `drop-shadow-[#f00] hover:drop-shadow-md` is black on hover, while an
+arbitrary shadow takes the colour whichever outranks. A `/N` modifier on a theme size or an arbitrary shadow
+replaces its shadows' alpha; on any size it scales a colour token's alpha, and on a colour it scales that
+colour's own. A colour with no size draws no shadow.
 
 Filter utilities work everywhere other utilities do: under variants
 (`hover:blur-sm`, `dark:grayscale`), with the important modifier, and inside recipes. A filter change
@@ -56,7 +79,7 @@ shader) it runs. Velvet exposes such a definition to class strings through a reg
 assets out of the render path the same way `VelvetFonts` keeps font assets out of class names:
 
 ```csharp
-// Startup (before the consuming tree mounts):
+// Startup:
 VelvetFilters.Register("dissolve", dissolveDefinition);
 VelvetFilters.Register("glow", glowDefinition);
 
@@ -73,12 +96,15 @@ a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar
 ([styling-colors.md](styling-colors.md)). A missing tail is padded from the declaration's
 defaults — the same values the USS parser pads with — so a bare `filter-[name]` applies the
 declared defaults outright. Supplying more arguments than the declaration, or an argument that
-fails its slot's grammar, rejects the whole token. (UI Toolkit's `FilterFunction` holds at most 4
+fails its slot's grammar, refuses the arguments as a whole. (UI Toolkit's `FilterFunction` holds at most 4
 parameters, so a definition declaring more is rejected at registration.)
 
-A token that cannot resolve — an unregistered name (warned once), an extra argument, or an
-argument that fails its slot's grammar — is not claimed and stays an inert class, like any
-unrecognized utility.
+A name nothing is registered under is a reference to a missing filter: the element draws no filter at
+all, its built-in utilities included, as CSS ignores the whole chain when a `url()` names no filter. The
+name is warned about once, and a change into or out of that state applies at once, as CSS interpolates a list
+holding a `url()` discretely. An extra argument, or an argument that fails its slot's grammar, leaves the class
+adding nothing, as CSS drops an invalid declaration, so a layer of the same name under it still applies; a
+registration that accepts the arguments resolves it.
 
 ### Composition and layering
 
@@ -87,8 +113,8 @@ unrecognized utility.
 - Each registered name is its own layer stack, so `filter-[dissolve:0.4] filter-[glitch:0.1]`
   are independent — and a variant over one name (`hover:filter-[dissolve:0.9]`) restores that
   name's base arguments on hover-off without touching the others.
-- Repeating a name in one class string replaces its arguments (last wins) instead of stacking
-  a duplicate function.
+- Repeating a name in one class string replaces its arguments instead of stacking a duplicate
+  function; the one Tailwind emits last wins, whichever is written first.
 - A name keeps its compose slot for the element's lifetime: changing a filter's arguments
   (which the class diff performs as a clear-then-apply) does not re-slot it behind its
   neighbors.
@@ -143,56 +169,41 @@ removed at the **end** of the list fades in from, or out to, its neutral value �
 either animator (Group E of `FilterTransitionPanelTests`). Any other change is discrete and applies at once, as in
 CSS: a filter added *before* an existing one (`grayscale` → `blur grayscale`), or a position whose function
 changes. The native filter types the utilities compose (`blur`, `contrast`, `grayscale`, `hue-rotate`, `invert`,
-`sepia`) and the two first-party built-in customs (`brightness`, `saturate`) interpolate, so
+`sepia`) and the first-party built-in customs (`brightness`, `saturate`, `drop-shadow`) interpolate, so
 `transition-filter duration-300` tweens `blur-0` → `blur-md` (or `brightness-100` → `brightness-150`) smoothly.
-Under Velvet's tween:
+A `drop-shadow` added or removed at the end fades from or to every length `0` and a transparent colour, as CSS
+pads it: those are the neutrals its definition declares.
 
-- **User custom filters interpolate** when both sides hold the *same registered definition* at a position with
-  the same number of arguments and matching argument types per slot — `filter-[glow:#f00:2]` →
-  `hover:filter-[glow:#00f:6]` cross-fades the color and lerps the amount. CSS applies a `url()` filter change at
-  once; this is a Velvet addition.
-- A user custom **added or removed at the end** fades from or to the neutral *your definition declares* — each
-  `FilterParameterDeclaration.interpolationDefaultValue`, the same value the engine pads its own filter-list
-  transitions with — so `filter-[glow:2]` appearing on hover fades up from the glow's declared default rather
-  than from zero. Declare those defaults deliberately; a slot left at the struct default fades from `0`.
-- A user custom **snaps** when its position cannot be paired: a different definition on each side, a differing
-  argument count, or a slot that is a color on one side and a float on the other. Every user custom composes
-  after the built-ins, so adding a built-in filter to an element carrying a custom one is a change before its end,
-  and snaps too.
-- A definition **destroyed mid-tween** drops out of the frames the tween paints instead of throwing;
-  the remaining filters keep animating. The value the tween settles on is the one composed when it
-  started, so a dead definition is cleared from the element by the next compose rather than at settle.
+A user custom filter is a `url()` reference in CSS's terms, and CSS interpolates a filter list holding one
+discretely. So a change where the element's filter holds a `filter-[name:args]` before or after it applies at
+once under either animator: `filter-[glow:#f00:2]` → `hover:filter-[glow:#00f:6]`, a custom appearing or going,
+and a built-in beside a custom (`blur-0 filter-[glow:2]` → `blur-md filter-[glow:2]`) alike. The same holds for
+the first filter utility written over a stylesheet `filter` that holds a custom filter function. Such a change
+stops a filter tween already running on the element.
 
 ### Contract
 
-- **Register before mount.** Resolution happens when a class is applied, and registration is not
-  reactive: `Register` re-resolves no element and raises no event. A class applied before its name
-  was registered does not resolve at that point.
+- **Registration reaches mounted elements.** `Register`, a re-registration and `Unregister` each resolve
+  every element carrying the name again, without starting a transition, by the `url()` rule under
+  [Transitions](#transitions). A class applied before its name was registered resolves when it is
+  registered, in the compose slot it took when applied.
 - The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
-  `invert`, `saturate`, `sepia`) are **reserved** and cannot be registered.
-- A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar).
-- Re-registering a name warns and overwrites; `Unregister` removes it. Removing a class (or a
-  variant turning off) still clears its layer after an unregister — the clear resolves the
-  name syntactically, not through the registry — but an element that keeps the class keeps its
-  already-resolved filter, so unregister after the consuming trees unmount.
-- A definition destroyed after registration stops rendering: the compose skips dead
-  definitions instead of throwing.
-
-### What a late registration does today
-
-Characterization, not contract. This is what the current implementation does; a release that made a
-registry change reach mounted trees would change it, so register before mount rather than building
-on any of it.
-
-A class applied before its name was registered stays on the USS class list instead of resolving to an
-inline value, and paints nothing. It resolves the next time some pass re-applies that element's
-inline values from the classes it still carries — a motion on the element settling, being cancelled
-or detaching does that, and so does a class change that removes another filter-family token.
+  `invert`, `saturate`, `sepia`, `drop-shadow`) are **reserved** and cannot be registered.
+- A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar) and of `(` and `)`,
+  and must not be `none`: a `filter-[...]` body of that shape is CSS filter syntax (`filter-[blur(4px)]`,
+  `filter-[url(#x)]`, `filter-[none]`), which Velvet leaves as an inert class that costs the rest of the chain
+  nothing, and which a registration could never be reached through.
+- Re-registering a name warns and overwrites; `Unregister` removes it, and an element that keeps the
+  class draws no filter until the name is registered again. A re-registered definition that refuses a
+  class's arguments leaves that class inert, and the next registration that accepts them resolves it.
+- A definition destroyed after registration stops rendering, and the element's next compose drops its
+  whole filter, as for a name nothing is registered under.
 
 ### Authoring the definition
 
 The definition asset and its shader contract are Unity's:
 [FilterFunctionDefinition](https://docs.unity3d.com/6000.3/Documentation/ScriptReference/UIElements.FilterFunctionDefinition.html)
-(`filterName`, `parameters`, `passes`). Velvet's own `Velvet/FilterBrightness` and
-`Velvet/FilterSaturate` shaders are written against `UnityUIEFilter.cginc`, and
-`BuiltInFilterShaderPlaybackTests` renders them on this project's URP pipeline.
+(`filterName`, `parameters`, `passes`). Velvet's own `Velvet/FilterBrightness`,
+`Velvet/FilterSaturate` and `Velvet/FilterDropShadow` shaders are written against `UnityUIEFilter.cginc`, and
+`BuiltInFilterShaderPlaybackTests` and `DropShadowFilterPlaybackTests` render them on this project's URP
+pipeline.

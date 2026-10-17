@@ -138,10 +138,12 @@ namespace Velvet
             FiberHookCommit.CommitMemoValueSlots(fiber.MemoValueSlots);
         }
 
-        // The effect deps and blockers of the settle, which a render a Suspense primary has yet to show commits once
-        // the Suspense decides (FiberHookCommit.CommitSuspenseRender).
+        // The effect deps, blockers and state of the settle, which a render a Suspense primary has yet to show
+        // commits once the Suspense decides (FiberHookCommit.CommitSuspenseRender). The state is held back with
+        // them so a render the Suspense gives up leaves the updates it folded queued for the render that retries.
         internal static void CommitSettledEffects(ComponentFiber fiber)
         {
+            FiberHookCommit.CommitStateSlots(fiber.StateSlots);
             HookEffectExecutor.CommitEffectDeps(fiber.LayoutEffects);
             HookEffectExecutor.CommitEffectDeps(fiber.InsertionEffects);
             HookEffectExecutor.CommitEffectDeps(fiber.Effects);

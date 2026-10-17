@@ -210,8 +210,8 @@ namespace Velvet.Tests
             Assert.That(parsed, Is.EqualTo((false, true)));
         }
 
-        // Each literal is past double's range, and reads as Chromium reads it: a channel, a percentage or an alpha
-        // clamps to its end, and a hue reads as 0deg.
+        // Each literal is past float's range, and reads as Chromium reads it: a channel, a percentage or an alpha
+        // clamps to its end, and a hue is the hue of float's largest, which is 0deg in degrees and in turns.
         [TestCase("rgb(1e999_0_0)", 1f, 0f, 0f, 1f)]
         [TestCase("rgb(+1e999,0,0)", 1f, 0f, 0f, 1f)]
         [TestCase("rgb(1e999%_0_0)", 1f, 0f, 0f, 1f)]
@@ -229,6 +229,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(color, Is.EqualTo(new[] { r, g, b, a }).Within(Tolerance));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no Lab-family function, so a component past float's range has
+        // no reading to match Chromium's, and an implementation of the family has to decide that reading.
+        [TestCase("lab(50_10_0)")]
+        [TestCase("lab(50_1e200_0)")]
+        [TestCase("lch(50_1e999_0)")]
+        [TestCase("oklab(0.5_1e200_0)")]
+        [TestCase("oklch(0.5_1e999_0)")]
+        public void Given_ALabFamilyFunction_When_Parsed_Then_ItIsDeclinedWhateverItsMagnitude(string value)
+        {
+            // Act
+            var parsed = Parses(value);
+
+            // Assert
+            Assert.That(parsed, Is.False);
         }
 
         [Test]

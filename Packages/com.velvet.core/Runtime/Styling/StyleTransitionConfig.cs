@@ -14,7 +14,8 @@ namespace Velvet
     {
         /// <summary>
         /// Sentinel value indicating "no transition": <c>V.Motion(transition: StyleTransitionConfig.None)</c>
-        /// requests immediate mount/unmount with no animation.
+        /// animates neither its mount nor its exit. Under an AnimatePresence the removed child still stays for the
+        /// commit that removed it and leaves on a later render.
         /// </summary>
         public static readonly StyleTransitionConfig None = new() { DurationSec = 0f };
 
@@ -317,12 +318,11 @@ namespace Velvet
         public TransitionWhen When { get; init; } = TransitionWhen.Together;
 
         /// <summary>
-        /// Whether an AnimatePresence exit gated by this config should be treated as animated (kept mounted as
-        /// an exiting ghost) rather than removed instantly. A spring counts as animated whatever its duration — an
-        /// instant one (<see cref="SpringIsInstant"/>) included, which lands once its delay and stagger have run — and
-        /// so does the degenerate case where the exit's variant pair touches no spring-animatable channel at all, which still
-        /// plays through the spring machinery (completing on its own, deferred, rather than being pre-empted by an
-        /// instant-removal gate keyed on this flag).
+        /// Whether an AnimatePresence exit gated by this config plays an animation, rather than settling after the
+        /// commit that removed the child. A spring counts as animated whatever its duration — an instant one
+        /// (<see cref="SpringIsInstant"/>) included, which lands once its delay and stagger have run — and so does the
+        /// degenerate case where the exit's variant pair touches no spring-animatable channel at all, which still
+        /// plays through the spring machinery.
         /// </summary>
         internal bool HasExitAnimation => Type == TransitionType.Spring || DurationSec > 0f;
 

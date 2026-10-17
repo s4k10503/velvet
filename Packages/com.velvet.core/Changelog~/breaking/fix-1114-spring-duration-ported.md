@@ -19,5 +19,4 @@
   value from the one it has, whichever transition either plays on; a `Tween` on a mount clock other than the
   panel's counts as a `Bezier` here. A spring also takes the velocity the interrupted channel moves at, a
   bezier's being its curve's slope. A color starts at the color drawn, and a length the two hold in different
-  units keeps its own start. A label change used to start from the pose the swapped-out label names, with the
-  interrupted channel's velocity where a spring interrupted a spring and at rest otherwise.
+  units keeps its own start.

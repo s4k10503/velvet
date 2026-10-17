@@ -42,6 +42,8 @@ namespace Velvet
 
         internal ReconcilerContext Context => _ctx;
 
+        internal bool OwnsContext => _ownsContext;
+
         public Reconciler()
             : this(new ReconcilerContext(), ownsContext: true)
         {
@@ -81,8 +83,6 @@ namespace Velvet
                 // Lets the batch scheduler block a synchronous discrete-event flush while any reconcile
                 // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack.
                 _ctx.BatchScheduler.SetReconcileActiveProbe(() => _ctx.SharedReconcileDepth > 0);
-                // Pending passive effects must be flushed before a new discrete-event update; wire the scheduler
-                // to drain them at that boundary so an effect from a prior commit runs before the next render.
                 _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffects(_ctx));
                 // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a
                 // drain, and each drain pass is a wave of its own — and (2) the layout-effect commit phase:
@@ -290,11 +290,22 @@ namespace Velvet
             _ctx.IsAborted = false;
             try
             {
-                _childReconciler.DrainPendingPortalMounts();
-                // After the drain, whose own reconciles can tear down a Portal too.
-                foreach (var target in _ctx.PortalTargetsToRestyle)
+                try
                 {
-                    _patcher.ApplyStructuralVariants(target);
+                    _childReconciler.DrainPendingPortalMounts();
+                    // After the drain, whose own reconciles can tear down a Portal too.
+                    foreach (var target in _ctx.PortalTargetsToRestyle)
+                    {
+                        _patcher.ApplyStructuralVariants(target);
+                    }
+                }
+                finally
+                {
+                    // After the drain, which places the z-* members this pass deferred, and in a finally of its own
+                    // so a drain that throws still leaves neither an emptied layer container nor a stacking parent
+                    // pending into the next pass, and a coordinator call that throws still reaches the resets below.
+                    FiberZLayerCoordinator.DrainTeardowns(_ctx);
+                    FiberZLayerCoordinator.ResortLayers(_ctx);
                 }
             }
             finally
@@ -350,9 +361,13 @@ namespace Velvet
                 // any departure, so a slice yielding between the two would attach into that same
                 // create-before-remove order, with Pass2Reorder not having placed anything yet either.
                 // Which pass ends last is not this one's to know, so the call is unconditional and
-                // DrainRefAttaches asks each entry's own pass instead.
+                // DrainRefAttaches asks each entry's own pass instead. A pass whose caller commits layout work
+                // leaves the cleanups of the refs it replaces and its setups to that commit.
                 _ctx.DrainRefAttaches();
-                _ctx.RunPendingCompletions();
+                // A setup the drain left to the layout commit attaches before the enters complete, as a ref is
+                // set by the time an enter that plays nothing reports; the commit's end completes them
+                // (FiberEffects.CommitStrandedLayoutWork).
+                if (!_ctx.HasAttachableRefs()) _ctx.RunPendingCompletions();
             }
         }
 
@@ -472,15 +487,17 @@ namespace Velvet
 
         void IReconcilerBridge.CleanupElementForController(VisualElement element) => _cleaner.CleanupElement(element);
 
+        void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffects();
+
         void IReconcilerBridge.HoldRowLayoutEffects()
             => _ctx.HeldRowLayoutEffects.Push(new List<(ComponentFiber fiber, bool mountDoubleInvoke)>());
 
-        // The rows are placed, so the refs the range held attach now, ahead of the rows' layout effects as a pass's
-        // refs attach ahead of its own.
+        // The rows are placed, so their commits attach their elements' refs among their layout effects, as a
+        // pass's commit does. A setup no held row owns is left to the commit that ends the range render
+        // (CommitStrandedLayoutWorkForController).
         void IReconcilerBridge.CommitHeldRowLayoutEffects()
         {
             var held = _ctx.HeldRowLayoutEffects.Pop();
-            _ctx.DrainRefAttaches();
             _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
             FiberEffects.CommitHeldRowLayoutEffects(_ctx, held);
         }
@@ -950,7 +967,7 @@ namespace Velvet
             }
 
             _ctx.VirtualListControllers.Clear();
-            _ctx.PresenceStates.Clear();
+            _ctx.RetireAllPresenceStates();
         }
     }
 }

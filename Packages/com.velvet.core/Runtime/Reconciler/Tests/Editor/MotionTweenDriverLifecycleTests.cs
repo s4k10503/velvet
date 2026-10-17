@@ -262,6 +262,8 @@ namespace Velvet.Tests
             Assert.That(item.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base completed a channel-less exit once and dropped its ghost.
+        // The passive flush added to each drain is the one the completion now settles in.
         [Test]
         public void Given_ABezierExitWithNoAnimatableChannel_When_TheKeyIsRemoved_Then_TheGhostDropsAndExitCompleteFiresOnce()
         {
@@ -278,11 +280,13 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             Tick();
 
-            // Act — remove the key and drain several times (the completion re-render included).
+            // Act — remove the key and drain several times, each with the passive flush the completion settles in (the
+            // completion re-render included).
             store.Set("");
             for (var i = 0; i < 6; i++)
             {
                 scheduler.DrainImmediateForTest();
+                mounted.FlushEffectsForTest();
             }
 
             // Assert — the ghost is gone and onExitComplete fired exactly once (no re-render loop).
@@ -485,6 +489,8 @@ namespace Velvet.Tests
             Assert.That(item.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base completed a channel-less exit once and dropped its ghost.
+        // The passive flush added to each drain is the one the completion now settles in.
         [Test]
         public void Given_ASpringExitWithNoAnimatableChannel_When_TheKeyIsRemoved_Then_TheGhostDropsAndExitCompleteFiresOnce()
         {
@@ -501,11 +507,13 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             Tick();
 
-            // Act — remove the key and drain several times (the completion re-render included).
+            // Act — remove the key and drain several times, each with the passive flush the completion settles in (the
+            // completion re-render included).
             store.Set("");
             for (var i = 0; i < 6; i++)
             {
                 scheduler.DrainImmediateForTest();
+                mounted.FlushEffectsForTest();
             }
 
             // Assert — the ghost is gone and onExitComplete fired exactly once (no re-render loop).

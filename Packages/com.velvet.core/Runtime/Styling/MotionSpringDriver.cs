@@ -557,6 +557,36 @@ namespace Velvet
             Release(next, channel, fromDrawn ? drawn.Value : channel.Origin, drawn.Velocity);
         }
 
+        /// <summary>
+        /// Releases each channel of <paramref name="next"/> that a native transition is moving at that transition's
+        /// rate, as <see cref="ContinueFrom"/> does for a play; <paramref name="nativeVelocity"/> reads it for a slot
+        /// in a unit.
+        /// </summary>
+        public static void InheritVelocity(MotionSpringState next, System.Func<ArbitraryProperty, LengthUnit, float?> nativeVelocity)
+        {
+            InheritNative(next, next.Opacity, nativeVelocity, ArbitraryProperty.Opacity, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateX, nativeVelocity, ArbitraryProperty.TranslateX, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateY, nativeVelocity, ArbitraryProperty.TranslateY, LengthUnit.Pixel);
+            InheritNative(next, next.Scale, nativeVelocity, ArbitraryProperty.Scale, LengthUnit.Pixel);
+            InheritNative(next, next.Rotate, nativeVelocity, ArbitraryProperty.Rotate, LengthUnit.Pixel);
+            if (next.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    InheritNative(next, length.Value, nativeVelocity, length.Property, length.Unit);
+                }
+            }
+        }
+
+        private static void InheritNative(MotionSpringState next, SpringChannel? channel, System.Func<ArbitraryProperty, LengthUnit, float?> nativeVelocity,
+            ArbitraryProperty slot, LengthUnit unit)
+        {
+            if (channel != null && nativeVelocity(slot, unit) is { } velocity)
+            {
+                Release(next, channel, channel.Origin, velocity);
+            }
+        }
+
         // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
         public static bool EndsAtFrom(MotionSpringState state) => state.Repeat.EndsAtFrom;
 

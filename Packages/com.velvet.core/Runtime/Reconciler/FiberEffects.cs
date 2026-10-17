@@ -19,20 +19,6 @@ namespace Velvet
         private static void RunInsertionEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
             => HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects, mountDoubleInvoke);
 
-        // Runs, ahead of a ref setup, the insertion effects pending on the component that rendered the ref's element and
-        // on the components above it, child before parent, as React's mutation phase runs a commit's insertion effects
-        // before its layout phase attaches refs; the layout commit then finds them run. It runs no StrictMode mount
-        // double-invoke: an entry's mount flag sits on the deferred stack, which this does not search.
-        internal static void RunInsertionEffectsAheadOfRef(ComponentFiber? owner)
-        {
-            for (var fiber = owner; fiber != null; fiber = fiber.Parent)
-            {
-                // A hidden fiber commits none of its render's effects: they wait for the commit that reveals it.
-                if (fiber.LayoutEffectsHidden) continue;
-                HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects);
-            }
-        }
-
         internal static void CleanupAllInsertionEffects(ComponentFiber fiber)
             => HookEffectExecutor.CleanupAll(fiber, fiber.InsertionEffects, fiber.PendingInsertionEffects);
 
@@ -181,6 +167,9 @@ namespace Velvet
                 }
                 CommitLayoutBatch(ctx, null, s_noRoots);
             }
+            // Completions a pass left until its refs attach (Reconciler.FinishTopLevelPass): an enter that
+            // played nothing completes here, an exit stages for the passive flush.
+            ctx.RunPendingCompletions();
             // What is left undelivered is held by a parked pass or names a boundary that is gone, which nothing
             // delivers.
             ctx.PendingCaughtErrorReports.RemoveAll(static report => !report.Boundary.IsMounted);
@@ -200,6 +189,8 @@ namespace Velvet
 
         private static bool HasStrandedWork(ReconcilerContext ctx)
         {
+            // A ref setup a pass left to the layout commit, which no commit of an entry has taken.
+            if (ctx.HasAttachableRefs()) return true;
             foreach (var entry in ctx.DeferredInlineLayoutEffectFibers)
             {
                 if (!IsHeld(entry.Pass)) return true;
@@ -269,9 +260,11 @@ namespace Velvet
         // must not observe state an earlier fiber's setup wrote — and both passes in post-order: a child before
         // its parent, so a parent setup observes a child's already-committed imperative handle, and the fibers
         // under one parent in the order they rendered, a root or a boundary joining them at its position in the
-        // tree. Insertion effects belong to the cleanup pass (the mutation phase); imperative handles and layout
-        // setups to the setup pass. A boundary's reports are delivered right after its own setups: after the
-        // layout effects of the fallback below it, before its ancestors'.
+        // tree. Insertion effects belong to the cleanup pass (the mutation phase), together with the cleanups of the
+        // refs the commit replaces; imperative handles and layout setups to the setup pass, which attaches the
+        // queued host refs where the walk reaches their elements (FiberRefPlacement). A boundary's reports are
+        // delivered right after its own setups: after the layout effects of the fallback below it, before its
+        // ancestors'.
         private static void CommitLayoutBatch(
             ReconcilerContext ctx, ComponentFiber? scope, List<(ComponentFiber Fiber, bool IsMount)> roots)
         {
@@ -282,6 +275,9 @@ namespace Velvet
             try
             {
                 var ordered = TakeBatch(ctx, scope, roots);
+                // The pass that rides this commit left it the cleanups of the refs it replaces, which run ahead of
+                // every cleanup of the layout effects and so of every setup.
+                ctx.DetachReplacedRefs(scope);
                 // A fiber a cleanup's catch unmounts in this pass has had these lists cleared by its unmount.
                 for (var i = 0; i < ordered.Count; i++)
                 {
@@ -289,19 +285,7 @@ namespace Velvet
                     RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
                     HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
                 }
-                for (var i = 0; i < ordered.Count; i++)
-                {
-                    var (fiber, isMount) = ordered[i];
-                    // A setup's catch can unmount a fiber later in this pass, and a boundary unmounted that way
-                    // must not deliver the report it still holds.
-                    if (!fiber.IsMounted) continue;
-                    // After every cleanup above, so what the insertion effects and layout cleanups wrote is in the
-                    // layout the setups read, and per fiber, so what an earlier setup wrote is in it too.
-                    if (FiberLayoutReflow.ReadsLayout(fiber)) FiberLayoutReflow.LayOutFor(ctx, fiber);
-                    FiberHookCommit.RunImperativeHandleSlots(fiber);
-                    HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke: isMount);
-                    DeliverCaughtErrors(ctx, fiber, reportCutoff);
-                }
+                RunLayoutSetups(ctx, ordered, ctx.TakeRefAttaches(scope), reportCutoff);
                 // A setup that mounted more inline children, a boundary's fallback among them, pushed them onto
                 // the stack: they are a follow-up commit, which CommitStrandedLayoutWork runs once every commit
                 // the entry holds is done.
@@ -313,7 +297,62 @@ namespace Velvet
             finally
             {
                 ctx.EffectCommitDepth--;
+                StageReleasedPassiveEffects(ctx);
             }
+        }
+
+        // The setup pass: the batch's imperative handles and layout setups, and the ref setups, in the order
+        // React's layout phase reaches them. Compacts the ref queue last, whether or not a setup ran, since a
+        // write can leave holes in it without one.
+        private static void RunLayoutSetups(
+            ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered,
+            List<PendingRefAttach> refs, long reportCutoff)
+        {
+            try
+            {
+                if (refs.Count == 0)
+                {
+                    for (var i = 0; i < ordered.Count; i++)
+                    {
+                        RunLayoutSetup(ctx, ordered[i].Fiber, ordered[i].IsMount, reportCutoff);
+                    }
+                    return;
+                }
+                RunInterleavedSetups(ctx, ordered, FiberRefPlacement.Interleave(ctx, ordered, refs), reportCutoff);
+            }
+            finally
+            {
+                ctx.CompactRefAttaches();
+            }
+        }
+
+        private static void RunInterleavedSetups(
+            ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered, List<LayoutStep> steps,
+            long reportCutoff)
+        {
+            for (var i = 0; i < steps.Count; i++)
+            {
+                if (steps[i].IsRef)
+                {
+                    ctx.RunRefAttach(steps[i].Ref.Element);
+                    continue;
+                }
+                var (fiber, isMount) = ordered[steps[i].FiberIndex];
+                RunLayoutSetup(ctx, fiber, isMount, reportCutoff);
+            }
+        }
+
+        private static void RunLayoutSetup(ReconcilerContext ctx, ComponentFiber fiber, bool isMount, long reportCutoff)
+        {
+            // A setup's catch can unmount a fiber later in this pass, and a boundary unmounted that way
+            // must not deliver the report it still holds.
+            if (!fiber.IsMounted) return;
+            // After every cleanup of the commit, so what the insertion effects and layout cleanups wrote is in the
+            // layout the setups read, and per fiber, so what an earlier setup wrote is in it too.
+            if (FiberLayoutReflow.ReadsLayout(fiber)) FiberLayoutReflow.LayOutFor(ctx, fiber);
+            FiberHookCommit.RunImperativeHandleSlots(fiber);
+            HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke: isMount);
+            DeliverCaughtErrors(ctx, fiber, reportCutoff);
         }
 
         // Takes the batch off the stack and orders it. The stack was populated in DFS pre-order during reconcile
@@ -337,6 +376,9 @@ namespace Velvet
                 // A tree a Suspense hides commits none of the layout work its render queued, as React discards
                 // that work; ShowLayoutEffects queues all of it again for the commit that reveals it.
                 if (entry.Fiber.LayoutEffectsHidden) continue;
+                // A fiber this commit takes as a root has its own render committed here, so an entry a parked pass left
+                // for it no longer holds its passive work back.
+                if (IsHeld(entry.Pass) && roots.Exists(root => ReferenceEquals(root.Fiber, entry.Fiber))) continue;
                 if (!IsHeld(entry.Pass) && IsInScope(entry.Fiber, scope))
                 {
                     taken.Add((entry.Fiber, entry.IsMount));
@@ -542,9 +584,9 @@ namespace Velvet
             anchor.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, context, DrainPassiveEffects));
         }
 
-        // An exit whose child left in the pass that just ended completes in the passive-effect flush, after the
-        // effects that flush runs, as Framer Motion's PresenceChild completes it from an effect. A context with no
-        // scheduler anchor, a bare Reconciler, has no flush to wait for and completes at once.
+        // An exit with nothing to animate, whose child the pass that just ended removed, settles in the
+        // passive-effect flush, after the effects that flush runs, as Framer Motion settles it after that commit.
+        // A context with no scheduler anchor, a bare Reconciler, has no flush to wait for and completes at once.
         internal static void StagePassiveCompletion(ReconcilerContext context, Action complete)
         {
             if (context.BatchScheduler.Anchor == null)
@@ -558,7 +600,7 @@ namespace Velvet
 
         // Run whether or not the presence's owner has unmounted since staging: an inner presence that leaves with
         // its enclosing child is gone by the flush, and Framer Motion still calls its onExitComplete.
-        private static void RunPassiveCompletions(ReconcilerContext context)
+        internal static void RunPassiveCompletions(ReconcilerContext context)
         {
             if (context.PendingPassiveCompletions.Count == 0) return;
             var completions = context.PendingPassiveCompletions.ToArray();
@@ -581,6 +623,7 @@ namespace Velvet
             // rather than mutate the list we are iterating.
             if (context.PendingPassiveEffectFibers.Count == 0 && context.PendingPassiveCompletions.Count == 0) return;
             context.EffectCommitDepth++;
+            context.PassiveDrainDepth++;
             try
             {
                 RunPassivePhases(context);
@@ -588,6 +631,7 @@ namespace Velvet
             }
             finally
             {
+                context.PassiveDrainDepth--;
                 context.EffectCommitDepth--;
             }
             CommitStrandedLayoutWork(context);
@@ -601,6 +645,7 @@ namespace Velvet
             // A tree a Suspense hides runs none of the passive work its render queued, as React commits none of
             // that render; ShowLayoutEffects schedules what is held for the reveal.
             ordered.RemoveAll(HoldWhileHidden);
+            ordered.RemoveAll(candidate => HoldWhileParked(context, candidate));
 
             // Phase 1: all cleanups, post-order. Clear EffectFlushScheduled here so a cleanup that
             // re-stages the same fiber re-arms scheduling cleanly.
@@ -639,6 +684,40 @@ namespace Velvet
             if (!fiber.LayoutEffectsHidden) return false;
             fiber.EffectFlushScheduled = false;
             return true;
+        }
+
+        // The passive work of a fiber a parked pass rendered waits with that fiber's layout work on the deferred
+        // stack (IsHeld), until the commit that takes the entry stages it again.
+        private static bool HoldWhileParked(ReconcilerContext context, ComponentFiber fiber)
+        {
+            foreach (var entry in context.DeferredInlineLayoutEffectFibers)
+            {
+                if (!ReferenceEquals(entry.Fiber, fiber) || !IsHeld(entry.Pass)) continue;
+                context.PassiveEffectFibersHeldByParkedPass.Add(fiber);
+                return true;
+            }
+            return false;
+        }
+
+        // Runs when a layout commit ends, a throwing one included, since the commit that completes a pass is the one
+        // that takes its entries off the deferred stack. A fiber whose entry is still there keeps waiting: the
+        // commit that takes it is the one whose layout effects run first.
+        private static void StageReleasedPassiveEffects(ReconcilerContext ctx)
+        {
+            var held = ctx.PassiveEffectFibersHeldByParkedPass;
+            var kept = 0;
+            for (var i = 0; i < held.Count; i++)
+            {
+                var fiber = held[i];
+                if (HasLayoutEffectsWaiting(ctx, fiber))
+                {
+                    held[kept++] = fiber;
+                    continue;
+                }
+                if (ctx.PendingPassiveEffectFiberSet.Add(fiber)) ctx.PendingPassiveEffectFibers.Add(fiber);
+                ArmPassiveDrain(ctx);
+            }
+            held.RemoveRange(kept, held.Count - kept);
         }
 
         // Reconstructs a post-order (child-before-parent, left-to-right) sequence over an arbitrary
@@ -749,11 +828,13 @@ namespace Velvet
             FlushPendingPassiveEffects(context);
         }
 
-        // Context overload: the batch scheduler drives this before a synchronous discrete-event flush so a
-        // prior commit's pending passive effects run before the new update's render. A no-op when nothing
-        // is pending.
         internal static void FlushPendingPassiveEffects(ReconcilerContext context)
         {
+            // React refuses to flush passive effects inside a commit ("Cannot flush passive effects while already
+            // rendering"), a passive flush being one. Reached from a layout commit or from an effect this context's
+            // drain is running, what is pending is left to the drain its staging armed, or to the loop below where
+            // that loop is the caller.
+            if (context.EffectCommitDepth > 0) return;
             // An effect setup may setState and stage a fresh batch synchronously; drain until quiescent.
             // Bounded to surface a runaway effect-stages-effect loop as a test failure rather than a hang.
             var guard = 0;

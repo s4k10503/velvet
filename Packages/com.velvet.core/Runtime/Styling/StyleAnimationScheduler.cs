@@ -703,9 +703,10 @@ namespace Velvet
             // variant pair that only touches translate-x. Used as the resting value for a translate axis the
             // swap names on neither side (see Resolve's own doc).
             var restingTranslate = element.style.translate.value;
+            var context = MotionSlotContext.Read(element, fromClasses, toClasses,
+                slot => DrivenByRunningPlay(element, slot), slot => DrivenByLivePlay(element, slot));
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
-                restingTranslate.x.value, restingTranslate.y.value,
-                MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
+                restingTranslate.x.value, restingTranslate.y.value, context);
             plan = StartFromHeld(element, plan, fromClasses, toClasses);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
@@ -713,11 +714,15 @@ namespace Velvet
             var state = ValidateSpringParameters(stiffness, damping, mass)
                 ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description)
                 : null;
-            // A spring or bezier play this one interrupts hands on its velocity, and to an enter its drawn values too,
-            // read before the cancel below ends it.
+            // A spring or bezier play this one interrupts hands on its velocity, and to an enter its drawn values too, and
+            // a native transition its rate, all read before the cancel and the class swap below end them.
             if (state != null && Drawn(map.GetValueOrDefault(element)) is { } interrupted)
             {
                 MotionSpringDriver.ContinueFrom(state, interrupted, fromDrawn: !isExit);
+            }
+            if (state != null && context != null)
+            {
+                MotionSpringDriver.InheritVelocity(state, context.NativeVelocity);
             }
 
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's
@@ -880,7 +885,7 @@ namespace Velvet
             var restingTranslate = element.style.translate.value;
             var plan = MotionSpringClassParser.Resolve(planFrom, planTo,
                 restingTranslate.x.value, restingTranslate.y.value,
-                MotionSlotContext.Read(element, planFrom, planTo, slot => DrivenByRunningPlay(element, slot)));
+                MotionSlotContext.Read(element, planFrom, planTo, slot => DrivenByRunningPlay(element, slot), slot => DrivenByLivePlay(element, slot)));
             plan = StartFromHeld(element, plan, planFrom, planTo);
             // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
@@ -1370,6 +1375,9 @@ namespace Velvet
         private bool DrivenByRunningPlay(VisualElement element, ArbitraryProperty slot)
             => Drives(_pendingEnters, element, slot) || Drives(_pendingExits, element, slot)
                 || Drives(_held, element, slot);
+
+        private bool DrivenByLivePlay(VisualElement element, ArbitraryProperty slot)
+            => Drives(_pendingEnters, element, slot) || Drives(_pendingExits, element, slot);
 
         private static bool Drives(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
             ArbitraryProperty slot)

@@ -72,12 +72,10 @@ namespace Velvet
     }
 
     // Per-z-managed-element bookkeeping: which placeholder stands in its logical slot, which layer container
-    // currently holds it, the stacking parent both are scoped to, its last resolved z, and the monotonic
-    // mount-order tiebreak for same-z siblings (assigned once, at first entry, then stable — re-sorting on
-    // every patch would contradict "no periodic resort"). Keyed by the REAL element in
-    // ReconcilerContext.ZLayerMembers; the reverse index (placeholder -> real) is ZLayerPlaceholders.
+    // currently holds it, the stacking parent both are scoped to, and its last resolved z. Keyed by the REAL
+    // element in ReconcilerContext.ZLayerMembers; the reverse index (placeholder -> real) is ZLayerPlaceholders.
     internal readonly record struct ZLayerMember(
-        VisualElement Placeholder, VisualElement Container, VisualElement StackingParent, int ResolvedZ, ulong Order);
+        VisualElement Placeholder, VisualElement Container, VisualElement StackingParent, int ResolvedZ);
 
     // Shared helpers for maintaining the multi-Portal slot range invariant.
     internal static class PortalSlotTracker
@@ -1075,6 +1073,8 @@ namespace Velvet
         public Dictionary<VisualElement, DndScopeBinding> DndScopeBindings { get; } = new();
         public Dictionary<VisualElement, DndDraggableBinding> DraggableBindings { get; } = new();
         public Dictionary<VisualElement, DndDroppableBinding> DroppableBindings { get; } = new();
+        // Next DndDroppableBinding.Order; only ever increases.
+        public long NextDroppableOrder;
         public Dictionary<VisualElement, DndOverlayBinding> DragOverlayBindings { get; } = new();
         // Elements carrying FiberElementProps.NoDrag. A side-table only: nothing is written to the element.
         public HashSet<VisualElement> NoDragElements { get; } = new();
@@ -1209,13 +1209,16 @@ namespace Velvet
         // of a LEADING back container would shift every ordinary sibling index a live Common/Keyed loop is
         // still iterating by absolute position). Pure membership changes within an ALREADY-EXISTING container
         // never touch this set — they run synchronously, from anywhere. Drained (and cleared) by
-        // FiberZLayerCoordinator.DrainTeardowns, called from the same Reconciler.Reconcile top-level finally as
+        // FiberZLayerCoordinator.DrainTeardowns, called from Reconciler.FinishTopLevelPass's finally, after
         // DrainPendingPortalMounts.
         public HashSet<VisualElement> PendingZLayerTeardownChecks { get; } = new();
 
-        // Monotonic tiebreak counter for same-resolved-z siblings under one layer container, handed out once
-        // per element at its first entry into a layer (see ZLayerMember.Order).
-        internal ulong NextZOrder;
+        // Stacking parents a member was placed under or whose children a pass reconciled; drained by
+        // FiberZLayerCoordinator.ResortLayers at the end of each top-level pass, after the teardown checks above.
+        public HashSet<VisualElement> PendingZLayerResorts { get; } = new();
+
+        // FiberZLayerCoordinator's placeholder -> declared index, filled and cleared within one layer check.
+        internal Dictionary<VisualElement, int> ZLayerDeclaredIndex { get; } = new();
 
         // Guards FiberCrossPanelPointerRouter.AttachToMainPanel against attaching twice on the same
         // main panel — V.Mount is idempotent-safe to call from a component's own render (uncommon but
@@ -1341,14 +1344,14 @@ namespace Velvet
         public HashSet<IPanel> DeclaringResolveMisses { get; } = new();
 
         // Inline-mounted ComponentFiber whose insertion / layout effect commit is deferred to the
-        // post-commit drain. The DOM mutation + ref attachment must complete before layout effect
+        // post-commit drain. The DOM mutations must complete before layout effect
         // setup runs. Velvet's inline-mount path defers child reconcile via
         // RenderAndReconcile(deferReconcile: true) so the parent expansion calls
-        // CreateElement for child elements AFTER MountInline returns, and their ref setups run at that
-        // pass's own boundary (DrainRefAttaches) later still;
+        // CreateElement for child elements AFTER MountInline returns, and the ref setups it queues
+        // attach in the layout commit (FiberRefPlacement);
         // running LayoutEffects inside MountInline would observe stale (null) refs.
-        // The top-level reconcile entry drains this stack before its own layout-effect commit so
-        // every layout effect runs once all child refs are attached. A Stack (LIFO) is used so
+        // The top-level reconcile entry drains this stack in its own layout-effect commit, after the pass
+        // has created every element. A Stack (LIFO) is used so
         // the drain runs deepest-first — layout effects commit children
         // before their parent (bottom-up), so a parent layout effect that reads a child's
         // imperative handle / measured size observes the child's already-applied effect.
@@ -1438,7 +1441,28 @@ namespace Velvet
         // pass has ended — see CompleteEnterAfterThePass. RemovedBy is the commit whose removals an exit's child
         // waits on: that exit completes from the passive-effect flush after the pass, and the commit takes it
         // back if its removals never run (DropCompletionsRemovedBy).
-        internal readonly record struct PendingCompletion(System.Action Complete, ComponentFiber? Boundary, object? RemovedBy);
+        internal readonly record struct PendingCompletion(
+            System.Action Complete, ComponentFiber? Boundary, object? RemovedBy, ExitSettlePhase Phase = ExitSettlePhase.Effect,
+            bool Urgent = false);
+
+        // The two ways an exit that animates nothing settles in Framer Motion: a child holding a motion component
+        // from the promise of its exit, which resolves at once when the exit names no target or one reached with a
+        // zero-duration or `type: false` transition and no delay, and a child holding none from PresenceChild's
+        // passive effect. Which settles last decides how onExitComplete's error is routed
+        // (GeneralPathReconciler.CompletePresenceExit).
+        //
+        // The order between the two follows the removing commit's lane. React flushes the passive effects of a
+        // commit whose lanes include SyncLane at the end of that commit (react-dom
+        // commitRootImpl: includesSomeLane(pendingPassiveEffectsLanes, SyncLane) then flushPassiveEffects), before
+        // any promise reaction runs, so the Urgent lane settles Effect before Promise. Any other lane flushes its
+        // passive effects later and the promise reactions run first. The zero-duration skip is motion-dom
+        // animateMotionValue: shouldSkip schedules frame.update(onComplete) and returns undefined, so
+        // animateTarget collects no animation and its Promise.all([]) resolves like an exit with no target.
+        internal enum ExitSettlePhase
+        {
+            Promise,
+            Effect,
+        }
 
         internal readonly List<PendingCompletion> PendingCompletions = new();
 
@@ -1461,23 +1485,28 @@ namespace Velvet
         }
 
         // An AnimatePresence's onExitComplete completes as an enter does, and for the same reason. Framer Motion
-        // calls PresenceChild's from a passive effect once a child with nothing to animate has left, whose error
+        // calls PresenceChild's from a passive effect once a child with nothing to animate is removed, whose error
         // React gives a boundary from the presence's owner, and from the exit's promise for a V.Motion child, whose
-        // error no boundary sees. removedBy is the commit that removes the child: an exit that waits on its removals
-        // completes from the passive-effect flush that follows the pass, and one that waits on an animation, with
-        // removedBy null, when the animation ends.
-        internal void CompleteExitAfterThePass(
-            System.Action? onExitComplete, ComponentFiber? owner, bool fromAMotion, object? removedBy = null)
+        // error no boundary sees.
+        internal void CompleteExitAfterThePass(System.Action? onExitComplete, ComponentFiber? owner, bool fromAMotion)
         {
             if (onExitComplete == null) return;
             CompleteAfterThePass(
-                () => GeneralPathReconciler.InvokeExitComplete(onExitComplete, owner, fromAMotion), owner, removedBy);
+                () => GeneralPathReconciler.InvokeExitComplete(onExitComplete, owner, fromAMotion), owner, removedBy: null);
         }
 
-        private void CompleteAfterThePass(System.Action complete, ComponentFiber? boundary, object? removedBy)
+        // An exit that animates nothing settles from the passive-effect flush that follows the pass whose commit
+        // removedBy is, and that commit takes it back if its removals never run.
+        internal void CompleteAfterTheRemovals(
+            System.Action settle, ComponentFiber? boundary, object removedBy, ExitSettlePhase phase)
+            => CompleteAfterThePass(settle, boundary, removedBy, phase);
+
+        private void CompleteAfterThePass(System.Action complete, ComponentFiber? boundary, object? removedBy,
+            ExitSettlePhase phase = ExitSettlePhase.Effect)
         {
             if (SharedReconcileDepth == 0 && removedBy == null) complete();
-            else PendingCompletions.Add(new PendingCompletion(complete, boundary, removedBy));
+            else PendingCompletions.Add(new PendingCompletion(
+                complete, boundary, removedBy, phase, FiberWorkLoop.RenderLane == FiberUpdatePriority.Urgent));
         }
 
         // The entries a render below boundary queued: read before a catch detaches what that render created, since
@@ -1519,10 +1548,17 @@ namespace Velvet
             // Copied out first: a callback can start a pass whose own end reaches this list.
             var completions = PendingCompletions.ToArray();
             PendingCompletions.Clear();
+            List<PendingCompletion>? staged = null;
             foreach (var entry in completions)
             {
                 if (entry.RemovedBy == null) entry.Complete();
-                else FiberEffects.StagePassiveCompletion(this, entry.Complete);
+                else (staged ??= new List<PendingCompletion>()).Add(entry);
+            }
+            if (staged == null) return;
+            // In ExitSettlePhase order for the entry's lane, tree order within a phase.
+            foreach (var entry in System.Linq.Enumerable.OrderBy(staged, entry => entry.Urgent ? 1 - (int)entry.Phase : (int)entry.Phase))
+            {
+                FiberEffects.StagePassiveCompletion(this, entry.Complete);
             }
         }
 
@@ -1535,6 +1571,11 @@ namespace Velvet
         // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
         // it (FiberEffects.CommitStrandedLayoutWork).
         internal int EffectCommitDepth;
+
+        // The passive drains among EffectCommitDepth, so a layout commit nested in one still reads as running.
+        internal int PassiveDrainDepth;
+
+        internal bool InLayoutCommit => EffectCommitDepth > PassiveDrainDepth;
 
         // Fibers with pending passive (UseEffect) effects awaiting the next post-paint drain. Unlike
         // layout effects (committed synchronously, bottom-up, before paint) passive effects fire
@@ -1553,6 +1594,11 @@ namespace Velvet
         // one drain per paint-tick even when many fibers stage passive effects in one reconcile pass.
         // Reset when the drain runs.
         public bool PassiveEffectDrainScheduled { get; set; }
+
+        // Staged fibers the passive drain took out of PendingPassiveEffectFibers because a parked time-sliced
+        // pass rendered them (FiberEffects.HoldWhileParked). Their EffectFlushScheduled stays set, so nothing
+        // stages them again until FiberEffects.StageReleasedPassiveEffects does.
+        internal readonly List<ComponentFiber> PassiveEffectFibersHeldByParkedPass = new();
         public Dictionary<VisualElement, FiberVirtualListController> VirtualListControllers { get; } = new();
         // Keyed on the Outlet's own ComponentFiber; FiberOutletScope owns what an entry holds and when
         // it is released.
@@ -1599,10 +1645,11 @@ namespace Velvet
             RefCallbacks { get; } = new();
 
         // Ref setups queued and not yet run, in the order the walks reached them, keyed for replacement
-        // so one element contributes one setup however many times a pass syncs it. Drained by
-        // DrainRefAttaches, which both entrances go through; a hole (a default entry) is one an element's
-        // departure cancelled or one already run, left in place so the indices either side of it stay
-        // addressable until the compaction that ends the drain.
+        // so one element contributes one setup however many times a pass syncs it. Run by DrainRefAttaches at
+        // the end of a pass no commit follows, and otherwise by the layout commit that takes them
+        // (TakeRefAttaches); a hole (a default entry) is one an element's departure cancelled or one already
+        // run, left in place so the indices either side of it stay addressable until the compaction that ends
+        // the drain or the commit.
         private readonly List<(VisualElement? Element, System.Func<VisualElement, System.Action>? Callback,
             ComponentFiber? Owner, Reconciler? Pass)> _pendingRefAttaches = new();
 
@@ -1637,9 +1684,10 @@ namespace Velvet
             => ComponentBoundarySearch.PropagateFromOwner(owner, exception);
 
         // Cycles the ref installed on an element to match the node being committed: both the old cleanup and
-        // the new setup at the pass boundary, the old first, as React detaches and attaches refs together in
-        // its commit. Run mid-pass, the cleanup took away whatever the old setup published — a portal id —
-        // from the patches still to come in that pass, which an inline lambda, a new delegate at every render,
+        // the new setup after the pass, at its boundary or in the layout commit that follows it, the old first,
+        // as React detaches the refs of a commit before it attaches. Run mid-pass, the cleanup took away
+        // whatever the old setup published — a portal id — from the patches still to come in that pass, which
+        // an inline lambda, a new delegate at every render,
         // turned into a render that re-published the id and asked for the next. A ref removed outright is
         // cleaned up at once. A patch carrying the SAME callback delegate is a no-op —
         // unconditionally re-invoking made any state write in a ref cleanup a per-patch mid-flush write,
@@ -1743,9 +1791,9 @@ namespace Velvet
             }
         }
 
-        // Runs the queued setups in walk order. An entry is recorded whether or not the setup completed —
-        // the identity is what makes the stable-ref skip possible, so a setup that throws is attempted
-        // once rather than again on every later patch carrying the same delegate.
+        // Runs the queued setups in walk order, for a pass no layout commit follows. An entry is recorded whether
+        // or not the setup completed — the identity is what makes the stable-ref skip possible, so a setup that
+        // throws is attempted once rather than again on every later patch carrying the same delegate.
         internal void DrainRefAttaches()
         {
             // A nested caller — the VirtualList controller's item loop, reached from a patch as well as
@@ -1759,6 +1807,11 @@ namespace Velvet
             // re-reads the count and takes them as a batch of their own; draining them from inside would
             // run the ones already run a second time.
             if (_drainingRefAttaches) return;
+            // A pass a fiber's render or flush reconciles is followed by that fiber's layout commit, or by
+            // FiberEffects.CommitStrandedLayoutWork, which attaches what it queued among the layout effects
+            // (FiberRefPlacement) and runs the cleanups of the refs it replaced ahead of them. A bare
+            // Reconciler.Reconcile has no fiber on the stack and nothing after it.
+            if (FiberStack.Current != null) return;
             _drainingRefAttaches = true;
             try
             {
@@ -1771,9 +1824,9 @@ namespace Velvet
                     if (i == batchEnd)
                     {
                         batchEnd = _pendingRefAttaches.Count;
-                        RunReplacedRefCleanups(i, batchEnd);
+                        RunReplacedRefCleanups(i, batchEnd, null);
                     }
-                    var (element, callback, owner, pass) = _pendingRefAttaches[i];
+                    var (element, callback, _, pass) = _pendingRefAttaches[i];
                     // MUTANT_SURVIVES(equivalent): an entry's element and callback are written together —
                     // SyncRefCallback queues one only with both set, and a cancelled or consumed one is
                     // overwritten with default — so neither is null without the other and both spellings
@@ -1784,47 +1837,7 @@ namespace Velvet
                     // pass holds back the entries it queued and no others — Reconciler.FinishTopLevelPass
                     // owns why it has to hold those.
                     if (pass is { HasPendingWork: true }) continue;
-                    // Ahead of the setup, so a setup that re-queues this same element appends a fresh
-                    // entry instead of overwriting the one being run.
-                    _pendingRefAttachIndex.Remove(element);
-                    _pendingRefAttaches[i] = default;
-                    // Ahead of the setup too, so an element the setup itself takes out of the tree is one
-                    // FiberElementCleaner finds an entry for and removes. A setup CAN reach that: it runs
-                    // at depth zero now, where a discrete event it dispatches commits synchronously instead
-                    // of being held back. Recorded only afterwards, the removal would find no entry and the
-                    // write below would then add one for an element no tree holds, past the removal that
-                    // would have taken it.
-                    RefCallbacks[element] = (callback, null);
-                    // React attaches refs in its layout phase, after its mutation phase ran the commit's insertion
-                    // effects, and a callback that reads its element's box there reads it laid out.
-                    FiberEffects.RunInsertionEffectsAheadOfRef(owner);
-                    FiberLayoutReflow.LayOutFor(this, element, owner);
-                    System.Action? cleanup = null;
-                    try
-                    {
-                        cleanup = callback(element);
-                    }
-                    catch (System.Exception exception)
-                    {
-                        ContainUserCallbackFailure(owner, exception);
-                    }
-                    if (RefCallbacks.ContainsKey(element))
-                    {
-                        RefCallbacks[element] = (callback, cleanup);
-                    }
-                    else if (cleanup != null)
-                    {
-                        // Its entry is gone, so nothing is left holding this cleanup. Firing it here is
-                        // what keeps a setup that acquires a resource from leaking it.
-                        try
-                        {
-                            cleanup();
-                        }
-                        catch (System.Exception exception)
-                        {
-                            ContainUserCallbackFailure(owner, exception);
-                        }
-                    }
+                    AttachQueuedRef(i);
                 }
             }
             finally
@@ -1834,7 +1847,146 @@ namespace Velvet
             }
         }
 
-        private void RunReplacedRefCleanups(int start, int end)
+        // Runs the cleanup of each ref a queued setup replaces, bar those of a parked pass, ahead of the setups of
+        // a layout commit: the commit calls it first, and a cleanup already run leaves nothing for a second call.
+        // scope is the one the commit's TakeRefAttaches reads, so a commit detaches the refs it goes on to attach.
+        internal void DetachReplacedRefs(ComponentFiber? scope)
+        {
+            if (!CanRunRefSetups) return;
+            _drainingRefAttaches = true;
+            try
+            {
+                RunReplacedRefCleanups(0, _pendingRefAttaches.Count, scope);
+            }
+            finally
+            {
+                _drainingRefAttaches = false;
+            }
+        }
+
+        private bool CanRunRefSetups
+            => SharedReconcileDepth == 0 && HeldRowLayoutEffects.Count == 0 && !_drainingRefAttaches;
+
+        private static bool IsAttachable(
+            (VisualElement? Element, System.Func<VisualElement, System.Action>? Callback, ComponentFiber? Owner,
+                Reconciler? Pass) entry)
+            => entry.Element != null && entry.Callback != null && entry.Pass is not { HasPendingWork: true };
+
+        private static readonly List<PendingRefAttach> s_noRefAttaches = new();
+
+        // scope null is every setup. Otherwise it is the fiber being committed and what lies below it.
+        private static bool IsInRefScope(ComponentFiber? owner, ComponentFiber? scope)
+            => scope == null || (owner != null && IsAtOrBelow(owner, scope));
+
+        // The setups a layout commit attaches, in queue order: those no parked pass holds, owned by scope or by a
+        // component below it, or by any component when scope is null. A commit rooted at a fiber leaves the rest
+        // to the commit that has the rest of their pass: a render owed ahead of a pass's own commit
+        // (FiberWorkLoop.FlushOwedSettleRenders) commits first, and attaching the pass's setups there would put
+        // them ahead of the layout effects that commit still has to run. Empty wherever DrainRefAttaches leaves
+        // the queue alone.
+        internal List<PendingRefAttach> TakeRefAttaches(ComponentFiber? scope)
+        {
+            if (_pendingRefAttaches.Count == 0 || !CanRunRefSetups) return s_noRefAttaches;
+            List<PendingRefAttach>? taken = null;
+            foreach (var entry in _pendingRefAttaches)
+            {
+                if (!IsAttachable(entry)) continue;
+                if (!IsInRefScope(entry.Owner, scope)) continue;
+                (taken ??= new List<PendingRefAttach>()).Add(new PendingRefAttach(entry.Element!, entry.Owner));
+            }
+            return taken ?? s_noRefAttaches;
+        }
+
+        // Whether a setup waits for a commit that has no fiber of its own to bring. Read only where
+        // FiberEffects.CommitStrandedLayoutWork has found no commit on the stack.
+        internal bool HasAttachableRefs() => _pendingRefAttaches.Exists(IsAttachable);
+
+        // Runs the setup the queue holds for the element, which is not always the one the commit took: a write
+        // since then can have queued another callback, and can have taken the element out or dropped its ref.
+        internal void RunRefAttach(VisualElement element)
+        {
+            if (!_pendingRefAttachIndex.TryGetValue(element, out var queued)) return;
+            var enclosing = _drainingRefAttaches;
+            _drainingRefAttaches = true;
+            try
+            {
+                AttachQueuedRef(queued);
+            }
+            finally
+            {
+                _drainingRefAttaches = enclosing;
+            }
+        }
+
+        // Ends a commit's use of the queue, dropping the slots of the setups it ran.
+        internal void CompactRefAttaches()
+        {
+            if (!_drainingRefAttaches) CompactPendingRefAttaches();
+        }
+
+        private void AttachQueuedRef(int index)
+        {
+            var (queuedElement, queuedCallback, owner, _) = _pendingRefAttaches[index];
+            var element = queuedElement!;
+            var callback = queuedCallback!;
+            // Ahead of the setup, so a setup that re-queues this same element appends a fresh
+            // entry instead of overwriting the one being run.
+            _pendingRefAttachIndex.Remove(element);
+            _pendingRefAttaches[index] = default;
+            // Ahead of the setup too, so an element the setup itself takes out of the tree is one
+            // FiberElementCleaner finds an entry for and removes. A setup CAN reach that: it runs
+            // at depth zero now, where a discrete event it dispatches commits synchronously instead
+            // of being held back. Recorded only afterwards, the removal would find no entry and the
+            // write below would then add one for an element no tree holds, past the removal that
+            // would have taken it.
+            RefCallbacks[element] = (callback, null);
+            // A callback that reads its element's box here reads it laid out, as in React's layout phase.
+            FiberLayoutReflow.LayOutFor(this, element, owner);
+            System.Action? cleanup = null;
+            try
+            {
+                cleanup = InOwnersFrame(owner, callback, element);
+            }
+            catch (System.Exception exception)
+            {
+                ContainUserCallbackFailure(owner, exception);
+            }
+            if (RefCallbacks.ContainsKey(element))
+            {
+                RefCallbacks[element] = (callback, cleanup);
+            }
+            else if (cleanup != null)
+            {
+                // Its entry is gone, so nothing is left holding this cleanup. Firing it here is
+                // what keeps a setup that acquires a resource from leaking it.
+                try
+                {
+                    InOwnersFrame(owner, _ => { cleanup(); return null; }, element);
+                }
+                catch (System.Exception exception)
+                {
+                    ContainUserCallbackFailure(owner, exception);
+                }
+            }
+        }
+
+        // A ref callback runs with its owner on the ambient stack, as it did when the pass attached it, so a hook
+        // called from it is refused by name (HookGuard.ThrowIfNotRendering) rather than as an anonymous component.
+        private static System.Action? InOwnersFrame(
+            ComponentFiber? owner, System.Func<VisualElement, System.Action?> callback, VisualElement element)
+        {
+            if (owner != null) FiberAmbientStack.Push(owner);
+            try
+            {
+                return callback(element);
+            }
+            finally
+            {
+                if (owner != null) FiberAmbientStack.Pop();
+            }
+        }
+
+        private void RunReplacedRefCleanups(int start, int end, ComponentFiber? scope)
         {
             for (var i = start; i < end; i++)
             {
@@ -1844,6 +1996,7 @@ namespace Velvet
                 if (element == null || callback == null) continue;
                 // The batch's own setup loop skips this entry too, so its old ref stays as it is.
                 if (pass is { HasPendingWork: true }) continue;
+                if (!IsInRefScope(owner, scope)) continue;
                 if (!RefCallbacks.TryGetValue(element, out var installed)) continue;
                 var replaced = installed.Cleanup;
                 if (replaced == null) continue;
@@ -1853,7 +2006,7 @@ namespace Velvet
                 // Its failure goes where a setup's does, and the setup still runs.
                 try
                 {
-                    replaced();
+                    InOwnersFrame(owner, _ => { replaced(); return null; }, element);
                 }
                 catch (System.Exception exception)
                 {
@@ -1993,7 +2146,8 @@ namespace Velvet
                 (added ??= new()).Add(key);
             }
             if (added == null) return;
-            foreach (var key in added) RetirePresenceState(key);
+            // A render the boundary took back committed none of these presences, so none of their exits settles.
+            foreach (var key in added) RetirePresenceState(key, settlesExits: false);
         }
 
         internal readonly record struct SuspenseFallbackRecord(SuspenseNode Node, bool HidesPrimary);
@@ -2063,6 +2217,20 @@ namespace Velvet
             _suspenseFallbackKeys.Remove(boundary);
         }
 
+        // An exit's settle waiting for a commit to run after. Equal only to itself: a key's later exit puts another
+        // in its place, which GeneralPathReconciler.TakeIfStillPending tells apart by reference.
+        internal sealed class PendingSettle
+        {
+            internal PendingSettle(System.Action settle, ExitSettlePhase phase)
+            {
+                Settle = settle;
+                Phase = phase;
+            }
+
+            internal System.Action Settle { get; }
+            internal ExitSettlePhase Phase { get; }
+        }
+
         // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed as PresenceStates below
         // is. The keyed children are expanded directly into the parent's slot range (no wrapper element);
         // this state records, per AnimatePresence, the leaf composition currently committed to the DOM so
@@ -2085,6 +2253,10 @@ namespace Velvet
             // diff removes their leaves.
             public readonly HashSet<string> ExitComplete = new();
 
+            // Per exiting key, the settle that waits for a commit to run after
+            // (GeneralPathReconciler.SettleAfterTheRemovingCommit). A re-entry drops it.
+            public readonly Dictionary<string, PendingSettle> PendingSettles = new();
+
             // Anchor element of each exiting ghost (its first emitted leaf). Once a Motion's exit detaches
             // its element, the old-side reproduction can no longer recurse into the ghost's subtree, so its
             // inline fibers escape the orphan sweep. Keeping the anchor lets the drop path dispose them
@@ -2097,7 +2269,7 @@ namespace Velvet
             // patch that would re-record the element (PresenceAnchorMotionElement) bails on reference
             // equality and never runs; this per-key memo, written whenever an emission DOES record the
             // element, is what the ghost's exit dispatch falls back to. Entries retire with their key
-            // (exit-complete drop / instant removal) so a pooled element is never resurrected as a target.
+            // (exit-complete drop) so a pooled element is never resurrected as a target.
             public readonly Dictionary<string, VisualElement> MotionElements = new();
 
             // The top-level elements each key's last committing emission placed, a z-managed placeholder
@@ -2133,9 +2305,10 @@ namespace Velvet
             public readonly HashSet<string> LeavingMounts = new();
 
             // Whether an expansion of this presence is under way, and the exit completions that fired meanwhile,
-            // which run once it has finished its bookkeeping (GeneralPathReconciler.ExpandAnimatePresenceInline).
+            // each with its key, staged once it has finished its bookkeeping
+            // (GeneralPathReconciler.ExpandAnimatePresenceInline).
             public bool Expanding;
-            public List<System.Action>? DeferredCompletions;
+            public List<(string Key, System.Action Settle)>? DeferredCompletions;
 
             // Whether the key is on its way out, not yet dropped: an exit running, or finished and awaiting the
             // render that drops it.
@@ -2232,6 +2405,7 @@ namespace Velvet
 
             private readonly DescendantStatus[] _statuses;
             private int _pending;
+            private bool _settled;
             private readonly System.Action _onSettled;
             private readonly System.Action<VisualElement?> _onSettledByTeardown;
 
@@ -2265,9 +2439,28 @@ namespace Velvet
                 return registrations;
             }
 
+            // Settles a wait that has not settled yet, whatever is still pending, and leaves nothing for a slot
+            // completing after it to settle. A wait that has settled is not settled again: the exit's own count in
+            // StartPresenceExit holds a layoutId landing's slot apart from it, and that one is still owed.
+            internal void SettleForTeardown()
+            {
+                if (!TrySettle()) return;
+                _pending = 0;
+                _onSettled();
+            }
+
+            // Claims the wait's one settle. Reaching a pending count of zero does not claim it: a teardown's settle is
+            // deferred, and a retirement in between has to find the wait still owed.
+            internal bool TrySettle()
+            {
+                if (_settled) return false;
+                _settled = true;
+                return true;
+            }
+
             internal void CompleteRegistration()
             {
-                if (Settles()) _onSettled();
+                if (Settles() && TrySettle()) _onSettled();
             }
 
             internal void TearDownRegistration()
@@ -2279,13 +2472,13 @@ namespace Velvet
 
             internal void CompleteAnchor()
             {
-                if (Settles()) _onSettled();
+                if (Settles() && TrySettle()) _onSettled();
             }
 
             internal void CompleteDescendant(VisualElement element)
             {
                 _statuses[IndexOf(element)] = DescendantStatus.Completed;
-                if (Settles()) _onSettled();
+                if (Settles() && TrySettle()) _onSettled();
             }
 
             // A descendant leaving the tree is marked whatever its exit had reached, so nothing touches its
@@ -2383,9 +2576,12 @@ namespace Velvet
         // The one place an AnimatePresence entry leaves PresenceStates before the whole table is dropped. An inner
         // presence retired while an enclosing child waits on it stops holding that child, as a descendant Motion
         // torn down does (FiberElementCleaner).
-        private void RetirePresenceState((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
+        private void RetirePresenceState(
+            (ComponentFiber? boundary, VisualElement? parent, long presenceKey) key, bool settlesExits = true)
         {
-            if (PresenceStates.Remove(key, out var state)) state.Registration?.Gone();
+            if (!PresenceStates.Remove(key, out var state)) return;
+            if (settlesExits) SettleExitsOf(state);
+            state.Registration?.Gone();
         }
 
         // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a boundary that
@@ -2615,6 +2811,25 @@ namespace Velvet
         // Signal used to abort processing of the remaining sibling nodes in the same Reconcile batch.
         // Reset to false when the top-level Reconcile completes.
         public bool IsAborted { get; internal set; }
+
+        // Framer lets the exit animations of an AnimatePresence unmounted with its tree, or by its parent, run out and
+        // then calls its onExitComplete; Velvet ends those animations with the presence, so its exits settle as it is
+        // retired. An exit also waiting on a layoutId landing stays owed, as Framer's relegated node is removed only
+        // by its lead's layout animation, which the unmount stops reaching it.
+        private static void SettleExitsOf(PresenceBoundaryState state)
+        {
+            foreach (var entry in new List<KeyValuePair<string, PresenceExitWait>>(state.ExitWaits))
+            {
+                if (state.Exiting.Contains(entry.Key)) entry.Value.SettleForTeardown();
+            }
+        }
+
+        // Retires the whole table, as the owning Reconciler's disposal does.
+        internal void RetireAllPresenceStates()
+        {
+            foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values)) SettleExitsOf(state);
+            PresenceStates.Clear();
+        }
 
         internal void MarkDisposed()
         {

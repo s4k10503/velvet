@@ -403,30 +403,14 @@ namespace Velvet
         /// </summary>
         public static MotionDrawnValues Drawn(BezierTweenState state, float timeScale)
         {
-            var now = state.ElapsedSec;
-            var before = now >= DrawnSlopeStepSec ? now - DrawnSlopeStepSec : now;
-            var after = now >= DrawnSlopeStepSec ? now : now + DrawnSlopeStepSec;
-            var moving = now < state.EndSec ? timeScale / (after - before) : 0f;
-
-            float At(BezierTweenChannel channel, float timeSec, ArbitraryProperty? length)
-            {
-                state.ElapsedSec = timeSec;
-                var shared = SharedEased(state);
-                var value = length is { } property
-                    ? MotionPropertyInterpolation.LerpLength(property, channel.From, channel.To, Eased(state, channel, shared))
-                    : Value(state, channel, shared);
-                state.ElapsedSec = now;
-                return value;
-            }
-
             (float, float)? Of(BezierTweenChannel? channel, ArbitraryProperty? length = null)
                 => channel == null ? null
-                    : (At(channel, now, length), (At(channel, after, length) - At(channel, before, length)) * moving);
+                    : (ValueAt(state, channel, state.ElapsedSec, length), VelocityOf(state, channel, length) * timeScale);
 
             return MotionDrawnValues.Of(
                 Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate),
                 state.Colors,
-                c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, At(c.Progress, now, null))),
+                c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, ValueAt(state, c.Progress, state.ElapsedSec, null))),
                 state.Lengths,
                 l =>
                 {
@@ -435,7 +419,24 @@ namespace Velvet
                 });
         }
 
-        private const float DrawnSlopeStepSec = 1f / 1000f;
+        // The channel's value at timeSec, the play's elapsed time put back after: a length through its property's
+        // interpolation, any other channel through Value.
+        private static float ValueAt(BezierTweenState state, BezierTweenChannel channel, float timeSec, ArbitraryProperty? length)
+        {
+            var now = state.ElapsedSec;
+            try
+            {
+                state.ElapsedSec = timeSec;
+                var shared = SharedEased(state);
+                return length is { } property
+                    ? MotionPropertyInterpolation.LerpLength(property, channel.From, channel.To, Eased(state, channel, shared))
+                    : Value(state, channel, shared);
+            }
+            finally
+            {
+                state.ElapsedSec = now;
+            }
+        }
 
         /// <summary>
         /// Starts each channel of <paramref name="next"/> that <paramref name="interrupted"/> draws from the value
@@ -548,6 +549,29 @@ namespace Velvet
         // visible — clamping would silently flatten it.
         private static float Value(BezierTweenState state, BezierTweenChannel channel, float shared)
             => Mathf.LerpUnclamped(channel.From, channel.To, Eased(state, channel, shared));
+
+        private const double VelocitySlopeStepSec = 1.0 / 1000.0;
+
+        /// <summary>
+        /// The channel's rate of change per second at the play's current elapsed time, which a spring that interrupts
+        /// the play starts with, as Framer Motion starts a value's next animation with the motion value's velocity.
+        /// A finished play has stopped.
+        /// </summary>
+        internal static float VelocityOf(BezierTweenState state, BezierTweenChannel? channel, ArbitraryProperty? length = null)
+        {
+            if (channel == null || state.ElapsedSec >= state.EndSec)
+            {
+                return 0f;
+            }
+            var now = state.ElapsedSec;
+            // MUTANT_SURVIVES(equivalent, boundary): now is a float, which never equals 1/1000 held as a double.
+            var from = now >= VelocitySlopeStepSec ? now - VelocitySlopeStepSec : now;
+            // MUTANT_SURVIVES(equivalent, boundary): the same comparison as the line above.
+            var to = now >= VelocitySlopeStepSec ? now : now + VelocitySlopeStepSec;
+            var before = ValueAt(state, channel, (float)from, length);
+            var after = ValueAt(state, channel, (float)to, length);
+            return (after - before) / (float)(to - from);
+        }
 
         // The eased output for the channel at the current elapsed time: its own Timing where it has one, else
         // shared, the state's curve at the state's delay and duration (SharedEased), evaluated once a frame for
