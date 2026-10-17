@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 189 case(s) that ran the site: Given_AValueNamingAMathFunction_When_Formatted_Then_TailwindSpacesOnlyWhatItSpaces(\"1px+2px calc(3px)\",\"1px+2px calc(3px)\")",
+ "file": "b0b409f0fcdf7a3c31613c8b29f8ee07b3a9eb27318ed125dd029a819cecb450",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MathFunctionSpacingTests.Given_AValueNamingAMathFunction_When_Formatted_Then_TailwindSpacesOnlyWhatItSpaces(\"1px+2px calc(3px)\",\"1px+2px calc(3px)\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MathFunctionSpacingTests.cs": "dfc72f352fcd9dfda9546fd5e6e74a4ab7d618efb20046ff4c209c50bc55ef07"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "",
+  "before": " && Top(formattable)",
+  "column": 38,
+  "line": 76,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TailwindMathSpacing.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "2f1b22ef8f4824733019a693388382fbdef6a729774c0284dafff975e9164040",
+ "killers": [],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 29,
+  "line": 85,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionTweenTiming.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "survived"
+}

@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed: Given_ABareNumberRotate_When_Parsed_Then_TheClassIsDeclined(\"rotate-[45]\"), Given_ABareNumberRotate_When_Parsed_Then_TheClassIsDeclined(\"rotate-[0]\")",
+ "file": "557ea3e75dbfa4a99a818a9ad3a0fb29cb581afdb70420a83900999ad7260830",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AngleAndTimeUnitTests.Given_ABareNumberRotate_When_Parsed_Then_TheClassIsDeclined(\"rotate-[0]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AngleAndTimeUnitTests.cs": "dc2f800bdb40fac153bcc7be8d939dc96bbdb6cdcc7b8839eff7c477617785f9"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AngleAndTimeUnitTests.Given_ABareNumberRotate_When_Parsed_Then_TheClassIsDeclined(\"rotate-[45]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AngleAndTimeUnitTests.cs": "dc2f800bdb40fac153bcc7be8d939dc96bbdb6cdcc7b8839eff7c477617785f9"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "&&",
+  "before": "||",
+  "column": 15,
+  "line": 95,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransformValueParser.cs",
+  "shadowed": [
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

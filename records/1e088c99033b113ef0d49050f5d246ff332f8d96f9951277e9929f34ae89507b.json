@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "a7038e616c50d065f482df942be2b5ed442680cd475b8f6a6a4e4d0f24c14e88",
+ "killers": [],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": ";",
+  "before": "slots.Width = zero;",
+  "column": 16,
+  "line": 269,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "survived"
+}

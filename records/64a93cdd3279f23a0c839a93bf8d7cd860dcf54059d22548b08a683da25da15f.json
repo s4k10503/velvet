@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 8 case(s) that ran the site: Given_AParenthesisedUnitWithNoMathFunction_When_ItsUnitCaseIsAsked_Then_TailwindDoesNotTakeItForALength",
+ "file": "b0b409f0fcdf7a3c31613c8b29f8ee07b3a9eb27318ed125dd029a819cecb450",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AParenthesisedUnitWithNoMathFunction_When_ItsUnitCaseIsAsked_Then_TailwindDoesNotTakeItForALength",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 32,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TailwindMathSpacing.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

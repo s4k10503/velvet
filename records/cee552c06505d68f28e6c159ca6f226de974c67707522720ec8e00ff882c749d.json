@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 2 case(s) that ran the site: Given_AValueNamingAMathFunction_When_Formatted_Then_TailwindSpacesOnlyWhatItSpaces(\"calc(1+a-b)\",\"calc(1 + a-b)\"), Given_AValueNamingAMathFunction_When_Formatted_Then_TailwindSpacesOnlyWhatItSpaces(\"calc(a-b)\",\"calc(a-b)\")",
+ "file": "b0b409f0fcdf7a3c31613c8b29f8ee07b3a9eb27318ed125dd029a819cecb450",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MathFunctionSpacingTests.Given_AValueNamingAMathFunction_When_Formatted_Then_TailwindSpacesOnlyWhatItSpaces(\"calc(1+a-b)\",\"calc(1 + a-b)\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MathFunctionSpacingTests.cs": "dfc72f352fcd9dfda9546fd5e6e74a4ab7d618efb20046ff4c209c50bc55ef07"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MathFunctionSpacingTests.Given_AValueNamingAMathFunction_When_Formatted_Then_TailwindSpacesOnlyWhatItSpaces(\"calc(a-b)\",\"calc(a-b)\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MathFunctionSpacingTests.cs": "dfc72f352fcd9dfda9546fd5e6e74a4ab7d618efb20046ff4c209c50bc55ef07"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": ";",
+  "before": "result.Append(c);",
+  "column": 16,
+  "line": 137,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TailwindMathSpacing.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

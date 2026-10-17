@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 154 case(s) that ran the site: 54cm]\")",
+ "file": "4ba4e0bdc6c90a9f2ea9b1c7f209a0879c30e6d592d8067ab76071042c23ccfb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnAbsoluteLengthFromPosition_When_Extracted_Then_ItIsNinetySixPixels(\"from-[2.54cm]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "f9afaa3a4f25432b3f5060e36e776dcc9ae201e67d13a24ee17d1d6ed8c9c564"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 53,
+  "line": 79,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TailwindDataTypes.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

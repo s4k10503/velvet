@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "4fe32304f275fed8d3d2b30865111fe78db9ba48bae7591a3bbd96ee6588d761",
+ "killers": [],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": ";",
+  "before": "BoxShadowSilhouette.Detach(element, shadowBinding);",
+  "column": 16,
+  "line": 305,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "survived"
+}

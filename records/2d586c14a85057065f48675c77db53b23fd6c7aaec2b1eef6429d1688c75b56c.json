@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 8 case(s) that ran the site: 0f,False)",
+ "file": "a0f50662c7bb563b830d6c2fba3b09ef990bba3908e4f5dfdd76a25ee07eb481",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RunningStyleTransitionTests.Given_ATransitionsStartEndAndReversalStart_When_AskedWhetherAllAreNumbers_Then_OnlyAWholeSetIs(0.0f,float.NaN,0.0f,False)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RunningStyleTransitionTests.cs": "17b1fa49764396fa897363ddb47c00263a1a80fa523dbde34cb0735bb4e4856d"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "",
+  "before": " && !float.IsNaN(to)",
+  "column": 30,
+  "line": 92,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/RunningStyleTransition.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

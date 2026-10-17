@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 21 case(s) that ran the site: Given_AnOutlineColorFunction_When_Extracted_Then_TheOutlineTakesIt",
+ "file": "4ba4e0bdc6c90a9f2ea9b1c7f209a0879c30e6d592d8067ab76071042c23ccfb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CssColorFunctionUtilityTests.Given_AnOutlineColorFunction_When_Extracted_Then_TheOutlineTakesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorFunctionUtilityTests.cs": "93357cf859bb0123f1fb96352e36043ad243374539da20e9e6973198aa84cd72"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 56,
+  "line": 40,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TailwindDataTypes.cs",
+  "shadowed": [
+   "clause removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

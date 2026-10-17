@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 7 case(s) that ran the site: 0f)",
+ "file": "b0b409f0fcdf7a3c31613c8b29f8ee07b3a9eb27318ed125dd029a819cecb450",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MathFunctionSpacingTests.Given_AnOperatorSpacedOnOneSide_When_ParsedAsAnArbitraryTop_Then_TailwindSpacesItAsATerm(\"calc(1px-_2px)\",-1.0f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MathFunctionSpacingTests.cs": "dfc72f352fcd9dfda9546fd5e6e74a4ab7d618efb20046ff4c209c50bc55ef07"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 36,
+  "line": 131,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TailwindMathSpacing.cs",
+  "shadowed": [
+   "arithmetic",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

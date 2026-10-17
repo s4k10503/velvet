@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 7 case(s) that ran the site: Given_ABareNonZeroSkew_When_Parsed_Then_TheClassIsDeclined",
+ "file": "32673be2e1e901a7be1d379d6efc149721597c2a0002fa84086078e1e0ff18c8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AngleAndTimeUnitTests.Given_ABareNonZeroSkew_When_Parsed_Then_TheClassIsDeclined",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AngleAndTimeUnitTests.cs": "dc2f800bdb40fac153bcc7be8d939dc96bbdb6cdcc7b8839eff7c477617785f9"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 29,
+  "line": 184,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleSkewClass.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

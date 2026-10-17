@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "4ba4e0bdc6c90a9f2ea9b1c7f209a0879c30e6d592d8067ab76071042c23ccfb",
+ "killers": [],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 57,
+  "line": 57,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TailwindDataTypes.cs",
+  "shadowed": [
+   "clause removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "survived"
+}

@@ -1,0 +1,102 @@
+{
+ "detail": "EditMode: 11 failed among the 184 case(s) that ran the site: Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"opacity-50\"), Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"text-red-500\"), Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"text-[#ff0000]\")",
+ "file": "6d2f8e89cfad0e2d68435aaca0152d2d9fbd7c511871e60b92c6074e9d3224dd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"hover:opacity-50\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d23ac13e4e9a085f445694365eb8574a42f2a25f3b319ace7e707823b123e31b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"opacity-50\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d23ac13e4e9a085f445694365eb8574a42f2a25f3b319ace7e707823b123e31b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"origin-center\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d23ac13e4e9a085f445694365eb8574a42f2a25f3b319ace7e707823b123e31b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"rotate-45\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d23ac13e4e9a085f445694365eb8574a42f2a25f3b319ace7e707823b123e31b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"scale-105\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d23ac13e4e9a085f445694365eb8574a42f2a25f3b319ace7e707823b123e31b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"text-[#ff0000]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d23ac13e4e9a085f445694365eb8574a42f2a25f3b319ace7e707823b123e31b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"text-[14px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d23ac13e4e9a085f445694365eb8574a42f2a25f3b319ace7e707823b123e31b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"text-center\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d23ac13e4e9a085f445694365eb8574a42f2a25f3b319ace7e707823b123e31b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"text-red-500\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d23ac13e4e9a085f445694365eb8574a42f2a25f3b319ace7e707823b123e31b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AColourOpacityOrTransformUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(\"tracking-wide\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d23ac13e4e9a085f445694365eb8574a42f2a25f3b319ace7e707823b123e31b",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 47,
+  "line": 262,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleInputBoxSurface.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

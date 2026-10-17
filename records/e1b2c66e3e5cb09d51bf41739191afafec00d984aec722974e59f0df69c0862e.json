@@ -1,0 +1,66 @@
+{
+ "detail": "EditMode: 4 failed: Given_AHorizontalList_When_ItIsLaidOut_Then_ItsRangeCoversTheViewportsWidth(False), Given_AHorizontalList_When_ItIsLaidOut_Then_ItsRangeCoversTheViewportsWidth(True), Given_AHorizontalList_When_ItIsLaidOut_Then_ItsScrollerReachesTheLastItem",
+ "file": "80be5af201d2f15d73bb800dff6da538aa365f97ab913ae5964bc6ac109e0c60",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VirtualListHorizontalPanelTests.Given_AHorizontalList_When_ItIsLaidOut_Then_ItsRangeCoversTheViewportsWidth(False)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListHorizontalPanelTests.cs": "74de657613c3764a1b06587add167d3cb10ca44c785ac11a222bf6f9a9876856",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListHorizontalPanelTests.Given_AHorizontalList_When_ItIsLaidOut_Then_ItsRangeCoversTheViewportsWidth(True)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListHorizontalPanelTests.cs": "74de657613c3764a1b06587add167d3cb10ca44c785ac11a222bf6f9a9876856",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListHorizontalPanelTests.Given_AHorizontalList_When_ItIsLaidOut_Then_ItsScrollerReachesTheLastItem",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListHorizontalPanelTests.cs": "74de657613c3764a1b06587add167d3cb10ca44c785ac11a222bf6f9a9876856",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListHorizontalPanelTests.Given_AHorizontalList_When_ItIsLaidOut_Then_TheSecondItemStartsAnItemWidthRightOfTheFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListHorizontalPanelTests.cs": "74de657613c3764a1b06587add167d3cb10ca44c785ac11a222bf6f9a9876856",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 324,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

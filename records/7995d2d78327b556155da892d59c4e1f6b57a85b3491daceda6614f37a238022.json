@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 79 case(s) that ran the site: Given_APerPropertyTweenList_When_APlayDrivingOneOfItsPropertiesStarts_Then_TheRestKeepTheirOwnTimings",
+ "file": "a78143a1de7b46c64aac933d4c208de00fca394ef86657b3174473150889f2be",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionNativeTransitionGuardSuspensionTests.Given_APerPropertyTweenList_When_APlayDrivingOneOfItsPropertiesStarts_Then_TheRestKeepTheirOwnTimings",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionNativeTransitionGuardSuspensionTests.cs": "3f17310a3bde5116a59435535be53611532c6195177f40973e1fe138cb1fe096"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 23,
+  "line": 670,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

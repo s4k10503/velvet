@@ -1,0 +1,52 @@
+{
+ "detail": "EditMode: 3 failed in Velvet.Tests.Styling.Editor: Given_APulseOverNoDeclaredTransition_When_AVariantSwapRunsUnderIt_Then_TheSwapKeepsItsTransitionExceptOverOpacity, Given_APulseSuspendingItsOwnTransition_When_AVariantSwapRunsUnderIt_Then_TheSwapKeepsItsTransitionExceptOverOpacity, Given_ASuspendedSpin_When_APatchLeavesNothingTransitioningRotate_Then_TheSuspensionIsHandedBack",
+ "file": "a78143a1de7b46c64aac933d4c208de00fca394ef86657b3174473150889f2be",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateMotionPanelTests.Given_APulseOverNoDeclaredTransition_When_AVariantSwapRunsUnderIt_Then_TheSwapKeepsItsTransitionExceptOverOpacity",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateMotionPanelTests.cs": "2e6cfcd1815f51898d8129f35de9a9ee43892f2f336615d369d5fbf07365093e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateMotionPanelTests.Given_APulseSuspendingItsOwnTransition_When_AVariantSwapRunsUnderIt_Then_TheSwapKeepsItsTransitionExceptOverOpacity",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateMotionPanelTests.cs": "2e6cfcd1815f51898d8129f35de9a9ee43892f2f336615d369d5fbf07365093e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateMotionPanelTests.Given_ASuspendedSpin_When_APatchLeavesNothingTransitioningRotate_Then_TheSuspensionIsHandedBack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateMotionPanelTests.cs": "2e6cfcd1815f51898d8129f35de9a9ee43892f2f336615d369d5fbf07365093e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 608,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

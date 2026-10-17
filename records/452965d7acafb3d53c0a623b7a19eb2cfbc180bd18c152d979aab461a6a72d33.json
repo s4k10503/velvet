@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "e1f265bf3eef87c738048e91300a00db7ef72e47f94e90e5ac6207583d76b541",
+ "killers": [],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "",
+  "before": " && inputBoxOnly",
+  "column": 95,
+  "line": 124,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/WrapperInfrastructure.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "survived"
+}

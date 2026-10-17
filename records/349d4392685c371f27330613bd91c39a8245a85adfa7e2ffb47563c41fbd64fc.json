@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed: Given_ACaretUtilityOnATextField_When_ItMounts_Then_TheInputBoxCarriesIt",
+ "file": "6d2f8e89cfad0e2d68435aaca0152d2d9fbd7c511871e60b92c6074e9d3224dd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TextInputColorUtilityTests.Given_ACaretUtilityOnATextField_When_ItMounts_Then_TheInputBoxCarriesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextInputColorUtilityTests.cs": "07b36d80045c25c1be47e1f31f42c7a514f1c181314760ad7b35fd9f00d845f2",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "",
+  "before": " || core.StartsWith(\"caret-\", StringComparison.Ordinal)",
+  "column": 15,
+  "line": 252,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleInputBoxSurface.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

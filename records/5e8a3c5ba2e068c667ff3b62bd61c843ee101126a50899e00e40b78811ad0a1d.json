@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "6d2f8e89cfad0e2d68435aaca0152d2d9fbd7c511871e60b92c6074e9d3224dd",
+ "killers": [],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 82,
+  "line": 214,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleInputBoxSurface.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "survived"
+}

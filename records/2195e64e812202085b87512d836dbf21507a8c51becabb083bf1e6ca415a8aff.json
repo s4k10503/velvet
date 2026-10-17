@@ -1,0 +1,68 @@
+{
+ "detail": "EditMode: 7 failed in Velvet.Tests.Styling.Editor: Given_ALowerCaseRingOffset_When_Extracted_Then_ItIsThatManyPixels, Given_ALowerCaseRingWidth_When_Extracted_Then_TheClassIsTaken(\"ring-[5px]\"), Given_ALowerCaseRingWidth_When_Extracted_Then_TheClassIsTaken(\"outline-[5px]\")",
+ "file": "80be5af201d2f15d73bb800dff6da538aa365f97ab913ae5964bc6ac109e0c60",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_ALowerCaseRingOffset_When_Extracted_Then_ItIsThatManyPixels",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_ALowerCaseRingWidth_When_Extracted_Then_TheClassIsTaken(\"outline-[5px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_ALowerCaseRingWidth_When_Extracted_Then_TheClassIsTaken(\"ring-[5px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AnUpperCaseRingOffset_When_Extracted_Then_TheOffsetIsUnset",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"outline-[5PX]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"ring-[5PX]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleRingClassTests.Given_RingArbitraryWidth_When_Extracted_Then_ResolvesPixels",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleRingClassTests.cs": "306c4f50430dc0beba0e197ef63191efafc3a696357cde288b68076b0e3cf6a7",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "||",
+  "before": "&&",
+  "column": 15,
+  "line": 3542,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

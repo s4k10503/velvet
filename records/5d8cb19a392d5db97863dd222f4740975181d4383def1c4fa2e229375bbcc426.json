@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ABareNumberRingWidth_When_Extracted_Then_NoRingIsDrawn",
+ "file": "4ba4e0bdc6c90a9f2ea9b1c7f209a0879c30e6d592d8067ab76071042c23ccfb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BareNumberBracketTests.Given_ABareNumberRingWidth_When_Extracted_Then_NoRingIsDrawn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BareNumberBracketTests.cs": "b559cf2213497d7bc477fc66095db10c6a258e157265040e64be29f9c021a4eb"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 19,
+  "line": 92,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TailwindDataTypes.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

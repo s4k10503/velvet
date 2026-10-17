@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Styling.Editor: Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"ring-[5PX]\"), Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"outline-[5PX]\")",
+ "file": "a7038e616c50d065f482df942be2b5ed442680cd475b8f6a6a4e4d0f24c14e88",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"outline-[5PX]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"ring-[5PX]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 57,
+  "line": 232,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

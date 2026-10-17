@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_AConicActivatorWithNoStart_When_Extracted_Then_TheClassIsInert",
+ "file": "667a7692cc61fdc9e11518b37e2e6c9e0962d1762cbccef6cede2a703abaf02b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AngleAndTimeUnitTests.Given_AConicActivatorWithNoStart_When_Extracted_Then_TheClassIsInert",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AngleAndTimeUnitTests.cs": "dc2f800bdb40fac153bcc7be8d939dc96bbdb6cdcc7b8839eff7c477617785f9"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 27,
+  "line": 1251,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 3 failed in Velvet.Tests.Styling.Editor: Given_AnOutlineColorFunction_When_Extracted_Then_TheOutlineTakesIt, Given_AnHslSaturationAbove100_When_OutlineReadsIt_Then_ItClamps, Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"outline-[5PX]\")",
+ "file": "a7038e616c50d065f482df942be2b5ed442680cd475b8f6a6a4e4d0f24c14e88",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CssColorFunctionUtilityTests.Given_AnOutlineColorFunction_When_Extracted_Then_TheOutlineTakesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorFunctionUtilityTests.cs": "93357cf859bb0123f1fb96352e36043ad243374539da20e9e6973198aa84cd72"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CssColorHslScopeTests.Given_AnHslSaturationAbove100_When_OutlineReadsIt_Then_ItClamps",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorHslScopeTests.cs": "b84b4d62bc8161815ef15e66580611c1268b548a588487321bc13e8d37189f5b"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"outline-[5PX]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "&&",
+  "before": "||",
+  "column": 15,
+  "line": 260,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

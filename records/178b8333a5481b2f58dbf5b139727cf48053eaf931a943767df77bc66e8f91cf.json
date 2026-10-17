@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Styling.Editor: Given_ASignSpacedOnOneSideOnly_When_Parsed_Then_ItIsDeclined(\"CALC(1px +(2px))\"), Given_ASignSpacedOnOneSideOnly_When_Parsed_Then_ItIsDeclined(\"CALC(1px -(2px))\")",
+ "file": "c57d2958b99c572614d78a8c9062db6f9786876dd41724dc6ef884f25d8ff090",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleLengthExpressionParseTests.Given_ASignSpacedOnOneSideOnly_When_Parsed_Then_ItIsDeclined(\"CALC(1px +(2px))\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleLengthExpressionParseTests.cs": "deab1e3bcb3e2a9d3d13e091276f00eea924c899cb963b2bce54ec518ef0a12a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StyleLengthExpressionParseTests.Given_ASignSpacedOnOneSideOnly_When_Parsed_Then_ItIsDeclined(\"CALC(1px -(2px))\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleLengthExpressionParseTests.cs": "deab1e3bcb3e2a9d3d13e091276f00eea924c899cb963b2bce54ec518ef0a12a"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "",
+  "before": " && Spaced()",
+  "column": 36,
+  "line": 294,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleLengthExpression.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

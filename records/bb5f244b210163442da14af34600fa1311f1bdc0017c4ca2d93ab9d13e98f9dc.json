@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 72 case(s) that ran the site: Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_AnotherPropertyIsLeftInTheNativeSlot, Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_OpacityIsTakenOutOfTheNativeSlot",
+ "file": "a78143a1de7b46c64aac933d4c208de00fca394ef86657b3174473150889f2be",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionOpacityOwnershipTests.Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_AnotherPropertyIsLeftInTheNativeSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionOpacityOwnershipTests.cs": "5ad338a931e46895ded7b722552e7a6725ca4cef2ea8e291682a2172c3653964",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionOpacityOwnershipTests.Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_OpacityIsTakenOutOfTheNativeSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionOpacityOwnershipTests.cs": "5ad338a931e46895ded7b722552e7a6725ca4cef2ea8e291682a2172c3653964",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": ";",
+  "before": "style.transitionProperty = names;",
+  "column": 12,
+  "line": 261,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

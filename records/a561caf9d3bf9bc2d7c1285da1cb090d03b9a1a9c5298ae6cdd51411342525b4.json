@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed among the 85 case(s) that ran the site: Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ADiscreteEventRemovesAMotionWithAnInstantExitPoseAndAPlainChild_Then_NoBoundaryTakesTheError, Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_APlainChildAndAMotionWithNoExitTargetLeaveTogether_Then_TheBoundaryCatches",
+ "file": "427f5d799943cad31aa048ea1d492ef601f02db79e86acda2d3f0a3b05c166a4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ADiscreteEventRemovesAMotionWithAnInstantExitPoseAndAPlainChild_Then_NoBoundaryTakesTheError",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "a41cc6f7292e0b31566a3bf8cb3997e985dee960f75379f56f134542f18ba63d",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "238e9c3e9e7388a5d6456b1953e97f85f7f00ec02bb385bb81fff41f5de30d20",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_APlainChildAndAMotionWithNoExitTargetLeaveTogether_Then_TheBoundaryCatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "a41cc6f7292e0b31566a3bf8cb3997e985dee960f75379f56f134542f18ba63d",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "238e9c3e9e7388a5d6456b1953e97f85f7f00ec02bb385bb81fff41f5de30d20",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": ";",
+  "before": "Phase = phase;",
+  "column": 16,
+  "line": 2227,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

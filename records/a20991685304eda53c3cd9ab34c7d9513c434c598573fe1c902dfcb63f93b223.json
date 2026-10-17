@@ -1,0 +1,52 @@
+{
+ "detail": "EditMode: 5 failed among the 16 case(s) that ran the site: Given_AllSidesScaleBorder_When_InsetParsed_Then_LeftMatchesTheScale, Given_AnImportantBorder_When_InsetParsed_Then_TheBangIsStrippedAndReserved, Given_AnXAxisBorder_When_InsetParsed_Then_LeftIsInset",
+ "file": "80be5af201d2f15d73bb800dff6da538aa365f97ab913ae5964bc6ac109e0c60",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SilhouetteBoundsSpacerTests.Given_AVariantCarriedBorder_When_InsetParsed_Then_ItIsStillReserved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteBoundsSpacerTests.cs": "c1d0df5064de764e8a864c09261fcbc50f959205f16e8b4af4d9d83e996f1074"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteBoundsSpacerTests.Given_AllSidesScaleBorder_When_InsetParsed_Then_LeftMatchesTheScale",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteBoundsSpacerTests.cs": "c1d0df5064de764e8a864c09261fcbc50f959205f16e8b4af4d9d83e996f1074"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteBoundsSpacerTests.Given_AnImportantBorder_When_InsetParsed_Then_TheBangIsStrippedAndReserved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteBoundsSpacerTests.cs": "c1d0df5064de764e8a864c09261fcbc50f959205f16e8b4af4d9d83e996f1074"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteBoundsSpacerTests.Given_AnXAxisBorder_When_InsetParsed_Then_LeftIsInset",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteBoundsSpacerTests.cs": "c1d0df5064de764e8a864c09261fcbc50f959205f16e8b4af4d9d83e996f1074"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteBoundsSpacerTests.Given_ConflictingBorders_When_InsetParsed_Then_TheMaxIsTaken",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteBoundsSpacerTests.cs": "c1d0df5064de764e8a864c09261fcbc50f959205f16e8b4af4d9d83e996f1074"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 3551,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

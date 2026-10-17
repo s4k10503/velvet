@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ABackgroundClassOnTheField_When_TheThemeDressesTheInput_Then_TheInputBoxIsPainted",
+ "file": "6d2f8e89cfad0e2d68435aaca0152d2d9fbd7c511871e60b92c6074e9d3224dd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ChildVariantCompositeReachPanelTests.Given_ABackgroundClassOnTheField_When_TheThemeDressesTheInput_Then_TheInputBoxIsPainted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ChildVariantCompositeReachPanelTests.cs": "6db1b87ec71cfd108eff42c7260b6442e163c33f2439e6fd59995adbb513a3fb",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 26,
+  "line": 89,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleInputBoxSurface.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}

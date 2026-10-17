@@ -1,0 +1,60 @@
+{
+ "detail": "EditMode: 6 failed in Velvet.Tests.Styling.Editor: Given_AnAbsoluteLengthFromPosition_When_Extracted_Then_ItIsNinetySixPixels(\"from-[1in]\"), 54cm]\"), 4mm]\")",
+ "file": "667a7692cc61fdc9e11518b37e2e6c9e0962d1762cbccef6cede2a703abaf02b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnAbsoluteLengthFromPosition_When_Extracted_Then_ItIsNinetySixPixels(\"from-[101.6Q]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "f9afaa3a4f25432b3f5060e36e776dcc9ae201e67d13a24ee17d1d6ed8c9c564"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnAbsoluteLengthFromPosition_When_Extracted_Then_ItIsNinetySixPixels(\"from-[1in]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "f9afaa3a4f25432b3f5060e36e776dcc9ae201e67d13a24ee17d1d6ed8c9c564"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnAbsoluteLengthFromPosition_When_Extracted_Then_ItIsNinetySixPixels(\"from-[2.54cm]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "f9afaa3a4f25432b3f5060e36e776dcc9ae201e67d13a24ee17d1d6ed8c9c564"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnAbsoluteLengthFromPosition_When_Extracted_Then_ItIsNinetySixPixels(\"from-[25.4mm]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "f9afaa3a4f25432b3f5060e36e776dcc9ae201e67d13a24ee17d1d6ed8c9c564"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnAbsoluteLengthFromPosition_When_Extracted_Then_ItIsNinetySixPixels(\"from-[6pc]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "f9afaa3a4f25432b3f5060e36e776dcc9ae201e67d13a24ee17d1d6ed8c9c564"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnAbsoluteLengthFromPosition_When_Extracted_Then_ItIsNinetySixPixels(\"from-[72pt]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "f9afaa3a4f25432b3f5060e36e776dcc9ae201e67d13a24ee17d1d6ed8c9c564"
+   }
+  }
+ ],
+ "measured_by": "39046269867",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 71,
+  "line": 618,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "verdict": "killed"
+}
