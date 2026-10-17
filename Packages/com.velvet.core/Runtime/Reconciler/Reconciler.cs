@@ -42,6 +42,8 @@ namespace Velvet
 
         internal ReconcilerContext Context => _ctx;
 
+        internal bool OwnsContext => _ownsContext;
+
         public Reconciler()
             : this(new ReconcilerContext(), ownsContext: true)
         {
@@ -965,7 +967,7 @@ namespace Velvet
             }
 
             _ctx.VirtualListControllers.Clear();
-            _ctx.PresenceStates.Clear();
+            _ctx.RetireAllPresenceStates();
         }
     }
 }

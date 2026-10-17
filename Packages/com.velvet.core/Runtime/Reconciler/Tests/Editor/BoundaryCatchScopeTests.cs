@@ -91,12 +91,14 @@ namespace Velvet.Tests
             s_exitFailCompletions = 0;
             s_exitFailChild = () => V.Label(text: "exiting", key: "exiting");
             s_exitFailNeighbour = null;
+            s_exitFailChildren = null;
             s_setOwnerShown = null;
             s_setAbortedEnterTick = null;
             s_setAbortedExitTick = null;
             s_abortedExits = 0;
             s_abortedExitChild = () => V.Label(text: "a", key: "a");
             s_abortedExitCallback = () => s_abortedExits++;
+            s_ghostCleanups = 0;
             s_setPoolGhostTick = null;
             s_setSuspendedTick = null;
             s_suspendedExits = 0;
@@ -1761,6 +1763,8 @@ namespace Velvet.Tests
             Assert.That(rendered + ", exits " + s_exitFailCompletions, Is.EqualTo("o-fallback,tail:1 | o-fallback,tail:2, exits 1"));
         }
 
+        // GREEN_ON_BASE(characterization): the base logged the error and took the child away in the removing render.
+        // The flush added runs the render that drops the child now.
         [Test]
         public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsMotionChildLeaves_Then_NoBoundaryTakesTheError()
         {
@@ -1770,15 +1774,18 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
 
-            // Act
+            // Act — the last flush runs the render the settled exit asks for, which drops the child
             s_setExitFailTick.Invoke(1);
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("tail:1"));
         }
 
+        // GREEN_ON_BASE(characterization): the base logged the error and took the child away in the removing render.
+        // The flush added runs the render that drops the child now.
         [Test]
         public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildHoldsAMotionInsideAnElement_Then_NoBoundaryTakesTheError()
         {
@@ -1790,10 +1797,11 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
 
-            // Act
+            // Act — the last flush runs the render the settled exit asks for, which drops the child
             s_setExitFailTick.Invoke(1);
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("tail:1"));
@@ -2072,22 +2080,95 @@ namespace Velvet.Tests
             Assert.That(Texts().Contains("q-fallback"), Is.False);
         }
 
-        // The Motion element the presence kept for the key is still known to the retry, which starts the exit from it.
+        // The Motion element the presence kept for the key is still known to the render that drops the ghost next.
         [Test]
-        public void Given_AMotionChildWhoseRemovalAnAbortedRenderSkipped_When_TheRemovalIsPutBack_Then_ThePresenceKeepsItsMotionElement()
+        public void Given_AMotionChildWhoseDropAnAbortedRenderSkipped_When_TheDropIsPutBack_Then_ThePresenceKeepsItsMotionElement()
         {
-            // Arrange
+            // Arrange — the child's exit settles, so the render the boundary aborts is the one dropping it
             s_abortedExitChild = () => V.Motion(key: "a", transition: StyleTransitionConfig.None,
                 children: new VNode[] { V.Label(text: "m") });
-            using var mounted = V.Mount(_root, V.Component(AbortedExitHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(AbortedDropHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_setAbortedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Act
-            s_setAbortedExitTick.Invoke(1);
+            s_setAbortedExitTick.Invoke(2);
             mounted.FlushStateForTest();
 
             // Assert
             Assert.That(mounted.Root.Reconciler.Context.PresenceStates.Values.Single().MotionElements.ContainsKey("a"),
                 Is.True);
+        }
+
+        // A drop the abort skipped is still a finished exit to the render after it, which drops the ghost rather than
+        // starting its exit over.
+        // GREEN_ON_BASE(characterization): the base removed the child in the removing render and completed its exit
+        // once. No drop was left for an abort to skip there.
+        [Test]
+        public void Given_AGhostWhoseDropAnAbortedRenderSkipped_When_TheHostRendersAgain_Then_ItsExitDoesNotCompleteAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(AbortedDropHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_setAbortedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            s_setAbortedExitTick.Invoke(2);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setAbortedExitTick.Invoke(3);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_abortedExits, Is.EqualTo(1));
+        }
+
+        // A component under the ghost's element stands with the leaves the abort left on screen.
+        [Test]
+        public void Given_AGhostWhoseDropAnAbortedRenderSkipped_When_ThatRenderEnds_Then_AComponentUnderItIsNotDisposed()
+        {
+            // Arrange
+            s_abortedExitChild = () => V.Div(key: "a", children: new VNode[] { V.Component(GhostEffectRender, key: "g") });
+            using var mounted = V.Mount(_root, V.Component(AbortedDropHostRender, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+            s_setAbortedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setAbortedExitTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_ghostCleanups, Is.EqualTo(0));
+        }
+
+        private static int s_ghostCleanups;
+
+        [Component(Compiler = false)]
+        private static VNode GhostEffectRender()
+        {
+            Hooks.UseEffect(() => (Action)(() => s_ghostCleanups++), Array.Empty<object>());
+            return V.Label(text: "g");
+        }
+
+        // The boundary aborts the walk only once the presence's child is gone from its children, in the render the
+        // settled exit asks for, which drops the ghost.
+        [Component(Compiler = false)]
+        private static VNode AbortedDropHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setAbortedExitTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(AbortingBoundaryRender, tick >= 2 ? 1 : 0, key: "o"),
+                V.AnimatePresence(key: "p", onExitComplete: () => s_abortedExitCallback(),
+                    children: tick == 0 ? new VNode[] { s_abortedExitChild() } : Array.Empty<VNode>()),
+                V.Label(text: "tail:" + tick),
+            });
         }
 
         [Component(Compiler = false, IsErrorBoundary = true)]
@@ -2099,21 +2180,41 @@ namespace Velvet.Tests
 
         // The presence's owner is an inline child the host's pass re-renders, and the boundary that aborts comes after it.
         [Test]
-        public void Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsInstantRemovalIsPutBack_Then_ThePutBackNodeKeepsItsPropsBag()
+        public void Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePresenceStillCommitsTheGhost()
+        {
+            // Arrange — the child's exit settles, so the pass the boundary aborts is the one dropping it
+            using var mounted = V.Mount(_root, V.Component(PoolGhostHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_setPoolGhostTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setPoolGhostTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler.Context.PresenceStates.Values.Single().Committed.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePutBackNodeKeepsItsPropsBag()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(PoolGhostHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_setPoolGhostTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Act
-            s_setPoolGhostTick.Invoke(1);
+            s_setPoolGhostTick.Invoke(2);
             mounted.FlushStateForTest();
 
             // Assert
             var committed = mounted.Root.Reconciler.Context.PresenceStates.Values.Single().Committed;
             Assert.That(
-                (committed.Count, committed.Count == 1 && committed[0].node is ElementNode { Props: { } props }
-                    && VNodePoolTestAccess.IsRentedOutForTest(props)),
-                Is.EqualTo((1, true)));
+                committed.Count == 1 && committed[0].node is ElementNode { Props: { } props }
+                    && VNodePoolTestAccess.IsRentedOutForTest(props),
+                Is.True);
         }
 
         private static Action<int> s_setPoolGhostTick;
@@ -2131,12 +2232,14 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Component(PresenceOwnerRender, tick, key: "p"),
-                V.Component(AbortingBoundaryRender, tick, key: "o"),
+                V.Component(AbortingBoundaryRender, tick >= 2 ? 1 : 0, key: "o"),
                 V.Label(text: "tail:" + tick),
             });
         }
 
         // A walk that threw before its removals ran completes nothing and leaves the child to the next render.
+        // GREEN_ON_BASE(characterization): the base completed the exit once and removed the child when the read
+        // resolved. The flush added runs the render that drops the child now.
         [Test]
         public void Given_ARenderThatSuspendsBesideAPresenceWithNoSuspenseAbove_When_ItRemovedAChild_Then_TheExitCompletesOnceWhenTheReadResolves()
         {
@@ -2153,6 +2256,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
 
             // Assert
             Assert.That((afterTheSuspendedRender, s_suspendedExits, Texts().Split(',').Contains("a")),
@@ -2416,11 +2520,13 @@ namespace Velvet.Tests
         private static Action<int> s_setExitFailTick;
         private static int s_exitFailCompletions;
 
+        // Each reading follows the render a settled exit asks for, which drops the child it removed.
         private string TicksOfTheExitFailHost(MountedTree mounted)
         {
             s_setExitFailTick.Invoke(1);
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
             var first = Texts();
             s_setExitFailTick.Invoke(2);
             mounted.FlushStateForTest();
@@ -2431,7 +2537,134 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode ExitFailerRender(bool shown)
             => V.AnimatePresence(key: "exit", onExitComplete: () => throw new InvalidOperationException("Exit complete throw"),
-                children: shown ? new VNode[] { s_exitFailChild() } : Array.Empty<VNode>());
+                children: shown ? s_exitFailChildren?.Invoke() ?? new VNode[] { s_exitFailChild() } : Array.Empty<VNode>());
+
+        // Set by a case removing several children at once from the presence whose onExitComplete fails.
+        private static Func<VNode[]> s_exitFailChildren;
+
+        // A Motion with no transition names no exit target, so Framer Motion resolves its exit from a promise. Outside a
+        // discrete event that runs ahead of the plain child's effect: the plain child settles last, and a boundary
+        // takes the error.
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_APlainChildAndAMotionWithNoExitTargetLeaveTogether_Then_TheBoundaryCatches()
+        {
+            // Arrange
+            s_exitFailChildren = () => new VNode[]
+            {
+                V.Label(text: "plain", key: "plain"),
+                new MotionNode
+                {
+                    Key = "m",
+                    ElementType = typeof(VisualElement),
+                    Transition = null,
+                    Children = new VNode[] { V.Label(text: "m") },
+                },
+            };
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("o-fallback,tail:1"));
+        }
+
+        // An exit pose reached on no duration resolves like an exit naming no target: motion-dom's animateMotionValue
+        // skips the animation, so the exit's promise settles with nothing to wait on. A removal outside a discrete
+        // event settles the promise ahead of the plain child's effect, and the plain child settles last.
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_AMotionWithAnInstantExitPoseAndAPlainChildLeaveTogether_Then_TheBoundaryCatches()
+        {
+            // Arrange
+            s_exitFailChildren = InstantPoseMotionAndPlainChild;
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("o-fallback,tail:1"));
+        }
+
+        // A removal from a discrete event is an Urgent commit, which React flushes the passive effects of before any
+        // promise reaction runs: the plain child settles first and the Motion's promise last, so no boundary takes the
+        // error.
+        // GREEN_ON_BASE(characterization): the base read any removed V.Motion as the completion's and logged the error.
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ADiscreteEventRemovesAMotionWithAnInstantExitPoseAndAPlainChild_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange
+            s_exitFailChildren = InstantPoseMotionAndPlainChild;
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
+
+            // Act
+            TickInADiscreteEvent();
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("tail:1"));
+        }
+
+        // The no-target Motion settles from the same promise phase, so the discrete lane reorders it the same way.
+        // GREEN_ON_BASE(characterization): the base read any removed V.Motion as the completion's and logged the error.
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ADiscreteEventRemovesAMotionWithNoExitTargetAndAPlainChild_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange
+            s_exitFailChildren = NoTargetMotionAndPlainChild;
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
+
+            // Act
+            TickInADiscreteEvent();
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("tail:1"));
+        }
+
+        private static void TickInADiscreteEvent()
+        {
+            FiberWorkLoop.IsInDiscreteEvent = true;
+            try
+            {
+                s_setExitFailTick.Invoke(1);
+            }
+            finally
+            {
+                FiberWorkLoop.IsInDiscreteEvent = false;
+            }
+        }
+
+        private static VNode[] InstantPoseMotionAndPlainChild() => new VNode[]
+        {
+            V.Motion(key: "m", variants: s_fade, animate: "visible", exit: "hidden",
+                transition: StyleTransitionConfig.None, children: new VNode[] { V.Label(text: "m") }),
+            V.Label(text: "plain", key: "plain"),
+        };
+
+        private static VNode[] NoTargetMotionAndPlainChild() => new VNode[]
+        {
+            V.Label(text: "plain", key: "plain"),
+            new MotionNode
+            {
+                Key = "m",
+                ElementType = typeof(VisualElement),
+                Transition = null,
+                Children = new VNode[] { V.Label(text: "m") },
+            },
+        };
 
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode ExitFailBoundaryRender(int tick)
@@ -2680,16 +2913,20 @@ namespace Velvet.Tests
             Assert.That((whilePending, Texts() + " r" + reports), Is.EqualTo(("loading r0", "value 7,b-child r0")));
         }
 
+        // GREEN_ON_BASE(characterization): the base removed the child in the render the boundary caught in.
+        // The flush added runs the render that drops the child now.
         [Test]
         public void Given_APresenceBehindABoundaryCatchingAnElementCallbackError_When_ThatRenderRemovesItsChild_Then_TheChildLeavesTheTailUpdatesAndTheExitCompletes()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(StoppedPresenceHostRender, key: "host"), CaughtErrors.Unlogged);
 
-            // Act — the render the boundary catches in also removes the presence's child and moves the tail on
+            // Act — the render the boundary catches in also removes the presence's child and moves the tail on, and
+            // the last flush runs the render the settled exit asks for
             s_setStoppedTick.Invoke(1);
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
 
             // Assert
             Assert.That(Texts() + ", exits " + s_stoppedExitCompletions, Is.EqualTo("o-fallback,tail:1, exits 1"));
@@ -2788,7 +3025,8 @@ namespace Velvet.Tests
             return tick == 0 ? V.Label(text: "o-child") : V.Component(CallbackThrowingRender, key: "callback");
         }
 
-        // The presence's child has no exit animation, so a render that removes it completes the exit at once.
+        // The presence's child has no exit animation, so its exit completes in the passive flush after the render
+        // that removes it.
         [Component(Compiler = false)]
         private static VNode StoppedPresenceHostRender()
         {
