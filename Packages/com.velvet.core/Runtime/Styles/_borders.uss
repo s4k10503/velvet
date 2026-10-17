@@ -131,3 +131,7 @@
 .rounded-bl-none { border-bottom-left-radius: var(--radius-none); }
 .rounded-bl-sm { border-bottom-left-radius: var(--radius-sm); }
 .rounded-bl-xl { border-bottom-left-radius: var(--radius-xl); }
+
+/* Gives a child that a dashed or dotted divider paints on the custom property that makes UI Toolkit send it
+   CustomStyleResolvedEvent; see DivideDashPainter. */
+.velvet-divide-dash { --velvet-divide-dash: 1; }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.UIElements.TestFramework;
@@ -1025,7 +1026,7 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-[#FF0000]") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(red),
+            Assume.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(red),
                 "Precondition: the dashed divider captured the child's initial border color");
 
             // Act — change the child's own border color; the divider's implicit color must follow.
@@ -1033,7 +1034,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
             // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(green));
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(green));
         }
 
         [Test]
@@ -1053,6 +1054,41 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        [Test]
+        public void Given_AColorTheChildsCodeWroteUnderASolidDivider_When_TheDividerTurnsDashed_Then_TheDashTakesIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var solid = new VNode[] { Row("flex flex-row divide-x", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), solid);
+            var child = scope.Root[0][1];
+            child.style.borderRightColor = Color.blue;
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, solid, new VNode[] { Row("flex flex-row divide-x divide-dashed", 3) });
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child]),
+                Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_AColoredSolidDivider_When_ItTurnsDashed_Then_TheDividerColorIsNotTakenForTheChildsOwn()
+        {
+            // Arrange — the solid divider holds its color on the edge, which the dashed one then finds there.
+            using var scope = new ReconcilerScope();
+            var solid = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), solid);
+            var child = scope.Root[0][1];
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, solid,
+                new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.DivideDashBindings[child].Inline, Is.Null);
+        }
 
         [Test]
         public void Given_AMotionDriverWritingABorderColorTheDividerGivesWayFor_When_TheDividerAppliesAgain_Then_TheDrivenColorStands()
@@ -1096,6 +1132,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMotionDriverWritingADashedChildsBorderColor_When_AnImportantColorLayerArrives_Then_TheDashTakesIt()
+        {
+            // Arrange — a hover:!border-[#ff0000] turning on mid-play: !important outranks an animation in CSS.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", ""),
+            });
+            var child = scope.Root[0][1];
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.blue));
+
+            // Act
+            StyleArbitraryValueResolver.Apply(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red),
+                StyleLayerPriority.ImportantOf(StyleLayerPriority.Hover));
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child]), Is.EqualTo(Color.red));
+        }
+
+        [Test]
         public void Given_ADividedChild_When_ItGainsABorderWidthClassOfItsOwn_Then_TheDividerGivesWayToIt()
         {
             // Arrange — the class reaches the child alone, so only the container watching the child re-applies.
@@ -1114,21 +1170,117 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADashedDivideRow_When_ADividedChildCarriesAnArbitraryBorderWidth_Then_ThatWidthWins()
+        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAnArbitraryBorderColor_Then_TheDashTakesIt()
         {
-            // Arrange
+            // Arrange — the child's own color beats Tailwind's zero-specificity divide color on the dashed edge too.
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-r-[3px]") };
+            var tree = new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", "border-[#ff0000]"),
+            };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
-            // Assert — the dash binding rides along, since a solid divider yields through another path, and so
-            // does the start edge, which a divider on the wrong edge would take instead.
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(Color.red));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already paints a dashed divider in the divide color. What
+        // reddens it is DivideDashPainter.PaintColor passing over the divider color.
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_Reconciled_Then_TheDashTakesTheDividerColor()
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(gray200));
+        }
+
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAColorClassOfItsOwn_Then_TheDividerColorStandsDown()
+        {
+            // Arrange — border-default outranks the zero-specificity divide color, as it does under a solid divider.
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", "border-default"),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.Not.EqualTo(gray200));
+        }
+
+        [TestCase("border-default")]
+        [TestCase("border-[#ff0000]")]
+        public void Given_AnImportantColoredDashedDivideRow_When_ADividedChildCarriesAPlainColorOfItsOwn_Then_TheDashTakesTheDivideColor(
+            string childColor)
+        {
+            // Arrange — an important divide color outranks the child's plain one, a class or a bracket layer, as it
+            // does under a solid divider.
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed !divide-gray-200", childColor),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(gray200));
+        }
+
+        [Test]
+        public void Given_AnImportantColoredDashedDivideRow_When_ADividedChildCarriesAnImportantBracketColor_Then_TheDashTakesIt()
+        {
+            // Arrange — between two important declarations the child's class outranks the divide's zero-specificity one.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed !divide-gray-200", "!border-[#ff0000]"),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_AHoverPayloadGivesADividedChildABracketColor_Then_TheDashTakesIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", "hover:border-[#ff0000]"),
+            };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
             var child = scope.Root[0][1];
-            Assert.That((scope.Reconciler.Context.DivideDashBindings.ContainsKey(child),
-                    child.style.borderRightWidth.value, child.style.borderLeftWidth.keyword),
-                Is.EqualTo((true, 3f, StyleKeyword.Null)));
+            Assume.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child]), Is.Not.EqualTo(Color.red),
+                "Precondition: a dash that always took red would pass too");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                child.SimulateEvent(over);
+            }
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child]), Is.EqualTo(Color.red));
         }
 
         [Test]
@@ -1531,5 +1683,544 @@ namespace Velvet.Tests
             Assert.That((row.resolvedStyle.flexDirection, a.resolvedStyle.borderRightWidth),
                 Is.EqualTo((FlexDirection.RowReverse, 1f)));
         }
+
+        // The width the dash is stroked at for the middle child of a dashed row whose class is childClass, zero when
+        // the child carries no dash.
+        private float MiddleDashWidth(string childClass)
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "row", className: "flex flex-row divide-x divide-dashed", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px] " + childClass),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }));
+            var b = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(b.panel);
+            return _mounted.Root.Reconciler.Context.DivideDashBindings.TryGetValue(b, out var binding) ? binding.Width : 0f;
+        }
+
+        // GREEN_ON_BASE(characterization): the base strokes a dashed divider at the divider's width. What reddens
+        // it is the dashed path dropping its WriteWidth, which leaves the edge no width to stroke at.
+        [Test]
+        public void Given_ADashedDivideRow_When_LaidOut_Then_TheDashIsAsWideAsTheDivider()
+        {
+            // Arrange / Act
+            var width = MiddleDashWidth("");
+
+            // Assert
+            Assert.That(width, Is.EqualTo(1f));
+        }
+
+        // A colored dashed row whose middle child carries childClass, beside one reference element per class in
+        // referenceClasses, each carrying that class alone so the color it resolves to is read the engine's way.
+        private (VisualElement Child, VisualElement[] References) MountColoredDashRow(string childClass,
+            params string[] referenceClasses)
+        {
+            var nodes = new VNode[referenceClasses.Length + 1];
+            nodes[0] = V.Div(className: "flex flex-row divide-x divide-dashed divide-gray-200", children: new VNode[]
+            {
+                V.Div(className: "w-[20px] h-[20px]"),
+                V.Div(name: "b", className: "w-[20px] h-[20px] " + childClass),
+                V.Div(className: "w-[20px] h-[20px]"),
+            });
+            for (var i = 0; i < referenceClasses.Length; i++)
+            {
+                nodes[i + 1] = V.Div(name: "ref" + i, className: "border-r " + referenceClasses[i]);
+            }
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: nodes));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            var found = new VisualElement[referenceClasses.Length];
+            for (var i = 0; i < found.Length; i++)
+            {
+                found[i] = _window.rootVisualElement.Q("ref" + i);
+            }
+            return (child, found);
+        }
+
+        // The color the child's last paint drew its dash in.
+        private Color DashColorOf(VisualElement child)
+            => _mounted.Root.Reconciler.Context.DivideDashBindings[child].Color;
+
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAThemeColorClass_Then_TheDashTakesItsColorOnFirstBind()
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            var (child, references) = MountColoredDashRow("border-default", "border-default");
+            var theme = references[0].resolvedStyle.borderRightColor;
+            Assume.That(theme, Is.Not.EqualTo(gray200), "Precondition: equal colors would pass whichever the dash took");
+
+            // Act
+            var dash = DashColorOf(child);
+
+            // Assert
+            Assert.That(dash, Is.EqualTo(theme));
+        }
+
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAPaletteBorderClass_Then_TheDashTakesItsColor()
+        {
+            // Arrange / Act
+            var (child, references) = MountColoredDashRow("border-red-500", "border-red-500");
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(references[0].resolvedStyle.borderRightColor));
+        }
+
+        [Test]
+        public void Given_ADashTakingAThemeColorClass_When_TheChildsHoverRuleApplies_Then_TheDashTakesItsColor()
+        {
+            // Arrange — the pseudo-state is set directly: no pointer reaches an EditMode panel.
+            var (child, references) = MountColoredDashRow("border-default hover-border-strong", "border-strong");
+            var strong = references[0].resolvedStyle.borderRightColor;
+            Assume.That(DashColorOf(child), Is.Not.EqualTo(strong),
+                "Precondition: a dash that always took the strong color would pass too");
+            var pseudoStates = typeof(VisualElement).GetProperty("pseudoStates",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var hover = System.Enum.Parse(pseudoStates!.PropertyType, "Hover");
+
+            // Act
+            pseudoStates.SetValue(child, hover);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(strong));
+        }
+
+        // The middle child of a dashed row without a divide color, painted once, and the colors the engine paints its
+        // divided edge in from then on: each read as the child paints, ahead of the dash.
+        private (VisualElement Child, List<Color> Painted) MountWatchedDash(string childClass = "")
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "flex flex-row divide-x divide-dashed", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px] " + childClass),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            var binding = _mounted.Root.Reconciler.Context.DivideDashBindings[child];
+            var painted = new List<Color>();
+            child.generateVisualContent -= binding.OnGenerate;
+            child.generateVisualContent += _ => painted.Add(child.resolvedStyle.borderRightColor);
+            child.generateVisualContent += binding.OnGenerate;
+            return (child, painted);
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_TheChildsCodeWritesItsEdgeColor_Then_ItIsMaskedBeforeItPaints()
+        {
+            // Arrange
+            var (child, painted) = MountWatchedDash();
+
+            // Act — a frame: the panel's scheduled items, then its styles, layout and paint.
+            child.style.borderRightColor = Color.blue;
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+
+            // Assert — a check that never ran would leave nothing painted to read.
+            Assert.That(painted, Is.Not.Empty.And.All.Matches<Color>(color => SilhouetteFace.IsSentinel(color)));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_TheChildsCodeWritesItsEdgeColor_Then_TheDashTakesIt()
+        {
+            // Arrange
+            var (child, _) = MountWatchedDash();
+
+            // Act — a frame: the panel's scheduled items, then its styles, layout and paint.
+            child.style.borderRightColor = Color.blue;
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_TheChildsCodeMakesItsEdgeTransparent_Then_TheDashIsTransparentToo()
+        {
+            // Arrange
+            var (child, _) = MountWatchedDash("border-default");
+            Assume.That(DashColorOf(child), Is.Not.EqualTo(Color.clear),
+                "Precondition: a dash that was never painted would read clear too");
+
+            // Act
+            child.style.borderRightColor = Color.clear;
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(Color.clear));
+        }
+
+        // A watched dash, driven to red by the calls MotionSpringDriver and BezierTweenDriver make for a border-color
+        // channel, and the color it painted before.
+        private (VisualElement Child, List<Color> Painted, Color Before) MountDrivenWatchedDash()
+        {
+            var (child, painted) = MountWatchedDash();
+            var before = DashColorOf(child);
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
+            ForcePanelUpdate(child.panel);
+            return (child, painted, before);
+        }
+
+        // A driver's release: the channel's slots nulled, then the element's own layers and holds.
+        private static void ReleaseBorderColorDrive(VisualElement child)
+        {
+            StyleArbitraryValueResolver.ReleaseDriven(child, ArbitraryProperty.BorderColor);
+            StyleArbitraryValueResolver.ReapplyLayeredValues(child);
+            ForcePanelUpdate(child.panel);
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_AMotionDriverDrivesTheChildsBorderColor_Then_TheDashFollows()
+        {
+            // Arrange / Act
+            var (child, _, _) = MountDrivenWatchedDash();
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_AMotionDriverReleasesTheChildsBorderColor_Then_TheDashLetsGo()
+        {
+            // Arrange
+            var (child, _, before) = MountDrivenWatchedDash();
+            Assume.That(DashColorOf(child), Is.EqualTo(Color.red), "Precondition: a dash that never took the color would let go of nothing");
+
+            // Act
+            ReleaseBorderColorDrive(child);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(before));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_AMotionDriverDrivesAndReleasesTheChildsBorderColor_Then_NoPaintSawASolidLineOnTheEdge()
+        {
+            // Arrange
+            var (child, painted, _) = MountDrivenWatchedDash();
+
+            // Act
+            ReleaseBorderColorDrive(child);
+
+            // Assert — every paint saw the mask on the edge, so the engine painted no solid line there.
+            Assert.That(painted, Is.Not.Empty.And.All.Matches<Color>(color => SilhouetteFace.IsSentinel(color)));
+        }
+
+        [Test]
+        public void Given_ADividedChildWithABracketBorderColor_When_AMotionDriverDrivesItsBorderColor_Then_TheDashTakesTheDrivenColor()
+        {
+            // Arrange — border-[#e5e7eb] is a layer of the child's own, which the driver's inline write outranks.
+            var (child, painted) = MountWatchedDash("border-[#e5e7eb]");
+
+            // Act
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_ADividedChildWithABracketBorderColor_When_AMotionDriverDrivesItsBorderColor_Then_NoPaintSawASolidLineOnTheEdge()
+        {
+            // Arrange
+            var (child, painted) = MountWatchedDash("border-[#e5e7eb]");
+
+            // Act
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(painted, Is.Not.Empty.And.All.Matches<Color>(color => SilhouetteFace.IsSentinel(color)));
+        }
+
+        private readonly record struct RowState(bool Dashed);
+
+        private sealed class RowStore : Store<RowState>
+        {
+            public RowStore() : base(new RowState(true)) { }
+            public void MakeSolid() => SetState(_ => new RowState(false));
+            protected override void ResetCore() => SetState(_ => new RowState(true));
+        }
+
+        private static RowStore s_rowStore;
+        private static float s_delaySec;
+
+        // A divided row, dashed until s_rowStore makes it solid, whose middle child is a Motion entering from
+        // border-red-500 to border-blue-500 on a spring delayed by s_delaySec, beside reference elements carrying
+        // each.
+        [Component]
+        private static VNode DrivenDashRow()
+        {
+            var dashed = Hooks.UseStore(s_rowStore, s => s.Dashed);
+            var poses = new Dictionary<string, MotionVariant> { ["dim"] = "border-red-500", ["lit"] = "border-blue-500" };
+            var spring = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f, DelaySec = s_delaySec,
+            };
+            return V.Div(children: new VNode[]
+            {
+                V.Div(className: dashed ? "flex flex-row divide-x divide-dashed" : "flex flex-row divide-x", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Motion(name: "b", className: "w-[20px] h-[20px]", variants: poses, initial: "dim", animate: "lit",
+                        transition: spring),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }),
+                V.Div(name: "ref0", className: "border-r border-red-500"),
+                V.Div(name: "ref1", className: "border-r border-blue-500"),
+            });
+        }
+
+        private (VisualElement Child, Color Red, Color Blue, RowStore Store) MountDrivenDashRow(float delaySec = 0f)
+        {
+            s_rowStore = new RowStore();
+            s_delaySec = delaySec;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(DrivenDashRow));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            return (child, _window.rootVisualElement.Q("ref0").resolvedStyle.borderRightColor,
+                _window.rootVisualElement.Q("ref1").resolvedStyle.borderRightColor, s_rowStore);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already paints a mounting drive's from-pose on a dashed edge,
+        // reading it from the inline color when the dash binds. The delay keeps the spring on that pose until the read.
+        [Test]
+        public void Given_AMotionEnteringItsBorderColorInADashedRow_When_Mounted_Then_TheDashTakesTheDrivenColor()
+        {
+            // Act — the drive starts inside the child's mount, before the row's divider first applies.
+            var (child, red, _, store) = MountDrivenDashRow(delaySec: 30f);
+            using var owned = store;
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(red));
+        }
+
+        [Test]
+        public void Given_AMotionEnteringItsBorderColorInADashedRow_When_TheDriveIsReleased_Then_TheDashTakesTheRestingColor()
+        {
+            // Arrange
+            var (child, _, blue, store) = MountDrivenDashRow();
+            using var owned = store;
+
+            // Act
+            _mounted.Root.Reconciler.Context.StyleAnimationScheduler.CancelEnter(child);
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(blue));
+        }
+
+        [Test]
+        public void Given_ADelayedMotionDrivingItsBorderColorInADashedRow_When_TheRowTurnsSolid_Then_TheEdgeShowsTheDrivenColor()
+        {
+            // Arrange
+            var (child, red, _, store) = MountDrivenDashRow(delaySec: 30f);
+            using var owned = store;
+
+            // Act
+            store.MakeSolid();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(child.resolvedStyle.borderRightColor, Is.EqualTo(red));
+        }
+
+        // GREEN_ON_BASE(characterization): a solid divider's edge holds the divider's width on the base too.
+        [Test]
+        public void Given_ADelayedMotionDrivingItsBorderColorInADashedRow_When_TheRowTurnsSolid_Then_TheEdgeKeepsTheDividerWidth()
+        {
+            // Arrange
+            var (child, _, _, store) = MountDrivenDashRow(delaySec: 30f);
+            using var owned = store;
+
+            // Act
+            store.MakeSolid();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(child.resolvedStyle.borderRightWidth, Is.EqualTo(1f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands the edge back to the cascade on the flip, so no mask is
+        // left on it.
+        [Test]
+        public void Given_AMotionDrivingItsBorderColorInADashedRow_When_TheRowTurnsSolidAndAFramePasses_Then_TheEdgeIsNotMasked()
+        {
+            // Arrange
+            var (child, _, _, store) = MountDrivenDashRow();
+            using var owned = store;
+
+            // Act
+            store.MakeSolid();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(SilhouetteFace.IsSentinel(child.resolvedStyle.borderRightColor), Is.False);
+        }
+
+        // A colored dashed row whose middle child takes border-red-500 while hovered, beside a reference carrying
+        // that class alone. The class reaches the child through the gesture channel, which tells the divider
+        // nothing, and with all four edges held or masked no value the engine paints the child by moves.
+        private (VisualElement Child, Color Red) MountGestureColoredDashRow()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[]
+            {
+                V.Div(className: "flex flex-row divide-x divide-dashed divide-gray-200", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px]", whileHoverClass: "border-red-500"),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }),
+                V.Div(name: "ref0", className: "border-r border-red-500"),
+            }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            return (child, _window.rootVisualElement.Q("ref0").resolvedStyle.borderRightColor);
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_AGestureClassGivesADividedChildAColor_Then_TheDashIsPaintedInIt()
+        {
+            // Arrange
+            var (child, red) = MountGestureColoredDashRow();
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                child.SimulateEvent(over);
+            }
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(red));
+        }
+
+        [Test]
+        public void Given_ADashPaintedInAGestureColor_When_ThePointerLeaves_Then_TheDashIsPaintedInTheDivideColorAgain()
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            var (child, red) = MountGestureColoredDashRow();
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                child.SimulateEvent(over);
+            }
+            ForcePanelUpdate(child.panel);
+            Assume.That(DashColorOf(child), Is.EqualTo(red), "Precondition: a dash that never took red would pass too");
+
+            // Act
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                child.SimulateEvent(leave);
+            }
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(gray200));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_TheChildsCodeWritesItsEdgeColorAfterMount_Then_TheDashKeepsIt()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "flex flex-row divide-x divide-dashed", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px]"),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            child.style.borderRightColor = Color.blue;
+
+            // Act — the container applies again, as it does when the child's classes change.
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(Color.blue));
+        }
+
+        // A watched dash, detached, and a color written after it, which no mask should take any longer.
+        private (VisualElement Child, DivideDashChildBinding Binding) DetachWatchedDash()
+        {
+            var (child, _) = MountWatchedDash();
+            var binding = _mounted.Root.Reconciler.Context.DivideDashBindings[child];
+            DivideDashPainter.Detach(child, binding);
+            child.style.borderRightColor = Color.red;
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            return (child, binding);
+        }
+        [Test]
+        public void Given_ADashedDivideRow_When_TheDashIsDetached_Then_ItsMarkerClassGoes()
+        {
+            // Arrange / Act
+            var (child, _) = DetachWatchedDash();
+
+            // Assert
+            Assert.That(child.ClassListContains(DivideDashPainter.MarkerClass), Is.False);
+        }
+        [Test]
+        public void Given_ADashedDivideRow_When_TheDashIsDetached_Then_NoMaskTakesAColorWrittenAfterIt()
+        {
+            // Arrange / Act
+            var (child, _) = DetachWatchedDash();
+
+            // Assert
+            Assert.That(child.style.borderRightColor.value, Is.EqualTo(Color.red));
+        }
+        [Test]
+        public void Given_ADashTakingAThemeColorClass_When_TheChildsColorClassChanges_Then_TheDashTakesTheNewColor()
+        {
+            // Arrange
+            var (child, references) = MountColoredDashRow("border-default", "border-default", "border-accent");
+            var oldColor = references[0].resolvedStyle.borderRightColor;
+            var newColor = references[1].resolvedStyle.borderRightColor;
+            Assume.That(oldColor, Is.Not.EqualTo(newColor), "Precondition: equal colors would pass either way");
+            Assume.That(DashColorOf(child), Is.EqualTo(oldColor), "Precondition: a dash that never took the first class cannot pass");
+
+            // Act
+            StyleClassProjection.Remove(child, "border-default", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-accent", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(newColor));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_ADividedChildCarriesAnArbitraryBorderWidth_Then_ThatWidthWins()
+        {
+            // Arrange / Act
+            var width = MiddleDashWidth("border-r-[3px]");
+
+            // Assert
+            Assert.That(width, Is.EqualTo(3f));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_ADividedChildCarriesABorderWidthClass_Then_ThatWidthIsDashed()
+        {
+            // Arrange / Act — Tailwind's border-r-2 takes the border style divide-dashed set.
+            var width = MiddleDashWidth("border-r-2");
+
+            // Assert
+            Assert.That(width, Is.EqualTo(2f));
+        }
+
     }
 }

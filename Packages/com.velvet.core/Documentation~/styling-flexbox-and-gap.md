@@ -123,7 +123,10 @@ of a wrapped line therefore keeps its end edge, and no rule is drawn along the b
 
 `divide-dashed` / `divide-dotted` have no UI Toolkit border-style, so Velvet paints those rules
 itself, which costs them on a child that also carries `overflow-hidden` — see the painted-utility
-table in [styling-variants.md](styling-variants.md).
+table in [styling-variants.md](styling-variants.md). The dash is drawn at whichever border width and in
+whichever color win the divided edge under the specificity rule above, so a child's own `border-r-4` that
+wins the edge is drawn dashed. A panel holding such a divider runs one check per frame, which masks a color
+the child's own code writes over the divided edge.
 
 ### How re-spacing stays correct
 
