@@ -162,6 +162,17 @@ class GateTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, 1)
 
+    def test_Given_ARecordHoldingAForeignCommit_When_Gated_Then_TheReleaseIsRefusedNamingIt(self):
+        # Arrange — the record's reader refuses it, as mutation_record.fetch does.
+        self.project.commit("foreign", **{"scripts__ci__mutation_record.py": (
+            "def fetch(project, directory):\n    raise SystemExit('abc123: committed by someone')\n")})
+
+        # Act
+        code, printed = self.decide()
+
+        # Assert
+        self.assertEqual((code, "abc123: committed by someone" in printed), (1, True))
+
     def test_Given_ACommitWithoutTheRecordTooling_When_Gated_Then_TheReleaseIsRefused(self):
         # Arrange — a line cut before the record existed.
         (self.project.root / "scripts/ci/mutation_record.py").unlink()

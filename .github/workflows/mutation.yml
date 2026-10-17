@@ -99,8 +99,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Empty where the branch does not exist yet, and every mutant is then unanswered.
-      - run: python3 scripts/ci/mutation_record.py fetch Logs/mutation-record
+      # Empty where the branch does not exist yet, and every mutant is then unanswered. Refused where
+      # the branch holds a commit its writer did not make.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/mutation_record.py fetch Logs/mutation-record
 
       - id: base
         env:
@@ -402,8 +405,9 @@ jobs:
           overwrite: true
 
   # ---------------------------------------------------------------------------
-  # What the run measured goes onto the record branch (scripts/ci/mutation_record.py), from the only job
-  # that writes it. A pull request's run writes nothing. Where the cap left mutants to a later run, this
+  # What the run measured goes onto the record branch (scripts/ci/mutation_record.py), as a commit this
+  # job's token creates through the Git Data API, which is the only kind a reader of the branch trusts.
+  # A pull request's run writes nothing. Where the cap left mutants to a later run, this
   # run recorded something, and every shard passed, the run dispatches the next one onto the same ref,
   # which waits in the concurrency group for nothing but this run: the next measures the following
   # mutants in the same order, since the ones this run answered are now in the record. A run that
@@ -432,6 +436,8 @@ jobs:
           path: Logs/mutation-record
 
       - id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
           mkdir -p Logs/mutation-record

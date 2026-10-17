@@ -9,8 +9,9 @@ section owns the rule and the way out; this holds the decision:
 - Where the commit is on the default branch, however the release was dispatched, the newest completed
   push run of each required workflow (`red_base.REQUIRED_WORKFLOWS`) at it concluded `success`.
 - `mutation_check.py --gate` over the campaign's scope at the commit (`change_base.campaign_scope`),
-  reading the record branch (`mutation_record.py`): every mutant holds a standing verdict, and every
-  survivor among them is answered.
+  reading the record branch (`mutation_record.py`), which is refused where it holds a commit its
+  writer did not make: every mutant holds a standing verdict, and every survivor among them is
+  answered.
 
 The mutation half reads git and the record alone: it runs in a worktree checked out from the release
 commit's objects, so nothing uncommitted in the dispatch's checkout reaches it, and it refuses a
@@ -140,7 +141,10 @@ def main(argv=None, environ=None, read=gh_json):
             print("::error::{} is not in this commit's tree, so no campaign on it could have written the "
                   "record it would be gated on".format(missing[0]))
             return 1
-        code, printed = mutation_gate(tree, project, args.record)
+        try:
+            code, printed = mutation_gate(tree, project, args.record)
+        except SystemExit as refusal:
+            code, printed = 1, "the record could not be read: {}\n".format(refusal)
     finally:
         git(project, "worktree", "remove", "--force", str(tree))
         shutil.rmtree(scratch, ignore_errors=True)

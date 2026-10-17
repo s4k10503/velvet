@@ -250,13 +250,26 @@ backfilled. `ScopeTests` holds both orders and the history with no cutover.
 **The record is a branch of one file per verdict.** The `mutation-record` branch holds an entry for each
 mutant a run decided, at `records/<key>.json`, where the key hashes the mutant (file, line, column,
 operator and both texts), the mutated file's bytes, and `MUTATOR_VERSION`. A run fetches the
-branch; its `record` job, the only job that writes it, commits what the verdict wrote and pushes, building
-the commit with an index of its own and retrying over a newer branch when a push lost a race
-(`scripts/ci/mutation_record.py`). Entries under different keys never touch, so no two runs conflict,
-and the same key written again is the newer verdict. The branch shares no history with the code and
-nothing merges it. `protect-main` covers `refs/heads/main` alone, so the workflow's token can push the
-branch; no ruleset holds anyone else off it, and one restricting its updates to the GitHub Actions
-integration would. A mutant measured to nothing — no shard recorded it, the project lock or the build
+branch; its `record` job commits what the verdict wrote through the Git Data API as the workflow's
+`GITHUB_TOKEN`, moving the branch only forward and retrying over a newer branch when another run moved
+it first (`scripts/ci/mutation_record.py`). Entries under different keys never touch, so no two runs
+conflict, and the same key written again is the newer verdict. The branch shares no history with the
+code and nothing merges it.
+
+**Only commits GitHub signed as the workflow's bot are read.** No ruleset restricts who writes the
+branch, and `GITHUB_TOKEN` has no administration permission to set one, so the writer is held by what
+each commit carries. The `record` job's
+commits give no author, committer or signature of their own, and GitHub's documentation describes
+`GITHUB_TOKEN` as a GitHub App installation token and a commit made by a request authenticated as an
+app, with no custom author, committer or signature, as signed and verified as its bot. Every read —
+each run's plan and the release gate — walks the branch's first-parent history and asks GitHub's
+commits API about each commit; one not reported `verified` with reason
+`valid` and committed by `github-actions[bot]` refuses the whole record, naming it. The limit: anyone
+with write access can still push to the branch, and an administrator can rewrite it, but neither can
+make GitHub sign a commit as the bot, so whatever they put there is refused rather than trusted —
+the record stops answering until the foreign commits are gone. Nothing here has watched GitHub sign a
+`record` job's commit yet; if it does not, the first read after the first write refuses, and the record
+is unused rather than trusted. A mutant measured to nothing — no shard recorded it, the project lock or the build
 system kept its suite from running, its assembly was never rebuilt — writes no entry, so the next run
 measures it.
 

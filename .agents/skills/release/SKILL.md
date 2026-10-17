@@ -25,10 +25,11 @@ before closing the version, from a checkout of the commit, since a record still 
 merge window below open for as long as it takes:
 
 ```bash
-python3 scripts/release/mutation_gate.py --release "$(git rev-parse HEAD)"
+GITHUB_REPOSITORY=s4k10503/velvet python3 scripts/release/mutation_gate.py --release "$(git rev-parse HEAD)"
 ```
 
-Run outside the workflow it reads the record and not the CI, which the dispatch reads.
+Run outside the workflow it reads the record and not the CI, which the dispatch reads; it asks GitHub
+who wrote each record commit, so `gh` has to be signed in, and it needs the whole history.
 
 ## 1. Close the version in the CHANGELOG
 
