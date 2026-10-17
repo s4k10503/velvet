@@ -418,6 +418,7 @@ namespace Velvet.CodeGen
         private static HashSet<object> WithAliases(ScopeFacts facts, HashSet<object> given)
         {
             var copies = new List<(object From, object To)>();
+            // MUTANT_SURVIVES(equivalent, boundary): the last instruction is a ret, which loads no variable, so the store after it is never asked for.
             for (var i = 0; i + 1 < facts.Instructions.Length; i++)
             {
                 if (ReferenceKeyOf(facts.Instructions[i]) is { } from && facts.StoredKey(i + 1) is { } to) copies.Add((from, to));
@@ -581,6 +582,7 @@ namespace Velvet.CodeGen
             var code = facts.Instructions[index].OpCode.Code;
             var next = facts.Instructions[index + 1];
             if (code == Code.Stfld) return scan.Refuse($"it writes the captured variable '{field.Name}'");
+            // MUTANT_SURVIVES(equivalent, clause removed): the clause only words the refusal for the report; the verdict is the same without it.
             if (IsParentLink(field)) return IsClosureMemberAccess(next) || scan.Refuse("it hands a display class on");
             if (code == Code.Ldflda && !ReadsInPlace(next, field.FieldType)) return scan.Refuse($"it passes the address of the captured variable '{field.Name}' on");
             // MUTANT_SURVIVES(unreachable, literal): a display class belongs to the assembly being woven, which resolves its fields.

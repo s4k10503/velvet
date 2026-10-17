@@ -2423,6 +2423,17 @@ namespace Velvet.Tests
             return V.Div("root", V.Label(text: System.Linq.Enumerable.Count(rows).ToString()), V.Label(text: n.ToString()));
         }
 
+        private static int NextNumber() => 7;
+
+        [Component]
+        public static VNode ChildReadingAListBesideACallWithNoArgumentsComponent()
+        {
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var (other, _) = Hooks.UseState(0);
+            var has = System.Linq.Enumerable.Contains(items, NextNumber());
+            return V.Div("root", V.Label(text: items.Count.ToString()), V.Label(text: other.ToString() + has));
+        }
+
         private const string ValueGateName = "TryGetMemoizedValue";
 
         private static int ValueGatesOf(string component) => CountHookCalls(LoadMethod(component), ValueGateName);
@@ -2464,6 +2475,16 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base gives only the other child a scope gate too.
         // What it pins is a variable a lambda writes through an out argument being no value to compare: `false` in
         // place of `WritesThroughAddress(instr, field)` in `FieldsWrittenByLambdas` gives the child a scope gate.
+        [Test]
+        public void Given_AListBesideACallWithNoArguments_When_Woven_Then_TheChildReadingItGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildReadingAListBesideACallWithNoArgumentsComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2), "The call takes no argument, so it is given nothing to write through");
+        }
+
         [Test]
         public void Given_AHandlerWritingACapturedVariableThroughAnOutArgument_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
         {

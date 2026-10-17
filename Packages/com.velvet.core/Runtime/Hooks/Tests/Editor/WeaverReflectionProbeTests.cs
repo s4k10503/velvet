@@ -1561,6 +1561,48 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AChildReadingAMutableStatic_When_BailoutsAreReported_Then_TheMessageGroupsTheSameReason()
+        {
+            // Act
+            var messages = ReportAfterReadingAStaticField();
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("which nothing compares (x2)"));
+        }
+
+        [Test]
+        public void Given_AWovenBodyWithNoExpressionLeftUncached_When_BailoutsAreReported_Then_TheMessageSaysNothingOfUncachedExpressions()
+        {
+            // Act
+            var messages = ReportAfterAssembling("ReportedNoRefusalProbe", (module, method, useId) => AssembleStoredHook(method, useId, module));
+
+            // Assert
+            Assert.That(messages, Has.None.Contains("left uncached"));
+        }
+
+        [Test]
+        public void Given_AChildTakingTheAddressOfAStructParameter_When_BailoutsAreReported_Then_TheMessageNamesTheParameter()
+        {
+            // Act
+            var messages = ReportAfterAssembling("ReportedParameterProbe", (module, method, useId) =>
+            {
+                var factory = AddFactoryType(module, out _, out var div);
+                AddScopeGates(module);
+                var date = module.ImportReference(typeof(DateTime));
+                method.Parameters.Add(new ParameterDefinition("when", Mono.Cecil.ParameterAttributes.None, date));
+                var toString = module.ImportReference(typeof(DateTime).GetMethod(nameof(DateTime.ToString), Type.EmptyTypes));
+                AssembleCaptionsOneReading(module, method, useId, factory, div, il =>
+                {
+                    il.Append(Instruction.Create(OpCodes.Ldarga, method.Parameters[0]));
+                    il.Append(Instruction.Create(OpCodes.Call, toString));
+                });
+            });
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("parameter 'when'"));
+        }
+
+        [Test]
         public void Given_AChildReadingAMutableStatic_When_BailoutsAreReported_Then_TheMessageNamesTheField()
         {
             // Act

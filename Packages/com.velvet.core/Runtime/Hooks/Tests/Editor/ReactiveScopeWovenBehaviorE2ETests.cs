@@ -414,6 +414,33 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode GrowsTheListAfterCopyingIt()
+        {
+            var (items, _) = Hooks.UseState(new List<int>());
+            var (other, setOther) = Hooks.UseState(0);
+            s_setOther = setOther;
+            var copy = items;
+            Grow(items);
+            return V.Div("root",
+                V.Label(name: "count", text: copy.Count.ToString()),
+                V.Label(name: "other", text: other.ToString()));
+        }
+
+        [Component]
+        private static VNode GrowsACopyOfACopyOfAList()
+        {
+            var (items, _) = Hooks.UseState(new List<int>());
+            var (other, setOther) = Hooks.UseState(0);
+            s_setOther = setOther;
+            var first = items;
+            var second = first;
+            Grow(second);
+            return V.Div("root",
+                V.Label(name: "count", text: items.Count.ToString()),
+                V.Label(name: "other", text: other.ToString()));
+        }
+
+        [Component]
         private static VNode ReadsAMutation()
         {
             var mutation = Hooks.UseMutation(new MutationOptions<int, int>(
@@ -1050,6 +1077,34 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(AddsToAListWithACollectionCall, key: "adds"));
+
+            // Act
+            s_setOther(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("count"), Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void Given_AListGrownAfterItWasCopied_When_AnotherStateChanges_Then_TheChildCountingTheCopyShowsTheCurrentCount()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(GrowsTheListAfterCopyingIt, key: "grows-after-copy"));
+
+            // Act
+            s_setOther(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("count"), Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void Given_ACopyOfACopyOfAListAnOpaqueCallGrows_When_AnotherStateChanges_Then_TheChildCountingTheListShowsTheCurrentCount()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(GrowsACopyOfACopyOfAList, key: "grows-chain"));
 
             // Act
             s_setOther(1);
