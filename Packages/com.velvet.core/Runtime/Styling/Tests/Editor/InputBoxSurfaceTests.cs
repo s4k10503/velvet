@@ -841,6 +841,7 @@ namespace Velvet.Tests
             Assert.That(Box(scope.Root[0]).Q<TextElement>().ClassListContains("overflow-hidden"), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base never clipped the text for an ellipsis, so it had no clip to give up.
         [Test]
         public void Given_AnEllipsisOnATextField_When_ItIsDropped_Then_TheTextGivesUpItsClip()
         {
