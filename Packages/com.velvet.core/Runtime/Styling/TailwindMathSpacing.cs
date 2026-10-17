@@ -69,6 +69,7 @@ namespace Velvet
                 {
                     result.Append(", ");
                 }
+                // MUTANT_SURVIVES(unreachable): Top is true only after a math function's parenthesis was appended, so result is never empty here.
                 else if (c == ' ' && Top(formattable) && result.Length > 0 && result[result.Length - 1] == ' ')
                 {
                 }
@@ -111,7 +112,9 @@ namespace Velvet
         private static void AppendOperator(StringBuilder result, string input, int i, char c, int? lastValuePos)
         {
             var trimmed = result.ToString().TrimEnd();
+            // MUTANT_SURVIVES(unreachable): an operator is spaced only inside an open math function, so trimmed holds at least its name and parenthesis.
             var prev = trimmed.Length > 0 ? trimmed[trimmed.Length - 1] : '\0';
+            // MUTANT_SURVIVES(unreachable): the same open math function leaves trimmed at least two characters long.
             var prevPrev = trimmed.Length > 1 ? trimmed[trimmed.Length - 2] : '\0';
             var next = i + 1 < input.Length ? input[i + 1] : '\0';
 
@@ -119,6 +122,7 @@ namespace Velvet
             {
                 result.Append(c);
             }
+            // MUTANT_SURVIVES(unreachable): the open math function's name precedes the operator, so i is never 0.
             else if (i > 0 && input[i - 1] == ' ')
             {
                 result.Append(c).Append(' ');
@@ -143,6 +147,7 @@ namespace Velvet
                     return true;
                 }
             }
+            // MUTANT_SURVIVES(equivalent): a function name enters the stack only when it is a substring of input, so with none the loop formats nothing.
             return false;
         }
 
