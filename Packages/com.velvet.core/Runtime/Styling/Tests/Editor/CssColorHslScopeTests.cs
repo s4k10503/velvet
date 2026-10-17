@@ -153,6 +153,8 @@ namespace Velvet.Tests
             Assert.That(new[] { spec.Color.r, spec.Color.g, spec.Color.b }, Is.EqualTo(new[] { 1f, 0.5f, 0.5f }).Within(Tolerance));
         }
 
+        // GREEN_ON_BASE(characterization): the base already clamps a caret colour, a longhand, and the alpha-modifier
+        // reading this change adds must leave that clamp in place.
         [Test]
         public void Given_AnHslSaturationAbove100_When_ACaretSuffixReadsIt_Then_ItClamps()
         {
@@ -205,7 +207,8 @@ namespace Velvet.Tests
                 Is.EqualTo(new[] { 1f, 0.375f, 0.375f }).Within(Tolerance));
         }
 
-        // GREEN_ON_BASE(characterization): see the ring case above.
+        // GREEN_ON_BASE(characterization): the base leaves a suffix carrying an opacity modifier unclamped, and the
+        // alpha-modifier reading this change adds must not start to clamp it.
         [Test]
         public void Given_AnHslSaturationAbove100_When_ASuffixWithAnOpacityModifierReadsIt_Then_ItStaysUnclamped()
         {

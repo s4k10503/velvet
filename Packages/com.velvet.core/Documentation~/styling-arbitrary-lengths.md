@@ -22,7 +22,7 @@ either a length or a colour — `border-*`, `text-*`, `ring-*`, `outline-*`, `ri
 `via-*` and `to-*` — it takes a length only when the unit is in its own case, `Q` upper and the rest lower,
 and writes anything else as a colour, so `border-[2PX]` and `text-[16PX]` leave the class inert there as here.
 A math function named in lower case is a length there whatever case its units are in
-(`border-[calc(2PX)]`; `border-[CALC(2px)]` is a colour to Tailwind), and so is
+(`border-[calc(2PX)]`; `border-[cALC(2px)]` is a colour to Tailwind), and so is
 `text-[length:16PX]`, whose type hint skips the test.
 
 Swapping one bracketed value for another that writes the same property (`w-[300px]` for `w-[10px]`, with or
@@ -38,7 +38,7 @@ A math function follows CSS's grammar with Tailwind's spelling. `_` stands for a
 on both sides of a binary `+` or `-`. Tailwind adds the spaces itself around an operator inside a function
 it names in lower case, so `calc(2rem-4px)`, `calc(2rem_-_4px)` and `calc(2rem_-4px)` are the same length.
 A function name is read in any case, but Tailwind leaves one in another case as written, where CSS's rule
-holds: `CALC(1px_+_2px)` is 3px and `CALC(1px+2px)` is declined.
+holds: `cALC(1px_+_2px)` is 3px and `cALC(1px+2px)` is declined.
 A sign belongs to a number (`-2px`, `+.5rem`, `-1e3px`), never to a parenthesis or a function, so `-(1px)`
 and `-calc(1px)` are declined. A space at either end of a length is trimmed, as the browser trims it from the
 declaration Tailwind writes (`top-[_calc(1px)]`, `w-[1px_]`), except where Tailwind reads the bracket as either a
