@@ -54,6 +54,9 @@ namespace Velvet.Tests
         private const string ClipShapeReader =
             "System.Boolean Velvet.StyleClipPathClass.TryExtractLive("
             + "UnityEngine.UIElements.VisualElement, Velvet.ClipPathSpec&)";
+        private const string FamilyOrderRestoreReader =
+            "System.Void Velvet.StyleFamilyOrder.RestoreLiveOrder("
+            + "UnityEngine.UIElements.VisualElement, System.String[])";
         private const string ClipWrapperMirrorReader =
             "System.Void Velvet.ClipPathLayoutBox.SyncClasses(UnityEngine.UIElements.VisualElement)";
         private const string FlexMinSizeScanReader =
@@ -522,6 +525,27 @@ namespace Velvet.Tests
             // Assert
             Assert.That((fromAdded?.Source, fromReversed?.Source), Is.EqualTo((inset, circle)),
                 "this reading resolves whichever clip token the class list hands over last");
+        }
+
+        [Test]
+        [ReaderVerdict(FamilyOrderRestoreReader)]
+        public void Given_TwoClipShapesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheRestoreLeavesThemInTailwindsOrderBothWays()
+        {
+            // Arrange
+            const string circle = "clip-path-[circle(40%)]";
+            const string inset = "clip-path-[inset(10%)]";
+            var added = Carrying(circle, inset);
+            var reversed = Carrying(inset, circle);
+            var tokens = new[] { circle, inset };
+
+            // Act
+            StyleFamilyOrder.RestoreLiveOrder(added, tokens);
+            StyleFamilyOrder.RestoreLiveOrder(reversed, tokens);
+
+            // Assert
+            Assert.That((string.Join(" ", added.GetClasses()), string.Join(" ", reversed.GetClasses())),
+                Is.EqualTo(($"{circle} {inset}", $"{circle} {inset}")),
+                "the restore puts a family in Tailwind's order whichever order the live list holds it in");
         }
 
         // GREEN_ON_BASE(characterization): the base already resolves the last gap token on the list, through

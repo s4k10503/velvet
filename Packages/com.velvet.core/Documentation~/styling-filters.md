@@ -90,8 +90,8 @@ registration that accepts the arguments resolves it.
 - Each registered name is its own layer stack, so `filter-[dissolve:0.4] filter-[glitch:0.1]`
   are independent — and a variant over one name (`hover:filter-[dissolve:0.9]`) restores that
   name's base arguments on hover-off without touching the others.
-- Repeating a name in one class string replaces its arguments (last wins) instead of stacking
-  a duplicate function.
+- Repeating a name in one class string replaces its arguments instead of stacking a duplicate
+  function; the one Tailwind emits last wins, whichever is written first.
 - A name keeps its compose slot for the element's lifetime: changing a filter's arguments
   (which the class diff performs as a clear-then-apply) does not re-slot it behind its
   neighbors.

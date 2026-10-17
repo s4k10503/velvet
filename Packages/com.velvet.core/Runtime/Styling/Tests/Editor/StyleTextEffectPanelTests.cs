@@ -513,11 +513,22 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OverlineAndNoUnderlineOnSameElement_When_Mounted_Then_NoBindingIsRegistered()
+        public void Given_OverlineAndAPlainNoUnderlineOnSameElement_When_Mounted_Then_TheOverlineBindingIsRegistered()
+        {
+            // Tailwind emits overline after no-underline, so the plain pair ends on overline in either order.
+            var label = MountAndFindLabel(V.Label(className: "overline no-underline", text: "hi"));
+
+            Assert.That(_mounted.Root.Reconciler.Context.TextOverlineBindings.ContainsKey(label), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base resolves an important no-underline to None whichever comes first.
+        [Test]
+        public void Given_OverlineAndAnImportantNoUnderlineOnSameElement_When_Mounted_Then_NoBindingIsRegistered()
         {
             // no-underline resolves the SAME axis to None (see StyleTextEffectClassTests), so the leaf must
-            // never attach a binding at all — not attach-then-immediately-detach.
-            var label = MountAndFindLabel(V.Label(className: "overline no-underline", text: "hi"));
+            // never attach a binding at all — not attach-then-immediately-detach. The plain pair would end on
+            // overline, which Tailwind emits after no-underline, so the important modifier decides it here.
+            var label = MountAndFindLabel(V.Label(className: "overline !no-underline", text: "hi"));
 
             Assert.That(_mounted.Root.Reconciler.Context.TextOverlineBindings.ContainsKey(label), Is.False);
         }

@@ -369,8 +369,7 @@ namespace Velvet
             {
                 for (var i = 0; i < stateSlots.Count; i++)
                 {
-                    var root = stateSlots[i]?.RecycleMarkRoot;
-                    if (root != null) visitRoot(root);
+                    stateSlots[i]?.VisitRecycleRoots(visitRoot);
                 }
             }
         }

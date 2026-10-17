@@ -4673,6 +4673,40 @@ def parse_shard(text):
     return int(match.group(1)), int(match.group(2))
 
 
+def line_ranges(specs, targets, named):
+    """[(path, first, last)] from `PATH:FIRST-LAST` specs, each over a file of `targets`, and every file of
+    `targets` must have one.
+
+    A mistyped range, a reversed one, one past the file's end, a file `--files` skipped or never named, and a
+    file left without a range are refused: each would otherwise shrink the list to less than was meant, with
+    the run still reporting.
+    """
+    found = []
+    for spec in specs:
+        match = re.fullmatch(r"(.+):(\d+)-(\d+)", spec)
+        if not match:
+            raise SystemExit("--lines takes PATH:FIRST-LAST, got {!r}".format(spec))
+        path, first, last = Path(match.group(1)).resolve(), int(match.group(2)), int(match.group(3))
+        if path not in targets:
+            raise SystemExit("--lines names {}, which --files {}".format(
+                match.group(1), "skipped as not a mutable package source" if path in named else "does not name"))
+        if first > last:
+            raise SystemExit("--lines range {} is reversed".format(spec))
+        size = len(path.read_text().splitlines())
+        if not 1 <= first or last > size:
+            raise SystemExit("--lines range {}-{} lies outside {}, which has {} line(s)".format(
+                first, last, match.group(1), size))
+        found.append((path, first, last))
+    for path in sorted(set(targets) - {path for path, _, _ in found}):
+        raise SystemExit("--files names {}, which --lines gives no range; its mutants would be dropped "
+                         "unasked".format(path))
+    return found
+
+
+def in_ranges(ranges, path, line):
+    return any(there == path and first <= line <= last for there, first, last in ranges)
+
+
 def shard_count(mutants, platform="EditMode"):
     return min(MAX_SHARDS, -(-mutants // SHARD_SIZE[platform]))
 
@@ -5290,6 +5324,9 @@ def main():
                         help="branch to diff against, read at refs/remotes/origin/BASE where "
                              "both that and refs/heads/BASE exist (default: main)")
     parser.add_argument("--files", nargs="*", help="mutate these files whole instead of a diff")
+    parser.add_argument("--lines", nargs="+", metavar="PATH:FIRST-LAST",
+                        help="with --files, keep only the mutants on these line ranges of the named files; "
+                             "the list every shard and tree hands back is the filtered one")
     parser.add_argument("--platform", default="EditMode", choices=["EditMode", "PlayMode"])
     parser.add_argument("--assemblies", help="comma-separated test assemblies; default is every one")
     parser.add_argument("--filter", help="fixture or test name, as -testFilter takes it. Narrowing to one "
@@ -5377,6 +5414,8 @@ def main():
         parser.error("a reused kill is of a diff's mutants; --files names none")
     if args.survivors_shard is not None and args.survivors_of is None:
         parser.error("--survivors-shard narrows what --survivors-of reads; it goes with it")
+    if args.lines and not args.files:
+        parser.error("--lines narrows what --files names")
     if args.shard is not None and args.collect is not None:
         parser.error("--shard measures and --collect decides; a run does one of them")
     if args.survivors_of is not None:
@@ -5548,6 +5587,26 @@ def main():
         shared = declined_line_numbers(text, lines)
         if shared:
             declined[path] = shared
+    if args.lines:
+        ranges = line_ranges(args.lines, targets, {Path(name).resolve() for name in args.files})
+        every, before = len(mutants), mutants
+        for path, first, last in ranges:
+            kept = sum(1 for mutant in mutants if mutant.path == path and first <= mutant.line <= last)
+            print("lines: {}:{}-{} keeps {} mutant(s)".format(relative_to(path, project), first, last, kept))
+            if not kept:
+                raise SystemExit("no mutant of {} lies inside lines {}-{}".format(
+                    relative_to(path, project), first, last))
+        mutants = [mutant for mutant in mutants if in_ranges(ranges, mutant.path, mutant.line)]
+        unreached = {path: [number for number in numbers if in_ranges(ranges, path, number)]
+                     for path, numbers in unreached.items()}
+        declined = {path: [number for number in numbers if in_ranges(ranges, path, number)]
+                    for path, numbers in declined.items()}
+        body = [(path, number) for path, number in body if in_ranges(ranges, path, number)]
+        for path in sorted(targets):
+            print("lines: {} keeps {} of its {} mutant(s)".format(
+                relative_to(path, project), sum(1 for mutant in mutants if mutant.path == path),
+                sum(1 for mutant in before if mutant.path == path)))
+        print("lines: {} of {} mutant(s) lie inside the ranges".format(len(mutants), every))
     coverage = reach(mutants, unreached, project, declined)
 
     coverage = "\n".join((coverage, body_reach(mutants, body)))

@@ -147,6 +147,10 @@ namespace Velvet
         // already-warned name stays silent, even if it is registered and unregistered in between.
         private static readonly HashSet<string> s_warnedUnregistered = new();
 
+        // Set while a reader that orders tokens, and applies none, parses one: the warning belongs to the pass that applies it.
+        [ThreadStatic]
+        internal static bool QuietUnregistered;
+
 #if UNITY_EDITOR
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetWarnOnceState() => s_warnedUnregistered.Clear();
@@ -181,7 +185,7 @@ namespace Velvet
 
             if (!VelvetFilters.TryGet(name, out var definition))
             {
-                if (s_warnedUnregistered.Add(name))
+                if (!QuietUnregistered && s_warnedUnregistered.Add(name))
                 {
                     Debug.LogWarning($"[VelvetFilters] \"{name}\" is not registered; an element carrying filter-[{name}:...] draws no filter until it is.");
                 }

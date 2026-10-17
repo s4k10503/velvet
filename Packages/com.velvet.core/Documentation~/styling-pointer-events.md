@@ -38,7 +38,8 @@ the subtree itself, the way CSS inheritance would carry the property down.
   pointer is over the `auto` descendant, as CSS's `:hover` matches every ancestor of the hovered element.
   On an element with no `pointer-events-none` above it, `pointer-events-auto` changes nothing.
 - **Both on one element:** an important one (`!pointer-events-none`) outranks an unmarked one wherever it
-  sits in the class list; otherwise the later one wins.
+  sits in the class list; otherwise the one Tailwind emits last wins, which is `pointer-events-none`
+  whichever is written first.
 
 Keyboard focus is untouched: a focusable element inside an ignored subtree is still reached by Tab and by
 `Focus()`, as in CSS.

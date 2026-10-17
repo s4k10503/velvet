@@ -389,6 +389,33 @@ namespace Velvet.Tests
             Assert.That(el.style.filter.value?.Count ?? 0, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base already warns once per unregistered name.
+        [Test]
+        public void Given_AnUnregisteredCustomFilterNameParsedTwice_When_Parsed_Then_ItWarnsOnce()
+        {
+            // Arrange
+            var warnings = 0;
+            void CountWarning(string message, string stack, LogType type)
+            {
+                if (type == LogType.Warning && message.Contains("[VelvetFilters] \"twice-unregistered\" is not registered")) warnings++;
+            }
+            Application.logMessageReceived += CountWarning;
+
+            // Act
+            try
+            {
+                StyleArbitraryValueResolver.TryParse("filter-[twice-unregistered:1]", out _);
+                StyleArbitraryValueResolver.TryParse("filter-[twice-unregistered:2]", out _);
+            }
+            finally
+            {
+                Application.logMessageReceived -= CountWarning;
+            }
+
+            // Assert
+            Assert.That(warnings, Is.EqualTo(1));
+        }
+
         // GREEN_ON_BASE(characterization): pins the engine cap the registry's four-parameter check exists for.
         // When UI Toolkit lifts it, this reddens and the registry's check can go.
         [Test]

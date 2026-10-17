@@ -1075,6 +1075,8 @@ namespace Velvet
         public Dictionary<VisualElement, DndScopeBinding> DndScopeBindings { get; } = new();
         public Dictionary<VisualElement, DndDraggableBinding> DraggableBindings { get; } = new();
         public Dictionary<VisualElement, DndDroppableBinding> DroppableBindings { get; } = new();
+        // Next DndDroppableBinding.Order; only ever increases.
+        public long NextDroppableOrder;
         public Dictionary<VisualElement, DndOverlayBinding> DragOverlayBindings { get; } = new();
         // Elements carrying FiberElementProps.NoDrag. A side-table only: nothing is written to the element.
         public HashSet<VisualElement> NoDragElements { get; } = new();
@@ -1341,14 +1343,14 @@ namespace Velvet
         public HashSet<IPanel> DeclaringResolveMisses { get; } = new();
 
         // Inline-mounted ComponentFiber whose insertion / layout effect commit is deferred to the
-        // post-commit drain. The DOM mutation + ref attachment must complete before layout effect
+        // post-commit drain. The DOM mutations must complete before layout effect
         // setup runs. Velvet's inline-mount path defers child reconcile via
         // RenderAndReconcile(deferReconcile: true) so the parent expansion calls
-        // CreateElement for child elements AFTER MountInline returns, and their ref setups run at that
-        // pass's own boundary (DrainRefAttaches) later still;
+        // CreateElement for child elements AFTER MountInline returns, and the ref setups it queues
+        // attach in the layout commit (FiberRefPlacement);
         // running LayoutEffects inside MountInline would observe stale (null) refs.
-        // The top-level reconcile entry drains this stack before its own layout-effect commit so
-        // every layout effect runs once all child refs are attached. A Stack (LIFO) is used so
+        // The top-level reconcile entry drains this stack in its own layout-effect commit, after the pass
+        // has created every element. A Stack (LIFO) is used so
         // the drain runs deepest-first — layout effects commit children
         // before their parent (bottom-up), so a parent layout effect that reads a child's
         // imperative handle / measured size observes the child's already-applied effect.
@@ -1599,10 +1601,11 @@ namespace Velvet
             RefCallbacks { get; } = new();
 
         // Ref setups queued and not yet run, in the order the walks reached them, keyed for replacement
-        // so one element contributes one setup however many times a pass syncs it. Drained by
-        // DrainRefAttaches, which both entrances go through; a hole (a default entry) is one an element's
-        // departure cancelled or one already run, left in place so the indices either side of it stay
-        // addressable until the compaction that ends the drain.
+        // so one element contributes one setup however many times a pass syncs it. Run by DrainRefAttaches at
+        // the end of a pass no commit follows, and otherwise by the layout commit that takes them
+        // (TakeRefAttaches); a hole (a default entry) is one an element's departure cancelled or one already
+        // run, left in place so the indices either side of it stay addressable until the compaction that ends
+        // the drain or the commit.
         private readonly List<(VisualElement? Element, System.Func<VisualElement, System.Action>? Callback,
             ComponentFiber? Owner, Reconciler? Pass)> _pendingRefAttaches = new();
 
@@ -1637,9 +1640,10 @@ namespace Velvet
             => ComponentBoundarySearch.PropagateFromOwner(owner, exception);
 
         // Cycles the ref installed on an element to match the node being committed: both the old cleanup and
-        // the new setup at the pass boundary, the old first, as React detaches and attaches refs together in
-        // its commit. Run mid-pass, the cleanup took away whatever the old setup published — a portal id —
-        // from the patches still to come in that pass, which an inline lambda, a new delegate at every render,
+        // the new setup after the pass, at its boundary or in the layout commit that follows it, the old first,
+        // as React detaches the refs of a commit before it attaches. Run mid-pass, the cleanup took away
+        // whatever the old setup published — a portal id — from the patches still to come in that pass, which
+        // an inline lambda, a new delegate at every render,
         // turned into a render that re-published the id and asked for the next. A ref removed outright is
         // cleaned up at once. A patch carrying the SAME callback delegate is a no-op —
         // unconditionally re-invoking made any state write in a ref cleanup a per-patch mid-flush write,
@@ -1743,9 +1747,9 @@ namespace Velvet
             }
         }
 
-        // Runs the queued setups in walk order. An entry is recorded whether or not the setup completed —
-        // the identity is what makes the stable-ref skip possible, so a setup that throws is attempted
-        // once rather than again on every later patch carrying the same delegate.
+        // Runs the queued setups in walk order, for a pass no layout commit follows. An entry is recorded whether
+        // or not the setup completed — the identity is what makes the stable-ref skip possible, so a setup that
+        // throws is attempted once rather than again on every later patch carrying the same delegate.
         internal void DrainRefAttaches()
         {
             // A nested caller — the VirtualList controller's item loop, reached from a patch as well as
@@ -1759,6 +1763,11 @@ namespace Velvet
             // re-reads the count and takes them as a batch of their own; draining them from inside would
             // run the ones already run a second time.
             if (_drainingRefAttaches) return;
+            // A pass a fiber's render or flush reconciles is followed by that fiber's layout commit, or by
+            // FiberEffects.CommitStrandedLayoutWork, which attaches what it queued among the layout effects
+            // (FiberRefPlacement) and runs the cleanups of the refs it replaced ahead of them. A bare
+            // Reconciler.Reconcile has no fiber on the stack and nothing after it.
+            if (FiberStack.Current != null) return;
             _drainingRefAttaches = true;
             try
             {
@@ -1771,9 +1780,9 @@ namespace Velvet
                     if (i == batchEnd)
                     {
                         batchEnd = _pendingRefAttaches.Count;
-                        RunReplacedRefCleanups(i, batchEnd);
+                        RunReplacedRefCleanups(i, batchEnd, null);
                     }
-                    var (element, callback, owner, pass) = _pendingRefAttaches[i];
+                    var (element, callback, _, pass) = _pendingRefAttaches[i];
                     // MUTANT_SURVIVES(equivalent): an entry's element and callback are written together —
                     // SyncRefCallback queues one only with both set, and a cancelled or consumed one is
                     // overwritten with default — so neither is null without the other and both spellings
@@ -1784,47 +1793,7 @@ namespace Velvet
                     // pass holds back the entries it queued and no others — Reconciler.FinishTopLevelPass
                     // owns why it has to hold those.
                     if (pass is { HasPendingWork: true }) continue;
-                    // Ahead of the setup, so a setup that re-queues this same element appends a fresh
-                    // entry instead of overwriting the one being run.
-                    _pendingRefAttachIndex.Remove(element);
-                    _pendingRefAttaches[i] = default;
-                    // Ahead of the setup too, so an element the setup itself takes out of the tree is one
-                    // FiberElementCleaner finds an entry for and removes. A setup CAN reach that: it runs
-                    // at depth zero now, where a discrete event it dispatches commits synchronously instead
-                    // of being held back. Recorded only afterwards, the removal would find no entry and the
-                    // write below would then add one for an element no tree holds, past the removal that
-                    // would have taken it.
-                    RefCallbacks[element] = (callback, null);
-                    // React attaches refs in its layout phase, after its mutation phase ran the commit's insertion
-                    // effects, and a callback that reads its element's box there reads it laid out.
-                    FiberEffects.RunInsertionEffectsAheadOfRef(owner);
-                    FiberLayoutReflow.LayOutFor(this, element, owner);
-                    System.Action? cleanup = null;
-                    try
-                    {
-                        cleanup = callback(element);
-                    }
-                    catch (System.Exception exception)
-                    {
-                        ContainUserCallbackFailure(owner, exception);
-                    }
-                    if (RefCallbacks.ContainsKey(element))
-                    {
-                        RefCallbacks[element] = (callback, cleanup);
-                    }
-                    else if (cleanup != null)
-                    {
-                        // Its entry is gone, so nothing is left holding this cleanup. Firing it here is
-                        // what keeps a setup that acquires a resource from leaking it.
-                        try
-                        {
-                            cleanup();
-                        }
-                        catch (System.Exception exception)
-                        {
-                            ContainUserCallbackFailure(owner, exception);
-                        }
-                    }
+                    AttachQueuedRef(i);
                 }
             }
             finally
@@ -1834,7 +1803,146 @@ namespace Velvet
             }
         }
 
-        private void RunReplacedRefCleanups(int start, int end)
+        // Runs the cleanup of each ref a queued setup replaces, bar those of a parked pass, ahead of the setups of
+        // a layout commit: the commit calls it first, and a cleanup already run leaves nothing for a second call.
+        // scope is the one the commit's TakeRefAttaches reads, so a commit detaches the refs it goes on to attach.
+        internal void DetachReplacedRefs(ComponentFiber? scope)
+        {
+            if (!CanRunRefSetups) return;
+            _drainingRefAttaches = true;
+            try
+            {
+                RunReplacedRefCleanups(0, _pendingRefAttaches.Count, scope);
+            }
+            finally
+            {
+                _drainingRefAttaches = false;
+            }
+        }
+
+        private bool CanRunRefSetups
+            => SharedReconcileDepth == 0 && HeldRowLayoutEffects.Count == 0 && !_drainingRefAttaches;
+
+        private static bool IsAttachable(
+            (VisualElement? Element, System.Func<VisualElement, System.Action>? Callback, ComponentFiber? Owner,
+                Reconciler? Pass) entry)
+            => entry.Element != null && entry.Callback != null && entry.Pass is not { HasPendingWork: true };
+
+        private static readonly List<PendingRefAttach> s_noRefAttaches = new();
+
+        // scope null is every setup. Otherwise it is the fiber being committed and what lies below it.
+        private static bool IsInRefScope(ComponentFiber? owner, ComponentFiber? scope)
+            => scope == null || (owner != null && IsAtOrBelow(owner, scope));
+
+        // The setups a layout commit attaches, in queue order: those no parked pass holds, owned by scope or by a
+        // component below it, or by any component when scope is null. A commit rooted at a fiber leaves the rest
+        // to the commit that has the rest of their pass: a render owed ahead of a pass's own commit
+        // (FiberWorkLoop.FlushOwedSettleRenders) commits first, and attaching the pass's setups there would put
+        // them ahead of the layout effects that commit still has to run. Empty wherever DrainRefAttaches leaves
+        // the queue alone.
+        internal List<PendingRefAttach> TakeRefAttaches(ComponentFiber? scope)
+        {
+            if (_pendingRefAttaches.Count == 0 || !CanRunRefSetups) return s_noRefAttaches;
+            List<PendingRefAttach>? taken = null;
+            foreach (var entry in _pendingRefAttaches)
+            {
+                if (!IsAttachable(entry)) continue;
+                if (!IsInRefScope(entry.Owner, scope)) continue;
+                (taken ??= new List<PendingRefAttach>()).Add(new PendingRefAttach(entry.Element!, entry.Owner));
+            }
+            return taken ?? s_noRefAttaches;
+        }
+
+        // Whether a setup waits for a commit that has no fiber of its own to bring. Read only where
+        // FiberEffects.CommitStrandedLayoutWork has found no commit on the stack.
+        internal bool HasAttachableRefs() => _pendingRefAttaches.Exists(IsAttachable);
+
+        // Runs the setup the queue holds for the element, which is not always the one the commit took: a write
+        // since then can have queued another callback, and can have taken the element out or dropped its ref.
+        internal void RunRefAttach(VisualElement element)
+        {
+            if (!_pendingRefAttachIndex.TryGetValue(element, out var queued)) return;
+            var enclosing = _drainingRefAttaches;
+            _drainingRefAttaches = true;
+            try
+            {
+                AttachQueuedRef(queued);
+            }
+            finally
+            {
+                _drainingRefAttaches = enclosing;
+            }
+        }
+
+        // Ends a commit's use of the queue, dropping the slots of the setups it ran.
+        internal void CompactRefAttaches()
+        {
+            if (!_drainingRefAttaches) CompactPendingRefAttaches();
+        }
+
+        private void AttachQueuedRef(int index)
+        {
+            var (queuedElement, queuedCallback, owner, _) = _pendingRefAttaches[index];
+            var element = queuedElement!;
+            var callback = queuedCallback!;
+            // Ahead of the setup, so a setup that re-queues this same element appends a fresh
+            // entry instead of overwriting the one being run.
+            _pendingRefAttachIndex.Remove(element);
+            _pendingRefAttaches[index] = default;
+            // Ahead of the setup too, so an element the setup itself takes out of the tree is one
+            // FiberElementCleaner finds an entry for and removes. A setup CAN reach that: it runs
+            // at depth zero now, where a discrete event it dispatches commits synchronously instead
+            // of being held back. Recorded only afterwards, the removal would find no entry and the
+            // write below would then add one for an element no tree holds, past the removal that
+            // would have taken it.
+            RefCallbacks[element] = (callback, null);
+            // A callback that reads its element's box here reads it laid out, as in React's layout phase.
+            FiberLayoutReflow.LayOutFor(this, element, owner);
+            System.Action? cleanup = null;
+            try
+            {
+                cleanup = InOwnersFrame(owner, callback, element);
+            }
+            catch (System.Exception exception)
+            {
+                ContainUserCallbackFailure(owner, exception);
+            }
+            if (RefCallbacks.ContainsKey(element))
+            {
+                RefCallbacks[element] = (callback, cleanup);
+            }
+            else if (cleanup != null)
+            {
+                // Its entry is gone, so nothing is left holding this cleanup. Firing it here is
+                // what keeps a setup that acquires a resource from leaking it.
+                try
+                {
+                    InOwnersFrame(owner, _ => { cleanup(); return null; }, element);
+                }
+                catch (System.Exception exception)
+                {
+                    ContainUserCallbackFailure(owner, exception);
+                }
+            }
+        }
+
+        // A ref callback runs with its owner on the ambient stack, as it did when the pass attached it, so a hook
+        // called from it is refused by name (HookGuard.ThrowIfNotRendering) rather than as an anonymous component.
+        private static System.Action? InOwnersFrame(
+            ComponentFiber? owner, System.Func<VisualElement, System.Action?> callback, VisualElement element)
+        {
+            if (owner != null) FiberAmbientStack.Push(owner);
+            try
+            {
+                return callback(element);
+            }
+            finally
+            {
+                if (owner != null) FiberAmbientStack.Pop();
+            }
+        }
+
+        private void RunReplacedRefCleanups(int start, int end, ComponentFiber? scope)
         {
             for (var i = start; i < end; i++)
             {
@@ -1844,6 +1952,7 @@ namespace Velvet
                 if (element == null || callback == null) continue;
                 // The batch's own setup loop skips this entry too, so its old ref stays as it is.
                 if (pass is { HasPendingWork: true }) continue;
+                if (!IsInRefScope(owner, scope)) continue;
                 if (!RefCallbacks.TryGetValue(element, out var installed)) continue;
                 var replaced = installed.Cleanup;
                 if (replaced == null) continue;
@@ -1853,7 +1962,7 @@ namespace Velvet
                 // Its failure goes where a setup's does, and the setup still runs.
                 try
                 {
-                    replaced();
+                    InOwnersFrame(owner, _ => { replaced(); return null; }, element);
                 }
                 catch (System.Exception exception)
                 {
