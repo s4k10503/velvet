@@ -190,7 +190,7 @@ The rule is made where a shorthand and a longhand meet in one `className` string
   applies. A base class beside an inline pose needs no such step, the inline value outranking it already; a pose class that is the narrower of a pair with an inline base token (`p-13` base, `pt-2` pose) is written inline like any other, so it holds its side and the base keeps the rest.
 - A class list assembled outside a `className` string, or beside a class list of another element, is not ordered this way.
 
-`z-<n>` takes any whole number an int holds the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).
+`z-<n>` takes a whole number the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).
 
 ### An inline value and a stylesheet class
 
@@ -220,8 +220,10 @@ Two base utilities that both resolve inline and write the same property are orde
 is written first: `w-[1px] w-[2px]` and `w-[2px] w-[1px]` both give 2px, `w-1/2 w-[10px]` gives 10px,
 `bg-red-500/50 bg-[#ff0000]` gives the half-transparent red, `border-b-red-500 border-b-[#0000ff]` leaves the bottom
 border red, and `scale-[1.5] scale-[2]`, `translate-x-[4px] translate-x-[8px]`, `opacity-[.3] opacity-[.7]` and
-`blur-[2px] blur-[4px]` give the second value. The important layer is ordered the same way (`!w-[1px] !w-[2px]` gives
-2px), and a custom filter is told apart by its registered name, so two different names are both kept. A token of
+`blur-[2px] blur-[4px]` give the second value. A `drop-shadow-*` size is ordered against another size the same way
+(`drop-shadow-sm drop-shadow-lg` gives the small one), and a `shadow-*` beside it stays as written, since box-shadow
+and filter are separate properties and both render. The important layer is ordered the same way (`!w-[1px] !w-[2px]`
+gives 2px), and a custom filter is told apart by its registered name, so two different names are both kept. A token of
 another property and a token in another layer are left as written (`!w-[1px] w-[2px]`), and a variant token is ranked
 by the position of its own rule ([styling-variants.md](styling-variants.md)).
 
@@ -258,8 +260,9 @@ the exceptions are named in the list:
   sizes in the same list;
 - `z-20 z-10` gives 20, `grid-cols-3 grid-cols-2` three columns, `gap-x-4 gap-2` a 4 horizontal gap with a 2
   vertical one, `space-x-*` and `space-y-*`, and `divide-*`;
-- `shadow-*` and `drop-shadow-*`, which declare box-shadow and filter (Tailwind v4's `property-order.ts` lists box-shadow, the ring's before the outline's, ahead of filter), so `shadow-lg drop-shadow-sm` gives the drop
-  shadow; `ring-*` and `outline-*`, outline being emitted after the ring, so `ring-0 outline-2` gives a 2px outline;
+- `shadow-*`, so `shadow-sm shadow-lg` gives the small shadow; `ring-*` and `outline-*`, outline being emitted after
+  the ring (Tailwind v4's `property-order.ts` lists the ring's box-shadow properties before the outline's), so
+  `ring-0 outline-2` gives a 2px outline;
   `skew-*`, `pointer-events-none` and `pointer-events-auto`, `border-solid` and the other line styles, and
   `animate-*`;
 - the gradient shape, where a keyword or integer `bg-linear-*` counts three declarations to the two of the others

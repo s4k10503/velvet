@@ -175,6 +175,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base also promoted a starved lane in the immediate drain.
         // Gate on `LaneQueue.Contains(FiberUpdatePriority.Transition)` rather than on `Min` and this reddens.
+        // The loop counts flushes through the fiber's own starvation counter, since the head's first drain
+        // flushes the pending render beside the Normal lane, which the base has not got.
         [Test]
         public void Given_ATransitionStarvedBehindNormalWork_When_TheThresholdImmediateDrainRuns_Then_ThePromotedWorkDrainsThere()
         {
@@ -182,7 +184,9 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(StarvedRender, key: "starved"));
             var scheduler = mounted.GetSchedulerForTest();
             s_starvedStart.Invoke(() => s_starvedSetValue.Invoke("transition"));
-            for (var i = 0; i < StarvationThreshold.Read() - 1; i++)
+            for (var i = 0;
+                 i < StarvationThreshold.Read() && s_starvedFiber.TransitionStarvationCounter < StarvationThreshold.Read() - 1;
+                 i++)
             {
                 s_starvedSetValue.Invoke($"normal-{i}");
                 scheduler.DrainImmediateForTest();

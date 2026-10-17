@@ -172,14 +172,6 @@ namespace Velvet
                 return TrackVariantGate(ctx, target, payload, key, declaration, on);
             }
 
-            // The off-toggle of a filter-[name:args] payload whose name was unregistered while the layer was
-            // active — the shared clear resolves the name syntactically and removes the mirrored class (see
-            // TryClearUnregisteredFilterToken).
-            if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, key))
-            {
-                return false;
-            }
-
             if (on)
             {
                 StyleClassProjection.Add(target, core, key);

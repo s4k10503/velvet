@@ -91,7 +91,7 @@ namespace Velvet.Tests
             // Arrange — a consumer's own entry, which reads exactly like an injected one and is told apart
             // only by the record the injection keeps of what it added.
             var included = IncludedShaders(out var settings);
-            var owned = Shader.Find(VelvetShaders.DropShadow);
+            var owned = Shader.Find(VelvetShaders.BoxShadow);
             included.InsertArrayElementAtIndex(included.arraySize);
             included.GetArrayElementAtIndex(included.arraySize - 1).objectReferenceValue = owned;
             settings.ApplyModifiedProperties();
@@ -114,7 +114,7 @@ namespace Velvet.Tests
             // revert that removed what it added from one that removed everything it recognised.
             Assert.That(
                 survivors,
-                Is.EqualTo(string.Join(", ", VelvetShaders.Names.Where(n => n != VelvetShaders.DropShadow))));
+                Is.EqualTo(string.Join(", ", VelvetShaders.Names.Where(n => n != VelvetShaders.BoxShadow))));
         }
 
         [Test]
