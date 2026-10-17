@@ -1062,8 +1062,27 @@ namespace Velvet.Tests
                 Is.EqualTo((2f, 2f, 8f)));
         }
 
-        // GREEN_ON_BASE(characterization): the radii are ordered by arrival on the base as here, so the last writers hold their slots there too.
-        // Letting an earlier arrival win the shared corner reddens every case.
+        // GREEN_ON_BASE(characterization): the base writes the chain and the appended pair with the slots the sort order puts last as well.
+        [TestCase(false, false, "inset-chain")]
+        [TestCase(false, true, "inset-chain")]
+        [TestCase(true, false, "inset-chain")]
+        [TestCase(true, true, "inset-chain")]
+        [TestCase(false, false, "wrap-new-inline")]
+        [TestCase(false, true, "wrap-new-inline")]
+        [TestCase(true, false, "wrap-new-inline")]
+        [TestCase(true, true, "wrap-new-inline")]
+        public void Given_InlineClassOccurrences_When_TheirOrderOrCountChanges_Then_TheLastWritersHoldTheirSlots(bool important, bool largeList, string change)
+        {
+            // Arrange
+            using var arranged = ArrangeSliceChange(important, largeList, change);
+
+            // Act
+            arranged.Reconciler.Reconcile(arranged.Root, arranged.OldTree, arranged.NewTree);
+
+            // Assert
+            Assert.That(arranged.Outcome(), Is.EqualTo(arranged.Expected));
+        }
+
         [TestCase(false, false, "leading")]
         [TestCase(false, true, "leading")]
         [TestCase(true, false, "leading")]
@@ -1084,35 +1103,60 @@ namespace Velvet.Tests
         [TestCase(false, true, "append-occurrence")]
         [TestCase(true, false, "append-occurrence")]
         [TestCase(true, true, "append-occurrence")]
-        [TestCase(false, false, "corner-chain")]
-        [TestCase(false, true, "corner-chain")]
-        [TestCase(true, false, "corner-chain")]
-        [TestCase(true, true, "corner-chain")]
-        [TestCase(false, false, "wrap-new-inline")]
-        [TestCase(false, true, "wrap-new-inline")]
-        [TestCase(true, false, "wrap-new-inline")]
-        [TestCase(true, true, "wrap-new-inline")]
-        public void Given_InlineClassOccurrences_When_TheirOrderOrCountChanges_Then_TheLastWritersHoldTheirSlots(bool important, bool largeList, string change)
+        public void Given_SliceInsetsWrittenInTheOtherOrderThanTailwindOrdersThem_When_TheirOrderOrCountChanges_Then_TheNarrowerInsetHoldsTheTop(bool important, bool largeList, string change)
         {
             // Arrange
-            using var reconciler = new Reconciler();
+            using var arranged = ArrangeSliceChange(important, largeList, change);
+
+            // Act
+            arranged.Reconciler.Reconcile(arranged.Root, arranged.OldTree, arranged.NewTree);
+
+            // Assert
+            Assert.That(arranged.Outcome(), Is.EqualTo(arranged.Expected));
+        }
+
+        private sealed class SliceChange : System.IDisposable
+        {
+            public Reconciler Reconciler = null!;
+            public VisualElement Root = null!;
+            public VNode[] OldTree = null!;
+            public VNode[] NewTree = null!;
+            public bool Chain;
+            public int Before;
+            public bool HistoryConsistent;
+            public (int Before, int After, int Companion, float Width, bool HistoryConsistent) Expected;
+
+            public (int Before, int After, int Companion, float Width, bool HistoryConsistent) Outcome()
+            {
+                var element = Root.ElementAt(0);
+                var after = Chain ? element.style.unitySliceBottom.value : element.style.unitySliceTop.value;
+                var companion = Chain ? element.style.unitySliceLeft.value : element.style.unitySliceBottom.value;
+                return (Before, after, companion, element.style.width.value.value, HistoryConsistent);
+            }
+
+            public void Dispose() => Reconciler.Dispose();
+        }
+
+        private static SliceChange ArrangeSliceChange(bool important, bool largeList, string change)
+        {
+            var reconciler = new Reconciler();
             var root = new VisualElement();
             var bang = important ? "!" : "";
             var extra = largeList ? " flex relative items-start justify-start overflow-hidden opacity-50 bg-red-500" : "";
-            // rounded-r and rounded-t share the top-right corner and StyleSpacingPrecedence ranks neither, so arrival
-            // decides it; a padding pair would not do, as its shorthand sorts ahead of its longhand.
-            var padding = bang + "rounded-r-[8px]";
-            var top = bang + "rounded-t-[2px]";
+            // slice-y and slice-t share the top inset. Tailwind has no such utility, so StyleFamilyOrder puts them in
+            // the sort key's order, more longhands first, and slice-t ends on the top whichever is written first.
+            var wide = bang + "slice-y-[8]";
+            var narrow = bang + "slice-t-[2]";
             var (oldClasses, newClasses, oldValue, newValue) = change switch
             {
-                "leading" => ($"w-[20px] {padding} {top}", $"w-[20px] {top} {padding}", 2f, 8f),
-                "crossing" => ($"{padding} {top} w-[20px]", $"{top} w-[20px] {padding}", 2f, 8f),
-                "duplicate-width" => ($"w-[20px] w-[20px] {padding} {top}", $"w-[20px] w-[20px] {top} {padding}", 2f, 8f),
-                "remove-occurrence" => ($"w-[20px] {padding} {top} {padding}", $"w-[20px] {padding} {top}", 8f, 2f),
-                "append-occurrence" => ($"w-[20px] {padding} {top}", $"w-[20px] {padding} {top} {padding}", 2f, 8f),
-                "corner-chain" => ($"w-[20px] {bang}rounded-r-[6px] {bang}rounded-b-[8px] {bang}rounded-t-[4px]",
-                    $"w-[20px] {bang}rounded-r-[6px] {bang}rounded-b-[8px] {bang}rounded-t-[4px] {bang}rounded-tl-[2px]", 8f, 8f),
-                "wrap-new-inline" => ("relative", $"relative {padding} {top}", 0f, 2f),
+                "leading" => ($"w-[20px] {wide} {narrow}", $"w-[20px] {narrow} {wide}", 2f, 2f),
+                "crossing" => ($"{wide} {narrow} w-[20px]", $"{narrow} w-[20px] {wide}", 2f, 2f),
+                "duplicate-width" => ($"w-[20px] w-[20px] {wide} {narrow}", $"w-[20px] w-[20px] {narrow} {wide}", 2f, 2f),
+                "remove-occurrence" => ($"w-[20px] {wide} {narrow} {wide}", $"w-[20px] {wide} {narrow}", 2f, 2f),
+                "append-occurrence" => ($"w-[20px] {wide} {narrow}", $"w-[20px] {wide} {narrow} {wide}", 2f, 2f),
+                "inset-chain" => ($"w-[20px] {bang}slice-[6] {bang}slice-y-[8] {bang}slice-t-[4]",
+                    $"w-[20px] {bang}slice-[6] {bang}slice-y-[8] {bang}slice-t-[4] {bang}slice-l-[2]", 8f, 8f),
+                "wrap-new-inline" => ("relative", $"relative {wide} {narrow}", 0f, 2f),
                 _ => throw new System.ArgumentOutOfRangeException(nameof(change)),
             };
             var oldTree = new VNode[] { V.Div(oldClasses + extra) };
@@ -1135,21 +1179,17 @@ namespace Velvet.Tests
                 mapArgs[1].GetType().GetField("_nextArrival",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(mapArgs[1], long.MaxValue - 1);
             }
-            var corners = change == "corner-chain";
-            var before = corners
-                ? root.ElementAt(0).style.borderBottomRightRadius.value.value
-                : root.ElementAt(0).style.borderTopRightRadius.value.value;
+            var chain = change == "inset-chain";
+            var before = chain
+                ? root.ElementAt(0).style.unitySliceBottom.value
+                : root.ElementAt(0).style.unitySliceTop.value;
             root.ElementAt(0).style.width = 99f;
-
-            // Act
-            reconciler.Reconcile(root, oldTree, newTree);
-
-            // Assert
-            var element = root.ElementAt(0);
-            var after = corners ? element.style.borderBottomRightRadius.value.value : element.style.borderTopRightRadius.value.value;
-            var companion = corners ? element.style.borderTopLeftRadius.value.value : element.style.borderBottomRightRadius.value.value;
-            Assert.That((before, after, companion, element.style.width.value.value, historyConsistent),
-                Is.EqualTo((oldValue, newValue, corners ? 2f : 8f, 99f, true)));
+            return new SliceChange
+            {
+                Reconciler = reconciler, Root = root, OldTree = oldTree, NewTree = newTree, Chain = chain,
+                Before = before, HistoryConsistent = historyConsistent,
+                Expected = ((int)oldValue, (int)newValue, chain ? 2 : 8, 99f, true),
+            };
         }
 
         [TestCase(false)]

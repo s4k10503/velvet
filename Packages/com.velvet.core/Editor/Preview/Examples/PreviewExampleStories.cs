@@ -18,7 +18,7 @@ namespace Velvet.Editor.Preview
 
         /// <summary>
         /// No explicit Width/Height, so the canvas fills the stage (the Full viewport) or a simulated reference
-        /// size (a custom viewport), becoming a responsive scope in the latter case. Background color and flex
+        /// size (a custom viewport), becoming a viewport scope in the latter case. Background color and flex
         /// direction shift at the sm/md/lg breakpoints, and one caption only shows below the sm breakpoint —
         /// editing the toolbar's W field (or switching between Full and a custom size) makes the shift visible
         /// immediately.
@@ -43,7 +43,7 @@ namespace Velvet.Editor.Preview
 
         /// <summary>
         /// Explicit Width/Height: the canvas is sized to exactly 320x200 regardless of the stage or viewport, and
-        /// is NOT a responsive scope. At this footprint the story is smaller than the stage, so mounting it also
+        /// is NOT a viewport scope. At this footprint the story is smaller than the stage, so mounting it also
         /// confirms the stage centers a small explicit-size story (rather than pinning it to a corner) and that
         /// it scales with the zoom toolbar.
         /// </summary>

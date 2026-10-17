@@ -1947,13 +1947,15 @@ namespace Velvet
         /// Context inheritance and event bubbling both follow the LOGICAL tree. Children inherit the
         /// context enclosing the V.Portal call site, and an <c>events:</c> handler on a logical
         /// ancestor of the call site also fires for a pointer / key / focus event raised on a portal
-        /// child: Velvet physically reparents the children under the registered target element (so UI
-        /// Toolkit's own native dispatch bubbles them up the target's PHYSICAL ancestor chain too),
-        /// then separately bridges the event synthetically to the logical ancestor chain outside the
-        /// call site. An element that happens to sit on BOTH chains — a physical ancestor of the
-        /// target AND a logical ancestor of the call site — still fires exactly once: the synthetic
-        /// walk detects that native bubbling already covers it and stops there rather than
-        /// double-firing. A <c>Button</c>'s click (<c>ClickedBinding</c>) and a field's value change
+        /// child: Velvet physically reparents the children under the registered target element, then
+        /// bridges the event synthetically to the logical ancestor chain outside the call site. UI
+        /// Toolkit's own native dispatch also reaches the target's PHYSICAL ancestors, but one that is
+        /// no logical ancestor of the call site runs none of its <c>events:</c> handlers for the event,
+        /// as the container of a React portal never sees it. An element that happens to sit on BOTH
+        /// chains — a physical ancestor of the target AND a logical ancestor of the call site — still
+        /// fires exactly once: the synthetic walk detects that native dispatch already covers it and
+        /// stops there rather than double-firing. A <c>Button</c>'s click (<c>ClickedBinding</c>) and a
+        /// field's value change
         /// (<c>ChangeEventBinding&lt;T&gt;</c>) cross the same way. See the portals documentation for the
         /// full contract.
         /// </remarks>
@@ -3069,6 +3071,8 @@ namespace Velvet
         /// <param name="events">Event bindings applied to the button, bound ahead of the navigation. A
         /// <see cref="ClickedEventBinding"/> that calls <see cref="ClickedEvent.PreventDefault"/> keeps the click
         /// from navigating, as React Router's <c>Link</c> does for an <c>onClick</c> that prevents the default.</param>
+        /// <param name="state">Stored on the new history entry, as React Router's <c>Link</c> <c>state</c>.</param>
+        /// <param name="relative">How a relative <paramref name="to"/> resolves, as <see cref="NavigateOptions.Relative"/>.</param>
         public static ComponentNode Link(
             string to,
             string? text = null,
@@ -3077,12 +3081,14 @@ namespace Velvet
             VNode?[]? children = null,
             bool replace = false,
             string? key = null,
-            FiberEventBinding[]? events = null)
+            FiberEventBinding[]? events = null,
+            object? state = null,
+            RelativeRoutingType relative = RelativeRoutingType.Route)
         {
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
                 RouteLink.Render,
-                new RouteLink.Props(to, text, className, name, children, replace, events),
+                new RouteLink.Props(to, text, className, name, children, replace, events, state, relative),
                 key);
         }
 
@@ -3090,18 +3096,22 @@ namespace Velvet
         /// No element participates in layout while the <see cref="Router"/> the nearest
         /// <see cref="RouterProvider"/> publishes handles the target.
         /// </summary>
-        /// <remarks>Redirects on mount and again when <paramref name="to"/> or <paramref name="replace"/> changes.</remarks>
-        /// <param name="to">Absolute and route-relative targets follow <see cref="Hooks.UseNavigate(bool)"/>.</param>
+        /// <remarks>Redirects on mount and again when <paramref name="to"/>, <paramref name="replace"/>, <paramref name="state"/> or <paramref name="relative"/> changes.</remarks>
+        /// <param name="to">Absolute and route-relative targets follow <see cref="Hooks.UseNavigate"/>.</param>
         /// <param name="replace">When true, replaces the current history entry instead of pushing.</param>
+        /// <param name="state">Stored on the new history entry, as <see cref="NavigateOptions.State"/>.</param>
+        /// <param name="relative">How a relative <paramref name="to"/> resolves, as <see cref="NavigateOptions.Relative"/>.</param>
         public static ComponentNode Navigate(
             string to,
             bool replace = false,
-            string? key = null)
+            string? key = null,
+            object? state = null,
+            RelativeRoutingType relative = RelativeRoutingType.Route)
         {
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
                 global::Velvet.Navigate.Render,
-                new global::Velvet.Navigate.Props(to, replace),
+                new global::Velvet.Navigate.Props(to, replace, state, relative),
                 key);
         }
 
@@ -3115,6 +3125,8 @@ namespace Velvet
         /// <param name="replace">Selects replacement instead of push navigation.</param>
         /// <param name="caseSensitive">Uses ordinal matching instead of the case-insensitive default.</param>
         /// <param name="events">Event bindings applied to the button, as on <see cref="Link"/>.</param>
+        /// <param name="state">Stored on the new history entry, as on <see cref="Link"/>.</param>
+        /// <param name="relative">How a relative <paramref name="to"/> resolves, as on <see cref="Link"/>; the active comparison resolves it the same way.</param>
         public static ComponentNode NavLink(
             string to,
             string activeClass,
@@ -3126,7 +3138,9 @@ namespace Velvet
             bool replace = false,
             bool caseSensitive = false,
             string? key = null,
-            FiberEventBinding[]? events = null)
+            FiberEventBinding[]? events = null,
+            object? state = null,
+            RelativeRoutingType relative = RelativeRoutingType.Route)
         {
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
@@ -3143,6 +3157,8 @@ namespace Velvet
                     Replace = replace,
                     CaseSensitive = caseSensitive,
                     Events = events,
+                    State = state,
+                    Relative = relative,
                 },
                 key);
         }

@@ -68,6 +68,25 @@ namespace Velvet
         // (HookTransitionSlot.SettlesWithCommitOf). Saved and restored beside the flag.
         internal static ComponentFiber? TransitionDrainFiber;
 
+        // The lane the render in progress renders: a hook folds in the queued updates that lane renders
+        // (FiberLane.Renders) and leaves the rest queued. Transition exactly where IsRenderingTransitionLane is
+        // true, so a render outside a flush, such as the retry of a resolved resource, is not a transition's.
+        // Ambient for the reason IsRenderingTransitionLane is, and saved and restored beside it.
+        internal static FiberUpdatePriority RenderLane = FiberUpdatePriority.Normal;
+
+        // A starvation-promoted drain carries Transition updates under the Normal label (HasPromotedTransition), so
+        // it renders the Transition lane.
+        private static FiberUpdatePriority RenderLaneOf(FiberUpdatePriority flushingLane, bool drainsTransitionWork)
+            => drainsTransitionWork ? FiberUpdatePriority.Transition : flushingLane;
+
+        // The lane a state update written now is queued on: the one RequestRenderFromHook schedules its render on,
+        // except during its own component's render, where the rerun that write asks for renders the lane in progress.
+        internal static FiberUpdatePriority HookUpdateLane(ComponentFiber fiber)
+            => fiber.IsInRenderPhase ? RenderLane
+                : OpenTransitionScopes.Count > 0 ? FiberUpdatePriority.Transition
+                : IsInDiscreteEvent ? FiberUpdatePriority.Urgent
+                : FiberUpdatePriority.Normal;
+
         // Internal API that requests a render via a Hook (UseState / UseReducer setter, UseStore subscription).
         // Takes the Transition lane while a StartTransition callback is running synchronously; otherwise the
         // Urgent lane while a discrete event handler is running (IsInDiscreteEvent), and the Normal lane elsewhere.
@@ -167,7 +186,7 @@ namespace Velvet
             // fiber's BODY is on the stack. Such updates are processed synchronously (discard the
             // in-progress output and re-run Render() before committing) instead of scheduling a
             // next-frame re-render. Flag the fiber and let the render loop in RenderAndReconcile
-            // re-run; the state slot already holds the new value by the time this is called. The
+            // re-run; the update is already queued on the render's own lane by the time this is called. The
             // gate is the render-phase window, NOT IsRendering: a write landing later in the same
             // flush (a callback ref invoked during the patch, an event dispatched from a detach) is
             // a commit-phase update that falls through to the regular schedule below (a state update
@@ -347,6 +366,57 @@ namespace Velvet
         // to inherit.
         internal static void FlushState(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
+            OpenOwedSettleWindow(out var enclosing);
+            try
+            {
+                FlushFiber(fiber, timeSlicedBudgetMs, endsEnclosingCommit: enclosing != null);
+            }
+            finally
+            {
+                // MUTANT_SURVIVES(equivalent, line removed): FlushOwedSettleRenders is the only reader of a list, and it holds the list it was handed, so a list left installed is appended to by a settle outside every flush, or after the flush's last read, and read by nothing.
+                s_owedSettleRenders = enclosing;
+            }
+        }
+
+        // The components a settle inside the running FlushState or ContinueReconcile asked for a render, in the
+        // order it asked; null outside both. Each call makes its own list, so a nested call neither reads nor
+        // disturbs its enclosing one's.
+        private static List<ComponentFiber>? s_owedSettleRenders;
+
+        private static List<ComponentFiber> OpenOwedSettleWindow(out List<ComponentFiber>? enclosing)
+        {
+            enclosing = s_owedSettleRenders;
+            var owed = new List<ComponentFiber>();
+            s_owedSettleRenders = owed;
+            return owed;
+        }
+
+        // Called by the settle that takes optimistic entries down. A holder owed a render by a settle inside a
+        // flush is rendered before that flush returns, ahead of the commit's layout effects, so the commit that
+        // lands a transition's last work shows the revert in a holder its pass does not reach and in one it
+        // rendered before the settle. A settle outside every flush, an async action completing, has no commit
+        // to join and leaves the render it requested to the scheduler.
+        internal static void OweSettleRender(ComponentFiber holder) => s_owedSettleRenders?.Add(holder);
+
+        // Only a holder still holding an immediate-tier lane is flushed, so Transition work it holds for itself
+        // keeps its tier, and one the flush skips (unmounted, hidden under a fallback, in a detached host)
+        // keeps its lane for the scheduler.
+        private static void FlushOwedSettleRenders(List<ComponentFiber> owed)
+        {
+            for (var i = 0; i < owed.Count; i++)
+            {
+                if (FiberLane.SchedulesOnImmediateTier(FiberLane.GetHighestPendingPriority(owed[i])))
+                {
+                    FlushState(owed[i]);
+                }
+            }
+        }
+
+        // endsEnclosingCommit: the flush runs inside an enclosing flush's owed window, ahead of that flush's own
+        // effect commit, so the follow-up commit that ends a flush is the enclosing one's to run: it would take the
+        // enclosing flush's refs ahead of its insertion effects and layout cleanups.
+        private static void FlushFiber(ComponentFiber fiber, double timeSlicedBudgetMs, bool endsEnclosingCommit)
+        {
             if (!fiber.IsMounted) return;
             if (!fiber.IsDirty)
             {
@@ -417,6 +487,7 @@ namespace Velvet
             // lane (e.g. a context-driven flush) the reconcile runs synchronously.
             var flushBudget = FiberLane.FrameBudgetMs;
             var drainsTransitionWork = false;
+            var renderLane = FiberUpdatePriority.Normal;
 
             if (fiber.LaneQueue.Count > 0)
             {
@@ -427,6 +498,7 @@ namespace Velvet
                 // value from the promoted drain would put it back behind the traffic promotion exists to escape.
                 drainsTransitionWork = flushingLane == FiberUpdatePriority.Transition
                     || (flushingLane == FiberUpdatePriority.Normal && fiber.HasPromotedTransition);
+                renderLane = RenderLaneOf(flushingLane, drainsTransitionWork);
                 // A non-empty read above means Lanes was already allocated (Queue is only ever populated
                 // through EnsureLanes()), so the backing field is safe to mutate directly here — the
                 // fiber.LaneQueue accessor itself only ever hands back a read-only copy of the mask.
@@ -468,8 +540,10 @@ namespace Velvet
             fiber.PendingReconcileDrainsTransitionWork = drainsTransitionWork;
             var wasRenderingTransitionLane = IsRenderingTransitionLane;
             var wasTransitionDrainFiber = TransitionDrainFiber;
+            var wasRenderLane = RenderLane;
             IsRenderingTransitionLane = drainsTransitionWork;
             TransitionDrainFiber = drainsTransitionWork ? fiber : null;
+            RenderLane = renderLane;
             var suspended = false;
             try
             {
@@ -485,6 +559,7 @@ namespace Velvet
             {
                 IsRenderingTransitionLane = wasRenderingTransitionLane;
                 TransitionDrainFiber = wasTransitionDrainFiber;
+                RenderLane = wasRenderLane;
             }
             // Defer layout / passive effects while a time-sliced reconcile is still paused: a parked commit has
             // only partially mutated the DOM, so a UseLayoutEffect reading a UseRef to a not-yet-attached node
@@ -492,6 +567,8 @@ namespace Velvet
             if (!suspended && fiber.Reconciler?.HasPendingWork != true)
             {
                 SettleCompletedTransition(fiber);
+                // Ahead of the effect commit below, which outside a drain runs its layout effects inline.
+                FlushOwedSettleRenders(s_owedSettleRenders!);
                 // Bottom-up commit — descendant effects run before this fiber's so a
                 // parent effect that reads a child imperative handle / measured size observes the
                 // child's already-applied effect. The drain pops fibers in LIFO order (deepest first).
@@ -503,7 +580,7 @@ namespace Velvet
                 FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
                 FlushCompletedTransitionIndicator(fiber);
             }
-            FiberEffects.CommitStrandedLayoutWork(context!);
+            if (!endsEnclosingCommit) FiberEffects.CommitStrandedLayoutWork(context!);
         }
 
         private static void SettleCompletedTransition(ComponentFiber fiber)
@@ -573,6 +650,7 @@ namespace Velvet
             if (mountPoint == null) return;
             if (!fiber.Reconciler.HasPendingWork) return;
 
+            var owed = OpenOwedSettleWindow(out var enclosingOwed);
             var pushedOnto = FiberRenderer.PushFiber(fiber);
             try
             {
@@ -585,8 +663,10 @@ namespace Velvet
                 // the same way the pass that parked it did — see PendingReconcileDrainsTransitionWork.
                 var wasRenderingTransitionLane = IsRenderingTransitionLane;
                 var wasTransitionDrainFiber = TransitionDrainFiber;
+                var wasRenderLane = RenderLane;
                 IsRenderingTransitionLane = fiber.PendingReconcileDrainsTransitionWork;
                 TransitionDrainFiber = fiber.PendingReconcileDrainsTransitionWork ? fiber : null;
+                RenderLane = RenderLaneOf(FiberUpdatePriority.Normal, fiber.PendingReconcileDrainsTransitionWork);
                 // A resume continues the pass whose output is already this fiber's PreviousTree, so the
                 // children it reaches are stamped against that array exactly as the slice that parked
                 // stamped the ones it reached. Without it they are stamped against nothing, and
@@ -618,6 +698,7 @@ namespace Velvet
                     resumeContext.CurrentFiberTree = enclosingFiberTree;
                     IsRenderingTransitionLane = wasRenderingTransitionLane;
                     TransitionDrainFiber = wasTransitionDrainFiber;
+                    RenderLane = wasRenderLane;
                 }
 
                 if (fiber.Reconciler.HasPendingWork)
@@ -633,6 +714,9 @@ namespace Velvet
                     fiber.PendingOldTree = null;
                     FiberTreeReturn.ReturnRetiredTree(completedBaseline, fiber);
                     SettleCompletedTransition(fiber);
+                    // Ahead of the effect commit below, so its layout effects read the holders without the
+                    // entries the settle took down.
+                    FlushOwedSettleRenders(owed);
                     // The commit is now fully applied — run the insertion / layout / passive effects FlushState
                     // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
                     // Bottom-up — descendant effects (LIFO drain) before this fiber's.
@@ -671,11 +755,14 @@ namespace Velvet
                 if (fiber.PendingReconcileDrainsTransitionWork)
                 {
                     fiber.SettleTransitionPending();
+                    FlushOwedSettleRenders(owed);
                 }
                 FiberErrorBoundary.OnRenderError(fiber, ex);
             }
             finally
             {
+                // MUTANT_SURVIVES(equivalent, line removed): same reason as the restore in FlushState, whose only reader of a list is FlushOwedSettleRenders over the list it was handed.
+                s_owedSettleRenders = enclosingOwed;
                 FiberRenderer.PopFiber(pushedOnto);
             }
         }

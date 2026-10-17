@@ -772,6 +772,8 @@ namespace Velvet.Tests
             Assert.That((heldWhileExiting, HostChildCount), Is.EqualTo((1, 0)));
         }
 
+        // GREEN_ON_BASE(characterization): the merge base runs both callbacks as the outer child leaves. The flush
+        // added to the case is the passive-effect flush these completions now wait for.
         [TestCase("wrapper")]
         [TestCase("top")]
         public void Given_AnInnerPresenceWhoseChildrenPlayNoExit_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesAtOnceAndBothCallbacksRun(
@@ -784,6 +786,7 @@ namespace Velvet.Tests
             // Act
             s_outerKeys.Set(string.Empty);
             Drain(mounted);
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That((HostChildCount, s_outerCompleted, s_innerCompleted), Is.EqualTo((0, 1, 1)));

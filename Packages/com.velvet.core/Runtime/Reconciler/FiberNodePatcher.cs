@@ -1424,6 +1424,9 @@ namespace Velvet
             {
                 ReapplyOrderedInlineValues(element, oldClasses, newClasses);
             }
+            // Last: the readers of the live list (StyleClipPathClass.TryExtractLive, LiveClasses) end on the last
+            // token of a family, and a token added by this diff sits behind the ones already there.
+            StyleFamilyOrder.RestoreLiveOrder(element, newClasses);
             return true;
         }
 
@@ -1630,7 +1633,7 @@ namespace Velvet
                         removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                     }
 
-                    RemoveClass(element, cls);
+                    RemoveOutgoingClass(element, cls, newClasses);
                 }
             }
             foreach (var cls in newClasses)
@@ -1679,7 +1682,7 @@ namespace Velvet
                             removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                         }
 
-                        RemoveClass(element, cls);
+                        RemoveOutgoingClass(element, cls, newClasses);
                     }
                 }
                 foreach (var cls in newClasses)
@@ -1696,6 +1699,56 @@ namespace Velvet
                 _ctx.BufferPool.ReturnClassSet(oldSet);
                 _ctx.BufferPool.ReturnClassSet(newSet);
             }
+        }
+
+        // An inline-resolved class leaving while another class in the incoming list writes the same property
+        // (w-[300px] to w-[10px]) gives up its layer without the property being resolved. DiffClassList's
+        // reapply applies every incoming inline class afterwards, which resolves it. Pinned by
+        // ArbitraryWidthSwapTransitionTests.
+        private static void RemoveOutgoingClass(VisualElement element, string cls, string[] newClasses)
+        {
+            if (InlineWriteOf(cls) is { } outgoing)
+            {
+                if (WritesInlineProperty(newClasses, outgoing.Property))
+                {
+                    StyleArbitraryValueResolver.Withdraw(element, outgoing.Property, outgoing.Priority);
+                    return;
+                }
+            }
+            RemoveClass(element, cls);
+        }
+
+        private static bool WritesInlineProperty(string[] classes, ArbitraryProperty property)
+        {
+            foreach (var cls in classes)
+            {
+                if (InlineWriteOf(cls)?.Property == property)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The property and layer an inline-resolved class writes, or null for one that writes none or whose
+        // layers are not keyed by property (filter-[name:...]).
+        private static (ArbitraryProperty Property, long Priority)? InlineWriteOf(string raw)
+        {
+            if (!TryGetInlineResolvedCore(raw, out var core, out var important))
+            {
+                return null;
+            }
+            if (!StyleArbitraryValueResolver.TryParse(core, out var style))
+            {
+                return null;
+            }
+            if (style.Property == ArbitraryProperty.FilterCustom)
+            {
+                return null;
+            }
+            return (style.Property, important
+                ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                : StyleLayerPriority.Base);
         }
 
         // Token families a manipulator (or a side-table config pass) owns outright: none of them ever
@@ -2146,6 +2199,25 @@ namespace Velvet
                 => manipulator.UpdatePayloads(_responsive, _dark, _responsiveDeclarations, _darkDeclarations);
         }
 
+        private readonly struct ContainerVariantOp : IManipulatorOp<StyleContainerVariantManipulator>
+        {
+            private readonly ContainerBinding[] _bindings;
+
+            internal ContainerVariantOp(ContainerBinding[] bindings)
+            {
+                _bindings = bindings;
+            }
+
+            public Dictionary<VisualElement, StyleContainerVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.ContainerVariantManipulators;
+
+            public StyleContainerVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleContainerVariantManipulator(ctx, _bindings);
+
+            public void Update(StyleContainerVariantManipulator manipulator)
+                => manipulator.UpdateBindings(_bindings);
+        }
+
         private readonly struct RelationalVariantOp : IManipulatorOp<StyleRelationalVariantManipulator>
         {
             private readonly List<RelationalBindingConfig>? _configs;
@@ -2374,6 +2446,72 @@ namespace Velvet
                 new ConditionalVariantOp(responsive, dark, responsiveDeclarations, darkDecl));
         }
 
+        // Configures the element's StyleContainerVariantManipulator from the container query tokens
+        // (@md:/@max-lg:/@min-[475px]:/@md/main:) in classNames.
+        internal void ApplyContainerVariantManipulator(VisualElement element, string[] classNames)
+        {
+            var bindings = BuildContainerBindings(classNames);
+
+            Configure<ContainerVariantOp, StyleContainerVariantManipulator>(element, bindings.Length > 0,
+                new ContainerVariantOp(bindings));
+        }
+
+        // One binding per distinct prefix spelling, holding every payload written under it. Returns the shared
+        // empty array when no token is a container query.
+        private static ContainerBinding[] BuildContainerBindings(string[] classNames)
+        {
+            if (classNames == null || classNames.Length == 0)
+            {
+                return Array.Empty<ContainerBinding>();
+            }
+
+            Dictionary<string, (StyleContainerQuery Query, List<string> Payloads, List<int> Positions)>? bySpelling = null;
+            for (var i = 0; i < classNames.Length; i++)
+            {
+                if (!TryReadContainerToken(classNames[i], out var spelling, out var query, out var payload))
+                {
+                    continue;
+                }
+                bySpelling ??= new Dictionary<string, (StyleContainerQuery, List<string>, List<int>)>();
+                if (!bySpelling.TryGetValue(spelling, out var entry))
+                {
+                    entry = (query, new List<string>(), new List<int>());
+                    bySpelling[spelling] = entry;
+                }
+                entry.Payloads.Add(payload);
+                entry.Positions.Add(StyleRuleOrder.OrdinalOf(classNames, i));
+            }
+
+            if (bySpelling == null)
+            {
+                return Array.Empty<ContainerBinding>();
+            }
+
+            var bindings = new ContainerBinding[bySpelling.Count];
+            var next = 0;
+            foreach (var (spelling, entry) in bySpelling)
+            {
+                bindings[next++] = new ContainerBinding(spelling, entry.Query, entry.Payloads.ToArray(),
+                    entry.Positions.ToArray());
+            }
+            return bindings;
+        }
+
+        private static bool TryReadContainerToken(string token, out string spelling, out StyleContainerQuery query,
+            out string payload)
+        {
+            spelling = string.Empty;
+            query = default;
+            payload = string.Empty;
+            if (!StyleVariantClass.TryParse(token, out var kind, out var name, out var rest))
+            {
+                return false;
+            }
+            spelling = name ?? string.Empty;
+            payload = rest ?? string.Empty;
+            return kind == StyleVariantKind.Container && StyleContainerQuery.TryParse(spelling, out query);
+        }
+
         // Configures the element's StyleRelationalVariantManipulator from the group-*/peer- tokens (incl. the
         // named group-*/name · peer-*/name forms) in classNames.
         internal void ApplyRelationalVariantManipulator(VisualElement element, string[] classNames)
@@ -2457,14 +2595,15 @@ namespace Velvet
         private static string[] ToPayloadArray(List<string> payloads)
             => payloads?.ToArray() ?? Array.Empty<string>();
 
-        // Applies the three className-driven variant manipulators (pseudo-class hover:/focus:/
-        // active:, conditional dark:/sm:…, relational group-/peer-) in one
+        // Applies the className-driven variant manipulators (pseudo-class hover:/focus:/
+        // active:, conditional dark:/sm:…, container @md:…, relational group-/peer-) in one
         // call. The gap manipulator is deliberately excluded — it must run AFTER children are reconciled.
         internal void ApplyVariantManipulators(VisualElement element, string[] classNames)
         {
             RecordVariantGateSource(element, classNames);
             ApplyVariantManipulator(element, classNames);
             ApplyConditionalVariantManipulator(element, classNames);
+            ApplyContainerVariantManipulator(element, classNames);
             ApplyRelationalVariantManipulator(element, classNames);
             ApplyStructuralVariantConfig(element, classNames);
             ApplyHasVariantManipulator(element, classNames);

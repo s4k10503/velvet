@@ -214,6 +214,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnErrorBoundaryAboveTheOutlet_When_TheFactoryThrowsInARenderWithALaterSibling_Then_ThatRenderCommitsAroundTheFallback()
+        {
+            // Arrange — the Outlet's render reads the factory, so the boundary takes the failure as a render error
+            s_throwOnDispose = false;
+            var mounted = BoundedAppBeside(0);
+            _reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), mounted);
+            _router.NavigateAsync("/other").GetAwaiter().GetResult();
+            _scopeFactory.ThrowOnCreate = true;
+
+            // Act
+            var escaped = EscapesFrom(() => _reconciler.Reconcile(_root, mounted, BoundedAppBeside(1)));
+
+            // Assert — the component after the boundary renders this render's row, as it does around a boundary that caught a render
+            Assert.That((escaped, _root.Q<VisualElement>("fallback") != null, LabelTextsUnder(_root)),
+                        Is.EqualTo((false, true, "after:1")));
+        }
+
+        [Test]
         public void Given_ARouteScopeDisposeThatThrows_When_TheRouteChanges_Then_TheIncomingRouteStillMounts()
         {
             // Arrange — the departing route's scope is disposed by the render that installs the incoming one.
@@ -392,6 +411,23 @@ namespace Velvet.Tests
                             },
                             key: "boundary"),
         };
+
+        private VNode[] BoundedAppBeside(int render) => new VNode[]
+        {
+            V.Div(children: new VNode[]
+            {
+                V.ErrorBoundary(fallback: _ => V.Div(name: "fallback"),
+                                children: new VNode[]
+                                {
+                                    V.Component(RoutedApp, _router.CurrentLocation!, key: "app"),
+                                },
+                                key: "boundary"),
+                V.Component(AfterRowRender, render, key: "after"),
+            }),
+        };
+
+        [Component(Compiler = false)]
+        private static VNode AfterRowRender(int render) => V.Label(text: "after:" + render);
 
         private VNode[] MountBoundedApp()
         {

@@ -197,15 +197,15 @@ namespace Velvet
         };
 
         // Resolves an element's OWN effect from its class list (last token wins per axis, an important one over
-        // every plain one; within one importance, Whitespace is the exception —
+        // every plain one, the tokens having been put in Tailwind's order by StyleFamilyOrder; within one importance, Whitespace is the exception —
         // see below). Returns an empty TextEffect (every axis null) when no recognised token is present.
         // Leading follows the same last-token-wins rule as Transform/Decoration: it has no reset form (see
         // LeadingUnit), so there is nothing analogous to Whitespace's cross-family override to special-case.
         // Decoration's last-token-wins rule also covers Overline: CSS's text-decoration-line can combine
         // multiple lines in one declaration (underline overline both render), but this axis resolves to
         // exactly ONE TextDecorationKind value per element by pre-existing design (predating Overline) — so
-        // "underline overline" here picks the LAST token (Overline), it does not compose both onto the
-        // element the way CSS would. Documented as a deviation in fonts.md; not re-litigated by adding
+        // "underline overline" here picks the last token in Tailwind's order (Underline, whichever is written
+        // first), it does not compose both onto the element the way CSS would. Documented as a deviation in fonts.md; not re-litigated by adding
         // Overline.
         public static TextEffect Parse(string[] classNames)
         {
@@ -313,16 +313,16 @@ namespace Velvet
             public TextWrapStyle? WrapStyle;
         }
 
-        // The utilities that write white-space, in the order _typography.uss declares them, since among
+        // The utilities that write white-space, in the order the bundled sheets declare them, since among
         // several on one element the later rule is the one UI Toolkit applies. whitespace-pre-line has no
-        // rule and is left to the Whitespace axis. WhiteSpaceSheetOrderTests reads the sheet to pin the order.
+        // rule and is left to the Whitespace axis. WhiteSpaceSheetOrderTests reads the sheets to pin the order.
         internal static readonly KeyValuePair<string, WhiteSpace>[] WhiteSpaceClassesInSheetOrder =
         {
+            new("truncate", WhiteSpace.NoWrap),
             new("whitespace-normal", WhiteSpace.Normal),
             new("whitespace-nowrap", WhiteSpace.NoWrap),
             new("whitespace-pre", WhiteSpace.Pre),
             new("whitespace-pre-wrap", WhiteSpace.PreWrap),
-            new("truncate", WhiteSpace.NoWrap),
         };
 
         // Returns true when cls was recognised as a text-effect utility (and folded into facets).

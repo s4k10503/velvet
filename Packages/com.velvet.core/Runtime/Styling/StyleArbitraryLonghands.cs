@@ -80,6 +80,14 @@ namespace Velvet
             Set(sets, ArbitraryProperty.BorderTopRightRadius, StyleLonghand.BorderTopRightRadius);
             Set(sets, ArbitraryProperty.BorderBottomLeftRadius, StyleLonghand.BorderBottomLeftRadius);
             Set(sets, ArbitraryProperty.BorderBottomRightRadius, StyleLonghand.BorderBottomRightRadius);
+            Set(sets, ArbitraryProperty.BorderStartRadius,
+                StyleLonghand.BorderTopLeftRadius, StyleLonghand.BorderBottomLeftRadius);
+            Set(sets, ArbitraryProperty.BorderEndRadius,
+                StyleLonghand.BorderTopRightRadius, StyleLonghand.BorderBottomRightRadius);
+            Set(sets, ArbitraryProperty.BorderStartStartRadius, StyleLonghand.BorderTopLeftRadius);
+            Set(sets, ArbitraryProperty.BorderStartEndRadius, StyleLonghand.BorderTopRightRadius);
+            Set(sets, ArbitraryProperty.BorderEndStartRadius, StyleLonghand.BorderBottomLeftRadius);
+            Set(sets, ArbitraryProperty.BorderEndEndRadius, StyleLonghand.BorderBottomRightRadius);
 
             Set(sets, ArbitraryProperty.BorderWidth, StyleLonghand.BorderTopWidth, StyleLonghand.BorderRightWidth,
                 StyleLonghand.BorderBottomWidth, StyleLonghand.BorderLeftWidth);

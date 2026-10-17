@@ -7996,12 +7996,13 @@ class ShardCeilingTests(unittest.TestCase):
     # survivor under `Runtime/`: the session's whole suite and then the launch of the fixtures reading IL;
     # "failed" the same with a reach run that never finishes, every mutant taking the whole suite; "small"
     # a shard that takes main's path, which is main's charge: every area's baseline and the whole shard.
-    def fits(self, job, platform, mutant, setup, arm="reach", count=None):
-        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+    def fits(self, job, platform, mutant, setup, arm="reach", count=None, workflow="mutation.yml",
+             step=None):
+        text = (REPO_ROOT / ".github/workflows" / workflow).read_text()
         # Both platforms' measuring steps sit in `mutation-shard`, each with a timeout of its own under the
-        # job's, which must hold both and the steps around them.
-        found = re.search(r"^      - name: Measure {}\n        timeout-minutes: (\d+)$".format(platform),
-                          workflow.partition("\n  {}:".format(job))[2], re.MULTILINE)
+        # job's, which must hold both and the steps around them. kill-set.yml's one step is named `step`.
+        found = re.search(r"^      - name: {}\n        timeout-minutes: (\d+)$".format(
+            step or "Measure " + platform), text.partition("\n  {}:".format(job))[2], re.MULTILINE)
         per = mutation_check.SHARD_CEILING.get(platform)
         count = per if count is None else count
         narrowed = platform in getattr(mutation_check, "NARROWED_PLATFORMS", ())
@@ -11274,6 +11275,131 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(("reusing=" in campaign.printed, "verdicts reused" in campaign.printed), (False, False))
+
+
+class LineRangeTests(unittest.TestCase):
+    """`--lines` keeps the mutants on named line ranges of the `--files` sources."""
+
+    def test_Given_ARangeOverFourOfTwelveMethods_When_Planned_Then_OnlyThoseMutantsAreCountedAndEmitted(self):
+        # Arrange — the methods sit on lines 5 to 16, one mutant each.
+        campaign = StubbedCampaign(body=probe_body(12))
+        listed = campaign.project / "list.json"
+
+        # Act
+        code = campaign.run("--plan", "--lines", "{}:5-8".format(campaign.source), "--emit-mutants", str(listed))
+
+        # Assert — the emitted list is what each shard hands back to its own tree.
+        emitted = json.loads(listed.read_text()) if listed.exists() else []
+        self.assertEqual((code, "mutants=4" in campaign.printed, [record["line"] for record in emitted]),
+                         (0, True, [5, 6, 7, 8]))
+
+    def test_Given_ARangeOutsideTheFile_When_Planned_Then_ItIsRefused(self):
+        # Arrange
+        campaign = StubbedCampaign(body=probe_body(12))
+
+        # Act
+        code = campaign.run("--plan", "--lines", "{}:5-999".format(campaign.source))
+
+        # Assert
+        self.assertIn("outside", str(code))
+
+    def test_Given_ARangeHoldingNoMutant_When_Planned_Then_ItIsRefused(self):
+        # Arrange — lines 1 to 4 are the namespace and class braces.
+        campaign = StubbedCampaign(body=probe_body(12))
+
+        # Act
+        code = campaign.run("--plan", "--lines", "{}:1-4".format(campaign.source))
+
+        # Assert
+        self.assertIn("no mutant", str(code))
+
+    def test_Given_ANamedFileWithNoRange_When_Planned_Then_ItIsRefusedRatherThanDroppedUnasked(self):
+        # Arrange — the second file would otherwise keep none of its mutants and the run would still plan.
+        campaign = StubbedCampaign(body=probe_body(12))
+        second = campaign.project / "Packages/com.velvet.core/Runtime/Other.cs"
+        second.write_text(probe_body(3))
+
+        # Act
+        code = campaign.drive("--files", str(campaign.source), str(second), "--plan",
+                              "--lines", "{}:5-8".format(campaign.source))
+
+        # Assert
+        self.assertIn("gives no range", str(code))
+
+
+class KillSetShardTests(unittest.TestCase):
+    """`.github/workflows/kill-set.yml`, whose shard job measures one tree and so is sized as
+    `ShardCeilingTests` sizes `mutation-shard`'s step."""
+
+    WORKFLOW = REPO_ROOT / ".github/workflows/kill-set.yml"
+
+    def text(self):
+        return self.WORKFLOW.read_text()
+
+    def job(self):
+        return self.text().partition("\n  shard:")[2].partition("\n  diff:")[0]
+
+    def timeout_flag(self):
+        return int(re.search(r"--timeout (\d+)", self.job()).group(1))
+
+    def test_Given_TheKillSetStepTimeout_When_TheMostMutantsFittingAreCounted_Then_ItIsTheCampaignsCeiling(self):
+        # Arrange — the campaign's own charges, with the hang allowance (the 900 in its setup) replaced by
+        # the --timeout this workflow passes.
+        edit = (561, 201 + 486 + 12 + self.timeout_flag())
+        play = (934 + 100, 202 + 625 + 11 + self.timeout_flag())
+        fits = ShardCeilingTests("fits").fits
+
+        # Act
+        largest = max((count for count in range(1, 40)
+                       if all(fits("shard", "EditMode", edit[0], edit[1], arm=arm, count=count,
+                                   workflow="kill-set.yml", step="Measure")
+                              for arm in ("reach", "failed", "small"))), default=0)
+        play_fits = fits("shard", "PlayMode", play[0], play[1], workflow="kill-set.yml", step="Measure")
+
+        # Assert
+        self.assertEqual((largest, play_fits), (mutation_check.SHARD_CEILING["EditMode"], True))
+
+    def test_Given_TheShardJobsTimeout_When_ComparedWithItsMeasuringStep_Then_ItHoldsTheStepAndTheRest(self):
+        # Arrange — one tree a job, so one step; what is left is the checkout, restore and upload.
+        job = self.job()
+        steps = [int(minutes) for minutes in re.findall(r"^        timeout-minutes: (\d+)$", job, re.MULTILINE)]
+        found = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
+
+        # Act
+        spare = int(found.group(1)) - sum(steps) if found else None
+
+        # Assert
+        self.assertEqual((len(steps), spare is not None and spare >= 15), (1, True))
+
+    def test_Given_TheMeasuringStep_When_ItsTimeoutFlagIsRead_Then_ItIsThreeTimesTheBaselineAtLeast(self):
+        # Arrange — a hang reads as one only where the baseline times mutation_check.HANG_MARGIN fits the flag.
+        flag = self.timeout_flag()
+
+        # Act
+        floor = mutation_check.HANG_MARGIN * ShardCeilingTests.BASELINE
+
+        # Assert
+        self.assertGreaterEqual(flag, floor)
+
+    def test_Given_TheWorkflow_When_ItsTriggersAreRead_Then_ItIsDispatchedByHandAndRequiredByNothing(self):
+        # Arrange
+        block = re.search(r"^on:\n((?:  .*\n|\n)*)", self.text(), re.MULTILINE).group(1)
+
+        # Act
+        read = (re.findall(r"^  ([a-z_]+):", block, re.MULTILINE), "Required checks (" in self.text())
+
+        # Assert
+        self.assertEqual(read, (["workflow_dispatch"], False))
+
+    def test_Given_TheDiffJob_When_ItsComparisonIsRead_Then_ItReadsTheBaseDirectoryFirst(self):
+        # Arrange
+        job = self.text().partition("\n  diff:")[2]
+
+        # Act
+        read = re.search(r"kill_set_diff\.py (\S+) (\S+)", job).groups()
+
+        # Assert
+        self.assertEqual(read, ("Logs/kill-set-base", "Logs/kill-set-head"))
 
 
 if __name__ == "__main__":

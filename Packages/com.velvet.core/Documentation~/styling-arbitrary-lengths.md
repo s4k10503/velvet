@@ -19,6 +19,10 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 
 Unit names match case-sensitively, so `Q` is upper case and the rest lower.
 
+Swapping one bracketed value for another that writes the same property (`w-[300px]` for `w-[10px]`, with or
+without `!`) leaves the old inline value in place until the new one is written, so a `transition-*` or
+`duration-*` on the element runs between the two.
+
 A math function follows CSS's grammar with Tailwind's spelling. `_` stands for a space. CSS wants a space
 on both sides of a binary `+` or `-`; Tailwind writes `calc(2rem-4px)` and adds the spaces itself, so a
 space on neither side reads as one on both, and `calc(2rem-4px)` and `calc(2rem_-_4px)` are the same
@@ -135,18 +139,31 @@ Where a shorthand and a longhand of one family meet in one `className`, the long
 comes first, as in Tailwind, which emits `padding` ahead of `padding-top`: `p-13 pt-2` and `pt-2 p-13` both
 leave the top at 8px and the other sides at 52px. The order is Tailwind's property order: the all-sides
 shorthand, then the axis (`px-*` / `py-*`, `inset-x-*` / `inset-y-*`), then a single side, and `size-*` ahead
-of `w-*` and `h-*`. It covers padding, margin, the insets and `size-*` / `w-*` / `h-*`, at one priority: a
-variant or `!` outranks the plain utility as it does anywhere, and a bracket value takes part the same way
-(`p-[52px] pt-2`). Variants are compared as a set, so `hover:focus:` and `focus:hover:` are one group.
+of `w-*` and `h-*`. It covers padding, margin, the insets, `size-*` / `w-*` / `h-*` and the border radii, at one
+priority: a variant or `!` outranks the plain utility as it does anywhere, and a bracket value takes part the same
+way (`p-[52px] pt-2`). Variants are compared as a set, so `hover:focus:` and `focus:hover:` are one group.
+
+The radii run `rounded-*`, then the logical sides and corners (`rounded-s-*`, `rounded-ss-*`, `rounded-e-*`,
+`rounded-se-*`, `rounded-ee-*`, `rounded-es-*`), then the physical ones: `rounded-t-*`, `rounded-l-*`,
+`rounded-tl-*`, `rounded-r-*`, `rounded-tr-*`, `rounded-b-*`, `rounded-br-*`, `rounded-bl-*`. Of two that write
+different properties and share a corner the later holds it whichever comes first, so `rounded-t-[2px] rounded-r-[8px]` and
+`rounded-r-[8px] rounded-t-[2px]` both give the top-right corner 8px, `rounded-l-sm rounded-b-lg` and
+`rounded-b-lg rounded-l-sm` both give the bottom-left 8px, and a logical radius gives way to the physical one over
+its corner. A stylesheet radius class that Tailwind emits after an inline one it overlaps is written inline, as
+below: `rounded-r-lg rounded-se-[2px]` leaves the top-right at 8px. Two utilities of one family
+(`rounded-md rounded-lg`) write one property, and the stylesheet declares them in Tailwind's order: both
+spellings give `rounded-md`. In a `V.Motion` pose, a base radius
+the pose partly overlaps keeps only the corners the pose leaves: `rounded-l-[4px]` under a `rounded-t-[16px]` pose
+is `rounded-bl-[4px]`.
 
 An inline value outranks every class on its element, so a stylesheet class that is the narrower of such a pair
 is written inline too when an inline utility of an overlapping family stands beside it: `pt-2` becomes
-`pt-[8px]`, `mx-auto` becomes `mx-[auto]` (the `auto` bracket in the [table above](#what-every-length-bracket-reads)) and `w-full`
-becomes `w-[100%]`. Two things follow. The rewritten class is no longer in the element's class list, so a
+`pt-[8px]`, `mx-auto` becomes `mx-[auto]` (the `auto` bracket in the [table above](#what-every-length-bracket-reads)), `w-full`
+becomes `w-[100%]` and `rounded-t-lg` becomes `rounded-t-[8px]` (`rounded-t-full` becomes `rounded-t-[9999px]`). Two things follow. The rewritten class is no longer in the element's class list, so a
 selector on it (`.pt-2 > .x`) and `ClassListContains("pt-2")` stop seeing it, though the unrewritten classes of
 the list are unchanged. And the rewrite writes the pixel value of the step as Velvet's scale gives it, so a
-stylesheet that redefines `--space-2` moves `pt-2` and leaves `pt-[8px]` where it was, the same limit as
-the logical utilities have ([react-migration.md](react-migration.md)).
+stylesheet that redefines `--space-2` moves `pt-2` and leaves `pt-[8px]` where it was (`--radius-lg` and
+`rounded-t-[8px]` likewise), the same limit as the logical utilities have ([react-migration.md](react-migration.md)).
 
 The rule is made where a shorthand and a longhand meet in one `className` string; these differ:
 - A logical utility (`ps-*`, `ms-*`, `start-*`, the block forms) beside the physical utility of its own side
@@ -158,7 +175,88 @@ The rule is made where a shorthand and a longhand meet in one `className` string
   `pt-[8px]` beside a pose `p-[52px]` leaves the top at 52px, the base token being left out while that pose
   applies. A base class beside an inline pose needs no such step, the inline value outranking it already; a pose class that is the narrower of a pair with an inline base token (`p-13` base, `pt-2` pose) is written inline like any other, so it holds its side and the base keeps the rest.
 - A class list assembled outside a `className` string, or beside a class list of another element, is not ordered this way.
-- Border radii are not ordered this way: `rounded-r-*` and `rounded-t-*` on one corner are left to whichever is
-  written last.
 
 `z-<n>` takes any whole number an int holds the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).
+
+### An inline value and a stylesheet class
+
+Of two base utilities that write one longhand, one resolved inline (a bracket value, a fraction, `auto`, a negated
+step, a colour with an opacity, a logical side) and one a stylesheet class, the one Tailwind emits later holds it,
+whichever is written first. Tailwind sorts the candidate names by character code with digits compared as numbers, and
+a rule with more declarations ahead of one with fewer, so `w-px w-[10px]` and `w-[10px] w-px` both give 1px,
+`w-1/2 w-4` gives 16px, and `mt-[10px] mt-auto`, `-mt-2 mt-1`, `bg-[#ff0000] bg-red-500`, `border-s-2 border-l-4` and
+`text-lg/7 text-sm` leave the class the property. Where the inline token is the later one it keeps the property:
+`w-4 w-[10px]` gives 10px, and `scale-100 -scale-[0.5]` gives the inline scale, since `scale-100` declares three
+variables beside `scale` and so sorts ahead.
+
+An inline token that the classes Tailwind emits after it write in full is left out of the class list, so it writes no
+style; taking the class away brings it back. One they write only in part keeps the rest: for the spacing, size, inset
+and radius families the class is written inline (above), and a border width is cut down to the sides the classes leave,
+so `border-[3px] border-l-4` and `border-l-4 border-[3px]` give the left side 4px and the other three 3px. A few
+bundled classes carry Velvet's own name for a Tailwind utility and sort by that utility: `rotate-n6` as `-rotate-6`,
+and `duration-fast`, `duration-normal` and `duration-slow` as `duration-100`, `duration-150` and `duration-200`. The sheets declare them there too, so `rotate-6 rotate-n6` gives 6 degrees.
+
+This orders one inline token against the classes beside it. Only plain base tokens take part: a variant, an important
+token and a class gated on a state are ranked by their own layer. Two inline tokens of one property are ordered in
+the next section.
+
+### Two inline utilities of one property
+
+Two base utilities that both resolve inline and write the same property are ordered as Tailwind emits them, whichever
+is written first: `w-[1px] w-[2px]` and `w-[2px] w-[1px]` both give 2px, `w-1/2 w-[10px]` gives 10px,
+`bg-red-500/50 bg-[#ff0000]` gives the half-transparent red, `border-b-red-500 border-b-[#0000ff]` leaves the bottom
+border red, and `scale-[1.5] scale-[2]`, `translate-x-[4px] translate-x-[8px]`, `opacity-[.3] opacity-[.7]` and
+`blur-[2px] blur-[4px]` give the second value. The important layer is ordered the same way (`!w-[1px] !w-[2px]` gives
+2px), and a custom filter is told apart by its registered name, so two different names are both kept. A token of
+another property and a token in another layer are left as written (`!w-[1px] w-[2px]`), and a variant token is ranked
+by the position of its own rule ([styling-variants.md](styling-variants.md)).
+
+The earlier token is left out of the class list, so it writes no style; taking the later one away brings it back, and
+taking the earlier one away changes nothing. A border width bracket that later inline tokens write in part is cut down
+to the sides they leave, as it is for a class above: `border-[3px] border-t-[4px]` and `border-t-[4px] border-[3px]`
+give the top 4px and the other three 3px.
+
+A stylesheet class that is written inline beside a narrower inline utility (`pt-2` beside `p-[3px]`, `w-4` beside
+`size-[10px]`) is ordered against the other writers of its property by the name it was written with, not by the
+inline form it becomes: `size-[10px] w-[10px] w-4` gives a 10px width, since Tailwind emits `w-[10px]` after `w-4`,
+where the inline form `w-[16px]` would sort after it. The same holds behind a variant and under `!`.
+
+A slash text size (`text-[14px]/6`) is not left out for a later plain font size (`text-[16px]`), because its line
+height is read off the token. Tailwind emits the slash form first, since it declares font size and line height, so
+the plain size holds the font size and the slash token the line height in either order:
+`text-[16px] text-[14px]/6` and `text-[14px]/6 text-[16px]` give 16px with the 6-step line height, and
+`text-sm/6 text-lg/7` gives the `text-sm` size with the `/6` line height.
+
+### Utilities a C# resolver folds from the class list
+
+A few families have no inline layer to settle a pair: a resolver reads the whole class list and ends on the last
+token of each slot. Their base tokens are put in the order Tailwind emits them, in the positions they hold, so the
+token the fold ends on is the one Tailwind emits last whichever is written first. Tailwind sorts two utilities by
+the first property they differ on, then by the one with more declarations, then by the candidate name, digits compared
+as numbers and a bracket ahead of a letter. Most utilities of one slot declare the same properties, so the name decides;
+the exceptions are named in the list:
+
+- the font facets: `font-light font-bold` and `font-bold font-light` both give light, `not-italic italic` gives not
+  italic, `font-[700] font-[600]` gives 700, `font-light font-[700]` gives light, `font-sans font-mono` gives sans;
+  `bold-italic` sorts as its name, which Tailwind has no utility for;
+- the text effects: `uppercase lowercase` gives upper case, `underline overline` gives underline, `text-pretty
+  text-balance` gives pretty, `leading-6 leading-4` gives the 6 step, with `whitespace-*` and the named and slash
+  sizes in the same list;
+- `z-20 z-10` gives 20, `grid-cols-3 grid-cols-2` three columns, `gap-x-4 gap-2` a 4 horizontal gap with a 2
+  vertical one, `space-x-*` and `space-y-*`, and `divide-*`;
+- `shadow-*` and `drop-shadow-*`, which declare box-shadow and filter (Tailwind v4's `property-order.ts` lists box-shadow, the ring's before the outline's, ahead of filter), so `shadow-lg drop-shadow-sm` gives the drop
+  shadow; `ring-*` and `outline-*`, outline being emitted after the ring, so `ring-0 outline-2` gives a 2px outline;
+  `skew-*`, `pointer-events-none` and `pointer-events-auto`, `border-solid` and the other line styles, and
+  `animate-*`;
+- the gradient shape, where a keyword or integer `bg-linear-*` counts three declarations to the two of the others
+  and is emitted first ([styling-gradients.md](styling-gradients.md)), beside its `from-` / `via-` / `to-` stops;
+- `clip-path-none` and `clip-path-[…]`, `bg-[addr:…]`, `animate-gradient`, `animate-shimmer` and `animate-hue`, which
+  Tailwind has no utility for, so the candidate name orders them.
+
+Tokens of the two importances are ordered apart, as the resolvers fold them. A variant payload is appended after the
+base tokens by the variant gate and keeps its place there. The nine-slice insets (`slice-*`) and `bold-italic` also have no Tailwind utility; the insets write overlapping
+longhands, so they follow the sort key instead: more longhands first, then the
+candidate name, which puts `slice-[…]` ahead of `slice-y-[…]` ahead of `slice-t-[…]` whichever is written first.
+
+This is a change from the last token written: `not-italic italic`, `underline overline`, `text-pretty text-balance`
+and `uppercase lowercase` used to end on their second class.

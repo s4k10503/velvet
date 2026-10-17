@@ -154,6 +154,7 @@ namespace Velvet
         {
             Retire(owner);
             ComponentFiber.RequestRenderForSettledTransition(Fiber);
+            FiberWorkLoop.OweSettleRender(Fiber);
         }
 
         internal abstract void Retire(HookTransitionSlot owner);
@@ -482,30 +483,237 @@ namespace Velvet
 
     internal abstract class HookStateSlot
     {
-        // The committed state value when it is a VNode root (element-in-state caching) —
-        // see HookSlotRecycleProbe.
-        public abstract object? RecycleMarkRoot { get; }
+        // The node roots the slot holds that a recycle sweep must not return to the pool — see
+        // HookSlotRecycleProbe: the states it holds or staged, and the nodes its queued updates carry or computed,
+        // since the render that reaches a skipped update emits its node.
+        public abstract void VisitRecycleRoots(Action<object> visitRoot);
+
+        public abstract void Commit();
+
+        // Whether a render at lane would skip an update still queued here that asked for a render.
+        public abstract bool HoldsUpdateBeyond(FiberUpdatePriority lane);
     }
 
-    internal sealed class HookStateSlot<T> : HookStateSlot
+    // An update a setter queued. Lane is the one the setter ran on. EagerState is the result the setter computed
+    // at the call, which a replay uses rather than running the reducer again. An update that bailed out eagerly is
+    // queued unscheduled, so a rebase still sees it and no render is asked for.
+    internal sealed class HookUpdate<TState, TAction>
     {
-        public T Value = default!;
-        public StateUpdater<T> Setter = default!;
+        public TAction Action = default!;
+        public FiberUpdatePriority Lane;
+        public bool HasEagerState;
+        public TState EagerState = default!;
+        public bool Scheduled;
 
-        private static readonly bool s_canHoldNodes = !typeof(T).IsValueType;
-
-        public override object? RecycleMarkRoot => s_canHoldNodes ? HookSlotRecycleProbe.Probe(Value) : null;
+        // The copy a rebase keeps of an update that was applied after one that was skipped. Urgent is never
+        // skipped by a render, so the update is never taken back out of the state.
+        internal HookUpdate<TState, TAction> Rebased() => new()
+        {
+            Action = Action,
+            Lane = FiberUpdatePriority.Urgent,
+            HasEagerState = HasEagerState,
+            EagerState = EagerState,
+            Scheduled = Scheduled,
+        };
     }
 
-    internal sealed class ReducerSlot<TState, TAction> : HookStateSlot
+    // The state a UseState or UseReducer hook holds, as React keeps it: Value is the committed state, and a
+    // render folds the queued updates over BaseState, skipping those whose lane it does not render. The
+    // BaseQueue keeps every update from the first skipped one on, in insertion order, so the render that
+    // reaches the skipped lane replays them over the state they were skipped from.
+    internal abstract class HookUpdateQueueSlot<TState, TAction> : HookStateSlot
     {
-        public TState Value = default!;
-        public Func<TState, TAction, TState> Reducer = null!;
-        public Action<TAction> Dispatch = null!;
+        public TState Value;
+        public Func<TState, TAction, TState> Reducer;
+
+        private TState _baseState;
+        private List<HookUpdate<TState, TAction>>? _baseQueue;
+        private List<HookUpdate<TState, TAction>>? _pending;
+
+        // What the last Process computed, adopted by Commit. A render that never commits leaves the committed
+        // fields as they were, so the next render folds the same updates again. Process only moves these away
+        // from the committed fields while updates are queued, which only Commit empties, so a Commit with no
+        // Process before it adopts what is already committed.
+        private TState _nextValue;
+        private TState _nextBaseState;
+        private List<HookUpdate<TState, TAction>>? _nextBaseQueue;
+
+        // React's useState computes an update's result at the call while nothing is scheduled and bails out of
+        // rendering on an equal one; its useReducer dispatch never does either.
+        private readonly bool _computesAtTheCall;
 
         private static readonly bool s_canHoldNodes = !typeof(TState).IsValueType;
 
-        public override object? RecycleMarkRoot => s_canHoldNodes ? HookSlotRecycleProbe.Probe(Value) : null;
+        protected HookUpdateQueueSlot(TState seed, Func<TState, TAction, TState> reducer, bool computesAtTheCall)
+        {
+            Value = _baseState = _nextValue = _nextBaseState = seed;
+            Reducer = reducer;
+            _computesAtTheCall = computesAtTheCall;
+        }
+
+        // Queues action at lane and returns whether a render has to run for it.
+        internal bool Enqueue(TAction action, FiberUpdatePriority lane)
+        {
+            var update = new HookUpdate<TState, TAction> { Action = action, Lane = lane, Scheduled = true };
+            if (_computesAtTheCall && !HoldsScheduledUpdate())
+            {
+                update.EagerState = Reducer(Value, action);
+                update.HasEagerState = true;
+                update.Scheduled = !ObjectIs.AreEqual(Value, update.EagerState);
+            }
+            // Everything queued is an update that bailed out and left the state as it was, so one more
+            // replaces them.
+            if (!update.Scheduled) _pending?.Clear();
+            (_pending ??= new List<HookUpdate<TState, TAction>>()).Add(update);
+            return update.Scheduled;
+        }
+
+        // The state a render at renderLane shows. A skipped update asks the fiber for a render at its own lane,
+        // so the render that reaches it is owed whichever path ran this one.
+        internal TState Process(ComponentFiber fiber, FiberUpdatePriority renderLane)
+        {
+            if (_pending != null)
+            {
+                (_baseQueue ??= new List<HookUpdate<TState, TAction>>()).AddRange(_pending);
+                _pending.Clear();
+            }
+            if (_baseQueue == null || _baseQueue.Count == 0) return Value;
+
+            var state = _baseState;
+            var newBaseState = state;
+            List<HookUpdate<TState, TAction>>? newBaseQueue = null;
+            foreach (var update in _baseQueue)
+            {
+                if (!FiberLane.Renders(renderLane, update.Lane))
+                {
+                    if (newBaseQueue == null)
+                    {
+                        newBaseQueue = new List<HookUpdate<TState, TAction>>();
+                        newBaseState = state;
+                    }
+                    newBaseQueue.Add(update);
+                    FiberWorkLoop.ScheduleRerender(fiber, update.Lane);
+                    continue;
+                }
+                newBaseQueue?.Add(update.Rebased());
+                state = update.HasEagerState ? update.EagerState : Reducer(state, update.Action);
+            }
+            if (newBaseQueue == null) newBaseState = state;
+
+            _nextValue = state;
+            _nextBaseState = newBaseState;
+            _nextBaseQueue = newBaseQueue;
+            return state;
+        }
+
+        public override void Commit()
+        {
+            Value = _nextValue;
+            _baseState = _nextBaseState;
+            _baseQueue = _nextBaseQueue;
+        }
+
+        private bool HoldsScheduledUpdate() => AnyScheduled(_baseQueue) || AnyScheduled(_pending);
+
+        private static bool AnyScheduled(List<HookUpdate<TState, TAction>>? updates)
+        {
+            if (updates == null) return false;
+            foreach (var update in updates)
+            {
+                if (update.Scheduled) return true;
+            }
+            return false;
+        }
+
+        public override bool HoldsUpdateBeyond(FiberUpdatePriority lane)
+            => AnyBeyond(_baseQueue, lane) || AnyBeyond(_pending, lane);
+
+        private static bool AnyBeyond(List<HookUpdate<TState, TAction>>? updates, FiberUpdatePriority lane)
+        {
+            if (updates == null) return false;
+            foreach (var update in updates)
+            {
+                if (update.Scheduled && !FiberLane.Renders(lane, update.Lane)) return true;
+            }
+            return false;
+        }
+
+        // The node an action carries, for the actions that can carry one.
+        protected virtual object? Payload(TAction action) => action;
+
+        public override void VisitRecycleRoots(Action<object> visitRoot)
+        {
+            // MUTANT_SURVIVES(equivalent): a value-type state holds no node, so what the probes below would read through it marks nothing a render emits; the guard only skips boxing it.
+            if (!s_canHoldNodes) return;
+            Visit(visitRoot, Value, _baseState);
+            VisitQueued(visitRoot, _baseQueue);
+            VisitQueued(visitRoot, _pending);
+            // Between a Process and the Commit that adopts it, which a sweep reaches while a Suspense holds the
+            // commit of a render. Otherwise the staged fields are the committed ones, visited above.
+            // MUTANT_SURVIVES(equivalent): visiting the staged fields when they are the committed ones marks the same roots a second time.
+            if (ReferenceEquals(_nextBaseQueue, _baseQueue)) return;
+            // The staged queue holds only updates _baseQueue still holds, or copies of them, until the Commit
+            // adopts it, so it needs no visit of its own; the staged states can be a result no queued update names.
+            Visit(visitRoot, _nextValue, _nextBaseState);
+        }
+
+        private void VisitQueued(Action<object> visitRoot, List<HookUpdate<TState, TAction>>? updates)
+        {
+            if (updates == null) return;
+            foreach (var update in updates)
+            {
+                Visit(visitRoot, Payload(update.Action), update.EagerState);
+            }
+        }
+
+        private static void Visit(Action<object> visitRoot, object? first, object? second)
+        {
+            VisitOne(visitRoot, first);
+            VisitOne(visitRoot, second);
+        }
+
+        private static void VisitOne(Action<object> visitRoot, object? candidate)
+        {
+            var root = HookSlotRecycleProbe.Probe(candidate);
+            if (root != null) visitRoot(root);
+        }
+    }
+
+    // What UseState queues: the replacement value, or the function that computes it from the state before.
+    internal readonly struct StateAction<T>
+    {
+        public readonly T Value;
+        public readonly Func<T, T>? Updater;
+
+        public StateAction(T value, Func<T, T>? updater)
+        {
+            Value = value;
+            Updater = updater;
+        }
+    }
+
+    internal sealed class HookStateSlot<T> : HookUpdateQueueSlot<T, StateAction<T>>
+    {
+        public StateUpdater<T> Setter = default!;
+
+        private static readonly Func<T, StateAction<T>, T> s_apply
+            = static (state, action) => action.Updater != null ? action.Updater(state) : action.Value;
+
+        public HookStateSlot(T seed) : base(seed, s_apply, computesAtTheCall: true)
+        {
+        }
+
+        protected override object? Payload(StateAction<T> action) => action.Value;
+    }
+
+    internal sealed class ReducerSlot<TState, TAction> : HookUpdateQueueSlot<TState, TAction>
+    {
+        public Action<TAction> Dispatch = null!;
+
+        public ReducerSlot(TState seed, Func<TState, TAction, TState> reducer)
+            : base(seed, reducer, computesAtTheCall: false)
+        {
+        }
     }
 
     internal abstract class HookStoreSlot : IDisposable

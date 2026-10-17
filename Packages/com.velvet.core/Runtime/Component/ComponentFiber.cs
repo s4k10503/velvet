@@ -218,10 +218,6 @@ namespace Velvet
         // FiberEffects.HideLayoutEffects.
         internal bool LayoutEffectsHidden { get; set; }
 
-        // The insertion effects a render queued while a Suspense hid this fiber, which no commit ran — see
-        // FiberEffects.HoldInsertionEffects.
-        internal List<HookEffectSlot>? HeldInsertionEffects;
-
         internal List<ContextDependency> Dependencies { get; private set; } = new();
 
         // Staging list for the render in progress: context reads land here and are swapped into
@@ -547,9 +543,9 @@ namespace Velvet
         /// Opens the window the settle of <c>FiberRenderer.SubsumeFiberIntoThisPass</c> and of
         /// <c>FiberRenderer.NotifyAsyncResourceCompleted</c> reads, resetting both records it consumes: which lanes
         /// the render asks for again, and which transition slots enrolled work here.
-        /// Everything queued before the window is what that render satisfies, so the settle runs ahead of the
-        /// render — as it does in <c>FiberWorkLoop.FlushState</c>, whose commit render is likewise the one
-        /// that observes <c>isPending</c> already false.
+        /// Everything queued before the window is what that render satisfies, except the state updates its lane
+        /// skips, so the settle runs ahead of the render — as it does in <c>FiberWorkLoop.FlushState</c>, whose
+        /// commit render is likewise the one that observes <c>isPending</c> already false.
         /// </summary>
         /// <remarks>
         /// <see cref="Lanes"/> is left unallocated on purpose — a fiber with no <see cref="LaneState"/> has
@@ -559,7 +555,22 @@ namespace Velvet
         internal void OpenSubsumedRenderWindow()
         {
             Lanes?.LanesRequestedSinceReset.Clear();
-            DischargeTransitionEnrolments();
+            // The render skips the state updates queued here beyond its lane, and a transition's write is one of
+            // them, so the enrolments are kept for the render that applies it.
+            if (!HoldsStateUpdateBeyond(FiberWorkLoop.RenderLane))
+            {
+                DischargeTransitionEnrolments();
+            }
+        }
+
+        private bool HoldsStateUpdateBeyond(FiberUpdatePriority lane)
+        {
+            if (StateSlots == null) return false;
+            foreach (var slot in StateSlots)
+            {
+                if (slot.HoldsUpdateBeyond(lane)) return true;
+            }
+            return false;
         }
 
         /// <summary>

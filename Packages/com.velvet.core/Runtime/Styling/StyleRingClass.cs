@@ -232,7 +232,7 @@ namespace Velvet
             // move IsOutline: that flag only selects which family's DEFAULT width applies, and a color names
             // no width. Letting it move meant `outline ring-red-500` recoloured the band and silently
             // widened it from the outline default to the ring default at the same time.
-            if (TryParseColorValue(ringSuffix, out var c))
+            if (TryParseColorValue(ringSuffix, isOutlineFamily, out var c))
             {
                 slots.HasIntent = true;
                 slots.ColorSet = true;
@@ -268,19 +268,8 @@ namespace Velvet
         }
 
         // A color is a palette token (red-500 / white / black) or an arbitrary [<color>].
-        private static bool TryParseColorValue(string? suffix, out Color color)
-        {
-            color = default;
-            if (string.IsNullOrEmpty(suffix))
-            {
-                return false;
-            }
-            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
-            {
-                return StyleColorValueParser.TryParseColor(inner, out color);
-            }
-            return VelvetPalette.TryResolveColorToken(suffix, out color);
-        }
+        private static bool TryParseColorValue(string? suffix, bool longhand, out Color color)
+            => VelvetPalette.TryResolveColorToken(suffix ?? string.Empty, longhand, out color);
 
         // Resolves the top-left corner radius (px) the ring overlay follows, mirroring StyleShadowClass —
         // the band's outer radius is this plus the ring width (+ offset). Returns false for rounded-full /

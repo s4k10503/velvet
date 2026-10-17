@@ -15,29 +15,31 @@ namespace Velvet.Tests
     {
         private const string StylesDirectory = "Packages/com.velvet.core/Runtime/Styles";
 
+        // GREEN_ON_BASE(construction): both sides here are the repository's own content.
+        // Swap the first two entries of `WhiteSpaceClassesInSheetOrder` and this reddens.
         [Test]
-        public void Given_TheBundledSheets_When_TheirWhiteSpaceRulesAreRead_Then_TheyMatchTheMirrorInOrder()
+        public void Given_TheBundledSheets_When_TheirWhiteSpaceRulesAreReadInCascadeOrder_Then_TheyMatchTheMirror()
         {
             // Arrange
             var comment = new Regex(@"/\*.*?\*/", RegexOptions.Singleline);
             var rule = new Regex(@"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}");
             var declaration = new Regex(@"(?:^|[;\s])white-space\s*:\s*([a-z-]+)");
-            // The preflight sheet sorts first. Its two rules hand white-space to the parent and are no class a
+            var import = new Regex(@"@import\s+url\(""([^""]+)""\)");
+            // The preflight sheet is imported first. Its two rules hand white-space to the parent and are no class a
             // className names, so the mirror does not carry them.
-            var expected = new[] { "_preflight.uss velvet-label unset", "_preflight.uss velvet-button unset" }
+            var expected = new[] { "velvet-label unset", "velvet-button unset" }
                 .Concat(StyleTextEffectClass.WhiteSpaceClassesInSheetOrder
-                    .Select(pair => "_typography.uss " + pair.Key + " " + UssKeyword(pair.Value)))
+                    .Select(pair => pair.Key + " " + UssKeyword(pair.Value)))
                 .ToArray();
 
             // Act
-            var found = Directory.GetFiles(StylesDirectory, "*.uss")
-                .OrderBy(path => path, System.StringComparer.Ordinal)
-                .SelectMany(path => rule.Matches(comment.Replace(File.ReadAllText(path), " "))
+            var found = import.Matches(File.ReadAllText(StylesDirectory + "/StyleUtilities.uss"))
+                .Cast<Match>()
+                .SelectMany(sheet => rule.Matches(comment.Replace(File.ReadAllText(StylesDirectory + "/" + sheet.Groups[1].Value), " "))
                     .Cast<Match>()
                     .Select(match => (match, value: declaration.Match(match.Groups[2].Value)))
                     .Where(pair => pair.value.Success)
-                    .Select(pair => Path.GetFileName(path) + " " + pair.match.Groups[1].Value + " "
-                        + pair.value.Groups[1].Value))
+                    .Select(pair => pair.match.Groups[1].Value + " " + pair.value.Groups[1].Value))
                 .ToArray();
 
             // Assert

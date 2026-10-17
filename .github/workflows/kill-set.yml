@@ -1,0 +1,312 @@
+name: Kill set
+
+# Proves that a pull request which only deletes tests loses no mutant kill. The mutation campaign places
+# no mutant for such a change, so it proves nothing for it; this measures the mutants of the production
+# files named in `files` on the pull request's merge base and again on its head, and fails when a mutant
+# the base's tests killed is not killed on the head. CONTRIBUTING.md ▸ Checking that the tests can fail
+# owns when to run it and what the pull request body says about the result.
+#
+# Dispatched by hand, never by an event, and no branch-protection rule requires it. A run is one
+# platform over one list of files; a pull request that needs more starts more runs.
+on:
+  workflow_dispatch:
+    inputs:
+      files:
+        description: "Production sources whose mutants are measured, space-separated, e.g. Packages/com.velvet.core/Runtime/Styling/StyleSpacingPrecedence.cs"
+        required: true
+      lines:
+        description: "Optional PATH:FIRST-LAST ranges, space-separated, keeping only the mutants on those lines of the named files"
+        required: false
+      assemblies:
+        description: "Comma-separated test assemblies the suite is narrowed to; empty is every one"
+        required: false
+      base:
+        description: "The branch the pull request merges into; the tree measured is its merge base with head"
+        required: true
+        default: main
+      head:
+        description: "The pull request's branch or commit"
+        required: true
+      platform:
+        description: "The suite to measure"
+        required: true
+        default: EditMode
+        type: choice
+        options:
+          - EditMode
+          - PlayMode
+
+permissions:
+  contents: read
+
+# Same reason test.yml gives.
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+# The shard job's measuring step is timed by KillSetShardTests against the campaign's SHARD_CEILING.
+jobs:
+  # Same reading as test.yml's job of this name.
+  license-check:
+    name: Check Unity license secret
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      has_license: ${{ steps.check.outputs.has_license }}
+    steps:
+      - id: check
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "has_license=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_license=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::UNITY_LICENSE secret is not set — the comparison measures nothing."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # The two commits, and the mutants every shard measures on both. The list comes from the head's tree
+  # and each shard hands it back to mutation_check.py on its own tree, which refuses a tree that
+  # generates another. A pull request that changes one of the files, or the runner the campaign
+  # installs in the project, measures a production change rather than a pruning, so it is refused here.
+  # ---------------------------------------------------------------------------
+  plan:
+    name: Kill set (plan)
+    needs: license-check
+    if: needs.license-check.outputs.has_license == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      head: ${{ steps.head.outputs.sha }}
+      base: ${{ steps.base.outputs.sha }}
+      mutants: ${{ steps.plan.outputs.mutants }}
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.head }}
+          fetch-depth: 0
+
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
+      - id: head
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - env:
+          BASE: ${{ steps.base.outputs.sha }}
+          FILES: ${{ inputs.files }}
+        run: |
+          set -eu
+          set -f
+          # shellcheck disable=SC2086
+          if ! git diff --quiet "$BASE" HEAD -- $FILES Assets/MutantSchemata; then
+            echo "::error::the head changes a file to be measured or the campaign's runner, so the two trees would not be measured alike"
+            git diff --stat "$BASE" HEAD -- $FILES Assets/MutantSchemata
+            exit 1
+          fi
+
+      # A plan of no mutants proves nothing, and a named file the campaign skips is a mistyped path or a
+      # test file, so either fails here rather than passing the way a campaign's plan does.
+      - id: plan
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+          FILES: ${{ inputs.files }}
+          LINES: ${{ inputs.lines }}
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          set +e
+          set -f
+          # shellcheck disable=SC2086
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --files $FILES ${LINES:+--lines $LINES} \
+            --platform "$PLATFORM" --plan --emit-mutants mutants.json > plan.txt 2>&1
+          status=$?
+          cat plan.txt
+          { echo '### Kill set plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$status" -eq 0 ] || exit "$status"
+          if grep -q '^skipping ' plan.txt; then
+            echo "::error::a named file is not a mutable package source"
+            exit 1
+          fi
+          grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
+          if [ "$(sed -n 's/^mutants=//p' plan.txt)" = 0 ]; then
+            echo "::error::no mutant was generated from these files"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Kill set mutant list
+          path: mutants.json
+          overwrite: true
+
+  # ---------------------------------------------------------------------------
+  # The Library every shard restores, saved as mutation.yml's `library` job saves it, under the head's key.
+  # ---------------------------------------------------------------------------
+  library:
+    name: Kill set (Library)
+    needs: [license-check, plan]
+    if: needs.license-check.outputs.has_license == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.head }}
+          lfs: true
+
+      - id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-EditMode-
+
+      - if: steps.restore.outputs.cache-hit != 'true'
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
+          docker run --rm --init --workdir /github/workspace \
+            --volume "$GITHUB_WORKSPACE:/github/workspace" \
+            --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
+            python3 -u scripts/ci/licensed_editor.py -- -projectPath /github/workspace
+
+      - if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+
+  # ---------------------------------------------------------------------------
+  # One job measures one shard's mutants on one tree, so a shard costs the campaign's own
+  # mutation-shard step and the campaign's SHARD_CEILING holds for it. Two trees a shard doubles the jobs;
+  # `max-parallel` keeps them to half the account's twenty concurrent jobs.
+  #
+  # The tooling is the head's own on both trees, archived out of it beside the project. The project is the
+  # tree's, runner included: Assets/MutantSchemata is tracked, which is why the plan refuses a head that
+  # changes it.
+  # ---------------------------------------------------------------------------
+  shard:
+    name: Kill set (${{ matrix.tree }} shard ${{ matrix.shard }})
+    needs: [license-check, plan, library]
+    if: needs.license-check.outputs.has_license == 'true' && needs.plan.outputs.shards != '[]'
+    runs-on: ubuntu-latest
+    # The measuring step's timeout and the checkout, restore and upload around it; KillSetShardTests holds
+    # the step against the campaign's ceiling.
+    timeout-minutes: 195
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+        tree: [head, base]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.tree == 'head' && needs.plan.outputs.head || needs.plan.outputs.base }}
+          fetch-depth: 0
+          lfs: true
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-EditMode-
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Kill set mutant list
+          path: Logs/kill-set-list
+
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
+      - name: Archive the head's tooling
+        env:
+          HEAD: ${{ needs.plan.outputs.head }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools"
+          git archive "$HEAD" scripts | tar -x -C "$RUNNER_TEMP/tools"
+
+      # --timeout is HANG_MARGIN times the longest baseline measured, so that a hang reads as one.
+      # safe.directory names the workspace alone, for the reason mutation.yml's measuring steps give.
+      - name: Measure
+        timeout-minutes: 180
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          BASE: ${{ steps.base.outputs.sha }}
+          MUTANTS: ${{ needs.plan.outputs.mutants }}
+          SHARDS: ${{ needs.plan.outputs.shards }}
+          FILES: ${{ inputs.files }}
+          LINES: ${{ inputs.lines }}
+          ASSEMBLIES: ${{ inputs.assemblies }}
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          set -f
+          version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
+          # shellcheck disable=SC2086
+          docker run --rm --init --workdir /github/workspace \
+            --volume "$GITHUB_WORKSPACE:/github/workspace" \
+            --volume "$RUNNER_TEMP/tools:/tools:ro" \
+            --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
+            --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0=/github/workspace \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
+            python3 -u /tools/scripts/test_quality/ci_mutation_shard.py -- \
+              --base "$BASE" --files $FILES ${LINES:+--lines $LINES} ${ASSEMBLIES:+--assemblies "$ASSEMBLIES"} --platform "$PLATFORM" \
+              --timeout 1470 --max "$MUTANTS" --mutants Logs/kill-set-list/mutants.json \
+              --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
+              --output Logs/kill-set-${{ matrix.tree }}
+
+      # A shard that wrote no record fails its upload, and one that wrote some is complete or failed above.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Kill set ${{ matrix.tree }} shard ${{ matrix.shard }}
+          path: Logs/kill-set-${{ matrix.tree }}/mutant-*.json
+          if-no-files-found: error
+          overwrite: true
+
+  # ---------------------------------------------------------------------------
+  # The comparison, run only where every shard of both trees passed.
+  # ---------------------------------------------------------------------------
+  diff:
+    name: Kill set (diff)
+    needs: [license-check, plan, shard]
+    if: needs.shard.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.head }}
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: Kill set base shard *
+          path: Logs/kill-set-base
+          merge-multiple: true
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: Kill set head shard *
+          path: Logs/kill-set-head
+          merge-multiple: true
+
+      - env:
+          BASE: ${{ needs.plan.outputs.base }}
+          HEAD: ${{ needs.plan.outputs.head }}
+        run: |
+          set +e
+          python3 scripts/test_quality/kill_set_diff.py Logs/kill-set-base Logs/kill-set-head | tee diff.txt
+          status=${PIPESTATUS[0]}
+          { echo '### Kill set'; echo "base $BASE, head $HEAD"; echo '```'; cat diff.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

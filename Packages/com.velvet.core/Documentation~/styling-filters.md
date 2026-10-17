@@ -87,8 +87,8 @@ unrecognized utility.
 - Each registered name is its own layer stack, so `filter-[dissolve:0.4] filter-[glitch:0.1]`
   are independent — and a variant over one name (`hover:filter-[dissolve:0.9]`) restores that
   name's base arguments on hover-off without touching the others.
-- Repeating a name in one class string replaces its arguments (last wins) instead of stacking
-  a duplicate function.
+- Repeating a name in one class string replaces its arguments instead of stacking a duplicate
+  function; the one Tailwind emits last wins, whichever is written first.
 - A name keeps its compose slot for the element's lifetime: changing a filter's arguments
   (which the class diff performs as a clear-then-apply) does not re-slot it behind its
   neighbors.
@@ -130,9 +130,9 @@ shows again until it ends. This is CSS's order: a transition applies only while 
 and an animation's start or end starts no transition.
 
 > **`transition-filter` does not combine with another `transition-*` utility.** They all set the
-> same `transition-property`, and at equal specificity the one declared later in the bundled sheet
-> wins outright rather than merging — `transition-filter transition-colors` resolves to the colors
-> list, which silently takes filter changes back to instant. Note also that pinning the property
+> same `transition-property`, and at equal specificity the one Tailwind emits later, which the bundled
+> sheet declares later, wins outright rather than merging — `transition-filter transition-opacity`
+> resolves to the opacity list, which silently takes filter changes back to instant. Note also that pinning the property
 > means `transition-filter` transitions *only* `filter`: the element's colours, transforms and
 > geometry stop transitioning, which is what CSS does too. Put the other properties' transitions on a
 > different element, or hand-author a `transition-property` naming `filter` alongside them, in a stylesheet

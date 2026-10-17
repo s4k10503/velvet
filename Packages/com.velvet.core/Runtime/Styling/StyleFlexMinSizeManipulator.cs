@@ -37,6 +37,7 @@ namespace Velvet
         private const string SizePrefix = "size-";
         private const string OverflowHiddenClass = "overflow-hidden";
         private const string TruncateClass = "truncate";
+        private const string OverflowVisibleClass = "overflow-visible";
 
         // Reused across derives: manipulators run on the main thread, one derive at a time.
         private static readonly List<string> s_runs = new();
@@ -75,7 +76,6 @@ namespace Velvet
 
         // What the live class list declares, rebuilt by Scan when _scanStale.
         private bool _scanStale = true;
-        private bool _clipped;
         private bool _declaresMinWidth;
         private bool _declaresMinHeight;
         private Dim? _specifiedWidth;
@@ -143,13 +143,15 @@ namespace Velvet
             var parentContent = horizontal ? parent.contentRect.width : parent.contentRect.height;
             var specified = SpecifiedLength(textElement, horizontal, parentContent);
             var maximum = MaximumLength(textElement, horizontal, parentContent);
-            var signature = ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum);
+            var clipped = IsClipped(textElement);
+            var signature = System.HashCode.Combine(
+                ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum), clipped);
             if (_hasSignature && signature == _lastSignature)
             {
                 return;
             }
 
-            if (StandsDown(textElement, parent, horizontal))
+            if (StandsDown(textElement, parent, horizontal, clipped))
             {
                 Release(textElement);
                 _lastSignature = signature;
@@ -235,9 +237,9 @@ namespace Velvet
             => element.resolvedStyle.position != Position.Absolute
                 && element.resolvedStyle.display != DisplayStyle.None;
 
-        private bool StandsDown(TextElement textElement, VisualElement parent, bool horizontal)
+        private bool StandsDown(TextElement textElement, VisualElement parent, bool horizontal, bool clipped)
         {
-            if (_clipped || (horizontal ? _declaresMinWidth : _declaresMinHeight))
+            if (clipped || (horizontal ? _declaresMinWidth : _declaresMinHeight))
             {
                 return true;
             }
@@ -259,12 +261,30 @@ namespace Velvet
             return IsSizedByGridParent(parent);
         }
 
+        private static readonly string[] s_clipClasses = { OverflowHiddenClass, TruncateClass, OverflowVisibleClass };
+
+        // Read off the live list at each derive, not at a scan: a variant payload lights or retires one of these
+        // outside a patch. Of the three the one Tailwind emits last holds overflow, so the item is clipped unless
+        // that is overflow-visible.
+        private static bool IsClipped(VisualElement element)
+        {
+            string? held = null;
+            foreach (var cls in s_clipClasses)
+            {
+                // MUTANT_SURVIVES(equivalent, boundary): the three names are distinct, so two never compare equal.
+                if (element.ClassListContains(cls) && (held == null || StyleRuleOrder.CompareUtilities(held, cls) <= 0))
+                {
+                    held = cls;
+                }
+            }
+            return held != null && held != OverflowVisibleClass;
+        }
+
         // Where two classes declare the same length, the one later in Tailwind's rule order
         // (StyleRuleOrder) wins, so the answer is a function of the set of classes and not of the order they
         // were added in.
         private void Scan(TextElement textElement)
         {
-            _clipped = false;
             _declaresMinWidth = false;
             _declaresMinHeight = false;
             _specifiedWidth = null;
@@ -282,11 +302,7 @@ namespace Velvet
             for (var i = 0; i < names.Length; i++)
             {
                 var cls = names[i];
-                if (cls == OverflowHiddenClass || cls == TruncateClass)
-                {
-                    _clipped = true;
-                }
-                else if (cls.StartsWith(MinWidthPrefix, System.StringComparison.Ordinal))
+                if (cls.StartsWith(MinWidthPrefix, System.StringComparison.Ordinal))
                 {
                     _declaresMinWidth = true;
                 }

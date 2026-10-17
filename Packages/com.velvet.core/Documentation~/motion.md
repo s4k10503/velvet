@@ -82,6 +82,13 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 });
 ```
 
+- `onExitComplete` runs when the last removed child is gone. Where the render that removed it had no exit to play,
+  that is the passive-effect flush after the render, which runs after the layout effects of its commit, as
+  Framer's `PresenceChild` calls it from an effect; a removal that render never committed completes nothing.
+  Where an exit played, it is the end of the last exit's animation. An error it throws goes to the nearest error
+  boundary at or above the component rendering the presence, except where an exit played or a `V.Motion` child
+  was removed: Framer calls it from that exit's promise, so no boundary takes it and it is logged. An error from
+  a Motion's `onEnterComplete` is logged the same way, as Framer's `onAnimationComplete` runs in a promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the
   parent, so put `flex` / `gap-*` / wrapping on the parent.
 - **Framer's splice semantics:** while a ghost exits, surviving siblings keep their positions;
@@ -365,9 +372,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   that applies is decided from the element's **class list**, resolved the way the cascade resolves
   it: `transition-property` holds one value, so the utilities that set it do not combine — the
   **last-declared** one present on the element wins outright and the rest contribute nothing. The
-  bundled order is `transition-transform`, `transition-filter`, `transition-all`,
-  `transition-none`, `transition-opacity`, `transition-colors`, `transition-colors-scale`,
-  `transition-colors-scale-opacity`, then the scheduler-applied `anim-*` presets. So
+  bundled order is Tailwind's: `transition-all`, `transition-colors`, `transition-colors-scale`,
+  `transition-colors-scale-opacity`, `transition-filter`, `transition-opacity`,
+  `transition-transform`, `transition-none`, then the scheduler-applied `anim-*` presets. So
   `transition-all transition-colors` transitions the colours only, and
   `transition-all transition-none` transitions nothing, whichever order the class strings appear
   in. `transition-filter` names `filter`, which no driver writes, so it never triggers a
@@ -565,8 +572,12 @@ interval is eased by the timing function its keyframe names, as a CSS animation 
 | `animate-ping` | scales to twice the element's own scale while fading to nothing by three quarters of the loop, on `cubic-bezier(0, 0, 0.2, 1)`, then holds | 1s |
 | `animate-bounce` | lifts the element a quarter of its height and drops it back, the lift easing in on `cubic-bezier(0.8, 0, 1, 1)` and out on `cubic-bezier(0, 0, 0.2, 1)` | 1s |
 
-`animate-none` cancels, and the last *recognised* `animate-*` in the class list wins — an unclaimed
-name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
+`animate-none` cancels. Of two recognised `animate-*` classes the one Tailwind emits last wins, in either
+order, and Tailwind orders them by name: `animate-bounce`, `animate-gradient`, `animate-hue`, `animate-none`,
+`animate-ping`, `animate-pulse`, `animate-shimmer`, `animate-spin`. So `animate-none` cancels the three before it
+in that list, and the four after it outrank it (`animate-spin animate-none` spins). `animate-gradient`,
+`animate-hue` and `animate-shimmer` have no Tailwind utility, so that order is the one the sort gives their names.
+An unclaimed name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
 `animate-hue-[5s]`. The two gradient modes are inert without a gradient
 ([styling-gradients.md](styling-gradients.md)) to pan.
 

@@ -245,7 +245,7 @@ namespace Velvet
                 _childReconciler.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
                 return null;
             }
-            var enterCompletionsBefore = _ctx.PendingEnterCompletions.Count;
+            var completionsBefore = _ctx.PendingCompletions.Count;
             catchingBoundary.CatchesInTheWalk = true;
             try
             {
@@ -256,8 +256,8 @@ namespace Velvet
             {
                 // React runs nothing for work that never committed. Counted rather than read off the parent
                 // chain, which the failed walk's disposal of what it mounted has already cut.
-                _ctx.PendingEnterCompletions.RemoveRange(
-                    enterCompletionsBefore, _ctx.PendingEnterCompletions.Count - enterCompletionsBefore);
+                _ctx.PendingCompletions.RemoveRange(
+                    completionsBefore, _ctx.PendingCompletions.Count - completionsBefore);
                 return signal;
             }
             finally
@@ -350,9 +350,13 @@ namespace Velvet
                 // any departure, so a slice yielding between the two would attach into that same
                 // create-before-remove order, with Pass2Reorder not having placed anything yet either.
                 // Which pass ends last is not this one's to know, so the call is unconditional and
-                // DrainRefAttaches asks each entry's own pass instead.
+                // DrainRefAttaches asks each entry's own pass instead. A pass whose caller commits layout work
+                // leaves the cleanups of the refs it replaces and its setups to that commit.
                 _ctx.DrainRefAttaches();
-                _ctx.RunPendingEnterCompletions();
+                // A setup the drain left to the layout commit attaches before the enters complete, as a ref is
+                // set by the time an enter that plays nothing reports; the commit's end completes them
+                // (FiberEffects.CommitStrandedLayoutWork).
+                if (!_ctx.HasAttachableRefs()) _ctx.RunPendingCompletions();
             }
         }
 
@@ -475,12 +479,12 @@ namespace Velvet
         void IReconcilerBridge.HoldRowLayoutEffects()
             => _ctx.HeldRowLayoutEffects.Push(new List<(ComponentFiber fiber, bool mountDoubleInvoke)>());
 
-        // The rows are placed, so the refs the range held attach now, ahead of the rows' layout effects as a pass's
-        // refs attach ahead of its own.
+        // The rows are placed, so their commits attach their elements' refs among their layout effects, as a
+        // pass's commit does. A setup no held row owns is left to the commit that ends the range render
+        // (CommitStrandedLayoutWorkForController).
         void IReconcilerBridge.CommitHeldRowLayoutEffects()
         {
             var held = _ctx.HeldRowLayoutEffects.Pop();
-            _ctx.DrainRefAttaches();
             _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
             FiberEffects.CommitHeldRowLayoutEffects(_ctx, held);
         }
@@ -824,6 +828,12 @@ namespace Velvet
             }
 
             _ctx.ConditionalVariantManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.ContainerVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.ContainerVariantManipulators.Clear();
             foreach (var (element, manipulator) in _ctx.RelationalVariantManipulators)
             {
                 element.RemoveManipulator(manipulator);

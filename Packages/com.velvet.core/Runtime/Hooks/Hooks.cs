@@ -66,8 +66,8 @@ namespace Velvet
         /// - <c>value</c>: current value
         /// - <c>setValue</c>: <see cref="StateUpdater{T}"/>, reference-stable across renders — call
         ///   <c>setValue.Invoke(next)</c> to replace the value, or <c>setValue.Invoke(prev =&gt; next)</c> for the
-        ///   functional updater (reads the latest committed value, safe to invoke from a closure captured by an
-        ///   earlier render).
+        ///   functional updater (receives the state the updates written before it produce, safe to invoke from a
+        ///   closure captured by an earlier render).
         /// </returns>
         public static (T value, StateUpdater<T> setValue) UseState<T>(T initial)
             => UseStateInternalCore(default, initial, "UseState");
@@ -103,9 +103,9 @@ namespace Velvet
             if (index >= fiber.StateSlots.Count)
             {
                 var seed = initialFactory != null ? initialFactory() : initial;
-                var slot = new HookStateSlot<T> { Value = seed };
-                var setValue = HookSetterFactory.CreateStateSetter(slot, () => fiber.IsDisposed, () => RequestRender(fiber));
-                slot.Setter = new StateUpdater<T>(setValue, CreateUpdater(slot, fiber));
+                var slot = new HookStateSlot<T>(seed);
+                slot.Setter = new StateUpdater<T>(
+                    HookSetterFactory.CreateStateSetter(slot, fiber), HookSetterFactory.CreateStateUpdater(slot, fiber));
                 fiber.StateSlots.Add(slot);
                 return (slot.Value, slot.Setter);
             }
@@ -115,22 +115,7 @@ namespace Velvet
                 throw HookSlotTypeMismatch(fiber, hookName, fiber.StateSlots[index].GetType(), typeof(T).Name, index);
             }
 
-            return (typed.Value, typed.Setter);
-        }
-
-        private static Action<Func<T, T>> CreateUpdater<T>(HookStateSlot<T> slot, ComponentFiber fiber)
-        {
-            // The functional updater always reads the latest value via the updater function so it can be
-            // safely invoked inside a closure.
-            return updater =>
-            {
-                if (fiber.IsDisposed) return;
-                if (updater == null) throw new ArgumentNullException(nameof(updater));
-                var next = updater(slot.Value);
-                if (ObjectIs.AreEqual(slot.Value, next)) return;
-                slot.Value = next;
-                RequestRender(fiber);
-            };
+            return (typed.Process(fiber, FiberWorkLoop.RenderLane), typed.Setter);
         }
 
         #endregion
@@ -790,26 +775,30 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Returns a navigate function that pushes (or, when <paramref name="replace"/> is true, replaces)
-        /// the given target path. The target may be
+        /// Returns React Router's <c>navigate</c>: <c>navigate(to, options)</c> pushes (or, with
+        /// <see cref="NavigateOptions.Replace"/>, replaces) the target path, and <c>navigate(delta)</c> moves
+        /// along the history stack. The target may be
         /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>). Relative targets
         /// resolve from the calling component's enclosing Outlet route level. Without one, the router uses
         /// the current leaf route level when matches exist; otherwise it uses the current URL path, or the
-        /// root before the first location. Navigation is driven by the router <c>V.RouterProvider</c>
+        /// root before the first location. <see cref="NavigateOptions.Relative"/> set to
+        /// <see cref="RelativeRoutingType.Path"/> drops URL segments of that route's pathname instead of whole
+        /// routes. Navigation is driven by the router <c>V.RouterProvider</c>
         /// publishes above the caller.
         /// </summary>
-        /// <returns>A stable delegate <c>navigate(to)</c>; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
+        /// <returns>A stable delegate; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
         /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
         /// caller.</exception>
-        public static Func<string, VelvetTask<NavigationResult>> UseNavigate(bool replace = false)
+        public static NavigateFunction UseNavigate()
         {
             _ = Resolve("UseNavigate");
             var router = UseRouterOrThrow("UseNavigate");
-            var mode = replace ? NavigationMode.Replace : NavigationMode.Push;
             var baseRouteIndex = UseBaseRouteIndex();
-            return UseCallback<Func<string, VelvetTask<NavigationResult>>>(
-                to => router.NavigateAsync(to, mode, baseRouteIndex),
-                router, mode, baseRouteIndex);
+            return UseCallback<NavigateFunction>(
+                (to, options) => to.IsDelta
+                    ? router.NavigateAsync(to.Delta)
+                    : router.NavigateAsync(to.To!, options, baseRouteIndex),
+                router, baseRouteIndex);
         }
 
         // Called by the hooks whose React Router counterparts refuse to run outside a router. UseParams,
@@ -1858,12 +1847,8 @@ namespace Velvet
         private static (TState state, Action<TAction> dispatch) CreateReducerSlot<TState, TAction>(
             ComponentFiber fiber, TState initial, Func<TState, TAction, TState> reducer)
         {
-            var slot = new ReducerSlot<TState, TAction>
-            {
-                Value = initial,
-                Reducer = reducer,
-            };
-            slot.Dispatch = HookSetterFactory.CreateReducerDispatch(slot, () => fiber.IsDisposed, () => RequestRender(fiber));
+            var slot = new ReducerSlot<TState, TAction>(initial, reducer);
+            slot.Dispatch = HookSetterFactory.CreateReducerDispatch(slot, fiber);
             fiber.StateSlots!.Add(slot);
             return (slot.Value, slot.Dispatch);
         }
@@ -1878,7 +1863,7 @@ namespace Velvet
             }
 
             typed.Reducer = reducer;
-            return (typed.Value, typed.Dispatch);
+            return (typed.Process(fiber, FiberWorkLoop.RenderLane), typed.Dispatch);
         }
 
         #endregion
@@ -2672,7 +2657,8 @@ namespace Velvet
         /// until its task completes, whether or not the component that started it is still mounted, so one
         /// awaiting a task that never completes holds every later entry. A component rendered by the
         /// Transition-lane drain that lands the last work a transition queued leaves that transition's
-        /// entries out of that render. An entry no
+        /// entries out of that render, and a component holding them that the drain did not render that way is
+        /// rendered without them before that commit's layout effects run. An entry no
         /// render has shown when its owner settles is shown once first. An entry nothing owns is discarded by
         /// the component's next Transition-lane render.
         /// </summary>
