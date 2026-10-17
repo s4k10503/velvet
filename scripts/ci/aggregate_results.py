@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Decide an aggregate job from the results of the jobs it needs.
 
-test.yml's and generators.yml's `required-checks` and mutation.yml's `campaign` run this as their
-step. It passes where every result is `success` or `skipped`, and fails otherwise, with one
-exception: a `pull_request` or `workflow_dispatch` run whose only other results are `cancelled`, and
-whose head is no longer the head its pull request or branch points at, cancels its own run instead.
-A newer head's run is the one that answers for the pull request, and a red check on the old head
-answers for nothing.
+test.yml's and generators.yml's `required-checks` and mutation.yml's `campaign` run this where
+their inline step did not pass the results. It passes where every result is `success` or
+`skipped`, and otherwise fails, except in one case: a `pull_request` or `workflow_dispatch`
+run whose other results are all `cancelled`, and whose pull request (or, with no NUMBER, branch)
+now points at a commit other than HEAD — a newer push, or a force-push to any other commit — asks
+for its own run to be cancelled, and the aggregate ends cancelled once that lands. Where the head
+cannot be read, the ref is not a branch, or the cancellation is refused or has not landed within
+`CANCEL_WAIT`, it fails. The run for the newer head is the one that answers for the pull request.
 
     RESULTS  the `needs.<job>.result` values, separated by spaces
     HEAD     the commit the run was started for: the pull request's head, not its merge commit
@@ -18,8 +20,6 @@ Cancelling rather than passing: branch protection counts a `success` or a `skipp
 satisfied, so either would let a head whose suites never finished read as tested, and a cancelled
 check blocks a merge on the head it reports for. So a wrong reading of the head, or a head reverted
 to the old commit, leaves a check that still refuses rather than one that passes.
-
-A head that cannot be read, or a ref that is not a branch, is not superseded.
 """
 
 import os
@@ -57,8 +57,7 @@ def decide(results, event):
 def head_path(repository, number, ref):
     """The API path whose answer names the head the run is measured against, and its jq filter.
 
-    None for a ref that is not a branch: an annotated tag's ref reads back the tag object rather than
-    the commit the run measured.
+    None for a ref that is not a branch.
     """
     if number:
         return "repos/{}/pulls/{}".format(repository, number), ".head.sha"
@@ -91,7 +90,6 @@ def read_head(path, jq):
 
 
 def cancel_run(repository, run_id):
-    # force-cancel, which GitHub documents as overriding an `always()` condition; this job carries one.
     return gh("api", "--method", "POST",
               "repos/{}/actions/runs/{}/force-cancel".format(repository, run_id)) is not None
 

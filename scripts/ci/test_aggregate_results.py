@@ -7,7 +7,11 @@ Run: python3 scripts/ci/test_aggregate_results.py
 import contextlib
 import importlib.util
 import io
+import os
 import re
+import subprocess
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -156,8 +160,7 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(api.read, [("repos/owner/name/pulls/12", ".head.sha")])
 
     def test_Given_ADispatchOntoATag_When_Decided_Then_ItsHeadIsNotAsked(self):
-        # Arrange — an annotated tag's ref reads back the tag object rather than the commit the run
-        # measured, so asking would read every such run as superseded.
+        # Arrange
         api = Api(current=NEW)
 
         # Act
@@ -205,37 +208,88 @@ def aggregates():
     return found
 
 
+def steps(block):
+    return re.findall(r"^      - (.*?)(?=^      - |\Z)", block, re.MULTILINE | re.DOTALL)
+
+
+def job_outcome(block, results):
+    """Runs an aggregate's steps as the job would, from the repository root: ("gate", passed) where
+    the inline step passed the results and the steps after it are skipped, ("script", exit code)
+    where the script decided, and None where either step is missing."""
+    found = steps(block)
+    gate = next((step for step in found if step.startswith("id: results")), "")
+    script = next((step for step in found if "scripts/ci/aggregate_results.py" in step), "")
+    if not gate or not script:
+        return None
+    with tempfile.TemporaryDirectory() as directory:
+        output = Path(directory) / "output"
+        output.touch()
+        environ = {**os.environ, "RESULTS": results, "GITHUB_OUTPUT": str(output)}
+        subprocess.run(["bash", "-e", "-c", textwrap.dedent(gate.partition("run: |\n")[2])],
+                       env=environ, cwd=REPO_ROOT, check=True)
+        if "passed=true" in output.read_text().split():
+            return "gate", True
+        command = script.partition("run: ")[2].strip()
+        return "script", subprocess.run(["bash", "-c", command], env=environ, cwd=REPO_ROOT,
+                                        capture_output=True).returncode
+
+
 class WorkflowTests(unittest.TestCase):
-    def test_Given_EveryAggregate_When_ItsStepIsRead_Then_ItDecidesThroughTheScriptWithWhatItReads(self):
-        # Arrange — an aggregate left on the inline loop fails a superseded run, and one missing a
-        # permission or a variable fails it too, with nothing else reporting the difference.
+    def test_Given_EveryAggregate_When_ItsStepsAreRead_Then_OnlyANonPassingResultReachesTheScript(self):
+        # Arrange — an aggregate left on the inline loop alone fails a superseded run, one missing a
+        # permission fails it too, and a checkout taken on an all-passing run can red a green head.
         # Each is matched as a whole line, so a comment naming a permission does not stand in for it.
-        wanted = (r"        run: python3 scripts/ci/aggregate_results\.py", r"          RESULTS: \$\{\{ needs\..*",
-                  r"          NUMBER: \$\{\{ .+ \}\}", r"          GH_TOKEN: \$\{\{ github\.token \}\}",
-                  r"      actions: write", r"      pull-requests: read", r"      contents: read",
-                  r"          sparse-checkout: scripts/ci")
+        wanted = (r"      - id: results", r"      - if: steps\.results\.outputs\.passed != 'true'",
+                  r"        run: python3 scripts/ci/aggregate_results\.py",
+                  r"          GH_TOKEN: \$\{\{ github\.token \}\}", r"      actions: write",
+                  r"      pull-requests: read", r"      contents: read", r"          sparse-checkout: scripts/ci")
         found = aggregates()
 
         # Act
         missing = ["{}:{}: {}".format(workflow, key, line) for workflow, key, block in found
                    for line in wanted if not re.search("^" + line + "$", block, re.MULTILINE)]
+        gated = [(workflow, sum(1 for step in steps(block)
+                                if step.startswith("if: steps.results.outputs.passed != 'true'")))
+                 for workflow, _, block in found]
 
         # Assert
-        self.assertEqual((sorted((workflow, key) for workflow, key, _ in found), missing),
+        self.assertEqual((sorted((workflow, key) for workflow, key, _ in found), missing, gated),
                          ([("generators.yml", "required-checks"), ("mutation.yml", "campaign"),
-                           ("test.yml", "required-checks")], []))
+                           ("test.yml", "required-checks")], [],
+                          [("generators.yml", 2), ("mutation.yml", 2), ("test.yml", 2)]))
 
-    def test_Given_AnAggregateOnAPullRequest_When_ItsHeadIsRead_Then_ItIsThePullRequestsHeadNotTheMergeCommit(self):
+    def test_Given_EveryAggregate_When_ItsScriptStepIsRead_Then_ItHandsOverTheRunsHeadAndPullRequest(self):
         # Arrange — github.sha on a pull request is the test merge rather than the pull request's
-        # head, so a cancellation there would read as superseded.
-        found = [(workflow, block) for workflow, _, block in aggregates() if workflow != "mutation.yml"]
+        # head, so a cancellation there would read as superseded; and a HEAD or NUMBER missing from
+        # a step reads no head at all, which fails a superseded run.
+        found = aggregates()
 
         # Act
-        heads = sorted((workflow, re.findall(r"^\s*HEAD: (.*)$", block, re.MULTILINE)) for workflow, block in found)
+        scripts = {workflow: "".join(step for step in steps(block) if "scripts/ci/aggregate_results.py" in step)
+                   for workflow, _, block in found}
+        handed = {workflow: (re.findall(r"^          HEAD: (.*)$", step, re.MULTILINE),
+                             re.findall(r"^          NUMBER: (.*)$", step, re.MULTILINE))
+                  for workflow, step in scripts.items()}
 
         # Assert
-        self.assertEqual(heads, [(workflow, ["${{ github.event.pull_request.head.sha || github.sha }}"])
-                                 for workflow in ("generators.yml", "test.yml")])
+        pull_request = (["${{ github.event.pull_request.head.sha || github.sha }}"],
+                        ["${{ github.event.pull_request.number }}"])
+        self.assertEqual(handed, {"generators.yml": pull_request, "test.yml": pull_request,
+                                  "mutation.yml": (["${{ github.sha }}"], ["${{ inputs.number }}"])})
+
+    def test_Given_EveryAggregate_When_ItsStepsRun_Then_TheGatePassesAndTheScriptRefuses(self):
+        # Arrange
+        found = aggregates()
+
+        # Act
+        outcomes = {workflow: tuple(job_outcome(block, results)
+                                    for results in ("success skipped", "success failure", ""))
+                    for workflow, _, block in found}
+
+        # Assert
+        expected = (("gate", True), ("script", 1), ("script", 1))
+        self.assertEqual(outcomes, {workflow: expected
+                                    for workflow in ("generators.yml", "mutation.yml", "test.yml")})
 
 
 if __name__ == "__main__":

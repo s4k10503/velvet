@@ -4,6 +4,7 @@
 import os
 import re
 import subprocess
+import tempfile
 import textwrap
 import unittest
 from pathlib import Path
@@ -22,6 +23,25 @@ def job(text, name):
 def steps(text, indent):
     return re.findall(r"^" + " " * indent + r"- (.*?)(?=^" + " " * indent + r"- |\Z)",
                       text, re.MULTILINE | re.DOTALL)
+
+
+def aggregate_exit(aggregate, results):
+    """The aggregate job's exit status over `results`, or None where its gate or script step is gone."""
+    blocks = steps(aggregate, 6)
+    gate = next((block for block in blocks if block.startswith("id: results")), "")
+    script = next((block for block in blocks if "scripts/ci/aggregate_results.py" in block), "")
+    if not gate or not script:
+        return None
+    with tempfile.TemporaryDirectory() as directory:
+        output = Path(directory) / "output"
+        output.touch()
+        environ = {**os.environ, "RESULTS": results, "GITHUB_OUTPUT": str(output)}
+        subprocess.run(["bash", "-e", "-c", textwrap.dedent(gate.partition("run: |\n")[2])],
+                       env=environ, cwd=REPO_ROOT, check=True)
+        if "passed=true" in output.read_text().split():
+            return 0
+        return subprocess.run(["bash", "-c", script.partition("run: ")[2].strip()], env=environ,
+                              cwd=REPO_ROOT, capture_output=True).returncode
 
 
 def action_text():
@@ -118,24 +138,20 @@ class PlatformContinuationTests(unittest.TestCase):
         # Assert
         self.assertEqual((retained, ordered), (True, True))
 
-    # GREEN_ON_BASE(characterization): the base's inline loop rejected a failed Unity job as well, and
-    # this branch moves the decision into a script without changing that answer. What shows the case
-    # can fail is removing `needs.unity-tests.result` from its RESULTS expression.
+    # What shows the case can fail is removing `needs.unity-tests.result` from the RESULTS expressions.
     def test_Given_AFailedPlatformReading_When_TheRequiredAggregateRuns_Then_ItRejectsTheUnityResult(self):
-        # Arrange — run from the repository root, which is where the job's checkout puts it.
+        # Arrange — the steps run as the job runs them: the inline gate, and the script only where the
+        # gate did not pass, from the repository root where the job's checkout puts it.
         aggregate = job(WORKFLOW.read_text(), "required-checks")
-        references = re.findall(r"needs\.([\w-]+)\.result", aggregate)
-        command = textwrap.dedent(re.split(r"^        run: \|?", aggregate, maxsplit=1, flags=re.MULTILINE)[-1])
+        references = list(dict.fromkeys(re.findall(r"needs\.([\w-]+)\.result", aggregate)))
         outcomes = ["failure" if name == "unity-tests" else "success" for name in references]
 
         # Act
-        result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, cwd=REPO_ROOT,
-                                env={**os.environ, "RESULTS": " ".join(outcomes)})
-        control = subprocess.run(["bash", "-c", command], capture_output=True, text=True, cwd=REPO_ROOT,
-                                 env={**os.environ, "RESULTS": " ".join("success" for _ in references)})
+        result = aggregate_exit(aggregate, " ".join(outcomes))
+        control = aggregate_exit(aggregate, " ".join("success" for _ in references))
 
         # Assert
-        self.assertEqual((result.returncode, control.returncode), (1, 0))
+        self.assertEqual((result, control), (1, 0))
 
 
 def base_runner_ids():

@@ -565,9 +565,9 @@ jobs:
   # skipped counts as passing, which is what lets a fork with no UNITY_LICENSE
   # merge anything: unity-tests is skipped in exactly that case. cancelled does
   # not, because a superseded run and a run somebody stopped both arrive here
-  # with nothing having been tested. A run whose pull request has moved to a
-  # newer head ends cancelled rather than failed; scripts/ci/aggregate_results.py
-  # owns when.
+  # with nothing having been tested. A run whose pull request now points at
+  # another commit can end cancelled instead; scripts/ci/aggregate_results.py
+  # owns when, and otherwise it fails.
   # ---------------------------------------------------------------------------
   required-checks:
     name: Required checks (Unity)
@@ -575,18 +575,35 @@ jobs:
     needs: [license-check, unity-tests, player-compile, newest-editor-compile, release-notes, publication, test-quality, base-red-python]
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # actions: write so a run whose head was superseded can cancel itself; pull-requests: read for
+    # actions: write for a superseded run to ask for its own cancellation; pull-requests: read for
     # the head it compares against. scripts/ci/aggregate_results.py owns when it does.
     permissions:
       contents: read
       actions: write
       pull-requests: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Decided here without a checkout, so a run whose every result passed cannot be reddened by one.
+      - id: results
+        env:
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.player-compile.result }} ${{ needs.newest-editor-compile.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }}
+        run: |
+          passed=true
+          [ -n "$RESULTS" ] || passed=false
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) passed=false ;;
+            esac
+          done
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+
+      - if: steps.results.outputs.passed != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: scripts/ci
 
-      - env:
+      - if: steps.results.outputs.passed != 'true'
+        env:
           RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.player-compile.result }} ${{ needs.newest-editor-compile.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
           NUMBER: ${{ github.event.pull_request.number }}

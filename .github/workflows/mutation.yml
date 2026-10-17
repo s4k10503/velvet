@@ -454,11 +454,28 @@ jobs:
       actions: write
       pull-requests: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Decided here without a checkout, so a run whose every result passed cannot be reddened by one.
+      - id: results
+        env:
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.mutation-plan.result }} ${{ needs.library.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-verdict.result }}
+        run: |
+          passed=true
+          [ -n "$RESULTS" ] || passed=false
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) passed=false ;;
+            esac
+          done
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+
+      - if: steps.results.outputs.passed != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: scripts/ci
 
-      - env:
+      - if: steps.results.outputs.passed != 'true'
+        env:
           RESULTS: ${{ needs.license-check.result }} ${{ needs.mutation-plan.result }} ${{ needs.library.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-verdict.result }}
           HEAD: ${{ github.sha }}
           NUMBER: ${{ inputs.number }}
