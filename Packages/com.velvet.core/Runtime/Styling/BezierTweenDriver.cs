@@ -469,6 +469,38 @@ namespace Velvet
         private static float Value(BezierTweenState state, BezierTweenChannel channel, float shared)
             => Mathf.LerpUnclamped(channel.From, channel.To, Eased(state, channel, shared));
 
+        private const double VelocitySlopeStepSec = 1.0 / 1000.0;
+
+        /// <summary>
+        /// The channel's rate of change per second at the play's current elapsed time, which a spring that interrupts
+        /// the play starts with, as Framer Motion starts a value's next animation with the motion value's velocity.
+        /// A finished play has stopped.
+        /// </summary>
+        internal static float VelocityOf(BezierTweenState state, BezierTweenChannel? channel)
+        {
+            if (channel == null || state.ElapsedSec >= state.EndSec)
+            {
+                return 0f;
+            }
+            var now = state.ElapsedSec;
+            // MUTANT_SURVIVES(equivalent, boundary): now is a float, which never equals 1/1000 held as a double.
+            var from = now >= VelocitySlopeStepSec ? now - VelocitySlopeStepSec : now;
+            // MUTANT_SURVIVES(equivalent, boundary): the same comparison as the line above.
+            var to = now >= VelocitySlopeStepSec ? now : now + VelocitySlopeStepSec;
+            try
+            {
+                state.ElapsedSec = (float)from;
+                var before = Value(state, channel, SharedEased(state));
+                state.ElapsedSec = (float)to;
+                var after = Value(state, channel, SharedEased(state));
+                return (after - before) / (float)(to - from);
+            }
+            finally
+            {
+                state.ElapsedSec = now;
+            }
+        }
+
         // The eased output for the channel at the current elapsed time: its own Timing where it has one, else
         // shared, the state's curve at the state's delay and duration (SharedEased), evaluated once a frame for
         // every channel taking it.
