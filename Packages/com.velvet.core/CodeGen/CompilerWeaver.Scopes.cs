@@ -689,9 +689,7 @@ namespace Velvet.CodeGen
         }
 
         private static IEnumerable<Instruction> Box(TypeReference type)
-        {
-            if (type.IsValueType) yield return Instruction.Create(OpCodes.Box, type);
-        }
+            => type.IsValueType ? new[] { Instruction.Create(OpCodes.Box, type) } : System.Array.Empty<Instruction>();
 
         // What a cached object becomes again: unboxed for a value, cast back for a reference.
         private static IEnumerable<Instruction> Unbox(TypeReference type)
