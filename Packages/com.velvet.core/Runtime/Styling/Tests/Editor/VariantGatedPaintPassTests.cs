@@ -75,37 +75,49 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADarkGatedShadow_When_TheThemeTurnsDark_Then_TheShadowPaintTakesTheFace()
+        public void Given_ADarkGatedShadow_When_TheThemeTurnsDark_Then_TheShadowPaints()
         {
-            // Arrange — an UPRIGHT shadow caster owns its face: the paint masks the native chrome and
-            // repaints an opaque fill over the shadow quad so only the outer halo shows.
+            // Arrange
             using var scope = new ReconcilerScope();
             var card = Mount(scope, "bg-[#FFFFFF] dark:shadow-lg");
-            Assume.That(SilhouetteFace.IsSentinel(card.style.backgroundColor.value), Is.False,
-                "Precondition: nothing shadows the card while the theme is light");
 
             // Act
             VelvetTheme.IsDark = true;
 
             // Assert
-            Assert.That(SilhouetteFace.IsSentinel(card.style.backgroundColor.value), Is.True);
+            Assert.That(scope.Reconciler.Context.ShadowBindings.ContainsKey(card), Is.True);
         }
 
         [Test]
-        public void Given_ADarkGatedShadowApplied_When_TheThemeTurnsLight_Then_TheFaceIsReturned()
+        public void Given_ADarkGatedShadow_When_TheThemeTurnsDark_Then_TheBackgroundStaysNative()
+        {
+            // Arrange — the shadow is cut out of the border box, so the element's own background paints as it
+            // would without one.
+            using var scope = new ReconcilerScope();
+            var card = Mount(scope, "bg-[#FFFFFF] dark:shadow-lg");
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert
+            Assert.That(SilhouetteFace.IsSentinel(card.style.backgroundColor.value), Is.False);
+        }
+
+        [Test]
+        public void Given_ADarkGatedShadowApplied_When_TheThemeTurnsLight_Then_TheShadowPaintIsDetached()
         {
             // Arrange
             using var scope = new ReconcilerScope();
             var card = Mount(scope, "bg-[#FFFFFF] dark:shadow-lg");
+            var shadows = scope.Reconciler.Context.ShadowBindings;
             VelvetTheme.IsDark = true;
-            var maskedWhileDark = SilhouetteFace.IsSentinel(card.style.backgroundColor.value);
+            Assume.That(shadows.ContainsKey(card), Is.True, "Precondition: a shadow that never attached would satisfy the off-edge alone");
 
             // Act
             VelvetTheme.IsDark = false;
 
-            // Assert — both edges, since a shadow that never attached would satisfy the off-edge alone.
-            Assert.That((maskedWhileDark, SilhouetteFace.IsSentinel(card.style.backgroundColor.value)),
-                Is.EqualTo((true, false)));
+            // Assert
+            Assert.That(shadows.ContainsKey(card), Is.False);
         }
 
         [Test]
@@ -196,22 +208,32 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADarkGatedShadowAndBorderDashed_When_TheThemeTurnsDark_Then_TheDashedLayerDefersToTheShadow()
+        public void Given_ADarkGatedShadowAndBorderDashed_When_TheThemeTurnsDark_Then_TheShadowPaints()
         {
-            // Arrange — two families arrive in the same toggle. The shadow owns the whole face and repaints a
-            // solid border itself, so the dashed layer must stand down; that only holds if the re-run applies
-            // them in the reconcile path's order (shadow before border-style).
+            // Arrange — two families arrive in the same toggle. The shadow leaves the border to the element, so
+            // the dashed layer paints it, as CSS's border-style composes with a box-shadow.
             using var scope = new ReconcilerScope();
             var card = Mount(scope, "bg-[#FFFFFF] dark:shadow-lg dark:border-dashed");
 
             // Act
             VelvetTheme.IsDark = true;
 
-            // Assert — the shadow arrived AND the dashed layer stood down; an element where neither ran
-            // would satisfy the second half alone.
-            var context = scope.Reconciler.Context;
-            Assert.That((context.ShadowBindings.ContainsKey(card), context.BorderStyleBindings.ContainsKey(card)),
-                Is.EqualTo((true, false)));
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings.ContainsKey(card), Is.True);
+        }
+
+        [Test]
+        public void Given_ADarkGatedShadowAndBorderDashed_When_TheThemeTurnsDark_Then_TheDashedLayerPaints()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var card = Mount(scope, "bg-[#FFFFFF] dark:shadow-lg dark:border-dashed");
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.BorderStyleBindings.ContainsKey(card), Is.True);
         }
 
         [Test]
@@ -371,22 +393,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALiteralUprightShadowOverAUssFace_When_AnUnrelatedGateTokenToggles_Then_TheFaceStaysSuppressed()
-        {
-            // Arrange — an upright shadow caster owns the whole face too. Its sync passes a hardcoded "classes
-            // changed", so it reaches the releasing branch on EVERY re-sync, not only on a real class change.
-            var card = MountAndStash("bg-blue-500 shadow-lg dark:gap-4");
-            var suppressedAtRest = SilhouetteFace.IsSentinel(card.style.backgroundColor.value);
-
-            // Act
-            VelvetTheme.IsDark = true;
-
-            // Assert — a released face lets the native blue rectangle resolve again behind the repainted fill.
-            Assert.That((suppressedAtRest, SilhouetteFace.IsSentinel(card.style.backgroundColor.value)),
-                Is.EqualTo((true, true)));
-        }
-
-        [Test]
         public void Given_ALiteralBorderDashedOverAUssBorder_When_AnUnrelatedGateTokenToggles_Then_TheBorderStaysSuppressed()
         {
             // Arrange — the border-only stash takes the same releasing branch, reached here through a layout
@@ -439,7 +445,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AResponsiveShadow_When_TheRootIsWiderThanMd_Then_TheShadowPaintTakesTheFace()
+        public void Given_AResponsiveShadow_When_TheRootIsWiderThanMd_Then_TheShadowPaintIsAttached()
         {
             // Arrange / Act
             var card = MountAndResolveAt(WidePanel, "bg-[#FFFFFF] md:shadow-lg");
@@ -447,22 +453,22 @@ namespace Velvet.Tests
                 "Precondition: the panel root resolved at least the md breakpoint wide");
 
             // Assert
-            Assert.That(SilhouetteFace.IsSentinel(card.style.backgroundColor.value), Is.True);
+            Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(card), Is.True);
         }
 
         [Test]
-        public void Given_AResponsiveShadowActiveWide_When_ThePanelShrinksBelowMd_Then_TheFaceIsReturned()
+        public void Given_AResponsiveShadowActiveWide_When_ThePanelShrinksBelowMd_Then_TheShadowPaintIsDetached()
         {
             // Arrange
             var card = MountAndResolveAt(WidePanel, "bg-[#FFFFFF] md:shadow-lg");
-            var maskedWhileWide = SilhouetteFace.IsSentinel(card.style.backgroundColor.value);
+            var shadows = _mounted.Root.Reconciler.Context.ShadowBindings;
+            Assume.That(shadows.ContainsKey(card), Is.True, "Precondition: a shadow that never attached would satisfy the narrow half alone");
 
             // Act
             ResolveAt(NarrowPanel, card);
 
-            // Assert — both edges, since a shadow that never attached would satisfy the narrow half alone.
-            Assert.That((maskedWhileWide, SilhouetteFace.IsSentinel(card.style.backgroundColor.value)),
-                Is.EqualTo((true, false)));
+            // Assert
+            Assert.That(shadows.ContainsKey(card), Is.False);
         }
 
         [Test]
@@ -490,19 +496,24 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AResponsiveShadowAndBorderDashed_When_TheRootIsWiderThanMd_Then_TheDashedLayerDefersToTheShadow()
+        public void Given_AResponsiveShadowAndBorderDashed_When_TheRootIsWiderThanMd_Then_TheShadowPaints()
         {
             // Arrange / Act — two families arrive in the same toggle, here on the ATTACH edge: a responsive
-            // payload is still off while the element is built detached, and lights as it joins the panel. The
-            // shadow owns the whole face and repaints a solid border itself, so the dashed layer must stand
-            // down — which only holds if the two are applied in the reconcile path's order.
+            // payload is still off while the element is built detached, and lights as it joins the panel.
             var card = MountAndResolveAt(WidePanel, "bg-[#FFFFFF] md:shadow-lg md:border-dashed");
-            var context = _mounted.Root.Reconciler.Context;
 
-            // Assert — the shadow arrived AND the dashed layer stood down; an element where neither ran
-            // would satisfy the second half alone.
-            Assert.That((context.ShadowBindings.ContainsKey(card), context.BorderStyleBindings.ContainsKey(card)),
-                Is.EqualTo((true, false)));
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(card), Is.True);
+        }
+
+        [Test]
+        public void Given_AResponsiveShadowAndBorderDashed_When_TheRootIsWiderThanMd_Then_TheDashedLayerPaints()
+        {
+            // Arrange / Act
+            var card = MountAndResolveAt(WidePanel, "bg-[#FFFFFF] md:shadow-lg md:border-dashed");
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.BorderStyleBindings.ContainsKey(card), Is.True);
         }
 
         [Test]

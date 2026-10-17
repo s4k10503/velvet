@@ -434,7 +434,7 @@ namespace Velvet
             if (paintTail)
             {
                 var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
-                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
+                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg);
                 _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
             }
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
@@ -2746,7 +2746,7 @@ namespace Velvet
         private static bool SubtreeCarriesClass(VisualElement root, string cls)
         {
             if ((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
-                || StyleClassProjection.SuppressesDeclared(root, cls))
+                || StyleClassProjection.SuppressesOwnClass(root, cls))
             {
                 return true;
             }

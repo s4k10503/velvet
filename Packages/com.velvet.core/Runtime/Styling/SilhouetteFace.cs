@@ -5,7 +5,7 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // A receiver for the rounded-rect outline segments the shared builder emits. Two implementations: a
-    // Painter2D passthrough (the skew / shadow fill + stroke path, whose call sequence must exactly match a
+    // Painter2D passthrough (the skew fill + stroke path, whose call sequence must exactly match a
     // direct Painter2D implementation so routing through this shared interface changes nothing visually) and
     // a polyline flattener (the dashed-border path, which needs queryable points a Painter2D cannot give
     // back). Only the primitive path ops are exposed — BeginPath / ClosePath stay Painter2D-specific and the
@@ -51,14 +51,12 @@ namespace Velvet
         }
     }
 
-    // Shared face-painting kernel for the wrapper-less silhouette layers (skew + drop shadow). Both layers
-    // suppress an element's native rectangular background / border (UI Toolkit draws those at a fixed point in
-    // its pipeline, BEFORE generateVisualContent, so a painter that needs to sit behind OR ahead of the fill —
-    // a sheared face, an offset shadow halo — cannot interleave with the native chrome) and REPAINT that chrome
-    // in the element's own generateVisualContent: SkewSilhouette repaints it sheared; DropShadowSilhouette
-    // repaints it UPRIGHT (tanX = tanY = 0) on top of a shadow quad so the opaque fill covers the shadow's
-    // interior. The two shared pieces are the captured-face STASH (sentinel suppression + color capture +
-    // patch-time re-sync) and the rounded-rect path BUILDER (sheared, an upright box being the zero-shear case).
+    // Shared face-painting kernel for the wrapper-less silhouette layers. The skew and border-dashed layers
+    // suppress an element's native background / border (UI Toolkit draws those at a fixed point in its pipeline,
+    // BEFORE generateVisualContent, so a sheared face or a dashed outline cannot replace the native chrome) and
+    // REPAINT it in the element's own generateVisualContent. The shared pieces are the captured-face STASH
+    // (SilhouetteFaceStash) and the rounded-rect path BUILDER (sheared, an upright box being the zero-shear
+    // case), which also outlines the border box the drop shadow is cut out of.
     internal static class SilhouetteFace
     {
         // Suppression sentinel: visually nothing at 1/255 alpha, but distinguishable from both the unset
@@ -81,13 +79,13 @@ namespace Velvet
 
         // CSS skew about the box center (transform-origin: center, the default skew origin):
         // x' = x + (y − h/2)·tan(θx), y' = y + (x − w/2)·tan(θy). With tanX = tanY = 0 this is the identity, so
-        // the same path builder draws an upright box (the drop-shadow fill) and a sheared one (the skew face).
+        // the same path builder draws an upright box and a sheared one (the skew face).
         internal static Vector2 Shear(Vector2 p, float w, float h, float tanX, float tanY)
             => new(p.x + ((p.y - (h * 0.5f)) * tanX), p.y + ((p.x - (w * 0.5f)) * tanY));
 
         // Builds the rounded-rect path (inset on all sides) onto a Painter2D, shearing every point. A thin
         // wrapper over EmitShearedRoundedRectPath: BeginPath, emit the outline through a passthrough sink,
-        // ClosePath, so skew / shadow fill + stroke rendering is unaffected by going through the shared sink
+        // ClosePath, so skew fill + stroke rendering is unaffected by going through the shared sink
         // abstraction. tanX = tanY = 0 yields an upright rounded rect.
         internal static void BuildShearedRoundedRect(Painter2D p, in ShearedRoundedRect box)
         {
@@ -225,12 +223,12 @@ namespace Velvet
     // are shared with the arbitrary-value resolver, so the stash must re-sync on every patch: a fresh resolver
     // value re-stashes directly; a USS-DRIVEN stash releases the sentinel on a class change and re-stashes on
     // the next style resolution, while an INLINE-driven stash is kept (an inline color only changes through a
-    // resolver write, which the re-stash branch already catches). Owned by a SkewBinding / DropShadowBinding /
+    // resolver write, which the re-stash branch already catches). Owned by a SkewBinding /
     // BorderStyleBinding; its lifecycle (TryStash on attach, SyncOnPatch on patch, Release on detach) is driven
     // by that binding.
     //
-    // includeBackground gates every background touch: the skew / shadow layers own the whole face (fill +
-    // border), so they suppress and repaint both (default true); the border-dashed layer restyles only the
+    // includeBackground gates every background touch: the skew layer owns the whole face (fill +
+    // border), so it suppresses and repaints both (default true); the border-dashed layer restyles only the
     // border, so it constructs with includeBackground:false and never suppresses or re-captures the fill.
     internal sealed class SilhouetteFaceStash
     {

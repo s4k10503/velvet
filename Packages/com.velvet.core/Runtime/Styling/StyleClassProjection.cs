@@ -111,9 +111,10 @@ namespace Velvet
         public static void RawRested(VisualElement element, string cls)
             => StyleArbitraryValueResolver.TryGetProjection(element)?.RawRested(element, cls);
 
-        // Whether element's className declares cls while the projection keeps it off the live class list.
-        internal static bool SuppressesDeclared(VisualElement element, string cls)
-            => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesDeclared(cls) == true;
+        // Whether cls is element's own while the projection keeps it off the live class list: declared by its
+        // className, or put on by a play (RawAdded).
+        internal static bool SuppressesOwnClass(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesOwnClass(cls) == true;
 
         // Whether cls sits on element's live class list only because a variant payload put it there.
         internal static bool IsHeldOnlyByPayload(VisualElement element, string cls)
@@ -199,7 +200,12 @@ namespace Velvet
                 {
                     _entries.RemoveAt(index);
                 }
-                if (!Holds(cls))
+                // The className dropping a class takes it off whatever a play wants, as a class attribute the
+                // render rewrites does; a payload is no class of the element's, so its going leaves a play's.
+                var declared = priority == StyleLayerPriority.Base
+                    || priority == StyleLayerPriority.ImportantOf(StyleLayerPriority.Base);
+                var leaves = !Holds(cls) && (declared || IndexOfRaw(cls, null) < 0);
+                if (leaves)
                 {
                     DropRaw(cls);
                 }
@@ -207,16 +213,17 @@ namespace Velvet
                 // The last layer wanting this class is gone, so it leaves whether or not it was suppressed —
                 // and the suppression marker leaves with it, or a re-add would find the class already
                 // "restored" and never put it back.
-                if (!Holds(cls))
+                if (leaves)
                 {
                     element.RemoveFromClassList(cls);
                     _suppressed?.Remove(cls);
                 }
             }
 
-            // A ranking-only entry: it neither puts its class on the live list nor keeps it there (Holds skips
-            // it). It lives only while the class is on that list or suppressed by this model: RawRemoved drops
-            // it, and so does Remove once nothing else holds the class.
+            // A ranking-only entry: its writer puts the class on the live list, and the entry keeps it there only
+            // against a payload's removal (Holds skips it). It lives only while the class is on that list or
+            // suppressed by this model: RawRemoved drops it, and so does the className's Remove once nothing else
+            // holds the class.
             public void RawAdded(VisualElement element, string cls, long priority)
             {
                 // A class put on at the base priority rests there, so a play that ranked it higher has ended.
@@ -224,9 +231,10 @@ namespace Velvet
                 {
                     DropRaisedRaw(cls);
                 }
-                // MUTANT_SURVIVES(equivalent, boundary): IndexOf answers -1 or an index, and at index 0 the mutant adds
-                // a second ranking-only entry to the same slot, which ranks as the first does and is dropped with it.
-                if (IndexOf(cls, priority) < 0)
+                // MUTANT_SURVIVES(equivalent, boundary): IndexOfRaw answers -1 or an index, and at index 0 the mutant
+                // adds a second ranking-only entry to the same slot, which ranks as the first does and is dropped with
+                // it.
+                if (IndexOfRaw(cls, priority) < 0)
                 {
                     StyleUtilityProperties.TryGet(cls, out var rule);
                     _entries.Add(new Entry(cls, priority, rule.Properties, (int)rule.Gate, rankOnly: true));
@@ -478,16 +486,25 @@ namespace Velvet
                 return false;
             }
 
-            // A payload's class is not the className's own, so only a base entry counts, important or not.
-            public bool SuppressesDeclared(string cls)
-                => _suppressed?.Contains(cls) == true
-                    && (IndexOf(cls, StyleLayerPriority.Base) >= 0
-                        || IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) >= 0);
+            public bool SuppressesOwnClass(string cls) => _suppressed?.Contains(cls) == true && IsOwn(cls);
 
-            public bool HeldOnlyByPayload(string cls)
-                => Holds(cls)
-                    && IndexOf(cls, StyleLayerPriority.Base) < 0
-                    && IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) < 0;
+            public bool HeldOnlyByPayload(string cls) => Holds(cls) && !IsOwn(cls);
+
+            // A payload's class is not the element's own, so only a base entry counts, important or not, and a
+            // play's ranking-only one at whatever rank the play holds it: a class written onto the element is in
+            // its class attribute however the cascade ranks it.
+            private bool IsOwn(string cls)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (entry.Class == cls && (entry.RankOnly || entry.Priority == StyleLayerPriority.Base
+                            || entry.Priority == StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
 
             private int FirstIndexOf(string cls)
             {
@@ -501,11 +518,30 @@ namespace Velvet
                 return -1;
             }
 
+            // A payload's or the className's slot, never a play's ranking-only entry at the same key.
             private int IndexOf(string cls, long priority)
             {
                 for (var i = 0; i < _entries.Count; i++)
                 {
-                    if (_entries[i].Priority == priority && _entries[i].Class == cls)
+                    // MUTANT_SURVIVES(equivalent): only the base key holds both kinds, and Add and Remove both read
+                    // here, so the mutant lets a resting play's entry stand for the declared one at both ends: Add
+                    // records none of its own, and Remove takes the play's, which leaves the class as taking the
+                    // declared one would.
+                    if (_entries[i].Priority == priority && _entries[i].Class == cls && !_entries[i].RankOnly)
+                    {
+                        return i;
+                    }
+                }
+                return -1;
+            }
+
+            // cls's ranking-only entry at priority, or at any priority when priority is null.
+            private int IndexOfRaw(string cls, long? priority)
+            {
+                for (var i = 0; i < _entries.Count; i++)
+                {
+                    var entry = _entries[i];
+                    if (entry.RankOnly && entry.Class == cls && (priority == null || entry.Priority == priority))
                     {
                         return i;
                     }

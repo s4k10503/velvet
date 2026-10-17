@@ -610,6 +610,83 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(Color.blue));
         }
 
+        private static object Read(VisualElement element, string property) => property switch
+        {
+            "width" => element.resolvedStyle.width,
+            "paddingTop" => element.resolvedStyle.paddingTop,
+            "backgroundColor" => element.resolvedStyle.backgroundColor,
+            _ => throw new ArgumentOutOfRangeException(nameof(property), property, null),
+        };
+
+        // The row's w-[20px] is the bracket width the w-8 case contends with.
+        [TestCase("", "w-8", "width")]
+        [TestCase("p-[10px]", "p-4", "paddingTop")]
+        public void Given_ABaseBracketValue_When_AHoverClassOfItsFamilyHolds_Then_ItWinsWhileHovered(
+            string baseClass, string hover, string property)
+        {
+            // Arrange
+            var (child, reference) = Mount("", baseClass, hover: hover, reference: hover);
+
+            // Act
+            Hover(child, true);
+
+            // Assert
+            Assert.That(Read(child, property), Is.EqualTo(Read(reference, property)));
+        }
+
+        [TestCase("", "w-8", "width")]
+        [TestCase("p-[10px]", "p-4", "paddingTop")]
+        public void Given_ABaseBracketValue_When_AHoverClassOfItsFamilyHolds_Then_TheBaseComesBackWhenThePointerLeaves(
+            string baseClass, string hover, string property)
+        {
+            // Arrange
+            var (child, _) = Mount("", baseClass, hover: hover, reference: hover);
+            var resting = Read(child, property);
+
+            // Act
+            HoverAndLeave(child);
+
+            // Assert
+            Assert.That(Read(child, property), Is.EqualTo(resting));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets a className hover: class outrank a bracket base value.
+        // The case holds the same verdict for the className's own hover: rule that the gesture channel now shares.
+        [TestCase("", "w-8", "width")]
+        [TestCase("p-[10px]", "p-4", "paddingTop")]
+        [TestCase("bg-[#0000ff]", "bg-red-500", "backgroundColor")]
+        public void Given_ABaseBracketValue_When_AClassNameHoverRuleOfItsFamilyHolds_Then_ItWinsWhileHovered(
+            string baseClass, string hover, string property)
+        {
+            // Arrange
+            var (child, reference) = Mount("", baseClass + " hover:" + hover, reference: hover);
+
+            // Act
+            Hover(child, true);
+
+            // Assert
+            Assert.That(Read(child, property), Is.EqualTo(Read(reference, property)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets a className hover: class outrank a bracket base value.
+        // The case holds the same verdict for the className's own hover: rule that the gesture channel now shares.
+        [TestCase("", "w-8", "width")]
+        [TestCase("p-[10px]", "p-4", "paddingTop")]
+        [TestCase("bg-[#0000ff]", "bg-red-500", "backgroundColor")]
+        public void Given_ABaseBracketValue_When_AClassNameHoverRuleOfItsFamilyHolds_Then_TheBaseComesBackWhenThePointerLeaves(
+            string baseClass, string hover, string property)
+        {
+            // Arrange
+            var (child, _) = Mount("", baseClass + " hover:" + hover, reference: hover);
+            var resting = Read(child, property);
+
+            // Act
+            HoverAndLeave(child);
+
+            // Assert
+            Assert.That(Read(child, property), Is.EqualTo(resting));
+        }
+
         [Test]
         public void Given_AHoverBracketColor_When_Hovered_Then_ItApplies()
         {
@@ -911,6 +988,92 @@ namespace Velvet.Tests
             // Assert
             Assert.That(child.resolvedStyle.backgroundColor,
                 Is.EqualTo(_window.rootVisualElement.Q("ref").resolvedStyle.backgroundColor));
+        }
+    }
+
+    /// <summary>
+    /// A background colour a class change brings in outside a reconcile pass — a variant payload, a gesture
+    /// class, a theme flip — on an element whose shadow Velvet paints. A box-shadow paints only outside
+    /// the border box, so a shadowed element's background stays the engine's own.
+    /// </summary>
+    internal sealed class SilhouetteFaceColorPanelTests : PanelTestBase
+    {
+        private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
+
+        protected override void LoadStyleSheets()
+        {
+            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(StyleSheetPath);
+            Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
+            _window.rootVisualElement.styleSheets.Add(sheet);
+        }
+
+        public override void TearDown()
+        {
+            VelvetTheme.IsDark = false;
+            base.TearDown();
+        }
+
+        // A card carrying className and the hover class, beside a reference carrying reference alone, whose
+        // resolved background is the one the card should show.
+        private (VisualElement Card, Color Expected) Mount(string className, string reference, string? hover = null)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[]
+            {
+                V.Div(name: "card", className: "w-[40px] h-[40px] " + className, whileHoverClass: hover),
+                V.Div(name: "ref", className: "w-[40px] h-[40px] " + reference),
+            }));
+            var card = _window.rootVisualElement.Q("card");
+            ForcePanelUpdate(card.panel);
+            return (card, _window.rootVisualElement.Q("ref").resolvedStyle.backgroundColor);
+        }
+
+        private static void Hover(VisualElement element)
+        {
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                element.SimulateEvent(over);
+            }
+            ForcePanelUpdate(element.panel);
+        }
+
+        [Test]
+        public void Given_AShadowedCardWithAHoverBackground_When_Hovered_Then_ItsBackgroundTakesTheHoverColor()
+        {
+            // Arrange
+            var (card, expected) = Mount("bg-white hover:bg-gray-50 shadow-md", "bg-gray-50");
+
+            // Act
+            Hover(card);
+
+            // Assert
+            Assert.That(card.resolvedStyle.backgroundColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AShadowedCardWithAHoverClassBackground_When_Hovered_Then_ItsBackgroundTakesTheHoverColor()
+        {
+            // Arrange
+            var (card, expected) = Mount("bg-blue-500 shadow-md", "bg-red-500", hover: "bg-red-500");
+
+            // Act
+            Hover(card);
+
+            // Assert
+            Assert.That(card.resolvedStyle.backgroundColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AShadowedCardWithADarkBackground_When_TheThemeTurnsDark_Then_ItsBackgroundTakesTheDarkColor()
+        {
+            // Arrange
+            var (card, expected) = Mount("bg-blue-500 dark:bg-red-500 shadow-md", "bg-red-500");
+
+            // Act
+            VelvetTheme.IsDark = true;
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(card.resolvedStyle.backgroundColor, Is.EqualTo(expected));
         }
     }
 }

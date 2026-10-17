@@ -73,8 +73,8 @@ namespace Velvet
             => _dropShadow.ApplyShadowOnCreate(element, classNames);
 
         internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
-            float skewXDeg, bool canReleaseFace)
-            => _dropShadow.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
+            float skewXDeg)
+            => _dropShadow.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg);
 
         internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)
             => _borderStyle.ApplyBorderStyleOnCreate(element, classNames);

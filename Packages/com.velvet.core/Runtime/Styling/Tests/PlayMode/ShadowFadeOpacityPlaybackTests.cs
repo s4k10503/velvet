@@ -14,9 +14,9 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// The shadow is a textured <c>mgc.Allocate</c> quad in the caster's own generated content, and the
-    /// renderer scales it by the caster's resolved opacity exactly as it scales the <c>painter2D</c> face
-    /// repainted beside it — measured as byte-for-byte parity across every context that could have separated
-    /// them, in <see cref="PaintOpacityParityPlaybackTests"/>. A scheduler that ALSO scaled the shadow while
+    /// renderer scales it by the caster's resolved opacity exactly as it scales <c>painter2D</c> output —
+    /// measured as byte-for-byte parity across every context that could have separated them, in
+    /// <see cref="PaintOpacityParityPlaybackTests"/>. A scheduler that ALSO scaled the shadow while
     /// an animation fades the caster therefore applied the same opacity twice and landed the shadow at
     /// opacity squared; one did, and these cases are what keeps it gone.
     /// <para>

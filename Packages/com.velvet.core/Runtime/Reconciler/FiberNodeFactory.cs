@@ -199,7 +199,7 @@ namespace Velvet
             _patcher.Appliers.ApplyShadowOnCreate(element, paintClasses);
             // border-dashed / border-dotted: another wrapper-less paint (the dashed outline is the
             // element's own generateVisualContent; only the border color is suppressed). Attaches after
-            // skew / shadow so it can defer to whichever owns the face. ElementNode only — a Motion never
+            // skew so it can defer to it when it owns the face. ElementNode only — a Motion never
             // renders this silhouette (mirroring skew's own silent Motion exclusion).
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, paintClasses);
             // ring-* / outline-*: the band is a native-border overlay hosted as a reconciler-invisible

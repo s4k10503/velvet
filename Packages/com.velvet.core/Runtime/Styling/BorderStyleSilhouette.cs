@@ -48,10 +48,9 @@ namespace Velvet
     /// border-dashed</c> composes exactly as CSS width + style + color (width from the untouched resolved
     /// style, color from the captured stash).
     /// <para>
-    /// Limitation: when the element is also skewed or shadowed, that layer owns the whole face (it repaints a
-    /// solid border as part of its silhouette), so the border stays SOLID — the reconciler defers this layer
-    /// while a skew / shadow binding is present, the same tier as the clip + shadow / clip + ring mutual
-    /// exclusions.
+    /// Limitation: when the element is also skewed, the skew layer owns the whole face (it repaints a solid
+    /// border as part of its silhouette), so the border stays SOLID — the reconciler defers this layer while a
+    /// skew binding is present.
     /// </para>
     /// </remarks>
     internal static class BorderStyleSilhouette
@@ -117,10 +116,10 @@ namespace Velvet
             element.MarkDirtyRepaint();
         }
 
-        // Tears the binding down for a face HANDOFF to a skew / shadow layer that took over the whole face in the
+        // Tears the binding down for a face HANDOFF to a skew layer that took over the whole face in the
         // same patch: unregisters the paint + stash callbacks but LEAVES the border-color suppression in place, so
         // the incoming layer's own suppression of the shared inline slot is not nulled out from under it (which
-        // would re-expose the native rectangular border behind the sheared / shadowed face). The plain Detach
+        // would re-expose the native rectangular border behind the sheared face). The plain Detach
         // releases instead, for when the border-style classes were genuinely removed with no higher layer taking over.
         public static void DetachPreservingSuppression(VisualElement element, BorderStyleBinding binding)
         {

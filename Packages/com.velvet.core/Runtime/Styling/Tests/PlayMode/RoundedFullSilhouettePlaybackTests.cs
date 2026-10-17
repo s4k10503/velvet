@@ -297,7 +297,7 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRounded3xl_Then_TheShadowCornerKeepsItsTwentyFourPixelRadius()
         {
-            // Arrange — the offset carries the shadow's bottom-right corner clear of the face painted over it,
+            // Arrange — the offset carries the shadow's bottom-right corner clear of the caster's box,
             // and the 1px blur keeps its edge within half a pixel of the SDF boundary.
             yield return MountBox("Offset3xl", $"{OffsetCasterGeometry} rounded-3xl {OffsetShadow}");
 

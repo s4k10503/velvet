@@ -1006,8 +1006,8 @@ namespace Velvet
 
         // Dashed / dotted border outline per element (border-dashed / border-dotted), keyed by the element
         // itself — like skew, the outline is painted by the element's own generateVisualContent with no
-        // wrapper (only the border color is suppressed; the fill and width are untouched). Defers to skew /
-        // shadow when either owns the face. Maintained by FiberWrapperElementAppliers' border-style methods
+        // wrapper (only the border color is suppressed; the fill and width are untouched). Defers to skew
+        // when it owns the face. Maintained by FiberWrapperElementAppliers' border-style methods
         // and torn down by FiberElementCleaner / Reconciler.Dispose.
         public Dictionary<VisualElement, BorderStyleBinding> BorderStyleBindings { get; } = new();
 

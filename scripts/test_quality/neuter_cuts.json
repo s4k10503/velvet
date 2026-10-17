@@ -338,7 +338,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberDropShadowApplier.cs",
-          "anchor": "float skewXDeg, bool canReleaseFace)",
+          "anchor": "float skewXDeg)",
           "neuter": "return;"
         }
       ]

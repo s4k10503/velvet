@@ -17,7 +17,7 @@ namespace Velvet
         public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
 
-        // The native-face stash + sentinel suppression shared with the drop-shadow layer: the rectangular
+        // The native-face stash + sentinel suppression shared with the border-dashed layer: the rectangular
         // background / border are suppressed with a sentinel color and re-painted sheared, so their effective
         // colors must be captured before suppression. Border uses the LEFT side (the sheared outline is a
         // single uniform stroke, so per-side colors/widths collapse to one).
@@ -95,7 +95,7 @@ namespace Velvet
     /// </remarks>
     internal static class SkewSilhouette
     {
-        // The suppression sentinel lives in SilhouetteFace, shared with the drop-shadow layer; forwarded
+        // The suppression sentinel lives in SilhouetteFace, shared with the border-dashed layer; forwarded
         // here so a call site reads it off the layer it is working in.
         internal static Color SuppressedColor => SilhouetteFace.SuppressedColor;
 

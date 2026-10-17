@@ -76,24 +76,24 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AShadowedBorderDashedElement_When_Reconciled_Then_NoBorderStyleBindingIsTracked()
+        public void Given_AShadowedBorderDashedElement_When_Reconciled_Then_TheBorderStyleBindingIsTracked()
         {
-            // Arrange — the upright drop shadow also owns the face (it repaints a solid border over its shadow
-            // quad), so the dashed layer defers to it too.
+            // Arrange — the drop shadow paints only outside the border box and leaves the border to the element,
+            // so the dashed layer paints it.
             using var scope = new ReconcilerScope();
 
             // Act
             Mount(scope, new VNode[] { V.Div(className: "shadow-md border-dashed", name: "card") });
 
             // Assert
-            Assert.That(scope.Reconciler.Context.BorderStyleBindings.Count, Is.EqualTo(0));
+            Assert.That(scope.Reconciler.Context.BorderStyleBindings.Count, Is.EqualTo(1));
         }
 
-        // Face handoff: adding skew / shadow to an already border-dashed element in ONE patch moves face
-        // ownership to the skew / shadow silhouette. The dashed layer defers (detaches) LAST in the patch, but it
-        // must hand the captured border color to the new owner and leave the suppression in place — a plain
-        // release would null the shared inline border slot the new owner's suppression now depends on, re-exposing
-        // the native rectangular border behind the sheared / shadowed face.
+        // Face handoff: adding skew to an already border-dashed element in ONE patch moves face ownership to the
+        // skew silhouette. The dashed layer defers (detaches) LAST in the patch, but it must hand the captured
+        // border color to the new owner and leave the suppression in place — a plain release would null the
+        // shared inline border slot the new owner's suppression now depends on, re-exposing the native
+        // rectangular border behind the sheared face.
 
         [Test]
         public void Given_ABorderDashedColoredElement_When_SkewIsAddedInOnePatch_Then_TheSkewFaceAdoptsTheBorderColor()
@@ -132,11 +132,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABorderDashedColoredElement_When_ShadowIsAddedInOnePatch_Then_TheShadowFaceAdoptsTheBorderColor()
+        public void Given_ABorderDashedColoredElement_When_ShadowIsAddedInOnePatch_Then_TheDashedLayerStays()
         {
-            // Arrange — an upright drop shadow also owns the whole face (it repaints a solid border over its
-            // shadow quad), so it is the second layer this handoff must serve.
-            ColorUtility.TryParseHtmlString("#FF0000", out var red);
+            // Arrange
             using var scope = new ReconcilerScope();
             var oldTree = new VNode[] { V.Div(className: "border-dashed border-[#FF0000]", name: "card") };
             Mount(scope, oldTree);
@@ -146,8 +144,8 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, oldTree,
                 new VNode[] { V.Div(className: "shadow-md border-dashed border-[#FF0000]", name: "card") });
 
-            // Assert — the shadow's repainted upright face carries the handed-off border color.
-            Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].Face.BorderColor, Is.EqualTo(red));
+            // Assert — the dashed outline survives the shadow's arrival.
+            Assert.That(scope.Reconciler.Context.BorderStyleBindings.Count, Is.EqualTo(1));
         }
 
         [Test]

@@ -14,8 +14,8 @@ namespace Velvet.Tests
     /// the two could plausibly have diverged.
     /// </summary>
     /// <remarks>
-    /// Velvet's drop shadow is a textured quad drawn beside a painter2D face in one
-    /// <c>generateVisualContent</c>. A scheduler that scaled the shadow itself while an animation faded its
+    /// Velvet's drop shadow is a textured quad in the caster's <c>generateVisualContent</c>, where the skew
+    /// face is <c>painter2D</c> output. A scheduler that scaled the shadow itself while an animation faded its
     /// caster would apply the same opacity twice; one did, on the premise that the quad ignores opacity.
     /// <c>ShadowFadeOpacityPlaybackTests</c> pins the consequence on the real paint. These cases pin the engine
     /// fact underneath it in the contexts that premise could have been about, so restoring such a multiplier
