@@ -205,7 +205,7 @@ namespace Velvet.CodeGen
 
         // An address taken of a captured variable is a write unless it is read in place, since the callee may store through it.
         private static bool WritesThroughAddress(Instruction addressOf, FieldReference field)
-            => IsClosureField(field) && !IsParentLink(field) && !ReadsInPlace(addressOf.Next, field.FieldType);
+            => IsClosureField(field) && !ReadsInPlace(addressOf.Next, field.FieldType);
 
         private static bool IsReceiverOfClosureAccess(Instruction? next)
             => next is { OpCode.Code: Code.Ldfld or Code.Ldflda or Code.Ldftn or Code.Ldvirtftn } || (next is { OpCode.Code: Code.Stfld, Operand: FieldReference link } && IsParentLink(link));
