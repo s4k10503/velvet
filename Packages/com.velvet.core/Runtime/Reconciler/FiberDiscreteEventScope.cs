@@ -40,10 +40,9 @@ namespace Velvet
                 }
                 if (!wasInDiscreteEvent)
                 {
-                    // Pending passive effects from a prior commit are flushed before a discrete update's render,
-                    // so the effect runs before this event's re-render. Scoped to the discrete boundary (not the
-                    // mount / commit-phase FlushImmediate callers, which keep passive effects pending). The
-                    // event's own flush still runs even if a runaway passive-effect loop throws its guard.
+                    // Flushed here as well as before the drain's render (FiberBatchScheduler.Drain), so an event
+                    // that schedules no update still runs the effects of the commit before it. The event's own
+                    // flush still runs even if a runaway passive-effect loop throws its guard.
                     try
                     {
                         batchScheduler?.FlushPendingPassiveEffects();

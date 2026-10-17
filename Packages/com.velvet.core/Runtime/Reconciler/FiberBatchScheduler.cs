@@ -103,8 +103,8 @@ namespace Velvet
         // whole-tree flush) read the live store snapshot.
         private Action? _onDrainBegin;
         private Action? _onDrainEnd;
-        // Flushes any pending passive effects from a prior commit, wired by the owning Reconciler. Run before a
-        // synchronous discrete-event drain so those effects commit before the new update's render.
+        // Flushes any pending passive effects from a prior commit, wired by the owning Reconciler. Run before
+        // each drain's render (see Drain).
         private Action? _flushPassiveEffects;
 
         // Set by ScheduleImmediate whenever intake happens while a drain is live; the delayed drain
@@ -155,7 +155,6 @@ namespace Velvet
             _onDrainEnd = onDrainEnd;
         }
 
-        // Registers the pending-passive-effect flush run before a synchronous discrete-event drain.
         // Called once by the owning Reconciler.
         internal void SetPassiveEffectFlush(Action flush) => _flushPassiveEffects = flush;
 
@@ -474,6 +473,11 @@ namespace Velvet
         private void Drain(List<ComponentFiber> order, HashSet<ComponentFiber>? set, bool immediateTier)
         {
             if (order.Count == 0) return;
+            // React flushes pending passive effects before it starts a render, so an earlier commit's effects and
+            // presence completions run before this pass renders. Ahead of the copy below, so on the immediate tier
+            // an update one of them schedules joins this pass.
+            FlushPendingPassiveEffects();
+            if (order.Count == 0) return;
             // Activate UseStore snapshot pinning for the span of this drain. Bracketed only on the outer drain
             // (a re-entrant call is blocked by _draining before reaching here) so a nested entry cannot reset
             // the wave mid-flush.
@@ -601,10 +605,7 @@ namespace Velvet
             DrainImmediate();
         }
 
-        // Flushes a prior commit's pending passive effects, driven by the discrete-event boundary so an
-        // effect runs before that event's render — NOT from the mount / commit-phase FlushImmediate
-        // callers, which must leave passive effects pending for the scheduler tick. Gated like
-        // FlushImmediate so it never re-enters a live drain / reconcile.
+        // Gated like FlushImmediate so it never re-enters a live drain / reconcile.
         internal void FlushPendingPassiveEffects()
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
