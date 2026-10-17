@@ -3292,15 +3292,17 @@ namespace Velvet.Tests
             RenderShared(mounted);
             for (var i = 0; i < 18; i++) Tick();
             var reached = WrittenOpacity(Root.Q<VisualElement>("b"));
-            Assume.That(reached, Is.LessThan(0.9f));
 
             // Act
             s_bLeft = 400;
             RenderShared(mounted);
             for (var i = 0; i < 5; i++) Tick();
+            // NaN stands in for the drawn opacity where the mix was not part-way, so a tree that never mixes fails here
+            // rather than reading inconclusive.
+            var drawn = reached < 0.9f ? WrittenOpacity(Root.Q<VisualElement>("b")) : float.NaN;
 
             // Assert — still at the part-way opacity the mix reached, as a crossfade interrupted the same way holds.
-            Assert.That(WrittenOpacity(Root.Q<VisualElement>("b")), Is.EqualTo(reached).Within(0.06f));
+            Assert.That(drawn, Is.EqualTo(reached).Within(0.06f));
         }
 
         [Test]
@@ -3318,15 +3320,17 @@ namespace Velvet.Tests
             s_bLeft = 400;
             RenderShared(mounted);
             var reached = WrittenOpacity(Root.Q<VisualElement>("b"));
-            Assume.That(reached, Is.LessThan(0.9f));
 
             // Act — "b"'s own opacity drops to a quarter while its own move runs.
             s_bClasses = "opacity-25";
             RenderShared(mounted);
             for (var i = 0; i < 5; i++) Tick();
+            // NaN stands in for the drawn opacity where the mix was not left part-way, so a tree that never mixes fails
+            // here rather than reading inconclusive.
+            var drawn = reached < 0.9f ? WrittenOpacity(Root.Q<VisualElement>("b")) : float.NaN;
 
             // Assert
-            Assert.That(WrittenOpacity(Root.Q<VisualElement>("b")), Is.EqualTo(reached).Within(0.01f));
+            Assert.That(drawn, Is.EqualTo(reached).Within(0.01f));
         }
 
         [Test]
@@ -3340,15 +3344,17 @@ namespace Velvet.Tests
             s_bLeft = 400;
             RenderShared(mounted);
             var reached = WrittenOpacity(Root.Q<VisualElement>("a"));
-            Assume.That(reached, Is.LessThan(0.9f));
 
             // Act — "a"'s own opacity drops to a quarter while "b"'s own move runs.
             s_aClasses = "opacity-25";
             RenderShared(mounted);
             for (var i = 0; i < 5; i++) Tick();
+            // NaN stands in for the drawn opacity where the fade was not part-way, so a tree that never fades fails here
+            // rather than reading inconclusive.
+            var drawn = reached < 0.9f ? WrittenOpacity(Root.Q<VisualElement>("a")) : float.NaN;
 
             // Assert
-            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.EqualTo(reached).Within(0.01f));
+            Assert.That(drawn, Is.EqualTo(reached).Within(0.01f));
         }
 
         [Test]
