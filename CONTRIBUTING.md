@@ -256,20 +256,18 @@ it first (`scripts/ci/mutation_record.py`). Entries under different keys never t
 conflict, and the same key written again is the newer verdict. The branch shares no history with the
 code and nothing merges it.
 
-**Only commits GitHub signed as the workflow's bot are read.** No ruleset restricts who writes the
-branch, and `GITHUB_TOKEN` has no administration permission to set one, so the writer is held by what
-each commit carries. The `record` job's
-commits give no author, committer or signature of their own, and GitHub's documentation describes
-`GITHUB_TOKEN` as a GitHub App installation token and a commit made by a request authenticated as an
-app, with no custom author, committer or signature, as signed and verified as its bot. Every read —
-each run's plan and the release gate — walks the branch's first-parent history and asks GitHub's
-commits API about each commit; one not reported `verified` with reason
-`valid` and committed by `github-actions[bot]` refuses the whole record, naming it. The limit: anyone
-with write access can still push to the branch, and an administrator can rewrite it, but neither can
-make GitHub sign a commit as the bot, so whatever they put there is refused rather than trusted —
-the record stops answering until the foreign commits are gone. Nothing here has watched GitHub sign a
-`record` job's commit yet; if it does not, the first read after the first write refuses, and the record
-is unused rather than trusted. A mutant measured to nothing — no shard recorded it, the project lock or the build
+**Only commits GitHub signed and attributed to the workflow's bot are read.** No ruleset restricts who
+writes the branch, and `GITHUB_TOKEN` has no administration permission to set one, so the writer is
+held by what each commit carries. The `record` job's commits give no author, committer or signature of
+their own; the commits API reported the first one as authored by `github-actions[bot]`, committed by
+`web-flow` and verified with reason `valid`. Every read — each run's plan and the release gate — walks
+the branch's first-parent history and asks the commits API about each commit; one not reported
+`verified` with reason `valid`, authored by `github-actions[bot]` and committed by `web-flow` refuses
+the whole record, naming it. The limit: this refuses an unsigned push, a commit authored by a named
+person, and a commit committed by anyone but `web-flow`. It does not tell this workflow from another
+one that writes the same way, nor from a commit that someone with write access has `web-flow` sign
+with the bot named as author. An administrator can still rewrite the branch. A refused record stops
+answering until the refused commits are gone. A mutant measured to nothing — no shard recorded it, the project lock or the build
 system kept its suite from running, its assembly was never rebuilt — writes no entry, so the next run
 measures it.
 
