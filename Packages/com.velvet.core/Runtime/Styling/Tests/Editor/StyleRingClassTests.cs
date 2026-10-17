@@ -28,10 +28,6 @@ namespace Velvet.Tests
         private static RingSpec Extract(params string[] classNames)
             => StyleRingClass.TryExtract(classNames, out var spec) ? spec : NoRing;
 
-        // Read by reflection so a tree whose spec has no such field reports it as false rather than failing to build.
-        private static bool TakesTextColour(RingSpec spec)
-            => typeof(RingSpec).GetField("CurrentColor")?.GetValue(spec) is true;
-
         [Test]
         public void Given_BareRing_When_Extracted_Then_UsesTheOnePixelDefaultWidth()
         {
@@ -98,7 +94,7 @@ namespace Velvet.Tests
             var spec = Extract("ring-2");
 
             // Assert: Tailwind v4's ring is var(--tw-ring-color, currentcolor).
-            Assert.That(TakesTextColour(spec), Is.True);
+            Assert.That(RingSpecReader.TakesTextColour(spec), Is.True);
         }
 
         [Test]
@@ -115,7 +111,7 @@ namespace Velvet.Tests
             var spec = Extract("outline");
 
             // Assert: outline-color's initial value is the text colour.
-            Assert.That(TakesTextColour(spec), Is.True);
+            Assert.That(RingSpecReader.TakesTextColour(spec), Is.True);
         }
 
         [Test]
@@ -152,7 +148,7 @@ namespace Velvet.Tests
             var spec = Extract("outline", "ring-red-500");
 
             // Assert: a ring colour is --tw-ring-color, which an outline does not read.
-            Assert.That(TakesTextColour(spec), Is.True);
+            Assert.That(RingSpecReader.TakesTextColour(spec), Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the base colours an outline with its own colour class too; this is the control for the case above.
