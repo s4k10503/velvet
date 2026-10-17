@@ -145,6 +145,9 @@ namespace Velvet.Tests
         [TestCase("-z-21474836470", int.MinValue)]
         [TestCase("z-9007199254740992", int.MaxValue)]
         [TestCase("z-1152921504606847000", int.MaxValue)]
+        [TestCase("z-1000000000000000", int.MaxValue)]
+        [TestCase("z-98872599063676140", int.MaxValue)]
+        [TestCase("z-66734236632186616", int.MaxValue)]
         [TestCase("z-[3000000000]", int.MaxValue)]
         [TestCase("z-[-3000000000]", int.MinValue)]
         [TestCase("-z-[-2147483648]", int.MaxValue)]
@@ -161,8 +164,10 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base declines each of these spellings too, and a bare number spelled any other way stays declined.
         // Accepting a leading zero reddens `z-05` and `z-00`, accepting a sign or a dot reddens `z-+5`, `z-5.0`
         // and `z-1.5`, dropping the round trip through a double reddens `z-9007199254740993` and
-        // `z-1152921504606846976` (2^60, which JavaScript prints as 1152921504606847000), and taking 1e21 itself
-        // as printing back unchanged reddens `z-1000000000000000000000`.
+        // `z-1152921504606846976` (2^60, which JavaScript prints as 1152921504606847000), taking 1e21 itself
+        // as printing back unchanged reddens `z-1000000000000000000000`, and passing over a run exactly half a gap
+        // away from a double whose last bit is even reddens `z-477028999999999970000` (JavaScript prints that
+        // double as 477029000000000000000).
         [TestCase("z-05")]
         [TestCase("z-00")]
         [TestCase("z-+5")]
@@ -173,6 +178,7 @@ namespace Velvet.Tests
         [TestCase("z-1152921504606846976")]
         [TestCase("z-1000000000000000000000")]
         [TestCase("z-100000000000000000000000")]
+        [TestCase("z-477028999999999970000")]
         [TestCase("-z-auto")]
         [TestCase("z-")]
         public void Given_ASuffixThatIsNotACanonicalWholeNumber_When_Parsed_Then_ItIsRejected(string cls)

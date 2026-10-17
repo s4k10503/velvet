@@ -103,6 +103,7 @@ namespace Velvet.Tests
             s_sliceFiber = null;
             s_sliceAClass = null;
             s_sliceBClass = null;
+            s_sliceKeyed = false;
         }
 
         // Finds the front (z >= 0) or back (negative z) layer container directly under parent, or null when
@@ -722,8 +723,11 @@ namespace Velvet.Tests
             Assert.That(Names(front), Is.EqualTo("b,a"));
         }
 
-        [Test]
-        public void Given_AnInOrderLayerPendingAResort_When_ThePostPassResortRuns_Then_ItAllocatesNothing()
+        // Two equal-z members whose placeholders both sit outside the stacking parent compare equal, and a tie is
+        // in order.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AnInOrderLayerPendingAResort_When_ThePostPassResortRuns_Then_ItAllocatesNothing(bool placeholdersOutside)
         {
             // Arrange
             var root = new VisualElement();
@@ -734,6 +738,13 @@ namespace Velvet.Tests
             }));
             var ctx = mounted.Root.Reconciler.Context;
             var parent = root.Q<VisualElement>("parent");
+            if (placeholdersOutside)
+            {
+                foreach (var real in new[] { root.Q<VisualElement>("a"), root.Q<VisualElement>("b") })
+                {
+                    ctx.ZLayerMembers[real] = ctx.ZLayerMembers[real] with { Placeholder = new VisualElement() };
+                }
+            }
             void MarkPending() => FiberZLayerCoordinator.NoteChildrenReconciled(ctx, parent);
             MarkPending();
             FiberZLayerCoordinator.ResortLayers(ctx);
@@ -745,6 +756,52 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(blocks, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_TwoZManagedSiblings_When_TheirMountPassEnds_Then_TheResortsDeclaredIndexHoldsNoElement()
+        {
+            // Arrange
+            var root = new VisualElement();
+
+            // Act
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "a", className: "absolute z-10"),
+                V.Div(name: "b", className: "absolute z-10"),
+            }));
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler.Context.ZLayerDeclaredIndex, Is.Empty);
+        }
+
+        // Reposition is called with no child reconcile over the stacking parent to mark it pending, so only the
+        // placement itself can. Without the resort, what the layer shows is where the placement inserted.
+        [TestCase("a", 30, true, "b,a", TestName = "AZChangeWithinTheLayerIsResorted")]
+        [TestCase("c", 20, false, "a,b,c", TestName = "AnArrivalFromTheBackLayerGoesAfterItsEqualZ")]
+        public void Given_AMountedLayer_When_AMemberIsRepositionedOutsideAChildReconcile_Then_TheFrontLayerHoldsZThenTreeOrder(
+            string moved, int newZ, bool resort, string expected)
+        {
+            // Arrange — c is declared last, so tree order puts it after the z-20 b it joins.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "a", className: "absolute z-10"),
+                V.Div(name: "b", className: "absolute z-20"),
+                V.Div(name: "c", className: "absolute -z-10"),
+            }));
+            var ctx = mounted.Root.Reconciler.Context;
+            var real = root.Q<VisualElement>(moved);
+
+            // Act
+            FiberZLayerCoordinator.Reposition(ctx, ctx.ZLayerMembers[real].Placeholder, real, newZ);
+            if (resort)
+            {
+                FiberZLayerCoordinator.ResortLayers(ctx);
+            }
+
+            // Assert
+            Assert.That(Names(FindLayerContainer(root.Q<VisualElement>("parent"), front: true)), Is.EqualTo(expected));
         }
 
         #endregion
@@ -1656,17 +1713,18 @@ namespace Velvet.Tests
         private static ComponentFiber s_sliceFiber;
         private static string s_sliceAClass;
         private static string s_sliceBClass;
+        private static bool s_sliceKeyed;
 
         [Component]
         private static VNode SlicedLayerHost()
         {
             s_sliceFiber = FiberAmbientStack.Current;
             var children = new VNode[10];
-            children[0] = V.Div(name: "a", className: "absolute " + s_sliceAClass);
-            children[1] = V.Div(name: "b", className: "absolute " + s_sliceBClass);
+            children[0] = V.Div(name: "a", className: "absolute " + s_sliceAClass, key: s_sliceKeyed ? "a" : null);
+            children[1] = V.Div(name: "b", className: "absolute " + s_sliceBClass, key: s_sliceKeyed ? "b" : null);
             for (var i = 2; i < 10; i++)
             {
-                children[i] = V.Div(name: "item" + i);
+                children[i] = V.Div(name: "item" + i, key: s_sliceKeyed ? "item" + i : null);
             }
             return V.Fragment(children: children);
         }
@@ -1700,6 +1758,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Names(front), Is.EqualTo("b,a"));
+        }
+
+        [TestCase(false, TestName = "AnUnkeyedDiffResumes")]
+        [TestCase(true, TestName = "AKeyedDiffResumes")]
+        public void Given_ALayerPutOutOfOrderWhileAPassIsParked_When_ThePassResumes_Then_TheLayerIsBackInZOrder(bool keyed)
+        {
+            // Arrange — a at z-10 and b at z-20, neither of which the re-render changes, so no slice places a
+            // member; the tiny budget parks the re-render after its first node.
+            s_sliceAClass = "z-10";
+            s_sliceBClass = "z-20";
+            s_sliceKeyed = keyed;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(SlicedLayerHost, key: "root"));
+            var front = FindLayerContainer(root, front: true);
+            s_sliceFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_sliceFiber.FlushStateWithTinyBudgetForTest();
+            root.Q<VisualElement>("a").PlaceInFront(root.Q<VisualElement>("b"));
+            Assume.That(Names(front), Is.EqualTo("b,a"), "Precondition: the layer is out of z order");
+
+            // Act
+            s_sliceFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(Names(front), Is.EqualTo("a,b"));
         }
 
         #endregion

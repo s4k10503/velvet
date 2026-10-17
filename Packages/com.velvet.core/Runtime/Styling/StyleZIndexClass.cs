@@ -183,6 +183,7 @@ namespace Velvet
             var scale = BigInteger.Pow(10, excess);
             var quotient = BigInteger.DivRem(value, scale, out var remainder);
             var twiceRemainder = 2 * remainder;
+            // MUTANT_SURVIVES(equivalent, boundary): at a remainder of half the scale the gap is below it, so neither rounding reads back.
             if (twiceRemainder > scale || (twiceRemainder == scale && !quotient.IsEven))
             {
                 quotient += 1;
