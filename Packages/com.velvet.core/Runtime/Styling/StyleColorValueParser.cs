@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
 
@@ -72,17 +73,22 @@ namespace Velvet
         // Whether a type hint picks a branch other than the colour for a utility Tailwind types, named by its root:
         // the hints its switch handles before the colour default.
         internal static bool HintSelectsNonColour(string root, string? hint)
-            => hint != null && root switch
-            {
-                "text" => hint is "length" or "percentage" or "absolute-size" or "relative-size",
-                "border" or "border-t" or "border-r" or "border-b" or "border-l" or "border-x" or "border-y"
-                    or "border-s" or "border-e" => hint is "length" or "line-width",
-                "bg" => hint is "percentage" or "position" or "bg-size" or "length" or "size" or "image" or "url",
-                "ring" or "ring-offset" or "inset-ring" => hint == "length",
-                "outline" => hint is "length" or "number" or "percentage",
-                "from" or "via" or "to" => hint is "length" or "percentage",
-                _ => false,
-            };
+            => hint != null && s_nonColourHints.TryGetValue(root, out var hints) && Array.IndexOf(hints, hint) >= 0;
+
+        private static readonly string[] s_borderHints = { "length", "line-width" };
+
+        private static readonly Dictionary<string, string[]> s_nonColourHints = new()
+        {
+            ["text"] = new[] { "length", "percentage", "absolute-size", "relative-size" },
+            ["border"] = s_borderHints, ["border-t"] = s_borderHints, ["border-r"] = s_borderHints,
+            ["border-b"] = s_borderHints, ["border-l"] = s_borderHints, ["border-x"] = s_borderHints,
+            ["border-y"] = s_borderHints, ["border-s"] = s_borderHints, ["border-e"] = s_borderHints,
+            ["bg"] = new[] { "percentage", "position", "bg-size", "length", "size", "image", "url" },
+            ["ring"] = new[] { "length" }, ["ring-offset"] = new[] { "length" }, ["inset-ring"] = new[] { "length" },
+            ["outline"] = new[] { "length", "number", "percentage" },
+            ["from"] = new[] { "length", "percentage" }, ["via"] = new[] { "length", "percentage" },
+            ["to"] = new[] { "length", "percentage" },
+        };
 
         // Internal so the shadow, ring, divide, gradient and filter grammars share the one colour grammar, which
         // TryParseCssColor owns.
