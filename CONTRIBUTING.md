@@ -218,58 +218,110 @@ The run also fails or stops rather than pass over a mutant nobody asked about, a
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 says when it does which.
 
-**The campaign runs nightly over what the default branch gained, and no pull request waits on it.**
-The `Mutation campaign` workflow runs on a schedule on the default branch, and on a dispatch onto any
-branch of this repository (`gh workflow run mutation.yml --ref <branch> -f base=main`), which measures
-that branch's change against its merge base with `base`, as a local run does. No branch-protection rule
-requires either, and [Merging a pull request](#merging-a-pull-request) says how a merge leaves a
-campaign on its head out.
+**The campaign keeps a record of the default branch, and no pull request waits on it.** It follows
+[cargo-mutants' CI guide](https://github.com/sourcefrog/cargo-mutants/blob/main/book/src/ci.md), which
+checks the code a pull request changed and every mutant on the development branch, and
+[StrykerJS's incremental mode](https://github.com/stryker-mutator/stryker-js/blob/master/docs/incremental.md),
+which keeps each mutant's result and measures it again only when what decided it changed;
+[PIT's](https://github.com/hcoles/pitest) `--historyInputLocation` and `--historyOutputLocation` are the
+same idea in a third tool. The main line's runs measure what is not known yet and keep what they
+measured, a pull request's run measures its own change against what is kept, and nothing is measured
+again while what decided it stands. The `Mutation campaign` workflow runs:
 
-A night measures a slice of the default branch's first-parent commits, oldest first, always on the
-head's own tree. `scripts/ci/mutation_nightly.py` starts it at the commit the last complete night
-reached — named by the `Mutation nightly reported <sha>` artifact of the newest of the last 20
-scheduled runs that carries one and whose commit the checkout contains — or, where none does, at the
-first-parent commit that added `scripts/ci/mutation_nightly.py`, so nothing that landed since the
-nights began is passed over. A slice's mutants are the changed lines that `git blame --first-parent`
-gives to its commits (`mutation_check.py --through`), so a line a later commit rewrote is measured
-with that later commit. The script adds commits one at a time while the slice's plan fits a night's
-ceiling, `NIGHTLY_MAX_SHARDS` shards of `SHARD_CEILING`, counted with the kills the plan reuses, and
-stops before the first commit that would take it over. The commits after the slice are left for later
-nights, and the report lists them. A commit over the ceiling on its own is skipped, and named with its
-mutants by line as unmeasured, so that it does not stop every later night. Every job that runs
-`mutation_check.py` hands it the slice's last commit as `--through`, and `scripts/ci/change_base.py`
-reads the slice's base back from the window file.
+- on every push to the default branch, nightly, and on a dispatch with no `base`
+  (`gh workflow run mutation.yml --ref <branch>`): a **record run** over the campaign's scope, below,
+  which writes what it measured into the record;
+- on a dispatch with a `base` (`gh workflow run mutation.yml --ref <branch> -f base=main`): the branch's
+  change against its merge base with `base`, as a local run reads it, written into the record the same way;
+- on every pull request: an **advisory run** over the pull request's change, which reads the record and
+  writes nothing.
 
-**A night moves the next one on only with a complete verdict.** Where the plan, the Library and every
-shard passed or were skipped and the verdict job decided with no mutant nothing measured — or every
-mutant was reused, or the slice has none — the report uploads the marker naming the commit the slice
-reached, and the next night starts after it. A night with a shard that failed, was cancelled or
-recorded nothing uploads no marker, so the next night measures the same slice again with whatever
-landed since behind it.
+No branch-protection rule requires any of them, and [Merging a pull request](#merging-a-pull-request)
+says how a merge leaves the campaign's runs on its head out. What the record decides is a release:
+[Releasing](#releasing) owns the gate that reads it.
 
-A night's ceiling is larger than a dispatch's because nobody waits on a night: forty shards, which
-`Mutation campaign ▸ mutation-shard` runs at most ten at a time (`max-parallel`), so a night is four
-waves of shard jobs. Ten at a time is the count campaign shards have run at beside other licensed jobs;
-four waves at the shard job's 360-minute limit hold the shard jobs to 24 hours at the very worst, and
-a scheduled run that comes while a night still runs waits in the night's concurrency group rather
-than cancelling it. Forty shards are 400 mutants. `NIGHTLY_MAX_SHARDS` holds the figure, and
-`NightlyBudgetTests` holds it to the four waves; every job of a night passes it to
-`mutation_check.py --max-shards`, and a dispatch takes the default, `MAX_SHARDS`.
+**A record run's scope is everything since the later of the cutover and the previous release.**
+`scripts/ci/change_base.py`'s `campaign_scope` names the base a record run reads its change against:
+the later of the newest `v*-main` tag in the head's history and the cutover, the oldest first-parent
+commit that added `scripts/ci/mutation_record.py`. Everything merged before the cutover passed the
+per-pull-request campaign the record replaced, so nothing before it is measured, and nothing is
+backfilled. `ScopeTests` holds both orders and the history with no cutover.
+
+**The record is a branch of one file per verdict.** The `mutation-record` branch holds an entry for each
+mutant a run decided, at `records/<key>.json`, where the key hashes the mutant (file, line, column,
+operator and both texts), the mutated file's bytes, and the tool: `mutation_check.py`, its operator
+tables and priority order, and the scripts the shards run or import (`TOOL_FILES`). A run fetches the
+branch; its `record` job, the branch's one writer, commits what the verdict wrote and pushes, building
+the commit with an index of its own and retrying over a newer branch when a push lost a race
+(`scripts/ci/mutation_record.py`). Entries under different keys never touch, so no two runs conflict,
+and the same key written again is the newer verdict. The branch shares no history with the code and
+nothing merges it. `protect-main` covers `refs/heads/main` alone, so the workflow's token can push the
+branch; no ruleset holds anyone else off it, and one restricting its updates to the GitHub Actions
+integration would. A verdict measured to nothing — no shard recorded it, it did not build, the
+project lock was held — writes no entry, so the next run measures it.
+
+**An entry is reused by StrykerJS's rule**, which reuses a kill while the test that killed it still
+exists unchanged, and any other result while no new test covers it and no test changed. Here an
+entry is found only for the same mutant of the same file bytes under the same tool, and then:
+
+- a kill stands while every killing case it recorded — up to `MAX_RECORDED_KILLERS` of its behavioural
+  ones, the first by name, each with the hash of every source file that declares the case's fixture or
+  one it derives from, and of every test source declaring a type, outside any other type, or an
+  extension method that one of those spells in its code, followed through such sources in turn — is
+  still declared in the tree, no code in the files recorded for it has changed, and none of those files
+  reads another test file through an assembly: spells one of the reads `ACROSS_ASSEMBLIES` lists, an
+  IL read, its own assembly (`OWN_ASSEMBLY`), or the assembly of a type a test source declares
+  (`ASSEMBLY_OF_TYPE`), or names a type declared outside any other type by a C# file that is not a
+  fixture and that spells one or names such a type in turn, a `using static` of it included. Comments
+  and string literals other than interpolated ones are not read for it, nor for the helpers above, and
+  comments are left out of each hash;
+- any other verdict — a survivor, an uncovered mutant, a hang, a crash — stands while no test source
+  changed: the entry carries `tests_digest`, a hash over every test source (every file under a `Tests/`
+  directory and under `Packages/com.velvet.core/TestUtilities/`, a C# one without its comments), and a
+  change to any of them measures it again.
+
+**What the rule does not see**, as StrykerJS says of its own: an edit to a production file other than
+the mutated one, a stylesheet, an assembly definition or a project setting does not lapse a verdict,
+though it can change what a mutant does. The per-change key this replaced hashed every such input, and
+on the default branch it lapsed on 36 of the 56 first-parent commits of one week, measured, which would
+have measured the scope again nearly every day. Where such a reach is suspected, deleting the entries
+from the branch or raising `MUTATION_MODEL_VERSION`, which moves every key, measures them again. The
+other side of the rule is that a change to any test re-measures every survivor in scope, the declared
+ones included.
+
+**One run measures at most a cap, in a fixed order, and the next run continues.** `mutation-plan`
+generates the scope's mutants in the order `--list` prints them, looks each one up in the record, and
+deals the first `RECORD_CAP` the record does not answer across at most `RECORD_SHARDS` shards
+(`mutation_check.py --cap`, `--max-shards`); the rest are pending, left to a later run, and fail nothing.
+`mutation.yml` declares both figures: 400 mutants over forty shards, which `mutation-shard` runs at most
+ten at a time (`max-parallel`), so a full run is four waves of the shard job's 360-minute limit and ends
+inside a day. `RecordBudgetTests` holds each cap inside its shards' ceiling and those waves inside 24
+hours. Where a run left mutants pending, recorded at least one entry, and every shard passed, its
+`record` job dispatches the next run onto the same ref, which deals the next mutants in the same order,
+since the ones just answered are in the record now. A run that recorded nothing dispatches nothing, so a
+mutant no run can measure stops the chain instead of being dealt to it forever; the next push or night
+deals it again. Record runs on one ref share a concurrency group that cancels nothing, so two never
+measure at once, and GitHub keeps only the newest waiting run, which reads the newest head. An advisory
+run deals at most `ADVISORY_CAP` across `ADVISORY_SHARDS`, and a newer head of its pull request cancels it.
+
+**The same tree and the same record give the same answer.** Which mutants a run deals, which entries it
+reuses and what the release gate decides are functions of the git history and the record branch alone:
+no clock, no run history, no artifact and no issue is read. A mutant the record does not answer, never
+measured or measured to nothing, is never a pass. `RecordGateTests`, `CappedPlanTests`,
+`ReuseDecisionTests`, `ScopeTests` and `test_mutation_gate.py` each take their decision twice and compare.
 
 `Mutation campaign ▸ mutation-plan` generates the mutants of the change, taking the readings `--list`
 takes, and stops there when there are none — because no mutable package source changed, or because
 no operator reaches the lines that did. The second passes, where a local run refuses it: its job
-summary names the lines. Where a licence is configured, a dispatch's diff of more mutants than ten
-shards of `SHARD_CEILING` can measure inside the shard job's timeout — not counting the kills reused
-from an earlier campaign, below — is refused at the plan; without one no shard would run, and the plan
-passes as the Unity jobs skip.
+summary names the lines. The cap keeps what a run deals inside its shards' ceiling; without a licence
+no shard runs, and the plan passes as the Unity jobs skip.
 Otherwise,
 where a licence is configured, the mutants are measured in two passes, because a mutant is killed
 when either suite fails on it, and one only a PlayMode fixture notices survives the EditMode suite.
 `Mutation campaign ▸ library` restores the EditMode Library the branch or the default branch holds,
 imports the head once where neither holds one under its exact key, and saves that for the branch, because
 `Test ▸ unity-tests` saves its own under a pull request's ref, which this run's is not.
-`Mutation campaign ▸ mutation-shard` then measures every mutant in up to ten jobs, each running the mutants it is dealt
+`Mutation campaign ▸ mutation-shard` then measures every mutant dealt in up to the run's shard count of jobs, each running the mutants it is dealt
 (by expected cost, below) in the editor image `Test ▸ unity-tests` pulls and recording its verdicts — against its area's own
 test assemblies first where those are cheap, and against the whole EditMode suite wherever that did
 not kill it, which
@@ -284,137 +336,32 @@ EditMode records: EditMode tests for the survivors bring the count under it, sin
 lowers it. A PlayMode pass runs only where its job's EditMode
 pass passed. The job's 360 minutes, the most a hosted job runs, hold the EditMode step's 180, the PlayMode step's 165
 and 15 for the checkout, restore and uploads around them; `ShardCeilingTests` holds each step to its platform's ceiling.
-`Mutation campaign ▸ mutation-verdict` reads both passes' records and the kills the plan reused, and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
+`Mutation campaign ▸ mutation-verdict` reads both passes' records and the entries the plan reused, and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
 a mutant nothing measured fails it, and a survivor of the EditMode pass that no PlayMode shard
-recorded is one nothing measured. Unlike a local run it takes every mutant rather than stopping at
-`--max`. A shard whose baseline is red fails on its own. Its job summary names each survivor and each
+recorded is one nothing measured; a mutant past the cap fails nothing. Unlike a local run it takes every
+mutant dealt rather than stopping at `--max`. A reused entry is read against the verdict job's own tree
+rather than the plan's file, and one that no longer stands there is
+`not measured (the recorded verdict no longer stands)`, so a reuse never turns a survivor into a pass.
+The verdict writes an entry for every mutant it measured to a verdict (`--emit-record`). A shard whose baseline is red fails on its own. Its job summary names each survivor and each
 unmeasured mutant by line, with the verdict each pass gave it, and each shard's editor logs and results
-files are uploaded as `Mutation EditMode shard N` or `Mutation PlayMode shard N`. A newer dispatch
-onto a branch cancels the run still measuring its older head; no other run cancels a night that is
-running. The run
+files are uploaded as `Mutation EditMode shard N` or `Mutation PlayMode shard N`. The run
 is the branch's own copy of the workflow and of `mutation_check.py`: a dispatch records its runs and
 checks against the commit of the ref it names, so a campaign dispatched from the default branch would
 be recorded against that branch's tip rather than the head it measured.
 
-**A night reports what it left to answer on one issue.** `Mutation campaign ▸ report` runs on every
-scheduled run where a licence is configured, whatever the jobs before it concluded, and comments on the
-issue labelled `mutation-nightly` — opening it the first time and reopening it where it was closed —
+**A record run reports what it left to answer on one issue.** `Mutation campaign ▸ report` runs after
+every record run where a licence is configured, whatever the jobs before it concluded, and comments on
+the issue labelled `mutation-nightly` — opening it the first time and reopening it where it was closed —
 with each unanswered survivor and stale declaration the verdict printed, each mutant nothing measured,
-each job that did not pass, and each commit skipped over the ceiling with its mutants. The commits
-left for later nights are listed too, and owe no comment of their own: a night with nothing else,
-whose window was read, writes none. Where the verdict is complete, as above, and any comment it owes was
-written, the report then uploads the window as `Mutation nightly reported <sha>`, naming the commit the
-slice reached. A survivor is answered as above, by a
+and each job that did not pass (`scripts/ci/mutation_report.py`). Mutants past the cap owe no comment:
+a later run measures them. The issue is for people; nothing decides on it. A survivor is answered by a
 pull request that writes the test or the declaration. A declaration a change writes brings the lines it
-answers for into that change's mutants, so the night whose slice holds that change, or a dispatch onto
-its branch, measures them: it answers the survivor, or is stale where the mutant now dies. A change to
-tests alone generates no mutant, so neither a night nor a dispatch measures a survivor that a new test
-answers; measure its line on the branch with a local run, which needs an editor:
+answers for into that change's mutants, so the next record run measures them, and the change's own
+advisory run does too: it answers the survivor, or is stale where the mutant now dies. A test that
+answers a survivor changes a test source, so every survivor's entry lapses and the next record run
+measures them again, recording the one the test kills as killed; to see it before merging, measure its
+line on the branch with a local run, which needs an editor:
 `mutation_check.py --files <file> --lines <file>:<line>-<line>`.
-
-**A kill an earlier campaign recorded is not measured again, and a head whose whole key was passed is not
-measured at all.** Two readings follow: reusing a kill at a time, which is what a run after a change
-to tests alone needs, and reusing a whole verdict under an equal key.
-
-**A kill is reused when the mutant, its file and its killing cases are as they were.** Every
-campaign's verdict job uploads `Mutation campaign ledger`, whether the campaign passed or failed: a
-campaign that failed on a survivor is the one whose kills the next round needs. The ledger holds a record per mutant
-the campaign decided: the mutant (file, line, column, operator and both texts), a hash of the mutated file's
-bytes, its verdict and the platform whose pass gave it, and for a kill the run that measured it
-and up to `MAX_RECORDED_KILLERS` of its behavioural killing cases (the first by name), each with the
-hash of every source file that declares the case's fixture or one it derives from, and of every test
-source declaring a type, outside any other type, or an extension method that one of those spells in its
-code, followed through such sources in turn — so a static helper in a file that also declares tests is
-among them. Comments
-are left out of each hash. The ledger's header holds the `tool` digest below and two more, `build-inputs` and
-`test-support`. `mutation-plan` fetches the ledgers of the newest 20 finished runs of the workflow on
-the head's branch (`scripts/ci/reuse_verdict.py`; a run that left no ledger counts against the 20),
-and `mutation_check.py --reuse-from` decides each mutant from the newest ledger that holds it:
-
-- the ledger's `tool`, `build-inputs` and `test-support` digests equal this tree's, and the mutant's
-  record is a kill;
-- the mutated file has the same bytes, and the mutant is the same one;
-- every recorded killing case is still declared in the tree, and no code in the files recorded for it
-  has changed;
-- no file among those recorded for a killing case reads another test file through an assembly: it
-  spells one of the reads `ACROSS_ASSEMBLIES` lists, an IL read, its own assembly
-  (`OWN_ASSEMBLY`), or the assembly of a type a test source declares (`ASSEMBLY_OF_TYPE`) — or names
-  a type declared outside any other type by a C# file that is not a fixture and that spells one or
-  names such a type in turn, a `using static` of it included. Comments and string literals other than
-  interpolated ones are not read for it, nor for the helpers above.
-
-`build-inputs` is the key's component of that name, with the mutated files in it: every file the editor
-compiles or imports other than a test source, so an edit to any production file, stylesheet, assembly
-definition, project setting or package manifest, and a merged-in base that changed one, lapses every
-kill of the ledger. `test-support` hashes every test-side file that is not a fixture: everything under
-`Packages/com.velvet.core/TestUtilities/`, every assembly definition and reference with its `.meta`,
-every other non-C# file under a `Tests/` directory except a `.meta` (a guid only, which a new fixture
-file brings along), and every C# file there that declares no test attribute, declares a
-NUnit set-up fixture (the SetUpFixture attribute), or spells outside its comments and string literals
-one of the domain-load hooks `DOMAIN_HOOKS` lists. A file gaining
-or losing a hook therefore moves the digest as well. A test attribute is read anywhere in an attribute list, in the file with its comments
-removed; a C# file is hashed that way too, so a comment edited in a helper moves nothing. Any other
-change to it lapses every kill of the ledger, and the plan's summary says which of the two moved.
-What stays reusable across a change is therefore a fixture file's: an edit
-to a fixture file that no kill recorded and that holds no domain-load hook, or a comment in one that a
-kill did record.
-
-Everything else is measured: a survivor, a declared one included, a mutant no ledger holds, one on a
-file that changed, one whose killing case was renamed, deleted or had one of its recorded files edited
-or reading another test file through an assembly, and any
-record that cannot be read in full — a ledger that is missing, expired, listed twice or not JSON
-is only a measurement owed. The plan's summary says how many verdicts were reused and, for each mutant it
-measures again, why. A reused kill reaches no shard: the plan writes its decision into the
-artifact that carries the mutant list, every later job hands it back with `--reuse`, and the shards, the
-shard count is dealt over the mutants not reused, and the ceiling above counts
-only those. A kill
-the PlayMode pass took is reused like an EditMode one, and neither pass is asked about it. The verdict
-job reads each reused kill against its own tree rather than trusting the plan's file, and a kill whose
-case is gone or whose fixture changed in between is `not measured (the reused kill no longer stands)`: the
-run fails, and a reuse never turns a survivor into a pass. The ledger it uploads carries a reused kill
-with the run that measured it, so a kill stays reusable for as long as its fixtures stand, not for as
-long as the artifacts of one run do. A campaign that reused kills records its key below as one it
-measured, since it decided every mutant in its own run.
-
-**A head whose whole key was passed is not measured at all.** `mutation_check.py --key` prints
-a campaign key: one hash over six components, each printed beside it so a miss can say which moved.
-Where a head's key equals one a campaign passed on, the verdict of that run stands as a whole, survivors
-and declarations included, and no ledger is read; any other head takes the reading above.
-
-| Component | What it hashes | Why it is in |
-| --- | --- | --- |
-| `mutants` | the capped mutant list: file, line, column, operator and both texts of each | the question asked |
-| `mutated-files` | the full bytes of every file holding a mutant, comments included | a comment moves the lines the mutants sit on, and a reused pass is a stronger claim than a resumed kill, so it takes no comment-stripped form |
-| `test-sources` | every file whose path has a `Tests/` directory at any depth under the hashed roots (the package, `Assets/`, `ProjectSettings/`), and every file under `Packages/com.velvet.core/TestUtilities/` | what is asked of the mutants |
-| `build-inputs` | every other file the editor compiles or imports, outside a `~` directory and not markdown: the package's remaining sources, `.asmdef`s and plugins, `Assets/`, `ProjectSettings/`, `Packages/manifest.json` and `packages-lock.json` | a test that kills a mutant in one file can reach it through another, and an editor or analyzer change moves what compiles |
-| `declarations` | each survival declaration the mutated files hold, with whether this branch wrote it | the declarations' `written_here` moves with the merge base |
-| `tool` | `mutation_check.py`, its operator tables and priority order, `mutation.yml`, and the scripts the shards run or import: `ci_mutation_shard.py`, `unity_running.py`, `schemata_tool.py`, `schemata/MutantSchemata.cs`, `ci/licensed_editor.py` and `ci/change_base.py` (`TOOL_FILES`) | a verdict is the tool's |
-
-The key is conservative on purpose: it hashes the mutated files, the test sources and the rest of
-what the editor compiles or imports, so an equal key means none of those files differs. It does not
-hash markdown (also inside the package), a directory ending in `~` (so `Generators~` sources, though
-the DLLs committed under `Runtime/Plugins/` are in), the root-level `Library` and `Logs` and the Temp directory, which
-lie outside the hashed roots (a folder of those names inside a root is hashed), a workflow
-other than `mutation.yml`, a script outside `TOOL_FILES`, or what the registry serves behind the
-editor image's tag (the tag itself is written in `mutation.yml`). The fixtures that read
-the repository's text are the ones no launch runs. `CampaignKeyTests` holds `TOOL_FILES` to the
-modules `mutation_check.py` and `ci_mutation_shard.py` import directly; a module those import in
-turn is not checked; the listed ones import nothing outside the list. The price is that a rebase onto a base that changed another production file measures again; narrowing `build-inputs`
-to the mutated files and the tests is a one-line change in `campaign_key`, and takes on the risk that
-an unmutated file alters what kills a mutant.
-
-A passing campaign uploads an artifact named `Mutation campaign key <hex>`, which a REST listing of
-the run's artifacts carries and which lapses with the repository's artifact retention, as the run's
-other artifacts do; after that the head is measured. `mutation-plan` lists
-the newest 20 passing runs of the workflow on the head's branch (`scripts/ci/reuse_verdict.py`), and
-where one holds the head's key, the shards, the Library job and the PlayMode pass are skipped and
-`Mutation campaign (verdict)` passes, its summary naming the run it reused from. Only a run whose own
-key artifact records that it measured the key is a source: a run that reused it is skipped, so no
-chain of reuses forms and a verdict outlives only the artifacts of the run that measured it. The
-reusing run uploads the key too, citing the run that measured it. A reading that fails for any reason,
-a malformed answer included, reuses nothing. The measured and the reused name of one key, which a
-re-run that measured leaves beside the earlier reuse, read as measured, and such a run can serve as a
-reuse source. No merge reads the citation, since no merge reads a campaign.
 
 **Every shard measures the plan's list, and a shard that did not report is not a survivor.**
 `mutation-plan` writes the mutant list it counted (`--emit-mutants`) and each shard and the verdict job
@@ -440,11 +387,11 @@ for each stage it runs in its shard's session, which [Generators~/README.md ▸ 
 assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies) describes. The figures
 below were measured before sessions, over launches alone; how many mutants a diff generates is
 measured in that section, against the window it names. A mutant's launch-compile-run measured
-100–118 s on a developer machine against a 94 s baseline. `--plan` makes one EditMode shard for every six mutants, as many as ten, and the deal
-sets how many each holds, up to `SHARD_CEILING`; it stops adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
+100–118 s on a developer machine against a 94 s baseline. `--plan` makes one EditMode shard for every six mutants, as many as `--max-shards`, and the deal
+sets how many each holds, up to `SHARD_CEILING`; it stops adding shards there, because each shard pays for an image pull, a licence activation and a baseline
 before its first mutant; the PlayMode pass of a shard's survivors pays its own activation and baseline in the same job, not an image pull, and each of its mutants costs more than twice an EditMode one measured on the same run.
 
-**Shard count under an account's concurrent-job cap.** GitHub Free runs 20 hosted jobs at once across the whole account, and one pull request's `Test` is about five of them while a campaign holds one for the plan, one for the Library and one per shard. `MAX_SHARDS` stays at ten because the wall clock of a single campaign is what the count is set for: a night has free jobs for ten shards, and a shard of fewer mutants pays the same pull, activation and baseline for less work. A campaign dispatched onto a branch while pull requests run CI shares the cap with their `Test` jobs. GitHub's queue has no priority per workflow, so shards a campaign has queued can start ahead of a pull request's `Test` jobs, and its aggregate with them, and `max-parallel` is not used to prevent that. Beyond what the timings below and the cap give, nothing here is measured: no run of two campaigns has been timed, thirteen is the most licence activations seen at once and not a limit, and two pull requests have run CI together without an activation failing, though the activations were not counted. A cap is a reason not to add a PlayMode job per survivor, which is why that pass runs in the shard's own job. Measured over 121 EditMode shards of the 100 pull-request runs
+**Shard count under an account's concurrent-job cap.** GitHub Free runs 20 hosted jobs at once across the whole account, and one pull request's `Test` is about five of them while a campaign holds one for the plan, one for the Library and one per shard. `MAX_SHARDS` and `ADVISORY_SHARDS` stay at ten, and a record run's forty shards run ten at a time, because the wall clock of a single campaign is what the count is set for, and a shard of fewer mutants pays the same pull, activation and baseline for less work. A campaign that runs while pull requests run CI shares the cap with their `Test` jobs. GitHub's queue has no priority per workflow, so shards a campaign has queued can start ahead of a pull request's `Test` jobs, and its aggregate with them, and `max-parallel` is not used to prevent that. Beyond what the timings below and the cap give, nothing here is measured: no run of two campaigns has been timed, thirteen is the most licence activations seen at once and not a limit, and two pull requests have run CI together without an activation failing, though the activations were not counted. A cap is a reason not to add a PlayMode job per survivor, which is why that pass runs in the shard's own job. Measured over 121 EditMode shards of the 100 pull-request runs
 completed on 2026-09-26 and 2026-09-27, before a mutant was narrowed, a shard spent a median of 98 s
 before activating, 82 s of it pulling the image, 36 s activating and 211 s on its baseline, and its
 645 mutants took a median of 190 s. Over the 461 EditMode baselines those runs uploaded, the
@@ -1206,11 +1153,9 @@ merge of that head. Where that cancellation is refused or does not land, it fail
 the merge group a cancelled dependency fails them whatever the branch holds now.
 `scripts/ci/aggregate_results.py` owns the decision, for both aggregates.
 
-The mutation campaign has no row: `.github/workflows/mutation.yml` starts on a schedule and on a
-dispatch, neither of which a contributor's push or pull request causes, and it gates no merge, since
-no branch-protection rule requires a check of it.
-[Checking that the tests can fail](#checking-that-the-tests-can-fail) owns when it runs and where it
-reports.
+The mutation campaign has no row: it gates no merge, since no branch-protection rule requires a check
+of it, and [Checking that the tests can fail](#checking-that-the-tests-can-fail) owns when each of its
+jobs runs and where it reports.
 
 In `test.yml` and `generators.yml`, filtering therefore applies to `push` only, by branch as much as by path — so a pull
 request runs both workflows whether it is based on `main` or on a maintenance branch, and so does every
@@ -1342,8 +1287,8 @@ or been skipped*: add it once review has settled, and remove it to hold the pull
 takes triage access or above, so only an account holding that can opt a pull request in. The workflow
 does not create the label; it has to exist in the repository.
 
-No merge waits on a mutation campaign. A campaign dispatched onto a pull request's branch runs on its
-head like any other workflow, and `settle.py merge`, the automerge runs through it, and
+No merge waits on a mutation campaign. A pull request's advisory run, or a campaign dispatched onto its
+branch, runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
 `refuse/merge_unproven_head.py` leave its runs and its checks out of what they read, so one that failed
 or is still running holds nothing. They leave out the `Mutation campaign` commit status as well,
 which a publisher wrote on pull request heads while the campaign gated their merge, and which a head
@@ -1513,6 +1458,31 @@ directory.
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
 
+**A release is gated on the mutation record and on `main`'s CI.** The dispatch promotes the commit it
+runs on, which CI has already measured, the way
+[React's release scripts](https://github.com/facebook/react/tree/main/scripts/release) promote a commit
+of `main` that CI built rather than building a release of their own. Before anything is tagged,
+`upm.yml` runs `scripts/release/mutation_gate.py` over that commit, which refuses it unless:
+
+- on the default branch, the newest completed push run of each required workflow
+  (`red_base.REQUIRED_WORKFLOWS`) at the commit passed;
+- the record answers every mutant of the campaign's scope at the commit
+  ([Checking that the tests can fail](#checking-that-the-tests-can-fail) owns the scope and the
+  record): each holds an entry that still stands, and every survivor among them is answered by a
+  declaration. A mutant past a run's cap, never measured, or measured to nothing is unresolved, and
+  refuses the release.
+
+The gate runs the commit's own copy of the campaign's scripts, the copy its record runs measured
+with, since an entry's key carries the tool's digest, and refuses a commit whose tree has no record
+tooling. It reads git, the record and the run listing alone, so a second dispatch over the same commit
+and record gives the same answer. Where it refuses, its log names each mutant: wait for the record
+runs to catch up, dispatch one (`gh workflow run mutation.yml --ref <branch>`), or answer the
+survivors by a pull request.
+
+**The way past it** is the dispatch's `skip_release_gate` input: a reason written there releases
+without either check, and the run's log carries it as a warning. It is for a record that cannot be had —
+the branch lost, the runners down for days — and not for a survivor nobody answered.
+
 Between step 2 and step 3, `main` names a version that does not exist. The dispatch builds the note
 from the CHANGELOG section, which was written before anything merged in that window and describes none
 of it — so those commits ship inside the release, undescribed. v2.0.1 spent a day there and took twelve
@@ -1637,6 +1607,13 @@ does not carry that hook, so a session rooted there runs none.
 …)` lines **in the pull request body**. Do not reach for
 `git cherry`: measured here, it reported every commit it walked as absent from the line, including the
 ones whose fix the line carries.
+
+**A line's release is gated by the line's own `upm.yml`.** A dispatch runs the workflow file at the
+ref it names, so a line cut after the gate existed carries the step, and its record is filled by
+dispatching a record run onto it before the release, `gh workflow run mutation.yml --ref <line>`, which
+dispatches the next until nothing is pending. Its scope starts at the later of the cutover and the
+line's own newest release tag. A line cut before the gate existed, as `2.x` was, runs no gate and
+carries neither the step nor the record tooling until both are picked onto it.
 
 A new line needs no change to the merge and release guards — they judge the pull request rather than a
 branch name, and `### Repository scripts` above says how that is held. What a cut does cost is

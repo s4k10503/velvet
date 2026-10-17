@@ -117,7 +117,7 @@ SHARD_CEILING = {"EditMode": 10, "PlayMode": 7}
 # launch rather than a measurement of one. The ceiling charges every mutant the whole-suite figure.
 # The plan has no baseline, so it cannot know which areas `narrowable` will take, and a mutant it deals as
 # narrowed may take the whole suite; neither figure exceeds the ceiling's charge, so the ceiling holds.
-# A previous campaign's timings are not in the ledger, which keeps verdicts and no seconds.
+# A previous campaign's timings are not in the record, which keeps verdicts and no seconds.
 NARROWED_COST = 145
 WHOLE_COST = {"EditMode": 493, "PlayMode": 934}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
@@ -1978,33 +1978,6 @@ def changed_files_and_lines(project, base):
                 count = int(match.group(2) or 1)
                 changed.setdefault(current, set()).update(range(start, start + count))
     return changed
-
-
-def attributed(project, base, through, changed):
-    """`changed`'s mutable lines that `git blame --first-parent` gives to a commit of the slice.
-
-    The slice is the first-parent commits after the merge base with `base` up to and including
-    `through`. A line a later commit rewrote is that commit's, so it is measured with the slice that
-    holds it; the declarations are still read against the whole of `changed`.
-    """
-    since = merge_base_of(project, base)
-    listed = subprocess.run(["git", "-C", str(project), "rev-list", "--first-parent",
-                             "{}..{}".format(since, through)], capture_output=True, text=True)
-    if listed.returncode != 0:
-        raise SystemExit("cannot list the slice {}..{}: {}".format(since, through, listed.stderr.strip()))
-    commits = set(listed.stdout.split())
-    kept = {}
-    for path, lines in changed.items():
-        if not mutable(path, project):
-            continue
-        blamed = subprocess.run(["git", "-C", str(project), "blame", "--first-parent", "-l", "-s", "--",
-                                 str(path)], capture_output=True, text=True)
-        if blamed.returncode != 0:
-            raise SystemExit("cannot blame {}: {}".format(path, blamed.stderr.strip()))
-        owners = [line.split(" ", 1)[0].lstrip("^") for line in blamed.stdout.splitlines()]
-        kept[path] = {number for number in lines
-                      if number <= len(owners) and owners[number - 1] in commits}
-    return kept
 
 
 def mutable(path, project):
@@ -4176,8 +4149,7 @@ def key_inputs(project):
 
     Prose is left out -- a markdown file, and the `.meta` beside it -- because the fixtures that read
     the repository's text are the ones no launch runs (`text_reading_fixtures`). Everything else the
-    editor can import is in, a production file the mutants do not touch included: a test that kills a
-    mutant in one file can reach it through another.
+    editor can import is in, since `assembly_readers` follows a type through a file that is no test.
     """
     tests, rest = [], []
     candidates = list(KEY_FILES)
@@ -4193,77 +4165,47 @@ def key_inputs(project):
     return tests, rest
 
 
-def files_digest(project, relatives):
-    parts = ["{}:{}".format(relative, hashlib.sha256((project / relative).read_bytes()).hexdigest())
-             for relative in relatives]
-    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
-
-
 def mutant_record(mutant, project):
     return {"path": relative_to(mutant.path, project).as_posix(), "line": mutant.line,
             "column": mutant.column, "operator": mutant.operator, "before": mutant.before,
             "after": mutant.after, "shadowed": sorted(mutant.shadowed)}
 
 
-# The files besides this script that a campaign's shard runs, relative to `scripts/`: what
-# `ci_mutation_shard.py` activates and launches, the modules the campaign imports, the rewriter it
-# builds, and the step that reads the change base. `CampaignKeyTests` holds the list to the imports.
+# The files besides this script that decide a verdict, relative to `scripts/`: what
+# `ci_mutation_shard.py` activates and launches, the modules the campaign imports and the rewriter it
+# builds. Not the workflow or the step that reads the change base: they choose which mutants a run
+# asks about and how long it waits, and a verdict that ran out of time is never recorded.
 TOOL_FILES = ("test_quality/ci_mutation_shard.py", "test_quality/unity_running.py",
               "test_quality/schemata_tool.py", "test_quality/schemata/MutantSchemata.cs",
-              "ci/licensed_editor.py", "ci/change_base.py")
+              "ci/licensed_editor.py")
 
 
 def tool_digest(project):
-    """What a verdict depends on that is not the tree under test: this script, `TOOL_FILES`, its
-    operator tables and the workflow that runs the shards."""
+    """What a verdict depends on that is not the tree under test: this script, `TOOL_FILES` and its
+    operator tables. Part of every `record_key`, so a change to any of them measures again."""
     here = Path(__file__).resolve()
-    held = [here, *(here.parents[1] / name for name in TOOL_FILES),
-            project / ".github/workflows/mutation.yml"]
+    held = [here, *(here.parents[1] / name for name in TOOL_FILES)]
     parts = [repr((MUTATION_MODEL_VERSION, OPERATORS, WORD_OPERATORS, LINE_PRIORITY))]
     parts.extend("{}:{}".format(path.name, hashlib.sha256(path.read_bytes()).hexdigest())
                  for path in held if path.exists())
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
-def campaign_key(mutants, declared, project):
-    """(the key, {component: digest}) of the campaign a head is owed.
-
-    Two heads with one key ask the same mutants of the same code and tests under the same tool, so a
-    pass on one is a pass on the other. The components are kept apart so that a miss can say which
-    one moved. `declared` is `declarations_for`'s reading, whose `written_here` moves with the merge
-    base; a declaration in a test file (`GREEN_ON_BASE`) is covered by the test sources.
-    """
-    tests, rest = key_inputs(project)
-    mutated = sorted({relative_to(mutant.path, project).as_posix() for mutant in mutants})
-    records = sorted(json.dumps(mutant_record(mutant, project), sort_keys=True) for mutant in mutants)
-    declarations = sorted(json.dumps([relative_to(path, project).as_posix(), subject,
-                                      held.category, held.operator, held.reason, held.written_here])
-                          for (path, subject), held in declared.items())
-    components = {
-        "mutants": hashlib.sha256("\n".join(records).encode()).hexdigest(),
-        "mutated-files": files_digest(project, mutated),
-        "test-sources": files_digest(project, tests),
-        "build-inputs": files_digest(project, [name for name in rest if name not in mutated]),
-        "declarations": hashlib.sha256("\n".join(declarations).encode()).hexdigest(),
-        "tool": tool_digest(project),
-    }
-    joined = "\n".join("{}:{}".format(name, components[name]) for name in sorted(components))
-    return hashlib.sha256(joined.encode()).hexdigest(), components
-
-
 # --------------------------------------------------------------------------------------------------
-# Reusing a kill from an earlier campaign
+# The record: one verdict per mutant, reused while what decided it stands
 # --------------------------------------------------------------------------------------------------
 
-# The ledger's shape, so a reader refuses one written by a tool that laid it out otherwise.
-LEDGER_SCHEMA = 1
+# An entry's shape, so a reader refuses one written by a tool that laid it out otherwise.
+RECORD_SCHEMA = 2
 
 # A kill is recorded with at most this many of its behavioural killing cases, first by name. Each one
 # is a condition on reusing it, so recording every case a widely reaching mutant reddens would tie the
 # kill to an edit in any of that many fixtures.
 MAX_RECORDED_KILLERS = 10
 
-REUSE_LAPSED = "not measured (the reused kill no longer stands)"
+REUSE_LAPSED = "not measured (the recorded verdict no longer stands)"
+# A mutant past `--cap`: left to a later run, and neither a survivor nor a failure of this one.
+PENDING = "not measured yet (past this run's --cap)"
 
 CLASS_HEADER = re.compile(r"\b(?:class|struct)\s+([A-Za-z_]\w*)\b([^{;]*)[{;]")
 BASE_LIST = re.compile(r":\s*([^{]*?)\s*(?:\bwhere\b|$)", re.DOTALL)
@@ -4391,11 +4333,11 @@ def is_test_support(relative, text):
             or bool(DOMAIN_HOOKS.search(code_text(text))))
 
 
-def support_digest(project, relatives):
-    """`files_digest` over the support files, with a C# file in its comment-free form so that a comment
-    edited in a shared helper moves nothing."""
+def tests_digest(project):
+    """A hash over every test source, with a C# file in its comment-free form: what a recorded verdict
+    other than a kill stands on, since any test can be the one that starts killing it."""
     parts = []
-    for relative in relatives:
+    for relative in key_inputs(project)[0]:
         path = project / relative
         if relative.endswith(".cs"):
             held = digestible(path.read_text(encoding="utf-8", errors="replace")).encode()
@@ -4403,38 +4345,6 @@ def support_digest(project, relatives):
             held = path.read_bytes()
         parts.append("{}:{}".format(relative, hashlib.sha256(held).hexdigest()))
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
-
-
-def context_digests(project):
-    """What a kill can depend on that no record hashes: {part: digest}.
-
-    `build-inputs` is the campaign key's component over every non-test file the editor compiles or
-    imports, the mutated files included -- a kill reached through a production file other than the
-    mutated one, a stylesheet, a project setting or a merged-in base moves it. `test-support` is
-    every test-side file that is not a fixture. A ledger written under other digests is read as
-    holding no reusable kill.
-    """
-    tests, rest = key_inputs(project)
-    support = []
-    for relative in tests:
-        text = ""
-        if relative.endswith(".cs"):
-            text = digestible((project / relative).read_text(encoding="utf-8", errors="replace"))
-        if is_test_support(relative, text):
-            support.append(relative)
-    return {"build-inputs": files_digest(project, rest), "test-support": support_digest(project, support)}
-
-
-def context_moved(recorded, current):
-    """The parts of the context that differ, or all of them where the ledger recorded none."""
-    held = recorded if isinstance(recorded, dict) else {}
-    return sorted(name for name in current if held.get(name) != current[name])
-
-
-def context_reason(moved, run):
-    return "run {} was measured under other {}".format(run, " and ".join(
-        {"build-inputs": "production code or project files", "test-support": "test support files"}[name]
-        for name in moved))
 
 
 # What reads the loaded assemblies rather than the one a case runs in. `Unity.CompilationPipeline.Common`
@@ -4519,8 +4429,8 @@ def assembly_readers(project):
     return found & fixtures
 
 
-def ledger_record(mutant, project, index, text_readers, run):
-    """One measured mutant as the ledger keeps it: its identity, its file's content, its verdict and,
+def measured_entry(mutant, project, index, text_readers, run):
+    """One measured mutant as the record keeps it: its identity, its file's content, its verdict and,
     for a kill, the cases that killed it with the fixture sources they stood on."""
     record = {"mutant": mutant_record(mutant, project), "file": sha(mutant.path),
               "verdict": mutant.verdict, "detail": mutant.detail, "stood": mutant.stood,
@@ -4541,7 +4451,7 @@ def kill_problem(record, mutant, project, index, readers):
     """Why a recorded kill does not stand for this mutant in this tree, or None where it does.
 
     `readers` is `assembly_readers`' reading of this tree. A record that cannot be read as the
-    shape `ledger_record` writes does not stand either.
+    shape `measured_entry` writes does not stand either.
     """
     try:
         if record["verdict"] != KILLED:
@@ -4570,117 +4480,95 @@ def kill_problem(record, mutant, project, index, readers):
     return None
 
 
-def read_ledgers(directory):
-    """([ledger, ...] newest first, [what could not be read]) from the `*.json` files in `directory`.
+def record_key(mutant, project, tool):
+    """Where the record holds `mutant`'s entry: its identity, its file's bytes and the tool, hashed.
 
-    File names sort by the run they came from. A directory that is absent holds no ledger, which is
-    the state of a branch whose first campaign this is.
+    The same mutant of the same file under the same tool has one key, so a later verdict replaces an
+    earlier one and nothing else decides which of two entries counts.
     """
-    ledgers, unread = [], []
-    found = sorted(Path(directory).glob("*.json"), reverse=True) if Path(directory).is_dir() else []
-    for path in found:
-        try:
-            held = json.loads(path.read_text())
-            if (held["schema"] != LEDGER_SCHEMA or not isinstance(held["records"], list)
-                    or not isinstance(held["tool"], str)):
-                raise ValueError("another layout")
-            held["run"] = str(held["run"])
-            ledgers.append(held)
-        except (OSError, ValueError, KeyError, TypeError) as failure:
-            unread.append("{}: {}".format(path.name, failure))
-    return ledgers, unread
+    identity = json.dumps(mutant_record(mutant, project), sort_keys=True)
+    return hashlib.sha256("\n".join((identity, sha(mutant.path), tool)).encode()).hexdigest()
 
 
-def record_identity(record):
-    """The recorded mutant as one comparable string, or None where the record has none."""
+def record_entry(directory, key):
+    """The entry the record directory holds under `key`, or None where it holds none it can read."""
+    path = Path(directory) / "{}.json".format(key)
     try:
-        return json.dumps(record["mutant"], sort_keys=True)
-    except (KeyError, TypeError, ValueError):
+        held = json.loads(path.read_text())
+    except (OSError, ValueError):
         return None
+    return held if isinstance(held, dict) and held.get("schema") == RECORD_SCHEMA else None
 
 
-def record_path(record):
+def reuse_problem(entry, mutant, project, index, readers, tests):
+    """Why a recorded verdict does not stand for this mutant in this tree, or None where it does.
+
+    StrykerJS's rule: a kill stands while the cases that killed it are still declared and unchanged
+    (`kill_problem`), and any other verdict while no test source changed (`tests`, `tests_digest`'s
+    reading of this tree).
+    """
     try:
-        return record["mutant"]["path"]
-    except (KeyError, TypeError):
-        return None
+        if entry["mutant"] != mutant_record(mutant, project) or entry["file"] != sha(mutant.path):
+            return "the record is of another mutant"
+        if entry["verdict"] == KILLED:
+            return kill_problem(entry, mutant, project, index, readers)
+        if entry["verdict"] not in DECIDED + SURVIVING:
+            return "it was {} when last measured".format(entry["verdict"])
+        if entry["tests"] != tests:
+            return "it was {} when last measured, and a test source changed since".format(entry["verdict"])
+    except (KeyError, TypeError, AttributeError, ValueError):
+        return "the record cannot be read"
+    return None
 
 
-def decide_reuse(mutants, ledgers, project):
-    """({index: the record whose kill is reused}, {index: why the mutant is measured}).
+def decide_reuse(mutants, directory, project):
+    """({index: the entry reused}, {index: why the mutant is measured}), from the record `directory`.
 
-    The newest ledger that holds the mutant decides it, whatever it says: a kill an older ledger holds
-    is not a later one's survivor. Only a kill whose file, mutant, killing cases and tool all stand is
-    reused (`kill_problem` and the tool digest), and every other mutant is measured, a survivor and a
-    declared one included.
+    A pure function of the tree and the record: each mutant's entry is found by `record_key` alone.
     """
     reused, reasons = {}, {}
-    if not ledgers:
-        return reused, {number: "no earlier campaign on the branch left a ledger that could be read"
-                        for number in range(1, len(mutants) + 1)}
-    tool, index, context = tool_digest(project), test_index(project), context_digests(project)
+    tool, index, tests = tool_digest(project), test_index(project), tests_digest(project)
     readers = assembly_readers(project)
     for number, mutant in enumerate(mutants, start=1):
-        identity = json.dumps(mutant_record(mutant, project), sort_keys=True)
-        path = relative_to(mutant.path, project).as_posix()
-        why = "no earlier campaign recorded this mutant"
-        for ledger in ledgers:
-            if ledger["tool"] != tool:
-                why = "run {} was measured by another version of the tool".format(ledger["run"])
-                continue
-            moved = context_moved(ledger.get("context"), context)
-            if moved:
-                why = context_reason(moved, ledger["run"])
-                continue
-            records = [record for record in ledger["records"] if isinstance(record, dict)]
-            found = next((record for record in records if record_identity(record) == identity), None)
-            if found is None:
-                if any(record_path(record) == path for record in records):
-                    why = "run {} recorded this file with other mutants: its content changed".format(
-                        ledger["run"])
-                continue
-            problem = kill_problem(found, mutant, project, index, readers)
-            if problem is None:
-                reused[number] = dict(found, reused_from=ledger["run"])
-                why = None
-            else:
-                why = "run {}: {}".format(ledger["run"], problem)
-            break
-        if why is not None:
-            reasons[number] = why
+        entry = record_entry(directory, record_key(mutant, project, tool))
+        problem = ("the record holds no verdict for it" if entry is None
+                   else reuse_problem(entry, mutant, project, index, readers, tests))
+        if problem is None:
+            reused[number] = entry
+        else:
+            reasons[number] = problem
     return reused, reasons
 
 
 def load_reuse(path, mutants, project):
-    """({index: record}, {index: why}, the context the plan decided under) from the file `--emit-reuse`
-    wrote, refused unless each reused record is of the mutant at its index in this tree's list."""
+    """({index: entry}, {index: why}, [the indices past `--cap`]) from the file `--emit-reuse` wrote,
+    refused unless each reused entry is of the mutant at its index in this tree's list."""
     try:
         held = json.loads(Path(path).read_text())
-        context = held["context"]
         reused = {int(number): record for number, record in held["reused"].items()}
         reasons = {int(number): text for number, text in held["reasons"].items()}
-        if held["schema"] != LEDGER_SCHEMA:
+        pending = [int(number) for number in held["pending"]]
+        if held["schema"] != RECORD_SCHEMA:
             raise ValueError("another layout")
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as failure:
         raise SystemExit("{} holds no reuse decision to measure around: {}".format(path, failure))
     for number, record in sorted(reused.items()):
-        if not 1 <= number <= len(mutants) or record_identity(record) != json.dumps(
-                mutant_record(mutants[number - 1], project), sort_keys=True):
-            raise SystemExit("{} reuses a kill at mutant {} that is not that mutant in this tree's "
+        if not 1 <= number <= len(mutants) or not isinstance(record, dict) or record.get(
+                "mutant") != mutant_record(mutants[number - 1], project):
+            raise SystemExit("{} reuses a verdict at mutant {} that is not that mutant in this tree's "
                              "list, so no verdict here would be about the mutants the plan counted"
                              .format(path, number))
-    return reused, reasons, context
+    return reused, reasons, pending
 
 
 def reuse_detail(record):
-    return "reused from run {} (measured in run {}), {} killing case(s) unchanged".format(
-        record.get("reused_from"), record.get("measured_by"), len(record.get("killers") or ()))
+    return "{} in run {}, reused from the record".format(record.get("verdict"), record.get("measured_by"))
 
 
 def reuse_report(mutants, reused, reasons, project):
     """How many verdicts were reused, and why each of the others is measured."""
     again = [number for number in range(1, len(mutants) + 1) if number not in reused]
-    lines = ["--- verdicts reused from earlier campaigns: {} of {} ---".format(len(reused), len(mutants)),
+    lines = ["--- verdicts reused from the record: {} of {} ---".format(len(reused), len(mutants)),
              "--- measured again: {} of {} ---".format(len(again), len(mutants))]
     lines.extend("  {}: {}".format(mutants[number - 1].describe(project),
                                    reasons.get(number, "no reason was recorded for it"))
@@ -4688,25 +4576,23 @@ def reuse_report(mutants, reused, reasons, project):
     return "\n".join(lines)
 
 
-def write_ledger(path, mutants, reused, project):
-    """What this campaign knows about each mutant it decided, for the next one to reuse.
+def write_record(directory, mutants, reused, project):
+    """An entry for each mutant this run decided and did not reuse, under its `record_key`.
 
-    A reused kill is carried as it stands, with the run that measured it. A mutant without a decided
-    verdict is left out: one no shard recorded, one that timed out, and a reused kill that lapsed.
+    A mutant without a decided verdict writes none: one no shard recorded, one that timed out, one
+    past `--cap`, and a reused verdict that lapsed.
     """
     run = os.environ.get("GITHUB_RUN_ID", "")
+    tool, tests = tool_digest(project), tests_digest(project)
     index, text_readers = test_index(project), text_reading_fixtures(project)
-    records = []
+    Path(directory).mkdir(parents=True, exist_ok=True)
     for number, mutant in enumerate(mutants, start=1):
-        if number in reused:
-            if mutant.verdict == KILLED:
-                records.append({key: value for key, value in reused[number].items()
-                                if key != "reused_from"})
-        elif mutant.verdict in DECIDED + SURVIVING:
-            records.append(ledger_record(mutant, project, index, text_readers, run))
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(json.dumps({"schema": LEDGER_SCHEMA, "run": run, "tool": tool_digest(project),
-                                      "context": context_digests(project), "records": records}, indent=1))
+        if number in reused or mutant.verdict not in DECIDED + SURVIVING:
+            continue
+        entry = dict(measured_entry(mutant, project, index, text_readers, run),
+                     schema=RECORD_SCHEMA, tool=tool, tests=tests)
+        (Path(directory) / "{}.json".format(record_key(mutant, project, tool))).write_text(
+            json.dumps(entry, indent=1, sort_keys=True))
 
 
 def list_mismatch(expected, mutants, project):
@@ -5419,12 +5305,6 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
               flush=True)
 
 
-def smaller_change(args, joiner, capital=False):
-    """What a run over the ceiling asks for: a smaller pull request, or on a night a shorter slice."""
-    asked = "measure a shorter slice of the night's commits." if args.through else "split the pull request."
-    return joiner + (asked[0].upper() + asked[1:] if capital else asked)
-
-
 def plan_survivors(args, coverage, mutants, chosen, first, project):
     """The second pass's plan: the shards its platform needs for the first pass's survivors."""
     print(coverage)
@@ -5433,8 +5313,8 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
         # One job measures them all, after its own first pass.
         if len(chosen) > per:
             print("{} mutants of this shard survived the {} suite, more than the {} one job can measure on "
-                  "{} after it.\nWrite the tests they ask for{}"
-                  .format(len(chosen), first, per, args.platform, smaller_change(args, ", or ")))
+                  "{} after it.\nWrite the tests they ask for, or split the pull request."
+                  .format(len(chosen), first, per, args.platform))
             return CEILING_REFUSAL
         print("{} of {} mutant(s) survived the {} suite in this shard and are measured on {}".format(
             len(chosen), len(mutants), first, args.platform))
@@ -5442,8 +5322,8 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
         return 0
     if len(chosen) > args.max_shards * per:
         print("{} mutants survived the {} suite, more than {} shards of {} can measure on {} inside "
-              "the shard job's timeout.\nWrite the tests they ask for{}"
-              .format(len(chosen), first, args.max_shards, per, args.platform, smaller_change(args, ", or ")))
+              "the shard job's timeout.\nWrite the tests they ask for, or split the pull request."
+              .format(len(chosen), first, args.max_shards, per, args.platform))
         return CEILING_REFUSAL
     print("{} of {} mutant(s) survived the {} suite and are measured on {}".format(
         len(chosen), len(mutants), first, args.platform))
@@ -5483,6 +5363,32 @@ def report_shard(mutants, selected, shard):
     print("\nshard {} of {}: {}".format(shard[0], shard[1], ", ".join(
         "{}: {}".format(key, value) for key, value in sorted(tally.items())) or "no mutant"))
     return 0
+
+
+def gate(mutants, reused, reasons, declared, coverage, project):
+    """The record's decision over the diff, made without an editor: 0 where every mutant holds a
+    standing verdict and every survivor among them is answered, 1 otherwise.
+
+    The same tree and the same record give the same lines and the same exit, since nothing here is
+    measured: a mutant the record holds no standing verdict for is unresolved, never a pass.
+    """
+    print(coverage)
+    unresolved = [number for number in range(1, len(mutants) + 1) if number not in reused]
+    for number, record in reused.items():
+        mutants[number - 1].verdict, mutants[number - 1].detail = record["verdict"], reuse_detail(record)
+    unanswered, stale = answered(
+        mutants, {(mutants[number - 1].path, mutants[number - 1].line) for number in unresolved}, declared)
+    for number in unresolved:
+        print("\nUNRESOLVED  {}\n            {}".format(mutants[number - 1].describe(project),
+                                                       reasons.get(number, "-")))
+    for mutant, complaint in unanswered:
+        print("\nUNANSWERED  {}\n            {}".format(mutant.describe(project), complaint))
+    for path, subject, declaration in stale:
+        print("\nSTALE       {}:{} declares a survivor, and line {} has none"
+              .format(relative_to(path, project), declaration.line, subject))
+    print("\ngate: {} mutant(s); {} resolved, {} unresolved, {} unanswered, {} stale".format(
+        len(mutants), len(reused), len(unresolved), len(unanswered), len(stale)))
+    return 1 if unresolved or unanswered or stale else 0
 
 
 def main():
@@ -5529,10 +5435,6 @@ def main():
                         help="write every mutant this package generates as {path, line, text} and "
                              "stop, for a reader that parses them with something other than this "
                              "script's own model of C#")
-    parser.add_argument("--through", metavar="COMMIT",
-                        help="keep only the changed lines the tree attributes, by `git blame "
-                             "--first-parent`, to the first-parent commits after the merge base with "
-                             "--base up to and including COMMIT: the slice of a night's commits")
     parser.add_argument("--max-shards", type=int, default=MAX_SHARDS, metavar="N",
                         help="split a pass across at most N shards, which with --plan sets the ceiling "
                              "at N shards' worth; every job of one campaign passes the same N "
@@ -5540,9 +5442,13 @@ def main():
     parser.add_argument("--plan", action="store_true",
                         help="print how many mutants the diff generates and the shards a split run "
                              "would use, as mutants=N and shards=[...] lines, and stop")
-    parser.add_argument("--key", action="store_true",
-                        help="print the campaign key of the diff as campaign-key=HEX, with the "
-                             "digest of each component it is made of, and stop")
+    parser.add_argument("--gate", action="store_true",
+                        help="with --reuse-from, decide the diff from the record alone, without an "
+                             "editor: refuse a mutant the record holds no standing verdict for, an "
+                             "unanswered survivor and a stale declaration")
+    parser.add_argument("--cap", type=int, metavar="N",
+                        help="with --plan, deal at most the first N mutants the record does not "
+                             "answer, in the list's order, and leave the rest to a later run")
     parser.add_argument("--emit-mutants", metavar="FILE",
                         help="with --plan, write the mutant list the plan counted to FILE, for "
                              "every shard and the verdict to measure and decide over")
@@ -5563,37 +5469,40 @@ def main():
                         help="with --survivors-of, take only the mutants the other platform's shard K of N "
                              "was dealt, so a job measures the survivors of its own first-pass shard")
     parser.add_argument("--reuse-from", metavar="DIR",
-                        help="with --plan, read the ledgers of earlier campaigns in DIR and decide "
-                             "which of this diff's mutants are killed already: a kill is reused when "
-                             "its file and the fixtures that killed it are unchanged, and every other "
-                             "mutant is measured")
+                        help="with --plan or --gate, read the record in DIR and reuse each verdict it "
+                             "holds that still stands: a kill while its killing cases are unchanged, "
+                             "any other verdict while no test source changed")
     parser.add_argument("--emit-reuse", metavar="FILE",
                         help="with --reuse-from, write the decision to FILE, for every job that "
                              "measures or decides to read with --reuse")
     parser.add_argument("--reuse", metavar="FILE",
-                        help="take the kills FILE records as decided and measure around them; "
-                             "--collect checks that each still stands in this tree")
-    parser.add_argument("--emit-ledger", metavar="FILE",
-                        help="with --collect, write what the decision measured to FILE, for a later "
-                             "campaign's --reuse-from")
+                        help="take the verdicts FILE records as decided and measure around them, and "
+                             "leave the mutants past its cap alone; --collect checks that each still "
+                             "stands in this tree")
+    parser.add_argument("--emit-record", metavar="DIR",
+                        help="with --collect, write an entry into the record in DIR for every mutant "
+                             "the decision measured")
     args = parser.parse_args()
-    if args.reuse_from is not None and not args.plan:
-        parser.error("--reuse-from decides what a plan measures; it goes with --plan")
+    if args.reuse_from is not None and not (args.plan or args.gate):
+        parser.error("--reuse-from decides what a plan measures or what the gate holds; it goes with "
+                     "--plan or --gate")
+    if args.gate and (args.reuse_from is None or args.plan or args.files):
+        parser.error("--gate decides a diff from the record --reuse-from names, and plans nothing")
+    if args.cap is not None and args.emit_reuse is None:
+        parser.error("--cap is a plan's decision, which --emit-reuse hands every later job")
     if args.reuse_from is not None and (args.survivors_of is not None or args.reuse is not None):
-        parser.error("--reuse-from reads the ledgers the first pass's plan decides from; a later job "
+        parser.error("--reuse-from reads the record the first pass's plan decides from; a later job "
                      "reads that decision with --reuse")
     if args.emit_reuse is not None and args.reuse_from is None:
         parser.error("--emit-reuse writes the decision --reuse-from takes")
-    if args.emit_ledger is not None and args.collect is None:
-        parser.error("--emit-ledger records a decision; it goes with --collect")
+    if args.emit_record is not None and args.collect is None:
+        parser.error("--emit-record records a decision; it goes with --collect")
     if (args.reuse_from is not None or args.reuse is not None) and args.files:
         parser.error("a reused kill is of a diff's mutants; --files names none")
     if args.survivors_shard is not None and args.survivors_of is None:
         parser.error("--survivors-shard narrows what --survivors-of reads; it goes with it")
     if args.lines and not args.files:
         parser.error("--lines narrows what --files names")
-    if args.through and args.files:
-        parser.error("--through narrows a diff; --files names none")
     if args.shard is not None and args.collect is not None:
         parser.error("--shard measures and --collect decides; a run does one of them")
     if args.survivors_of is not None:
@@ -5733,10 +5642,8 @@ def main():
             else:
                 print("skipping {}: not a mutable package source".format(name))
     else:
-        sliced = ({path: lines for path, lines in changed.items() if mutable(path, project)}
-                  if not args.through else attributed(project, args.base, args.through, changed))
         targets = {path: lines | declared_subjects(path.read_text(), lines)
-                   for path, lines in sliced.items() if mutable(path, project)}
+                   for path, lines in changed.items() if mutable(path, project)}
 
     # A file the mask misreads has offsets no mutant is ever generated from, and the campaign reports
     # that as a line with nothing to ask rather than as a reading it could not take.
@@ -5809,53 +5716,51 @@ def main():
     if args.emit_mutants is not None and args.plan:
         Path(args.emit_mutants).write_text(json.dumps([mutant_record(mutant, project)
                                                        for mutant in mutants], indent=1))
-    if args.key:
-        if args.files:
-            raise SystemExit("--key is the key of a diff; --files names no merge base to read it from")
-        key, components = campaign_key(mutants, declarations_for(targets, changed), project)
-        print("campaign-key={}".format(key))
-        for name in sorted(components):
-            print("key-part {} {}".format(name, components[name]))
-        return 0
-
-    # Which mutants an earlier campaign has killed already. Decided once, by the plan, and read from
-    # its file by every job after it, so that every job deals the same mutants to the same shards.
-    reused, reasons, reading = {}, {}, args.reuse_from is not None or args.reuse is not None
+    # Which mutants the record answers already, and which the cap leaves to a later run. Decided once,
+    # by the plan, and read from its file by every job after it, so that every job deals the same
+    # mutants to the same shards.
+    reused, reasons, pending = {}, {}, []
+    reading = args.reuse_from is not None or args.reuse is not None
     if args.reuse_from is not None:
-        ledgers, unread = read_ledgers(args.reuse_from)
-        for note in unread:
-            print("ledger not read -- {}".format(note))
-        reused, reasons = decide_reuse(mutants, ledgers, project)
+        reused, reasons = decide_reuse(mutants, args.reuse_from, project)
+        if args.cap is not None:
+            pending = [number for number in range(1, len(mutants) + 1) if number not in reused][args.cap:]
         if args.emit_reuse is not None:
             Path(args.emit_reuse).write_text(json.dumps({
-                "schema": LEDGER_SCHEMA, "context": context_digests(project), "reused": {str(number): record for number, record in reused.items()},
-                "reasons": {str(number): text for number, text in reasons.items()}}, indent=1))
+                "schema": RECORD_SCHEMA, "reused": {str(number): record for number, record in reused.items()},
+                "reasons": {str(number): text for number, text in reasons.items()},
+                "pending": pending}, indent=1, sort_keys=True))
     elif args.reuse is not None:
-        reused, reasons, planned_under = load_reuse(args.reuse, mutants, project)
+        reused, reasons, pending = load_reuse(args.reuse, mutants, project)
+
+    if args.gate:
+        return gate(mutants, reused, reasons, declarations_for(targets, changed), coverage, project)
 
     if args.plan and args.survivors_of is None:
-        owed = len(mutants) - len(reused)
+        owed = len(mutants) - len(reused) - len(pending)
         if owed > args.max_shards * SHARD_CEILING[args.platform]:
             print(coverage)
             print("{} mutants is more than {} shards of {} can measure inside the shard job's "
-                  "timeout.\n{}".format(owed, args.max_shards, SHARD_CEILING[args.platform],
-                                         smaller_change(args, "", capital=True)))
+                  "timeout.\nSplit the pull request.".format(owed, args.max_shards,
+                                                             SHARD_CEILING[args.platform]))
             return CEILING_REFUSAL
         print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
         if reading and mutants:
             print(reuse_report(mutants, reused, reasons, project))
         if unreached and not mutants:
             # Passed rather than refused, where a local run refuses: a change with nothing to ask
-            # cannot earn a pass any other way, so the lines are named, and a pull request says why.
+            # cannot earn a pass any other way, so the lines are named and the pull request says why.
             print("No operator reaches any of the changed code lines above, so nothing is measured "
-                  "and the\ncampaign passes." + ("" if args.through else
-                                                  " Say in the pull request why the change is not "
-                                                  "something a mutation\ncan ask about."))
+                  "and the\ncampaign passes. Say in the pull request why the change is not something "
+                  "a mutation\ncan ask about.")
         print("mutants={}".format(len(mutants)))
         if reading:
             print("reusing={}".format(len(reused)))
+        if pending:
+            print("pending={}".format(len(pending)))
         count = shard_count(owed, args.platform, args.max_shards)
-        dealt = [number for number in range(1, len(mutants) + 1) if number not in reused]
+        dealt = [number for number in range(1, len(mutants) + 1)
+                 if number not in reused and number not in pending]
         print(spread_report(dealt, mutants, project, args.platform, count))
         print("shards={}".format(json.dumps(list(range(count)))))
         return 0
@@ -5889,13 +5794,19 @@ def main():
     # this tree.
     base = merge_base_of(project, args.base)
     campaign = scope_digest(base, targets, project, args.platform)
-    # A reused kill is decided before either pass, and neither pass is asked about it: it is in no
-    # shard's list, so the shard count the plan printed counts the others alone.
+    # A reused verdict is decided before either pass, and neither pass is asked about it: it is in no
+    # shard's list, so the shard count the plan printed counts the others alone. Nor is a mutant past
+    # the cap, which is left to a later run.
     reused = {number: record for number, record in reused.items() if number <= len(mutants)}
     for number, record in reused.items():
-        mutants[number - 1].verdict, mutants[number - 1].detail = KILLED, reuse_detail(record)
+        mutants[number - 1].verdict, mutants[number - 1].detail = record["verdict"], reuse_detail(record)
         mutants[number - 1].stood = record.get("stood")
-    chosen = [number for number in range(1, len(mutants) + 1) if number not in reused]
+    pending = [number for number in pending if number <= len(mutants)]
+    for number in pending:
+        mutants[number - 1].verdict, mutants[number - 1].detail = PENDING, "-"
+    deferred |= {(mutants[number - 1].path, mutants[number - 1].line) for number in pending}
+    chosen = [number for number in range(1, len(mutants) + 1)
+              if number not in reused and number not in pending]
     first = None
     if args.survivors_of is not None:
         # Read under the other platform's key, so a record this platform wrote is never taken as the
@@ -5927,13 +5838,11 @@ def main():
                                                       scope)
             mutant.platform = args.platform
         # Read against this tree rather than taken from the plan's file: the plan decided it on a
-        # runner of its own, and a kill that does not stand here is not a pass.
+        # runner of its own, and a verdict that does not stand here is not a pass.
         if reused:
-            index, readers = test_index(project), assembly_readers(project)
-            moved = context_moved(planned_under, context_digests(project))
+            index, readers, tests = test_index(project), assembly_readers(project), tests_digest(project)
             for number, record in reused.items():
-                problem = (context_reason(moved, record.get("reused_from")) if moved
-                           else kill_problem(record, mutants[number - 1], project, index, readers))
+                problem = reuse_problem(record, mutants[number - 1], project, index, readers, tests)
                 if problem is not None:
                     mutants[number - 1].verdict = REUSE_LAPSED
                     mutants[number - 1].detail = problem
@@ -5962,8 +5871,8 @@ def main():
             else:
                 mutant.detail = "{}: {}".format(first, mutant.detail or "-")
 
-    if args.emit_ledger is not None:
-        write_ledger(args.emit_ledger, mutants, reused, project)
+    if args.emit_record is not None:
+        write_record(args.emit_record, mutants, reused, project)
 
     declared = declarations_for(targets, changed) if whole else {}
     unanswered, stale = answered(mutants, deferred, declared)
@@ -5986,7 +5895,9 @@ def main():
     if args.collect is not None and reading:
         print("\n" + reuse_report(mutants, reused, reasons, project))
 
-    unmeasured = [m for m in mutants if m.verdict not in DECIDED + SURVIVING]
+    unmeasured = [m for m in mutants if m.verdict not in DECIDED + SURVIVING + (PENDING,)]
+    if pending:
+        print("\n--- left to a later run, past --cap: {} mutant(s) ---".format(len(pending)))
     if unmeasured:
         print("\n--- mutants nothing was asked of the suite about ---")
         for mutant in unmeasured:

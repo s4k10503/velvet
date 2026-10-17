@@ -53,12 +53,10 @@ class Repository:
         self.git("commit", "-q", "-m", name)
         return self.git("rev-parse", "HEAD").strip()
 
-    def resolve(self, event_name, payload, **variables):
+    def resolve(self, event_name, payload):
         event = self.root.parent / (self.root.name + "-event.json")
         event.write_text(json.dumps(payload), encoding="utf-8")
         environment = dict(os.environ, GITHUB_EVENT_NAME=event_name, GITHUB_EVENT_PATH=str(event))
-        environment.pop("MUTATION_WINDOW", None)
-        environment.update(variables)
         try:
             return subprocess.run([sys.executable, str(SCRIPT)], cwd=self.root, env=environment,
                                   capture_output=True, text=True)
@@ -157,25 +155,6 @@ class ResolverTests(unittest.TestCase):
         # Assert
         self.assertEqual((done.returncode, done.stdout), (0, "sha=\n"))
 
-    def test_Given_AScheduledRunWithAWindowFile_When_Resolved_Then_ItNamesTheWindowsBase(self):
-        # Arrange
-        repository = self.repository
-        window = repository.root / "window.json"
-        window.write_text(json.dumps({"base": repository.moved, "head": repository.merge}))
-
-        # Act
-        done = repository.resolve("schedule", {}, MUTATION_WINDOW=str(window))
-
-        # Assert
-        self.assertEqual((done.returncode, done.stdout), (0, "sha={}\n".format(repository.moved)))
-
-    def test_Given_AScheduledRunNamingNoWindowFile_When_Resolved_Then_ItRefuses(self):
-        # Act
-        done = self.repository.resolve("schedule", {})
-
-        # Assert — rather than reading against nothing, which measures nothing and passes.
-        self.assertEqual((done.returncode, "MUTATION_WINDOW" in done.stderr), (1, True))
-
     def test_Given_APushEvent_When_Resolved_Then_ItNamesNothing(self):
         # Arrange
         repository = self.repository
@@ -185,6 +164,99 @@ class ResolverTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((done.returncode, done.stdout), (0, "sha=\n"))
+
+
+class ScopeRepository:
+    """A first-parent history of `first`, `tagged` (tagged as a release), `cutover` (adding the
+    record script) and `head`, with the tag moved or the cutover left out as a case needs."""
+
+    def __init__(self, cutover=True, tag_after_cutover=False):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-scope-"))
+        self.git("init", "-q", "-b", "main")
+        self.git("config", "user.email", "probe@example.com")
+        self.git("config", "user.name", "Probe")
+        self.first = self.commit("first.txt")
+        self.tagged = self.commit("tagged.txt")
+        self.cutover = self.commit(CUTOVER) if cutover else None
+        self.head = self.commit("head.txt")
+        self.git("tag", "v1.0.0-main", self.head if tag_after_cutover else self.tagged)
+
+    def git(self, *arguments):
+        return subprocess.run(["git"] + list(arguments), cwd=self.root, check=True,
+                              capture_output=True, text=True).stdout
+
+    def commit(self, name):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(name, encoding="utf-8")
+        self.git("add", name)
+        self.git("commit", "-q", "-m", name)
+        return self.git("rev-parse", "HEAD").strip()
+
+    def resolve(self, event_name="push", scope=True):
+        event = self.root.parent / (self.root.name + "-event.json")
+        event.write_text("{}", encoding="utf-8")
+        environment = dict(os.environ, GITHUB_EVENT_NAME=event_name, GITHUB_EVENT_PATH=str(event))
+        environment.pop("MUTATION_SCOPE", None)
+        if scope:
+            environment["MUTATION_SCOPE"] = "1"
+        try:
+            return subprocess.run([sys.executable, str(SCRIPT)], cwd=self.root, env=environment,
+                                  capture_output=True, text=True)
+        finally:
+            event.unlink()
+
+
+CUTOVER = "scripts/ci/mutation_record.py"
+
+
+class ScopeTests(unittest.TestCase):
+    """What a record run and the release gate read against: the later of the cutover and the tag."""
+
+    def repository(self, **shape):
+        repository = ScopeRepository(**shape)
+        self.addCleanup(shutil.rmtree, repository.root, True)
+        return repository
+
+    def test_Given_ACutoverAfterTheNewestTag_When_TheScopeIsRead_Then_ItIsTheCutover(self):
+        # Arrange
+        repository = self.repository()
+
+        # Act
+        done = repository.resolve()
+
+        # Assert
+        self.assertEqual(done.stdout, "sha={}\n".format(repository.cutover))
+
+    def test_Given_ATagAfterTheCutover_When_TheScopeIsRead_Then_ItIsTheTag(self):
+        # Arrange
+        repository = self.repository(tag_after_cutover=True)
+
+        # Act
+        done = repository.resolve()
+
+        # Assert
+        self.assertEqual(done.stdout, "sha={}\n".format(repository.head))
+
+    def test_Given_AHistoryWithoutTheCutover_When_TheScopeIsRead_Then_ItIsTheTag(self):
+        # Arrange — a maintenance line cut before the record existed.
+        repository = self.repository(cutover=False)
+
+        # Act
+        done = repository.resolve()
+
+        # Assert
+        self.assertEqual(done.stdout, "sha={}\n".format(repository.tagged))
+
+    def test_Given_AScheduledRun_When_ItReadsTheScope_Then_ItIsTheSameCommitAsAPush(self):
+        # Arrange
+        repository = self.repository()
+
+        # Act
+        readings = {repository.resolve("schedule").stdout, repository.resolve("push").stdout}
+
+        # Assert
+        self.assertEqual(readings, {"sha={}\n".format(repository.cutover)})
 
 
 def workflow_sources(root=REPO_ROOT):

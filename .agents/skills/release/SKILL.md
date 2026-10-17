@@ -19,6 +19,17 @@ none of them.
 instructions, the long-form entries collapsed, the compare link. Nothing about a release is written
 twice, and nothing is written straight into the GitHub release.
 
+The dispatch also refuses a commit the mutation record does not answer, or whose required CI on
+`main` did not pass; CONTRIBUTING.md's release section owns that gate and the way past it. Ask it
+before closing the version, from a checkout of the commit, since a record still catching up holds the
+merge window below open for as long as it takes:
+
+```bash
+python3 scripts/release/mutation_gate.py --release "$(git rev-parse HEAD)"
+```
+
+Run outside the workflow it reads the record and not the CI, which the dispatch reads.
+
 ## 1. Close the version in the CHANGELOG
 
 Run `python3 scripts/release/compile_changelog.py` before anything else: a fragment is in the file
@@ -85,7 +96,7 @@ gh workflow run upm.yml -f version=X.Y.Z
 ```
 
 This is the only step that publishes. It verifies the version against `package.json`, builds the
-note, splits the package to `upm`, tags `vX.Y.Z` on the split commit and `vX.Y.Z-main` on the main
+note, runs the release gate, splits the package to `upm`, tags `vX.Y.Z` on the split commit and `vX.Y.Z-main` on the main
 commit, and creates the release.
 
 **Do not run `gh release create` yourself** — the dispatch has already made the tag, so it fails with

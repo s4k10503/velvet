@@ -492,15 +492,15 @@ class HandOffJobTests(unittest.TestCase):
 class CampaignWorkflowTests(unittest.TestCase):
     """The campaign's workflow, against the merge it no longer asks for."""
 
-    def test_Given_TheCampaignWorkflow_When_ItsCommandsAreRead_Then_NoneDispatchesAWorkflow(self):
-        # Arrange
+    def test_Given_TheCampaignWorkflow_When_ItsCommandsAreRead_Then_ItDispatchesOnlyItself(self):
+        # Arrange — its own catch-up run, and never the merge.
         text = (WORKFLOWS / "mutation.yml").read_text(encoding="utf-8")
 
         # Act
-        dispatching = re.findall(r"gh workflow run [\w.-]+", text)
+        dispatching = sorted(set(re.findall(r"gh workflow run ([\w.-]+)", text)))
 
         # Assert
-        self.assertEqual(dispatching, [])
+        self.assertEqual(dispatching, ["mutation.yml"])
 
 
 class AfterRunTests(unittest.TestCase):
