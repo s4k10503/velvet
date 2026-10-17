@@ -158,6 +158,7 @@ namespace Velvet
             double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
         {
             if (_ctx.IsAborted) return;
+            FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, parent);
 
             // Slot indices are LOGICAL throughout: a slot counts rendered children only, and the
             // reconciler-invisible ones (a z-index layer container, a filter bounds spacer, a ring band)
@@ -277,13 +278,12 @@ namespace Velvet
             }
         }
 
-        // Mounts every Portal that FiberNodeFactory.CreateElement queued during the
-        // reconcile pass that just finished. Each pending Portal's target reconcile re-enters
-        // Reconcile, which may enqueue more Portals (nested case) — they flow into
-        // the same queue and are drained in FIFO order until empty so each Portal mounts at
-        // target.childCount that already reflects every earlier-drained Portal's contribution.
-        // Called exclusively by Reconciler.Reconcile's top-level finally so the
-        // single-top-level-loop invariant holds across nested PatchPortal recursion.
+        // Drains what the pass that just finished deferred: each Portal's and WorldSpace node's children, and
+        // each z-* element's placement in its layer container. A Portal's children reconcile can queue more;
+        // they join the same queue, drained FIFO until empty, so a Portal mounts at the logical slot
+        // (LogicalChildSlots.Count) after every earlier-drained Portal's children in the same target.
+        // Called only from Reconciler.FinishTopLevelPass, which Reconcile's and ContinueReconcile's top-level
+        // finally both reach, so the single-top-level-loop invariant holds across nested PatchPortal recursion.
         internal void DrainPendingPortalMounts()
         {
             HashSet<ComponentFiber>? childFibersBefore = null;
@@ -484,9 +484,6 @@ namespace Velvet
                     _general.HideFibersMountedUnder(placeholder, declaringFiber);
                 }
             }
-            // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
-            // last member this pass tears down here, never synchronously mid-diff.
-            FiberZLayerCoordinator.DrainTeardowns(_ctx);
         }
 
         // Taken by ref so one set serves the whole drain loop: each entry's snapshot is consumed by its own
@@ -603,6 +600,7 @@ namespace Velvet
 
             var state = PendingIndexedState.Value;
             PendingIndexedState = null;
+            FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, state.Parent);
             // Read only when the resume unwinds, for the reason Reconcile's own initialiser carries.
             // Deriving the outcome inside the finally instead is what this shape rejects: measured, the
             // unwound resume then retires an entry whose slots the unfinished diff never emptied.
@@ -628,6 +626,7 @@ namespace Velvet
 
             var state = PendingKeyedState;
             PendingKeyedState = null;
+            FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, state.Parent);
             // Same initialiser discipline as ContinueIndexed.
             var removals = ReconcilerContext.BoundaryRemovalOutcome.Skipped;
             try

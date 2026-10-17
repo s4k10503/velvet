@@ -27,7 +27,8 @@ namespace Velvet.Tests
     /// still commits.</item>
     /// <item>A <c>z-*</c> placement resolves no target and sits outside that containment: an application
     /// throw from the insert that lands its element escapes the render pass, so an Error Boundary above
-    /// the component whose update began that pass shows its fallback.</item>
+    /// the component whose update began that pass shows its fallback, and a layer container that pass emptied is
+    /// still removed.</item>
     /// </list>
     /// Host accounting reads through Resources.FindObjectsOfTypeAll, which sees hidden objects.
     /// </summary>
@@ -363,6 +364,50 @@ namespace Velvet.Tests
             Assert.That((s_attachRuns, s_attachedIntoALayerContainer,
                     _host.Root.Q<VisualElement>("fallback") != null),
                 Is.EqualTo((1, true, true)));
+        }
+
+        private static StateUpdater<bool> s_swapStacked;
+
+        [Component]
+        private static VNode StackedSwapHost()
+        {
+            var (swapped, setSwapped) = Hooks.UseState(false);
+            s_swapStacked = setSwapped;
+            return V.Div(name: "swap-root", className: "relative", children: new VNode[]
+            {
+                swapped ? null : V.Div(name: "behind", className: "absolute -z-10", key: "behind"),
+                swapped
+                    ? V.Custom<LayerAttachThrower>(className: "absolute z-10", name: "stacked", key: "stacked")
+                    : null,
+            });
+        }
+
+        [Test]
+        public void Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsInThePassThatEmptiedAnotherLayer_Then_TheEmptiedContainerIsStillRemoved()
+        {
+            // Arrange — no boundary, so no fallback replaces the stacking parent the assertion reads; the back
+            // container's only member leaves in the same pass the front placement throws from. The expected
+            // exception fails the case when the arrangement stops throwing from that placement.
+            MountAndLayout(V.Component(StackedSwapHost, key: "host"));
+            var root = _host.Root.Q<VisualElement>("swap-root");
+            Assume.That(HasBackLayerContainer(root), Is.True, "Precondition: there is a back container to tear down");
+            LogAssert.Expect(LogType.Exception, new Regex("attach callback"));
+
+            // Act
+            s_swapStacked.Invoke(true);
+            FlushAndLayout();
+
+            // Assert
+            Assert.That(HasBackLayerContainer(root), Is.False);
+        }
+
+        private static bool HasBackLayerContainer(VisualElement parent)
+        {
+            foreach (var child in parent.Children())
+            {
+                if (FiberZLayerCoordinator.IsBackLayerContainer(child)) return true;
+            }
+            return false;
         }
 
         // GREEN_ON_BASE(characterization): the base sorts these two layers the same way, so the case

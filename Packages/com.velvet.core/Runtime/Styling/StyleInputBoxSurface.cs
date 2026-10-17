@@ -176,6 +176,16 @@ namespace Velvet
             return found != null;
         }
 
+        // Whether a text-overflow utility that does not itself write overflow also needs the clip an <input> always
+        // has: the box and its text take overflow-hidden beside it, as `truncate` carries it.
+        public static bool ImpliesBoxClip(string core)
+        {
+            var longhands = LonghandsOf(core);
+            return longhands.Contains(StyleLonghand.TextOverflow) && !longhands.Contains(StyleLonghand.Overflow);
+        }
+
+        public const string BoxClipCore = "overflow-hidden";
+
         // The element a relational lookup starts from: a box looks for its sources as the control does, so a
         // peer is a sibling of the control and a group an ancestor of it.
         public static VisualElement RelationalAnchorOf(VisualElement element)

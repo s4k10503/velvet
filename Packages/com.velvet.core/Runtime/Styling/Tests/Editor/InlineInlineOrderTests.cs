@@ -126,7 +126,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves every token of these lists as written.
+        // GREEN_ON_BASE(characterization): the base leaves every token of these lists as written, and this branch
+        // leaves the drop-shadow-sm drop-shadow-white pair it adds to them as written too.
         // Each is a pair that does not contend for a property (another property, another layer, a variant, an
         // important class that stays a class, a slash size that stays beside a plain one, an identical
         // token, a shorthand beside its longhand that another pass orders), so leaving an inline token out for a

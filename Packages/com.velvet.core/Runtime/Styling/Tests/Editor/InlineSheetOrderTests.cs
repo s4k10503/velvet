@@ -320,15 +320,16 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the inline families' longhand table, which agree on the base too.
-        // Add `.border-t-red-500 { border-top-color: red; }` to `_borders.uss`, regenerate `StyleUtilityProperties.g.cs`, and this is what reddens.
+        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the inline families' longhand table, which agree.
+        // The flex shorthand is left to StyleSpacingPrecedence with the spacing families, so grow-0 writing part of it is not
+        // counted here. Add `.border-t-red-500 { border-top-color: red; }` to `_borders.uss`, regenerate `StyleUtilityProperties.g.cs`, and this is what reddens.
         [Test]
         public void Given_TheMultiLonghandInlineFamiliesNoOtherPassOrders_When_ComparedWithTheBundledClasses_Then_NoClassWritesPartOfOne()
         {
             // Arrange
             var families = Enum.GetValues(typeof(ArbitraryProperty)).Cast<ArbitraryProperty>()
                 .Where(property => property != ArbitraryProperty.BorderWidth
-                    && !StyleArbitraryValueResolver.IsSpacingOrRadiusProperty(property))
+                    && !StyleArbitraryValueResolver.IsSpacingRadiusOrFlexProperty(property))
                 .ToArray();
 
             // Act
@@ -363,14 +364,15 @@ namespace Velvet.Tests
             Assert.That(string.Join("; ", claimed), Is.Empty);
         }
 
-        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the readers of StyleSpacingPrecedence, which agree on the base too.
-        // Add `.w-fit { width: auto; }` to `_sizing.uss`, regenerate `StyleUtilityProperties.g.cs`, and this is what reddens.
+        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the readers of StyleSpacingPrecedence, which agree.
+        // Drop the `("grow-0", ArbitraryProperty.FlexGrow, "grow-[0]")` row from `s_flexFactorClasses` and this is what reddens,
+        // as adding `.w-fit { width: auto; }` to `_sizing.uss` and regenerating `StyleUtilityProperties.g.cs` does.
         [Test]
         public void Given_TheBundledClassesThatWritePartOfASpacingSizeInsetOrRadiusFamily_When_ReadAsStylesheetClasses_Then_EachIsRead()
         {
             // Arrange
             var families = Enum.GetValues(typeof(ArbitraryProperty)).Cast<ArbitraryProperty>()
-                .Where(StyleArbitraryValueResolver.IsSpacingOrRadiusProperty)
+                .Where(StyleArbitraryValueResolver.IsSpacingRadiusOrFlexProperty)
                 .ToArray();
 
             // Act

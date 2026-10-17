@@ -315,6 +315,10 @@ namespace Velvet
         FlexGrow,     // grow-[2]         -> flex-grow
         FlexShrink,   // shrink-[2]       -> flex-shrink
 
+        // The flex shorthand: Value is the grow factor, Value3 the shrink factor, and Value2 / Unit2 the basis,
+        // NaN for auto.
+        Flex,         // flex-3, flex-1/2, flex-[2_1_0%] -> flex-grow + flex-shrink + flex-basis
+
         // Transition (StyleList<TimeValue>; handled out-of-band like the filter list)
         TransitionDuration,   // duration-[400ms] -> transition-duration. Value carries SECONDS.
 
@@ -349,7 +353,8 @@ namespace Velvet
         // its own class; a pair here arrives from ONE class and has no spelling that sets half of it.
         public float Value2 { get; }
         public LengthUnit Unit2 { get; }
-        // TransformOrigin's z, a length in pixels; Slice's bottom inset; 0 for every other property.
+        // TransformOrigin's z, a length in pixels; Slice's bottom inset; Flex's shrink factor; 0 for every other
+        // property.
         public float Value3 { get; }
         // Slice's left inset; 0 for every other property. Slice carries its four edges in Value (top), Value2
         // (right), Value3 and Value4, because one slice-[…] class sets all four in the border-image-slice order.
@@ -362,7 +367,8 @@ namespace Velvet
         // Payload for FilterDropShadow; null for every other property.
         public DropShadowValue? DropShadow { get; }
         // A length an element has to measure (em, a viewport unit, a percentage beside a pixel length), for a
-        // property PropertySetters writes; Value and Unit then carry nothing. Null for every other result.
+        // property PropertySetters writes, where Value and Unit then carry nothing, or for Flex's basis, where
+        // Value2 and Unit2 do. Null for every other result.
         public StyleLengthExpression? Expression { get; }
         // True for the `auto` keyword of a length property; Value and Unit then carry nothing.
         public bool Auto { get; }
@@ -423,6 +429,20 @@ namespace Velvet
             Custom = null;
             DropShadow = null;
             Expression = null;
+        }
+
+        // Creates a Flex result: grow, shrink, and the basis (NaN for auto).
+        public static ArbitraryStyle Flex(float grow, float shrink, float basis, LengthUnit basisUnit)
+            => new(ArbitraryProperty.Flex, grow, basisUnit, basis, basisUnit, shrink);
+
+        // Creates a Flex result whose basis only the element it is written to can measure.
+        public static ArbitraryStyle Flex(float grow, float shrink, StyleLengthExpression basis)
+            => new(grow, shrink, basis);
+
+        private ArbitraryStyle(float grow, float shrink, StyleLengthExpression basis)
+            : this(ArbitraryProperty.Flex, grow, LengthUnit.Pixel, 0f, LengthUnit.Pixel, shrink)
+        {
+            Expression = basis;
         }
 
         // Creates a pair-valued length result.
@@ -547,24 +567,30 @@ namespace Velvet
         }
     }
 
-    // The resolved payload for a filter-[name:args] custom filter token: the registered NAME (the
-    // per-name layer-stack key, and the ONLY field the clear path reads — a clear synthesized for a
-    // no-longer-registered name carries a null Definition and empty Args), the FilterFunctionDefinition
-    // VelvetFilters.Register stored under that name, and the arguments in declaration order — the
-    // explicitly supplied segments followed by a tail padded from the declaration's defaults, so the
-    // composed function always carries the full declared parameter count (an under-filled function
-    // reads stale material-property state at render time instead of the declared defaults).
+    // The resolved payload for a filter-[name:args] custom filter token: the registered NAME (the per-name
+    // layer-stack key, and the ONLY field the clear path reads), the FilterFunctionDefinition
+    // VelvetFilters.Register stored under that name, the arguments in declaration order — the explicitly
+    // supplied segments followed by a tail padded from the declaration's defaults, so the composed function
+    // always carries the full declared parameter count (an under-filled function reads stale
+    // material-property state at render time instead of the declared defaults) — and the bracket body it was
+    // parsed from, which a registration change parses again. A null Definition is a name no registration
+    // answers, unless Rejected says the registration answering it refuses the arguments.
     internal sealed class CustomFilterValue
     {
         public readonly string Name;
         public readonly FilterFunctionDefinition Definition;
         public readonly FilterParameter[] Args;
+        public readonly string Token;
+        public readonly bool Rejected;
 
-        public CustomFilterValue(string name, FilterFunctionDefinition definition, FilterParameter[] args)
+        public CustomFilterValue(string name, FilterFunctionDefinition definition, FilterParameter[] args, string token = "",
+            bool rejected = false)
         {
             Name = name;
             Definition = definition;
             Args = args;
+            Token = token;
+            Rejected = rejected;
         }
     }
 }

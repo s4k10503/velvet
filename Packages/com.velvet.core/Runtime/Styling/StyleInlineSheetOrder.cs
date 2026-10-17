@@ -9,7 +9,7 @@ namespace Velvet
     // the order (StyleSpacingPrecedence). So the longhands of an inline token that the classes emitted after it
     // write are taken out of the list: a token they write in full is dropped, and one they write in part is
     // replaced by a token per longhand they leave, as StyleSpacingPrecedence.CornersLeftBy cuts a pose's radius
-    // down to the corners it leaves. A spacing, size, inset or radius token is not cut here:
+    // down to the corners it leaves. A spacing, size, inset, radius or flex token is not cut for a class that writes part of it:
     // StyleSpacingPrecedence writes the class inline instead, and InlineSheetOrderTests holds that it can write every
     // bundled class that covers part of one. The same fixture holds that no other multi-longhand family has a
     // bundled class that writes part of it.
@@ -236,7 +236,7 @@ namespace Velvet
                 return false;
             }
             var logicalSpacingOrRadius = StyleLogicalUtilities.SortPropertiesOf(core) != null
-                && StyleArbitraryValueResolver.IsSpacingOrRadiusProperty(style.Property);
+                && StyleArbitraryValueResolver.IsSpacingRadiusOrFlexProperty(style.Property);
             var written = StyleArbitraryLonghands.Of(style.Property);
             reading = new InlineReading
             {

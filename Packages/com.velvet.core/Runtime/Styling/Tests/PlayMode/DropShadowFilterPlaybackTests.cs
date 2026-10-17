@@ -85,6 +85,7 @@ namespace Velvet.Tests
 
         // The shadow is the ink shifted 10px right and down, so the ink's centre lies inside it, the corner past the
         // ink's bottom-right holds the shadow alone, and the caster's own box shadows nothing.
+        // GREEN_ON_BASE(characterization): the base paints the ink's centre blue under this class too, since the ink is drawn above whatever sits beneath it.
         [UnityTest]
         public IEnumerator Given_AHardOffsetShadow_When_Rendered_Then_TheInkStaysOverIt()
         {

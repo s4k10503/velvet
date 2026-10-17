@@ -10,5 +10,9 @@
 
 ### Fixed
 
+- `text-ellipsis` alone on a field elides the input's text while the field is unfocused, as it does on an
+  `<input>`: the box and its text take `overflow-hidden` beside `text-ellipsis` and `text-clip`, as `truncate`
+  already gave them.
+
 - A `shadow-*` or `skew-*` beside a filter utility on a field, a variant one included, reserves room for its
   paint under the filter, as it does on any other element.
