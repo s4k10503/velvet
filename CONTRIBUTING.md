@@ -251,7 +251,7 @@ backfilled. `ScopeTests` holds both orders and the history with no cutover.
 mutant a run decided, at `records/<key>.json`, where the key hashes the mutant (file, line, column,
 operator and both texts), the mutated file's bytes, and the tool: `mutation_check.py`, its operator
 tables and priority order, and the scripts the shards run or import (`TOOL_FILES`). A run fetches the
-branch; its `record` job, the branch's one writer, commits what the verdict wrote and pushes, building
+branch; its `record` job, the only job that writes it, commits what the verdict wrote and pushes, building
 the commit with an index of its own and retrying over a newer branch when a push lost a race
 (`scripts/ci/mutation_record.py`). Entries under different keys never touch, so no two runs conflict,
 and the same key written again is the newer verdict. The branch shares no history with the code and
@@ -1474,8 +1474,8 @@ of `main` that CI built rather than building a release of their own. Before anyt
 
 The gate runs the commit's own copy of the campaign's scripts, the copy its record runs measured
 with, since an entry's key carries the tool's digest, and refuses a commit whose tree has no record
-tooling. It reads git, the record and the run listing alone, so a second dispatch over the same commit
-and record gives the same answer. Where it refuses, its log names each mutant: wait for the record
+tooling. Its mutation half reads git and the record alone, so the same commit and record give it the
+same answer. Where it refuses, its log names each mutant: wait for the record
 runs to catch up, dispatch one (`gh workflow run mutation.yml --ref <branch>`), or answer the
 survivors by a pull request.
 

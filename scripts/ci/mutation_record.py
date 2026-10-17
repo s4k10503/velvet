@@ -3,7 +3,7 @@
 
 `mutation_check.py --reuse-from DIR` reads a directory of entries named by `record_key` and
 `--emit-record DIR` writes one. This moves them between that directory and the branch, which is what
-makes the record outlive any run: every campaign reads it, and only a campaign's `record` job writes it.
+makes the record outlive any run: every campaign reads it, and of the workflows only a campaign's `record` job writes it.
 
     python3 scripts/ci/mutation_record.py fetch DIR     # DIR/<key>.json for every entry; empty if none
     python3 scripts/ci/mutation_record.py publish DIR   # commit DIR's entries onto the branch and push

@@ -402,8 +402,8 @@ jobs:
           overwrite: true
 
   # ---------------------------------------------------------------------------
-  # What the run measured goes onto the record branch (scripts/ci/mutation_record.py), the only writer
-  # the branch has. A pull request's run writes nothing. Where the cap left mutants to a later run, this
+  # What the run measured goes onto the record branch (scripts/ci/mutation_record.py), from the only job
+  # that writes it. A pull request's run writes nothing. Where the cap left mutants to a later run, this
   # run recorded something, and every shard passed, the run dispatches the next one onto the same ref,
   # which waits in the concurrency group for nothing but this run: the next measures the following
   # mutants in the same order, since the ones this run answered are now in the record. A run that
