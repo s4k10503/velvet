@@ -55,35 +55,34 @@ namespace Velvet.Tests
         public void Given_ASpaceAtTheEndOfALengthWhereTailwindInfersALength_When_Parsed_Then_TheClassIsDeclined()
         {
             // Act
-            var declined = !StyleArbitraryValueResolver.TryParse("border-[2px_]", out _);
-            var resolved = StyleArbitraryValueResolver.TryParse("border-[2px]", out _);
+            var parsed = StyleArbitraryValueResolver.TryParse("border-[2px_]", out _);
 
             // Assert
-            Assert.That((declined, resolved), Is.EqualTo((true, true)));
+            Assert.That(parsed, Is.False);
         }
 
         // GREEN_ON_BASE(characterization): the base read a function name in lower case only, so this was declined.
-        [Test]
-        public void Given_AnUpperCaseCalcWithAnUnspacedPlus_When_ParsedAsAnArbitraryTop_Then_TheClassIsDeclined()
+        [TestCase("top-[CALC(1px+2px)]")]
+        [TestCase("border-[CALC(2px)]")]
+        public void Given_AnUpperCaseCalcLeftUnspacedOrNotTakenForALength_When_Parsed_Then_TheClassIsDeclined(string utility)
         {
             // Act
-            var declined = !StyleArbitraryValueResolver.TryParse("top-[CALC(1px+2px)]", out _);
-            var resolved = StyleArbitraryValueResolver.TryParse("top-[calc(1px+2px)]", out _);
+            var parsed = StyleArbitraryValueResolver.TryParse(utility, out _);
 
             // Assert
-            Assert.That((declined, resolved), Is.EqualTo((true, true)));
+            Assert.That(parsed, Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): the base read a function name in lower case only, so this was declined.
-        [Test]
-        public void Given_AnUpperCaseCalcWhereTailwindInfersALength_When_Parsed_Then_TheClassIsDeclined()
+        // GREEN_ON_BASE(characterization): the base read a lower-case function name, the control for the declining case above.
+        [TestCase("top-[calc(1px+2px)]")]
+        [TestCase("border-[calc(2px)]")]
+        public void Given_ALowerCaseCalc_When_Parsed_Then_TheClassResolves(string utility)
         {
             // Act
-            var declined = !StyleArbitraryValueResolver.TryParse("border-[CALC(2px)]", out _);
-            var resolved = StyleArbitraryValueResolver.TryParse("border-[calc(2px)]", out _);
+            var parsed = StyleArbitraryValueResolver.TryParse(utility, out _);
 
             // Assert
-            Assert.That((declined, resolved), Is.EqualTo((true, true)));
+            Assert.That(parsed, Is.True);
         }
     }
 }

@@ -85,22 +85,37 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base matched every unit case-sensitively, so these were declined.
-        [TestCase("border-[2PX]", "border-[2px]")]
-        [TestCase("border-t-[2PX]", "border-t-[2px]")]
-        [TestCase("border-s-[2PX]", "border-s-[2px]")]
-        [TestCase("text-[16PX]", "text-[16px]")]
-        [TestCase("text-[1IN]", "text-[1in]")]
-        [TestCase("text-[2EM]", "text-[2em]")]
-        [TestCase("text-[101.6q]", "text-[101.6Q]")]
-        public void Given_AUnitOutOfTailwindsCaseWhereItInfersALength_When_Parsed_Then_TheClassIsDeclined(
-            string written, string inTailwindsCase)
+        [TestCase("border-[2PX]")]
+        [TestCase("border-t-[2PX]")]
+        [TestCase("border-s-[2PX]")]
+        [TestCase("text-[16PX]")]
+        [TestCase("text-[1IN]")]
+        [TestCase("text-[2EM]")]
+        [TestCase("text-[101.6q]")]
+        public void Given_AUnitOutOfTailwindsCaseWhereItInfersALength_When_Parsed_Then_TheClassIsDeclined(string utility)
         {
             // Act
-            var declined = !StyleArbitraryValueResolver.TryParse(written, out _);
-            var resolved = StyleArbitraryValueResolver.TryParse(inTailwindsCase, out _);
+            var parsed = StyleArbitraryValueResolver.TryParse(utility, out _);
 
             // Assert
-            Assert.That((declined, resolved), Is.EqualTo((true, true)));
+            Assert.That(parsed, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base read these in Tailwind's case, the control for the declining cases above.
+        [TestCase("border-[2px]")]
+        [TestCase("border-t-[2px]")]
+        [TestCase("border-s-[2px]")]
+        [TestCase("text-[16px]")]
+        [TestCase("text-[1in]")]
+        [TestCase("text-[2em]")]
+        [TestCase("text-[101.6Q]")]
+        public void Given_AUnitInTailwindsCaseWhereItInfersALength_When_Parsed_Then_TheClassResolves(string utility)
+        {
+            // Act
+            var parsed = StyleArbitraryValueResolver.TryParse(utility, out _);
+
+            // Assert
+            Assert.That(parsed, Is.True);
         }
 
         [TestCase("text-[length:16PX]")]
@@ -125,16 +140,27 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base matched every unit case-sensitively, so these were declined.
-        [TestCase("ring-[5PX]", "ring-[5px]")]
-        [TestCase("outline-[5PX]", "outline-[5px]")]
-        public void Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(string written, string inTailwindsCase)
+        [TestCase("ring-[5PX]")]
+        [TestCase("outline-[5PX]")]
+        public void Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(string utility)
         {
             // Act
-            var ignored = !StyleRingClass.TryExtract(new[] { written }, out _);
-            var resolved = StyleRingClass.TryExtract(new[] { inTailwindsCase }, out _);
+            var extracted = StyleRingClass.TryExtract(new[] { utility }, out _);
 
             // Assert
-            Assert.That((ignored, resolved), Is.EqualTo((true, true)));
+            Assert.That(extracted, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base read these in Tailwind's case, the control for the ignoring cases above.
+        [TestCase("ring-[5px]")]
+        [TestCase("outline-[5px]")]
+        public void Given_ALowerCaseRingWidth_When_Extracted_Then_TheClassIsTaken(string utility)
+        {
+            // Act
+            var extracted = StyleRingClass.TryExtract(new[] { utility }, out _);
+
+            // Assert
+            Assert.That(extracted, Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the base matched every unit case-sensitively, so this was declined.
@@ -142,11 +168,21 @@ namespace Velvet.Tests
         public void Given_AnUpperCaseRingOffset_When_Extracted_Then_TheOffsetIsUnset()
         {
             // Act
-            StyleRingClass.TryExtract(new[] { "ring", "ring-offset-[5PX]" }, out var written);
-            StyleRingClass.TryExtract(new[] { "ring", "ring-offset-[5px]" }, out var inTailwindsCase);
+            StyleRingClass.TryExtract(new[] { "ring", "ring-offset-[5PX]" }, out var spec);
 
             // Assert
-            Assert.That((written.Offset, inTailwindsCase.Offset), Is.EqualTo((0f, 5f)));
+            Assert.That(spec.Offset, Is.EqualTo(0f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base read a lower-case offset, the control for the unset case above.
+        [Test]
+        public void Given_ALowerCaseRingOffset_When_Extracted_Then_ItIsThatManyPixels()
+        {
+            // Act
+            StyleRingClass.TryExtract(new[] { "ring", "ring-offset-[5px]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Offset, Is.EqualTo(5f));
         }
 
         // GREEN_ON_BASE(characterization): the base matched every unit case-sensitively, so this was declined.
@@ -155,13 +191,22 @@ namespace Velvet.Tests
         {
             // Act
             StyleGradientClass.TryExtract(
-                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-[1IN]", "to-[#0000ff]" }, out var written);
-            StyleGradientClass.TryExtract(
-                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-[1in]", "to-[#0000ff]" }, out var inTailwindsCase);
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-[1IN]", "to-[#0000ff]" }, out var spec);
 
             // Assert
-            Assert.That((float.IsNaN(written.Stops[0].PositionPx), float.IsNaN(inTailwindsCase.Stops[0].PositionPx)),
-                Is.EqualTo((true, false)));
+            Assert.That(float.IsNaN(spec.Stops[0].PositionPx), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base read a lower-case position, the control for the unset case above.
+        [Test]
+        public void Given_ALowerCaseFromPosition_When_Extracted_Then_TheStopIsThatManyPixelsIn()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-[1in]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Stops[0].PositionPx, Is.EqualTo(96f).Within(1e-3f));
         }
 
         // GREEN_ON_BASE(characterization): the base matched every unit case-sensitively, so this was not reserved.
@@ -169,11 +214,21 @@ namespace Velvet.Tests
         public void Given_AnUpperCaseBorderWidth_When_InsetParsed_Then_ItReservesNothing()
         {
             // Act
-            SilhouetteBoundsSpacer.BorderInset(new[] { "border-[2PX]" }, out var written, out _);
-            SilhouetteBoundsSpacer.BorderInset(new[] { "border-[2px]" }, out var inTailwindsCase, out _);
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border-[2PX]" }, out var inset, out _);
 
             // Assert
-            Assert.That((written, inTailwindsCase), Is.EqualTo((0f, 2f)));
+            Assert.That(inset, Is.EqualTo(0f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reserved a lower-case width, the control for the reserving-nothing case above.
+        [Test]
+        public void Given_ALowerCaseBorderWidth_When_InsetParsed_Then_ItReservesThatWidth()
+        {
+            // Act
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border-[2px]" }, out var inset, out _);
+
+            // Assert
+            Assert.That(inset, Is.EqualTo(2f));
         }
     }
 }

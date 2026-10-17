@@ -42,16 +42,27 @@ namespace Velvet.Tests
             Assert.That(s.Property == ArbitraryProperty.Rotate ? s.Value : float.NaN, Is.EqualTo(degrees).Within(1e-3f));
         }
 
-        [TestCase("rotate-[45]", "rotate-[45deg]")]
-        [TestCase("rotate-[0]", "rotate-[0deg]")]
-        public void Given_ABareNumberRotate_When_Parsed_Then_TheClassIsDeclined(string written, string withAUnit)
+        [TestCase("rotate-[45]")]
+        [TestCase("rotate-[0]")]
+        public void Given_ABareNumberRotate_When_Parsed_Then_TheClassIsDeclined(string utility)
         {
             // Act
-            var declined = !StyleArbitraryValueResolver.TryParse(written, out _);
-            var resolved = StyleArbitraryValueResolver.TryParse(withAUnit, out _);
+            var parsed = StyleArbitraryValueResolver.TryParse(utility, out _);
 
             // Assert
-            Assert.That((declined, resolved), Is.EqualTo((true, true)));
+            Assert.That(parsed, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a rotate angle written with a unit too; this is the control for the declining case above.
+        [TestCase("rotate-[45deg]")]
+        [TestCase("rotate-[0deg]")]
+        public void Given_ARotateWithAUnit_When_Parsed_Then_ItIsRead(string utility)
+        {
+            // Act
+            var parsed = StyleArbitraryValueResolver.TryParse(utility, out _);
+
+            // Assert
+            Assert.That(parsed, Is.True);
         }
 
         [Test]
@@ -81,11 +92,21 @@ namespace Velvet.Tests
         public void Given_ABareNonZeroSkew_When_Parsed_Then_TheClassIsDeclined()
         {
             // Act
-            var declined = !StyleSkewClass.TryParse("skew-x-[10]", out _, out _);
-            var resolved = StyleSkewClass.TryParse("skew-x-[10deg]", out _, out _);
+            var parsed = StyleSkewClass.TryParse("skew-x-[10]", out _, out _);
 
             // Assert
-            Assert.That((declined, resolved), Is.EqualTo((true, true)));
+            Assert.That(parsed, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base took a skew bracket in deg, the control for the declining case above.
+        [Test]
+        public void Given_ASkewInDegrees_When_Parsed_Then_ItIsRead()
+        {
+            // Act
+            var parsed = StyleSkewClass.TryParse("skew-x-[10deg]", out _, out _);
+
+            // Assert
+            Assert.That(parsed, Is.True);
         }
 
         [TestCase("bg-linear-[45DEG]", 45f)]
@@ -117,12 +138,22 @@ namespace Velvet.Tests
         {
             // Act
             StyleGradientClass.TryExtract(
-                new[] { "bg-linear-to-r", "from-[#ff0000]", "-bg-linear-[45DEG]", "to-[#0000ff]" }, out var written);
-            StyleGradientClass.TryExtract(
-                new[] { "bg-linear-to-r", "from-[#ff0000]", "-bg-linear-[45deg]", "to-[#0000ff]" }, out var inTailwindsCase);
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "-bg-linear-[45DEG]", "to-[#0000ff]" }, out var spec);
 
             // Assert
-            Assert.That((written.AngleDeg, inTailwindsCase.AngleDeg), Is.EqualTo((90f, -45f)));
+            Assert.That(spec.AngleDeg, Is.EqualTo(90f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base negated a lower-case angle, the control for the declining case above.
+        [Test]
+        public void Given_ANegatedAngleInTailwindsCase_When_Extracted_Then_ItIsTheNegatedAngle()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "-bg-linear-[45deg]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(-45f));
         }
 
         [Test]
