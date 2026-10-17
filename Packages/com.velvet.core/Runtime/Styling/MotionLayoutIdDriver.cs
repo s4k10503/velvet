@@ -384,7 +384,7 @@ namespace Velvet
         // mixed values in place.
         private static void Share(LayoutIdProjection projection, bool shared, bool crossfades, bool moves, LayoutIdLook? from)
         {
-            var carries = !shared && projection is { Shared: true, Moving: true };
+            var carries = projection is { Shared: true, Moving: true } && !shared;
             projection.FadeAt = carries ? CrossfadeProgress(projection) : float.NaN;
             // MUTANT_SURVIVES(equivalent): the look is read only while Shared is set, which a start reaching this line
             // leaves clear unless it is shared and has a tween.
