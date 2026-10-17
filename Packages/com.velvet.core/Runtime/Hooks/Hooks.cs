@@ -66,8 +66,8 @@ namespace Velvet
         /// - <c>value</c>: current value
         /// - <c>setValue</c>: <see cref="StateUpdater{T}"/>, reference-stable across renders — call
         ///   <c>setValue.Invoke(next)</c> to replace the value, or <c>setValue.Invoke(prev =&gt; next)</c> for the
-        ///   functional updater (reads the latest committed value, safe to invoke from a closure captured by an
-        ///   earlier render).
+        ///   functional updater (receives the state the updates written before it produce, safe to invoke from a
+        ///   closure captured by an earlier render).
         /// </returns>
         public static (T value, StateUpdater<T> setValue) UseState<T>(T initial)
             => UseStateInternalCore(default, initial, "UseState");
@@ -103,9 +103,9 @@ namespace Velvet
             if (index >= fiber.StateSlots.Count)
             {
                 var seed = initialFactory != null ? initialFactory() : initial;
-                var slot = new HookStateSlot<T> { Value = seed };
-                var setValue = HookSetterFactory.CreateStateSetter(slot, () => fiber.IsDisposed, () => RequestRender(fiber));
-                slot.Setter = new StateUpdater<T>(setValue, CreateUpdater(slot, fiber));
+                var slot = new HookStateSlot<T>(seed);
+                slot.Setter = new StateUpdater<T>(
+                    HookSetterFactory.CreateStateSetter(slot, fiber), HookSetterFactory.CreateStateUpdater(slot, fiber));
                 fiber.StateSlots.Add(slot);
                 return (slot.Value, slot.Setter);
             }
@@ -115,22 +115,7 @@ namespace Velvet
                 throw HookSlotTypeMismatch(fiber, hookName, fiber.StateSlots[index].GetType(), typeof(T).Name, index);
             }
 
-            return (typed.Value, typed.Setter);
-        }
-
-        private static Action<Func<T, T>> CreateUpdater<T>(HookStateSlot<T> slot, ComponentFiber fiber)
-        {
-            // The functional updater always reads the latest value via the updater function so it can be
-            // safely invoked inside a closure.
-            return updater =>
-            {
-                if (fiber.IsDisposed) return;
-                if (updater == null) throw new ArgumentNullException(nameof(updater));
-                var next = updater(slot.Value);
-                if (ObjectIs.AreEqual(slot.Value, next)) return;
-                slot.Value = next;
-                RequestRender(fiber);
-            };
+            return (typed.Process(fiber, FiberWorkLoop.RenderLane), typed.Setter);
         }
 
         #endregion
@@ -1862,12 +1847,8 @@ namespace Velvet
         private static (TState state, Action<TAction> dispatch) CreateReducerSlot<TState, TAction>(
             ComponentFiber fiber, TState initial, Func<TState, TAction, TState> reducer)
         {
-            var slot = new ReducerSlot<TState, TAction>
-            {
-                Value = initial,
-                Reducer = reducer,
-            };
-            slot.Dispatch = HookSetterFactory.CreateReducerDispatch(slot, () => fiber.IsDisposed, () => RequestRender(fiber));
+            var slot = new ReducerSlot<TState, TAction>(initial, reducer);
+            slot.Dispatch = HookSetterFactory.CreateReducerDispatch(slot, fiber);
             fiber.StateSlots!.Add(slot);
             return (slot.Value, slot.Dispatch);
         }
@@ -1882,7 +1863,7 @@ namespace Velvet
             }
 
             typed.Reducer = reducer;
-            return (typed.Value, typed.Dispatch);
+            return (typed.Process(fiber, FiberWorkLoop.RenderLane), typed.Dispatch);
         }
 
         #endregion
