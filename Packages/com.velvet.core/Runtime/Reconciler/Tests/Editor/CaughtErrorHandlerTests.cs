@@ -31,7 +31,8 @@ namespace Velvet.Tests
     /// <item>Boundaries reporting in one commit report in tree order, whatever order they caught in, each after
     /// the layout effects of its own fallback.</item>
     /// <item>A boundary a parked transition has mounted reports in the commit that completes the transition, and
-    /// one the transition parked short of reports without waiting for it.</item>
+    /// one the transition parked short of reports without waiting for it. The passive effect of a child the
+    /// parked pass mounted is held with the pass, so its error is caught only once the pass has completed.</item>
     /// <item>Once a chain of follow-up commits reaches its bound, the next entry neither runs the chain again
     /// nor delivers the report it left, and a parked transition still runs the layout effects it held.</item>
     /// </list>
@@ -401,10 +402,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionMounted_When_ItCatchesAPassiveEffectsErrorBeforeThePassCompletes_Then_ItReportsInTheCommitThatCompletesThePass()
+        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionMounted_When_ItsChildsPassiveEffectThrowsOnlyOnceThePassHasCompleted_Then_ItReportsInTheCommitThatFollows()
         {
             // Arrange — the boundary's row is the first the transition builds, and its child's render outlasts
-            // the slice's budget, so the batch drain's slice parks right after that row.
+            // the slice's budget, so the batch drain's slice parks right after that row. The child's passive
+            // effect is held with the pass, so the flush that finds the pass parked runs nothing.
             s_child = () => V.Component(SlowThrowInPassiveEffectRender, key: "child");
             _mounted = V.Mount(_root, V.Component(BoundaryFirstListRender, key: "list"), RecordingOrder);
             s_listTick = 1;
@@ -415,11 +417,53 @@ namespace Velvet.Tests
 
             // Act
             s_listFiber.DrainTimeSlicedReconcileForTest();
+            _mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(
                 $"{beforeCompletion}; {string.Join(", ", s_order)}",
-                Is.EqualTo("True | fallback; fallback, caught"));
+                Is.EqualTo("True | ; fallback, caught"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base holds the report the same way. Drop
+        // `&& !HasLayoutEffectsWaiting(ctx, boundary)` from DeliverCaughtErrors and this reddens.
+        [Test]
+        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionReRendered_When_ItsChildReRendersAloneAndThrowsBeforeThePassCompletes_Then_NoReportIsMadeYet()
+        {
+            // Arrange — the boundary's row is in the committed tree from the mount, since a row the parked pass
+            // created is not placed until the pass completes, and its slow render parks the pass right after the row
+            _mounted = V.Mount(_root, V.Component(TickedFirstBoundaryListRender, key: "list"), RecordingOrder);
+            s_listTick = 1;
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_setTick.Invoke(1);
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_order, Does.Not.Contain("caught"),
+                "The boundary's own layout effects wait for the pass, so what it caught is reported with them");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reports at the same commit. The case before it holds the
+        // report back, and this one shows the catch happened and the report followed the pass.
+        [Test]
+        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionReRendered_When_ItsChildReRenderedAloneAndThrewAndThePassCompletes_Then_TheReportFollowsTheFallback()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(TickedFirstBoundaryListRender, key: "list"), RecordingOrder);
+            s_listTick = 1;
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_setTick.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_listFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
         }
 
         [Test]
@@ -852,6 +896,44 @@ namespace Velvet.Tests
                 rows.Add(V.Div(key: "item" + i, children: new VNode[] { V.Label(text: "item-" + i) }));
             }
             return V.Fragment(children: rows.ToArray());
+        }
+
+        // The boundary's row leads, and the boundary takes the tick, so the transition re-renders it first and its
+        // slow render parks the pass before the rows behind it.
+        [Component(Compiler = false)]
+        private static VNode TickedFirstBoundaryListRender()
+        {
+            s_listFiber = FiberAmbientStack.Current;
+            var rows = new List<VNode>
+            {
+                V.Div(key: "boundary", children: new VNode[]
+                {
+                    V.Component(TickedLayoutBoundaryRender, s_listTick, key: "boundary"),
+                }),
+            };
+            for (var i = 0; i < 3; i++)
+            {
+                rows.Add(V.Div(key: "item" + i, children: new VNode[] { V.Label(text: "item-" + i + "-" + s_listTick) }));
+            }
+            return V.Fragment(children: rows.ToArray());
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode TickedLayoutBoundaryRender(int tick)
+        {
+            System.Threading.Thread.Sleep(SlowRenderMs);
+            Hooks.UseFallback(_ => V.Component(FallbackWithLayoutEffectRender, key: "fallback"));
+            return V.Component(SlowThrowOnUpdateRender, key: "child");
+        }
+
+        [Component]
+        private static VNode SlowThrowOnUpdateRender()
+        {
+            System.Threading.Thread.Sleep(SlowRenderMs);
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            if (tick > 0) throw new InvalidOperationException("boom");
+            return V.Label(text: "ok");
         }
 
         [Component]

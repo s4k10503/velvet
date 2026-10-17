@@ -290,11 +290,22 @@ namespace Velvet
             _ctx.IsAborted = false;
             try
             {
-                _childReconciler.DrainPendingPortalMounts();
-                // After the drain, whose own reconciles can tear down a Portal too.
-                foreach (var target in _ctx.PortalTargetsToRestyle)
+                try
                 {
-                    _patcher.ApplyStructuralVariants(target);
+                    _childReconciler.DrainPendingPortalMounts();
+                    // After the drain, whose own reconciles can tear down a Portal too.
+                    foreach (var target in _ctx.PortalTargetsToRestyle)
+                    {
+                        _patcher.ApplyStructuralVariants(target);
+                    }
+                }
+                finally
+                {
+                    // After the drain, which places the z-* members this pass deferred, and in a finally of its own
+                    // so a drain that throws still leaves neither an emptied layer container nor a stacking parent
+                    // pending into the next pass, and a coordinator call that throws still reaches the resets below.
+                    FiberZLayerCoordinator.DrainTeardowns(_ctx);
+                    FiberZLayerCoordinator.ResortLayers(_ctx);
                 }
             }
             finally

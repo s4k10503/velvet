@@ -23,10 +23,19 @@ namespace Velvet
         private static FilterFunctionDefinition? s_dropShadow;
 
         internal static FilterFunctionDefinition? Brightness
-            => IsUsable(s_brightness) ? s_brightness : s_brightness = Build(VelvetShaders.FilterBrightness, "_Brightness", "velvet-brightness");
+            => IsUsable(s_brightness) ? s_brightness : s_brightness = Build(VelvetShaders.FilterBrightness, "_Brightness", FilterNamePrefix + "brightness");
 
         internal static FilterFunctionDefinition? Saturate
-            => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", "velvet-saturate");
+            => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", FilterNamePrefix + "saturate");
+
+        // First-party is keyed on the filter-name prefix Build gives its definitions rather than on the cached two: a
+        // shader reimport and the subsystem reset below both replace a cached one while elements still hold the one
+        // they were composed with.
+        internal const string FilterNamePrefix = "velvet-";
+
+        internal static bool IsFirstParty(FilterFunctionDefinition? definition)
+            => definition is not null
+                && (definition.filterName?.StartsWith(FilterNamePrefix, System.StringComparison.Ordinal) ?? false);
 
         // drop-shadow-*: offset x, offset y and standard deviation in points, then the colour.
         internal static FilterFunctionDefinition? DropShadow
@@ -103,7 +112,7 @@ namespace Velvet
             var material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
             var def = ScriptableObject.CreateInstance<FilterFunctionDefinition>();
             def.hideFlags = HideFlags.HideAndDontSave;
-            def.filterName = "velvet-drop-shadow";
+            def.filterName = FilterNamePrefix + "drop-shadow";
             // Each slot pads to CSS's initial value for interpolation: every length 0, the colour transparent.
             def.parameters = new[]
             {

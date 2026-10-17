@@ -1346,6 +1346,20 @@ class CampaignMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [])
 
+    # GREEN_ON_BASE(characterization): settle already refuses a cancelled aggregate on the head it
+    # merges. This branch has a superseded run end its aggregate cancelled rather than failed, and
+    # this pins that the same conclusion on the head being merged still refuses rather than passing.
+    def test_Given_ACancelledRequiredAggregateOnTheHead_When_Decided_Then_ItIsRefused(self):
+        # Arrange
+        checks = [check_run("Required checks (Unity)", "cancelled", 7)]
+
+        # Act
+        with rest_readings(checks, CAMPAIGN_PASSED):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["failing at {}: Required checks (Unity)=cancel".format(GREEN[:7])])
+
     def test_Given_APassedCampaignAndANewerOneCancelled_When_Decided_Then_ALabelledHeadIsRefused(self):
         # Arrange
         states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[campaign_run(1, "success"),

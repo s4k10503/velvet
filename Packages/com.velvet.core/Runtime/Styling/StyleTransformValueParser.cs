@@ -38,6 +38,11 @@ namespace Velvet
                 return TryParseOpacity(valueSpan, negate, out result);
             }
 
+            if (prefix == "flex-")
+            {
+                return TryParseFlexShorthand(valueSpan, negate, out result);
+            }
+
             if (prefix == "grow-" || prefix == "shrink-")
             {
                 return TryParseFlexFactor(
@@ -120,6 +125,136 @@ namespace Velvet
                 return false;
             }
             result = new ArbitraryStyle(property, factor, LengthUnit.Pixel);
+            return true;
+        }
+
+        // flex-[..] is Tailwind's `flex: <value>`, so it takes the CSS flex shorthand, `_` spelling the spaces:
+        // none / auto / initial, or `<grow> <shrink>? || <basis>`. A grow given without a basis takes 0%, a
+        // basis given alone takes a grow and shrink of 1, and a missing shrink is 1.
+        private static bool TryParseFlexShorthand(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate)
+            {
+                return false;
+            }
+            var keyword = FlexKeyword(valueSpan);
+            if (keyword != null)
+            {
+                result = keyword.Value;
+                return true;
+            }
+            var parts = new FlexParts { Grow = float.NaN, Shrink = float.NaN, Unit = LengthUnit.Percent };
+            foreach (var part in valueSpan.ToString().Split('_'))
+            {
+                if (!TakeFlexPart(part.AsSpan(), ref parts))
+                {
+                    return false;
+                }
+            }
+            var grow = float.IsNaN(parts.Grow) ? 1f : parts.Grow;
+            var shrink = float.IsNaN(parts.Shrink) ? 1f : parts.Shrink;
+            result = parts.Measured != null
+                ? ArbitraryStyle.Flex(grow, shrink, parts.Measured)
+                : ArbitraryStyle.Flex(grow, shrink, parts.Basis, parts.Unit);
+            return true;
+        }
+
+        // CSS keywords ignore ASCII case. flex is not inherited and has no user-agent value, so unset and revert
+        // both take its initial value.
+        private static ArbitraryStyle? FlexKeyword(ReadOnlySpan<char> value)
+        {
+            if (IsKeyword(value, "none"))
+            {
+                return ArbitraryStyle.Flex(0f, 0f, float.NaN, LengthUnit.Pixel);
+            }
+            if (IsKeyword(value, "auto"))
+            {
+                return ArbitraryStyle.Flex(1f, 1f, float.NaN, LengthUnit.Pixel);
+            }
+            if (IsKeyword(value, "initial") || IsKeyword(value, "unset") || IsKeyword(value, "revert"))
+            {
+                return ArbitraryStyle.Flex(0f, 1f, float.NaN, LengthUnit.Pixel);
+            }
+            return null;
+        }
+
+        private static bool IsKeyword(ReadOnlySpan<char> value, string keyword)
+            => value.Equals(keyword.AsSpan(), StringComparison.OrdinalIgnoreCase);
+
+        // The components read so far. Grow and Shrink are NaN until given; PairClosed is set by a basis that
+        // follows the grow, after which no shrink may come.
+        private struct FlexParts
+        {
+            public float Grow;
+            public float Shrink;
+            public float Basis;
+            public LengthUnit Unit;
+            // A basis only the element can measure (2em, 50vw, calc(50%+10px)), in place of Basis and Unit.
+            public StyleLengthExpression Measured;
+            public bool HasBasis;
+            public bool PairClosed;
+        }
+
+        // One space-separated component: a number is the grow, or the shrink straight after it; a unitless zero
+        // after the pair is the basis, as CSS reads `flex: 1 1 0`; anything else is the basis, which may not be
+        // negative.
+        private static bool TakeFlexPart(ReadOnlySpan<char> part, ref FlexParts parts)
+        {
+            if (StyleArbitraryValueResolver.TryParseFloat(part, out var number))
+            {
+                return TakeFlexNumber(number, ref parts);
+            }
+            if (parts.HasBasis)
+            {
+                return false;
+            }
+            parts.HasBasis = true;
+            parts.PairClosed = !float.IsNaN(parts.Grow);
+            if (IsKeyword(part, "auto"))
+            {
+                parts.Basis = float.NaN;
+                return true;
+            }
+            if (StyleArbitraryValueResolver.TryParseValue(part, out parts.Basis, out parts.Unit))
+            {
+                return parts.Basis >= 0f;
+            }
+            // A length the element measures, as basis-[…] reads one (TryParseRelativeLength). One spelled with a
+            // leading minus is declined, as the shorthand declines a negative basis above.
+            if (part.Length == 0 || part[0] == '-' || !StyleLengthExpression.TryParse(part, out var measured)
+                || !measured.IsFinite())
+            {
+                return false;
+            }
+            parts.Measured = measured;
+            return true;
+        }
+
+        private static bool TakeFlexNumber(float number, ref FlexParts parts)
+        {
+            if (number < 0f)
+            {
+                return false;
+            }
+            if (float.IsNaN(parts.Grow))
+            {
+                parts.Grow = number;
+                return true;
+            }
+            if (float.IsNaN(parts.Shrink) && !parts.PairClosed)
+            {
+                parts.Shrink = number;
+                return true;
+            }
+            if (number != 0f || parts.HasBasis)
+            {
+                return false;
+            }
+            parts.HasBasis = true;
+            // MUTANT_SURVIVES(equivalent, line removed): the guard above returns once HasBasis is set, and only a part that sets HasBasis writes Basis, so Basis still holds its default zero here.
+            parts.Basis = 0f;
+            parts.Unit = LengthUnit.Pixel;
             return true;
         }
 

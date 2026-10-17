@@ -297,6 +297,7 @@ namespace Velvet
             finally
             {
                 ctx.EffectCommitDepth--;
+                StageReleasedPassiveEffects(ctx);
             }
         }
 
@@ -375,6 +376,9 @@ namespace Velvet
                 // A tree a Suspense hides commits none of the layout work its render queued, as React discards
                 // that work; ShowLayoutEffects queues all of it again for the commit that reveals it.
                 if (entry.Fiber.LayoutEffectsHidden) continue;
+                // A fiber this commit takes as a root has its own render committed here, so an entry a parked pass left
+                // for it no longer holds its passive work back.
+                if (IsHeld(entry.Pass) && roots.Exists(root => ReferenceEquals(root.Fiber, entry.Fiber))) continue;
                 if (!IsHeld(entry.Pass) && IsInScope(entry.Fiber, scope))
                 {
                     taken.Add((entry.Fiber, entry.IsMount));
@@ -639,6 +643,7 @@ namespace Velvet
             // A tree a Suspense hides runs none of the passive work its render queued, as React commits none of
             // that render; ShowLayoutEffects schedules what is held for the reveal.
             ordered.RemoveAll(HoldWhileHidden);
+            ordered.RemoveAll(candidate => HoldWhileParked(context, candidate));
 
             // Phase 1: all cleanups, post-order. Clear EffectFlushScheduled here so a cleanup that
             // re-stages the same fiber re-arms scheduling cleanly.
@@ -677,6 +682,40 @@ namespace Velvet
             if (!fiber.LayoutEffectsHidden) return false;
             fiber.EffectFlushScheduled = false;
             return true;
+        }
+
+        // The passive work of a fiber a parked pass rendered waits with that fiber's layout work on the deferred
+        // stack (IsHeld), until the commit that takes the entry stages it again.
+        private static bool HoldWhileParked(ReconcilerContext context, ComponentFiber fiber)
+        {
+            foreach (var entry in context.DeferredInlineLayoutEffectFibers)
+            {
+                if (!ReferenceEquals(entry.Fiber, fiber) || !IsHeld(entry.Pass)) continue;
+                context.PassiveEffectFibersHeldByParkedPass.Add(fiber);
+                return true;
+            }
+            return false;
+        }
+
+        // Runs when a layout commit ends, a throwing one included, since the commit that completes a pass is the one
+        // that takes its entries off the deferred stack. A fiber whose entry is still there keeps waiting: the
+        // commit that takes it is the one whose layout effects run first.
+        private static void StageReleasedPassiveEffects(ReconcilerContext ctx)
+        {
+            var held = ctx.PassiveEffectFibersHeldByParkedPass;
+            var kept = 0;
+            for (var i = 0; i < held.Count; i++)
+            {
+                var fiber = held[i];
+                if (HasLayoutEffectsWaiting(ctx, fiber))
+                {
+                    held[kept++] = fiber;
+                    continue;
+                }
+                if (ctx.PendingPassiveEffectFiberSet.Add(fiber)) ctx.PendingPassiveEffectFibers.Add(fiber);
+                ArmPassiveDrain(ctx);
+            }
+            held.RemoveRange(kept, held.Count - kept);
         }
 
         // Reconstructs a post-order (child-before-parent, left-to-right) sequence over an arbitrary

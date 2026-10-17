@@ -826,7 +826,8 @@ namespace Velvet
                 return;
             }
 
-            if (!slot.HasActiveOwner)
+            var opensTransition = !slot.HasActiveOwner;
+            if (opensTransition)
             {
                 slot.IsPending = true;
                 slot.OwnerGeneration++;
@@ -864,9 +865,22 @@ namespace Velvet
                             ComponentFiber.RequestRenderForClearedPending(slot);
                         }
                     }
+                    if (opensTransition && slot.IsPending)
+                    {
+                        RequestPendingRender(fiber);
+                    }
                 }
             }
         }
+
+        // React renders isPending = true on the sync lane before the transition's own render, through the
+        // optimistic update startTransition dispatches ahead of the callback (ReactFiberHooks.js:
+        // startTransition, dispatchOptimisticSetState). Asked as the call that opened the transition hands control
+        // back, and only for a flag still lit there: a callback that queued nothing and left no joined call open
+        // has settled by then, and a render of it would only show the flag false. Both callers have checked that
+        // the call still owns the slot, which an unmount takes away, so the fiber is mounted here.
+        private static void RequestPendingRender(ComponentFiber fiber)
+            => ScheduleRerender(fiber, FiberUpdatePriority.Urgent);
 
         // React's startTransition catches the callback's error and dispatches it as the isPending update, so the
         // declaring component throws it from its Transition-lane render to the boundary above it, and the caller
@@ -977,7 +991,8 @@ namespace Velvet
                 return;
             }
 
-            if (!slot.HasActiveOwner)
+            var opensTransition = !slot.HasActiveOwner;
+            if (opensTransition)
             {
                 slot.IsPending = true;
                 slot.OwnerGeneration++;
@@ -1009,6 +1024,11 @@ namespace Velvet
                 // the scope closes exactly where it hands the task back. Pinned by the completion case for an
                 // action that never suspended, which fails if that stops answering.
                 suspended = action.Status == VelvetTaskStatus.Pending;
+                if (opensTransition && slot.OwnerGeneration == ownerGeneration
+                    && (suspended || slot.HasQueuedWork || slot.OwnerDepth > 1))
+                {
+                    RequestPendingRender(fiber);
+                }
                 await action;
             }
             catch (Exception ex)

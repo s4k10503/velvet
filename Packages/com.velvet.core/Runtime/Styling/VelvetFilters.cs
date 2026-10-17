@@ -7,8 +7,8 @@ namespace Velvet
 {
     /// <summary>
     /// Registry for user-defined UI Toolkit custom filters consumed by the <c>filter-[name:args]</c>
-    /// utility. Register a <see cref="FilterFunctionDefinition"/> under a name at startup (before the
-    /// consuming tree mounts), then reference it from any class string:
+    /// utility. Register a <see cref="FilterFunctionDefinition"/> under a name, then reference it from any
+    /// class string:
     /// <code>
     /// VelvetFilters.Register("dissolve", dissolveDefinition);
     /// V.Div(className: "filter-[dissolve:0.4]");
@@ -20,8 +20,9 @@ namespace Velvet
     /// declared defaults outright. Custom functions
     /// compose into the same inline <c>filter</c> list as the built-in <c>blur-*</c>/<c>contrast-*</c>/…
     /// utilities: built-ins first (canonical CSS order), then customs in class order.
-    /// Registration is not reactive: a class resolved before its name was registered stays inert until
-    /// the element's class list changes again.
+    /// Registration reaches mounted elements: registering, re-registering or unregistering a name re-resolves
+    /// every element carrying it, and an element carrying a name nothing is registered under draws no filter,
+    /// as CSS ignores a filter chain whose <c>url()</c> names no filter.
     /// Not thread-safe (main thread only).
     /// </summary>
     public static class VelvetFilters
@@ -45,7 +46,9 @@ namespace Velvet
         /// overwrites; re-registering the identical definition under the same name is a silent no-op.
         /// </summary>
         /// <param name="name">Filter name as written inside the class brackets. Must be non-empty and
-        /// must not contain whitespace, <c>:</c>, <c>[</c> or <c>]</c> (they would break the class token);
+        /// must not contain whitespace, <c>:</c>, <c>[</c>, <c>]</c>, <c>(</c> or <c>)</c>, and must not be
+        /// <c>none</c> (the first four would break the class token; the rest are CSS's own function syntax and
+        /// keyword, which a <c>filter-[...]</c> body reads as CSS rather than as a name);
         /// the built-in filter family names (blur, brightness, contrast, grayscale, hue-rotate, invert,
         /// saturate, sepia, drop-shadow) are reserved case-insensitively. Invalid names are rejected with a warning.</param>
         /// <param name="definition">The custom filter definition applied when the class resolves.
@@ -53,9 +56,9 @@ namespace Velvet
         /// the 4 parameters a filter function can carry.</param>
         public static void Register(string name, FilterFunctionDefinition? definition)
         {
-            if (string.IsNullOrEmpty(name) || !HasValidNameChars(name))
+            if (string.IsNullOrEmpty(name) || !IsNameShape(System.MemoryExtensions.AsSpan(name)))
             {
-                Debug.LogWarning($"[VelvetFilters] Cannot register \"{name}\": a filter name must be non-empty and free of whitespace, ':', '[' and ']'.");
+                Debug.LogWarning($"[VelvetFilters] Cannot register \"{name}\": a filter name must be non-empty, free of whitespace, ':', '[', ']', '(' and ')', and not 'none'.");
                 return;
             }
 
@@ -89,13 +92,25 @@ namespace Velvet
             {
                 Debug.LogWarning($"[VelvetFilters] \"{name}\" is already registered; overwriting.");
             }
+            StyleArbitraryValueResolver.ReresolveCustomFilter(name);
         }
 
-        /// <summary>Removes a registration. Returns true when the name was registered.</summary>
-        public static bool Unregister(string name) => NameKeyedRegistry.Unregister(name, s_definitions);
+        /// <summary>
+        /// Removes a registration, after which an element carrying the name draws no filter. Returns true when
+        /// the name was registered.
+        /// </summary>
+        public static bool Unregister(string name)
+        {
+            if (!NameKeyedRegistry.Unregister(name, s_definitions))
+            {
+                return false;
+            }
+            StyleArbitraryValueResolver.ReresolveCustomFilter(name);
+            return true;
+        }
 
-        // Parse-time lookup for the filter-[name:args] resolver branch. A destroyed (fake-null) asset
-        // fails the lookup so the token falls through instead of applying a dead definition.
+        // Parse-time lookup for the filter-[name:args] resolver branch. A destroyed (fake-null) asset fails the
+        // lookup, so the token resolves as a name nothing is registered under rather than to a dead definition.
         internal static bool TryGet(string name, out FilterFunctionDefinition definition)
         {
             if (s_definitions.TryGetValue(name, out definition!) && definition != null)
@@ -106,11 +121,17 @@ namespace Velvet
             return false;
         }
 
-        private static bool HasValidNameChars(string name)
+        // The shape a filter-[...] body's name must have for the parser to read it as a registered-name reference;
+        // anything else is CSS filter syntax (a function, url(), none) that Velvet leaves inert.
+        internal static bool IsNameShape(System.ReadOnlySpan<char> name)
         {
+            if (name.Length == 0 || System.MemoryExtensions.Equals(name, "none", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
             foreach (var c in name)
             {
-                if (char.IsWhiteSpace(c) || c == ':' || c == '[' || c == ']')
+                if (char.IsWhiteSpace(c) || c == ':' || c == '[' || c == ']' || c == '(' || c == ')')
                 {
                     return false;
                 }
