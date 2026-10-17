@@ -10,7 +10,7 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 
 | Written | Read as |
 |---------|---------|
-| `120px`, or a bare `120` | pixels |
+| `120px`, or a bare `0` | pixels; a bare number other than `0` is declined, as the browser declines the `width: 120` Tailwind writes for `w-[120]` |
 | `1.5rem` | pixels, at 1rem = 16px: UI Toolkit has no root font size to take a rem from |
 | `1in`, `2.54cm`, `25.4mm`, `72pt`, `6pc`, `101.6Q` | pixels, at CSS's fixed ratio of 96px to the inch |
 | `25%` | a percentage, where the utility takes one; a border width takes none, as in CSS |
@@ -19,11 +19,23 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 
 A unit is read in any case, as CSS reads it: `w-[10PX]` is `w-[10px]`. Where Tailwind reads a bracket as
 either a length or a colour — `border-*`, `text-*`, `ring-*`, `outline-*`, `ring-offset-*` and `from-*`,
-`via-*` and `to-*` — it takes a length only when the unit is in its own case, `Q` upper and the rest lower,
-and writes anything else as a colour, so `border-[2PX]` and `text-[16PX]` leave the class inert there as here.
-A math function named in lower case is a length there whatever case its units are in
-(`border-[calc(2PX)]`; `border-[cALC(2px)]` is a colour to Tailwind), and so is
-`text-[length:16PX]`, whose type hint skips the test.
+`via-*` and `to-*` — its type tests decide, and what they do not take for a length is written as a colour,
+which leaves the class inert as it does in a browser:
+
+- its length test takes a number with a unit in its own case, `Q` upper and the rest lower, or a math function
+  named in lower case whatever case its units are in, so `border-[2PX]`, `text-[16PX]` and
+  `border-[cALC(2px)]` are colours there, and `border-[calc(2PX)]` is a length;
+- `border-*` also takes a bare number, which the browser keeps only as `0` (`border-[2]` is inert), and `thin`,
+  `medium` and `thick`, at 1px, 3px and 5px;
+- `text-*` also takes a percentage and the font-size keywords: `xx-small` 9px, `x-small` 10px, `small` 13px,
+  `medium` 16px, `large` 18px, `x-large` 24px, `xx-large` 32px, `xxx-large` 48px, and `larger` and `smaller`,
+  1.2 times the parent's size and the parent's divided by 1.2. A bare number, `text-[16]`, is a colour;
+- `outline-*` also takes a number or a percentage, which it writes as `outline-width` beside a solid style: the
+  browser keeps such a width only as `0`, and otherwise draws the outline at the width the other classes give
+  it, 3px where none does, so `outline-[2]` is a 3px outline and `outline outline-[2]` a 1px one;
+- `ring-*`, `ring-offset-*` and `from-*` / `via-*` / `to-*` take the length alone, so `ring-[2]` is a colour.
+
+`text-[length:16PX]` is a length, its type hint skipping the tests.
 
 Swapping one bracketed value for another that writes the same property (`w-[300px]` for `w-[10px]`, with or
 without `!`) leaves the old inline value in place until the new one is written, so a `transition-*` or

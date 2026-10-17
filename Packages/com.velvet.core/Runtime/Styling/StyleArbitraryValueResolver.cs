@@ -168,8 +168,8 @@ namespace Velvet
             return TryParseBracketValue(prefix, valueSpan, negate, lengthHinted, out result);
         }
 
-        // lengthHinted: the class carried Tailwind's `length:` type hint, which skips the inference
-        // SpellsUnitAsTailwindInfers mirrors.
+        // lengthHinted: the class carried Tailwind's `length:` type hint, which skips the type tests
+        // TailwindReadsAsLength mirrors.
         private static bool TryParseBracketValue(
             string prefix, ReadOnlySpan<char> valueSpan, bool negate, bool lengthHinted, out ArbitraryStyle result)
         {
@@ -243,9 +243,14 @@ namespace Velvet
         {
             result = default;
             if (!TryGetProperty(prefix, out var property)
-                || (IsInferredLength(property) && !lengthHinted && !SpellsUnitAsTailwindInfers(valueSpan)))
+                || (!lengthHinted && !TailwindReadsAsLength(property, valueSpan)))
             {
                 return false;
+            }
+
+            if (TryParseKeywordLength(property, valueSpan, negate, out result))
+            {
+                return true;
             }
 
             if (!negate && valueSpan.SequenceEqual("auto".AsSpan()) && TakesAuto(property))
@@ -275,10 +280,72 @@ namespace Velvet
             return true;
         }
 
-        private static bool IsInferredLength(ArbitraryProperty property)
+        // Where Tailwind reads a bracket as either a length or a colour, whether its type tests take this one for
+        // the length; a value they do not is written as a colour, which a browser discards. Every other property
+        // here takes the bracket as written.
+        private static bool TailwindReadsAsLength(ArbitraryProperty property, ReadOnlySpan<char> value)
+        {
+            if (IsBorderWidth(property))
+            {
+                return TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsNumber(value)
+                    || TailwindDataTypes.IsLineWidthKeyword(value);
+            }
+            if (property == ArbitraryProperty.FontSize)
+            {
+                return TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsPercentage(value)
+                    || TailwindDataTypes.IsFontSizeKeyword(value);
+            }
+            return true;
+        }
+
+        private static bool IsBorderWidth(ArbitraryProperty property)
             => property is ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth
                 or ArbitraryProperty.BorderRightWidth or ArbitraryProperty.BorderBottomWidth
-                or ArbitraryProperty.BorderLeftWidth or ArbitraryProperty.FontSize;
+                or ArbitraryProperty.BorderLeftWidth;
+
+        // A <line-width> keyword (thin, medium, thick) or a font-size keyword, at the sizes Chromium computes,
+        // where Tailwind's type tests hand one to border-width or font-size.
+        private static bool TryParseKeywordLength(
+            ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate)
+            {
+                return false;
+            }
+            var keyword = valueSpan.ToString();
+            if (IsBorderWidth(property) && s_lineWidthKeywords.TryGetValue(keyword, out var width))
+            {
+                result = new ArbitraryStyle(property, width, LengthUnit.Pixel);
+                return true;
+            }
+            if (property != ArbitraryProperty.FontSize)
+            {
+                return false;
+            }
+            if (s_absoluteFontSizes.TryGetValue(keyword, out var size))
+            {
+                result = new ArbitraryStyle(property, size, LengthUnit.Pixel);
+                return true;
+            }
+            return keyword switch
+            {
+                "larger" => TryParseRelativeLength(property, "1.2em".AsSpan(), false, out result),
+                "smaller" => TryParseRelativeLength(property, "calc(1em/1.2)".AsSpan(), false, out result),
+                _ => false,
+            };
+        }
+
+        private static readonly Dictionary<string, float> s_lineWidthKeywords = new()
+        {
+            ["thin"] = 1f, ["medium"] = 3f, ["thick"] = 5f,
+        };
+
+        private static readonly Dictionary<string, float> s_absoluteFontSizes = new()
+        {
+            ["xx-small"] = 9f, ["x-small"] = 10f, ["small"] = 13f, ["medium"] = 16f, ["large"] = 18f,
+            ["x-large"] = 24f, ["xx-large"] = 32f, ["xxx-large"] = 48f,
+        };
 
         // A length only an element can measure — em, a viewport unit, or a math function mixing a percentage
         // with a pixel length — is carried unresolved to ApplyInline, and only for the properties PropertySetters
@@ -3446,11 +3513,13 @@ namespace Velvet
             }
             else
             {
-                parsed = float.TryParse(
+                // A bare number is a length only as 0: the browser rejects the declaration Tailwind writes for
+                // any other.
+                parsed = (float.TryParse(
                     valueStr,
                     NumberStyles.Float,
                     CultureInfo.InvariantCulture,
-                    out value)
+                    out value) && value == 0f)
                     || (StyleLengthExpression.OpensMathFunction(valueStr) && StyleLengthExpression.TryParse(valueStr, out var expression)
                         && expression!.TryFoldConstant(out value, out unit));
             }
@@ -3458,50 +3527,34 @@ namespace Velvet
             return parsed && float.IsFinite(value);
         }
 
-        private const string AsciiLetters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
         // CSS's absolute length units at their fixed ratio to a pixel (96 per inch).
         private static readonly (string Suffix, float Pixels)[] s_absoluteUnits =
         {
             ("in", 96f), ("cm", 96f / 2.54f), ("mm", 96f / 25.4f), ("pt", 96f / 72f), ("pc", 16f), ("Q", 96f / 101.6f),
         };
 
-        // Where Tailwind reads a bracket as either a length or something else (border-, text-, ring-, outline-,
-        // ring-offset-, from-/via-/to-), it takes it for a length only when the unit is spelled as its list spells
-        // it: `border-[2PX]` writes `border-color: 2PX`, which a browser discards, while `w-[2PX]` is 2px. A math
-        // function is a length whatever its units' case, when Tailwind knows its name, which it does in lower case.
-        internal static bool SpellsUnitAsTailwindInfers(ReadOnlySpan<char> value)
-        {
-            if (value.IndexOf('(') >= 0)
-            {
-                return TailwindMathSpacing.HasMathFunction(value.ToString());
-            }
-            // Its length test is anchored, so a `_` (a space) at either end makes the value no length.
-            if (value.Length > 0 && (value[0] == '_' || value[value.Length - 1] == '_'))
-            {
-                return false;
-            }
-            var unit = value.Slice(value.TrimEnd(AsciiLetters.AsSpan()).Length);
-            if (unit.SequenceEqual("Q".AsSpan()))
-            {
-                return true;
-            }
-            foreach (var c in unit)
-            {
-                if (!char.IsLower(c))
-                {
-                    return false;
-                }
-            }
-            return !unit.SequenceEqual("q".AsSpan());
-        }
-
-        // TryParseArbitraryPixels for a utility SpellsUnitAsTailwindInfers names.
+        // TryParseArbitraryPixels where Tailwind reads the bracket as either a length or a colour (ring-, ring-offset-):
+        // its length test decides, and hands `2PX` or a bare `2` to the colour branch, which a browser discards.
         internal static bool TryParseInferredArbitraryPixels(ReadOnlySpan<char> suffix, out float px)
         {
             px = 0f;
-            return TryStripBrackets(suffix, 0, out var inner) && SpellsUnitAsTailwindInfers(inner)
+            return TryStripBrackets(suffix, 0, out var inner) && TailwindDataTypes.IsLength(inner)
                 && TryParseArbitraryPixels(suffix, out px);
+        }
+
+        // A border-[…] width as TryParseBracketValue reads it, for a reader that has to agree with the width applied.
+        internal static bool TryParseBorderWidthPixels(ReadOnlySpan<char> suffix, out float px)
+        {
+            px = 0f;
+            if (!TryStripBrackets(suffix, 0, out var inner) || !TailwindReadsAsLength(ArbitraryProperty.BorderWidth, inner))
+            {
+                return false;
+            }
+            if (s_lineWidthKeywords.TryGetValue(inner.ToString(), out px))
+            {
+                return true;
+            }
+            return TryParseArbitraryPixels(suffix, out px);
         }
 
         // The pixels in one of the absolute units, for StyleLengthExpression's dimensions.
