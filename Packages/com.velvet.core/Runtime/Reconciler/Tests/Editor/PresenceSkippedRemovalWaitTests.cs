@@ -12,7 +12,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies what a presence keeps of a key still exiting through a render an abort stopped before its removals:
     /// the exit wait the key still held, which the next panel frame settles when a descendant's teardown has asked it
-    /// to, so that the key's exit still completes.
+    /// to, so that the key's exit still completes. A presence disposed with its tree while an exit plays completes
+    /// that exit once.
     /// </summary>
     [TestFixture]
     internal sealed class PresenceSkippedRemovalWaitTests
@@ -36,6 +37,8 @@ namespace Velvet.Tests
             _sim.ResetTimePerSimulatedFrameToDefault();
             s_setHostTick = null;
             s_setInnerShown = null;
+            s_setShown = null;
+            s_exitCompletions = 0;
         }
 
         [TearDown]
@@ -63,6 +66,41 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(mounted.Root.Reconciler.Context.PresenceStates.Values.Single().ExitWaits.ContainsKey("a"), Is.True);
+        }
+
+        // Framer lets the exit animation of a presence unmounted with its tree run out and then calls onExitComplete;
+        // the disposal cancels the animation, so it completes the exit itself, and the frames after it add nothing.
+        [Test]
+        public void Given_APresenceOnAPanelWithAnExitPlaying_When_TheTreeIsDisposed_Then_OnExitCompleteRunsOnce()
+        {
+            // Arrange — the exit is a second long, and no frame passes before the disposal
+            var mounted = V.Mount(_sim.rootVisualElement, V.Component(PlayingExitHostRender, key: "host"));
+            s_setShown.Invoke(false);
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.Dispose();
+            for (var i = 0; i < 3; i++) _sim.FrameUpdateMs(16);
+
+            // Assert
+            Assert.That(s_exitCompletions, Is.EqualTo(1));
+        }
+
+        private static Action<bool> s_setShown;
+        private static int s_exitCompletions;
+
+        [Component(Compiler = false)]
+        private static VNode PlayingExitHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setShown = setShown;
+            return V.AnimatePresence(key: "p", onExitComplete: () => s_exitCompletions++, children: shown
+                ? new VNode[]
+                {
+                    V.Motion(key: "a", variants: s_fade, animate: "visible", exit: "hidden",
+                        transition: new StyleTransitionConfig { DurationSec = 1f }),
+                }
+                : Array.Empty<VNode>());
         }
 
         [Component(Compiler = false)]

@@ -2426,6 +2426,10 @@ namespace Velvet
                 return registrations;
             }
 
+            // Settles the wait whatever is still pending. A slot completing after it can settle the wait again, and
+            // the exit still completes once, since GeneralPathReconciler.CompletePresenceExit takes the key out of Exiting.
+            internal void SettleForTeardown() => _onSettled();
+
             internal void CompleteRegistration()
             {
                 if (Settles()) _onSettled();
@@ -2776,6 +2780,20 @@ namespace Velvet
         // Signal used to abort processing of the remaining sibling nodes in the same Reconcile batch.
         // Reset to false when the top-level Reconcile completes.
         public bool IsAborted { get; internal set; }
+
+        // Framer lets an AnimatePresence unmounted with its tree run its exit animations out and then calls its
+        // onExitComplete. Disposal cancels the animations, so the exits still in flight complete here, ahead of the
+        // unmount that retires their presences.
+        internal void SettleExitsForTeardown()
+        {
+            foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values))
+            {
+                foreach (var entry in new List<KeyValuePair<string, PresenceExitWait>>(state.ExitWaits))
+                {
+                    if (state.Exiting.Contains(entry.Key)) entry.Value.SettleForTeardown();
+                }
+            }
+        }
 
         internal void MarkDisposed()
         {

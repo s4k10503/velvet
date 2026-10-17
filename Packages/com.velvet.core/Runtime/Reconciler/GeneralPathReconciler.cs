@@ -2708,7 +2708,6 @@ namespace Velvet
             Action? onExitComplete,
             bool fromAMotion)
         {
-            if (_ctx.IsDisposed) return;
             // A key no longer exiting had its exit ended without completing: cancelled by its return, or withheld
             // under mode="wait" with the exit still running.
             if (!state.Exiting.Remove(key)) return;

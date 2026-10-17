@@ -19,7 +19,9 @@ namespace Velvet.Tests
     /// their order, and a withheld key's exit, its pending settle and its initial: false record.</item>
     /// <item>Such a render stopped by an abort leaves a withheld key's descendant exit running, so the key's exit
     /// can still settle, and a tree disposed while an exit waits on the passive flush completes that exit first, as
-    /// React flushes a root's pending passive effects before unmounting it.</item>
+    /// React flushes a root's pending passive effects before unmounting it, and an exit still playing completes
+    /// once at the disposal, as Framer lets it run out and calls onExitComplete.</item>
+    /// <item>A key coming back in a render an abort stopped keeps the node that render gave it.</item>
     /// <item>A key removed, added again and removed again before the passive flush completes its last exit with the
     /// onExitComplete the last removing render gave, and the quiet exit its return cut short completes nothing of an
     /// exit it plays after.</item>
@@ -310,6 +312,63 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_exitCallbacks.Count, Is.EqualTo(1));
+        }
+
+        // Framer lets the exit animation of a presence unmounted with its tree run out and then calls onExitComplete;
+        // the disposal cancels the animation, so it completes the exit itself.
+        [Test]
+        public void Given_AKeyWhoseExitIsPlaying_When_TheTreeIsDisposed_Then_OnExitCompleteRuns()
+        {
+            // Arrange — "a" plays an exit no frame here plays out
+            s_children = tick => tick == 0 ? new[] { Fading("a") } : Array.Empty<VNode>();
+            var mounted = Mount();
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(s_exitCallbacks.Count, Is.EqualTo(1));
+        }
+
+        // The teardown of the descendant's element settles the same wait the disposal already settled.
+        // GREEN_ON_BASE(characterization): the base completed the exit once, from the descendant's teardown.
+        [Test]
+        public void Given_AKeyLeavingThroughADescendantsExit_When_TheTreeIsDisposed_Then_OnExitCompleteRunsOnce()
+        {
+            // Arrange — "x" leaves through a descendant's exit no frame here plays out
+            s_children = tick => tick == 0 ? new[] { WithLeavingDescendant("x") } : Array.Empty<VNode>();
+            var mounted = Mount();
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(s_exitCallbacks.Count, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base mounted the returning key afresh in that render and kept its node.
+        [Test]
+        public void Given_AKeyComingBackInARenderAnAbortStopped_When_ThatRenderEnds_Then_ItsCommittedNodeKeepsItsPropsBag()
+        {
+            // Arrange — "a" leaves with nothing to animate, and its exit waits on a passive flush nothing here runs
+            s_children = tick => tick == 1 ? Array.Empty<VNode>() : new[] { Plain("a") };
+            s_abortAt = 2;
+            using var mounted = Mount();
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act — "a" comes back while still leaving, and the boundary aborts that render
+            s_setTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            var committed = Presence(mounted)?.Committed.FirstOrDefault(entry => entry.key == "a").node;
+            Assert.That(committed is ElementNode { Props: { } props } && VNodePoolTestAccess.IsRentedOutForTest(props),
+                Is.True);
         }
 
         private MountedTree Mount() => V.Mount(_root, V.Component(HostRender, key: "host"), CaughtErrors.Unlogged);

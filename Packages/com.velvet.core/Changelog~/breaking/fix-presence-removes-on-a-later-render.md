@@ -19,3 +19,7 @@
 - Disposing a mounted tree now first completes an `AnimatePresence` exit still waiting on the passive-effect flush,
   so its `onExitComplete` runs, as React flushes a root's pending passive effects before unmounting it. It used to
   be left to the panel's passive-effect tick after the tree was gone.
+
+- Disposing a mounted tree while an `AnimatePresence` exit is still playing now completes that exit, and its
+  `onExitComplete` runs once, as Framer Motion lets an unmounted presence's exit animations run out and then calls
+  it. It used to run only on a root with no panel, and only for an exit played by a Motion below the child's own.
