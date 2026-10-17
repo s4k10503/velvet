@@ -2414,6 +2414,15 @@ namespace Velvet.Tests
             return V.Div("root", V.Button(text: "parse", onClick: parse), V.Label(text: start.ToString()), V.Label(text: other.ToString()));
         }
 
+        [Component]
+        public static VNode DerivedSequenceOfListsComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var rows = System.Linq.Enumerable.Select(items, item => (System.Collections.Generic.IList<int>)new System.Collections.Generic.List<int> { item });
+            return V.Div("root", V.Label(text: System.Linq.Enumerable.Count(rows).ToString()), V.Label(text: n.ToString()));
+        }
+
         private const string ValueGateName = "TryGetMemoizedValue";
 
         private static int ValueGatesOf(string component) => CountHookCalls(LoadMethod(component), ValueGateName);
@@ -2803,6 +2812,19 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(boxes, Is.EqualTo(0), "A pooled node the slot holds is recycled by the sweep, which marks no tuple");
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no value gate, so it counts none here either.
+        // What it pins is a sequence of an interface the weaver does not know being no value to keep: `false` in place of
+        // the `!ReadOnlyInterfaces.Contains(definition.FullName)` test in `HoldsNodes` gives the sequence a value gate.
+        [Test]
+        public void Given_ASequenceOfListsDerivedOnce_When_Woven_Then_NoValueGateIsWoven()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedSequenceOfListsComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0), "An interface the weaver does not know may be implemented by a type holding nodes");
         }
 
         // GREEN_ON_BASE(characterization): the base weaves no value gate, so it counts none here either.
@@ -3255,6 +3277,15 @@ namespace Velvet.Tests
         }
 
         [Component]
+        public static VNode ChildAskingAListWhetherItContainsComponent()
+        {
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: items.Contains(n).ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
         public static VNode ChildAddingToASetComponent()
         {
             var (seen, _) = Hooks.UseState(new System.Collections.Generic.HashSet<int>());
@@ -3546,6 +3577,16 @@ namespace Velvet.Tests
         {
             // Act
             var gates = ScopeGatesOf(nameof(SuspenseReadingOneStateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildAskingAListWhetherItContains_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildAskingAListWhetherItContainsComponent));
 
             // Assert
             Assert.That(gates, Is.EqualTo(2));

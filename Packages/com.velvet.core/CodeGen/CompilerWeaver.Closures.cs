@@ -205,7 +205,7 @@ namespace Velvet.CodeGen
 
         // An address taken of a captured variable is a write unless it is read in place, since the callee may store through it.
         private static bool WritesThroughAddress(Instruction addressOf, FieldReference field)
-            => IsClosureField(field) && !IsParentLink(field) && !ReadsInPlace(addressOf.Next, field.FieldType);
+            => IsClosureField(field) && !ReadsInPlace(addressOf.Next, field.FieldType);
 
         private static bool IsReceiverOfClosureAccess(Instruction? next)
             => next is { OpCode.Code: Code.Ldfld or Code.Ldflda or Code.Ldftn or Code.Ldvirtftn } || (next is { OpCode.Code: Code.Stfld, Operand: FieldReference link } && IsParentLink(link));
@@ -215,9 +215,14 @@ namespace Velvet.CodeGen
         private static HashSet<FieldDefinition> FieldsWrittenByLambdas(MethodDefinition component)
             => component.DeclaringType.NestedTypes.Where(IsClosureClass).SelectMany(type => type.Methods).Where(method => method.HasBody)
                 .SelectMany(method => method.Body.Instructions)
-                // MUTANT_SURVIVES(equivalent, clause removed): no scope looks up a link field, so counting its stores changes no answer.
-                .Where(instr => instr is { OpCode.Code: Code.Stfld or Code.Ldflda, Operand: FieldReference field } && !IsParentLink(field)
-                    && (instr.OpCode.Code == Code.Stfld || WritesThroughAddress(instr, field)))
+                .Where(WritesAClosureField)
                 .Select(instr => TryResolve(() => ((FieldReference)instr.Operand).Resolve())).OfType<FieldDefinition>().ToHashSet();
+
+        private static bool WritesAClosureField(Instruction instr)
+        {
+            var field = instr.Operand as FieldReference;
+            return field != null && !IsParentLink(field)
+                && (instr.OpCode.Code == Code.Stfld || (instr.OpCode.Code == Code.Ldflda && WritesThroughAddress(instr, field)));
+        }
     }
 }
