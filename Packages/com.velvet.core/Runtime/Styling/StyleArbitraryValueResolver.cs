@@ -398,8 +398,27 @@ namespace Velvet
         internal static bool StartsWithRadiusPrefix(string text)
             => text.StartsWith(RadiusUtilityName, StringComparison.Ordinal);
 
-        internal static bool IsSpacingOrRadiusProperty(ArbitraryProperty property)
-            => IsSpacingProperty(property) || RadiusCornersOf.ContainsKey(property);
+        // The families StyleSpacingPrecedence orders: spacing, size, inset, radius, and the flex shorthand with the
+        // two factors it contains besides the basis.
+        internal static bool IsSpacingRadiusOrFlexProperty(ArbitraryProperty property)
+            => IsSpacingProperty(property) || RadiusCornersOf.ContainsKey(property)
+                || property is ArbitraryProperty.Flex or ArbitraryProperty.FlexGrow or ArbitraryProperty.FlexShrink;
+
+        // True when text begins with the prefix of a flex shorthand or factor utility: the cheap test that a token
+        // can be one, which allocates nothing.
+        internal static bool StartsWithFlexPrefix(string text)
+            => text.StartsWith("flex-", StringComparison.Ordinal) || text.StartsWith("grow", StringComparison.Ordinal)
+                || text.StartsWith("shrink", StringComparison.Ordinal);
+
+        // The flex factor classes and the bracket token each equals. FlexFactorClassMirrorTests holds the values
+        // against _layout.uss.
+        private static readonly (string Class, ArbitraryProperty Property, string InlineForm)[] s_flexFactorClasses =
+        {
+            ("grow", ArbitraryProperty.FlexGrow, "grow-[1]"),
+            ("grow-0", ArbitraryProperty.FlexGrow, "grow-[0]"),
+            ("shrink", ArbitraryProperty.FlexShrink, "shrink-[1]"),
+            ("shrink-0", ArbitraryProperty.FlexShrink, "shrink-[0]"),
+        };
 
         internal static bool IsRadiusProperty(ArbitraryProperty property) => RadiusCornersOf.ContainsKey(property);
 
@@ -412,6 +431,9 @@ namespace Velvet
         // `-full` for sizes and basis, and nothing else in these families. A radius class is read off the radius
         // scale instead (TryReadRadiusClass); RadiusPrecedenceTests checks that the sheets declare a rule for every
         // step of every family, and the magnitudes are pinned by StyleUtilitiesUssTests and CornerRadiusFitPanelTests.
+        // A flex factor class is read off s_flexFactorClasses. The flex shorthand's own classes (flex-1, flex-none)
+        // are not read: each writes all three longhands, and Tailwind emits the shorthand ahead of the longhands, so
+        // StyleSpacingPrecedence never finds one the narrower of a pair.
         internal static bool TryReadStylesheetClass(string cls, out ArbitraryProperty property, out string inlineForm)
         {
             property = default;
@@ -425,6 +447,15 @@ namespace Velvet
             if (TryReadRadiusClass(cls, out property, out inlineForm))
             {
                 return true;
+            }
+            foreach (var (name, factorProperty, form) in s_flexFactorClasses)
+            {
+                if (cls == name)
+                {
+                    property = factorProperty;
+                    inlineForm = form;
+                    return true;
+                }
             }
             // MUTANT_SURVIVES(equivalent, boundary): the shortest name read here is a family prefix of two characters and `auto` or `full`, six in all, so a bound of 4 turns away only names none of the loop's rows match.
             if (cls.Length < 4 || !StyleUtilityProperties.TryGet(cls, out _))
@@ -630,7 +661,7 @@ namespace Velvet
             {
                 return SuffixInKeys(cls.AsSpan("scale-x-".Length), s_axisScale); // "scale-x-" and "scale-y-" share a length
             }
-            return TryGetFlexFactorPreset(cls, out _, out _);
+            return TryGetFlexFactorPreset(cls, out _, out _) || TryGetFlexPreset(cls, out _);
         }
 
         // The physical margin utilities, whose negated names no selector can spell. -max-w-4 and -min-h-4 start
@@ -668,8 +699,41 @@ namespace Velvet
             return whole != 0;
         }
 
+        // flex-<N> / flex-<a>/<b>: Tailwind's `flex: <N>` (grow N, shrink 1, basis 0%) and
+        // `flex: calc(<a>/<b> * 100%)` (grow 1, shrink 1, that basis). flex-1 is a USS class, so it is left to
+        // the class list.
+        private static bool TryGetFlexPreset(string cls, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!cls.StartsWith("flex-", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var body = cls.AsSpan("flex-".Length);
+            var slash = body.IndexOf('/');
+            if (slash == -1)
+            {
+                if (!TryParseWhole(body, out var grow))
+                {
+                    return false;
+                }
+                result = ArbitraryStyle.Flex(grow, 1f, 0f, LengthUnit.Percent);
+                return grow != 1;
+            }
+            if (!TryParseWhole(body.Slice(0, slash), out var numerator))
+            {
+                return false;
+            }
+            if (!TryParseWhole(body.Slice(slash + 1), out var denominator))
+            {
+                return false;
+            }
+            result = ArbitraryStyle.Flex(1f, 1f, 100f * numerator / denominator, LengthUnit.Percent);
+            return denominator != 0;
+        }
+
         // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero. Shared by
-        // the flex factors and z-<n>.
+        // the flex factors, the flex shorthand and z-<n>.
         internal static bool TryParseWhole(ReadOnlySpan<char> digits, out int whole)
         {
             whole = 0;
@@ -714,6 +778,10 @@ namespace Velvet
             if (TryGetFlexFactorPreset(className, out var factorProperty, out var factor))
             {
                 result = new ArbitraryStyle(factorProperty, factor, LengthUnit.Pixel);
+                return true;
+            }
+            if (TryGetFlexPreset(className, out result))
+            {
                 return true;
             }
             if (TryParseSpacingStep(className, out result))
@@ -2860,7 +2928,8 @@ namespace Velvet
             {
                 // Among transform properties, scale (uniform + per-axis) and both translate axes are composed
                 // by ResolveAndApply's combined appliers and never reach here; what lands is every transform
-                // property written in one go — rotate, transform-origin — plus aspect-ratio and the four-edge Slice.
+                // property written in one go — rotate, transform-origin — plus aspect-ratio, the four-edge Slice and
+                // the flex shorthand's three longhands.
                 case ArbitraryProperty.Rotate:
                     element.style.rotate = new Rotate(new Angle(style.Value, AngleUnit.Degree));
                     return;
@@ -2887,6 +2956,15 @@ namespace Velvet
                 case ArbitraryProperty.SliceType:
                     WriteSliceType(element, style);
                     return;
+                case ArbitraryProperty.Flex:
+                {
+                    var flex = ClipPathLayoutBox.StyleFor(element, style.Property);
+                    flex.flexGrow = style.Value;
+                    flex.flexShrink = style.Value3;
+                    // The basis is written as basis-[…] writes its own, a measured length included.
+                    WriteLength(element, flex, FlexBasisOf(style), PropertySetters[ArbitraryProperty.FlexBasis]);
+                    return;
+                }
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)
@@ -2945,6 +3023,12 @@ namespace Velvet
 
             WriteLength(element, ClipPathLayoutBox.BoxFor(element, style.Property).style, style, setters);
         }
+
+        // A Flex result's basis as the FlexBasis result basis-[…] parses to.
+        private static ArbitraryStyle FlexBasisOf(in ArbitraryStyle flex)
+            => flex.Expression != null ? new ArbitraryStyle(ArbitraryProperty.FlexBasis, flex.Expression)
+                : float.IsNaN(flex.Value2) ? ArbitraryStyle.AutoLength(ArbitraryProperty.FlexBasis)
+                : new ArbitraryStyle(ArbitraryProperty.FlexBasis, flex.Value2, flex.Unit2);
 
         // A relative length is measured per setter, since each carries its own axis and its own stand-in for an
         // indefinite one; a length that cannot be measured yet leaves that slot as it is.
@@ -3049,6 +3133,15 @@ namespace Velvet
                 case ArbitraryProperty.AspectRatio:
                     ClipPathLayoutBox.StyleFor(element, property).aspectRatio = StyleKeyword.Null;
                     return true;
+                case ArbitraryProperty.Flex:
+                {
+                    var flex = ClipPathLayoutBox.StyleFor(element, property);
+                    flex.flexGrow = StyleKeyword.Null;
+                    flex.flexShrink = StyleKeyword.Null;
+                    flex.flexBasis = StyleKeyword.Null;
+                    // MUTANT_SURVIVES(equivalent, literal): the flex shorthand has no entry in the fallback setter tables ClearInline reads.
+                    return true;
+                }
                 // translate and scale are each a single shorthand for both axes (and scale composes the uniform
                 // + per-axis layers), so clearing any one reverts the whole property. In the class-diff reconcile
                 // path the survivors are restored by FiberNodePatcher.ReapplyArbitraryValues; a direct Clear (or a

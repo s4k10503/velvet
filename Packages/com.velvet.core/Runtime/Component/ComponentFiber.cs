@@ -457,7 +457,7 @@ namespace Velvet
 
         /// <summary>
         /// Asks the component that declared <paramref name="slot"/> for the render that observes its now-false
-        /// <c>isPending</c>. Nothing renders a component because its flag moved, so a clear reached from a path
+        /// <c>isPending</c>. Clearing the flag renders nothing by itself, so a clear reached from a path
         /// that renders nobody — a drain of some other component's tree, an async action's completion — leaves
         /// the indicator on screen without this.
         /// </summary>

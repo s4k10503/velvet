@@ -1555,6 +1555,11 @@ namespace Velvet
         // one drain per paint-tick even when many fibers stage passive effects in one reconcile pass.
         // Reset when the drain runs.
         public bool PassiveEffectDrainScheduled { get; set; }
+
+        // Staged fibers the passive drain took out of PendingPassiveEffectFibers because a parked time-sliced
+        // pass rendered them (FiberEffects.HoldWhileParked). Their EffectFlushScheduled stays set, so nothing
+        // stages them again until FiberEffects.StageReleasedPassiveEffects does.
+        internal readonly List<ComponentFiber> PassiveEffectFibersHeldByParkedPass = new();
         public Dictionary<VisualElement, FiberVirtualListController> VirtualListControllers { get; } = new();
         // Keyed on the Outlet's own ComponentFiber; FiberOutletScope owns what an entry holds and when
         // it is released.

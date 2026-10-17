@@ -306,6 +306,10 @@ namespace Velvet
         FlexGrow,     // grow-[2]         -> flex-grow
         FlexShrink,   // shrink-[2]       -> flex-shrink
 
+        // The flex shorthand: Value is the grow factor, Value3 the shrink factor, and Value2 / Unit2 the basis,
+        // NaN for auto.
+        Flex,         // flex-3, flex-1/2, flex-[2_1_0%] -> flex-grow + flex-shrink + flex-basis
+
         // Transition (StyleList<TimeValue>; handled out-of-band like the filter list)
         TransitionDuration,   // duration-[400ms] -> transition-duration. Value carries SECONDS.
 
@@ -340,7 +344,8 @@ namespace Velvet
         // its own class; a pair here arrives from ONE class and has no spelling that sets half of it.
         public float Value2 { get; }
         public LengthUnit Unit2 { get; }
-        // TransformOrigin's z, a length in pixels; Slice's bottom inset; 0 for every other property.
+        // TransformOrigin's z, a length in pixels; Slice's bottom inset; Flex's shrink factor; 0 for every other
+        // property.
         public float Value3 { get; }
         // Slice's left inset; 0 for every other property. Slice carries its four edges in Value (top), Value2
         // (right), Value3 and Value4, because one slice-[…] class sets all four in the border-image-slice order.
@@ -351,7 +356,8 @@ namespace Velvet
         // null for every other property.
         public CustomFilterValue? Custom { get; }
         // A length an element has to measure (em, a viewport unit, a percentage beside a pixel length), for a
-        // property PropertySetters writes; Value and Unit then carry nothing. Null for every other result.
+        // property PropertySetters writes, where Value and Unit then carry nothing, or for Flex's basis, where
+        // Value2 and Unit2 do. Null for every other result.
         public StyleLengthExpression? Expression { get; }
         // True for the `auto` keyword of a length property; Value and Unit then carry nothing.
         public bool Auto { get; }
@@ -410,6 +416,20 @@ namespace Velvet
             Color = default;
             Custom = null;
             Expression = null;
+        }
+
+        // Creates a Flex result: grow, shrink, and the basis (NaN for auto).
+        public static ArbitraryStyle Flex(float grow, float shrink, float basis, LengthUnit basisUnit)
+            => new(ArbitraryProperty.Flex, grow, basisUnit, basis, basisUnit, shrink);
+
+        // Creates a Flex result whose basis only the element it is written to can measure.
+        public static ArbitraryStyle Flex(float grow, float shrink, StyleLengthExpression basis)
+            => new(grow, shrink, basis);
+
+        private ArbitraryStyle(float grow, float shrink, StyleLengthExpression basis)
+            : this(ArbitraryProperty.Flex, grow, LengthUnit.Pixel, 0f, LengthUnit.Pixel, shrink)
+        {
+            Expression = basis;
         }
 
         // Creates a pair-valued length result.

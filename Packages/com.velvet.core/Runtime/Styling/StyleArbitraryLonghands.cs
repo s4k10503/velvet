@@ -37,6 +37,7 @@ namespace Velvet
             Set(sets, ArbitraryProperty.FlexBasis, StyleLonghand.FlexBasis);
             Set(sets, ArbitraryProperty.FlexGrow, StyleLonghand.FlexGrow);
             Set(sets, ArbitraryProperty.FlexShrink, StyleLonghand.FlexShrink);
+            Set(sets, ArbitraryProperty.Flex, StyleLonghand.FlexGrow, StyleLonghand.FlexShrink, StyleLonghand.FlexBasis);
 
             Set(sets, ArbitraryProperty.Top, StyleLonghand.Top);
             Set(sets, ArbitraryProperty.Right, StyleLonghand.Right);
