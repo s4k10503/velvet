@@ -576,6 +576,8 @@ namespace Velvet.Tests
             Assert.That(el.style.filter.value?.Count ?? 0, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base drops no chain, so the padding beside it applies there too.
+        // The drop this branch adds on an unregistered name has to leave the padding applying as well.
         [Test]
         public void Given_ANameUnregisteredAfterApply_When_TheClassesAreReordered_Then_TheOtherUtilitiesStillApply()
         {
@@ -589,6 +591,8 @@ namespace Velvet.Tests
             Assert.That(el.style.paddingTop.value.value, Is.EqualTo(2f));
         }
 
+        // GREEN_ON_BASE(characterization): the base logs no unregistered-name warning on this replay either.
+        // The re-resolution this branch adds on unregister has to keep the replay silent.
         [Test]
         public void Given_ANameUnregisteredAfterApply_When_TheClassesAreReordered_Then_NothingWarns()
         {
@@ -602,6 +606,8 @@ namespace Velvet.Tests
             Assert.That(warnings, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base drops no chain, so a blur applied after the clear draws there.
+        // The drop this branch adds on an unregistered name has to end with the class that caused it.
         [TestCase(false)]
         [TestCase(true)]
         public void Given_ANameUnregisteredAfterApply_When_ClearedAndABlurApplied_Then_OnlyTheBlurIsDrawn(bool reorder)
@@ -633,12 +639,15 @@ namespace Velvet.Tests
             StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.9]" }, on: false, StyleLayerPriority.Hover,
                 declarations: new[] { 1 });
 
-            // Act
-            VelvetFilters.Register("dissolve", _dissolveDef);
+            var returning = CreateDefinition(new FilterParameter(0f));
+
+            // Act — under another definition, so only a layer read again on its return can compose it.
+            VelvetFilters.Register("dissolve", returning);
 
             // Assert
             var f = el.style.filter.value;
-            Assert.That(f?.Count == 1 ? f[0].GetParameter(0).floatValue : float.NaN, Is.EqualTo(0.3f));
+            Assert.That(f?.Count == 1 && f[0].customDefinition == returning ? f[0].GetParameter(0).floatValue : float.NaN,
+                Is.EqualTo(0.3f));
         }
 
         [Test]
@@ -766,13 +775,15 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*already registered"));
             VelvetFilters.Register("glow", _dissolveDef);
             LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*already registered"));
+            var accepting = CreateDefinition(new FilterParameter(Color.white), new FilterParameter(1f));
 
-            // Act
-            VelvetFilters.Register("glow", _glowDef);
+            // Act — a definition the class never resolved against, so only reading the class again composes it.
+            VelvetFilters.Register("glow", accepting);
 
             // Assert
             var f = el.style.filter.value;
-            Assert.That(f?.Count == 1 ? f[0].GetParameter(1).floatValue : float.NaN, Is.EqualTo(2f));
+            Assert.That(f?.Count == 1 && f[0].customDefinition == accepting ? f[0].GetParameter(1).floatValue : float.NaN,
+                Is.EqualTo(2f));
         }
 
         // Null rather than a throw where the resolver keeps no host list, as a tree from before it does: the
