@@ -81,8 +81,6 @@ namespace Velvet
                 // Lets the batch scheduler block a synchronous discrete-event flush while any reconcile
                 // pass (including a time-sliced resume that runs outside the batch Drain) is on the stack.
                 _ctx.BatchScheduler.SetReconcileActiveProbe(() => _ctx.SharedReconcileDepth > 0);
-                // Pending passive effects must be flushed before a new discrete-event update; wire the scheduler
-                // to drain them at that boundary so an effect from a prior commit runs before the next render.
                 _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffects(_ctx));
                 // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a
                 // drain, and each drain pass is a wave of its own — and (2) the layout-effect commit phase:
@@ -486,6 +484,8 @@ namespace Velvet
         VisualElement IReconcilerBridge.CreateElementForController(VNode node) => _factory.CreateElement(node);
 
         void IReconcilerBridge.CleanupElementForController(VisualElement element) => _cleaner.CleanupElement(element);
+
+        void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffects();
 
         void IReconcilerBridge.HoldRowLayoutEffects()
             => _ctx.HeldRowLayoutEffects.Push(new List<(ComponentFiber fiber, bool mountDoubleInvoke)>());

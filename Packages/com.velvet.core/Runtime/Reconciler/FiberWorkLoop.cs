@@ -642,6 +642,9 @@ namespace Velvet
         // advance in EditMode) so a parked slice can be driven to completion manually.
         internal static void ContinueReconcile(ComponentFiber fiber)
         {
+            // A resumed slice renders, so pending passive effects run before it as they do before a drain
+            // (FiberBatchScheduler.Drain), and ahead of the guards below, which read what those effects leave.
+            fiber.Reconciler?.Context.BatchScheduler.FlushPendingPassiveEffectsAheadOfAResume();
             // Ahead of the guards below, since the flush can unmount the fiber or finish its pass.
             fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRenders();
             if (!fiber.IsMounted) return;
