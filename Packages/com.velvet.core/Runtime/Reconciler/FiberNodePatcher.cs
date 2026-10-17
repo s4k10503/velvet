@@ -644,8 +644,8 @@ namespace Velvet
             // variant classes are applied, replay that same swap on the scheduler on the destination pose's
             // transition (ResolvePlayedSwap) — a transition should apply to every animate update, not just the
             // first. V.Motion gives a Motion that declares none StyleTransition.Fade; a swap whose transition
-            // lands at once (StyleAnimationScheduler.LandsAtOnce), StyleTransitionConfig.None among them, writes
-            // its pose within this patch.
+            // lands at once (StyleAnimationScheduler.LandsAtOnce), StyleTransitionConfig.None among them, plays
+            // nothing.
             // Gated off an element the scheduler already treats as EXITING (not off PresenceAnchorMotion
             // identity — that field is set for every current AnimatePresence child, including a plain
             // PERSISTING one this swap must still drive when its ambient label changes, e.g. a coordinator
