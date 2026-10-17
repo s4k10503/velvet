@@ -2180,7 +2180,7 @@ namespace Velvet.Tests
 
         // The presence's owner is an inline child the host's pass re-renders, and the boundary that aborts comes after it.
         [Test]
-        public void Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePutBackNodeKeepsItsPropsBag()
+        public void Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePresenceStillCommitsTheGhost()
         {
             // Arrange — the child's exit settles, so the pass the boundary aborts is the one dropping it
             using var mounted = V.Mount(_root, V.Component(PoolGhostHostRender, key: "host"), CaughtErrors.Unlogged);
@@ -2193,11 +2193,28 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
+            Assert.That(mounted.Root.Reconciler.Context.PresenceStates.Values.Single().Committed.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePutBackNodeKeepsItsPropsBag()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PoolGhostHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_setPoolGhostTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setPoolGhostTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
             var committed = mounted.Root.Reconciler.Context.PresenceStates.Values.Single().Committed;
             Assert.That(
-                (committed.Count, committed.Count == 1 && committed[0].node is ElementNode { Props: { } props }
-                    && VNodePoolTestAccess.IsRentedOutForTest(props)),
-                Is.EqualTo((1, true)));
+                committed.Count == 1 && committed[0].node is ElementNode { Props: { } props }
+                    && VNodePoolTestAccess.IsRentedOutForTest(props),
+                Is.True);
         }
 
         private static Action<int> s_setPoolGhostTick;

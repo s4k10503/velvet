@@ -2034,7 +2034,7 @@ namespace Velvet
                 // PlayExit, and repeats forever. state.Expanding tracks whether this pass is under way; a
                 // completion that fires meanwhile is queued on the state and, once the pass's bookkeeping has
                 // run, staged to settle after this walk's commit, as Framer Motion settles an exit whose value it
-                // cannot animate from the instant animation it plays instead, on a frame after that commit. A
+                // cannot animate: its promise resolves with nothing to wait on (ExitSettlePhase). A
                 // genuinely async completion finds Expanding already false and runs immediately, unchanged.
                 state.Expanding = true;
                 var tally = new PresencePassTally { AnimatedExitCount = exitCount };
