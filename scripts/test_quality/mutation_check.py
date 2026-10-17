@@ -4931,6 +4931,16 @@ def declarations_for(targets, changed):
     return found
 
 
+def declared_subjects(text, lines):
+    """Every line a declaration in `text` answers for, where `lines` holds any line of that declaration.
+
+    Mutated beside the change's own lines, so a change that writes or rewords a declaration alone has
+    its subject measured: left out, such a change carries no mutant, and the run passes it as having
+    nothing to ask without reading the declaration it wrote.
+    """
+    return {subject for subject, declaration in declarations_in(text) if declaration.written_in(lines)}
+
+
 def body_reach(mutants, body):
     """Printed under `reach`'s line rather than in place of it, for the reason `body_line_numbers`
     gives."""
@@ -5680,7 +5690,8 @@ def main():
             else:
                 print("skipping {}: not a mutable package source".format(name))
     else:
-        targets = {path: lines for path, lines in changed.items() if mutable(path, project)}
+        targets = {path: lines | declared_subjects(path.read_text(), lines)
+                   for path, lines in changed.items() if mutable(path, project)}
 
     # A file the mask misreads has offsets no mutant is ever generated from, and the campaign reports
     # that as a line with nothing to ask rather than as a reading it could not take.

@@ -440,6 +440,8 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_reuse_verdict.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_mutation_nightly.py
+
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_aggregate_results.py
 
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_job_timeouts.py

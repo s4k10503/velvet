@@ -16,10 +16,10 @@ that head — what a cancelled run followed by a push leaves behind — and read
 running" is how a pull request sat unnoticed for 7h45m.
 
 A list whose every check passed is refused too while the head still has a workflow run to finish,
-carries a workflow whose newest run failed, or lacks a context its base requires; `campaign.py`'s
-rule holds the mutation campaign. All of it is read off the head's workflow runs and the base's
-rules inside the same pair of head readings, and `scripts/pr/expected_checks.py` owns what each of
-the first three is and why.
+carries a workflow whose newest run failed, or lacks a context its base requires. All of it is read
+off the head's workflow runs and the base's rules inside the same pair of head readings, and
+`scripts/pr/expected_checks.py` owns what each of those is and why. A mutation campaign's runs and
+checks are left out of what it reads, as `settle.py` leaves them out; `campaign.py` says which.
 
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
 whose required workflows last failed on push, a head behind the base's newest release commit, a
@@ -75,25 +75,23 @@ def head_sha(cwd, number):
     return pull_request(cwd, number, fields="headRefOid")[0]
 
 
-def pull_request(cwd, number, fields="headRefOid,labels,baseRefName"):
-    """(head, label names, base), each None where unread and the last two None where the head is."""
+def pull_request(cwd, number, fields="headRefOid,baseRefName"):
+    """(head, base), each None where unread and the base None where the head is."""
     payload = gh_json(cwd, ["pr", "view", *( [number] if number else [] ), "--json", fields])
     head = payload.get("headRefOid") if isinstance(payload, dict) else None
     if not (isinstance(head, str) and head):
-        return None, None, None
+        return None, None
     base = payload.get("baseRefName")
-    base = base if isinstance(base, str) and base else None
-    labels = payload.get("labels")
-    if not isinstance(labels, list) or not all(
-            isinstance(label, dict) and isinstance(label.get("name"), str) for label in labels):
-        return head, None, base
-    return head, frozenset(label["name"] for label in labels), base
+    return head, base if isinstance(base, str) and base else None
 
 
 def checks_of(cwd, number):
-    """Keep a valid check list even when gh exits nonzero for pending or failed checks."""
+    """Keep a valid check list even when gh exits nonzero for pending or failed checks.
+
+    The campaign's checks are left out by the workflow they belong to: a check list carries no suite.
+    """
     answer = repository.gh_answer(["pr", "checks", *([number] if number else []),
-                                   "--json", "name,bucket"], cwd=cwd)
+                                   "--json", "name,bucket,workflow"], cwd=cwd)
     try:
         listed = json.loads(answer.stdout)
     except ValueError:
@@ -102,7 +100,7 @@ def checks_of(cwd, number):
             isinstance(entry, dict) and isinstance(entry.get("name"), str)
             and isinstance(entry.get("bucket"), str) for entry in listed):
         return None
-    return listed
+    return [entry for entry in listed if entry.get("workflow") != campaign.NAME]
 
 
 def campaign_runs(cwd, sha):
@@ -152,7 +150,7 @@ def unproven(asked, cwd):
         number = next((token for token in operands if token.isdigit()), None)
         label = "#" + number if number else "the current branch"
 
-        before, labels, base = pull_request(cwd, number)
+        before, base = pull_request(cwd, number)
         if before is None:
             # gh is unreachable or this is not a pull request; the other guards still apply and this
             # one declines to invent an answer.
@@ -162,7 +160,7 @@ def unproven(asked, cwd):
         runs = campaign_runs(cwd, before)
         now = time.time()
         others = campaign.others(runs or [])
-        opened = expected_checks.open_runs(runs or [], now)
+        opened = expected_checks.open_runs(others, now)
         jobs = run_jobs(cwd, opened) if len(opened) <= JOB_READS else None
         required = required_contexts(cwd, base)
         after = head_sha(cwd, number)
@@ -182,9 +180,6 @@ def unproven(asked, cwd):
             found.append((label, f"the workflow runs of {before[:7]} could not all be read"))
         elif required is None:
             found.append((label, f"which checks {base or 'its base'} requires could not be read"))
-        elif labels is None:
-            found.append((label, f"its labels could not be read, so whether it owes a "
-                                 f"{campaign.WORKFLOW} run is not known"))
         elif jobs is None:
             found.append((label, f"{len(opened)} workflow runs at {before[:7]} are still open, and "
                                  f"this guard reads the jobs of at most {JOB_READS} inside its "
@@ -211,12 +206,6 @@ def unproven(asked, cwd):
             if failing:
                 found.append((label, "workflow runs failed at {}: {}".format(
                     before[:7], ", ".join(failing))))
-            # The reading `settle.campaign_reason` takes, which this hook cannot import.
-            newest = campaign.newest(runs)
-            if owed := campaign.reason(
-                    labels, campaign.state(runs, lambda run: expected_checks.conclusion(run, jobs, now)),
-                    before, expected_checks.stuck_exit(newest) if newest else ""):
-                found.append((label, owed))
     return found
 
 

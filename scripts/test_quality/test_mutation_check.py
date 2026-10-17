@@ -4593,6 +4593,63 @@ class StaleDeclarationTests(unittest.TestCase):
         self.assertEqual(run, 0)
 
 
+class DeclarationOnlyChangeTests(unittest.TestCase):
+    """A change that writes a declaration over a line the base already holds, which is how a survivor
+    reported after its change landed is answered."""
+
+    COMMITTED = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b) => a <= b;
+
+                internal static bool Other(int a, int b) => a < b;
+            }
+        }
+        """)
+
+    def campaign(self, committed, working):
+        """`committed` as the base's text and `working` as the change's."""
+        campaign = StubbedCampaign(committed)
+        for command in (["add", campaign.SOURCE],
+                        ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "probe"]):
+            subprocess.run(["git", "-C", str(campaign.project), *command], capture_output=True, check=True)
+        campaign.source.write_text(working)
+        return campaign
+
+    def test_Given_AChangeWritingOnlyADeclaration_When_ItsSubjectsMutantDies_Then_TheDeclarationIsStale(self):
+        # Arrange — the change is the declaration's line alone, over a line whose mutant is killed.
+        declared = self.COMMITTED.replace(
+            "        internal static bool Ready",
+            "        // MUTANT_SURVIVES(equivalent): every caller clamps the operand already.\n"
+            "        internal static bool Ready")
+        campaign = self.campaign(self.COMMITTED, declared)
+        campaign.kills = True
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertIn("\nSTALE ", campaign.printed)
+
+    # GREEN_ON_BASE(characterization): the base mutates no line the change left alone. Dropping
+    # `declaration.written_in(lines)` from `declared_subjects` reddens it.
+    def test_Given_ADeclarationTheBaseHolds_When_TheChangeEditsAnotherLine_Then_ItsSubjectIsNotMutated(self):
+        # Arrange — the declaration and its subject are the base's text; only `Other` changes.
+        declared = self.COMMITTED.replace(
+            "        internal static bool Ready",
+            "        // MUTANT_SURVIVES(equivalent): every caller clamps the operand already.\n"
+            "        internal static bool Ready")
+        campaign = self.campaign(declared, declared.replace("a < b", "a > b"))
+
+        # Act
+        campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual(re.findall(r"^mutants=(\d+)$", campaign.printed, re.MULTILINE), ["1"])
+
+
 class SignalledCampaignTests(unittest.TestCase):
     """The campaign's own restore-on-signal, rather than the helper's.
 

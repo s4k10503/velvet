@@ -11,6 +11,9 @@ Every workflow step that hands a script `--base` takes it from here.
 - merge_group: the event's `merge_group.base_sha`.
 - workflow_dispatch with a `base` input: the merge base of the checkout with origin's copy of that
   branch, which is what mutation.yml is dispatched with, onto a checkout of the head itself.
+- schedule: the `base` of the window file $MUTATION_WINDOW names, which `mutation_nightly.py window`
+  writes in the plan job of mutation.yml's nightly run and its shard and verdict jobs download, so
+  each reads the base the plan chose rather than choosing again.
 - anything else: nothing. What a push or another dispatch reads against is each caller's own answer.
 
 The first parent is named only once the second is the event's head. Over a checkout of the head
@@ -32,7 +35,7 @@ def rev_parse(revision):
     return done.stdout.strip() if done.returncode == 0 else None
 
 
-def resolve(event_name, payload):
+def resolve(event_name, payload, window=None):
     if event_name == "pull_request":
         head = payload["pull_request"]["head"]["sha"]
         merged = rev_parse("HEAD^2")
@@ -43,6 +46,12 @@ def resolve(event_name, payload):
         return rev_parse("HEAD^1")
     if event_name == "merge_group":
         return payload["merge_group"]["base_sha"]
+    if event_name == "schedule":
+        if not window:
+            raise SystemExit("a scheduled run reads its base from the window file MUTATION_WINDOW "
+                             "names, and none is named")
+        with open(window, encoding="utf-8") as handle:
+            return json.load(handle)["base"]
     branch = (payload.get("inputs") or {}).get("base") if event_name == "workflow_dispatch" else None
     if branch:
         done = subprocess.run(["git", "merge-base", "origin/" + branch, "HEAD"],
@@ -61,7 +70,7 @@ def main():
     if path:
         with open(path, encoding="utf-8") as handle:
             payload = json.load(handle)
-    base = resolve(event_name, payload)
+    base = resolve(event_name, payload, os.environ.get("MUTATION_WINDOW"))
     print("{}: change base {}".format(event_name or "no event", base or "(none)"), file=sys.stderr)
     print("sha={}".format(base))
     return 0

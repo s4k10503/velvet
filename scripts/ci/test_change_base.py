@@ -53,10 +53,12 @@ class Repository:
         self.git("commit", "-q", "-m", name)
         return self.git("rev-parse", "HEAD").strip()
 
-    def resolve(self, event_name, payload):
+    def resolve(self, event_name, payload, **variables):
         event = self.root.parent / (self.root.name + "-event.json")
         event.write_text(json.dumps(payload), encoding="utf-8")
         environment = dict(os.environ, GITHUB_EVENT_NAME=event_name, GITHUB_EVENT_PATH=str(event))
+        environment.pop("MUTATION_WINDOW", None)
+        environment.update(variables)
         try:
             return subprocess.run([sys.executable, str(SCRIPT)], cwd=self.root, env=environment,
                                   capture_output=True, text=True)
@@ -154,6 +156,25 @@ class ResolverTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((done.returncode, done.stdout), (0, "sha=\n"))
+
+    def test_Given_AScheduledRunWithAWindowFile_When_Resolved_Then_ItNamesTheWindowsBase(self):
+        # Arrange
+        repository = self.repository
+        window = repository.root / "window.json"
+        window.write_text(json.dumps({"base": repository.moved, "head": repository.merge}))
+
+        # Act
+        done = repository.resolve("schedule", {}, MUTATION_WINDOW=str(window))
+
+        # Assert
+        self.assertEqual((done.returncode, done.stdout), (0, "sha={}\n".format(repository.moved)))
+
+    def test_Given_AScheduledRunNamingNoWindowFile_When_Resolved_Then_ItRefuses(self):
+        # Act
+        done = self.repository.resolve("schedule", {})
+
+        # Assert — rather than reading against nothing, which measures nothing and passes.
+        self.assertEqual((done.returncode, "MUTATION_WINDOW" in done.stderr), (1, True))
 
     def test_Given_APushEvent_When_Resolved_Then_ItNamesNothing(self):
         # Arrange

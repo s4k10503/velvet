@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for campaign.py's reading of the key a passing campaign leaves and of a reused verdict.
+"""Unit tests for campaign.py: which runs are a campaign's, and the key and ledger a campaign leaves.
 
 Run: python3 scripts/pr/test_campaign.py
 """
@@ -203,132 +203,8 @@ class ReusableTests(unittest.TestCase):
         self.assertEqual(found, 9005)
 
 
-class UnbackedTests(unittest.TestCase):
-    def test_Given_ARunThatMeasuredItself_When_Checked_Then_NothingIsOwed(self):
-        # Arrange
-        own = measured()
-
-        # Act
-        why = campaign.unbacked(own, None, None)
-
-        # Assert
-        self.assertIsNone(why)
-
-    def test_Given_ARunCitingAPassThatMeasuredTheKey_When_Checked_Then_NothingIsOwed(self):
-        # Arrange
-        own = listing(campaign.key_artifact_name(KEY, 9001))
-
-        # Act
-        why = campaign.unbacked(own, run(1), measured())
-
-        # Assert
-        self.assertIsNone(why)
-
-    def test_Given_ARunCitingAFailedRun_When_Checked_Then_ItIsUnbacked(self):
-        # Arrange
-        own = listing(campaign.key_artifact_name(KEY, 9001))
-
-        # Act
-        why = campaign.unbacked(own, run(1, "failure"), measured())
-
-        # Assert
-        self.assertEqual(why, "cites run 9001, which is not a pass of mutation.yml")
-
-    def test_Given_ARunCitingARunThatCannotBeRead_When_Checked_Then_ItIsUnbacked(self):
-        # Arrange
-        own = listing(campaign.key_artifact_name(KEY, 9001))
-
-        # Act
-        why = campaign.unbacked(own, None, None)
-
-        # Assert
-        self.assertEqual(why, "cites run 9001, which could not be read")
-
-    def test_Given_ARunCitingAnotherRunThanTheOneRead_When_Checked_Then_ItIsUnbacked(self):
-        # Arrange
-        own = listing(campaign.key_artifact_name(KEY, 9001))
-
-        # Act
-        why = campaign.unbacked(own, run(2), measured())
-
-        # Assert
-        self.assertEqual(why, "cites run 9001, which is not a pass of mutation.yml")
-
-    def test_Given_ARunCitingAPassOfAnotherKey_When_Checked_Then_ItIsUnbacked(self):
-        # Arrange
-        own = listing(campaign.key_artifact_name(KEY, 9001))
-
-        # Act
-        why = campaign.unbacked(own, run(1), measured(OTHER))
-
-        # Assert
-        self.assertEqual(why, "cites run 9001, which did not itself measure this key")
-
-    def test_Given_ARunCitingAPassWhoseKeyArtifactExpired_When_Checked_Then_ItIsUnbackedAsUnreadable(self):
-        # Arrange
-        own = listing(campaign.key_artifact_name(KEY, 9001))
-        expired = campaign.key_artifact_name(KEY)
-
-        # Act
-        why = campaign.unbacked(own, run(1), listing(expired, expired=(expired,)))
-
-        # Assert
-        self.assertEqual(why, "cites run 9001, whose key artifact is missing, expired or ambiguous")
-
-    def test_Given_ARunCitingARunThatReusedInTurn_When_Checked_Then_ItIsUnbacked(self):
-        # Arrange -- a chain is never followed: the cited run has to have measured.
-        own = listing(campaign.key_artifact_name(KEY, 9001))
-        cited = listing(campaign.key_artifact_name(KEY, 9000))
-
-        # Act
-        why = campaign.unbacked(own, run(1), cited)
-
-        # Assert
-        self.assertEqual(why, "cites run 9001, which did not itself measure this key")
-
-
 class OwnKeyArtifactTests(unittest.TestCase):
-    """A run's own record fails closed unless it is wholly absent, as on a run from before the key."""
-
-    def test_Given_ARunWhoseOnlyKeyArtifactExpired_When_Checked_Then_ItIsUnbacked(self):
-        # Arrange
-        name = campaign.key_artifact_name(KEY)
-
-        # Act
-        why = campaign.unbacked(listing(name, expired=(name,)), None, None)
-
-        # Assert
-        self.assertEqual(why, "holds a key artifact that has expired")
-
-    def test_Given_ARunHoldingArtifactsOfTwoKeys_When_Checked_Then_ItIsUnbacked(self):
-        # Arrange
-        own = listing(campaign.key_artifact_name(KEY), campaign.key_artifact_name(OTHER))
-
-        # Act
-        why = campaign.unbacked(own, None, None)
-
-        # Assert
-        self.assertEqual(why, "holds key artifacts of more than one key")
-
-    def test_Given_ARunHoldingMeasuredAndReusedNamesOfOneKey_When_Checked_Then_ItReadsAsMeasured(self):
-        # Arrange -- a re-run that measured what it had reused.
-        own = listing(campaign.key_artifact_name(KEY), campaign.key_artifact_name(KEY, 9001))
-
-        # Act
-        why, found = campaign.unbacked(own, None, None), campaign.keyed(own)
-
-        # Assert
-        self.assertEqual((why, found), (None, (KEY, None)))
-
-    def test_Given_ARunHoldingTwoReusedNamesOfOneKey_When_Checked_Then_ItIsUnbacked(self):
-        # Arrange
-        own = listing(campaign.key_artifact_name(KEY, 9001), campaign.key_artifact_name(KEY, 9002))
-
-        # Act
-        why = campaign.unbacked(own, None, None)
-
-        # Assert
-        self.assertEqual(why, "holds more than one key artifact")
+    """A run carrying both names of one key, as a re-run that measured what it had reused leaves."""
 
     def test_Given_ARunHoldingMeasuredAndReusedNamesOfOneKey_When_Looked_For_Then_ItIsASource(self):
         # Arrange
@@ -340,54 +216,30 @@ class OwnKeyArtifactTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, 9004)
 
-    def test_Given_ARunWithNoKeyArtifactAtAll_When_Checked_Then_ItIsAcceptedAsALegacyRun(self):
-        # Arrange
-        own = listing("Mutation EditMode shard 0")
+
+class CampaignRunTests(unittest.TestCase):
+    """Which of a head's runs and checks are the campaign's."""
+
+    def test_Given_TheHeadsRuns_When_TheCampaignsSuitesAreRead_Then_EveryCampaignsIsTakenAndNoOther(self):
+        # Arrange -- an older campaign, a newer one and a run of another workflow.
+        runs = [dict(run(1), check_suite_id=11), dict(run(2), check_suite_id=12),
+                dict(run(3, path=".github/workflows/test.yml"), check_suite_id=13)]
 
         # Act
-        why = campaign.unbacked(own, None, None)
+        found = campaign.suites(runs)
 
         # Assert
-        self.assertIsNone(why)
+        self.assertEqual(found, {11, 12})
 
-    def test_Given_AnExpiredKeyArtifactBesideALiveOne_When_Checked_Then_TheLiveOneStands(self):
-        # Arrange -- the control: only a record with nothing live left fails closed.
-        name = campaign.key_artifact_name(KEY)
-        old = campaign.key_artifact_name(KEY, 9001)
+    def test_Given_TheWorkflow_When_ItsDeclaredNameIsRead_Then_ItIsTheNameChecksAreLeftOutBy(self):
+        # Arrange
+        workflow = (Path(__file__).resolve().parents[2] / campaign.PATH).read_text()
 
         # Act
-        why = campaign.unbacked(listing(name, old, expired=(old,)), None, None)
+        declared = workflow.startswith("name: " + campaign.NAME + "\n")
 
         # Assert
-        self.assertIsNone(why)
-
-
-class ReasonTests(unittest.TestCase):
-    HEAD = "a" * 40
-
-    def test_Given_APassedCampaignWhoseReusedVerdictIsUnbacked_When_Reasoned_Then_TheHeadIsHeld(self):
-        # Arrange
-        why = "cites run 9001, which did not itself measure this key"
-
-        # Act
-        held = campaign.reason({campaign.LABEL}, campaign.PASSED, self.HEAD, "", unbacked=why)
-
-        # Assert
-        self.assertEqual(held, "its mutation.yml run on aaaaaaa does not stand: it " + why)
-
-    def test_Given_APassedCampaignWithNothingUnbacked_When_Reasoned_Then_NothingHoldsTheHead(self):
-        # Arrange -- the control: the reuse reading changes nothing for a pass that stands.
-        held = campaign.reason({campaign.LABEL}, campaign.PASSED, self.HEAD, "", unbacked=None)
-
-        # Assert
-        self.assertIsNone(held)
-
-    def test_Given_AFailedCampaign_When_ReasonedWithAnUnbackedVerdict_Then_ItStillReadsAsFailed(self):
-        # Arrange
-        held = campaign.reason(set(), campaign.FAILED, self.HEAD, "", unbacked="cites run 1")
-
-        # Assert
-        self.assertEqual(held, "its mutation.yml run on aaaaaaa failed")
+        self.assertEqual((declared, campaign.NAME), (True, "Mutation campaign"))
 
 
 class LedgerArtifactTests(unittest.TestCase):

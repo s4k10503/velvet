@@ -218,24 +218,39 @@ The run also fails or stops rather than pass over a mutant nobody asked about, a
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 says when it does which.
 
-**A pull request's CI runs the campaign once review has settled, and that run is the one the pull
-request answers to.** The `Mutation campaign` workflow runs on the pull request's head once it carries
-the `automerge` label and its `Test` run has passed — once per labelled head;
-[Merging a pull request](#merging-a-pull-request) owns when it is dispatched and what a merge requires
-of it. `Mutation campaign ▸ mutation-plan` generates the mutants of the head's diff against its merge
-base with the pull request's base, taking the readings `--list` takes, and stops there when there are none — because no mutable package source
-changed, or because no operator reaches the lines that did. The second passes, where a local run
-refuses it: its job summary names the lines, and the pull request body says why the change is not
-something a mutation can ask about. Where a licence is configured, a diff of more mutants than ten
-shards of `SHARD_CEILING` can measure inside the shard job's timeout — not counting the kills reused from an
-earlier campaign, below — is refused at the plan and is split into smaller pull requests; without one no shard would run, and the plan passes as the Unity jobs skip.
+**The campaign runs nightly over what the default branch gained, and no pull request waits on it.**
+The `Mutation campaign` workflow runs on a schedule on the default branch, and on a dispatch onto any
+branch of this repository (`gh workflow run mutation.yml --ref <branch> -f base=main`), which measures
+that branch's change against its merge base with `base`, as a local run does. No branch-protection rule
+requires either, and [Merging a pull request](#merging-a-pull-request) says how a merge leaves a
+campaign on its head out.
+
+A night measures a window of the default branch's first-parent commits.
+`scripts/ci/mutation_nightly.py` starts it at the head the last reported night measured up to — the
+`Mutation nightly reported <sha>` artifact of the newest of the last 20 scheduled runs that carries
+one and whose head the checkout contains — or, where none does, at the newest first-parent commit at least 24 hours old. The
+window's change can hold more mutants than the ceiling below lets a plan through, so the night measures
+the newest slice that fits: of the window's start and each first-parent commit after it, the oldest
+whose plan the ceiling passes, counted with the kills the plan reuses. The commits before that slice,
+and their mutants by line, are left unmeasured and named in the report, and the next night starts at
+this night's head, so no later night measures them. A night whose newest commit alone is over the
+ceiling measures nothing and names every mutant. The plan job writes the window to a file, and
+`scripts/ci/change_base.py` reads the slice's base back from it in every job of the run.
+
+`Mutation campaign ▸ mutation-plan` generates the mutants of the change, taking the readings `--list`
+takes, and stops there when there are none — because no mutable package source changed, or because
+no operator reaches the lines that did. The second passes, where a local run refuses it: its job
+summary names the lines. Where a licence is configured, a dispatch's diff of more mutants than ten
+shards of `SHARD_CEILING` can measure inside the shard job's timeout — not counting the kills reused
+from an earlier campaign, below — is refused at the plan; without one no shard would run, and the plan
+passes as the Unity jobs skip.
 Otherwise,
 where a licence is configured, the mutants are measured in two passes, because a mutant is killed
 when either suite fails on it, and one only a PlayMode fixture notices survives the EditMode suite.
 `Mutation campaign ▸ library` restores the EditMode Library the branch or the default branch holds,
 imports the head once where neither holds one under its exact key, and saves that for the branch, because
-`Test ▸ unity-tests` saves its own under the pull request's ref, which a dispatch on the branch is
-not. `Mutation campaign ▸ mutation-shard` then measures every mutant in up to ten jobs, each running the mutants it is dealt
+`Test ▸ unity-tests` saves its own under a pull request's ref, which this run's is not.
+`Mutation campaign ▸ mutation-shard` then measures every mutant in up to ten jobs, each running the mutants it is dealt
 (by expected cost, below) in the editor image `Test ▸ unity-tests` pulls and recording its verdicts — against its area's own
 test assemblies first where those are cheap, and against the whole EditMode suite wherever that did
 not kill it, which
@@ -244,10 +259,10 @@ owns. When a job's EditMode pass has ended, the same job counts the mutants it l
 measures only those against the whole PlayMode suite, on the same runner and licence: the PlayMode pass
 starts as soon as its own shard's EditMode pass ends, rather than after the slowest shard's, and adds no
 job. An account's concurrent hosted jobs are few, and a job added for the PlayMode pass would queue
-behind the EditMode shards and behind another pull request's campaign. That pass has a ceiling of its
+behind the EditMode shards and behind the jobs of whatever else runs. That pass has a ceiling of its
 own, `SHARD_CEILING["PlayMode"]` survivors in one shard, and over it the job fails after uploading its
 EditMode records: EditMode tests for the survivors bring the count under it, since no PlayMode test
-lowers it, and otherwise the pull request is split. A PlayMode pass runs only where its job's EditMode
+lowers it. A PlayMode pass runs only where its job's EditMode
 pass passed. The job's 360 minutes, the most a hosted job runs, hold the EditMode step's 180, the PlayMode step's 165
 and 15 for the checkout, restore and uploads around them; `ShardCeilingTests` holds each step to its platform's ceiling.
 `Mutation campaign ▸ mutation-verdict` reads both passes' records and the kills the plan reused, and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
@@ -255,20 +270,29 @@ a mutant nothing measured fails it, and a survivor of the EditMode pass that no 
 recorded is one nothing measured. Unlike a local run it takes every mutant rather than stopping at
 `--max`. A shard whose baseline is red fails on its own. Its job summary names each survivor and each
 unmeasured mutant by line, with the verdict each pass gave it, and each shard's editor logs and results
-files are uploaded as `Mutation EditMode shard N` or `Mutation PlayMode shard N`. The check named
-`Mutation campaign` is the workflow's `campaign` job, which asks for the merge once every job above
-passed or was skipped; what a merge reads is the run's own conclusion. A push to a labelled pull
-request runs them all again and cancels the run still measuring the head before it, so a review round
-that changes production code after the label is measured by the push that carries it. The run is the
-branch's own copy of the workflow and of `mutation_check.py`, as the `pull_request` run it replaces
-ran the test merge's copy: a dispatch records its runs and checks against the commit of the ref it
-names, so a campaign dispatched from the default branch would be recorded against that branch's tip
-rather than the head it measured. Running the campaign locally is optional: it answers the same question before
-a push, and before the label.
+files are uploaded as `Mutation EditMode shard N` or `Mutation PlayMode shard N`. A newer dispatch
+onto a branch cancels the run still measuring its older head; no other run cancels a night that is
+running. The run
+is the branch's own copy of the workflow and of `mutation_check.py`: a dispatch records its runs and
+checks against the commit of the ref it names, so a campaign dispatched from the default branch would
+be recorded against that branch's tip rather than the head it measured.
+
+**A night reports what it left to answer on one issue.** `Mutation campaign ▸ report` runs on every
+scheduled run where a licence is configured, whatever the jobs before it concluded, and comments on the
+issue labelled `mutation-nightly` — opening it the first time and reopening it where it was closed —
+with each unanswered survivor and stale declaration the verdict printed, each mutant nothing measured,
+each job that did not pass, and the commits and mutants the window left outside its slice. A night
+with none of those, whose window was read, writes nothing. The report then uploads the window as `Mutation nightly reported <sha>`,
+which is where the next night starts; a night whose report was not written uploads none, and the next
+night's window still starts where the last reported one ended. A survivor is answered as above, by a
+pull request that writes the test or the declaration. A declaration a change writes brings the lines it
+answers for into that change's mutants, so the next night, or a dispatch onto the branch, measures them:
+it answers the survivor, or is stale where the mutant now dies. Running the campaign locally, or
+dispatching it onto the branch, answers the same question before the merge.
 
 **A kill an earlier campaign recorded is not measured again, and a head whose whole key was passed is not
-measured at all.** Two readings follow: reusing a kill at a time, which is what a review round that
-only changes tests needs, and reusing a whole verdict under an equal key.
+measured at all.** Two readings follow: reusing a kill at a time, which is what a run after a change
+to tests alone needs, and reusing a whole verdict under an equal key.
 
 **A kill is reused when the mutant, its file and its killing cases are as they were.** Every
 campaign's verdict job uploads `Mutation campaign ledger`, whether the campaign passed or failed: a
@@ -366,17 +390,9 @@ where one holds the head's key, the shards, the Library job and the PlayMode pas
 key artifact records that it measured the key is a source: a run that reused it is skipped, so no
 chain of reuses forms and a verdict outlives only the artifacts of the run that measured it. The
 reusing run uploads the key too, citing the run that measured it. A reading that fails for any reason,
-a malformed answer included, reuses nothing. `scripts/pr/settle.py` checks the citation
-before a merge: a reused pass whose cited run is not a pass of the workflow that measured this very
-key holds the head, as does a run whose own key artifact has expired or is ambiguous (artifacts of
-two keys, or two citations of one). The measured and the reused name of one key, which a re-run that
-measured leaves beside the earlier reuse, read as measured, and such a run can serve as a reuse
-source. A run with no key artifact at all predates the key and is accepted as measured. The hold says
-which: the cited run could not be read, is not a pass, holds no readable key artifact, or did not
-measure the key. `scripts/pr/campaign_status.py` asks the same check before
-it displays a pass. `scripts/pr/automerge.py` reads only whether the head's newest run concluded, as
-for any campaign, and the merge run it dispatches is settle's. `refuse/merge_unproven_head.py` does
-not read the citation, which a merge by hand therefore skips.
+a malformed answer included, reuses nothing. The measured and the reused name of one key, which a
+re-run that measured leaves beside the earlier reuse, read as measured, and such a run can serve as a
+reuse source. No merge reads the citation, since no merge reads a campaign.
 
 **Every shard measures the plan's list, and a shard that did not report is not a survivor.**
 `mutation-plan` writes the mutant list it counted (`--emit-mutants`) and each shard and the verdict job
@@ -406,7 +422,7 @@ measured in that section, against the window it names. A mutant's launch-compile
 sets how many each holds, up to `SHARD_CEILING`; it stops adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
 before its first mutant; the PlayMode pass of a shard's survivors pays its own activation and baseline in the same job, not an image pull, and each of its mutants costs more than twice an EditMode one measured on the same run.
 
-**Shard count under an account's concurrent-job cap.** GitHub Free runs 20 hosted jobs at once across the whole account, and one pull request's `Test` is about five of them while its campaign holds one for the plan, one for the Library and one per shard. With two pull requests open, `Test` takes about ten and leaves ten for both campaigns, fewer than the twenty shards they ask for. `MAX_SHARDS` stays at ten because the wall clock of a single pull request is what the count is set for: it has free jobs for ten shards, and a shard of fewer mutants pays the same pull, activation and baseline for less work. The cost falls on the second pull request. GitHub's queue has no priority per pull request, so shards one campaign has queued can start ahead of the other's `Test` jobs, and its aggregate with them, and `max-parallel` is not used to prevent that. Beyond what the timings below and the cap give, nothing here is measured: no run of two campaigns has been timed, thirteen is the most licence activations seen at once and not a limit, and two pull requests have run CI together without an activation failing, though the activations were not counted. A cap is a reason not to add a PlayMode job per survivor, which is why that pass runs in the shard's own job. Measured over 121 EditMode shards of the 100 pull-request runs
+**Shard count under an account's concurrent-job cap.** GitHub Free runs 20 hosted jobs at once across the whole account, and one pull request's `Test` is about five of them while a campaign holds one for the plan, one for the Library and one per shard. `MAX_SHARDS` stays at ten because the wall clock of a single campaign is what the count is set for: a night has free jobs for ten shards, and a shard of fewer mutants pays the same pull, activation and baseline for less work. A campaign dispatched onto a branch while pull requests run CI shares the cap with their `Test` jobs. GitHub's queue has no priority per workflow, so shards a campaign has queued can start ahead of a pull request's `Test` jobs, and its aggregate with them, and `max-parallel` is not used to prevent that. Beyond what the timings below and the cap give, nothing here is measured: no run of two campaigns has been timed, thirteen is the most licence activations seen at once and not a limit, and two pull requests have run CI together without an activation failing, though the activations were not counted. A cap is a reason not to add a PlayMode job per survivor, which is why that pass runs in the shard's own job. Measured over 121 EditMode shards of the 100 pull-request runs
 completed on 2026-09-26 and 2026-09-27, before a mutant was narrowed, a shard spent a median of 98 s
 before activating, 82 s of it pulling the image, 36 s activating and 211 s on its baseline, and its
 645 mutants took a median of 190 s. Over the 461 EditMode baselines those runs uploaded, the
@@ -499,7 +515,7 @@ fixtures of one line each still passes.
 
 **A pull request that only deletes tests is checked by comparing kills, not by the campaign.** Mutants are
 placed in package sources outside `Tests/` and `TestUtilities/`, so a pull request that touches nothing
-else has none: its campaign reports no mutable change and passes whatever it removed. What such a pull
+else has none: a campaign over it reports no mutable change and passes whatever it removed. What such a pull
 request claims is that every removed case was redundant, and that is a statement about two trees over the
 same production source: each mutant the base tree's tests killed is killed by what the head leaves.
 `.github/workflows/kill-set.yml` measures it. It is dispatched by hand, is required by nothing, and runs on
@@ -1153,6 +1169,7 @@ on every platform.
 | `Benchmarks ▸ benchmarks` (PlayMode) | push (filtered) to `main` / every PR labelled `benchmarks` / manual | **required** (skipped if absent) | no |
 | `Benchmarks ▸ trend-main` | push (filtered) to `main`, after `benchmarks` | not required | no |
 | `Benchmarks ▸ trend-pull-request` | every PR labelled `benchmarks`, after `benchmarks` | not required | no |
+| `Mutation campaign` (plan, Library, shards, verdict, nightly report) | nightly on `main` / manual (`workflow_dispatch` onto a branch) | **required** (skipped if absent) | no |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages; also carries the benchmark chart, as of its last deployment) | push (filtered) / release / manual | **required** (skipped if absent) | no |
 
@@ -1166,13 +1183,11 @@ are all `cancelled`, and whose pull request (or dispatched branch) now points at
 asks for its own cancellation and its aggregate ends cancelled rather than red, which still blocks a
 merge of that head. Where that cancellation is refused or does not land, it fails. On `push` and in
 the merge group a cancelled dependency fails them whatever the branch holds now.
-`scripts/ci/aggregate_results.py` owns the decision, for both aggregates and for the mutation
-campaign's.
+`scripts/ci/aggregate_results.py` owns the decision, for both aggregates.
 
-The mutation campaign has no row: `.github/workflows/mutation.yml` starts on a dispatch alone, once a
-pull request carries the `automerge` label, beside its `Test` run rather than after it, and no
-branch-protection rule requires its check.
-[Merging a pull request](#merging-a-pull-request) says what requires it instead.
+The mutation campaign gates no merge: no branch-protection rule requires a check of it, and
+[Checking that the tests can fail](#checking-that-the-tests-can-fail) owns when it runs and where it
+reports.
 
 In `test.yml` and `generators.yml`, filtering therefore applies to `push` only, by branch as much as by path — so a pull
 request runs both workflows whether it is based on `main` or on a maintenance branch, and so does every
@@ -1297,89 +1312,41 @@ request, and a failed newest run blocks its merge.
 
 ### Merging a pull request
 
-A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once a mutation
-campaign has passed on its head and every other check there has passed or been skipped; every other
-pull request is merged by hand after review, with `settle.py merge`. The label means *review has
-settled: run the campaign, then merge when every check on the head has passed or been skipped*: add it
-once review has settled, and remove it to hold the pull request. Labelling takes triage access or
-above, so only an account holding that can opt a pull request in. The workflow does not create the
-label; it has to exist in the repository.
+A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once every check on
+its head has passed or been skipped; every other pull request is merged by hand after review, with
+`settle.py merge`. The label means *review has settled: merge when every check on the head has passed
+or been skipped*: add it once review has settled, and remove it to hold the pull request. Labelling
+takes triage access or above, so only an account holding that can opt a pull request in. The workflow
+does not create the label; it has to exist in the repository.
 
-The `Mutation campaign` commit status shows pending while a labelled head awaits its campaign and
-while the newest campaign runs, including a re-run on the same commit. The default-branch
-`campaign-status.yml` publisher validates the current pull request head and newest run before
-reporting its result; an older completion cannot clear a newer pending run. A five-minute scheduled
-sweep and a manual workflow dispatch reconcile open heads when event-driven reporting has not arrived.
-The sweep refuses before publishing if its complete listing contains more than eight same-repository
-open pull requests; the optional `pull_request` dispatch input recovers one head at that capacity.
-All publisher jobs share repository-level serialization and re-read each head and its latest run before
-writing. Their concurrency block uses `queue: max` with `cancel-in-progress: false` to retain pending
-publishers during event bursts ([GitHub concurrency queue documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)).
-An identical owned status causes neither another status write nor another merge wake. This display does not
-replace the campaign run verdict that `settle.py` requires. After independently reading that verdict,
-`settle.py` ignores this legacy display status so reporting latency adds no merge gate; real check
-runs and other statuses still gate merging. Removing the label clears an unstarted
-or cancelled campaign's display requirement; the sweep also recovers a missed removal when that head
-already carries this owned status, without creating one for an ordinary unlabelled head. A failed
-campaign still blocks that head.
+No merge waits on a mutation campaign. A campaign dispatched onto a pull request's branch runs on its
+head like any other workflow, and `settle.py merge`, the automerge runs through it, and
+`refuse/merge_unproven_head.py` leave its runs and its checks out of what they read, so one that failed
+or is still running holds nothing; `scripts/pr/campaign.py` says which runs and checks are a
+campaign's. [Checking that the tests can fail](#checking-that-the-tests-can-fail) owns where a survivor
+is reported instead.
 
-Adding the label hands the pull request off, and so do marking a labelled draft ready for review,
-reopening a labelled pull request and pushing to one. `scripts/pr/automerge.py` then reads the head's
-runs of `.github/workflows/mutation.yml` — the campaign is a run of that file, and a check of another
-workflow bearing a campaign job's name is not one. Where there is none, or the newest was cancelled,
-it dispatches one onto the head's branch at once, without waiting for `Test`: a head whose suites then
-fail has had a campaign measure a change that cannot merge, and that run is spent, which is what
-starting it beside `Test` costs. Its `library` job reads none of `Test`'s artifacts or caches, which `Test` saves under the pull request's own ref, so it has nothing to wait for. The merge needs both to pass on the same head, so the wasted campaign
-cannot merge anything: `settle.py` refuses a head whose `Test` run has not passed whatever the
-campaign concluded, and the campaign's own group cancels the run over an older head when a push
-dispatches the next. A `Test` run on a head that concludes `failure` ends that head's open campaign
-(`automerge.yml`'s `cancel-campaign` job), so a red head holds no runner for long; a cancelled campaign
-is dispatched again by the recovery below once `Test` passes on the head, or by adding the label
-again. Where the newest is still running it leaves it to finish; and otherwise it
-dispatches the merge run. A failed campaign is a verdict about its head, which a push
-or a re-run of its failed jobs asks again, and a cancelled one is asked again by adding the label
-again, with no push. The campaign reads the head against
-its merge base with the pull request's base, with the licence secrets, so it is dispatched onto a
-branch of this repository only: a head on a fork gets none, and settle refuses that head. A branch
-holds one campaign at a time — a dispatch for a newer head cancels the run measuring the one before
-it — and no `Test` run shares its concurrency group. Two hand-offs of one head close enough together
-that neither finds the other's run can still dispatch twice, and the second then cancels the first;
-two quick pushes, or a push and then marking ready for review or reopening, are the likeliest pairs. A
-hand-off whose campaign dispatch fails names `settle.py update` for a branch that predates the
-workflow. One from a pull request event logs a failed reading or dispatch as a warning and still
-passes: its job is a check on the head, and a failed one would have settle and the hook refuse that
-head, a merge by hand without the label included.
-
-`scripts/pr/campaign.py` owns what a merge requires of the campaign, and `settle.py merge`, the
-automerge runs through it, and `refuse/merge_unproven_head.py` all ask it: a head carrying the label
-must have a campaign whose newest run concluded `success`, and on any other head the newest campaign
-must not have failed or still be running. A cancelled campaign measured nothing, so it holds a
-labelled head alone. The checks of a campaign a
-newer one on the same head superseded are left out of settle's reading. No branch-protection rule
-requires any of it, so an unlabelled pull request does not wait on a campaign. Merged by hand, it
-merges without one, and `settle.py merge` and the hook still refuse it where a campaign on its head
-failed or is still running.
+Adding the label hands the pull request off, and so does marking a labelled draft ready for review:
+neither starts a run whose completion would ask, so `scripts/pr/automerge.py` dispatches the merge run
+at once, and it waits for the hand-off's own run to finish, whose job is a check on the head. A push or
+a reopen starts the head's `Test` run, which asks when it passes. A hand-off from a pull request event
+logs a failed reading or dispatch as a warning and still passes: its job is a check on the head, and a
+failed one would have settle and the hook refuse that head, a merge by hand without the label included.
 
 The merge goes through `settle.py merge`, run from a checkout of the default branch and never of the
 pull request, so every precondition above applies, and a refusal is logged with the run still
 succeeding. It asks again about one pull request when `Test` or `Source generators` passes a run for
-it, when a campaign on its head passes, when a hand-off finds the campaign already run, and when
-dispatched with its number (*Actions ▸ Automerge ▸ Run workflow*). It asks about the open pull
-requests carrying the label when `Test` or `Source generators` passes a push run on `main`, which is
-what clears a red base, and when a release
-dispatch of `UPM` passes, which is what clears an unpublished release. Each of those dispatches the
-campaign rather than asking settle where a labelled head has none and its newest `pull_request` run of
-`Test` has passed (concluded `success`, or open with `Required checks (Unity)` passed), so the campaign does not rest
-on the hand-off's events alone and a recovery spends no runners on a head `Test` has not passed. A refusal cleared by anything
-else — a `Test` run dispatched by hand onto the head, for one — waits for the next of those events or
-for a manual dispatch.
+it, when a hand-off dispatches it, and when dispatched with its number (*Actions ▸ Automerge ▸ Run
+workflow*). It asks about the open pull requests carrying the label when `Test` or `Source generators`
+passes a push run on `main`, which is what clears a red base, and when a release dispatch of `UPM`
+passes, which is what clears an unpublished release. A refusal cleared by anything else — a `Test` run
+dispatched by hand onto the head, for one — waits for the next of those events or for a manual
+dispatch.
 
 A completed run whose head is no longer the pull request's is left to the newer head's runs, and a head
 on a fork is refused, as `settle.py` refuses one by hand. A hand-off reaches a pull request based on a
 maintenance line only where that line holds the workflow: the pull request events run the workflow
-file the base branch holds, and a completed run's merge job asks the base for that file. It reaches
-the pull request either way. On a line without it, a labelled
-pull request gets no campaign and so no automerge: merge it by hand, without the label.
+file the base branch holds. A completed run's merge job reaches the pull request either way.
 
 The merge is made with the `AUTOMERGE_TOKEN` secret rather than the workflow's own token, because a
 merge made with `GITHUB_TOKEN` starts no workflow: `main` would get no push run for it, and the
@@ -1389,8 +1356,8 @@ the secret, standalone merge and sweep jobs report an error and fail before read
 It is a fine-grained personal access token
 for this repository alone, with Contents, Pull requests and Workflows read and write, and Actions,
 Checks and Commit statuses read. The merge is attributed to the token's account, and `protect-main`
-holds it as it holds anyone: it lists no bypass actor. A campaign those jobs dispatch goes out with
-the workflow's own token instead, granted Actions write, since this one only reads them.
+holds it as it holds anyone: it lists no bypass actor. The hand-off dispatches the merge run with the
+workflow's own token instead, granted Actions write.
 
 ### Enabling Unity tests (free Personal license)
 

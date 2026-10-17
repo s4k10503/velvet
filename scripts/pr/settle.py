@@ -5,7 +5,7 @@ Both halves existed as instructions rather than as code: `stop/unsettled_pr.py` 
 the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time,
 and that hook's own text owns what a re-derived watcher gets wrong.
 
-**Nine of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
+**Eight of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
 is held to those as well; `refuse/merge_unproven_head.py` records which hook holds which. Those hooks
 match on `gh pr merge` and do not see the `gh api -X PUT .../merge` this script sends, so teaching
 them that shape is its own change. What this adds is reporting them together: one run names
@@ -13,7 +13,7 @@ everything wrong rather than costing a round of CI per reason.
 
 **One has no hook: a draft head**, or one whose merge state is `dirty`, or one no longer open.
 
-Ten preconditions:
+Nine preconditions:
 
 - **Checks are bound to the head SHA they were read at.** The checks API answers about whatever it
   last recorded, which after a force-push is the previous commit's run. So the head is read, then the
@@ -33,7 +33,8 @@ Ten preconditions:
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
   Nor is a list complete while the head still has a workflow run to finish, carries a workflow
   whose newest run failed, or lacks a context its base requires; `expected_checks.py` owns what each
-  of those is and why it is read.
+  of those is and why it is read. A mutation campaign's runs and checks are left out of all of it,
+  since no merge waits on one; `campaign.py` says which those are.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 - **A draft is not merged**, and neither is one whose merge state is `dirty` nor one that is closed
@@ -43,8 +44,6 @@ Ten preconditions:
   addressed on origin by that name.
 - **A long-lived head is not merged from here**, since this squashes and deletes it. `long_lived.py`
   owns which heads those are.
-- **A mutation campaign that ran on the head must have passed, and a head carrying the `automerge`
-  label must have one.** `campaign.py` owns which run is the campaign and what it concluded.
 
 `watch` records a pull request as ready by asking `blocking_reasons` — the same question `merge`
 decides from, not a second one beside it. Asked twice, the two disagreed: a draft with conflicts was
@@ -215,7 +214,7 @@ def head_sha(project, number):
 # Everything the decision reads off the pull request itself. `mergeable_state` is on this payload and
 # not on the listing one, so a caller that wants it has to ask per pull request anyway.
 PullRequest = collections.namedtuple("PullRequest",
-                                     "sha branch base draft merge_state fork labels state")
+                                     "sha branch base draft merge_state fork state")
 
 
 def pull_request(project, number):
@@ -235,10 +234,8 @@ def pull_request(project, number):
     base = payload.get("base") or {}
     home = ((head.get("repo") or {}).get("full_name") or "")
     base_repository = ((base.get("repo") or {}).get("full_name") or "")
-    labels = frozenset(label.get("name") for label in payload.get("labels") or []
-                       if isinstance(label, dict))
     return PullRequest(head["sha"], head["ref"], base["ref"], bool(payload.get("draft")),
-                       payload.get("mergeable_state") or "", home != base_repository, labels,
+                       payload.get("mergeable_state") or "", home != base_repository,
                        "merged" if payload.get("merged") else payload.get("state") or "unnamed")
 
 
@@ -253,20 +250,19 @@ _BUCKET = {"success": "pass", "neutral": "skipping", "skipped": "skipping",
 _STATUS_BUCKET = {"success": "pass", "pending": "pending", "failure": "fail", "error": "fail"}
 
 
-def checks(project, sha, runs=(), ignore_campaign_display=False):
+def checks(project, sha, runs=()):
     """Check results for one head, or an empty list when no workflow ever ran for it.
 
-    `runs` is `campaign_runs`' reading of the same head, whose superseded campaigns' checks are left
-    out.
+    `runs` is `campaign_runs`' reading of the same head, whose campaigns' checks are left out.
     """
     slug = repository(project)
     return check_results(rest_json("repos/{}/commits/{}/check-runs?per_page=100".format(slug, sha)),
                          rest_json("repos/{}/commits/{}/status?per_page=100".format(slug, sha)),
-                         campaign.superseded_suites(runs), ignore_campaign_display)
+                         campaign.suites(runs))
 
 
 def campaign_runs(project, sha):
-    """Every workflow run whose head is `sha`, which `campaign.py` reads the campaign out of and
+    """Every workflow run whose head is `sha`, which `campaign.py` tells the campaign's apart in and
     `expected_checks.py` reads every other workflow's runs out of."""
     payload = rest_json(expected_checks.runs_path(repository(project), sha))
     listed = payload.get("workflow_runs", [])
@@ -284,48 +280,6 @@ def run_jobs(project, runs, now):
         whole_page(payload, listed, "jobs")
         found[run.get("id")] = listed
     return found
-
-
-def campaign_state(runs, jobs, now):
-    """`campaign.state`, with what a run concluded read the way `expected_checks` reads it."""
-    return campaign.state(runs, lambda run: expected_checks.conclusion(run, jobs, now))
-
-
-def campaign_reason(labels, runs, jobs, now, head, unbacked=None):
-    """`campaign.reason` for a head, naming how to end its newest campaign where it is stuck."""
-    newest = campaign.newest(runs)
-    return campaign.reason(labels, campaign_state(runs, jobs, now), head,
-                           expected_checks.stuck_exit(newest) if newest else "", unbacked)
-
-
-def campaign_backing(project, runs, read=None, slug=None):
-    """`campaign.unbacked` for the head's newest campaign: why a verdict it reused does not stand.
-
-    A run that measured is answered from its own artifacts alone. One that reused is checked against
-    the run it cites, read here; a cited run or key artifact that cannot be read is a verdict nobody
-    can show. `read` and `slug` default to `rest_json` and the project's repository.
-    """
-    newest = campaign.newest(runs)
-    if newest is None:
-        return None
-    read = read or rest_json
-    slug = slug or repository(project)
-    own = read(campaign.artifacts_path(slug, newest.get("id")))
-    problem = campaign.own_problem(own)
-    if problem:
-        return problem
-    found = campaign.keyed(own)
-    if found is None or found[1] is None:
-        return None
-    try:
-        source = read(campaign.run_path(slug, found[1]))
-    except RuntimeError:
-        return campaign.unbacked(own, None, None)
-    try:
-        listing = read(campaign.artifacts_path(slug, found[1]))
-    except RuntimeError:
-        listing = None
-    return campaign.unbacked(own, source, listing)
 
 
 def required_contexts(project, base):
@@ -351,7 +305,7 @@ def whole_page(payload, listed, kind):
         raise RuntimeError(f"{total} {kind} exist for this head but only {len(listed)} were read")
 
 
-def check_results(runs, statuses, superseded=frozenset(), ignore_campaign_display=False):
+def check_results(runs, statuses, left_out=frozenset()):
     """One bucket per check, from the check-runs payload and the legacy commit-status one.
 
     One commit carries two check surfaces, and the base can require a context from either, so
@@ -359,22 +313,21 @@ def check_results(runs, statuses, superseded=frozenset(), ignore_campaign_displa
     individual entries become buckets; its rollup state is not read at all.
 
     A page that did not carry everything raises rather than deciding; `whole_page` owns why. A check
-    run of a suite in `superseded` is left out.
+    run of a suite in `left_out` is left out.
     """
     listed = runs.get("check_runs", [])
     reported = statuses.get("statuses", [])
     whole_page(runs, listed, "check runs")
     whole_page(statuses, reported, "commit statuses")
     listed = [run for run in listed
-              if (run.get("check_suite") or {}).get("id") not in superseded]
+              if (run.get("check_suite") or {}).get("id") not in left_out]
     results = [{"name": run.get("name", ""),
                 "bucket": "pending" if run.get("status") != "completed"
                 else _BUCKET.get(run.get("conclusion") or "", "fail")}
                for run in listed]
     results.extend({"name": status.get("context", ""),
                     "bucket": _STATUS_BUCKET.get(status.get("state") or "", "fail")}
-                   for status in reported
-                   if not ignore_campaign_display or status.get("context") != campaign.DISPLAY_CONTEXT)
+                   for status in reported)
     return results
 
 
@@ -421,7 +374,7 @@ def contains_commit(project, branch, sha):
 
 def reasons_from(before, after, results, branch, base, held_by_worktree,
                  unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
-                 long_lived_head, runs_unfinished, runs_failed, required, owed_campaign):
+                 long_lived_head, runs_unfinished, runs_failed, required):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -430,8 +383,8 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     failing push runs this head is not exempt from. `behind_release` is (sha, version) of the base's
     newest release commit where the head lacks it, and None otherwise. `long_lived_head` takes none
     for the reason `unpublished_release` gives, and neither do `runs_unfinished` and `runs_failed`,
-    `expected_checks`' reasons about the head's workflow runs, `required`, the contexts the base
-    requires, or `owed_campaign`, the reason `campaign.reason` gives or None.
+    `expected_checks`' reasons about the head's workflow runs, or `required`, the contexts the base
+    requires.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
@@ -474,8 +427,6 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
         reasons.append("still pending at {}: {}".format(after[:7], ", ".join(sorted(unfinished))))
     if failed:
         reasons.append("failing at {}: {}".format(after[:7], ", ".join(sorted(failed))))
-    if owed_campaign:
-        reasons.append(owed_campaign)
 
     for failing in failing_runs:
         reasons.append(f"origin/{base}'s last {failing.workflow} push run failed at "
@@ -562,13 +513,8 @@ def blocking_reasons(project, number, base=None, states=None):
     runs = campaign_runs(project, before.sha)
     now = time.time()
     others = campaign.others(runs)
-    jobs = run_jobs(project, runs, now)
-    unbacked = None
-    if not before.fork and campaign_state(runs, jobs, now) == campaign.PASSED:
-        unbacked = campaign_backing(project, runs)
-    owed_campaign = None if before.fork else campaign_reason(before.labels, runs, jobs, now,
-                                                            before.sha, unbacked)
-    results = checks(project, before.sha, runs, ignore_campaign_display=not before.fork)
+    jobs = run_jobs(project, others, now)
+    results = checks(project, before.sha, runs)
     after = head_sha(project, number)
     ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
                                else entry["bucket"]) for entry in results])
@@ -578,7 +524,6 @@ def blocking_reasons(project, number, base=None, states=None):
     behind_release = (state.release if state.release and not before.fork
                       and not contains_commit(project, before.branch, state.release[0]) else None)
     long_lived_head = not before.fork and long_lived.is_long_lived(before.branch)
-    # A head on another repository is dispatched no campaign, and the fork reason refuses it already.
     return Blocking(reasons_from(before.sha, after, results, before.branch, target,
                                  held_by_worktree=before.branch in state.held,
                                  unpublished_release=unpublished,
@@ -590,8 +535,7 @@ def blocking_reasons(project, number, base=None, states=None):
                                  long_lived_head=long_lived_head,
                                  runs_unfinished=expected_checks.unfinished(others, jobs, now),
                                  runs_failed=expected_checks.failed(others, jobs, now),
-                                 required=state.required,
-                                 owed_campaign=owed_campaign),
+                                 required=state.required),
                     after, before.branch, results, target)
 
 

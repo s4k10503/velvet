@@ -1,43 +1,26 @@
-"""Whether a pull request's head owes the mutation campaign, and what the campaign on it concluded.
+"""Which workflow runs are the mutation campaign's, and the records a campaign leaves for a later one.
 
-The campaign runs once per labelled head rather than on every push: `automerge.py`'s hand-off
-dispatches `WORKFLOW` onto the head's branch as soon as the head carries the label, beside the head's
-other workflows rather than after them. CONTRIBUTING.md's continuous-integration section owns the label's meaning. `settle.py`,
-`automerge.py` and `refuse/merge_unproven_head.py` all decide from here.
-
-A campaign is a run of `WORKFLOW` whose head is the pull request's head, read off the Actions runs
-API by its workflow file: a check of any other workflow carrying a campaign job's name is not one.
+The campaign runs nightly on the default branch and on a branch dispatched by hand; no pull request
+waits on it, and CONTRIBUTING.md ▸ Checking that the tests can fail owns why. A run of `WORKFLOW` on a
+pull request's head is therefore no evidence about its merge: `settle.py` and
+`refuse/merge_unproven_head.py` leave its runs and its checks out of what they read (`others`,
+`suites`, `NAME`).
 
 A campaign that passes leaves its key in the name of an artifact (`key_artifact_name`), and a later
-head whose key is the same reuses that verdict instead of measuring (`reusable`). The reusing run is
-still a run of `WORKFLOW` on its head, so everything above reads it as it reads a measuring one;
-`unbacked` is the one reading that tells them apart, and asks whether the run it cites measured.
-
-A head whose key is new still reuses what an earlier campaign on its branch killed: every campaign
-leaves a ledger of its per-mutant verdicts (`LEDGER_ARTIFACT`), and `mutation_check.py` reuses a kill
-whose file and killing fixtures are unchanged. That reuse is decided inside the run, which measures
-every other mutant, so nothing here reads it.
+run on the same branch whose key is the same reuses that verdict instead of measuring (`reusable`).
+Every campaign also leaves a ledger of its per-mutant verdicts (`LEDGER_ARTIFACT`), and
+`mutation_check.py` reuses a kill whose file and killing fixtures are unchanged. That reuse is decided
+inside the run, which measures every other mutant, so nothing here reads it.
 """
 
 import re
-
-LABEL = "automerge"
-
-DISPLAY_CONTEXT = "Mutation campaign"
 
 WORKFLOW = "mutation.yml"
 
 PATH = ".github/workflows/" + WORKFLOW
 
-# The workflow whose pass a recovery waits for before it dispatches a campaign onto a head, and whose
-# failure cancels the head's open campaign, by the file it runs. The hand-off at push time waits for
-# neither. CONTRIBUTING.md's continuous-integration section owns why.
-AFTER = ".github/workflows/test.yml"
-
-# The job of `AFTER` that concludes over every other, by the name it declares.
-AGGREGATE = "Required checks (Unity)"
-
-RUNNING, PASSED, CANCELLED, FAILED = "running", "passed", "cancelled", "failed"
+# The `name:` the workflow declares, which a check listing carries as the workflow a check belongs to.
+NAME = "Mutation campaign"
 
 # The artifact a passing campaign uploads: its key, and for a run that reused a verdict the run that
 # measured it. A name rather than a file, so a REST listing of the run's artifacts carries it.
@@ -50,111 +33,14 @@ KEY_ARTIFACT = re.compile(r"Mutation campaign key ([0-9a-f]{64})(?: reused from 
 LEDGER_ARTIFACT = "Mutation campaign ledger"
 
 
-def newest(runs):
-    """The newest run of `WORKFLOW` among an Actions runs listing's entries, or None.
-
-    A head can carry more than one campaign — a dispatch onto a head whose campaign was cancelled
-    runs another — and only the newest is a verdict about it.
-    """
-    ours = [run for run in runs if run.get("path") == PATH]
-    return max(ours, key=lambda run: run.get("run_number") or 0, default=None)
-
-
-def state(runs, concluded):
-    """None where no campaign ran on the head, and otherwise what the newest one concluded.
-
-    `concluded` answers what a run concluded, or None while it has not finished:
-    `expected_checks.conclusion` over the head's jobs, so a campaign GitHub leaves open after its jobs
-    completed, or one untouched for its bound, is not running forever. `success` alone is a pass, and
-    a conclusion the table here does not name is a failure until somebody classifies it.
-    """
-    run = newest(runs)
-    if run is None:
-        return None
-    found = concluded(run)
-    if found is None:
-        return RUNNING
-    return {"success": PASSED, "cancelled": CANCELLED}.get(found, FAILED)
-
-
-def after_order(run):
-    """Where a run of `AFTER` sits among the head's, newest last: `expected_checks.failed`'s order."""
-    return run.get("run_number") or 0, run.get("run_attempt") or 1
-
-
-def newest_after(runs):
-    """The newest `pull_request` run of `AFTER` among the head's runs, or None.
-
-    A run of another event is left out, since `base-red` runs on a `pull_request` run alone.
-    """
-    ours = [run for run in runs if run.get("path") == AFTER and run.get("event") == "pull_request"]
-    return max(ours, key=after_order, default=None)
-
-
-def after_passed(runs, concluded, jobs):
-    """Whether `newest_after` concluded `success`.
-
-    `concluded` answers as it does for `state`, over `jobs`, each run's latest attempt's jobs by run
-    id. A run still open passes only once `AGGREGATE` is listed among those and passed, rather than
-    once every job listed so far has.
-    """
-    run = newest_after(runs)
-    if run is None or concluded(run) != "success":
-        return False
-    return run.get("status") == "completed" or any(
-        job.get("name") == AGGREGATE and job.get("status") == "completed"
-        and job.get("conclusion") == "success" for job in jobs.get(run.get("id")) or [])
-
-
 def others(runs):
-    """The runs of every workflow but `WORKFLOW`: `reason` alone decides what a campaign owes, so a
-    reading of what the head's other runs owe leaves it out."""
+    """The runs of every workflow but `WORKFLOW`."""
     return [run for run in runs if run.get("path") != PATH]
 
 
-def superseded_suites(runs):
-    """The check suites of every campaign on the head but the newest, whose checks decide nothing."""
-    kept = newest(runs)
-    return {run.get("check_suite_id") for run in runs
-            if run.get("path") == PATH and run is not kept}
-
-
-def reason(labels, found, head, stuck, unbacked=None):
-    """Why the campaign on a head blocks its merge, or None. `found` is `state`'s answer, and
-    `stuck` is how to end the newest campaign where GitHub never will, which a running one names.
-
-    One that ran has to have passed, and a head carrying the label has to have one that passed. A
-    cancelled one measured nothing, so it holds a labelled head alone. A pass that reused a verdict
-    holds the head as well when `unbacked` says its key record, or the run it cites, cannot be shown
-    to stand.
-    """
-    short = head[:7]
-    if found == PASSED and unbacked:
-        return f"its {WORKFLOW} run on {short} does not stand: it {unbacked}"
-    if found == PASSED or (found in (None, CANCELLED) and LABEL not in labels):
-        return None
-    if found is None:
-        return (f"it carries the {LABEL} label and no {WORKFLOW} run has measured {short}: a "
-                f"hand-off dispatches one when the label is added, a labelled draft is marked ready, a "
-                f"labelled pull request is reopened or its head is pushed, and the merge job and the "
-                f"sweep dispatch one once {AFTER} has passed on it, for a branch of this repository "
-                f"whose base holds automerge.yml, and adding the label again asks again; for any "
-                f"other branch the label comes off before a merge by hand")
-    if found == RUNNING:
-        return f"its {WORKFLOW} run on {short} has not finished ({stuck})"
-    if found == CANCELLED:
-        return (f"its {WORKFLOW} run on {short} was cancelled: adding the label again dispatches "
-                f"another")
-    return f"its {WORKFLOW} run on {short} failed"
-
-
-def dispatch_owed(found):
-    """Whether a hand-off starts a campaign on a head, from `state`'s answer for it.
-
-    A running one is left to finish, and a failed one is a verdict, which a push or a re-run of its
-    failed jobs asks again.
-    """
-    return found in (None, CANCELLED)
+def suites(runs):
+    """The check suites of every campaign among `runs`, whose checks decide no merge."""
+    return {run.get("check_suite_id") for run in runs if run.get("path") == PATH}
 
 
 def key_artifact_name(key, reused_from=None):
@@ -221,59 +107,6 @@ def reusable(key, candidates):
     return None
 
 
-def own_problem(payload):
-    """Why a run's own key artifacts cannot be relied on, or None.
-
-    A run with no key artifact at all is a pre-change run and is accepted. One whose key artifact
-    exists but has expired, or that holds two live ones, fails closed: the record that would say
-    whether it measured or reused is unreadable.
-    """
-    listed = payload.get("artifacts") if isinstance(payload, dict) else None
-    if not isinstance(listed, list):
-        return None
-    found = [item for item in listed if isinstance(item, dict)
-             and KEY_ARTIFACT.fullmatch(item.get("name") or "")]
-    live = [item for item in found if not item.get("expired")]
-    if found and not live:
-        return "holds a key artifact that has expired"
-    names = [KEY_ARTIFACT.fullmatch(item["name"]) for item in live]
-    if len({match.group(1) for match in names}) > 1:
-        return "holds key artifacts of more than one key"
-    if len(names) > 1 and keyed(payload) is None:
-        return "holds more than one key artifact"
-    return None
-
-
-def unbacked(payload, source_run, source_payload):
-    """Why the verdict a run reused does not stand, or None where it was measured or stands.
-
-    `payload` is the run's own artifacts listing, and `source_run` with `source_payload` the run it
-    cites and that run's, each None where it could not be read. The cited run has to be a pass of
-    `WORKFLOW` whose own key artifact says it measured this very key.
-    """
-    problem = own_problem(payload)
-    if problem:
-        return problem
-    found = keyed(payload)
-    if found is None or found[1] is None:
-        return None
-    key, cited = found
-    if source_run is None:
-        return f"cites run {cited}, which could not be read"
-    if not passed_run(source_run) or source_run.get("id") != cited:
-        return f"cites run {cited}, which is not a pass of {WORKFLOW}"
-    measuring = keyed(source_payload)
-    if measuring is None:
-        return f"cites run {cited}, whose key artifact is missing, expired or ambiguous"
-    if measuring != (key, None):
-        return f"cites run {cited}, which did not itself measure this key"
-    return None
-
-
 def artifacts_path(slug, run_id):
     """The listing, below the API root, of the artifacts of a run."""
     return f"repos/{slug}/actions/runs/{run_id}/artifacts?per_page=100"
-
-
-def run_path(slug, run_id):
-    return f"repos/{slug}/actions/runs/{run_id}"
