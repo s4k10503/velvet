@@ -1176,6 +1176,7 @@ namespace Velvet
                 (_durationSec, _delaySec, _easing) = float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
                     : (_heldDurationSec, _heldDelaySec, _heldEasing);
                 _durationSec *= _shortening;
+                // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
                 if (_delaySec < 0f) _delaySec *= _shortening;
             }
             _elapsedSec += dtSec;

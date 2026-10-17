@@ -149,6 +149,8 @@ namespace Velvet.Tests
                 "The terminal slice reverts its holders ahead of the layout effects it commits");
         }
 
+        // GREEN_ON_BASE(refactor): the refusal is armed after the immediate drain, which renders the pending state on
+        // the head and the component's entry on both, so only the time-sliced pass reaches the refusing row.
         [Test]
         public void Given_ATimeSlicedTransitionReconcile_When_ItsResumedSliceThrowsPastEveryInPassBoundary_Then_TheOuterFallbackReadsTheHolderAndItsReaderWithoutTheEntry()
         {
@@ -156,13 +158,13 @@ namespace Velvet.Tests
             // boundary is above the fiber being resumed, so the throw leaves the slice rather than being caught in it
             using var mounted = V.Mount(_root, V.Component(AbortRootRender, key: "abort-root"), CaughtErrors.Unlogged);
             var sliced = s_fiber;
-            s_refuse = true;
             s_start.Invoke(() =>
             {
                 s_add.Invoke("sent");
                 s_setTick.Invoke(1);
             });
             mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_refuse = true;
             var shownBefore = ReadLabels();
             sliced.FlushStateWithTinyBudgetForTest();
             var parked = sliced.HasPendingReconcileWorkForTest();

@@ -30,7 +30,7 @@ namespace Velvet.Tests
         // does not hold out. A literal rather than the complement of the family, so a family that swallowed
         // a mapped member cannot shrink both sides of the comparison together. Updated deliberately when a
         // MAPPED property is added; a filter member added to the resolver's set leaves it where it is.
-        private const int MappedPropertyCount = 86;
+        private const int MappedPropertyCount = 87;
 
         private readonly List<UnityEngine.Object> _spawned = new();
 
@@ -114,8 +114,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the vocabulary reaches every inline slot one-to-one on the base as well.
-        // The case reads no ArbitraryProperty member, so the six logical radius members this branch adds leave it
-        // as it was; it keeps a later gap or a mis-aimed accessor from reading as agreement.
+        // The case reads no ArbitraryProperty member, so the flex shorthand member this branch adds leaves it as it
+        // was; it keeps a later gap or a mis-aimed accessor from reading as agreement.
         [Test]
         public void Given_EveryInlineStyleSlot_When_ReachedThroughTheLonghandVocabulary_Then_ExactlyOneLonghandReachesEach()
         {
@@ -182,6 +182,12 @@ namespace Velvet.Tests
         private string ProbeInlineWrites(ArbitraryProperty property)
         {
             var probe = new VisualElement();
+            // A drop-shadow colour writes the filter only beside a size, as Tailwind's colour rule writes no filter.
+            if (property == ArbitraryProperty.FilterDropShadowColor)
+            {
+                StyleArbitraryValueResolver.Apply(probe, ProbeValue(ArbitraryProperty.FilterDropShadow));
+                probe.style.filter = StyleKeyword.Null;
+            }
             StyleArbitraryValueResolver.Apply(probe, ProbeValue(property));
             var style = probe.style;
             return Join(s_inlineSlots
@@ -212,7 +218,12 @@ namespace Velvet.Tests
                 return new ArbitraryStyle(property,
                     new CustomFilterValue("probe", definition, new[] { new FilterParameter(0.5f) }));
             }
-            return MotionPropertyClassParser.IsColor(property)
+            if (property == ArbitraryProperty.FilterDropShadow)
+            {
+                return new ArbitraryStyle(property, new DropShadowValue(
+                    new[] { new DropShadowLayer(1f, 2f, 3f, Color.black) }, literal: false, alpha: null));
+            }
+            return MotionPropertyClassParser.IsColor(property) || property == ArbitraryProperty.FilterDropShadowColor
                 ? new ArbitraryStyle(property, Color.red)
                 : new ArbitraryStyle(property, 7f, LengthUnit.Pixel);
         }

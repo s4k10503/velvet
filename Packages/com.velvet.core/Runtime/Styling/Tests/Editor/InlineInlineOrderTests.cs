@@ -111,6 +111,7 @@ namespace Velvet.Tests
         [TestCase("duration-[300ms] duration-[500ms]", "duration-[500ms]")]
         [TestCase("aspect-[4/3] aspect-[16/9]", "aspect-[16/9]")]
         [TestCase("blur-[2px] blur-[4px]", "blur-[4px]")]
+        [TestCase("drop-shadow-sm drop-shadow-lg", "drop-shadow-sm")]
         [TestCase("grow-[2] grow-[3]", "grow-[3]")]
         [TestCase("!w-[1px] !w-[2px]", "!w-[2px]")]
         [TestCase("w-[2px]! w-[1px]!", "w-[2px]!")]
@@ -125,7 +126,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves every token of these lists as written.
+        // GREEN_ON_BASE(characterization): the base leaves every token of these lists as written, and this branch
+        // leaves the drop-shadow-sm drop-shadow-white pair it adds to them as written too.
         // Each is a pair that does not contend for a property (another property, another layer, a variant, an
         // important class that stays a class, a slash size that stays beside a plain one, an identical
         // token, a shorthand beside its longhand that another pass orders), so leaving an inline token out for a
@@ -143,6 +145,7 @@ namespace Velvet.Tests
         [TestCase("md:w-[1px] w-[2px]")]
         [TestCase("hover:w-[1px] hover:w-[2px]")]
         [TestCase("blur-[2px] brightness-[1.5]")]
+        [TestCase("drop-shadow-sm drop-shadow-white")]
         [TestCase("border-[3px] border-[#ff0000]")]
         [TestCase("border-[3px] bg-red-500")]
         [TestCase("text-[14px]/6 text-[16px]")]
