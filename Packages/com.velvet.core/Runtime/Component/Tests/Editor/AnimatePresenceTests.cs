@@ -640,6 +640,7 @@ namespace Velvet.Tests
             Assert.That(Root.childCount, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base removed the child in the removing reconcile, so the one after it finds it gone as well.
         [Test]
         public void Given_ChildWithoutTransition_When_RemovedAndReconciledAgain_Then_ElementLeaves()
         {
@@ -676,6 +677,7 @@ namespace Velvet.Tests
             Assert.That(Root.childCount, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base removed the child in the removing reconcile, so the one after it finds it gone as well.
         [Test]
         public void Given_TransitionConfigNone_When_RemovedAndReconciledAgain_Then_ElementLeaves()
         {
@@ -740,6 +742,7 @@ namespace Velvet.Tests
             Assert.That(LabelTexts(), Is.EqualTo("a"));
         }
 
+        // GREEN_ON_BASE(characterization): the base dropped the old child and mounted the new one in the swapping reconcile, so the one after it shows the new child as well.
         [Test]
         public void Given_WaitModeAndAnExitWithNothingToAnimate_When_KeySwapsAndReconcilesAgain_Then_TheNewChildMountsOnTheReconcileThatDropsTheOld()
         {
@@ -775,6 +778,7 @@ namespace Velvet.Tests
             Assert.That(LabelTexts(), Is.EqualTo("a"));
         }
 
+        // GREEN_ON_BASE(characterization): the base removed the child in the removing reconcile, so the one after it renders only the staying child as well.
         [Test]
         public void Given_WaitModeWithAChildThatStays_When_AnotherChildIsRemovedAndReconciledAgain_Then_OnlyTheStayingChildRenders()
         {

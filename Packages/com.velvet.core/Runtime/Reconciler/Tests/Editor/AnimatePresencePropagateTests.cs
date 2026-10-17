@@ -736,6 +736,7 @@ namespace Velvet.Tests
             Assert.That(HostChildCount, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base dropped the outer child in the removing render, so it is gone on the next render as well.
         [TestCase("wrapper")]
         [TestCase("top")]
         public void Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesOnTheNextRender(
@@ -772,6 +773,7 @@ namespace Velvet.Tests
             Assert.That(HostChildCount, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base dropped the outer child in the removing render, so it is gone on the next render as well.
         [TestCase("middle")]
         [TestCase("middle-top")]
         public void Given_APresenceBetweenThatDoesNotPropagate_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesOnTheNextRender(

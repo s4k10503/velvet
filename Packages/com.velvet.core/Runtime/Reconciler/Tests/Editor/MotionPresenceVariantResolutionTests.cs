@@ -207,6 +207,7 @@ namespace Velvet.Tests
             Assert.That(s_exitCompletions, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base ran the completion once in the removing render, so it has run once after the flush as well.
         [Test]
         public void Given_ASpringExitWithNoChannelToDrive_When_TheRemovingRendersEffectsFlush_Then_OnExitCompleteRunsOnce()
         {
