@@ -6,8 +6,8 @@ namespace Velvet
     /// <summary>
     /// The single state setter returned by <see cref="Hooks.UseState{T}(T)"/>. Accepts either a
     /// replacement value (<c>setValue(next)</c>) or a functional
-    /// updater (<c>setValue(prev =&gt; next)</c>). The functional form always reads the latest committed
-    /// value, so it is safe to invoke from a closure captured by an earlier render (no stale-closure pitfall).
+    /// updater (<c>setValue(prev =&gt; next)</c>). The functional form receives the state the updates written before
+    /// it produce, so it is safe to invoke from a closure captured by an earlier render (no stale-closure pitfall).
     /// </summary>
     /// <remarks>
     /// A struct (no allocation) wrapping the two cached closures built once at slot creation. The wrapped
@@ -36,8 +36,9 @@ namespace Velvet
         public void Invoke(T next) => _setValue?.Invoke(next);
 
         /// <summary>
-        /// Computes the next state from the latest committed value (<c>setValue(prev =&gt; next)</c>).
-        /// Reads the current value at invocation time, so it is safe to call from a stale closure.
+        /// Computes the next state from the state the updates written before this one produce
+        /// (<c>setValue(prev =&gt; next)</c>), so it is safe to call from a stale closure. It runs at the call
+        /// while no update is queued, and otherwise in the render that applies it.
         /// </summary>
         /// <param name="updater">Function receiving the latest value and returning the next value. Must not be null.</param>
         public void Invoke(Func<T, T> updater) => _updateValue?.Invoke(updater);

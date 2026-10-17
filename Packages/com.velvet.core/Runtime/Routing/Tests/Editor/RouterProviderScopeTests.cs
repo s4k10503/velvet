@@ -51,7 +51,7 @@ namespace Velvet.Tests
 
         private static class Probe
         {
-            public static Func<string, VelvetTask<NavigationResult>>? Navigate;
+            public static NavigateFunction? Navigate;
             public static SearchParamsSetter? SetSearchParams;
             public static NavigationState Navigation;
             public static string? LocationPath;

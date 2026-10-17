@@ -32,7 +32,7 @@ does.
 beyond the 32-bit integer range stacks at that end of it, as CSS clamps it (`z-2147483648` stacks as
 `z-2147483647`). Each form also accepts the important modifier (`!z-10`, `z-10!`, `!z-[5]`, `z-[5]!`): an
 important `z-*` wins over every plain one on the same element wherever it sits in the class list, and within
-either group the later class wins.
+either group the one Tailwind emits last wins (`z-20 z-10` gives 20).
 
 ## How it works
 

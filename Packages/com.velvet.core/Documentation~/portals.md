@@ -17,7 +17,7 @@ V.WorldSpace(anchor.position, children: …);          // into a world-space pan
 does. Nothing is published and nothing is named, so two mounted trees in one process cannot collide,
 and an element reached through a `refCallback` is a valid container without being registered first.
 
-A ref attaches at the end of the reconcile pass
+A ref attaches in the layout commit after the reconcile pass
 ([react-migration.md, lifecycle mapping](react-migration.md#3-lifecycle-mapping) states when), so a
 container the same pass creates is not in the ref while that pass renders. Reading it for a portal's
 target lands on the render after the one that created the container — the render a `UseState` write

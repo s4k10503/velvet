@@ -366,6 +366,12 @@ namespace Velvet
         // first, which leaves a property they share to z.
         internal static int CompareUtilities(string a, string z) => SortKey.Of(a).CompareTo(SortKey.Of(z));
 
+        // Two utilities written without a variant ordered by candidate name, where Tailwind's sort ends for two that
+        // declare the same properties. StyleFamilyOrder asks it of the families a C# resolver reads, whose tokens
+        // carry no longhand the sort key could count.
+        internal static int CompareCandidates(string a, string z)
+            => StyleCandidateOrder.Compare(TailwindSpellingOf(a), TailwindSpellingOf(z));
+
         private static int? ShorthandIndexOf(StyleLonghandSet set)
         {
             foreach (var (shorthandSet, index) in s_shorthandIndexes)

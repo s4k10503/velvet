@@ -144,6 +144,20 @@ namespace Velvet.Tests
                 Is.EqualTo("result=Success path=/users/7 data=user-7"));
         });
 
+        [Test]
+        public void Given_ANavigationAwaitingItsLoader_When_ANavigationOnlyAddsAFragment_Then_NoNavigationIsLeftInFlight()
+        {
+            // Arrange
+            var (router, _) = RouterAwaitingItsLoader();
+            router.NavigateAsync("/users/7").Forget();
+
+            // Act
+            router.NavigateAsync("/home#top").GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(router.Navigation.State, Is.EqualTo(NavigationLifecycle.Idle));
+        }
+
         [UnityTest]
         public IEnumerator Given_ANavigationAwaitingItsLoader_When_TheLoaderResolves_Then_ThePendingDestinationIsWithdrawn()
             => VelvetTask.ToCoroutine(async () =>
