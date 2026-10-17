@@ -48,32 +48,12 @@ namespace Velvet
             for (var i = 0; i < input.Length; i++)
             {
                 var c = input[i];
-
-                if (IsDigit(c))
-                {
-                    valuePos = i;
-                }
-                else if (valuePos != null && (c == '%' || IsLower(c) || (c >= 'A' && c <= 'Z')))
-                {
-                    valuePos = i;
-                }
-                else
-                {
-                    lastValuePos = valuePos;
-                    valuePos = null;
-                }
+                TrackValue(c, i, ref valuePos, ref lastValuePos);
 
                 if (c == '(')
                 {
                     result.Append(c);
-                    var start = i;
-                    for (var j = i - 1; j >= 0 && (IsDigit(input[j]) || IsLower(input[j])); j--)
-                    {
-                        start = j;
-                    }
-                    var fn = input.Substring(start, i - start);
-                    var mathContext = Array.IndexOf(s_mathFunctions, fn) >= 0 || (Top(formattable) && fn.Length == 0);
-                    formattable.Insert(0, mathContext);
+                    formattable.Insert(0, OpensMathContext(input, i, formattable));
                     continue;
                 }
 
@@ -103,6 +83,29 @@ namespace Velvet
             }
 
             return result.ToString();
+        }
+
+        private static void TrackValue(char c, int i, ref int? valuePos, ref int? lastValuePos)
+        {
+            if (IsDigit(c) || (valuePos != null && (c == '%' || IsLower(c) || (c >= 'A' && c <= 'Z'))))
+            {
+                valuePos = i;
+                return;
+            }
+            lastValuePos = valuePos;
+            valuePos = null;
+        }
+
+        // Whether the parenthesis at open opens a math function, or a group inside one.
+        private static bool OpensMathContext(string input, int open, List<bool> formattable)
+        {
+            var start = open;
+            for (var j = open - 1; j >= 0 && (IsDigit(input[j]) || IsLower(input[j])); j--)
+            {
+                start = j;
+            }
+            var fn = input.Substring(start, open - start);
+            return Array.IndexOf(s_mathFunctions, fn) >= 0 || (Top(formattable) && fn.Length == 0);
         }
 
         private static void AppendOperator(StringBuilder result, string input, int i, char c, int? lastValuePos)

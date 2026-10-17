@@ -229,6 +229,13 @@ namespace Velvet
                 if (slice.HasValue) return slice.Value;
             }
 
+            return TryParseLengthBracket(prefix, valueSpan, negate, lengthHinted, out result);
+        }
+
+        private static bool TryParseLengthBracket(
+            string prefix, ReadOnlySpan<char> valueSpan, bool negate, bool lengthHinted, out ArbitraryStyle result)
+        {
+            result = default;
             if (!TryGetProperty(prefix, out var property)
                 || (IsInferredLength(property) && !lengthHinted && !SpellsUnitAsTailwindInfers(valueSpan)))
             {
