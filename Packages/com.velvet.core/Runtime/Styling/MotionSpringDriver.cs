@@ -454,6 +454,65 @@ namespace Velvet
             }
         }
 
+        /// <summary>
+        /// <see cref="InheritVelocity(MotionSpringState, MotionSpringState)"/> for a bezier play: each channel the two
+        /// share is released at the bezier channel's slope at its current time.
+        /// </summary>
+        public static void InheritVelocity(MotionSpringState next, BezierTweenState interrupted, float rate)
+        {
+            Inherit(next, next.Opacity, interrupted.Opacity, interrupted, rate);
+            Inherit(next, next.TranslateX, interrupted.TranslateX, interrupted, rate);
+            Inherit(next, next.TranslateY, interrupted.TranslateY, interrupted, rate);
+            Inherit(next, next.Scale, interrupted.Scale, interrupted, rate);
+            Inherit(next, next.Rotate, interrupted.Rotate, interrupted, rate);
+            if (next.Lengths != null && interrupted.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    var match = interrupted.Lengths.Find(l => l.Property == length.Property && l.Unit == length.Unit);
+                    Inherit(next, length.Value, match?.Value, interrupted, rate);
+                }
+            }
+        }
+
+        /// <summary>
+        /// <see cref="InheritVelocity(MotionSpringState, MotionSpringState)"/> for a channel a native transition is
+        /// moving, whose rate <paramref name="nativeVelocity"/> reads for a slot in a unit.
+        /// </summary>
+        public static void InheritVelocity(MotionSpringState next, System.Func<ArbitraryProperty, LengthUnit, float?> nativeVelocity)
+        {
+            InheritNative(next, next.Opacity, nativeVelocity, ArbitraryProperty.Opacity, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateX, nativeVelocity, ArbitraryProperty.TranslateX, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateY, nativeVelocity, ArbitraryProperty.TranslateY, LengthUnit.Pixel);
+            InheritNative(next, next.Scale, nativeVelocity, ArbitraryProperty.Scale, LengthUnit.Pixel);
+            InheritNative(next, next.Rotate, nativeVelocity, ArbitraryProperty.Rotate, LengthUnit.Pixel);
+            if (next.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    InheritNative(next, length.Value, nativeVelocity, length.Property, length.Unit);
+                }
+            }
+        }
+
+        private static void InheritNative(MotionSpringState next, SpringChannel? channel, System.Func<ArbitraryProperty, LengthUnit, float?> nativeVelocity,
+            ArbitraryProperty slot, LengthUnit unit)
+        {
+            if (channel != null && nativeVelocity(slot, unit) is { } velocity)
+            {
+                Release(next, channel, channel.Origin, velocity);
+            }
+        }
+
+        private static void Inherit(MotionSpringState next, SpringChannel? channel, BezierTweenChannel? interrupted,
+            BezierTweenState state, float rate)
+        {
+            if (channel != null && interrupted != null)
+            {
+                Release(next, channel, channel.Origin, BezierTweenDriver.VelocityOf(state, interrupted) * rate);
+            }
+        }
+
         // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
         public static bool EndsAtFrom(MotionSpringState state) => state.Repeat.EndsAtFrom;
 
