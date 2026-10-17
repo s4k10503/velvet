@@ -70,9 +70,6 @@ namespace Velvet
             Apply(element.style, hold);
         }
 
-        internal static bool Playing(VisualElement element) =>
-            s_holds.TryGetValue(element, out var hold) && hold.Plays.Count > 0;
-
         internal static void Forget(VisualElement element) => s_holds.Remove(element);
 
         // A slot that differs from the value this class last wrote there is code's: it becomes the element's own, and

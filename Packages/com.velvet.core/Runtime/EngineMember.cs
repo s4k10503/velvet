@@ -111,12 +111,15 @@ namespace Velvet
             VisualElementType, "HasRunningAnimation", "System.Boolean", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
         internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
-            "UnityEngine.UIElements.StylePropertyName", "id", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
+            "UnityEngine.UIElements.StylePropertyName", "id", StylePropertyIdShape);
 
-        // NativeTransitionVelocity's read of a running transition's timing and values. The generic members declare
-        // the shape "*", which any type satisfies, because a field typed by a generic parameter has no spelling.
+        // The transitions a panel's style animation system is running, read by NativeTransitionVelocity (a running
+        // transition's timing and values) and RunningStyleTransition (the same, and what a reversal of it runs back to).
+        // The generic members declare the shape "*", which any type satisfies, because a field typed by a generic
+        // parameter has no spelling.
         private const string AnimationSystemType = "UnityEngine.UIElements.StylePropertyAnimationSystem";
-        private const string StylePropertyIdShape = "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId";
+        private const string StylePropertyIdType = "UnityEngine.UIElements.StyleSheets.StylePropertyId";
+        private const string StylePropertyIdShape = "enum:" + StylePropertyIdType;
 
         internal static readonly EngineMember PanelStyleAnimationSystem = ReadProperty(UIElements,
             "UnityEngine.UIElements.BaseVisualElementPanel", "styleAnimationSystem",
@@ -125,6 +128,9 @@ namespace Velvet
         internal static readonly EngineMember AnimationSystemValues = Field(UIElements, AnimationSystemType,
             "m_PropertyToValues", "System.Collections.Generic.Dictionary`2[" + StylePropertyIdShape + ","
             + AnimationSystemType + "+Values]");
+
+        internal static readonly EngineMember AnimationSystemFloats =
+            Field(UIElements, AnimationSystemType, "m_Floats", AnimationSystemType + "+ValuesFloat");
 
         internal static readonly EngineMember AnimationSystemTime =
             Field(UIElements, AnimationSystemType, "m_CurrentTime", "System.Double");
@@ -151,11 +157,23 @@ namespace Velvet
         internal static readonly EngineMember AnimationTimingEasing = Field(UIElements,
             AnimationSystemType + "+Values`1+TimingData", "easingCurve", "System.Func`2[System.Single,System.Single]");
 
+        internal static readonly EngineMember AnimationTimingEased =
+            Field(UIElements, AnimationSystemType + "+Values`1+TimingData", "easedProgress", "System.Single");
+
+        internal static readonly EngineMember AnimationTimingReversingShortening = Field(UIElements,
+            AnimationSystemType + "+Values`1+TimingData", "reversingShorteningFactor", "System.Single");
+
         internal static readonly EngineMember AnimationStyleStart =
             Field(UIElements, AnimationSystemType + "+Values`1+StyleData", "startValue", "*");
 
         internal static readonly EngineMember AnimationStyleEnd =
             Field(UIElements, AnimationSystemType + "+Values`1+StyleData", "endValue", "*");
+
+        internal static readonly EngineMember AnimationStyleReversingStart = Field(UIElements,
+            AnimationSystemType + "+Values`1+StyleData", "reversingAdjustedStartValue", "*");
+
+        internal static readonly EngineMember OpacityPropertyId =
+            Field(UIElements, StylePropertyIdType, "Opacity", StylePropertyIdShape);
 
         // FiberLayoutReflow's layout computation ahead of a commit's layout reads.
         private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";
