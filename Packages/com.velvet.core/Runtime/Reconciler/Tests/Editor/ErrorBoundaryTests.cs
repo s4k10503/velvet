@@ -554,6 +554,9 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(BoundaryWithBrokenFallbackRender, key: "broken-fallback-boundary-logged"), CaughtErrors.Unlogged);
             s_trackingShouldThrow = true;
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test fallback content error");
+            LogAssert.Expect(LogType.Warning,
+                "An error occurred in the <ErrorBoundaryTests.BrokenFallbackContentRender> component.\n\n"
+                + "Consider adding an error boundary to your tree to customize error handling behavior.");
 
             // Act
             s_trackingSetTick.Invoke(1);

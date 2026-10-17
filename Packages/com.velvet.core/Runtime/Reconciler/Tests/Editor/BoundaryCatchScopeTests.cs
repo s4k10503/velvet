@@ -728,6 +728,9 @@ namespace Velvet.Tests
             // error the boundary was showing its fallback for goes no further
             s_throws = true;
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Broken fallback content");
+            LogAssert.Expect(LogType.Warning,
+                "An error occurred in the <BoundaryCatchScopeTests.BrokenFallbackContentRender> component.\n\n"
+                + "Consider adding an error boundary to your tree to customize error handling behavior.");
 
             // Act
             using var mounted = V.Mount(_root, V.Component(BrokenAloneHostRender, key: "host"), CaughtErrors.Unlogged);
