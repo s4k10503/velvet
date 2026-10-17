@@ -44,6 +44,7 @@ namespace Velvet.Tests
                 : $"{filter[0].type}:{filter[0].GetParameter(filter[0].type == FilterFunctionType.Custom ? 2 : 0).floatValue}";
         }
 
+        // GREEN_ON_BASE(characterization): the base re-applies the surviving bracketed blur once blur-none is removed.
         [Test]
         public void Given_ABlurBracketBesideBlurNone_When_BlurNoneIsRemoved_Then_TheBracketedBlurReturns()
         {
