@@ -162,6 +162,10 @@ namespace Velvet
             return PlacementOfCore(core) == Placement.Both && IsControl(target) && TryGetBox(target, out box);
         }
 
+        // What an input does to its text with no overflow utility on it: it clips. UI Toolkit draws an ellipsis only
+        // on a text element that clips itself, so a text-overflow utility brings this along to the box's text.
+        public const string BoxTextClip = "overflow-hidden";
+
         // The element inside a box that draws its text, which a text-overflow utility lands on as well: CSS
         // applies text-overflow to the input, whose own text it is.
         public static bool TryGetBoxText(VisualElement box, string core, out VisualElement text)

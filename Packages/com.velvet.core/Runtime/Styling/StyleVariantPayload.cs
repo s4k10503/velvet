@@ -100,6 +100,7 @@ namespace Velvet
                 if (StyleInputBoxSurface.TryGetBoxText(dest, core, out var boxText))
                 {
                     ToggleResolvedPayload(boxText, payload, on, effectivePriority, ctx, declaration);
+                    ToggleResolvedPayload(boxText, StyleInputBoxSurface.BoxTextClip, on, effectivePriority, ctx, declaration);
                 }
 
                 // A clip-path payload (hover:clip-path-[…], dark:/first:clip-path-[…], …) was just toggled as a class,

@@ -781,6 +781,38 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEllipsisAloneOnATextField_When_Reconciled_Then_TheTextTheInputBoxDrawsClips()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "text-ellipsis") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Box(scope.Root[0]).Q<TextElement>().ClassListContains("overflow-hidden"), Is.True);
+        }
+
+        [Test]
+        public void Given_AnEllipsisAloneOnATextField_When_ItIsDropped_Then_TheTextTheInputBoxDrawsStopsClipping()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var first = new VNode[] { V.TextField(className: "text-ellipsis") };
+            var second = new VNode[] { V.TextField(className: "w-64") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+            var text = Box(scope.Root[0]).Q<TextElement>();
+            var took = text.ClassListContains("overflow-hidden");
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, first, second);
+
+            // Assert
+            Assert.That((took, text.ClassListContains("overflow-hidden")), Is.EqualTo((true, false)));
+        }
+
+        [Test]
         public void Given_ATruncatedTextField_When_TruncateIsDropped_Then_TheTextTheInputBoxDrawsGivesItUp()
         {
             // Arrange
