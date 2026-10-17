@@ -169,6 +169,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASeatedChildWithItsOwnTranslate_When_ATranslatePlayResolves_Then_ItStartsFromTheOwnTranslate()
+        {
+            // Arrange — the seat shifts the slot by -8px (the centroid sits above the caster's centre
+            // under a positive shear), so a read of the slot would start the play from -4px.
+            var element = MountInFixedParent();
+            element.style.translate = new Translate(4f, 0f, 0f);
+            SeatedTranslate.Seat(element, new SeatFrame(10f, 10f, 100f, 100f, 0.2f, 0f));
+
+            // Act
+            var plan = Resolve(element, new string[0], new[] { "translate-x-[20px]" });
+
+            // Assert
+            Assert.That(plan.TranslateX?.from ?? float.NaN, Is.EqualTo(4f).Within(1e-5f));
+        }
+
+        [Test]
         public void Given_AMountedTranslateWithOnlyAYTarget_When_Resolved_Then_XKeepsItsFrameAndYStartsFromItsFrame()
         {
             // Arrange

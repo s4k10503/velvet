@@ -129,7 +129,7 @@ namespace Velvet
 
         // Where core lands: the control's input box for a surface utility (StyleInputBoxSurface), else the
         // control. A box a gate token reaches is put on the record a paint re-sync reads first.
-        private static VisualElement DestinationOf(ReconcilerContext? ctx, VisualElement control, string core,
+        internal static VisualElement DestinationOf(ReconcilerContext? ctx, VisualElement control, string core,
             bool on)
         {
             var dest = StyleInputBoxSurface.DestinationFor(control, core);

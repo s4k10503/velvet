@@ -225,7 +225,7 @@ namespace Velvet
                     return Float(slot, style.opacity, out value);
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
-                    return Translate(slot, style.translate, out value);
+                    return Translate(slot, SeatedTranslate.Read(Owner(slot)), out value);
                 case ArbitraryProperty.Scale:
                     return Scale(slot, style.scale, out value);
                 case ArbitraryProperty.Rotate:

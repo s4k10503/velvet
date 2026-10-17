@@ -10,12 +10,13 @@ namespace Velvet
     // gives way to a class of the element's own (a divider, a space margin) re-applies after each add or
     // remove.
     //
-    // With the element's reconciler context, a gate token is told to the composed class source as a variant
-    // payload is (ReconcilerContext.TrackPlayGate) and the class-driven passes re-run, so a play's gap-*,
-    // shadow-* or skew-* applies while the play shows it. A bracket value a preset play shows (realiseInline)
-    // is applied as an inline layer at the play's priority beside its list entry. A Motion's own poses leave
-    // theirs to the reconciler's inline hold (FiberNodePatcher.HoldInlineForEnter, PlanInlineExit), which
-    // writes them at the base priority.
+    // A class lands where a payload of it would (StyleVariantPayload.DestinationOf): a field control's surface
+    // utility on its input box. With the element's reconciler context, a gate token is told to the composed
+    // class source as a variant payload is (ReconcilerContext.TrackPlayGate) and the class-driven passes re-run,
+    // so a play's gap-*, shadow-* or skew-* applies while the play shows it. A bracket value a preset play shows
+    // (realiseInline) is applied as an inline layer at the play's priority beside its list entry. A Motion's own
+    // poses leave theirs to the reconciler's inline hold (FiberNodePatcher.HoldInlineForEnter, PlanInlineExit),
+    // which writes them at the base priority.
     internal static class StyleAnimationClassUtils
     {
         // The bracket values each element shows as an inline layer for a play, so only a layer this applied
@@ -27,36 +28,35 @@ namespace Velvet
         internal static void AddClasses(VisualElement element, string[] classes, long priority = StyleLayerPriority.Base,
             ReconcilerContext? ctx = null, bool realiseInline = false)
         {
-            var gateChanged = false;
+            var changes = new Changes(element);
             foreach (var cls in classes)
             {
-                CornerRadiusFit.TrackClass(element, cls);
-                Add(element, cls, priority);
                 var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                var dest = StyleVariantPayload.DestinationOf(ctx, element, core, on: true);
+                CornerRadiusFit.TrackClass(dest, cls);
+                Add(dest, cls, priority);
                 if (realiseInline && priority != StyleLayerPriority.Base)
                 {
-                    ShowInline(element, core, priority);
+                    ShowInline(dest, core, priority);
                 }
-                gateChanged |= ctx != null && ctx.TrackPlayGate(element, core, priority, on: true);
+                changes.Note(dest, ctx != null && ctx.TrackPlayGate(dest, core, priority, on: true), core);
             }
-            Changed(element, ctx, gateChanged);
+            changes.Settle(ctx);
         }
 
         // Ranks classes a play leaves on the element as the element's own from now on.
         internal static void Rest(VisualElement element, string[]? classes, ReconcilerContext? ctx = null)
         {
             if (classes == null) return;
-            var gateChanged = false;
+            var changes = new Changes(element);
             foreach (var cls in classes)
             {
-                StyleClassProjection.RawRested(element, cls);
-                gateChanged |= ctx != null
-                    && ctx.RestPlayGate(element, StyleArbitraryValueResolver.StripImportant(cls, out _));
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                var dest = StyleVariantPayload.DestinationOf(ctx, element, core, on: true);
+                StyleClassProjection.RawRested(dest, cls);
+                changes.Note(dest, ctx != null && ctx.RestPlayGate(dest, core), core);
             }
-            if (gateChanged)
-            {
-                ctx!.VariantGatedReSync?.Invoke(element);
-            }
+            changes.ReSync(ctx);
         }
 
         // Removes each class, except one kept names, which is added instead: a play may have removed it
@@ -65,25 +65,33 @@ namespace Velvet
             ReconcilerContext? ctx = null)
         {
             if (classes == null) return;
-            var gateChanged = false;
+            var changes = new Changes(element);
             foreach (var cls in classes)
             {
                 var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-                if (kept != null && System.Array.IndexOf(kept, cls) >= 0)
+                var keep = kept != null && System.Array.IndexOf(kept, cls) >= 0;
+                var dest = StyleVariantPayload.DestinationOf(ctx, element, core, on: keep);
+                if (keep)
                 {
-                    Add(element, cls, StyleLayerPriority.Base);
-                    gateChanged |= ctx != null && ctx.TrackPlayGate(element, core, StyleLayerPriority.Base, on: true);
+                    Add(dest, cls, StyleLayerPriority.Base);
+                    changes.Note(dest, ctx != null && ctx.TrackPlayGate(dest, core, StyleLayerPriority.Base, on: true),
+                        core);
                 }
                 else
                 {
-                    element.RemoveFromClassList(cls);
-                    StyleClassProjection.RawRemoved(element, cls);
-                    gateChanged |= ctx != null && ctx.TrackPlayGate(element, core, StyleLayerPriority.Animation, on: false);
+                    dest.RemoveFromClassList(cls);
+                    StyleClassProjection.RawRemoved(dest, cls);
+                    changes.Note(dest,
+                        ctx != null && ctx.TrackPlayGate(dest, core, StyleLayerPriority.Animation, on: false), core);
                 }
-                HideInline(element, core);
+                HideInline(dest, core);
             }
-            Changed(element, ctx, gateChanged);
+            changes.Settle(ctx);
         }
+
+        // Drops the record of the play layers an element shows, which go with the element's layers
+        // (StyleArbitraryValueResolver.ClearAll).
+        internal static void ForgetShownLayers(VisualElement element) => s_inlineShown.Remove(element);
 
         private static void Add(VisualElement element, string cls, long priority)
         {
@@ -113,15 +121,73 @@ namespace Velvet
             StyleArbitraryValueResolver.Clear(element, in style, StyleLayerPriority.Animation);
         }
 
-        private static void Changed(VisualElement element, ReconcilerContext? ctx, bool gateChanged)
+        // The element a call wrote to and, at most, its input box, each with whether a gate token moved there.
+        // A clip-path class moving re-resolves the mask of a clip wrapper the element already has, as a payload's
+        // does (StyleVariantPayload.Apply); a play builds none.
+        private struct Changes
         {
-            ClipPathLayoutBox.SyncClasses(element);
-            StyleArbitraryValueResolver.NotifyClassesChanged(element);
-            if (gateChanged)
+            private readonly VisualElement _control;
+            private VisualElement? _box;
+            private bool _controlGate;
+            private bool _boxGate;
+            private bool _clip;
+
+            public Changes(VisualElement control)
             {
-                ctx!.VariantGatedReSync?.Invoke(element);
+                _control = control;
+                _box = null;
+                _controlGate = false;
+                _boxGate = false;
+                _clip = false;
             }
-            SilhouetteFaceStash.NotifyClassesChanged(element);
+
+            public void Note(VisualElement dest, bool gateChanged, string core)
+            {
+                _clip |= ReferenceEquals(dest, _control) && StyleClipPathClass.IsClipPathClass(core);
+                if (ReferenceEquals(dest, _control))
+                {
+                    _controlGate |= gateChanged;
+                    return;
+                }
+                _box = dest;
+                _boxGate |= gateChanged;
+            }
+
+            public void Settle(ReconcilerContext? ctx)
+            {
+                Settle(_control, ctx, _controlGate);
+                if (_clip)
+                {
+                    ctx?.ClipPathReResolve?.Invoke(_control);
+                }
+                if (_box != null)
+                {
+                    Settle(_box, ctx, _boxGate);
+                }
+            }
+
+            public void ReSync(ReconcilerContext? ctx)
+            {
+                if (_controlGate)
+                {
+                    ctx!.VariantGatedReSync?.Invoke(_control);
+                }
+                if (_boxGate)
+                {
+                    ctx!.VariantGatedReSync?.Invoke(_box!);
+                }
+            }
+
+            private static void Settle(VisualElement element, ReconcilerContext? ctx, bool gateChanged)
+            {
+                ClipPathLayoutBox.SyncClasses(element);
+                StyleArbitraryValueResolver.NotifyClassesChanged(element);
+                if (gateChanged)
+                {
+                    ctx!.VariantGatedReSync?.Invoke(element);
+                }
+                SilhouetteFaceStash.NotifyClassesChanged(element);
+            }
         }
     }
 }

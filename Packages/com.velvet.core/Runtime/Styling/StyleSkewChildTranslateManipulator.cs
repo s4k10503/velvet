@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -6,13 +7,17 @@ namespace Velvet
 {
     // Approximates CSS skewX / skewY's descendant shear on a skewed caster's direct children. UI Toolkit's
     // transform has no shear, so SkewSilhouette paints only the caster's own box sheared while its children
-    // stay axis-aligned; without compensation they float free of the slanted frame. This manipulator writes
-    // each in-flow child a translate that seats its CENTROID where the shear would carry it, using the same
-    // model SilhouetteBoundsSpacer.ShearedAabb documents: a point (x, y) maps to
-    // (x + (y - h/2)*tanX, y + (x - w/2)*tanY). The compensation is exact only at each child's centroid and
-    // piecewise-constant across the child (a real shear also rotates it), so a child large relative to the
-    // caster reads slightly off at its far corners. It is the manual counter-translate a CSS author would
-    // otherwise hand-write per row, made automatic.
+    // stay axis-aligned; without compensation they float free of the slanted frame. This manipulator seats
+    // each in-flow child's CENTROID where the shear would carry it, using the same model
+    // SilhouetteBoundsSpacer.ShearedAabb documents: a point (x, y) maps to (x + (y - h/2)*tanX, y + (x - w/2)*tanY).
+    // The compensation is exact only at each child's centroid and piecewise-constant across the child (a real
+    // shear also rotates it), so a child large relative to the caster reads slightly off at its far corners.
+    //
+    // The seat composes with the child's own translate as CSS composes the parent's transform with the child's:
+    // the child shows its own translate plus the shear's displacement at its translated centroid
+    // (SeatedTranslate). Velvet's translate writers go through SeatedTranslate, so a static translate-x-*, a
+    // Motion driver's frame or a drag keeps moving the child while it is seated, and the child's own value is
+    // what is left when the seat goes.
     //
     // Owned by the caster's SkewBinding rather than a ReconcilerContext dictionary, so every
     // SkewSilhouette.Detach path (pool reset, root disposal) tears it down for free. Lifecycle mirrors
@@ -23,56 +28,15 @@ namespace Velvet
     //
     // Unlike gap's layout-independent margin writes, the centroid math needs a real Yoga pass: pre-layout it
     // no-ops (the same NaN / non-positive guard SkewSilhouette.Draw uses) and defers to the first geometry
-    // event. Out-of-flow children (StyleOutOfFlowChild) are skipped — which also excludes the caster's own
-    // SilhouetteBoundsSpacer and any PopLayout-pinned exit ghost, whose frozen position a translate would
-    // fight. While active the manipulator OWNS each direct child's translate slot: an explicit translate-x-*
-    // on such a child, or a live spring / drag write, is overwritten every Apply (the same limitation class as
-    // gap's ml-2 overwrite); a needs-its-own-translate child wants an inner wrapper. To make a STATIC
-    // translate-x-* survive losing the parent's skew, the child's own inline translate is CAPTURED before the
-    // first shear overwrite and written back on reset — GetClasses cannot recover it, since translate has no
-    // USS form and the reconciler applies translate-x-* inline without recording it in the class list. At reset
-    // the capture is written back ONLY onto a child the manipulator still owns (a direct in-flow child): one that
-    // moved out of the container or was recycled by the element pool for another node is released untouched, so a
-    // translate it legitimately acquired after leaving management is never clobbered by a stale capture. A child
-    // that transitions to OUT-OF-FLOW while still attached is handled eagerly instead: it holds no seat in the
-    // slanted frame yet still carries the shear write, so its captured pre-shear translate is restored and it is
-    // dropped — but ONLY while it still carries the exact shear the manipulator last wrote. The out-of-flow
-    // signal is resolvedStyle-based and can lag the class change by a re-seat pass, so a child can go out-of-flow
-    // AND author its own translate before the relinquish fires; a current translate that no longer matches the
-    // last shear is that authored value, and is left untouched rather than clobbered back to the stale capture.
-    // Restoring only the still-untouched shear keeps a stale offset from lingering on a seatless element and from
-    // being re-captured as a 'baseline' on a later return to flow. A child leaving the panel drops itself from
-    // tracking the instant it detaches, closing the window where the pool could reuse its instance while a stale
-    // capture was still keyed to it.
+    // event. Out-of-flow children (StyleOutOfFlowChild) hold no seat — which also excludes the caster's own
+    // SilhouetteBoundsSpacer and any PopLayout-pinned exit ghost. A child that leaves the container, goes
+    // out-of-flow or leaves the panel is unseated, which writes its own translate back.
     internal sealed class StyleSkewChildTranslateManipulator : Manipulator
     {
         private readonly SkewBinding _binding;
 
-        // A tracked child's captured pre-shear OWN translate paired with the LAST shear the manipulator wrote to
-        // it. Own restores the child's static translate-x-* on relinquish (a child with none was captured as
-        // Null); Shear is the proof-of-ownership probe — the child still carrying that exact value means the
-        // manipulator's write is intact and safe to clear, whereas any other value is one the child authored
-        // itself and must survive.
-        private readonly struct SeatState
-        {
-            public readonly StyleTranslate Own;
-            public readonly StyleTranslate Shear;
-
-            public SeatState(StyleTranslate own, StyleTranslate shear)
-            {
-                Own = own;
-                Shear = shear;
-            }
-
-            public SeatState WithShear(StyleTranslate shear) => new SeatState(Own, shear);
-        }
-
-        // Every child a shear translate was written to, mapped to its seat state. Unskew writes the captured Own
-        // back onto a child the manipulator still owns, so its static translate-x-* is preserved rather than
-        // erased. A child that goes out-of-flow while still attached is restored to its capture and dropped — but
-        // only while it still carries the last Shear, so a translate it authored across the transition survives;
-        // one that has left the container entirely is dropped untouched, its translate now legitimately its own.
-        private readonly Dictionary<VisualElement, SeatState> _seated = new();
+        // Every child this seated (SeatedTranslate.Seat), so unskew and relinquish can unseat it.
+        private readonly HashSet<VisualElement> _seated = new();
 
         // Signature of the last successful Apply. Apply() early-returns when it is unchanged, so the
         // GeometryChanged churn the manipulator's own writes provoke, and patches that touch nothing relevant,
@@ -165,24 +129,12 @@ namespace Velvet
                     // A freshly added child not yet through a Yoga pass — seat it on the next geometry event.
                     continue;
                 }
-                var offset = ComputeOffset(
-                    layout.x + (layout.width * 0.5f), layout.y + (layout.height * 0.5f), w, h, tanX, tanY);
-                StyleTranslate shear = new Translate(new Length(offset.x), new Length(offset.y));
-                // Capture the child's own translate once, before the first overwrite, so unskew can restore it;
-                // record the shear just written so relinquish can tell a still-owned seat from a translate the
-                // child later authored for itself.
-                if (_seated.TryGetValue(child, out var seat))
+                SeatedTranslate.Seat(child, new SeatFrame(
+                    layout.x + (layout.width * 0.5f), layout.y + (layout.height * 0.5f), w, h, tanX, tanY));
+                if (_seated.Add(child))
                 {
-                    _seated[child] = seat.WithShear(shear);
-                }
-                else
-                {
-                    _seated[child] = new SeatState(child.style.translate, shear);
-                    // A seated child leaving the panel drops itself from tracking before the element pool can
-                    // hand the instance to an unrelated node, so a later restore never lands a stale capture.
                     child.RegisterCallback<DetachFromPanelEvent>(OnChildDetach);
                 }
-                child.style.translate = shear;
             }
 
             _lastSignature = signature;
@@ -200,82 +152,42 @@ namespace Velvet
             return new Vector2(dx, dy);
         }
 
-        // Restores the captured translate onto every child the manipulator wrote a shear to, then stops tracking
-        // all. Invoked on unskew / detach, which can fire before any re-seat has relinquished a child that just
-        // went out-of-flow — so this teardown must relinquish such a child the same way DropUnmanaged would, not
-        // skip it. A still-owned in-flow child is restored unconditionally (it always carries the latest shear); a
-        // child now out-of-flow but still attached and STILL carrying the exact shear is restored too, so the
-        // stale offset does not leak on a seatless element (and cannot be re-captured as its 'own' baseline on a
-        // later return to flow). A child that has left the container — or one out-of-flow that already carries a
-        // translate it authored across the transition — keeps that value: forcing the stale capture back would clobber it.
+        // Unseats every seated child, which writes its own translate back. Invoked on unskew / detach.
         private void Clear()
         {
-            var container = ChildContainer;
-            foreach (var pair in _seated)
+            foreach (var child in _seated)
             {
-                var child = pair.Key;
-                if (IsManaged(child, container))
-                {
-                    child.style.translate = pair.Value.Own;
-                }
-                else
-                {
-                    RestoreRelinquishedShear(child, pair.Value, container);
-                }
+                SeatedTranslate.Unseat(child);
                 child.UnregisterCallback<DetachFromPanelEvent>(OnChildDetach);
             }
             _seated.Clear();
             _hasSignature = false;
         }
 
-        // Relinquishes every tracked child the manipulator no longer owns before the re-seat, in two kinds. A
-        // child still under this container but now OUT-OF-FLOW may still carry the shear translate the manipulator
-        // wrote while holding no seat in the slanted frame — restore its captured pre-shear translate so that
-        // stale offset does not linger (leaving it would also let a later return to flow re-capture the shear as
-        // the child's 'own' baseline and restore it forever on a future unskew), but only while it still carries
-        // that exact shear so a translate it authored across the transition is not clobbered. A child that has
-        // LEFT the container keeps whatever translate it has: it is legitimately its own now, exactly as Clear
-        // leaves it. Either way the drop frees a re-seat to re-capture a fresh baseline should the child return.
+        // Unseats every seated child that has left the container or gone out-of-flow, before the re-seat, which
+        // re-seats one that returns.
         private void DropUnmanaged(VisualElement container)
         {
             List<VisualElement>? stale = null;
-            foreach (var pair in _seated)
+            foreach (var child in _seated)
             {
-                if (!IsManaged(pair.Key, container))
+                if (!IsManaged(child, container))
                 {
-                    (stale ??= new List<VisualElement>()).Add(pair.Key);
+                    (stale ??= new List<VisualElement>()).Add(child);
                 }
             }
             if (stale != null)
             {
                 foreach (var child in stale)
                 {
-                    // A still-parented non-managed child went out-of-flow (the one non-managed reason left once
-                    // container membership holds); restore its pre-shear capture, guarded so a translate it
-                    // authored across the same transition survives. See RestoreRelinquishedShear.
-                    RestoreRelinquishedShear(child, _seated[child], container);
                     Forget(child);
                 }
             }
         }
 
-        // Restores a relinquished child's captured pre-shear translate, but ONLY while it is still attached to the
-        // container AND still carries the exact shear the manipulator last wrote. The out-of-flow signal is
-        // resolvedStyle-based and lags the class change, so a child can author its own translate across the same
-        // transition: a current value that no longer matches the shear is that authored translate and must
-        // survive. A child that has left the container is not restored — its translate is legitimately its own.
-        private static void RestoreRelinquishedShear(VisualElement child, in SeatState seat, VisualElement? container)
-        {
-            if (container != null && child.parent == container && child.style.translate == seat.Shear)
-            {
-                child.style.translate = seat.Own;
-            }
-        }
-
-        // A seated child leaving the panel is on its way to the element pool (or the whole tree is unmounting).
-        // Forget it now — without a write, since the pool scrubs translate on return — so the pool cannot hand
-        // the instance to an unrelated node while this manipulator still holds a stale capture keyed to it. The
-        // event trickles through the detaching subtree, so act only when this child is itself the one leaving.
+        // A seated child leaving the panel is unseated at once, so the pool cannot hand the instance to an
+        // unrelated node still seated. The event trickles through the detaching subtree, so act only when this
+        // child is itself the one leaving.
         private void OnChildDetach(DetachFromPanelEvent evt)
         {
             if (evt.currentTarget is VisualElement child && ReferenceEquals(evt.target, child))
@@ -284,13 +196,12 @@ namespace Velvet
             }
         }
 
-        // The single relinquish primitive both DropUnmanaged and OnChildDetach funnel through. The Remove gate
-        // makes it idempotent: whichever path fires second finds the child already gone, so the detach callback
-        // is never double-unregistered and an already-relinquished element is never touched again.
+        // The single relinquish primitive DropUnmanaged and OnChildDetach funnel through; idempotent.
         private void Forget(VisualElement child)
         {
             if (_seated.Remove(child))
             {
+                SeatedTranslate.Unseat(child);
                 child.UnregisterCallback<DetachFromPanelEvent>(OnChildDetach);
             }
         }
@@ -328,6 +239,96 @@ namespace Velvet
                 }
                 return hash;
             }
+        }
+    }
+
+    // Where a skewed caster seats one child: its laid-out centroid, the caster's box and the shear tangents.
+    internal readonly struct SeatFrame
+    {
+        public SeatFrame(float centerX, float centerY, float width, float height, float tanX, float tanY)
+        {
+            CenterX = centerX;
+            CenterY = centerY;
+            Width = width;
+            Height = height;
+            TanX = tanX;
+            TanY = tanY;
+        }
+
+        public float CenterX { get; }
+        public float CenterY { get; }
+        public float Width { get; }
+        public float Height { get; }
+        public float TanX { get; }
+        public float TanY { get; }
+    }
+
+    // An element's inline translate as its own writers see it, and as a skewed caster's seat composes it
+    // (StyleSkewChildTranslateManipulator). On an unseated element Read and Write are the slot itself; on a
+    // seated one the slot shows the composition and Read gives back what was written.
+    internal static class SeatedTranslate
+    {
+        private sealed class Seated
+        {
+            public StyleTranslate Own;
+            public SeatFrame Frame;
+        }
+
+        private static readonly ConditionalWeakTable<VisualElement, Seated> s_seated = new();
+
+        internal static StyleTranslate Read(VisualElement element)
+            => s_seated.TryGetValue(element, out var seated) ? seated.Own : element.style.translate;
+
+        internal static void Write(VisualElement element, StyleTranslate value)
+        {
+            if (!s_seated.TryGetValue(element, out var seated))
+            {
+                element.style.translate = value;
+                return;
+            }
+            seated.Own = value;
+            element.style.translate = Compose(value, seated.Frame);
+        }
+
+        // Seats element at frame, taking what its slot holds as its own translate when it was not seated.
+        internal static void Seat(VisualElement element, in SeatFrame frame)
+        {
+            if (!s_seated.TryGetValue(element, out var seated))
+            {
+                seated = new Seated { Own = element.style.translate };
+                s_seated.Add(element, seated);
+            }
+            seated.Frame = frame;
+            element.style.translate = Compose(seated.Own, frame);
+        }
+
+        internal static void Unseat(VisualElement element)
+        {
+            if (s_seated.TryGetValue(element, out var seated))
+            {
+                s_seated.Remove(element);
+                element.style.translate = seated.Own;
+            }
+        }
+
+        // Drops a seat without writing, for an element whose style is being scrubbed anyway.
+        internal static void Forget(VisualElement element) => s_seated.Remove(element);
+
+        // own plus the shear's displacement at the centroid own moves the child to. An axis own gives in a unit
+        // other than pixels cannot be summed with a pixel offset, so it is shown as written.
+        internal static StyleTranslate Compose(StyleTranslate own, in SeatFrame frame)
+        {
+            var set = own.keyword == StyleKeyword.Undefined;
+            var x = set ? own.value.x : new Length(0f);
+            var y = set ? own.value.y : new Length(0f);
+            var tx = x.unit == LengthUnit.Pixel ? x.value : 0f;
+            var ty = y.unit == LengthUnit.Pixel ? y.value : 0f;
+            var offset = StyleSkewChildTranslateManipulator.ComputeOffset(frame.CenterX + tx, frame.CenterY + ty,
+                frame.Width, frame.Height, frame.TanX, frame.TanY);
+            return new Translate(
+                x.unit == LengthUnit.Pixel ? new Length(tx + offset.x) : x,
+                y.unit == LengthUnit.Pixel ? new Length(ty + offset.y) : y,
+                set ? own.value.z : 0f);
         }
     }
 }
