@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Hooks.Editor: Given_AComponentRenderingIsPaused_When_ARetryPausesAfterTheLastFlush_Then_TheLabelShowsPaused, Given_AComponentRenderingTheFailureCount_When_AnAttemptFailsAfterTheLastFlush_Then_TheLabelShowsIt",
+ "file": "cbe3f83eeae253243d0b7694c7e46334053b1517f3c86bd78c40173506a1afda",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseMutationRetryTests.Given_AComponentRenderingIsPaused_When_ARetryPausesAfterTheLastFlush_Then_TheLabelShowsPaused",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationNetworkFixture.cs": "aa42f1a160f1666ad5836b12d293453383b671dd91ea8268658d21c82d2d6dc0",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationRetryTests.cs": "338eff05d7d8c17d3efe3e3de0db0e3c8f861c8ec71b7fe6984cd00d963e5da1",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/PlayMode/MutationNetworkFixture.cs": "d36eb54f9801b3f8edc3adfc45c2b4718218bae0777884c7a541f94e8580a9e1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseMutationRetryTests.Given_AComponentRenderingTheFailureCount_When_AnAttemptFailsAfterTheLastFlush_Then_TheLabelShowsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationNetworkFixture.cs": "aa42f1a160f1666ad5836b12d293453383b671dd91ea8268658d21c82d2d6dc0",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationRetryTests.cs": "338eff05d7d8c17d3efe3e3de0db0e3c8f861c8ec71b7fe6984cd00d963e5da1",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/PlayMode/MutationNetworkFixture.cs": "d36eb54f9801b3f8edc3adfc45c2b4718218bae0777884c7a541f94e8580a9e1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "39114472626",
+ "mutant": {
+  "after": ";",
+  "before": "FailureCount++;",
+  "column": 12,
+  "line": 249,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookMutation.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "959f77c918ae5230a01c974a42d8cda9c27af104938d5c5b0c29cb948db09c1c",
+ "verdict": "killed"
+}

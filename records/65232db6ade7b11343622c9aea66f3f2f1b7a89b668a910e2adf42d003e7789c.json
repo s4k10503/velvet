@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 6 case(s) that ran the site: Given_ANativeReadThatThrew_When_VisibilityIsReadAgain_Then_TheNativeReadIsNotRetried",
+ "file": "cb6809e798a6b331fa6410c19689d25f92575ea74e2adbeeb8f69258d1977abc",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ApplicationVisibilityTests.Given_ANativeReadThatThrew_When_VisibilityIsReadAgain_Then_TheNativeReadIsNotRetried",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/ApplicationVisibilityTests.cs": "835c626e407f4990202b5bdc051f7bf1a9438f54e391a5641892ea10a484eb87"
+   }
+  }
+ ],
+ "measured_by": "39114472626",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 32,
+  "line": 44,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Async/ApplicationVisibility.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "959f77c918ae5230a01c974a42d8cda9c27af104938d5c5b0c29cb948db09c1c",
+ "verdict": "killed"
+}

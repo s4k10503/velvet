@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Async.Editor: Given_RetryTrue_When_AnOperationFailsTenTimes_Then_ItIsRetriedUntilItSucceeds",
+ "file": "ce96aab05f54536683f4c377719aa706c43e77a35938953ff9474d1bd110210a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_RetryTrue_When_AnOperationFailsTenTimes_Then_ItIsRetriedUntilItSucceeds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "ca2a3559c3a178d5d2180513a92d094a778282b9513fbcec342d19ad7aa6d51b",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "39114472626",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 95,
+  "line": 236,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Async/RetryPolicy.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "959f77c918ae5230a01c974a42d8cda9c27af104938d5c5b0c29cb948db09c1c",
+ "verdict": "killed"
+}
