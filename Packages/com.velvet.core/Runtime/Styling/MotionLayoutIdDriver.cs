@@ -297,6 +297,7 @@ namespace Velvet
             var layout = element.layout;
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return projection.Scale;
 
+            MotionNativeTransitionGuard.Refresh(element);
             projection.ParentScale = ProjectedScale(parent, pass, ctx);
             var drawn = projection.Leader != null ? Followed(element, projection.Leader, ctx) : Drawn(projection, layout, projection.ParentScale);
             var delta = ComputeDelta(drawn, layout, TransformOrigin(element));
@@ -419,7 +420,7 @@ namespace Velvet
                 if (!projection.WritesTranslate)
                 {
                     projection.WritesTranslate = true;
-                    MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Translate);
+                    MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Translate);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
                 var own = projection.OwnTranslate;
@@ -434,7 +435,7 @@ namespace Velvet
                 if (!projection.WritesScale)
                 {
                     projection.WritesScale = true;
-                    MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Scale);
+                    MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Scale);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
                 var own = projection.OwnScale;
@@ -792,14 +793,14 @@ namespace Velvet
         {
             if (ctx.LayoutIdFollows.ContainsKey(element)) return;
             ctx.LayoutIdFollows[element] = element.style.visibility;
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, s_followOwner, MotionTransitionSlots.Visibility);
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, s_followOwner, MotionTransitionSlots.Visibility);
         }
 
         private static void Unfollow(VisualElement element, ReconcilerContext ctx)
         {
             if (!ctx.LayoutIdFollows.Remove(element, out var visibility)) return;
             // Taken out of a list a variant swap wrote since Follow, whose `all` would carry the write below
-            // (Given_AClosingModalWithATitle_When_ItComesBackMidExit_Then_ItsTitleIsShownAgain).
+            // (Given_AClosingModalWithATitle_When_ItComesBackMidExit_Then_ItsTitleDoesNotFadeAgain).
             MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_visibility);
             if (ctx.LayoutIdProjections.GetValueOrDefault(element)?.Leader != null) End(element, ctx);
             element.style.visibility = visibility;

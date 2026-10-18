@@ -12,7 +12,7 @@ namespace Velvet
     // SDF smoothstep): a vertex-only triangle fan has no per-pixel distance field to antialias its edges
     // against, so only a rasterized SDF bake can produce a soft edge here.
     //
-    // Bake-then-draw (not a live material) for the same reason DropShadow bakes: UITK freezes a custom
+    // Bake-then-draw (not a live material) for the same reason BoxShadow bakes: UITK freezes a custom
     // material's draw order under an animating ancestor transform.
     internal static class GradientSilhouetteBaker
     {
@@ -28,7 +28,7 @@ namespace Velvet
         // Leak guard: every baked texture is HideAndDontSave and survives a play-mode exit without a Domain
         // Reload. The owning binding releases its texture on teardown (Release), but if a play session exits
         // without the reconciler disposing, this registry lets the editor reset destroy the survivors —
-        // mirroring GradientBackground / DropShadowBaker, whose textures live in a static cache.
+        // mirroring GradientBackground / BoxShadowBaker, whose textures live in a static cache.
         private static readonly HashSet<Texture2D> s_baked = new();
 
         private static readonly int StopColorsId = Shader.PropertyToID("_StopColors");

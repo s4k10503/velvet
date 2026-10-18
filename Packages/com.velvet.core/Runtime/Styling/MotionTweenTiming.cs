@@ -21,6 +21,9 @@ namespace Velvet
             public StyleList<TimeValue> WrittenDuration;
             public StyleList<TimeValue> WrittenDelay;
             public StyleList<EasingFunction> WrittenCurve;
+            // The lists a layoutId narrowing derives from the element's own (MotionNativeTransitionGuard.Narrow), which
+            // stand over the element's own and under every play; null while nothing narrows.
+            public Play? Narrowed;
             // In start order. An enter and an exit can play on one element at once, and a cancelled exit's
             // reversal carries its play on.
             public readonly List<Play> Plays = new();
@@ -70,6 +73,46 @@ namespace Velvet
             Apply(element.style, hold);
         }
 
+        // Copies, as Write takes them. A null list leaves that slot to the element's own.
+        internal static void Narrow(VisualElement element, List<TimeValue>? duration, List<EasingFunction>? curve,
+            List<TimeValue>? delay)
+        {
+            var hold = s_holds.GetValue(element, s_save);
+            Adopt(element.style, hold);
+            hold.Narrowed = new Play
+            {
+                Duration = duration == null ? null : new StyleList<TimeValue>(new List<TimeValue>(duration)),
+                Curve = curve == null ? null : new StyleList<EasingFunction>(new List<EasingFunction>(curve)),
+                Delay = delay == null ? null : new StyleList<TimeValue>(new List<TimeValue>(delay)),
+            };
+            Apply(element.style, hold);
+        }
+
+        internal static void Unnarrow(VisualElement element)
+        {
+            if (!s_holds.TryGetValue(element, out var hold) || hold.Narrowed == null) return;
+            Adopt(element.style, hold);
+            hold.Narrowed = null;
+            Apply(element.style, hold);
+        }
+
+        // The element's own lists, a write of code's since this last wrote the slots taken as its own; the slots as they
+        // are where this holds nothing for the element.
+        internal static (StyleList<TimeValue> Duration, StyleList<TimeValue> Delay, StyleList<EasingFunction> Curve) Own(
+            VisualElement element)
+        {
+            var style = element.style;
+            if (!s_holds.TryGetValue(element, out var hold))
+            {
+                return (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction);
+            }
+            Adopt(style, hold);
+            return (hold.Own.Duration!.Value, hold.Own.Delay!.Value, hold.Own.Curve!.Value);
+        }
+
+        internal static bool Playing(VisualElement element) =>
+            s_holds.TryGetValue(element, out var hold) && hold.Plays.Count > 0;
+
         internal static void Forget(VisualElement element) => s_holds.Remove(element);
 
         // A slot that differs from the value this class last wrote there is code's: it becomes the element's own, and
@@ -79,16 +122,19 @@ namespace Velvet
             if (!Same(style.transitionDuration, hold.WrittenDuration))
             {
                 hold.Own.Duration = Copy(style.transitionDuration);
+                if (hold.Narrowed != null) hold.Narrowed.Duration = null;
                 foreach (var play in hold.Plays) play.Duration = null;
             }
             if (!Same(style.transitionDelay, hold.WrittenDelay))
             {
                 hold.Own.Delay = Copy(style.transitionDelay);
+                if (hold.Narrowed != null) hold.Narrowed.Delay = null;
                 foreach (var play in hold.Plays) play.Delay = null;
             }
             if (!Same(style.transitionTimingFunction, hold.WrittenCurve))
             {
                 hold.Own.Curve = Copy(style.transitionTimingFunction);
+                if (hold.Narrowed != null) hold.Narrowed.Curve = null;
                 foreach (var play in hold.Plays) play.Curve = null;
             }
         }
@@ -96,6 +142,12 @@ namespace Velvet
         private static void Apply(IStyle style, Hold hold)
         {
             var (duration, delay, curve) = (hold.Own.Duration!.Value, hold.Own.Delay!.Value, hold.Own.Curve!.Value);
+            if (hold.Narrowed is { } narrowed)
+            {
+                duration = narrowed.Duration ?? duration;
+                delay = narrowed.Delay ?? delay;
+                curve = narrowed.Curve ?? curve;
+            }
             foreach (var play in hold.Plays)
             {
                 duration = play.Duration ?? duration;

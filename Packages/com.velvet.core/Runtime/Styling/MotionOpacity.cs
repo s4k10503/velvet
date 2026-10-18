@@ -30,8 +30,8 @@ namespace Velvet
     //
     // An own opacity the element's classes give it — a static opacity-*, or a change of class a transition carries,
     // as a variant swap or a transition-opacity class does — is read off the cascade
-    // (StyleCascade) while a crossfade holds the slot, and its transition is run here, the engine's being suspended for
-    // the crossfade through MotionNativeTransitionGuard as for the per-frame drivers. A transition still running as
+    // (StyleCascade) while a crossfade holds the slot, and its transition is run here, opacity being taken out of the
+    // engine's transitions for the crossfade through MotionNativeTransitionGuard.Narrow. A transition still running as
     // the crossfade ends runs on here until it lands, and only then is the slot handed back.
     internal static class MotionOpacity
     {
@@ -52,7 +52,7 @@ namespace Velvet
         }
 
         private static readonly ConditionalWeakTable<VisualElement, Drawing> s_drawing = new();
-        // The owner of the transition suspension an element holds while a crossfade draws it.
+        // The owner of the narrowing an element holds while a crossfade draws it.
         private static readonly object s_owner = new();
 
         // Writes the element's own inline opacity for a driver that writes it every frame, Null handing it back to its
@@ -161,12 +161,12 @@ namespace Velvet
             // A value something else wrote into the slot is the element's own from then on, carried as the engine
             // would carry it.
             if (element.style.opacity != drawing.Written) drawing.OwnInline = element.style.opacity;
-            // The timing is read out of a held list before the suspension takes opacity out of it.
+            // The timing is read out of a held list before the narrowing takes opacity out of it.
             HoldTiming(element, drawing);
             ReadCascade(element, drawing);
             var intercepted = drawing.CascadeDurationSec > 0f
                 || (MotionNativeTransitionGuard.DeclaredSlots(element) & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None;
-            MotionNativeTransitionGuard.SyncSuspension(element, s_owner, MotionTransitionSlots.Opacity, intercepted);
+            MotionNativeTransitionGuard.Narrow(element, s_owner, MotionTransitionSlots.Opacity, intercepted);
             Carry(element, drawing, dtSec);
             Apply(element, drawing);
         }
@@ -188,7 +188,7 @@ namespace Velvet
         }
 
         // A list a variant swap holds inline names the timing the engine would have run opacity by. It is read as the
-        // swap writes it, before the suspension takes opacity out of it (Step).
+        // swap writes it, before the narrowing takes opacity out of it (Step).
         private static void HoldTiming(VisualElement element, Drawing drawing)
         {
             var style = element.style;

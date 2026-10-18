@@ -55,7 +55,7 @@ namespace Velvet
     // suppress an element's native rectangular background / border (UI Toolkit draws those at a fixed point in
     // its pipeline, BEFORE generateVisualContent, so a painter that needs to sit behind OR ahead of the fill —
     // a sheared face, an offset shadow halo — cannot interleave with the native chrome) and REPAINT that chrome
-    // in the element's own generateVisualContent: SkewSilhouette repaints it sheared; DropShadowSilhouette
+    // in the element's own generateVisualContent: SkewSilhouette repaints it sheared; BoxShadowSilhouette
     // repaints it UPRIGHT (tanX = tanY = 0) on top of a shadow quad so the opaque fill covers the shadow's
     // interior. The two shared pieces are the captured-face STASH (sentinel suppression + color capture +
     // patch-time re-sync) and the rounded-rect path BUILDER (sheared, an upright box being the zero-shear case).
@@ -225,7 +225,7 @@ namespace Velvet
     // are shared with the arbitrary-value resolver, so the stash must re-sync on every patch: a fresh resolver
     // value re-stashes directly; a USS-DRIVEN stash releases the sentinel on a class change and re-stashes on
     // the next style resolution, while an INLINE-driven stash is kept (an inline color only changes through a
-    // resolver write, which the re-stash branch already catches). Owned by a SkewBinding / DropShadowBinding /
+    // resolver write, which the re-stash branch already catches). Owned by a SkewBinding / BoxShadowBinding /
     // BorderStyleBinding; its lifecycle (TryStash on attach, SyncOnPatch on patch, Release on detach) is driven
     // by that binding.
     //

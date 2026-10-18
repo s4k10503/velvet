@@ -14,7 +14,7 @@ namespace Velvet
     // GPU/material economy: UI Toolkit's filter-list transition interpolation matches functions in part by
     // referring to the SAME definition on both sides of a tween, so a fresh CreateInstance per BuildFilter
     // call would silently break transition-all on brightness/saturate (the from/to list shapes would mismatch
-    // and snap instead of tweening). Built lazily off VelvetShaders.Find, mirroring DropShadowBaker's
+    // and snap instead of tweening). Built lazily off VelvetShaders.Find, mirroring BoxShadowBaker's
     // EnsureMaterial.
     internal static class BuiltInFilterDefinitions
     {
@@ -56,7 +56,7 @@ namespace Velvet
         }
 
         // An unavailable shader degrades to "layer omitted" rather than throwing, mirroring
-        // DropShadowBaker.EnsureMaterial.
+        // BoxShadowBaker.EnsureMaterial.
         private static FilterFunctionDefinition? Build(string shaderPath, string propertyName, string filterName)
         {
             var shader = VelvetShaders.Find(shaderPath, "Filter", "brightness/saturate layer");
@@ -182,7 +182,7 @@ namespace Velvet
 #if UNITY_EDITOR
         // These HideAndDontSave definitions survive a play-mode cycle that skips the domain reload, so drop the
         // cached references on subsystem registration to force the next resolve to rebuild — picking up a shader
-        // edit rather than serving a definition built in the prior session. Unlike DropShadowBaker's reset, this
+        // edit rather than serving a definition built in the prior session. Unlike BoxShadowBaker's reset, this
         // must NOT destroy the objects: a definition is referenced LIVE by every element that applied
         // brightness-* / saturate-* / drop-shadow-* (the FilterFunction in its style.filter holds the definition directly, where
         // a bake material is only a throwaway tool no element retains), so destroying it would strand those

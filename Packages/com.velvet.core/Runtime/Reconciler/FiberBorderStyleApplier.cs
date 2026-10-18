@@ -4,7 +4,7 @@ namespace Velvet
 {
     // The wrapper-less PAINT layer for border-dashed / border-dotted utilities: a dashed-outline painter
     // drawn via the element's own generateVisualContent. Defers to skew / shadow (FiberSkewApplier /
-    // FiberDropShadowApplier) when either already owns the whole face, since both repaint a solid border
+    // FiberBoxShadowApplier) when either already owns the whole face, since both repaint a solid border
     // themselves and would otherwise fight a dashed outline on the same element.
     internal sealed class FiberBorderStyleApplier
     {

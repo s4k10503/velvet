@@ -97,7 +97,9 @@ namespace Velvet
                 return false;
             }
 
+            var written = className;
             className = StyleNamedTextSize.WithoutLengthHint(className);
+            var lengthHinted = !ReferenceEquals(className, written);
 
             if (StyleBorderSideColor.TryParse(className, out result)
                 || StyleLogicalUtilities.TryParse(className, out result))
@@ -117,7 +119,7 @@ namespace Velvet
 
             // text-<size>/<leading> and text-[<length>]/<leading> set the font-size here because no USS rule can spell the suffix;
             // StyleTextEffectClass reads the same token for its line height.
-            if (StyleNamedTextSize.TryParseSlashFontSize(className, out result))
+            if (StyleNamedTextSize.TryParseSlashFontSize(written, out result))
             {
                 return true;
             }
@@ -163,11 +165,13 @@ namespace Velvet
                 return false;
             }
 
-            return TryParseBracketValue(prefix, valueSpan, negate, out result);
+            return TryParseBracketValue(prefix, valueSpan, negate, lengthHinted, out result);
         }
 
+        // lengthHinted: the class carried Tailwind's `length:` type hint, which skips the type tests
+        // TailwindReadsAsLength mirrors.
         private static bool TryParseBracketValue(
-            string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+            string prefix, ReadOnlySpan<char> valueSpan, bool negate, bool lengthHinted, out ArbitraryStyle result)
         {
             result = default;
 
@@ -231,9 +235,22 @@ namespace Velvet
                 if (slice.HasValue) return slice.Value;
             }
 
-            if (!TryGetProperty(prefix, out var property))
+            return TryParseLengthBracket(prefix, valueSpan, negate, lengthHinted, out result);
+        }
+
+        private static bool TryParseLengthBracket(
+            string prefix, ReadOnlySpan<char> valueSpan, bool negate, bool lengthHinted, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!TryGetProperty(prefix, out var property)
+                || (!lengthHinted && !TailwindReadsAsLength(property, valueSpan)))
             {
                 return false;
+            }
+
+            if (TryParseKeywordLength(property, valueSpan, negate, out result))
+            {
+                return true;
             }
 
             if (!negate && valueSpan.SequenceEqual("auto".AsSpan()) && TakesAuto(property))
@@ -262,6 +279,73 @@ namespace Velvet
             result = new ArbitraryStyle(property, value, unit);
             return true;
         }
+
+        // Where Tailwind reads a bracket as either a length or a colour, whether its type tests take this one for
+        // the length; a value they do not is written as a colour, which a browser discards. Every other property
+        // here takes the bracket as written.
+        private static bool TailwindReadsAsLength(ArbitraryProperty property, ReadOnlySpan<char> value)
+        {
+            if (IsBorderWidth(property))
+            {
+                return TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsNumber(value)
+                    || TailwindDataTypes.IsLineWidthKeyword(value);
+            }
+            if (property == ArbitraryProperty.FontSize)
+            {
+                return TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsPercentage(value)
+                    || TailwindDataTypes.IsFontSizeKeyword(value);
+            }
+            return true;
+        }
+
+        private static bool IsBorderWidth(ArbitraryProperty property)
+            => property is ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth
+                or ArbitraryProperty.BorderRightWidth or ArbitraryProperty.BorderBottomWidth
+                or ArbitraryProperty.BorderLeftWidth;
+
+        // A <line-width> keyword (thin, medium, thick) or a font-size keyword, at the sizes Chromium computes,
+        // where Tailwind's type tests hand one to border-width or font-size.
+        private static bool TryParseKeywordLength(
+            ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate)
+            {
+                return false;
+            }
+            var keyword = valueSpan.ToString();
+            if (IsBorderWidth(property) && s_lineWidthKeywords.TryGetValue(keyword, out var width))
+            {
+                result = new ArbitraryStyle(property, width, LengthUnit.Pixel);
+                return true;
+            }
+            if (property != ArbitraryProperty.FontSize)
+            {
+                return false;
+            }
+            if (s_absoluteFontSizes.TryGetValue(keyword, out var size))
+            {
+                result = new ArbitraryStyle(property, size, LengthUnit.Pixel);
+                return true;
+            }
+            return keyword switch
+            {
+                "larger" => TryParseRelativeLength(property, "1.2em".AsSpan(), false, out result),
+                "smaller" => TryParseRelativeLength(property, "calc(1em/1.2)".AsSpan(), false, out result),
+                _ => false,
+            };
+        }
+
+        private static readonly Dictionary<string, float> s_lineWidthKeywords = new()
+        {
+            ["thin"] = 1f, ["medium"] = 3f, ["thick"] = 5f,
+        };
+
+        private static readonly Dictionary<string, float> s_absoluteFontSizes = new()
+        {
+            ["xx-small"] = 9f, ["x-small"] = 10f, ["small"] = 13f, ["medium"] = 16f, ["large"] = 18f,
+            ["x-large"] = 24f, ["xx-large"] = 32f, ["xxx-large"] = 48f,
+        };
 
         // A length only an element can measure — em, a viewport unit, or a math function mixing a percentage
         // with a pixel length — is carried unresolved to ApplyInline, and only for the properties PropertySetters
@@ -994,7 +1078,7 @@ namespace Velvet
             {
                 return TryParseFloat(value.Slice(0, value.Length - 1), out inset) && inset >= 0f;
             }
-            var digits = value.EndsWith("px".AsSpan()) ? value.Slice(0, value.Length - 2) : value;
+            var digits = value.EndsWith("px".AsSpan(), StringComparison.OrdinalIgnoreCase) ? value.Slice(0, value.Length - 2) : value;
             var whole = int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var pixels);
             inset = pixels;
             return whole;
@@ -1007,12 +1091,12 @@ namespace Velvet
             seconds = 0f;
             float scale;
             ReadOnlySpan<char> num;
-            if (value.EndsWith("ms".AsSpan()))
+            if (value.EndsWith("ms".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 num = value.Slice(0, value.Length - 2);
                 scale = 0.001f;
             }
-            else if (value.EndsWith("s".AsSpan()))
+            else if (value.EndsWith("s".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 num = value.Slice(0, value.Length - 1);
                 scale = 1f;
@@ -3385,6 +3469,8 @@ namespace Velvet
         {
             value = 0;
             unit = LengthUnit.Pixel;
+            // A `_` at either end is the space a browser trims from the declaration Tailwind writes.
+            valueStr = valueStr.Trim("_ ".AsSpan());
 
             bool parsed;
             if (valueStr.Length > 0 && valueStr[valueStr.Length - 1] == '%')
@@ -3396,10 +3482,7 @@ namespace Velvet
                     CultureInfo.InvariantCulture,
                     out value);
             }
-            else if (valueStr.Length > 3
-                     && valueStr[valueStr.Length - 3] == 'r'
-                     && valueStr[valueStr.Length - 2] == 'e'
-                     && valueStr[valueStr.Length - 1] == 'm')
+            else if (valueStr.EndsWith("rem".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 // 1rem resolves to a fixed 16px (UI Toolkit has no rem unit), so the parsed head is
                 // scaled and emitted as a pixel length rather than carried as a distinct unit.
@@ -3410,9 +3493,7 @@ namespace Velvet
                     out value);
                 value *= 16f;
             }
-            else if (valueStr.Length > 1
-                     && valueStr[valueStr.Length - 2] == 'p'
-                     && valueStr[valueStr.Length - 1] == 'x')
+            else if (valueStr.EndsWith("px".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 unit = LengthUnit.Pixel;
                 parsed = float.TryParse(
@@ -3432,11 +3513,13 @@ namespace Velvet
             }
             else
             {
-                parsed = float.TryParse(
+                // A bare number is a length only as 0: the browser rejects the declaration Tailwind writes for
+                // any other.
+                parsed = (float.TryParse(
                     valueStr,
                     NumberStyles.Float,
                     CultureInfo.InvariantCulture,
-                    out value)
+                    out value) && value == 0f)
                     || (StyleLengthExpression.OpensMathFunction(valueStr) && StyleLengthExpression.TryParse(valueStr, out var expression)
                         && expression!.TryFoldConstant(out value, out unit));
             }
@@ -3444,19 +3527,42 @@ namespace Velvet
             return parsed && float.IsFinite(value);
         }
 
-        // CSS's absolute length units at their fixed ratio to a pixel (96 per inch); the match is
-        // case-sensitive, as Tailwind's length test is, so Q is upper case and the rest lower.
+        // CSS's absolute length units at their fixed ratio to a pixel (96 per inch).
         private static readonly (string Suffix, float Pixels)[] s_absoluteUnits =
         {
             ("in", 96f), ("cm", 96f / 2.54f), ("mm", 96f / 25.4f), ("pt", 96f / 72f), ("pc", 16f), ("Q", 96f / 101.6f),
         };
 
-        // The pixels in one of the absolute unit named exactly, for StyleLengthExpression's dimensions.
+        // TryParseArbitraryPixels where Tailwind reads the bracket as either a length or a colour (ring-, ring-offset-):
+        // its length test decides, and hands `2PX` or a bare `2` to the colour branch, which a browser discards.
+        internal static bool TryParseInferredArbitraryPixels(ReadOnlySpan<char> suffix, out float px)
+        {
+            px = 0f;
+            return TryStripBrackets(suffix, 0, out var inner) && TailwindDataTypes.IsLength(inner)
+                && TryParseArbitraryPixels(suffix, out px);
+        }
+
+        // A border-[…] width as TryParseBracketValue reads it, for a reader that has to agree with the width applied.
+        internal static bool TryParseBorderWidthPixels(ReadOnlySpan<char> suffix, out float px)
+        {
+            px = 0f;
+            if (!TryStripBrackets(suffix, 0, out var inner) || !TailwindReadsAsLength(ArbitraryProperty.BorderWidth, inner))
+            {
+                return false;
+            }
+            if (s_lineWidthKeywords.TryGetValue(inner.ToString(), out px))
+            {
+                return true;
+            }
+            return TryParseArbitraryPixels(suffix, out px);
+        }
+
+        // The pixels in one of the absolute units, for StyleLengthExpression's dimensions.
         internal static bool TryGetAbsoluteUnitPixels(ReadOnlySpan<char> unit, out float pixels)
         {
             foreach (var (suffix, perUnit) in s_absoluteUnits)
             {
-                if (unit.SequenceEqual(suffix.AsSpan()))
+                if (unit.Equals(suffix.AsSpan(), StringComparison.OrdinalIgnoreCase))
                 {
                     pixels = perUnit;
                     return true;
@@ -3470,7 +3576,7 @@ namespace Velvet
         {
             foreach (var (suffix, perUnit) in s_absoluteUnits)
             {
-                if (valueStr.Length > suffix.Length && valueStr.EndsWith(suffix.AsSpan(), StringComparison.Ordinal))
+                if (valueStr.EndsWith(suffix.AsSpan(), StringComparison.OrdinalIgnoreCase))
                 {
                     length = suffix.Length;
                     pixels = perUnit;
@@ -3511,7 +3617,8 @@ namespace Velvet
         }
 
         // Parses an angle (used by rotate-[..]) and normalizes it to degrees. Accepts the
-        // deg / rad / grad / turn suffixes; a bare number is degrees.
+        // deg / rad / grad / turn suffixes in any case; a bare number is degrees, which each caller
+        // narrows to what its CSS property takes (IsUnitlessAngle).
         // Internal so the extracted transform/filter parsers share the one angle grammar.
         internal static bool TryParseAngleDegrees(ReadOnlySpan<char> valueStr, out float degrees)
         {
@@ -3519,21 +3626,21 @@ namespace Velvet
 
             var factor = 1f;
             var numeric = valueStr;
-            if (valueStr.EndsWith("deg"))
+            if (valueStr.EndsWith("deg".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 3);
             }
-            else if (valueStr.EndsWith("grad"))
+            else if (valueStr.EndsWith("grad".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 4);
                 factor = 0.9f; // 400 grad = 360 deg
             }
-            else if (valueStr.EndsWith("rad"))
+            else if (valueStr.EndsWith("rad".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 3);
                 factor = Mathf.Rad2Deg;
             }
-            else if (valueStr.EndsWith("turn"))
+            else if (valueStr.EndsWith("turn".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 4);
                 factor = 360f;
@@ -3547,5 +3654,8 @@ namespace Velvet
             degrees = raw * factor;
             return true;
         }
+
+        // Whether an angle TryParseAngleDegrees accepted was a bare number, which is never empty.
+        internal static bool IsUnitlessAngle(ReadOnlySpan<char> valueStr) => !char.IsLetter(valueStr[valueStr.Length - 1]);
     }
 }

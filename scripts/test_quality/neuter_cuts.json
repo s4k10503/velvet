@@ -332,12 +332,12 @@
       "summary": "the reconciler attaches and syncs no drop shadow, at create or at patch",
       "edits": [
         {
-          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberDropShadowApplier.cs",
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs",
           "anchor": "internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)",
           "neuter": "return;"
         },
         {
-          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberDropShadowApplier.cs",
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs",
           "anchor": "float skewXDeg, bool canReleaseFace)",
           "neuter": "return;"
         }

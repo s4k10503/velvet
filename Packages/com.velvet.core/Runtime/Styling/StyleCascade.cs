@@ -64,17 +64,19 @@ namespace Velvet
                 ? (durationMs / 1000f, delayMs / 1000f, easing)
                 : (0f, 0f, EasingMode.Ease);
 
-        // The rules' transition-property with the element's inline duration, delay and curve lists wherever it holds them,
-        // as UI Toolkit combines the two.
+        // The rules' transition-property with the element's own inline duration, delay and curve lists wherever it holds
+        // them (MotionNativeTransitionGuard.OwnTiming), as UI Toolkit combines the two. Null where the cached style
+        // cannot be read.
+        public static TransitionLists? Lists(VisualElement element) =>
+            Transitions(element) is { } style ? Lists(style, element) : null;
+
         private static TransitionLists Lists(object style, VisualElement element)
         {
-            var inline = element.style;
+            var (duration, delay, curve) = MotionNativeTransitionGuard.OwnTiming(element);
             return new TransitionLists(s_property!.GetValue(style) as List<StylePropertyName>,
-                inline.transitionDuration.keyword == StyleKeyword.Undefined ? inline.transitionDuration.value : s_duration!.GetValue(style) as List<TimeValue>,
-                inline.transitionDelay.keyword == StyleKeyword.Undefined ? inline.transitionDelay.value : s_delay!.GetValue(style) as List<TimeValue>,
-                inline.transitionTimingFunction.keyword == StyleKeyword.Undefined
-                    ? inline.transitionTimingFunction.value
-                    : s_curve!.GetValue(style) as List<EasingFunction>);
+                duration.keyword == StyleKeyword.Undefined ? duration.value : s_duration!.GetValue(style) as List<TimeValue>,
+                delay.keyword == StyleKeyword.Undefined ? delay.value : s_delay!.GetValue(style) as List<TimeValue>,
+                curve.keyword == StyleKeyword.Undefined ? curve.value : s_curve!.GetValue(style) as List<EasingFunction>);
         }
 
         private static object? Transitions(VisualElement element)
@@ -85,6 +87,31 @@ namespace Velvet
             if (!s_readsTransitions) return null;
             return Of(element);
         }
+
+        // The key UI Toolkit caches the element's matched rules under, which changes with them; null where it cannot be
+        // read. Read by an accessor compiled once, where FieldInfo.GetValue boxes both the style and the key on every pass
+        // that reads it (Given_ANarrowedLeadMidMove_When_ItsProjectionRefreshes_Then_NothingIsAllocated); IL2CPP, which
+        // compiles nothing at run time, reads it boxed, as ComponentPropsComparer's AOT arm does.
+        public static long? RulesHash(VisualElement element)
+        {
+            if (s_style == null || s_hash == null) return null;
+#if !ENABLE_IL2CPP
+            if (s_compiledHash != null) return s_compiledHash(element);
+#endif
+            return (long)s_hash.GetValue(s_style.GetValue(element));
+        }
+
+#if !ENABLE_IL2CPP
+        private static readonly Func<VisualElement, long>? s_compiledHash = CompileHash();
+
+        private static Func<VisualElement, long>? CompileHash()
+        {
+            if (s_style == null || s_hash == null) return null;
+            var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
+            var hash = System.Linq.Expressions.Expression.Field(System.Linq.Expressions.Expression.Field(element, s_style), s_hash);
+            return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, long>>(hash, element).Compile();
+        }
+#endif
 
         public static bool TryReadOpacity(object style, out float opacity)
         {

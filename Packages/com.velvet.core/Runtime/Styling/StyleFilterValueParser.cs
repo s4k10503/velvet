@@ -88,7 +88,7 @@ namespace Velvet
             {
                 if (!StyleArbitraryValueResolver.TryParseAngleDegrees(valueSpan, out var deg)) return false;
                 // CSS takes an angle here, and a number only where it is zero.
-                if (deg != 0f && IsUnitless(valueSpan))
+                if (deg != 0f && StyleArbitraryValueResolver.IsUnitlessAngle(valueSpan))
                 {
                     return false;
                 }
@@ -135,9 +135,6 @@ namespace Velvet
             }
             return StyleArbitraryValueResolver.TryParseFloat(valueSpan, out amount);
         }
-
-        // Called only on a value TryParseAngleDegrees accepted, which is never empty.
-        private static bool IsUnitless(ReadOnlySpan<char> valueSpan) => !char.IsLetter(valueSpan[valueSpan.Length - 1]);
 
         // Tailwind's --drop-shadow-* theme, and the bare drop-shadow's deprecated --drop-shadow.
         private static readonly Dictionary<string, DropShadowLayer[]> s_dropShadowPreset = new()

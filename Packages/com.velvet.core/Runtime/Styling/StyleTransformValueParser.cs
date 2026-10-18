@@ -87,11 +87,12 @@ namespace Velvet
         }
 
         // An angle, which the length grammar rejects outright rather than converting: deg / rad / grad /
-        // turn all normalise to degrees here.
+        // turn all normalise to degrees here. The rotate property takes no bare number, 0 included.
         private static bool TryParseRotate(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (!StyleArbitraryValueResolver.TryParseAngleDegrees(valueSpan, out var degrees)) return false;
+            if (!StyleArbitraryValueResolver.TryParseAngleDegrees(valueSpan, out var degrees)
+                || StyleArbitraryValueResolver.IsUnitlessAngle(valueSpan)) return false;
             result = new ArbitraryStyle(ArbitraryProperty.Rotate, negate ? -degrees : degrees, LengthUnit.Pixel);
             return true;
         }

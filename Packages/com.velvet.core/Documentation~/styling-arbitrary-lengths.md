@@ -10,25 +10,51 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 
 | Written | Read as |
 |---------|---------|
-| `120px`, or a bare `120` | pixels |
+| `120px`, or a bare `0` | pixels; a bare number other than `0` is declined, as the browser declines the `width: 120` Tailwind writes for `w-[120]` |
 | `1.5rem` | pixels, at 1rem = 16px: UI Toolkit has no root font size to take a rem from |
 | `1in`, `2.54cm`, `25.4mm`, `72pt`, `6pc`, `101.6Q` | pixels, at CSS's fixed ratio of 96px to the inch |
 | `25%` | a percentage, where the utility takes one; a border width takes none, as in CSS |
 | `auto` | the keyword, where the utility takes one: margin (a negated one, `-mt-[auto]`, is declined), `w-*`, `h-*`, `size-*`, `min-w-*`, `min-h-*`, `basis-*` and the insets; padding and the maximum sizes take none |
 | `calc()`, `min()`, `max()`, `clamp()` whose terms all come to pixels, or all to percentages | that pixel length or that percentage |
 
-Unit names match case-sensitively, so `Q` is upper case and the rest lower.
+A unit is read in any case, as CSS reads it: `w-[10PX]` is `w-[10px]`. Where Tailwind reads a bracket as
+either a length or a colour — `border-*`, `text-*`, `ring-*`, `outline-*`, `ring-offset-*` and `from-*`,
+`via-*` and `to-*` — its type tests decide, and what they do not take for a length is written as a colour,
+which leaves the class inert as it does in a browser:
+
+- its length test takes a number with a unit in its own case, `Q` upper and the rest lower, or a math function
+  named in lower case whatever case its units are in, so `border-[2PX]`, `text-[16PX]` and
+  `border-[cALC(2px)]` are colours there, and `border-[calc(2PX)]` is a length;
+- `border-*` also takes a bare number, which the browser keeps only as `0` (`border-[2]` is inert), and `thin`,
+  `medium` and `thick`, at 1px, 3px and 5px;
+- `text-*` also takes a percentage and the font-size keywords: `xx-small` 9px, `x-small` 10px, `small` 13px,
+  `medium` 16px, `large` 18px, `x-large` 24px, `xx-large` 32px, `xxx-large` 48px, and `larger` and `smaller`,
+  1.2 times the parent's size and the parent's divided by 1.2. A bare number, `text-[16]`, is a colour;
+- `outline-*` also takes a number or a percentage, which it writes as `outline-width` beside a solid style: the
+  browser keeps such a width only as `0`, and otherwise draws the outline at the width the other classes give
+  it, 3px where none does, so `outline-[2]` is a 3px outline and `outline outline-[2]` a 1px one;
+- `ring-*`, `ring-offset-*` and `from-*` / `via-*` / `to-*` take the length alone, so `ring-[2]` is a colour.
+
+`text-[length:16PX]` is a length, its type hint skipping the tests.
 
 Swapping one bracketed value for another that writes the same property (`w-[300px]` for `w-[10px]`, with or
 without `!`) leaves the old inline value in place until the new one is written, so a `transition-*` or
 `duration-*` on the element runs between the two.
 
+An angle (`rotate-[…]`, `skew-x-[…]`, `hue-rotate-[…]`, a gradient's) is read in `deg`, `grad`, `rad` or `turn`,
+and a time (`duration-[…]`, `animate-spin-[…]` and the other loops) in `ms` or `s`, each in any case. A bare number
+is read only where the CSS property Tailwind writes takes one: `0` in `skew-x-[…]`, `hue-rotate-[…]` and
+`bg-linear-[…]`, and none in `rotate-[…]`, whose `rotate` property takes no bare `0`, or in a time.
+
 A math function follows CSS's grammar with Tailwind's spelling. `_` stands for a space. CSS wants a space
-on both sides of a binary `+` or `-`; Tailwind writes `calc(2rem-4px)` and adds the spaces itself, so a
-space on neither side reads as one on both, and `calc(2rem-4px)` and `calc(2rem_-_4px)` are the same
-length. A space on one side only is declined: `calc(1px_-2px)` is `1px` followed by a second value `-2px`.
+on both sides of a binary `+` or `-`. Tailwind adds the spaces itself around an operator inside a function
+it names in lower case, so `calc(2rem-4px)`, `calc(2rem_-_4px)` and `calc(2rem_-4px)` are the same length.
+A function name is read in any case, but Tailwind leaves one in another case as written, where CSS's rule
+holds: `cALC(1px_+_2px)` is 3px and `cALC(1px+2px)` is declined.
 A sign belongs to a number (`-2px`, `+.5rem`, `-1e3px`), never to a parenthesis or a function, so `-(1px)`
-and `-calc(1px)` are declined, and so is a space before the function. Functions nest and `(` groups; `*`
+and `-calc(1px)` are declined. A space at either end of a length is trimmed, as the browser trims it from the
+declaration Tailwind writes (`top-[_calc(1px)]`, `w-[1px_]`), except where Tailwind reads the bracket as either a
+length or a colour: outside a math function its length test takes no space, so `border-[2px_]` is inert. Functions nest and `(` groups; `*`
 takes a plain number on one side, and `/` a plain number on its right. Up to 63 nested functions, and a run of
 up to 63 terms, factors or arguments, are read; 64 is declined. The two count against one bound, so a run
 inside nested functions is declined sooner. `clamp(low, value, high)` is `max(low, min(value, high))`, so a
