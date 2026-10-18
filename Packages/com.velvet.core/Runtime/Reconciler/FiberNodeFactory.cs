@@ -759,22 +759,36 @@ namespace Velvet
                         FiberLogger.LogWarning("FiberNodeFactory",
                             $"Key \"{child.Key}\" uses reserved prefix \"{AutoKeyPrefix}\". This may conflict with auto-generated keys.");
                     }
-                    var key = child.Key ?? $"{AutoKeyPrefix}{autoIndex++}";
-                    if (indexByKey.TryGetValue(key, out var existingIndex))
+                    var mapKey = PresenceChildMapKey(child.Key, ref autoIndex, indexByKey, out var firstChoice);
+                    if (mapKey != firstChoice)
                     {
                         FiberLogger.LogWarning("FiberNodeFactory",
-                            $"Duplicate key \"{key}\" detected. Later child will overwrite the earlier one.");
-                        result[existingIndex] = (key, child);
-                        continue;
+                            $"Duplicate key \"{firstChoice}\" detected. Both children render; give each child a unique key.");
                     }
-                    indexByKey[key] = result.Count;
-                    result.Add((key, child));
+                    result.Add((mapKey, child));
                 }
                 return result;
             }
             finally
             {
                 _ctx.BufferPool.ReturnIndexByKeyMap(indexByKey);
+            }
+        }
+
+        // The first occurrence keeps the key it was given. A later one is stored under its own map key:
+        // on one shared key the extra child is removed on the reconcile that drops it, rather than
+        // tracked as its own exit. FiberContextSpine.PushPresenceChildren calls this same method.
+        internal static string PresenceChildMapKey(
+            string? childKey, ref int autoIndex, Dictionary<string, int> taken, out string firstChoice)
+        {
+            firstChoice = childKey ?? $"{AutoKeyPrefix}{autoIndex++}";
+            if (taken.TryAdd(firstChoice, 0)) return firstChoice;
+            var occurrence = 1;
+            while (true)
+            {
+                var repeat = $"{AutoKeyPrefix}dup{occurrence}_{firstChoice}";
+                occurrence++;
+                if (taken.TryAdd(repeat, 0)) return repeat;
             }
         }
 

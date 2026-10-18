@@ -301,6 +301,24 @@ namespace Velvet
             return cacheKey;
         }
 
+        // Occurrence 0 is the position ResolveInlineRegistryPositionKey returns. A later occurrence is its
+        // own position: expanding the first fiber again would emit that fiber's output twice and record one slot.
+        internal static object ResolveInlineComponentPosition(
+            int occurrence,
+            WalkPosition position,
+            string? componentKey,
+            int nodeIndex,
+            Dictionary<(long slotPath, int nodeIndex), object> unkeyedBoxCache,
+            Dictionary<(long slotPath, string key), (object box, int registrations)> explicitBoxCache)
+        {
+            if (occurrence == 0 || componentKey is null)
+            {
+                return ResolveInlineRegistryPositionKey(
+                    position, componentKey, nodeIndex, unkeyedBoxCache, explicitBoxCache);
+            }
+            return (position.SlotPath, componentKey, occurrence);
+        }
+
         // Composes a new scope by extending parentScope with
         // contribution. The NUL byte (U+0000) delimits scope segments;
         // VNode.Key refuses a key holding one, so a user-supplied key contributes a whole segment

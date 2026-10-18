@@ -313,43 +313,44 @@ namespace Velvet.Tests
     }
 
     /// <summary>
-    /// Pins the duplicate sibling-key guard for inline component nodes. Two same-identity siblings
-    /// sharing one explicit key resolve to the SAME registry fiber — the leaf-level keyed diff warns
-    /// on duplicates, but the component path silently expanded the one fiber once per sibling: its
-    /// DOM output was emitted twice while the fiber's slot bookkeeping tracked only the last
-    /// position (and both copies shared one hook state), so a later re-render patched one copy and
-    /// stranded the other. The repeat must warn and be skipped; two independent instances require
-    /// unique keys, exactly as the reachable V.List keySelector documentation implies.
+    /// Two sibling components that share an explicit key each commit their own fiber. A later render
+    /// that repeats the key in the same order keeps each sibling's element and the hook state it
+    /// mounted with, and the repeat is reported.
     /// </summary>
     [TestFixture]
     internal sealed class DuplicateInlineComponentKeyTests
     {
         private VisualElement _root;
+        private static StateUpdater<int> s_setVersion;
 
         [SetUp]
         public void SetUp()
         {
             _root = new VisualElement();
+            s_setVersion = default;
         }
 
         [Component]
-        private static VNode FooRow()
+        private static VNode FooRow(string text)
         {
-            return V.Label(text: "foo");
+            var (mounted, _) = Hooks.UseState(text);
+            return V.Label(name: "row", text: mounted + ">" + text);
         }
 
         [Component]
         private static VNode DupHost()
         {
+            var (version, setVersion) = Hooks.UseState(0);
+            s_setVersion = setVersion;
             return V.Div(name: "dup-host", children: new VNode[]
             {
-                V.Component(FooRow, key: "x"),
-                V.Component(FooRow, key: "x"),
+                V.Component<string>(FooRow, "a:" + version, key: "x"),
+                V.Component<string>(FooRow, "b:" + version, key: "x"),
             });
         }
 
         [Test]
-        public void Given_TwoSiblingComponentsWithTheSameKey_When_Mounted_Then_OnlyOneInstanceCommits()
+        public void Given_TwoSiblingComponentsWithTheSameKey_When_Mounted_Then_BothInstancesCommit()
         {
             // Arrange — the duplicate is reported (LogAssert also fails if no warning fires).
             LogAssert.Expect(LogType.Warning,
@@ -358,8 +359,42 @@ namespace Velvet.Tests
             // Act
             using var mounted = V.Mount(_root, V.Component(DupHost, key: "host"));
 
-            // Assert — one fiber, one committed copy; the repeat did not double-emit its DOM.
-            Assert.AreEqual(1, _root.Q<VisualElement>("dup-host").childCount);
+            // Assert — each sibling commits its own element.
+            Assert.AreEqual(2, _root.Q<VisualElement>("dup-host").childCount);
+        }
+
+        [Test]
+        public void Given_TwoSiblingComponentsWithTheSameKey_When_RenderedAgainInTheSameOrder_Then_EachKeepsItsElement()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DupHost, key: "host"));
+            var host = _root.Q<VisualElement>("dup-host");
+            var first = host.ElementAt(0);
+            var second = host.ElementAt(1);
+
+            // Act — the same two siblings, in the same order, with a new render of each.
+            s_setVersion.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(new[] { host.ElementAt(0), host.ElementAt(1) }, Is.EqualTo(new[] { first, second }));
+        }
+
+        [Test]
+        public void Given_TwoSiblingComponentsWithTheSameKey_When_RenderedAgainInTheSameOrder_Then_EachKeepsItsOwnHookState()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DupHost, key: "host"));
+            var host = _root.Q<VisualElement>("dup-host");
+
+            // Act
+            s_setVersion.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the text each sibling mounted with stays on that sibling, and the new render reaches both.
+            Assert.That(
+                new[] { ((Label)host.ElementAt(0)).text, ((Label)host.ElementAt(1)).text },
+                Is.EqualTo(new[] { "a:0>a:1", "b:0>b:1" }));
         }
     }
 
