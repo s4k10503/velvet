@@ -1032,6 +1032,7 @@ namespace Velvet
         public float Stiffness => _config.Stiffness;
         public float Damping => _config.Damping;
         public float Mass => _config.Mass;
+        public double? SpringSettleSec => _config.SpringSettleSec;
         public float DurationSec => _config.DurationSec;
         public float DelaySec => Mathf.Max(_config.DelaySec, 0f);
 
@@ -1045,7 +1046,7 @@ namespace Velvet
             // Not a switch naming each type: its catch-all would have to throw, where LayoutIdProgress, Ease and
             // StyleAnimationScheduler time a type neither a spring nor a bezier as a tween.
             return t.Type == TransitionType.Spring
-                ? StyleAnimationScheduler.ValidateSpringParameters(t.Stiffness, t.Damping, t.Mass)
+                ? !t.SpringLandsAtOnce && StyleAnimationScheduler.ValidateSpringParameters(t.Stiffness, t.Damping, t.Mass)
                 : t.Type == TransitionType.Bezier
                     ? StyleAnimationScheduler.ValidateBezierParameters(t.BezierX1, t.BezierY1, t.BezierX2, t.BezierY2, t.DurationSec)
                     : StyleAnimationScheduler.ValidateDuration(t.DurationSec, null);
@@ -1072,9 +1073,10 @@ namespace Velvet
         public LayoutIdProgress(LayoutIdTiming timing)
         {
             _timing = timing;
-            _springPassSec = timing.IsSpring
-                ? MotionSpringDriver.PassDurationSec(ProgressTravel, timing.Stiffness, timing.Damping, timing.Mass)
-                : 0f;
+            // A spring with a settle time (StyleTransitionConfig.SpringSettleSec) ends at it, as a variant play on it does.
+            _springPassSec = !timing.IsSpring ? 0f
+                : timing.SpringSettleSec is { } settleSec ? (float)settleSec
+                : MotionSpringDriver.PassDurationSec(ProgressTravel, timing.Stiffness, timing.Damping, timing.Mass);
         }
 
         public float Value { get; private set; } = 1f;
@@ -1092,7 +1094,8 @@ namespace Velvet
                 // not rest within 20 s.
                 var ended = active >= _springPassSec;
                 Value = ended ? 0f : 1f - MotionSpringDriver.SampleSpring(0f, ProgressTravel, 1f, 0f,
-                    System.Math.Max(active, 0f), (_timing.Stiffness, _timing.Damping, _timing.Mass)) / ProgressTravel;
+                    System.Math.Max(active, 0f), (_timing.Stiffness, _timing.Damping, _timing.Mass),
+                    _timing.SpringSettleSec) / ProgressTravel;
                 return ended;
             }
             var t = active / _timing.DurationSec;

@@ -39,12 +39,13 @@ Packages/com.velvet.core/Runtime/Reconciler/WrapperInfrastructure.cs	4
 Packages/com.velvet.core/Runtime/Routing/RouteOutlet.cs	1
 Packages/com.velvet.core/Runtime/Routing/Router.cs	1
 Packages/com.velvet.core/Runtime/Routing/SearchParams.cs	2
+Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs	2
 Packages/com.velvet.core/Runtime/Styling/GradientBackground.cs	2
 Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs	10
 Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs	6
 Packages/com.velvet.core/Runtime/Styling/MotionSlotContext.cs	6
 Packages/com.velvet.core/Runtime/Styling/MotionSpringClassParser.cs	5
-Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs	1
+Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs	3
 Packages/com.velvet.core/Runtime/Styling/NativeTransitionVelocity.cs	2
 Packages/com.velvet.core/Runtime/Styling/RunningStyleTransition.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleAnimateClass.cs	1
