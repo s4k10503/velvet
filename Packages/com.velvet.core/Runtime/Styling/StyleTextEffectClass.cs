@@ -201,12 +201,10 @@ namespace Velvet
         // see below). Returns an empty TextEffect (every axis null) when no recognised token is present.
         // Leading follows the same last-token-wins rule as Transform/Decoration: it has no reset form (see
         // LeadingUnit), so there is nothing analogous to Whitespace's cross-family override to special-case.
-        // Decoration's last-token-wins rule also covers Overline: CSS's text-decoration-line can combine
-        // multiple lines in one declaration (underline overline both render), but this axis resolves to
-        // exactly ONE TextDecorationKind value per element by pre-existing design (predating Overline) — so
-        // "underline overline" here picks the last token in Tailwind's order (Underline, whichever is written
-        // first), it does not compose both onto the element the way CSS would. Documented as a deviation in fonts.md; not re-litigated by adding
-        // Overline.
+        // Decoration is one TextDecorationKind. Parse does not reorder: StyleFamilyOrder does, on the
+        // live path, before Parse runs, which is what makes underline hold over overline and
+        // no-underline over line-through. fonts.md owns the combined-line deviation;
+        // ArbitraryDecorationLineTests pins the bracket form.
         public static TextEffect Parse(string[] classNames)
         {
             if (classNames == null)
