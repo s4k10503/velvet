@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 using Object = UnityEngine.Object;
@@ -93,6 +94,11 @@ namespace Velvet.Tests
             return new List<FilterFunction> { fn };
         }
 
+        // A user custom as the resolver applies one, bound to a definition nothing registers.
+        private ArbitraryStyle UserCustom(string name)
+            => new(ArbitraryProperty.FilterCustom,
+                new CustomFilterValue(name, CreateUserDefinition(new FilterParameter(0f)), new[] { new FilterParameter(1f) }));
+
         // A single-blur inline filter list, the simplest interpolable filter (one float parameter).
         private static List<FilterFunction> BlurList(float px)
         {
@@ -110,6 +116,13 @@ namespace Velvet.Tests
             var fn = new FilterFunction(BuiltInFilterDefinitions.Brightness);
             fn.AddParameter(new FilterParameter(amount));
             return new List<FilterFunction> { fn };
+        }
+
+        private static FilterFunction SaturateFunction(float amount)
+        {
+            var fn = new FilterFunction(BuiltInFilterDefinitions.Saturate);
+            fn.AddParameter(new FilterParameter(amount));
+            return fn;
         }
 
         // Mounts a named leaf, forces a layout pass so resolvedStyle.transitionDuration resolves, and returns it.
@@ -323,137 +336,67 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Group A2 — user custom filters (filter-[name:args])
+        #region Group A2 — pairing two lists into channels, and frames of the pairs
 
         [Test]
-        public void Given_TwoListsOfOneUserCustom_When_ChannelsBuilt_Then_TheCustomAligns()
+        public void Given_TwoListsOfOneUserCustom_When_ChannelsBuilt_Then_ItSnaps()
         {
-            // Arrange — the same user definition on both sides, one float argument each. The two functions are
-            // the same shader with the same declared slots, so lerping the arguments is exactly what animating
-            // that filter means.
+            // Arrange — the same user definition on both sides, one float argument each.
             var def = CreateUserDefinition(new FilterParameter(0f));
 
             // Act
             var built = StyleFilterTransitionDriver.TryBuildChannels(
-                CustomList(def, new FilterParameter(0f)), CustomList(def, new FilterParameter(1f)),
-                out var channels);
-
-            // Assert — one interpolable channel (RED while any user custom forces an instant write).
-            Assert.That((built, channels.Length), Is.EqualTo((true, 1)));
-        }
-
-        [Test]
-        public void Given_AUserCustomTween_When_FrameAtMid_Then_TheArgumentIsHalfway()
-        {
-            // Arrange — a user custom whose single float argument runs 0 → 1.
-            var element = new VisualElement();
-            var def = CreateUserDefinition(new FilterParameter(0f));
-            var to = CustomList(def, new FilterParameter(1f));
-            StyleFilterTransitionDriver.TryBuildChannels(CustomList(def, new FilterParameter(0f)), to, out var channels);
-            var binding = new StyleFilterTransitionBinding { Channels = channels, Easing = EasingMode.Linear, Target = to };
-            Assume.That(channels.Length, Is.EqualTo(1), "Precondition: the custom aligned into one channel");
-
-            // Act
-            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
-
-            // Assert — the rebuilt function still carries its definition (a definition-less Custom renders
-            // nothing) and its argument sits halfway.
-            var fn = element.style.filter.value[0];
-            Assert.That((ReferenceEquals(fn.customDefinition, def), fn.GetParameter(0).floatValue),
-                Is.EqualTo((true, 0.5f)));
-        }
-
-        [Test]
-        public void Given_AUserCustomWithAColorArgument_When_FrameAtMid_Then_TheColorIsHalfway()
-        {
-            // Arrange — a color slot interpolates like any other: the lerp helper handles colors and a color
-            // argument is as continuous as a float one.
-            var element = new VisualElement();
-            var def = CreateUserDefinition(new FilterParameter(Color.black));
-            var to = CustomList(def, new FilterParameter(Color.white));
-            StyleFilterTransitionDriver.TryBuildChannels(CustomList(def, new FilterParameter(Color.black)), to, out var channels);
-            var binding = new StyleFilterTransitionBinding { Channels = channels, Easing = EasingMode.Linear, Target = to };
-
-            // Act
-            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
-
-            // Assert — one channel painting mid-grey, not a snap to either end. The count travels in the assert
-            // rather than an Assume so an inadmissible color slot (which leaves no channel at all) fails here
-            // instead of reporting inconclusive.
-            var list = element.style.filter.value;
-            Assert.That((list.Count, list.Count == 1 && Mathf.Approximately(list[0].GetParameter(0).colorValue.r, 0.5f)),
-                Is.EqualTo((1, true)));
-        }
-
-        [Test]
-        public void Given_TwoDifferentUserCustoms_When_ChannelsBuilt_Then_ItSnaps()
-        {
-            // Arrange — different definitions are different shaders; there is no correspondence between their
-            // arguments to interpolate along.
-            var a = CreateUserDefinition(new FilterParameter(0f));
-            var b = CreateUserDefinition(new FilterParameter(0f));
-
-            // Act
-            var built = StyleFilterTransitionDriver.TryBuildChannels(
-                CustomList(a, new FilterParameter(0f)), CustomList(b, new FilterParameter(1f)), out _);
-
-            // Assert — an instant write.
-            Assert.That(built, Is.False);
-        }
-
-        [Test]
-        public void Given_AUserCustomWithDifferingArity_When_ChannelsBuilt_Then_ItSnaps()
-        {
-            // Arrange — the same definition but a different number of supplied arguments: the slots do not
-            // line up pairwise, so there is nothing well-defined to lerp.
-            var def = CreateUserDefinition(new FilterParameter(0f), new FilterParameter(0f));
-
-            // Act
-            var built = StyleFilterTransitionDriver.TryBuildChannels(
-                CustomList(def, new FilterParameter(0f)),
-                CustomList(def, new FilterParameter(0f), new FilterParameter(1f)), out _);
+                CustomList(def, new FilterParameter(0f)), CustomList(def, new FilterParameter(1f)), out _);
 
             // Assert
             Assert.That(built, Is.False);
         }
 
         [Test]
-        public void Given_AUserCustomWithAMismatchedArgumentType_When_ChannelsBuilt_Then_ItSnaps()
+        public void Given_ABlurBesideAnUnchangedUserCustom_When_ChannelsBuilt_Then_ItSnaps()
         {
-            // Arrange — same definition and arity, but one side supplies a color where the other supplies a
-            // float; lerping across the two kinds is meaningless.
+            // Arrange — blur(0) custom(1) → blur(12) custom(1): only the blur changes, and the custom sits after it.
             var def = CreateUserDefinition(new FilterParameter(0f));
-
-            // Act
-            var built = StyleFilterTransitionDriver.TryBuildChannels(
-                CustomList(def, new FilterParameter(0f)), CustomList(def, new FilterParameter(Color.white)), out _);
-
-            // Assert
-            Assert.That(built, Is.False);
-        }
-
-        [Test]
-        public void Given_AUserCustomAddedOnOneSide_When_FrameAtMid_Then_ItFadesFromItsDeclaredNeutral()
-        {
-            // Arrange — a user custom present only in the to-list is padded from a neutral, and a user shader's
-            // neutral is the one its own declaration states (the same value the engine pads its filter-list
-            // transitions with). The declared 0.4 is chosen so the painted midpoint tells reading the
-            // declaration (0.7) apart from assuming a native filter's zero (0.5).
-            var element = new VisualElement();
-            var def = CreateUserDefinition(new FilterParameter(0.4f));
+            var from = new List<FilterFunction>(BlurList(0f));
+            from.AddRange(CustomList(def, new FilterParameter(1f)));
             var to = new List<FilterFunction>(BlurList(12f));
             to.AddRange(CustomList(def, new FilterParameter(1f)));
-            StyleFilterTransitionDriver.TryBuildChannels(BlurList(0f), to, out var channels);
-            var binding = new StyleFilterTransitionBinding { Channels = channels, Easing = EasingMode.Linear, Target = to };
 
             // Act
-            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
+            var built = StyleFilterTransitionDriver.TryBuildChannels(from, to, out _);
 
-            // Assert — halfway from the declared 0.4 to 1. RED while an added user custom snaps (no channels at
-            // all), and RED if the neutral is guessed from the function's shape instead of read (0.5).
-            var list = element.style.filter.value;
-            Assert.That((list.Count, list.Count == 2 && Mathf.Approximately(list[1].GetParameter(0).floatValue, 0.7f)),
-                Is.EqualTo((2, true)));
+            // Assert
+            Assert.That(built, Is.False);
+        }
+
+        [Test]
+        public void Given_AUserCustomAddedAtTheEnd_When_ChannelsBuilt_Then_ItSnaps()
+        {
+            // Arrange — only the to-list holds the custom.
+            var def = CreateUserDefinition(new FilterParameter(0f));
+            var to = new List<FilterFunction>(BlurList(12f));
+            to.AddRange(CustomList(def, new FilterParameter(1f)));
+
+            // Act
+            var built = StyleFilterTransitionDriver.TryBuildChannels(BlurList(0f), to, out _);
+
+            // Assert
+            Assert.That(built, Is.False);
+        }
+
+        [Test]
+        public void Given_AUserCustomRemovedFromTheEnd_When_ChannelsBuilt_Then_ItSnaps()
+        {
+            // Arrange — only the from-list holds the custom.
+            var def = CreateUserDefinition(new FilterParameter(0f));
+            var from = new List<FilterFunction>(BlurList(0f));
+            from.AddRange(CustomList(def, new FilterParameter(1f)));
+
+            // Act
+            var built = StyleFilterTransitionDriver.TryBuildChannels(from, BlurList(12f), out _);
+
+            // Assert
+            Assert.That(built, Is.False);
         }
 
         [Test]
@@ -476,39 +419,50 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABlurAddedBeforeAPairedUserCustom_When_ChannelsBuilt_Then_ItSnaps()
+        public void Given_AUserCustomOnlyInTheShownFilter_When_TheChangeIsJudged_Then_ItIsDiscrete()
         {
-            // Arrange — base filter-[custom:1], hover blur-4 filter-[custom:2]: the blur takes the position the
-            // custom held, so the first position pairs a custom with a blur.
-            var def = CreateUserDefinition(new FilterParameter(0f));
-            var to = new List<FilterFunction>(BlurList(4f));
-            to.AddRange(CustomList(def, new FilterParameter(2f)));
+            // Arrange — the inline list is empty and the element shows a stylesheet's filter holding a user custom.
+            var shown = CustomList(CreateUserDefinition(new FilterParameter(0f)), new FilterParameter(1f));
 
             // Act
-            var built = StyleFilterTransitionDriver.TryBuildChannels(
-                CustomList(def, new FilterParameter(1f)), to, out _);
+            var discrete = StyleFilterTransitionDriver.ChangeIsDiscrete(null, shown, BlurList(12f));
 
-            // Assert — discrete, as a CSS filter list whose shorter side is not the longer side's head.
-            Assert.That(built, Is.False);
+            // Assert
+            Assert.That(discrete, Is.True);
         }
 
         [Test]
-        public void Given_ASecondUserCustomAddedAtTheEnd_When_ChannelsBuilt_Then_ItFadesIn()
+        public void Given_ACustomDefinitionNamedAsAFirstPartyOne_When_TheChangeIsJudged_Then_ItIsNotDiscrete()
         {
-            // Arrange — filter-[a:1] → filter-[a:2] filter-[b:2]: the first custom pairs in place and a second,
-            // different definition is added after it.
-            var a = CreateUserDefinition(new FilterParameter(0f));
-            var b = CreateUserDefinition(new FilterParameter(0f));
-            var to = new List<FilterFunction>(CustomList(a, new FilterParameter(2f)));
-            to.AddRange(CustomList(b, new FilterParameter(2f)));
+            // Arrange — a first-party builder that does not go through BuiltInFilterDefinitions.Build is known by
+            // its filter name alone.
+            var definition = CreateUserDefinition(new FilterParameter(0f));
+            definition.filterName = BuiltInFilterDefinitions.FilterNamePrefix + "other";
+            var shown = CustomList(definition, new FilterParameter(1f));
 
             // Act
-            var built = StyleFilterTransitionDriver.TryBuildChannels(CustomList(a, new FilterParameter(1f)), to, out var channels);
+            var discrete = StyleFilterTransitionDriver.ChangeIsDiscrete(null, shown, BlurList(12f));
 
-            // Assert — two channels, the second fading in from b's declared neutral. Joined rather than compared as
-            // arrays: a tuple assert compares each slot with Equals, which for an array is reference identity.
-            Assert.That((built, string.Join(",", channels.Select(c => c.To[0].floatValue + "<-" + c.From[0].floatValue))),
-                Is.EqualTo((true, "2<-1,2<-0")));
+            // Assert
+            Assert.That(discrete, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): saturate beside a blur interpolated on the base, which the url() rule keeps.
+        [Test]
+        public void Given_ASaturateBesideABlur_When_ChannelsBuilt_Then_BothInterpolate()
+        {
+            // Arrange — saturate composes as a Custom bound to a first-party definition, which is CSS's saturate()
+            // rather than a url().
+            Assume.That(BuiltInFilterDefinitions.Saturate, Is.Not.Null,
+                "Precondition: the saturate shader resolved into a definition");
+            var from = new List<FilterFunction>(BlurList(0f)) { SaturateFunction(1f) };
+            var to = new List<FilterFunction>(BlurList(12f)) { SaturateFunction(1.5f) };
+
+            // Act
+            StyleFilterTransitionDriver.TryBuildChannels(from, to, out var channels);
+
+            // Assert
+            Assert.That(channels.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -539,35 +493,134 @@ namespace Velvet.Tests
             to.Add(gray);
 
             // Act
-            var built = StyleFilterTransitionDriver.TryBuildChannels(from, to, out var channels);
+            StyleFilterTransitionDriver.TryBuildChannels(from, to, out var channels);
 
             // Assert — each blur pairs with the one at its position, and the grayscale fades in from 0.
-            Assert.That((built, string.Join(",", channels.Select(c => c.From[0].floatValue + "->" + c.To[0].floatValue))),
-                Is.EqualTo((true, "2->4,4->8,0->1")));
+            Assert.That(string.Join(",", channels.Select(c => c.From[0].floatValue + "->" + c.To[0].floatValue)),
+                Is.EqualTo("2->4,4->8,0->1"));
+        }
+
+        // The cached brightness definition's pass material destroyed, as a shader reimport does, so the next read
+        // builds another while the returned function still holds the first.
+        private static FilterFunction BrightnessFromBeforeItsRebuild(out FilterFunctionDefinition stale, out FilterFunctionDefinition? rebuilt)
+        {
+            stale = BuiltInFilterDefinitions.Brightness!;
+            var brightness = new FilterFunction(stale);
+            brightness.AddParameter(new FilterParameter(1.5f));
+            Object.DestroyImmediate(stale.passes[0].material);
+            rebuilt = BuiltInFilterDefinitions.Brightness;
+            return brightness;
         }
 
         [Test]
-        public void Given_AUserCustomDefinitionDestroyedMidTween_When_FrameApplied_Then_TheChannelIsOmitted()
+        public void Given_ABrightnessWhosePassMaterialWasDestroyed_When_TheDefinitionIsRead_Then_AnotherIsBuilt()
         {
-            // Arrange — a blur + user custom tween whose definition is destroyed while the tween is in flight.
-            // The engine's filter-function constructor throws on a dead definition, and a Custom rebuilt
-            // without one would render nothing anyway.
+            // Arrange
+            Assume.That(BuiltInFilterDefinitions.Brightness, Is.Not.Null,
+                "Precondition: the brightness shader resolved into a definition");
+            _spawned.Add(BuiltInFilterDefinitions.Brightness);
+
+            // Act
+            BrightnessFromBeforeItsRebuild(out var stale, out var rebuilt);
+
+            // Assert
+            Assert.That(ReferenceEquals(rebuilt, stale), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a brightness composed before its definition was rebuilt faded out on the base.
+        [Test]
+        public void Given_ABrightnessComposedBeforeItsDefinitionWasRebuilt_When_ItIsRemoved_Then_ItFadesOut()
+        {
+            // Arrange — the rebuild itself is pinned by the case above.
+            Assume.That(BuiltInFilterDefinitions.Brightness, Is.Not.Null,
+                "Precondition: the brightness shader resolved into a definition");
+            _spawned.Add(BuiltInFilterDefinitions.Brightness);
+            var brightness = BrightnessFromBeforeItsRebuild(out var stale, out var rebuilt);
+            Assume.That(ReferenceEquals(rebuilt, stale), Is.False, "Precondition: the definition was rebuilt");
+            var from = new List<FilterFunction>(BlurList(0f)) { brightness };
+
+            // Act
+            StyleFilterTransitionDriver.TryBuildChannels(from, BlurList(12f), out var channels);
+
+            // Assert
+            Assert.That(channels.Length, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): a tint Velvet did not write faded out to white on the base, as it still does.
+        [Test]
+        public void Given_AnInlineTintVelvetDidNotWrite_When_ChannelsBuilt_Then_ItFadesOutToWhite()
+        {
+            // Arrange — Velvet composes no tint, so one in the from-list was written past the resolver.
+            var tint = new FilterFunction(FilterFunctionType.Tint);
+            tint.AddParameter(new FilterParameter(Color.black));
+            var from = new List<FilterFunction>(BlurList(0f)) { tint };
+
+            // Act
+            StyleFilterTransitionDriver.TryBuildChannels(from, BlurList(12f), out var channels);
+
+            // Assert
+            Assert.That(channels.Length == 2 ? channels[1].To[0].colorValue : Color.clear, Is.EqualTo(Color.white));
+        }
+
+        // GREEN_ON_BASE(characterization): a fading tint painted its colour half way on the base, as it still does.
+        [Test]
+        public void Given_AnInlineTintFadingOut_When_FrameAtMid_Then_ItsColorIsHalfway()
+        {
+            // Arrange
             var element = new VisualElement();
-            var def = CreateUserDefinition(new FilterParameter(0f));
-            var from = new List<FilterFunction>(BlurList(0f));
-            from.AddRange(CustomList(def, new FilterParameter(0f)));
-            var to = new List<FilterFunction>(BlurList(12f));
-            to.AddRange(CustomList(def, new FilterParameter(1f)));
+            var tint = new FilterFunction(FilterFunctionType.Tint);
+            tint.AddParameter(new FilterParameter(Color.black));
+            var from = new List<FilterFunction>(BlurList(0f)) { tint };
+            var to = BlurList(12f);
             StyleFilterTransitionDriver.TryBuildChannels(from, to, out var channels);
             var binding = new StyleFilterTransitionBinding { Channels = channels, Easing = EasingMode.Linear, Target = to };
+
+            // Act
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
+
+            // Assert
+            var list = element.style.filter.value;
+            Assert.That(list.Count == 2 ? list[1].GetParameter(0).colorValue.r : float.NaN, Is.EqualTo(0.5f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AnInlineOpacityVelvetDidNotWrite_When_ChannelsBuilt_Then_ItFadesOutToOne()
+        {
+            // Arrange — opacity(1) is CSS's no-op, as contrast(1) is.
+            var opacity = new FilterFunction(FilterFunctionType.Opacity);
+            opacity.AddParameter(new FilterParameter(0.5f));
+            var from = new List<FilterFunction>(BlurList(0f)) { opacity };
+
+            // Act
+            StyleFilterTransitionDriver.TryBuildChannels(from, BlurList(12f), out var channels);
+
+            // Assert
+            Assert.That(channels.Length == 2 ? channels[1].To[0].floatValue : float.NaN, Is.EqualTo(1f));
+        }
+
+        // GREEN_ON_BASE(characterization): a frame dropped a dead Custom channel on the base, as it still does.
+        [Test]
+        public void Given_ACustomDefinitionDestroyedMidTween_When_FrameApplied_Then_TheChannelIsOmitted()
+        {
+            // Arrange — a blur + Custom tween whose definition is destroyed while the tween is in flight. The
+            // channels are built here rather than by TryBuildChannels, which refuses a user custom, and a
+            // first-party definition is shared with every other case.
+            var element = new VisualElement();
+            var def = CreateUserDefinition(new FilterParameter(0f));
+            var channels = new[]
+            {
+                new StyleFilterTransitionDriver.Channel(FilterFunctionType.Blur, null,
+                    new[] { new FilterParameter(0f) }, new[] { new FilterParameter(12f) }),
+                new StyleFilterTransitionDriver.Channel(FilterFunctionType.Custom, def,
+                    new[] { new FilterParameter(0f) }, new[] { new FilterParameter(1f) }),
+            };
+            var binding = new StyleFilterTransitionBinding { Channels = channels, Easing = EasingMode.Linear };
             Object.DestroyImmediate(def);
 
             // Act
             StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
 
             // Assert — the surviving blur still paints and the dead channel is dropped rather than throwing.
-            // Both facts travel in the assert (rather than an Assume that the pair aligned) so a regression
-            // making the pair inadmissible — which leaves an empty list — fails here instead of skipping.
             Assert.That(element.style.filter.value.Select(f => f.type), Is.EqualTo(new[] { FilterFunctionType.Blur }));
         }
 
@@ -590,6 +643,114 @@ namespace Velvet.Tests
 
             // Assert — the tween's tick is live (RED without the ApplyCombinedFilter hook).
             Assert.That(binding.Scheduled, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_TransitionFilterAndANameRegisteredAfterApply_When_Registered_Then_ItsFilterIsWrittenAtOnce()
+        {
+            // Arrange — the element draws no filter while its custom names nothing registered.
+            var element = MountResolved("transition-filter");
+            var definition = CreateUserDefinition(new FilterParameter(0f));
+            StyleArbitraryValueResolver.ApplyClassToken(element, "filter-[late-tween:1]", StyleLayerPriority.Base);
+
+            try
+            {
+                // Act
+                VelvetFilters.Register("late-tween", definition);
+
+                // Assert
+                var written = element.style.filter.value;
+                Assert.That(written?.Count == 1 ? written[0].GetParameter(0).floatValue : float.NaN, Is.EqualTo(1f));
+            }
+            finally
+            {
+                VelvetFilters.Unregister("late-tween");
+            }
+        }
+
+        [Test]
+        public void Given_TransitionFilterAndABlur_When_AnUnregisteredCustomIsApplied_Then_TheFilterIsDroppedAtOnce()
+        {
+            // Arrange — CSS interpolates a list holding a url() discretely, so the change applies at once.
+            var element = MountResolved("transition-filter blur-[4px]");
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(element, "filter-[never-registered-tween:1]", StyleLayerPriority.Base);
+
+            // Assert
+            Assert.That(element.style.filter.value?.Count ?? 0, Is.EqualTo(0));
+        }
+
+        // A shown custom whose name is registered again under another definition; returns the element and its
+        // binding, with the new definition through `second`.
+        private VisualElement ElementShowingACustomRegisteredAgain(FilterFunctionDefinition second, out StyleFilterTransitionBinding binding)
+        {
+            var element = MountResolved("transition-filter");
+            binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            StyleArbitraryValueResolver.ApplyClassToken(element, "filter-[rebind-tween:1]", StyleLayerPriority.Base);
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[VelvetFilters\].*already registered"));
+            VelvetFilters.Register("rebind-tween", second);
+            return element;
+        }
+
+        [Test]
+        public void Given_TransitionFilterAndAShownCustom_When_ItsNameIsRegisteredAgain_Then_TheNewDefinitionIsWritten()
+        {
+            // Arrange
+            var first = CreateUserDefinition(new FilterParameter(0f));
+            var second = CreateUserDefinition(new FilterParameter(0f));
+            VelvetFilters.Register("rebind-tween", first);
+            try
+            {
+                // Act
+                var element = ElementShowingACustomRegisteredAgain(second, out _);
+
+                // Assert
+                var written = element.style.filter.value;
+                Assert.That(written?.Count == 1 && written[0].customDefinition == second, Is.True);
+            }
+            finally
+            {
+                VelvetFilters.Unregister("rebind-tween");
+            }
+        }
+
+        [Test]
+        public void Given_TransitionFilterAndAShownCustom_When_ItsNameIsRegisteredAgain_Then_NoTweenRuns()
+        {
+            // Arrange
+            var first = CreateUserDefinition(new FilterParameter(0f));
+            var second = CreateUserDefinition(new FilterParameter(0f));
+            VelvetFilters.Register("rebind-tween", first);
+            try
+            {
+                // Act
+                ElementShowingACustomRegisteredAgain(second, out var binding);
+
+                // Assert
+                Assert.That(binding.Scheduled, Is.Null);
+            }
+            finally
+            {
+                VelvetFilters.Unregister("rebind-tween");
+            }
+        }
+
+        [Test]
+        public void Given_AFilterTransitionAndAUserCustomAtRest_When_TheBlurBesideItChanges_Then_TheBlurIsWrittenAtOnce()
+        {
+            // Arrange — the list is composed before the transition is declared, so it is at rest.
+            var element = AddBareElement();
+            ApplyBlur(element, 0f);
+            StyleArbitraryValueResolver.Apply(element, UserCustom("beside-tween"));
+            SetInlineTransition(element, new[] { "filter" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+
+            // Act
+            ApplyBlur(element, 12f);
+
+            // Assert
+            var written = element.style.filter.value;
+            Assert.That(written?.Count == 2 ? written[0].GetParameter(0).floatValue : float.NaN, Is.EqualTo(12f));
         }
 
         [Test]
@@ -960,25 +1121,6 @@ namespace Velvet.Tests
             Assert.That(binding.Target?.Count, Is.EqualTo(2));
         }
 
-        // GREEN_ON_BASE(characterization): a running custom tween stops where its argument count changes, as on the base.
-        [Test]
-        public void Given_ARunningCustomTween_When_ItsArgumentCountChanges_Then_TheTweenStops()
-        {
-            // Arrange — a tween fading in a one-argument custom.
-            var element = MountResolved("transition-filter duration-300");
-            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
-            var def = CreateUserDefinition(new FilterParameter(0f), new FilterParameter(0f));
-            StyleFilterTransitionDriver.TryStartOrRedirect(element, CustomList(def, new FilterParameter(1f)));
-            var started = binding.Scheduled != null;
-
-            // Act — the same custom with two arguments, which pairs with nothing.
-            StyleFilterTransitionDriver.TryStartOrRedirect(element,
-                CustomList(def, new FilterParameter(1f), new FilterParameter(2f)));
-
-            // Assert
-            Assert.That((started, binding.Scheduled == null), Is.EqualTo((true, true)));
-        }
-
         private void Reconcile(string from, string to)
             => _mounted.Root.Reconciler.Reconcile(
                 _window.rootVisualElement,
@@ -1049,14 +1191,16 @@ namespace Velvet.Tests
             Assert.That(PaintedFloat(element), Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(characterization): the base sheet already declares transition-opacity after transition-filter.
+        // What reddens it is the driver tweening on any live duration, which the assertion catches.
         [Test]
-        public void Given_TransitionColorsOverridingTheOptIn_When_FilterChanges_Then_InstantWrite()
+        public void Given_TransitionOpacityOverridingTheOptIn_When_FilterChanges_Then_InstantWrite()
         {
-            // Arrange — transition-colors is declared after transition-filter in the bundled sheet, so at equal
+            // Arrange — transition-opacity is declared after transition-filter in the bundled sheet, so at equal
             // specificity it wins transition-property while the opt-in class still registers a binding. The
             // resolved property names no filter, so this must stay a discrete change: guards the driver's probe
             // against matching any non-empty transition list.
-            var element = MountResolved("transition-filter transition-colors");
+            var element = MountResolved("transition-filter transition-opacity");
             Assume.That(_mounted.Root.Reconciler.Context.FilterTransitionBindings.ContainsKey(element), Is.True,
                 "Precondition: a binding is registered");
             Assume.That(element.resolvedStyle.transitionProperty.Select(p => p.ToString()), Does.Not.Contain("filter"),
@@ -1685,10 +1829,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADestroyedCustomBehindAContrast_When_TheContrastIsRemoved_Then_ItFadesOutToOne()
+        public void Given_ADestroyedCustomBehindAContrast_When_TheContrastIsRemoved_Then_NoFilterIsPaintedAtOnce()
         {
-            // Arrange — a contrast and a user custom composed at rest, then the custom's definition destroyed,
-            // which drops it from the next compose.
+            // Arrange — a contrast and a user custom composed at rest, then the custom's definition destroyed, which
+            // leaves the next compose naming no live filter, so the chain drops discretely.
             var element = MountResolved("w-[100px] h-[40px]");
             var definition = CreateUserDefinition(new FilterParameter(0f));
             ApplyContrast(element, 2f);
@@ -1697,12 +1841,12 @@ namespace Velvet.Tests
             SetInlineTransition(element, new[] { "all" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
             Object.DestroyImmediate(definition);
 
-            // Act — the compose leaves no filter at all.
+            // Act
             ClearContrast(element);
             AdvanceAndPaint(element.panel, 0.15);
 
-            // Assert — half way from 2 to 1.
-            Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
+            // Assert
+            Assert.That(element.resolvedStyle.filter.Count(), Is.Zero);
         }
 
         // GREEN_ON_BASE(characterization): removing a blur leaves the inline filter cleared at once, as it did before.
@@ -1847,6 +1991,72 @@ namespace Velvet.Tests
 
             // Assert — half way from 2 to CSS's identity 1; the engine's own padding would put it at 1.
             Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
+        }
+
+        #endregion
+
+        #region Group E2 — a user custom under the engine's animation
+
+        // Mounted like Group E. A list holding a user custom is CSS's url() case, which changes discretely, so the
+        // engine's animation must not take the write.
+
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_AUserCustomJoinsABlurThatIsAnimating_Then_TheBlurIsPaintedAtOnce()
+        {
+            // Arrange — blur(0) at rest.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyBlur(element, 0f);
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act — the blur's change starts the engine's transition, and the custom joins the list after it.
+            ApplyBlur(element, 12f);
+            StyleArbitraryValueResolver.Apply(element, UserCustom("joins-engine"));
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert
+            Assert.That(PaintedFloat(element), Is.EqualTo(12f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransitionOverABlurAndAUserCustom_When_TheCustomIsRemoved_Then_OnlyTheBlurIsPaintedAtOnce()
+        {
+            // Arrange — blur(12) and a user custom at rest.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            var custom = UserCustom("leaves-engine");
+            ApplyBlur(element, 12f);
+            StyleArbitraryValueResolver.Apply(element, custom);
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act
+            StyleArbitraryValueResolver.Clear(element, custom);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert
+            Assert.That(element.resolvedStyle.filter.Count(), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransitionOverABlurInADroppedChain_When_TheCustomIsRemoved_Then_TheBlurIsPaintedAtOnce()
+        {
+            // Arrange — blur(12) and a user custom at rest, then the custom's definition destroyed and the chain
+            // composed again, so the element paints no filter and holds no url() for the next change to read.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            var definition = CreateUserDefinition(new FilterParameter(0f));
+            var custom = new ArbitraryStyle(ArbitraryProperty.FilterCustom,
+                new CustomFilterValue("drops-engine", definition, new[] { new FilterParameter(1f) }));
+            ApplyBlur(element, 12f);
+            StyleArbitraryValueResolver.Apply(element, custom);
+            AdvanceAndPaint(element.panel, 1.0);
+            Object.DestroyImmediate(definition);
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act
+            StyleArbitraryValueResolver.Clear(element, custom);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert
+            Assert.That(PaintedFloat(element), Is.EqualTo(12f).Within(1e-3f));
         }
 
         #endregion

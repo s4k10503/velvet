@@ -95,6 +95,10 @@ namespace Velvet
         private bool _madeSourceFocusable;
         private bool _anchoredFocus;
         private readonly List<DndDroppableRect> _queryBuffer = new();
+        private static readonly System.Comparison<DndDroppableRect> s_byRegistration =
+            (left, right) => left.Order.CompareTo(right.Order);
+        // The strategy's ranking at the latest move: what DragOverArgs and DragEndArgs carry.
+        private IReadOnlyList<DndCollision> _collisions = System.Array.Empty<DndCollision>();
 
         internal VisualElement Source => _source;
         internal VisualElement ScopeElement => _scopeElement;
@@ -557,13 +561,21 @@ namespace Velvet
                 if (IsCollisionCandidate(element, binding))
                 {
                     ApplyDragActiveClassTo(element, binding);
-                    _queryBuffer.Add(new DndDroppableRect(binding.Settings.Id, element.worldBound, binding.Settings.Data));
+                    _queryBuffer.Add(new DndDroppableRect(
+                        binding.Settings.Id, element.worldBound, binding.Settings.Data, binding.Order));
                 }
             }
+            // Dictionary enumeration does not follow attach order once an entry has been removed, so the
+            // candidates are ordered by when each binding was attached; the churned-droppables case in
+            // DndInteractionTests pins it.
+            _queryBuffer.Sort(s_byRegistration);
             var strategy = _scope.Settings.CollisionDetection ?? DndCollisions.RectIntersection;
             var query = new DndCollisionQuery(
                 new Rect(_originRect.position + _delta, _originRect.size), _lastPointerPosition, _queryBuffer);
-            SetOver(strategy(in query));
+            // A custom strategy may return null for no collision, as dnd-kit's getFirstCollision tolerates.
+            DndCollision[]? collisions = strategy(in query);
+            _collisions = collisions ?? System.Array.Empty<DndCollision>();
+            SetOver(collisions is { Length: > 0 } ? collisions[0].Id : null);
         }
 
         private void SetOver(string? winnerId)
@@ -602,7 +614,7 @@ namespace Velvet
             // Over-change is continuous-lane feedback (it fires mid-move, potentially every frame):
             // a plain invoke, never the discrete synchronous-flush bracket drop/cancel use.
             var overInfo = CurrentOverInfo();
-            var args = new DragOverArgs(ActiveInfo(), overInfo, _delta);
+            var args = new DragOverArgs(ActiveInfo(), overInfo, _delta, _collisions);
             _scope.Settings.OnDragOver?.Invoke(args);
         }
 
@@ -616,7 +628,7 @@ namespace Velvet
             }
             _lastPointerPosition = evt.position;
             _delta = _lastPointerPosition - _origin;
-            var args = new DragEndArgs(ActiveInfo(), CurrentOverInfo(), _delta, _lastPointerPosition);
+            var args = new DragEndArgs(ActiveInfo(), CurrentOverInfo(), _delta, _lastPointerPosition, _collisions);
             // Close the session BEFORE the user callback, deviating from "callback then scrub": OnDragEnd
             // runs in the discrete bracket, whose synchronous flush may unmount the source (the sortable
             // commit) — the cleaner would then find a live session mid-teardown and cancel-scrub what the

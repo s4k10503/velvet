@@ -15,7 +15,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies <see cref="MutationOptions{TVariables, TData}.Retry"/> on a mounted
     /// <see cref="Hooks.UseMutation{TVariables, TData}"/>: retries stay inside one call, so the call commits
-    /// and delivers one outcome; a retry waits on the token unmount cancels; a call still retrying does not
+    /// and delivers one outcome; a retry waits on the caller's token, which an unmount leaves live; a call still retrying does not
     /// publish over a newer one; the latest render's <c>Retry</c> and <c>MutationFn</c> are the ones used; and a
     /// context call's <c>OnMutate</c> and <c>OnSettled</c> run once around its attempts.
     /// <see cref="RetryPolicyTests"/> owns the policy's own schedule.
@@ -171,7 +171,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARetryWaiting_When_TheComponentUnmounts_Then_TheTokenItWaitsOnIsCancelled()
+        public void Given_ARetryWaiting_When_TheComponentUnmounts_Then_TheTokenItWaitsOnStaysLive()
         {
             // Arrange
             var waitedOn = default(CancellationToken);
@@ -192,8 +192,8 @@ namespace Velvet.Tests
             mounted.Dispose();
 
             // Assert
-            Assert.That(waitedOn.IsCancellationRequested, Is.True,
-                "The retry waits on the call's own token, which unmount cancels");
+            Assert.That(waitedOn.IsCancellationRequested, Is.False,
+                "The retry waits on the caller's token, which an unmount leaves live");
         }
 
         [UnityTest]

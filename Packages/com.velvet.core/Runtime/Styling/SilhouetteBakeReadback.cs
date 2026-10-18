@@ -18,7 +18,7 @@ namespace Velvet
     }
 
     // Shared bake→readback recipe for a shader-driven silhouette texture (GradientSilhouetteBaker,
-    // DropShadowBaker): render a material into a temporary RT, read it back into a persistent Texture2D, then
+    // BoxShadowBaker): render a material into a temporary RT, read it back into a persistent Texture2D, then
     // restore whichever RT was active on entry.
     internal static class SilhouetteBakeReadback
     {

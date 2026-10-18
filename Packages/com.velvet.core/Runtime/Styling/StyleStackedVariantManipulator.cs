@@ -10,6 +10,7 @@ namespace Velvet
         ElementLocal,
         Theme,
         Responsive,
+        Container,
         Relational,
         Disabled,
     }
@@ -30,6 +31,8 @@ namespace Velvet
         // Non-null exactly for a relational inner: the source it resolves and the state it reacts to.
         private readonly (bool IsPeer, StyleVariantClass.RelationalState State)? _relational;
         private readonly string _innerName; // relational name of a NAMED inner (group-hover/sidebar:), else ""
+        // The condition of a Container inner, read from its spelling (_innerName); meaningful for that kind alone.
+        private readonly StyleContainerQuery _query;
         private readonly string[] _leaf;
         private readonly long _priority;
         // The position of the WHOLE stacked class (dark:hover:shadow-lg) in the className, not of the leaf it
@@ -56,6 +59,7 @@ namespace Velvet
             _source = SourceOf(innerKind);
             _relational = StyleVariantClass.RelationalOf(innerKind);
             _innerName = innerName ?? string.Empty;
+            StyleContainerQuery.TryParse(_innerName, out _query);
             _leaf = leaf != null
                 ? Array.ConvertAll(leaf, static x => x ?? string.Empty)
                 : Array.Empty<string>();
@@ -105,6 +109,7 @@ namespace Velvet
             (StyleVariantKind.Lg, StackedInnerSource.Responsive),
             (StyleVariantKind.Xl, StackedInnerSource.Responsive),
             (StyleVariantKind.Xxl, StackedInnerSource.Responsive),
+            (StyleVariantKind.Container, StackedInnerSource.Container),
             (StyleVariantKind.GroupHover, StackedInnerSource.Relational),
             (StyleVariantKind.GroupFocus, StackedInnerSource.Relational),
             (StyleVariantKind.GroupFocusWithin, StackedInnerSource.Relational),
@@ -120,12 +125,13 @@ namespace Velvet
 #pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
         // Edge-based inners survive an outer-gate close (see ReconcilerContext.GateStackedVariant):
         // their signals fire only on state edges, so a re-created manipulator could not re-seed a
-        // continuously-held hover/focus. Level-based inners (dark, responsive, disabled) re-derive their truth
+        // continuously-held hover/focus. Level-based inners (dark, responsive, container, disabled) re-derive their truth
         // on attach and are detached on close to release their subscriptions.
         internal bool RetainsAcrossOuterClose => _source switch
         {
             StackedInnerSource.ElementLocal or StackedInnerSource.Relational => true,
-            StackedInnerSource.Theme or StackedInnerSource.Responsive or StackedInnerSource.Disabled => false,
+            StackedInnerSource.Theme or StackedInnerSource.Responsive or StackedInnerSource.Container
+                or StackedInnerSource.Disabled => false,
         };
 #pragma warning restore CS8524
 
@@ -169,21 +175,19 @@ namespace Velvet
                 _disabledSignal ??= new DisabledVariantSignal(SetInner);
                 _disabledSignal.Hook(target);
             }
-            else // responsive or relational
+            else // width-driven or relational
             {
                 target.RegisterCallback<AttachToPanelEvent>(OnAttach);
                 target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
-                if (_source == StackedInnerSource.Responsive)
+                if (TracksWidth)
                 {
                     StyleResponsiveScope.ScopesChanged += OnScopesChanged;
                 }
                 if (target.panel != null)
                 {
-                    if (_source == StackedInnerSource.Responsive)
+                    if (TracksWidth)
                     {
-                        _widthSource ??= new ResponsiveWidthSource(EvaluateResponsive);
-                        _widthSource.Hook(StyleResponsiveScope.ResolveWidthSource(target, target.panel.visualTree));
-                        EvaluateResponsive();
+                        HookWidth(target.panel.visualTree);
                     }
                     else
                     {
@@ -256,11 +260,9 @@ namespace Velvet
 
         private void OnAttach(AttachToPanelEvent evt)
         {
-            if (_source == StackedInnerSource.Responsive)
+            if (TracksWidth)
             {
-                _widthSource ??= new ResponsiveWidthSource(EvaluateResponsive);
-                _widthSource.Hook(StyleResponsiveScope.ResolveWidthSource(target, evt.destinationPanel?.visualTree));
-                EvaluateResponsive();
+                HookWidth(evt.destinationPanel?.visualTree);
             }
             else
             {
@@ -276,18 +278,43 @@ namespace Velvet
         }
         #endregion
 
-        #region responsive
+        #region responsive / container
+
+        // A viewport breakpoint and a container query read a width the same way and differ in where it comes
+        // from and in the test applied to it.
+        private bool TracksWidth => _source is StackedInnerSource.Responsive or StackedInnerSource.Container;
+
+        private void HookWidth(VisualElement? panelRoot)
+        {
+            _widthSource ??= new ResponsiveWidthSource(EvaluateResponsive);
+            _widthSource.Hook(ResolveWidthSource(panelRoot));
+            EvaluateResponsive();
+        }
+
+        private VisualElement? ResolveWidthSource(VisualElement? panelRoot)
+            => _source == StackedInnerSource.Container
+                ? StyleResponsiveScope.ResolveContainer(target, _query.Name)
+                : StyleResponsiveScope.ResolveWidthSource(target, panelRoot);
 
         private void EvaluateResponsive()
         {
+            if (_source == StackedInnerSource.Container)
+            {
+                SetInner(_widthSource?.Satisfies(_query) == true);
+                return;
+            }
+
             var width = _widthSource?.Width ?? 0f;
             SetInner(width >= StyleVariantClass.BreakpointPx(_innerKind));
         }
 
         private void OnScopesChanged()
         {
-            StyleResponsiveScope.Rebind(target, _widthSource);
-            EvaluateResponsive();
+            if (target?.panel == null)
+            {
+                return;
+            }
+            HookWidth(target.panel.visualTree);
         }
         #endregion
 

@@ -13,8 +13,8 @@ namespace Velvet.Tests.Performance
     [TestFixture]
     internal sealed class FiberAsyncResourcePlayModeBenchmarks
     {
-        private const int WarmupCount = 5;
-        private const int MeasurementCount = 20;
+        private static readonly int WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int MeasurementCount = BenchmarkRun.Measurements(20);
 
         private static readonly object ResourceKey = new();
         private static Func<CancellationToken, VelvetTask<int>> s_factory;
@@ -24,6 +24,8 @@ namespace Velvet.Tests.Performance
         [SetUp]
         public void SetUp() => _root = new VisualElement();
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [UnityTest, Performance]
         public IEnumerator HooksUse_SuspendResumeRoundTrip()
         {
@@ -43,6 +45,10 @@ namespace Velvet.Tests.Performance
                 Measure.Custom(groupTime, measurement.ElapsedMs);
                 Measure.Custom(groupGC, measurement.AllocBlocks);
             }
+
+            // One round trip that starts after a measured one has finished, so a one-iteration run also
+            // covers a round trip following another.
+            yield return RunHooksUseSuspendResumeRoundTrip(_root);
         }
 
         [Component]

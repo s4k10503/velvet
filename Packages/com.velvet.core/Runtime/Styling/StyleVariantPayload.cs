@@ -86,11 +86,27 @@ namespace Velvet
                 if (ReferenceEquals(dest, control))
                 {
                     gateChanged |= payloadGated;
+                    if (StyleInputBoxSurface.TryGetSharedBox(control, core, out var shared))
+                    {
+                        box = shared;
+                        boxChanged |= ToggleResolvedPayload(shared, payload, on, effectivePriority, ctx, declaration);
+                    }
                 }
                 else
                 {
                     box = dest;
                     boxChanged |= payloadGated;
+                }
+                if (StyleInputBoxSurface.TryGetBoxText(dest, core, out var boxText))
+                {
+                    ToggleResolvedPayload(boxText, payload, on, effectivePriority, ctx, declaration);
+                    if (StyleInputBoxSurface.ImpliesBoxClip(core))
+                    {
+                        ToggleResolvedPayload(boxText, StyleInputBoxSurface.BoxClipCore, on, effectivePriority,
+                            ctx, declaration);
+                        ToggleResolvedPayload(dest, StyleInputBoxSurface.BoxClipCore, on, effectivePriority,
+                            ctx, declaration);
+                    }
                 }
 
                 // A clip-path payload (hover:clip-path-[…], dark:/first:clip-path-[…], …) was just toggled as a class,
@@ -146,7 +162,7 @@ namespace Velvet
             // nth-2:), and two that hold at once order by the place StyleRuleOrder gave the rule's declaration.
             var key = StyleLayerPriority.WithRule(effectivePriority, declaration);
             if (StyleArbitraryValueResolver.IsInlineResolved(core)
-                && StyleArbitraryValueResolver.TryParse(core, out var style))
+                && StyleArbitraryValueResolver.TryParseLayer(core, out var style))
             {
                 if (on)
                 {
@@ -156,7 +172,10 @@ namespace Velvet
                 {
                     StyleArbitraryValueResolver.Clear(target, in style, key);
                 }
-                return false;
+                // text-<size>/<leading> also sets a line height, which the text-effect cascade reads back out of
+                // the composed class source.
+                return StyleNamedTextSize.TryParseLineHeight(core, out _, out _)
+                    && TrackVariantGate(ctx, target, payload, key, declaration, on);
             }
 
             // font-[…] / leading-[…]: no arbitrary property claims either prefix, so both fall past the
@@ -167,14 +186,6 @@ namespace Velvet
                 || StyleTextEffectClass.IsArbitraryLeadingClass(core))
             {
                 return TrackVariantGate(ctx, target, payload, key, declaration, on);
-            }
-
-            // The off-toggle of a filter-[name:args] payload whose name was unregistered while the layer was
-            // active — the shared clear resolves the name syntactically and removes the mirrored class (see
-            // TryClearUnregisteredFilterToken).
-            if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, key))
-            {
-                return false;
             }
 
             if (on)

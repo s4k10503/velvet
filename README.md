@@ -187,7 +187,7 @@ Styling is composed entirely from utility classes — no per-component USS files
 - **`StyleRecipe` / `StyleSlotRecipe`** — variants and the slot API.
 - **`StyleArbitraryValueResolver`** — arbitrary-value JIT syntax (`w-[120px]`, `scale-[1.4]`, `rotate-[45deg]`, etc.).
 - **Variants** — Tailwind-style prefixes: state (`hover:` / `focus:` / `active:` / `checked:`), theme (`dark:`), responsive (`sm:` / `md:` / `lg:` / `xl:` / `2xl:`), relational (`group-` / `peer-`), and stacked (`dark:hover:`, order-independent). See [styling-variants.md](Packages/com.velvet.core/Documentation~/styling-variants.md).
-- **Container queries** — `@container` (apply via `VelvetResponsive.ContainerClass`) marks an element a responsive root, so its descendants' `sm:` / `md:` / … evaluate against **that** element's width instead of the panel root's (the CSS `container-type: inline-size` equivalent). Toggling the marker in a `className` re-points descendants that are already attached.
+- **Container queries** — `@container` (apply via `VelvetResponsive.ContainerClass`; `@container/name` to name it) marks an element a query container, and its descendants' `@sm:` … `@7xl:`, `@min-*:` and `@max-*:` variants (`@md/name:` for a named one) evaluate against **that** element's width, as in Tailwind v4. `sm:` … `2xl:` always measure the viewport. Toggling the marker in a `className` re-points descendants that are already attached.
 - **Transforms & transitions** — `scale-*` / `translate-*` / `rotate-*`, `transition-*` / `duration-*` / `ease-*`. The transform utilities write the `translate` / `scale` / `rotate` properties, and `transition-transform` transitions all three together, as CSS's `transition-property: transform` does.
 
 ### Animation (Framer Motion)
@@ -258,7 +258,7 @@ Framework documentation ships with the package under
 
 - [Documentation index](Packages/com.velvet.core/Documentation~/README.md)
 - [React migration guide](Packages/com.velvet.core/Documentation~/react-migration.md) — in-depth guide for developers coming from React
-- [Styling variants & container queries](Packages/com.velvet.core/Documentation~/styling-variants.md) — the variant set (state / `dark:` / responsive / `group-`·`peer-` / stacked) and `@container`
+- [Styling variants & container queries](Packages/com.velvet.core/Documentation~/styling-variants.md) — the variant set (state / `dark:` / responsive / container / `group-`·`peer-` / stacked) and `@container`
 - [Preview tooling](Packages/com.velvet.core/Documentation~/preview-tooling.md) — the Storybook-equivalent preview window, its addons, and screenshot capture
 - [Memoization](Packages/com.velvet.core/Documentation~/memoization.md) — `[MemoizeMethod]` and component-level caching
 

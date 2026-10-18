@@ -553,15 +553,15 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already lets flex-nowrap outrank flex-wrap, the order
-        // _layout.uss declares them in. What reddens it is the flex-nowrap marker answering "wrap" in
-        // StyleGapManipulator.WrapMarker, which puts the row on the half-margin path.
+        // GREEN_ON_BASE(characterization): the base already reads a flex-nowrap marker alone as no wrap.
+        // What reddens it is the flex-nowrap marker answering "wrap" in StyleGapManipulator.WrapMarker, which
+        // puts the row on the half-margin path.
         [Test]
-        public void Given_FlexWrapBesideFlexNowrap_When_ReconciledOffPanel_Then_TheLeadingMarginPathApplies()
+        public void Given_FlexNowrapAlone_When_ReconciledOffPanel_Then_TheLeadingMarginPathApplies()
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-row flex-wrap flex-nowrap gap-4", 3) };
+            var tree = new VNode[] { Row("flex flex-row flex-nowrap gap-4", 3) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
@@ -569,6 +569,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        [TestCase("flex flex-row flex-wrap flex-nowrap gap-4")]
+        [TestCase("flex flex-row flex-nowrap flex-wrap gap-4")]
+        public void Given_FlexWrapBesideFlexNowrap_When_ReconciledOffPanel_Then_TheHalfMarginPolyfillApplies(
+            string className)
+        {
+            // Arrange — _layout.uss declares flex-nowrap ahead of flex-wrap, as Tailwind emits them.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row(className, 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            AssertFourSideMargin(container[0], Half4, "child[0] under flex-wrap beside flex-nowrap");
         }
 
         [Test]
@@ -1027,11 +1044,13 @@ namespace Velvet.Tests
             Assert.That(has, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base declines a suffix off its table, and so must a suffix that is no multiple of 0.25.
+        // Reading every decimal as a step reddens it.
         [Test]
         public void Given_UnknownSpaceSuffix_When_Parsed_Then_DeclinesToParse()
         {
-            // Act — a suffix outside the --space-* scale is not a recognized gap utility.
-            var ok = StyleGapClass.TryParse("space-x-999", out _, out _);
+            // Act — a suffix that is no multiple of 0.25 is not a recognized gap utility.
+            var ok = StyleGapClass.TryParse("space-x-9.9", out _, out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -1622,12 +1641,14 @@ namespace Velvet.Tests
             Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(-Space4));
         }
 
-        [Test]
-        public void Given_ASpaceYWithoutASpaceX_When_Reconciled_Then_TheEndMarginIsBottom()
+        // GREEN_ON_BASE(refactor): the base already puts the bottom margin on the first child for each of these containers, one method per container.
+        [TestCase("flex flex-row space-y-4", TestName = "Given_ASpaceYWithoutASpaceX_When_Reconciled_Then_TheEndMarginIsBottom")]
+        [TestCase("grid grid-cols-2 space-y-4", TestName = "Given_AGridWithASpaceY_When_Reconciled_Then_TheFirstChildCarriesTheBottomMargin")]
+        public void Given_ASpaceYContainer_When_Reconciled_Then_TheFirstChildCarriesTheBottomMargin(string classes)
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-row space-y-4", 3) };
+            var tree = new VNode[] { Row(classes, 3) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
@@ -1772,21 +1793,6 @@ namespace Velvet.Tests
             // Assert — child 1 opens the second column, so a column gap would sit on its left.
             Assert.That((container[1].style.marginLeft.value.value, container[0].style.marginRight.value.value),
                 Is.EqualTo((0f, Space4)));
-        }
-
-        [Test]
-        public void Given_AGridWithASpaceY_When_Reconciled_Then_TheFirstChildCarriesTheBottomMargin()
-        {
-            // Arrange
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("grid grid-cols-2 space-y-4", 3) };
-
-            // Act
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-            var container = Container(scope.Root);
-
-            // Assert
-            Assert.That(container[0].style.marginBottom.value.value, Is.EqualTo(Space4));
         }
 
         [Test]

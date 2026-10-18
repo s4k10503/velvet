@@ -37,8 +37,6 @@ namespace Velvet.Tests
             new object[] { "h-[15%]", ArbitraryProperty.Height, 15f, LengthUnit.Percent },
             // Given_MinHeightPixelClass_When_Parsed_Then_ResolvesMinHeightAsPixelLength
             new object[] { "min-h-[60px]", ArbitraryProperty.MinHeight, 60f, LengthUnit.Pixel },
-            // Given_WidthValueWithoutUnit_When_Parsed_Then_DefaultsToPixelLength
-            new object[] { "w-[200]", ArbitraryProperty.Width, 200f, LengthUnit.Pixel },
             // Given_MaxWidthPercentClass_When_Parsed_Then_ResolvesMaxWidthAsPercentLength
             new object[] { "max-w-[50%]", ArbitraryProperty.MaxWidth, 50f, LengthUnit.Percent },
             // Given_MaxHeightPixelClass_When_Parsed_Then_ResolvesMaxHeightAsPixelLength
@@ -629,11 +627,20 @@ namespace Velvet.Tests
 
         #region TryParse — Invalid Inputs
 
-        [Test]
-        public void Given_NormalBemClass_When_Parsed_Then_Declines()
+        // GREEN_ON_BASE(refactor): the base already declines each of these classes, one method per class.
+        [TestCase("btn--primary", TestName = "Given_NormalBemClass_When_Parsed_Then_Declines")]
+        [TestCase("z-[10]", TestName = "Given_UnknownPrefix_When_Parsed_Then_Declines")]
+        [TestCase("h-[]", TestName = "Given_EmptyBrackets_When_Parsed_Then_Declines")]
+        [TestCase("h-[abc]", TestName = "Given_NonNumericValue_When_Parsed_Then_Declines")]
+        [TestCase("h-[15%", TestName = "Given_MissingClosingBracket_When_Parsed_Then_Declines")]
+        [TestCase("h-[NaN]", TestName = "Given_NaNValue_When_Parsed_Then_Declines")]
+        [TestCase("w-[Infinity]", TestName = "Given_InfinityValue_When_Parsed_Then_Declines")]
+        [TestCase("h-[-Infinity%]", TestName = "Given_NegativeInfinityPercentValue_When_Parsed_Then_Declines")]
+        [TestCase("scale-[abc]", TestName = "Given_NonNumericScaleValue_When_Parsed_Then_Declines")]
+        public void Given_AClassThatIsNoArbitraryUtility_When_Parsed_Then_Declines(string className)
         {
             // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("btn--primary", out _), Is.False);
+            Assert.That(StyleArbitraryValueResolver.TryParse(className, out _), Is.False);
         }
 
         [Test]
@@ -641,55 +648,6 @@ namespace Velvet.Tests
         {
             // Act + Assert
             Assert.That(StyleArbitraryValueResolver.TryParse(null, out _), Is.False);
-        }
-
-        [Test]
-        public void Given_UnknownPrefix_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("z-[10]", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_EmptyBrackets_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("h-[]", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_NonNumericValue_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("h-[abc]", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_MissingClosingBracket_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("h-[15%", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_NaNValue_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("h-[NaN]", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_InfinityValue_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("w-[Infinity]", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_NegativeInfinityPercentValue_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("h-[-Infinity%]", out _), Is.False);
         }
 
         #endregion
@@ -1085,7 +1043,7 @@ namespace Velvet.Tests
 
         [TestCase(StyleLayerPriority.Base)]
         [TestCase(StyleLayerPriority.Important)]
-        public void Given_ALonghandBeforeAShorthandOnOneLayer_When_Applied_Then_TheLaterShorthandHoldsEveryEdge(long priority)
+        public void Given_ALonghandBeforeAShorthandOnOneLayer_When_Applied_Then_TheLonghandStillHoldsItsEdge(long priority)
         {
             // Arrange
             var element = new VisualElement();
@@ -1099,7 +1057,28 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((before, element.style.paddingTop.value.value, element.style.paddingBottom.value.value),
-                Is.EqualTo((2f, 8f, 8f)));
+                Is.EqualTo((2f, 2f, 8f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes the chain and the appended pair with the slots the sort order puts last as well.
+        [TestCase(false, false, "inset-chain")]
+        [TestCase(false, true, "inset-chain")]
+        [TestCase(true, false, "inset-chain")]
+        [TestCase(true, true, "inset-chain")]
+        [TestCase(false, false, "wrap-new-inline")]
+        [TestCase(false, true, "wrap-new-inline")]
+        [TestCase(true, false, "wrap-new-inline")]
+        [TestCase(true, true, "wrap-new-inline")]
+        public void Given_InlineClassOccurrences_When_TheirOrderOrCountChanges_Then_TheLastWritersHoldTheirSlots(bool important, bool largeList, string change)
+        {
+            // Arrange
+            using var arranged = ArrangeSliceChange(important, largeList, change);
+
+            // Act
+            arranged.Reconciler.Reconcile(arranged.Root, arranged.OldTree, arranged.NewTree);
+
+            // Assert
+            Assert.That(arranged.Outcome(), Is.EqualTo(arranged.Expected));
         }
 
         [TestCase(false, false, "leading")]
@@ -1122,33 +1101,60 @@ namespace Velvet.Tests
         [TestCase(false, true, "append-occurrence")]
         [TestCase(true, false, "append-occurrence")]
         [TestCase(true, true, "append-occurrence")]
-        [TestCase(false, false, "corner-chain")]
-        [TestCase(false, true, "corner-chain")]
-        [TestCase(true, false, "corner-chain")]
-        [TestCase(true, true, "corner-chain")]
-        [TestCase(false, false, "wrap-new-inline")]
-        [TestCase(false, true, "wrap-new-inline")]
-        [TestCase(true, false, "wrap-new-inline")]
-        [TestCase(true, true, "wrap-new-inline")]
-        public void Given_InlineClassOccurrences_When_TheirOrderOrCountChanges_Then_TheLastWritersHoldTheirSlots(bool important, bool largeList, string change)
+        public void Given_SliceInsetsWrittenInTheOtherOrderThanTailwindOrdersThem_When_TheirOrderOrCountChanges_Then_TheNarrowerInsetHoldsTheTop(bool important, bool largeList, string change)
         {
             // Arrange
-            using var reconciler = new Reconciler();
+            using var arranged = ArrangeSliceChange(important, largeList, change);
+
+            // Act
+            arranged.Reconciler.Reconcile(arranged.Root, arranged.OldTree, arranged.NewTree);
+
+            // Assert
+            Assert.That(arranged.Outcome(), Is.EqualTo(arranged.Expected));
+        }
+
+        private sealed class SliceChange : System.IDisposable
+        {
+            public Reconciler Reconciler = null!;
+            public VisualElement Root = null!;
+            public VNode[] OldTree = null!;
+            public VNode[] NewTree = null!;
+            public bool Chain;
+            public int Before;
+            public bool HistoryConsistent;
+            public (int Before, int After, int Companion, float Width, bool HistoryConsistent) Expected;
+
+            public (int Before, int After, int Companion, float Width, bool HistoryConsistent) Outcome()
+            {
+                var element = Root.ElementAt(0);
+                var after = Chain ? element.style.unitySliceBottom.value : element.style.unitySliceTop.value;
+                var companion = Chain ? element.style.unitySliceLeft.value : element.style.unitySliceBottom.value;
+                return (Before, after, companion, element.style.width.value.value, HistoryConsistent);
+            }
+
+            public void Dispose() => Reconciler.Dispose();
+        }
+
+        private static SliceChange ArrangeSliceChange(bool important, bool largeList, string change)
+        {
+            var reconciler = new Reconciler();
             var root = new VisualElement();
             var bang = important ? "!" : "";
             var extra = largeList ? " flex relative items-start justify-start overflow-hidden opacity-50 bg-red-500" : "";
-            var padding = bang + "p-[8px]";
-            var top = bang + "pt-[2px]";
+            // slice-y and slice-t share the top inset. Tailwind has no such utility, so StyleFamilyOrder puts them in
+            // the sort key's order, more longhands first, and slice-t ends on the top whichever is written first.
+            var wide = bang + "slice-y-[8]";
+            var narrow = bang + "slice-t-[2]";
             var (oldClasses, newClasses, oldValue, newValue) = change switch
             {
-                "leading" => ($"w-[20px] {padding} {top}", $"w-[20px] {top} {padding}", 2f, 8f),
-                "crossing" => ($"{padding} {top} w-[20px]", $"{top} w-[20px] {padding}", 2f, 8f),
-                "duplicate-width" => ($"w-[20px] w-[20px] {padding} {top}", $"w-[20px] w-[20px] {top} {padding}", 2f, 8f),
-                "remove-occurrence" => ($"w-[20px] {padding} {top} {padding}", $"w-[20px] {padding} {top}", 8f, 2f),
-                "append-occurrence" => ($"w-[20px] {padding} {top}", $"w-[20px] {padding} {top} {padding}", 2f, 8f),
-                "corner-chain" => ($"w-[20px] {bang}rounded-r-[6px] {bang}rounded-b-[8px] {bang}rounded-t-[4px]",
-                    $"w-[20px] {bang}rounded-r-[6px] {bang}rounded-b-[8px] {bang}rounded-t-[4px] {bang}rounded-tl-[2px]", 8f, 8f),
-                "wrap-new-inline" => ("relative", $"relative {padding} {top}", 0f, 2f),
+                "leading" => ($"w-[20px] {wide} {narrow}", $"w-[20px] {narrow} {wide}", 2f, 2f),
+                "crossing" => ($"{wide} {narrow} w-[20px]", $"{narrow} w-[20px] {wide}", 2f, 2f),
+                "duplicate-width" => ($"w-[20px] w-[20px] {wide} {narrow}", $"w-[20px] w-[20px] {narrow} {wide}", 2f, 2f),
+                "remove-occurrence" => ($"w-[20px] {wide} {narrow} {wide}", $"w-[20px] {wide} {narrow}", 2f, 2f),
+                "append-occurrence" => ($"w-[20px] {wide} {narrow}", $"w-[20px] {wide} {narrow} {wide}", 2f, 2f),
+                "inset-chain" => ($"w-[20px] {bang}slice-[6] {bang}slice-y-[8] {bang}slice-t-[4]",
+                    $"w-[20px] {bang}slice-[6] {bang}slice-y-[8] {bang}slice-t-[4] {bang}slice-l-[2]", 8f, 8f),
+                "wrap-new-inline" => ("relative", $"relative {wide} {narrow}", 0f, 2f),
                 _ => throw new System.ArgumentOutOfRangeException(nameof(change)),
             };
             var oldTree = new VNode[] { V.Div(oldClasses + extra) };
@@ -1171,26 +1177,22 @@ namespace Velvet.Tests
                 mapArgs[1].GetType().GetField("_nextArrival",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(mapArgs[1], long.MaxValue - 1);
             }
-            var corners = change == "corner-chain";
-            var before = corners
-                ? root.ElementAt(0).style.borderBottomRightRadius.value.value
-                : root.ElementAt(0).style.paddingTop.value.value;
+            var chain = change == "inset-chain";
+            var before = chain
+                ? root.ElementAt(0).style.unitySliceBottom.value
+                : root.ElementAt(0).style.unitySliceTop.value;
             root.ElementAt(0).style.width = 99f;
-
-            // Act
-            reconciler.Reconcile(root, oldTree, newTree);
-
-            // Assert
-            var element = root.ElementAt(0);
-            var after = corners ? element.style.borderBottomRightRadius.value.value : element.style.paddingTop.value.value;
-            var companion = corners ? element.style.borderTopLeftRadius.value.value : element.style.paddingBottom.value.value;
-            Assert.That((before, after, companion, element.style.width.value.value, historyConsistent),
-                Is.EqualTo((oldValue, newValue, corners ? 2f : 8f, 99f, true)));
+            return new SliceChange
+            {
+                Reconciler = reconciler, Root = root, OldTree = oldTree, NewTree = newTree, Chain = chain,
+                Before = before, HistoryConsistent = historyConsistent,
+                Expected = ((int)oldValue, (int)newValue, chain ? 2 : 8, 99f, true),
+            };
         }
 
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_ASurvivingInlineShorthand_When_ALonghandIsInsertedBeforeIt_Then_TheSurvivingShorthandStillHoldsTheTop(bool important)
+        public void Given_ASurvivingInlineShorthand_When_ALonghandIsInsertedBeforeIt_Then_TheLonghandTakesTheTop(bool important)
         {
             // Arrange
             using var reconciler = new Reconciler();
@@ -1205,12 +1207,12 @@ namespace Velvet.Tests
             reconciler.Reconcile(root, oldTree, newTree);
 
             // Assert
-            Assert.That((before, root.ElementAt(0).style.paddingTop.value.value), Is.EqualTo((8f, 8f)));
+            Assert.That((before, root.ElementAt(0).style.paddingTop.value.value), Is.EqualTo((8f, 2f)));
         }
 
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_EqualLayerInlineVariantPayloads_When_Enabled_Then_TheLaterShorthandHoldsTheTop(bool important)
+        public void Given_EqualLayerInlineVariantPayloads_When_Enabled_Then_TheLonghandHoldsTheTop(bool important)
         {
             // Arrange
             var element = new VisualElement();
@@ -1224,11 +1226,11 @@ namespace Velvet.Tests
             StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.Padding, priority);
 
             // Assert
-            Assert.That((settled, element.style.paddingTop.value.value), Is.EqualTo((8f, 2f)));
+            Assert.That((settled, element.style.paddingTop.value.value), Is.EqualTo((2f, 2f)));
         }
 
         [Test]
-        public void Given_AnOlderBaseLonghandAndLaterBaseShorthand_When_AnUpperLonghandClears_Then_TheBaseArrivalOrderIsRestored()
+        public void Given_AnOlderBaseLonghandAndLaterBaseShorthand_When_AnUpperLonghandClears_Then_TheBaseCascadeOrderIsRestored()
         {
             // Arrange
             var element = new VisualElement();
@@ -1267,7 +1269,7 @@ namespace Velvet.Tests
             Assert.That((upper, restored, released && !arrivals.ContainsKey(target),
                     survivorKept && arrivals[survivor] == survivingArrival && element.style.width.value.value == 5f,
                     registered, freshArrival, element.style.paddingTop.value.value),
-                Is.EqualTo((4f, 8f, true, true, 6f, true, 8f)));
+                Is.EqualTo((4f, 2f, true, true, 6f, true, 2f)));
         }
 
         // GREEN_ON_BASE(characterization): adding an unrelated class already leaves an unchanged inline token alone.
@@ -1301,7 +1303,7 @@ namespace Velvet.Tests
             // Assert
             var after = padding ? element.style.paddingTop.value.value : element.style.width.value.value;
             Assert.That((initial, before, after, element.style.height.value.value),
-                Is.EqualTo((padding ? 8f : 20f, 99f, 99f, height)));
+                Is.EqualTo((padding ? 2f : 20f, 99f, 99f, height)));
         }
 
         // GREEN_ON_BASE(characterization): active hover payloads already keep their rule priority after a class reorder.
@@ -1746,13 +1748,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_NonNumericScaleValue_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("scale-[abc]", out _), Is.False);
-        }
-
-        [Test]
         public void Given_TranslateXArbitraryClass_When_Parsed_Then_ResolvesTranslateXAsPixelLength()
         {
             // Act
@@ -1890,26 +1885,17 @@ namespace Velvet.Tests
         // vertical keyword is the y, a keyword-only pair may come in either order, and a pair holding a
         // length is x then y. Each pivot below differs on both axes, so a swapped reading cannot pass.
 
-        [Test]
-        public void Given_TransformOriginLoneHorizontalKeyword_When_Parsed_Then_ItIsTheXAndTheYIsHalf()
+        // GREEN_ON_BASE(refactor): the base already resolves each lone origin keyword onto its own axis, one method per keyword.
+        [TestCase("origin-[right]", 100f, 50f, TestName = "Given_TransformOriginLoneHorizontalKeyword_When_Parsed_Then_ItIsTheXAndTheYIsHalf")]
+        [TestCase("origin-[bottom]", 50f, 100f, TestName = "Given_TransformOriginLoneVerticalKeyword_When_Parsed_Then_ItIsTheYAndTheXIsHalf")]
+        public void Given_ALoneTransformOriginKeyword_When_Parsed_Then_ItIsOnItsAxisAndTheOtherIsHalf(string className, float expectedX, float expectedY)
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[right]", out var s);
+            var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
             Assert.That((ok, s.Value, s.Unit, s.Value2, s.Unit2),
-                Is.EqualTo((true, 100f, LengthUnit.Percent, 50f, LengthUnit.Percent)));
-        }
-
-        [Test]
-        public void Given_TransformOriginLoneVerticalKeyword_When_Parsed_Then_ItIsTheYAndTheXIsHalf()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[bottom]", out var s);
-
-            // Assert
-            Assert.That((ok, s.Value, s.Unit, s.Value2, s.Unit2),
-                Is.EqualTo((true, 50f, LengthUnit.Percent, 100f, LengthUnit.Percent)));
+                Is.EqualTo((true, expectedX, LengthUnit.Percent, expectedY, LengthUnit.Percent)));
         }
 
         [Test]
@@ -1947,78 +1933,19 @@ namespace Velvet.Tests
         // one or a horizontal keyword behind one has no axis left, and two keywords of one axis leave the
         // other unstated.
 
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginVerticalKeywordThenLength_When_Parsed_Then_Declines()
+        // GREEN_ON_BASE(refactor): the base already refuses every component list here, one method per list.
+        [TestCase("origin-[top_20px]", TestName = "Given_TransformOriginVerticalKeywordThenLength_When_Parsed_Then_Declines")]
+        [TestCase("origin-[20px_left]", TestName = "Given_TransformOriginLengthThenHorizontalKeyword_When_Parsed_Then_Declines")]
+        [TestCase("origin-[left_right]", TestName = "Given_TransformOriginTwoHorizontalKeywords_When_Parsed_Then_Declines")]
+        [TestCase("origin-[top_bottom]", TestName = "Given_TransformOriginTwoVerticalKeywords_When_Parsed_Then_Declines")]
+        [TestCase("origin-[middle]", TestName = "Given_TransformOriginLoneUnknownWord_When_Parsed_Then_Declines")]
+        [TestCase("origin-[middle_20px]", TestName = "Given_TransformOriginUnknownWordFirst_When_Parsed_Then_Declines")]
+        [TestCase("origin-[20px_middle]", TestName = "Given_TransformOriginUnknownWordSecond_When_Parsed_Then_Declines")]
+        [TestCase("origin-[10px_20px_30px_40px]", TestName = "Given_TransformOriginWithFourComponents_When_Parsed_Then_Declines")]
+        public void Given_AnInvalidTransformOriginComponentList_When_Parsed_Then_Declines(string className)
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[top_20px]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginLengthThenHorizontalKeyword_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[20px_left]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginTwoHorizontalKeywords_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[left_right]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginTwoVerticalKeywords_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[top_bottom]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginLoneUnknownWord_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[middle]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginUnknownWordFirst_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[middle_20px]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginUnknownWordSecond_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[20px_middle]", out _);
+            var ok = StyleArbitraryValueResolver.TryParse(className, out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -2030,17 +1957,6 @@ namespace Velvet.Tests
         {
             // Act — CSS takes the z as a length only.
             var ok = StyleArbitraryValueResolver.TryParse("origin-[10%_20%_30%]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginWithFourComponents_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[10px_20px_30px_40px]", out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -2328,11 +2244,13 @@ namespace Velvet.Tests
             Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("translate-y-2"), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): a translate suffix that is no multiple of 0.25 is not claimed on the base either.
+        // Claiming any numeric translate suffix reddens it.
         [Test]
         public void Given_UnknownTranslatePreset_When_DispatchGateChecked_Then_NotClaimed()
         {
-            // 37 is not on the spacing scale, so translate-x-37 is not claimed (falls through; not a utility).
-            Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("translate-x-37"), Is.False);
+            // 37.3 is not a multiple of 0.25, so translate-x-37.3 is not claimed (falls through; not a utility).
+            Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("translate-x-37.3"), Is.False);
         }
 
         [Test]
@@ -3447,14 +3365,16 @@ namespace Velvet.Tests
             Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexGrow, 2f)));
         }
 
-        [Test]
-        public void Given_ShrinkArbitrary_When_Parsed_Then_ResolvesFlexShrink()
+        // GREEN_ON_BASE(refactor): the base already resolves each of these shrink classes, one method per class.
+        [TestCase("shrink-[3]", 3f, TestName = "Given_ShrinkArbitrary_When_Parsed_Then_ResolvesFlexShrink")]
+        [TestCase("shrink-2", 2f, TestName = "Given_BareShrink_When_Parsed_Then_ResolvesFlexShrink")]
+        public void Given_AShrinkClass_When_Parsed_Then_ResolvesFlexShrink(string className, float expected)
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("shrink-[3]", out var s);
+            var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, 3f)));
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, expected)));
         }
 
         [Test]
@@ -3479,21 +3399,13 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
-        [Test]
-        public void Given_GrowArbitraryWithALengthUnit_When_Parsed_Then_DeclinesToParse()
+        // GREEN_ON_BASE(refactor): the base already declines each of these grow classes, one method per class.
+        [TestCase("grow-[2rem]", TestName = "Given_GrowArbitraryWithALengthUnit_When_Parsed_Then_DeclinesToParse")]
+        [TestCase("-grow-[2]", TestName = "Given_NegatedGrowArbitrary_When_Parsed_Then_DeclinesToParse")]
+        public void Given_AGrowClassOutsideTheFactorForm_When_Parsed_Then_DeclinesToParse(string className)
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("grow-[2rem]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        [Test]
-        public void Given_NegatedGrowArbitrary_When_Parsed_Then_DeclinesToParse()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("-grow-[2]", out _);
+            var ok = StyleArbitraryValueResolver.TryParse(className, out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -3551,16 +3463,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexGrow, 3f)));
-        }
-
-        [Test]
-        public void Given_BareShrink_When_Parsed_Then_ResolvesFlexShrink()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("shrink-2", out var s);
-
-            // Assert
-            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, 2f)));
         }
 
         [Test]

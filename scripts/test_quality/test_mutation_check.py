@@ -15,6 +15,7 @@ Run: python3 scripts/test_quality/test_mutation_check.py
 """
 
 import argparse
+import ast
 import contextlib
 import fcntl
 import hashlib
@@ -3126,7 +3127,10 @@ class StubbedCampaign:
         """)
 
     def __init__(self, body=None):
-        self.holder = tempfile.mkdtemp(prefix="mutation-check-")
+        # Reached through a link, as macOS reaches its temporary directory, so that comparing a resolved
+        # path against an unresolved one fails on every platform rather than on macOS alone.
+        self.holder = tempfile.mkdtemp(prefix="mutation-check-") + "-link"
+        os.symlink(self.holder[:-len("-link")], self.holder)
         self.project = Path(self.holder)
         self.source = self.project / self.SOURCE
         self.source.parent.mkdir(parents=True, exist_ok=True)
@@ -3153,11 +3157,16 @@ class StubbedCampaign:
     # which is what separates a mutant that hung from a bound the suite was always going to outrun.
     baseline_seconds = 0.0
     baseline_text = GREEN_RESULTS
+    # Where set, the baseline writes this log and no result, as a build that stopped does.
+    baseline_log = None
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         # The baseline has to be green whatever the mutants do, or the run stops before the loop.
         mutant = Path(results).name != "baseline.xml"
         wall = 0.0 if mutant else self.baseline_seconds
+        if not mutant and self.baseline_log is not None:
+            Path(log).write_text(self.baseline_log)
+            return wall, False, 0
         if mutant and self.no_results:
             Path(log).write_text("")
             return wall, False, 0
@@ -3201,6 +3210,144 @@ class StubbedCampaign:
         finally:
             self.printed = spoken.getvalue()
             sys.argv, mutation_check.run_suite, mutation_check.unity_busy = saved
+
+
+class UnbuiltBaselineTests(unittest.TestCase):
+    """A baseline whose build stopped writes no result, and the job log is all a failed CI step shows."""
+
+    DIAGNOSTIC = "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS0103: The name 'x' does not exist"
+
+    def refusal(self, log):
+        campaign = StubbedCampaign()
+        campaign.baseline_log = log
+        return str(campaign.run("--max", "1"))
+
+    @staticmethod
+    def quoted(refusal):
+        """The excerpt's lines, without the indent that sets them apart from the refusal's own."""
+        return [line[2:] for line in refusal.splitlines() if line.startswith("  ")]
+
+    def test_Given_AnIndentedCompilerError_When_TheRunStops_Then_ItIsTheOneLineQuoted(self):
+        # Arrange
+        log = "Start importing\n\t  {}\nScripts have compiler errors.\n".format(self.DIAGNOSTIC)
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertEqual(self.quoted(refusal), [self.DIAGNOSTIC])
+
+    def test_Given_ACompilerErrorTheLogRepeats_When_TheRunStops_Then_ItIsQuotedOnce(self):
+        # Arrange
+        log = "\n".join([self.DIAGNOSTIC, "Scripts have compiler errors.", self.DIAGNOSTIC]) + "\n"
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertEqual(refusal.count(self.DIAGNOSTIC), 1)
+
+    def test_Given_ACompilerErrorBesideALineNamingAnError_When_TheRunStops_Then_OneLineIsQuoted(self):
+        # Arrange
+        log = "[Licensing::Client] Error: a token was refreshed\n{}\n".format(self.DIAGNOSTIC)
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertEqual(len(self.quoted(refusal)), 1)
+
+    def test_Given_MoreCompilerErrorsThanTheExcerptHolds_When_TheRunStops_Then_TheFirstOnesAreQuoted(self):
+        # Arrange
+        errors = ["Packages/com.velvet.core/Runtime/Probe.cs({},9): error CS0103: missing".format(number)
+                  for number in range(1, 31)]
+
+        # Act
+        refusal = self.refusal("\n".join(errors) + "\n")
+
+        # Assert
+        self.assertEqual(self.quoted(refusal), errors[:20])
+
+    def test_Given_AnErrorInCapitalsFarFromTheEnd_When_TheRunStops_Then_ItIsQuoted(self):
+        # Arrange — more lines follow it than the excerpt's tail holds.
+        log = "Start importing\nERROR: the packages did not resolve\n" + "".join(
+            "Shutting down {}\n".format(number) for number in range(30))
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertIn("  ERROR: the packages did not resolve\n", refusal)
+
+    def test_Given_AnIncidentalErrorWordFarFromTheEnd_When_TheRunStops_Then_TheLastLineIsStillQuoted(self):
+        # Arrange
+        log = "Error: a token was refreshed\n" + "".join(
+            "step {}\n".format(number) for number in range(30)) + "the editor stopped\n"
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertTrue(refusal.endswith("  the editor stopped"))
+
+    def test_Given_ALastLineNamingAnError_When_TheRunStops_Then_ItIsQuotedOnceAheadOfTheRest(self):
+        # Arrange
+        log = "Start importing\nShutting down\nError: the editor stopped\n"
+
+        # Act
+        refusal = self.refusal(log)
+
+        # Assert
+        self.assertEqual(self.quoted(refusal),
+                         ["Error: the editor stopped", "Start importing", "Shutting down"])
+
+    def test_Given_MoreLinesNamingAnErrorThanTheExcerptHolds_When_TheRunStops_Then_TheFirstOnesAndTheTailAreQuoted(self):
+        # Arrange — the tail holds none of the lines naming an error.
+        worded = ["Error {}".format(number) for number in range(30)]
+        tail = ["step {}".format(number) for number in range(25)]
+
+        # Act
+        refusal = self.refusal("\n".join(worded + tail) + "\n")
+
+        # Assert
+        self.assertEqual(self.quoted(refusal), worded[:20] + tail[-20:])
+
+    def test_Given_ALogWhereErrorIsOnlyPartOfAWord_When_TheRunStops_Then_ItsLastLinesAloneAreQuoted(self):
+        # Arrange — `error` inside a longer word at either end names no error.
+        lines = ["GLX_ARB_create_context_no_error", "Scripts have compiler errors."] + [
+            "line {}".format(number) for number in range(1, 31)]
+
+        # Act
+        refusal = self.refusal("\n".join(lines) + "\n")
+
+        # Assert
+        self.assertEqual(self.quoted(refusal), lines[-20:])
+
+    def test_Given_ABaselineLogOfBlankLines_When_TheRunStops_Then_TheRefusalSaysItIsEmpty(self):
+        # Act
+        refusal = self.refusal("\n   \n\t\n")
+
+        # Assert
+        self.assertIn("baseline.log is empty", refusal)
+
+    def test_Given_ABaselineThatLeftNoLog_When_TheRunStops_Then_TheRefusalSaysSo(self):
+        # Arrange
+        campaign = StubbedCampaign()
+        campaign.baseline_log = ""
+        original = campaign.run_suite
+
+        def no_log(unity, project, platform, scope, results, log, timeout, holder=None):
+            answer = original(unity, project, platform, scope, results, log, timeout, holder)
+            Path(log).unlink()
+            return answer
+
+        campaign.run_suite = no_log
+
+        # Act
+        refusal = str(campaign.run("--max", "1"))
+
+        # Assert
+        self.assertIn("baseline.log could not be read", refusal)
 
 
 class QueuedCampaignTests(unittest.TestCase):
@@ -4209,7 +4356,7 @@ class CampaignVerdictTests(unittest.TestCase):
         mutation_check.write_verdict(output, 1, old_digest, mutant, campaign.project)
 
         # Act
-        with mock.patch.object(mutation_check, "MUTATION_MODEL_VERSION", "next", create=True):
+        with mock.patch.object(mutation_check, "MUTATOR_VERSION", "next"):
             new_digest = mutation_check.scope_digest(
                 "aaaaaaa", targets, campaign.project, "EditMode")
             reading = mutation_check.read_verdict(output, 1, new_digest, mutant, campaign.project)
@@ -4590,6 +4737,63 @@ class StaleDeclarationTests(unittest.TestCase):
         self.assertEqual(run, 0)
 
 
+class DeclarationOnlyChangeTests(unittest.TestCase):
+    """A change that writes a declaration over a line the base already holds, which is how a survivor
+    reported after its change landed is answered."""
+
+    COMMITTED = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b) => a <= b;
+
+                internal static bool Other(int a, int b) => a < b;
+            }
+        }
+        """)
+
+    def campaign(self, committed, working):
+        """`committed` as the base's text and `working` as the change's."""
+        campaign = StubbedCampaign(committed)
+        for command in (["add", campaign.SOURCE],
+                        ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "probe"]):
+            subprocess.run(["git", "-C", str(campaign.project), *command], capture_output=True, check=True)
+        campaign.source.write_text(working)
+        return campaign
+
+    def test_Given_AChangeWritingOnlyADeclaration_When_ItsSubjectsMutantDies_Then_TheDeclarationIsStale(self):
+        # Arrange — the change is the declaration's line alone, over a line whose mutant is killed.
+        declared = self.COMMITTED.replace(
+            "        internal static bool Ready",
+            "        // MUTANT_SURVIVES(equivalent): every caller clamps the operand already.\n"
+            "        internal static bool Ready")
+        campaign = self.campaign(self.COMMITTED, declared)
+        campaign.kills = True
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertIn("\nSTALE ", campaign.printed)
+
+    # GREEN_ON_BASE(characterization): the base mutates no line the change left alone. Dropping
+    # `declaration.written_in(lines)` from `declared_subjects` reddens it.
+    def test_Given_ADeclarationTheBaseHolds_When_TheChangeEditsAnotherLine_Then_ItsSubjectIsNotMutated(self):
+        # Arrange — the declaration and its subject are the base's text; only `Other` changes.
+        declared = self.COMMITTED.replace(
+            "        internal static bool Ready",
+            "        // MUTANT_SURVIVES(equivalent): every caller clamps the operand already.\n"
+            "        internal static bool Ready")
+        campaign = self.campaign(declared, declared.replace("a < b", "a > b"))
+
+        # Act
+        campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual(re.findall(r"^mutants=(\d+)$", campaign.printed, re.MULTILINE), ["1"])
+
+
 class SignalledCampaignTests(unittest.TestCase):
     """The campaign's own restore-on-signal, rather than the helper's.
 
@@ -4709,6 +4913,18 @@ class KeptVerdictTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(json.loads((self.output / "mutant-008.json").read_text())["killers"],
                          ["N.C.a", "N.C.b", "N.C.c", "N.C.d"])
+
+    def test_Given_AMutantWhoseLaunchesRanCases_When_ItsRecordIsCollected_Then_TheMutantCarriesTheCounts(self):
+        # Arrange
+        self.mutant.ran = (("covered", 3), ("whole", 9624))
+        mutation_check.write_verdict(self.output, 9, "digest-1", self.mutant, self.project)
+        self.mutant.ran = ()
+
+        # Act
+        mutation_check.collected([self.output], 9, "digest-1", self.mutant, self.project)
+
+        # Assert
+        self.assertEqual(self.mutant.ran, (("covered", 3), ("whole", 9624)))
 
     # GREEN_ON_BASE(characterization): the base keeps every verdict, a kill among them.
     def test_Given_AVerdictThisCampaignWrote_When_TheSameMutantIsReached_Then_ItIsAnswered(self):
@@ -6145,7 +6361,7 @@ class ShardedCampaignTests(unittest.TestCase):
 
 
 class KeyedProject(StubbedCampaign):
-    """A project holding the kinds of file a campaign key is read over, each committed on the base."""
+    """A project holding the kinds of file a campaign reads, each committed on the base."""
 
     FILES = {
         "Packages/com.velvet.core/Runtime/Other.cs":
@@ -6183,293 +6399,100 @@ class KeyedProject(StubbedCampaign):
         path = self.project / relative
         path.write_text(path.read_text() + text)
 
-    def key(self):
-        """(the key, {component: digest}) the run printed."""
-        self.run_over_diff("--key")
-        lines = self.printed.splitlines()
-        key = next((line.split("=", 1)[1] for line in lines if line.startswith("campaign-key=")), None)
-        parts = {line.split()[1]: line.split()[2] for line in lines if line.startswith("key-part ")}
-        return key, parts
-
-    def moved(self, before):
-        """The components whose digest differs from `before`'s."""
-        _, now = self.key()
-        return sorted(name for name in now if now[name] != before.get(name))
 
 
 class CampaignKeyTests(unittest.TestCase):
-    """What a head's campaign key moves with, and what it leaves alone.
+    """What a mutant's record key moves with, and what it leaves alone: the mutant, its file's bytes
+    and `MUTATOR_VERSION`, as StrykerJS keys an incremental result, and nothing else in the tree."""
 
-    A key that moved with a documentation edit would never be reused; one that sat still through a
-    test edit would pass a head whose tests nobody measured the mutants against.
-    """
+    def keyed(self, project):
+        mutant = mutants_of(project.source.read_text())[0]
+        mutant.path = project.source
+        return mutation_check.record_key(mutant, project.project)
 
-    def test_Given_TheSameTreeTwice_When_ItIsKeyed_Then_TheKeysAreEqual(self):
-        # Arrange
-        project = KeyedProject()
-
+    def test_Given_TheSameContentInTwoCheckouts_When_Keyed_Then_TheKeysAreEqual(self):
         # Act
-        first, second = project.key()[0], project.key()[0]
-
-        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
-        self.assertEqual((first == second, len(first or "")), (True, 64))
-
-    def test_Given_TheSameContentInTwoCheckouts_When_ItIsKeyed_Then_TheKeysAreEqual(self):
-        # Arrange
-        first, second = KeyedProject(), KeyedProject()
-
-        # Act
-        keys = (first.key()[0], second.key()[0])
-
-        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
-        self.assertEqual((keys[0] == keys[1], first.project != second.project, len(keys[0] or "")),
-                         (True, True, 64))
-
-    def test_Given_ProseScriptsAndOtherWorkflowsEdited_When_ItIsKeyed_Then_TheKeyIsTheSame(self):
-        # Arrange
-        project = KeyedProject()
-        before = project.key()[0]
-        project.append("Packages/com.velvet.core/CHANGELOG.md", "an entry\n")
-        project.append("Packages/com.velvet.core/Documentation~/guide.md", "a paragraph\n")
-        project.append("CONTRIBUTING.md", "a rule\n")
-        project.append("scripts/tool.py", "print(2)\n")
-        project.append(".github/workflows/test.yml", "on: push\n")
-
-        # Act
-        after = project.key()[0]
-
-        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
-        self.assertEqual((after == before, len(before or "")), (True, 64))
-
-    def test_Given_ASourceUnderADirectoryUnityDoesNotImport_When_ItIsEdited_Then_TheKeyIsTheSame(self):
-        # Arrange -- the generators' solution is built by dotnet, and nothing under a `~` directory
-        # reaches the editor's compile.
-        project = KeyedProject()
-        before = project.key()[0]
-        project.append("Packages/com.velvet.core/Generators~/Tool.cs", "// edit\n")
-
-        # Act
-        after = project.key()[0]
-
-        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
-        self.assertEqual((after == before, len(before or "")), (True, 64))
-
-    def test_Given_AnEditToTheMutatedFile_When_ItIsKeyed_Then_TheMutantsAndTheFileMoveTheKey(self):
-        # Arrange
-        project = KeyedProject()
-        _, before = project.key()
-        project.source.write_text(project.BODY.replace("a <= b", "a <= b + 1"))
-
-        # Act
-        moved = project.moved(before)
+        keys = {self.keyed(KeyedProject()), self.keyed(KeyedProject())}
 
         # Assert
-        self.assertEqual(moved, ["mutants", "mutated-files"])
+        self.assertEqual(len(keys), 1)
 
-    def test_Given_ACommentAddedToTheMutatedFile_When_ItIsKeyed_Then_TheFileMovesTheKey(self):
-        # Arrange -- full content rather than the comment-stripped form `scope_digest` takes: a
-        # reused pass is a stronger claim than a resumed kill, and prose is cheap to re-measure.
-        project = KeyedProject()
-        _, before = project.key()
-        project.source.write_text(project.BODY.replace("    {\n        internal static bool",
-                                                       "    {\n        // a note\n        internal static bool", 1))
-
-        # Act
-        moved = project.moved(before)
-
-        # Assert -- the line moves with the comment, so the mutant does too.
-        self.assertEqual("mutated-files" in moved, True)
-
-    def test_Given_ATestFileEdited_When_ItIsKeyed_Then_TheTestSourcesMoveTheKey(self):
+    def test_Given_ACommentAddedToTheMutatedFile_When_Keyed_Then_TheKeyMoves(self):
         # Arrange
         project = KeyedProject()
-        _, before = project.key()
-        project.append("Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs", "// edit\n")
+        before = self.keyed(project)
+        project.source.write_text(project.source.read_text() + "// a comment\n")
 
         # Act
-        moved = project.moved(before)
+        after = self.keyed(project)
 
         # Assert
-        self.assertEqual(moved, ["test-sources"])
+        self.assertNotEqual(after, before)
 
-    def test_Given_ASharedTestHelperEdited_When_ItIsKeyed_Then_TheTestSourcesMoveTheKey(self):
-        # Arrange
+    def test_Given_AnotherProductionFileEdited_When_Keyed_Then_TheKeyStays(self):
+        # Arrange — StrykerJS's documented limitation, taken deliberately.
         project = KeyedProject()
-        _, before = project.key()
-        project.append("Packages/com.velvet.core/TestUtilities/Helper.cs", "// edit\n")
-
-        # Act
-        moved = project.moved(before)
-
-        # Assert
-        self.assertEqual(moved, ["test-sources"])
-
-    def test_Given_AnotherProductionFileEdited_When_ItIsKeyed_Then_TheBuildInputsMoveTheKey(self):
-        # Arrange -- a test that kills a mutant in one file can reach it through another.
-        project = KeyedProject()
-        _, before = project.key()
+        before = self.keyed(project)
         project.append("Packages/com.velvet.core/Runtime/Other.cs", "// edit\n")
 
         # Act
-        moved = project.moved(before)
+        after = self.keyed(project)
 
         # Assert
-        self.assertEqual(moved, ["build-inputs"])
+        self.assertEqual(after, before)
 
-    def test_Given_AnAssemblyDefinitionOrEditorVersionEdited_When_ItIsKeyed_Then_TheBuildInputsMoveTheKey(self):
+    def test_Given_TheMutatorVersionRaised_When_Keyed_Then_TheKeyMoves(self):
         # Arrange
         project = KeyedProject()
-        _, before = project.key()
-        project.append("Packages/com.velvet.core/Runtime/Velvet.asmdef", " \n")
-        project.write("ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 6000.4.0f1\n")
-        project.append("Packages/manifest.json", " \n")
+        before = self.keyed(project)
 
         # Act
-        moved = project.moved(before)
+        with mock.patch.object(mutation_check, "MUTATOR_VERSION", mutation_check.MUTATOR_VERSION + 1):
+            after = self.keyed(project)
 
         # Assert
-        self.assertEqual(moved, ["build-inputs"])
+        self.assertNotEqual(after, before)
 
-    def test_Given_TheToolChanged_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
-        # Arrange
-        project = KeyedProject()
-        _, before = project.key()
 
+# The code `MUTATOR_VERSION` answers for, digested as `mutator_digest` reads it, at each version. A
+# change to that code fails `MutatorVersionTests` until the version is raised and its digest added here.
+MUTATOR_DIGESTS = {
+    10: "b65e5f36cb41ebbd342d3890b237167a57d5f0f54f1642c822d785ab23bb8181",
+}
+
+
+def mutator_digest():
+    """A hash of the `Mutant` class and of everything from `CHARACTER_LITERAL_REACH` through
+    `apply_mutation` in mutation_check.py: the C# reading that places a mutant, the operator tables, the
+    cap and the rewrite. Lines that are blank or only a comment are left out."""
+    source = Path(mutation_check.__file__).read_text()
+    lines = source.splitlines()
+    body = ast.parse(source).body
+
+    def named(node):
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            return node.name
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            return node.targets[0].id
+        return None
+
+    names = [named(node) for node in body]
+    first, last = names.index("CHARACTER_LITERAL_REACH"), names.index("apply_mutation")
+    chosen = [body[names.index("Mutant")]] + body[first:last + 1]
+    kept = [line.rstrip() for node in chosen for line in lines[node.lineno - 1:node.end_lineno]
+            if line.strip() and not line.strip().startswith("#")]
+    return hashlib.sha256("\n".join(kept).encode()).hexdigest()
+
+
+class MutatorVersionTests(unittest.TestCase):
+    """`MUTATOR_VERSION` against the code it stands for."""
+
+    def test_Given_TheMutatorsCode_When_Digested_Then_ItIsTheDigestPinnedToItsVersion(self):
         # Act
-        with mock.patch.object(mutation_check, "MUTATION_MODEL_VERSION",
-                               mutation_check.MUTATION_MODEL_VERSION + 1):
-            moved = project.moved(before)
+        digest = mutator_digest()
 
-        # Assert
-        self.assertEqual(moved, ["tool"])
-
-    def test_Given_ThePriorityOrderChanged_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
-        # Arrange -- the order decides which mutant of a line is kept, so a verdict measured under
-        # another order was measured over other mutants.
-        project = KeyedProject()
-        _, before = project.key()
-
-        # Act
-        with mock.patch.object(mutation_check, "LINE_PRIORITY",
-                               tuple(reversed(mutation_check.LINE_PRIORITY))):
-            moved = project.moved(before)
-
-        # Assert
-        self.assertEqual(moved, ["tool"])
-
-    def test_Given_ASiblingModuleOfTheCampaignEdited_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
-        # Arrange -- a file standing in for one of `TOOL_FILES`, reached by a path from `scripts/`.
-        project = KeyedProject()
-        sibling = Path(project.holder) / "sibling.py"
-        sibling.write_text("RUNNING = 1\n")
-        scripts = Path(mutation_check.__file__).resolve().parents[1]
-        stood_in = (os.path.relpath(sibling, scripts),)
-        with mock.patch.object(mutation_check, "TOOL_FILES", stood_in):
-            _, before = project.key()
-            sibling.write_text("RUNNING = 2\n")
-
-            # Act
-            moved = project.moved(before)
-
-        # Assert
-        self.assertEqual(moved, ["tool"])
-
-    def test_Given_TheCampaignsToolFiles_When_Listed_Then_EachExists(self):
-        # Arrange
-        scripts = Path(mutation_check.__file__).resolve().parents[1]
-
-        # Act
-        missing = [name for name in mutation_check.TOOL_FILES if not (scripts / name).is_file()]
-
-        # Assert
-        self.assertEqual(missing, [])
-
-    def test_Given_TheModulesTheCampaignImports_When_ComparedWithTheToolFiles_Then_NoneIsLeftOut(self):
-        # Arrange -- a sibling module the campaign or its shard wrapper imports from scripts/ is part
-        # of what a verdict ran under.
-        scripts = Path(mutation_check.__file__).resolve().parents[1]
-        sources = [scripts / "test_quality" / name for name in ("mutation_check.py", "ci_mutation_shard.py")]
-        imported = set()
-        for source in sources:
-            imported.update(re.findall(r"^\s*(?:import|from)\s+(\w+)", source.read_text(), re.MULTILINE))
-        local = {path.relative_to(scripts).as_posix() for path in scripts.glob("*/*.py")
-                 if path.stem in imported and path.name != "mutation_check.py"}
-
-        # Act
-        left_out = sorted(local - set(mutation_check.TOOL_FILES))
-
-        # Assert
-        self.assertEqual(left_out, [])
-
-    def test_Given_ASourceInANestedFolderNamedLogs_When_ItIsEdited_Then_TheBuildInputsMoveTheKey(self):
-        # Arrange -- only a folder at the project root is generated; one inside a root holds sources.
-        project = KeyedProject()
-        for name in ("Logs", "obj", "Temp", "Library"):
-            project.write("Packages/com.velvet.core/Runtime/Foo/{}/X.cs".format(name), "class X { }\n")
-        _, before = project.key()
-        for name in ("Logs", "obj", "Temp", "Library"):
-            project.append("Packages/com.velvet.core/Runtime/Foo/{}/X.cs".format(name), "// edited\n")
-
-        # Act
-        moved = project.moved(before)
-
-        # Assert
-        self.assertEqual(moved, ["build-inputs"])
-
-    def test_Given_TheCampaignWorkflowEdited_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
-        # Arrange
-        project = KeyedProject()
-        _, before = project.key()
-        project.append(".github/workflows/mutation.yml", "# a bound moved\n")
-
-        # Act
-        moved = project.moved(before)
-
-        # Assert
-        self.assertEqual(moved, ["tool"])
-
-    def test_Given_ADeclarationNoLongerWrittenByTheBranch_When_ItIsKeyed_Then_OnlyTheDeclarationsMoveTheKey(self):
-        # Arrange
-        project = KeyedProject()
-        source = project.source
-        mutants = mutants_of(project.BODY)
-        for mutant in mutants:
-            mutant.path = source
-        own = {(source, 5): declaration(5, written_here=True)}
-        base = {(source, 5): declaration(5, written_here=False)}
-
-        # Act
-        _, written = mutation_check.campaign_key(mutants, own, project.project)
-        _, inherited = mutation_check.campaign_key(mutants, base, project.project)
-
-        # Assert
-        self.assertEqual(sorted(name for name in written if written[name] != inherited[name]),
-                         ["declarations"])
-
-    def test_Given_OneMutantFewer_When_ItIsKeyed_Then_OnlyTheMutantsMoveTheKey(self):
-        # Arrange
-        project = KeyedProject()
-        mutants = mutants_of(KeyedProject.BODY.replace("a <= b", "a <= b && b <= a"))
-        for mutant in mutants:
-            mutant.path = project.source
-
-        # Act
-        _, whole = mutation_check.campaign_key(mutants, {}, project.project)
-        _, fewer = mutation_check.campaign_key(mutants[:-1], {}, project.project)
-
-        # Assert -- the file holding them is the same, and so is everything else.
-        self.assertEqual(sorted(name for name in whole if whole[name] != fewer[name]), ["mutants"])
-
-    def test_Given_FilesNamedInsteadOfADiff_When_ItIsKeyed_Then_ItRefuses(self):
-        # Arrange
-        project = KeyedProject()
-
-        # Act
-        code = project.run("--key")
-
-        # Assert
-        self.assertEqual(("campaign-key=" in project.printed, "merge base" in str(code)),
-                         (False, True))
+        # Assert — on a mismatch, raise MUTATOR_VERSION and pin this digest under the new number.
+        self.assertEqual(MUTATOR_DIGESTS.get(mutation_check.MUTATOR_VERSION), digest)
 
 
 class MutantListHandOffTests(unittest.TestCase):
@@ -6539,7 +6562,7 @@ class MutantListHandOffTests(unittest.TestCase):
 
 
 class ManyMutantsCampaign(StubbedCampaign):
-    """Twelve lines of one boundary mutant each, which the plan deals to two shards of six, every
+    """Twelve lines of one boundary mutant each, which the plan deals to two shards, every
     mutant killed."""
 
     BODY = "namespace Velvet\n{\n    internal static class Probe\n    {\n" + "".join(
@@ -6641,7 +6664,7 @@ class UnreportedShardTests(unittest.TestCase):
                                            (7, mutation_check.UNRECORDED))]
 
         # Act
-        named, count = mutation_check.unreported_shards(list(range(1, 8)), "EditMode", mutants)
+        named, count = mutation_check.unreported_shards(list(range(1, 8)), "EditMode", mutants, project=Path("/p"))
 
         # Assert -- shard 0 holds a recorded mutant (indices 1, 3, 5, 7), so only shard 1 is dead.
         self.assertEqual((sorted(named), count), ([1], 2))
@@ -6715,8 +6738,8 @@ class TwoPlatformCampaign(StubbedCampaign):
 
 class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
     """Twelve mutants the EditMode suite never kills and the PlayMode suite always does, dealt to two
-    EditMode shards of six and six PlayMode shards of two: the shape the workflow's verdict job
-    collects."""
+    EditMode shards, each followed in its job by a PlayMode pass over its own survivors: the shape the
+    workflow's verdict job collects."""
 
     def run_suite(self, _unity, _project, platform, _scope, results, log, _timeout, _holder=None):
         mutant = Path(results).name != "baseline.xml"
@@ -6728,14 +6751,33 @@ class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
         return self.shard(spec, directory)
 
     def play_shard(self, number, edit_directories, directory):
+        # As the shard job's PlayMode step runs it: the survivors of EditMode shard `number` of two.
         return self.run_over_diff("--platform", "PlayMode", "--survivors-of",
                                   *(str(self.project / name) for name in edit_directories),
-                                  "--shard", "{}/6".format(number), "--output", str(self.project / directory))
+                                  "--survivors-shard", "{}/2".format(number), "--shard", "0/1",
+                                  "--output", str(self.project / directory))
 
     def collect_both(self, edit_directories, play_directories):
         return self.run_over_diff("--platform", "PlayMode", "--survivors-of",
                                   *(str(self.project / name) for name in edit_directories),
                                   "--collect", *(str(self.project / name) for name in play_directories))
+
+
+class UncoveredSecondPassTests(unittest.TestCase):
+    def test_Given_AnEditModeMutantNoCaseRan_When_ThePlayModePassIsPlanned_Then_ItIsMeasuredThere(self):
+        # Arrange — a site no EditMode case ran is one a PlayMode case may.
+        campaign = StubbedCampaign()
+        campaign.run_over_diff("--shard", "0/1", "--output", str(campaign.project / "edit"))
+        record = campaign.project / "edit" / "mutant-001.json"
+        held = json.loads(record.read_text())
+        held["verdict"] = mutation_check.UNCOVERED
+        record.write_text(json.dumps(held))
+
+        # Act
+        campaign.run_over_diff("--platform", "PlayMode", "--survivors-of", str(campaign.project / "edit"), "--plan")
+
+        # Assert
+        self.assertIn("mutants=1", campaign.printed)
 
 
 class DeadShardReportingTests(unittest.TestCase):
@@ -6744,7 +6786,7 @@ class DeadShardReportingTests(unittest.TestCase):
     HEADING = "--- not measured: {} of {} {} shard(s) recorded nothing ---"
 
     def test_Given_ADeadEditModeShard_When_BothPassesAreCollected_Then_TheEditModeShardIsNamed(self):
-        # Arrange -- shard 1 of 2 never reported, so its six mutants are in no pass's list.
+        # Arrange -- shard 1 of 2 never reported, so its mutants are in no pass's list.
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
 
@@ -6770,7 +6812,7 @@ class DeadShardReportingTests(unittest.TestCase):
                           "PlayMode shard(s) recorded nothing" in campaign.printed), (True, False))
 
     def test_Given_EveryEditModeShardAndNoPlayModeShard_When_BothPassesAreCollected_Then_ThePlayModeShardsAreNamed(self):
-        # Arrange -- the control: the PlayMode pass was owed, and none of its six shards reported.
+        # Arrange -- the control: the PlayMode pass was owed, and none of its two groups reported.
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
         campaign.edit_shard("1/2", "edit1")
@@ -6779,7 +6821,7 @@ class DeadShardReportingTests(unittest.TestCase):
         campaign.collect_both(["edit0", "edit1"], ["play"])
 
         # Assert
-        self.assertEqual((self.HEADING.format(6, 6, "PlayMode") in campaign.printed,
+        self.assertEqual((self.HEADING.format(2, 2, "PlayMode") in campaign.printed,
                           "EditMode shard(s) recorded nothing" in campaign.printed), (True, False))
 
     def test_Given_EveryEditModeShardAndOneDeadPlayModeShard_When_BothPassesAreCollected_Then_OnlyThatShardIsNamed(self):
@@ -6787,15 +6829,43 @@ class DeadShardReportingTests(unittest.TestCase):
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
         campaign.edit_shard("1/2", "edit1")
-        for number in range(5):
-            campaign.play_shard(number, ["edit0", "edit1"], "play{}".format(number))
+        campaign.play_shard(0, ["edit0", "edit1"], "play0")
 
         # Act
-        campaign.collect_both(["edit0", "edit1"], ["play{}".format(number) for number in range(5)])
+        campaign.collect_both(["edit0", "edit1"], ["play0"])
+
+        # Assert -- named by the EditMode shard whose job did not reach the PlayMode pass.
+        self.assertEqual((self.HEADING.format(1, 2, "PlayMode") in campaign.printed,
+                          "shard 1 of 2 was dealt 6 mutant(s)" in campaign.printed), (True, True))
+
+    def test_Given_AnEditModeShardsSurvivors_When_ItsPlayModePassRuns_Then_OnlyThoseAreMeasured(self):
+        # Arrange -- both EditMode shards recorded, six survivors each.
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+        campaign.edit_shard("1/2", "edit1")
+
+        # Act
+        campaign.play_shard(0, ["edit0", "edit1"], "play0")
 
         # Assert
-        self.assertEqual((self.HEADING.format(1, 6, "PlayMode") in campaign.printed,
-                          "shard 5 of 6 was dealt 2 mutant(s)" in campaign.printed), (True, True))
+        self.assertEqual(sorted(path.name for path in (campaign.project / "play0").glob("mutant-*.json")),
+                         ["mutant-001.json", "mutant-003.json", "mutant-005.json", "mutant-007.json",
+                          "mutant-009.json", "mutant-011.json"])
+
+    def test_Given_MoreSurvivorsInAShardThanOneJobMeasures_When_ItsPlayModePassIsPlanned_Then_ItRefuses(self):
+        # Arrange -- the shard's six survivors against a PlayMode ceiling of five.
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+        campaign.edit_shard("1/2", "edit1")
+
+        # Act
+        with mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 16, "PlayMode": 5}):
+            code = campaign.run_over_diff("--platform", "PlayMode", "--survivors-of",
+                                          str(campaign.project / "edit0"), str(campaign.project / "edit1"),
+                                          "--survivors-shard", "0/2", "--plan")
+
+        # Assert
+        self.assertEqual((code, "mutants=" in campaign.printed), (mutation_check.CEILING_REFUSAL, False))
 
 
 class HangingTwoPlatformCampaign(TwoPlatformCampaign):
@@ -6875,9 +6945,8 @@ class TwoPassCampaignTests(unittest.TestCase):
                                              ("PlayMode", "mutant-004.xml")])
 
     def test_Given_SurvivorsOnIndicesOneShardWouldTakeByIndex_When_ThePlayModePassIsSplit_Then_EachShardTakesOne(self):
-        # Arrange — survivors 2 and 4 share an index parity, so dealt by index both go to shard 1 of 2.
-        # Held against the unsplit pass rather than against named mutants, so which mutants the pass
-        # chooses is left to the case above.
+        # Arrange — survivors 2 and 4 share an index parity. Held against the unsplit pass
+        # rather than against named mutants, so which mutants the pass chooses is left to the case above.
         campaign = TwoPlatformCampaign()
         campaign.edit_pass()
 
@@ -7108,6 +7177,33 @@ class CampaignPlanTests(unittest.TestCase):
                           "mutants=" in campaign.printed),
                          (getattr(mutation_check, "CEILING_REFUSAL", None), True, False))
 
+    def test_Given_MoreMutantsThanTheDefaultShardsCarry_When_PlannedWithMoreShards_Then_TheyArePlanned(self):
+        # Arrange — two mutants against a ceiling of one shard of one, which a run given two shards lifts.
+        campaign = ParityKilledCampaign()
+
+        # Act
+        with mock.patch.object(mutation_check, "MAX_SHARDS", 1), \
+                mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 1}), \
+                mock.patch.dict(mutation_check.SHARD_SIZE, {"EditMode": 1}):
+            code = campaign.run_over_diff("--plan", "--max-shards", "2")
+        planned = "\n".join(re.findall(r"^(?:mutants|shards)=.*$", campaign.printed, re.MULTILINE)) \
+            if code == 0 else None
+
+        # Assert
+        self.assertEqual(planned, "mutants=2\nshards=[0, 1]")
+
+    def test_Given_AShardCountGivenToTheDecision_When_ItsDeadShardsAreCounted_Then_ItIsTheOneDealtOver(self):
+        # Arrange — thirty mutants make five shards by default, and three where the run said three.
+        mutants = [survivor(Path("probe.cs"), number, verdict=mutation_check.UNRECORDED)
+                   for number in range(1, 31)]
+
+        # Act
+        _, count = mutation_check.unreported_shards(list(range(1, 31)), "EditMode", mutants,
+                                                   project=Path("/p"), most=3)
+
+        # Assert
+        self.assertEqual(count, 3)
+
     def test_Given_MutantCounts_When_Sharded_Then_EachShardHoldsAtMostItsShareUpToTheCap(self):
         # Arrange
         per, cap = mutation_check.SHARD_SIZE["EditMode"], mutation_check.MAX_SHARDS
@@ -7118,6 +7214,18 @@ class CampaignPlanTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(shards, [0, 1, 1, 2, cap])
+
+    def test_Given_PlayModeSurvivorsUpToTheCap_When_Sharded_Then_EachTakesAJobOfItsOwn(self):
+        # Arrange — a PlayMode job's setup is paid once whatever it holds, and the pass waits on its
+        # slowest job, so a job holding one survivor ends one mutant's run sooner than one holding two.
+        cap = mutation_check.MAX_SHARDS
+        counts = [1, 2, cap, cap + 1]
+
+        # Act
+        shards = [mutation_check.shard_count(count, "PlayMode") for count in counts]
+
+        # Assert
+        self.assertEqual(shards, [1, 2, cap, cap])
 
     def test_Given_AShardOutsideItsCount_When_Parsed_Then_ItIsRefused(self):
         # Act / Assert
@@ -7722,6 +7830,26 @@ class NarrowableAreaTests(unittest.TestCase):
         self.assertEqual([(stage["name"], stage["assemblyNames"]) for stage in stages],
                          [("narrowed:Reconciler", ["Velvet.Tests.A"]), ("whole", [])])
 
+    def test_Given_AMutantWithCasesThatRanItsSite_When_TheSessionIsPlanned_Then_TheyPrecedeTheWholeStageInPlaceOfItsArea(self):
+        # Arrange — the area is narrowed too, and the cases are the narrower of the two.
+        self.area = self.root / mutation_check.PACKAGE / "Runtime" / "Reconciler"
+        (self.area / "Tests" / "Editor").mkdir(parents=True)
+        (self.area / "Tests" / "Editor" / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.A"}))
+        attempts = {area: ["-assemblyNames", ";".join(names)]
+                    for area, names in self.narrowed(27.0).items()}
+        mutant = mutation_check.Mutant(self.area / "Probe.cs", 1, 0, "<", "<=", "boundary")
+        covered = mutation_check.COVERED_STAGE
+
+        # Act
+        plan, _ = mutation_check.session_plan(self.root, [mutant], [1], attempts, [], "EditMode",
+                                              100, 900, self.root / "session",
+                                              selection={1: ["N.C.A", "N.C.B"]})
+        stages = next(item["stages"] for item in plan["items"] if item["id"] == 1)
+
+        # Assert
+        self.assertEqual([(stage["name"], stage["testNames"]) for stage in stages],
+                         [(covered + ":0", ["N.C.A", "N.C.B"]), ("whole", [])])
+
     def test_Given_AnAssemblyTheBaselineDidNotRun_When_Read_Then_ItIsNotTaken(self):
         # Arrange — an assembly of the other platform sits under the same area.
         (self.area / "Tests" / "PlayMode").mkdir()
@@ -7746,38 +7874,336 @@ class AreaOfTests(unittest.TestCase):
         self.assertEqual(areas, [runtime / "Reconciler", None, None])
 
 
+class CostDealtShardTests(unittest.TestCase):
+    """`deal` gives every shard about the same expected seconds rather than the same number of mutants."""
+
+    PROJECT = Path("/p")
+    RUNTIME = PROJECT / "Packages/com.velvet.core/Runtime"
+
+    def mutants(self, kinds):
+        """One mutant per letter: "n" under an area, so its first launch is narrowed, "w" outside every area."""
+        return [survivor(self.RUNTIME / ("Reconciler/N.cs" if kind == "n" else "W.cs"), number)
+                for number, kind in enumerate(kinds, start=1)]
+
+    def totals(self, kinds, count, platform="EditMode"):
+        mutants = self.mutants(kinds)
+        dealt = mutation_check.deal(list(range(1, len(mutants) + 1)), mutants, self.PROJECT, platform, count)
+        return [sum(mutation_check.mutant_cost(mutants[index - 1], self.PROJECT, platform) for index in indices)
+                for indices in dealt]
+
+    def test_Given_AreaAndWholeSuiteMutantsOnEditMode_When_Costed_Then_OnlyTheAreaOnesAreNarrowed(self):
+        # Arrange
+        mutants = self.mutants("nw")
+
+        # Act
+        costs = [mutation_check.mutant_cost(mutant, self.PROJECT, "EditMode") for mutant in mutants]
+
+        # Assert
+        self.assertEqual(costs, [mutation_check.NARROWED_COST, mutation_check.WHOLE_COST["EditMode"]])
+
+    def test_Given_AnAreaMutantAndAnotherOnPlayMode_When_Costed_Then_TheyCostTheSame(self):
+        # Arrange — nothing is narrowed on PlayMode, so where a mutant sits changes no charge.
+        area, other = self.mutants("nw")
+
+        # Act
+        costs = [mutation_check.mutant_cost(mutant, self.PROJECT, "PlayMode") for mutant in (area, other)]
+
+        # Assert
+        self.assertEqual(costs[0], costs[1])
+
+    def test_Given_WholeSuiteMutantsAtEveryOtherPosition_When_Dealt_Then_TheShardsCostTheSame(self):
+        # Arrange — dealt by position, the second shard would hold every narrowed mutant and the first every dear one.
+        kinds = "wnwnwnwn"
+
+        # Act
+        totals = self.totals(kinds, 2)
+
+        # Assert
+        self.assertEqual(max(totals) - min(totals), 0)
+
+    def test_Given_TheCheapMutantsFirstInTheList_When_Dealt_Then_TheDearOnesAreStillPlacedFirst(self):
+        # Arrange — placed in list order the spread is 348 s; longest first it is 58 s.
+        kinds = "nnnwww"
+
+        # Act
+        totals = self.totals(kinds, 2)
+
+        # Assert
+        self.assertEqual(max(totals) - min(totals), 58)
+
+    def test_Given_ThreeMutantsOfOneCost_When_DealtToTwoShards_Then_TheTieGoesToTheLowerShardAndIndex(self):
+        # Arrange
+        mutants = self.mutants("www")
+
+        # Act
+        dealt = mutation_check.deal([1, 2, 3], mutants, self.PROJECT, "EditMode", 2)
+
+        # Assert
+        self.assertEqual(dealt, [[1, 3], [2]])
+
+    # GREEN_ON_BASE(characterization): the base's ceiling of 16 is held by the same cap; deleting the `len(held[shard]) < SHARD_CEILING[platform]` test in `deal` reddens it.
+    def test_Given_FewDearMutantsAndManyCheapOnes_When_DealtToTheMostShards_Then_NoShardHoldsMoreThanTheCeiling(self):
+        # Arrange — 3 dear and the rest cheap fill every shard of the ceiling exactly; balanced on cost alone the
+        # shards without a dear mutant would each take one cheap mutant more.
+        total = mutation_check.MAX_SHARDS * mutation_check.SHARD_CEILING["EditMode"]
+        kinds = "w" * 3 + "n" * (total - 3)
+        mutants = self.mutants(kinds)
+
+        # Act
+        dealt = mutation_check.deal(list(range(1, total + 1)), mutants, self.PROJECT, "EditMode",
+                                    mutation_check.MAX_SHARDS)
+
+        # Assert
+        self.assertLessEqual(max(len(indices) for indices in dealt), mutation_check.SHARD_CEILING["EditMode"])
+
+    def test_Given_AMixedPlan_When_EveryShardIsRead_Then_EachMutantIsInExactlyOne(self):
+        # Arrange
+        mutants = self.mutants("nwnnwnwnnnwn")
+        chosen = [1, 2, 3, 5, 6, 7, 9, 10, 11, 12]
+
+        # Act
+        taken = sorted(index for shard in range(3)
+                       for index in mutation_check.sharded(chosen, (shard, 3), mutants=mutants, project=self.PROJECT,
+                                                       platform="EditMode"))
+
+        # Assert
+        self.assertEqual(taken, chosen)
+
+    def test_Given_PlayModeMutants_When_Dealt_Then_ShardsDifferByAtMostOneMutant(self):
+        # Arrange — nothing is narrowed there, so every mutant costs the same.
+        mutants = self.mutants("nwnwnnw")
+
+        # Act
+        dealt = mutation_check.deal(list(range(1, 8)), mutants, self.PROJECT, "PlayMode", 3)
+
+        # Assert
+        self.assertEqual(sorted(len(indices) for indices in dealt), [2, 2, 3])
+
+    def test_Given_AShardWithNoShardRequested_When_Sharded_Then_EveryChosenMutantIsReturned(self):
+        # Arrange
+        mutants = self.mutants("nw")
+
+        # Act
+        taken = mutation_check.sharded([1, 2], None, mutants=mutants, project=self.PROJECT, platform="EditMode")
+
+        # Assert
+        self.assertEqual(taken, [1, 2])
+
+    def test_Given_AManyMutantsPlan_When_Planned_Then_EachShardsCostAndTheSpreadArePrinted(self):
+        # Arrange — twelve mutants outside every area, each charged the EditMode whole-suite figure.
+        campaign = ManyMutantsCampaign()
+
+        # Act
+        campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual(re.findall(r"^(?:shard \d+:.*|expected cost:.*)$", campaign.printed, re.MULTILINE),
+                         ["shard 0: 6 mutant(s), expected 2958 s", "shard 1: 6 mutant(s), expected 2958 s",
+                          "expected cost: cheapest shard 2958 s, dearest 2958 s, spread 0 s"])
+
+
 class ShardCeilingTests(unittest.TestCase):
     """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 
-    # Charged at most once for each area a narrowed platform's shard holds; the slowest measured.
-    AREA_LAUNCH = 145
+    # Measured on this week's EditMode shards (runs 38882765210 and 38865742861 among them): a baseline of
+    # 445 to 486 s, a launch of an area's own assemblies of 180 to 231 s, and a mutant at about 561 s from
+    # the end of a shard's baseline to its last verdict. The slowest of each is charged.
+    BASELINE = 486
+
+    # What a narrowed platform's shard spends before its first mutant when it makes the reach run: the whole
+    # suite once under the unmutated program with the switches recording. Charged at twice the baseline --
+    # an allowance, since no recording run has been timed -- in place of each area's own baseline, which a
+    # shard that makes the reach run does not take in its opening.
+    REACH_RUN = 2 * BASELINE
+
+    # What the opening runs of the covered sets add: each of a shard's mutants gets one, of at most
+    # 1/REACH_SHARE of the baseline in seconds, and none is shared in the worst case.
+    GATE_SUITE_SECONDS = BASELINE
+
+    # What a launch of its own spends on its area's baseline, charged once for each area the launches
+    # touch; the slowest measured. A shard takes it in its opening when it takes main's path -- it places
+    # fewer than `REACH_MIN_MUTANTS`, or was assigned one it declined. The same figure stands for the launch
+    # of the fixtures reading IL that follows a session survivor under `Runtime/`: a build and the cases
+    # of the six files that read IL, about 190, which no run has timed.
+    AREA_LAUNCH = 231
 
     # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
-    # baseline, of its baseline and after its last verdict, added together. A charge is built on the
-    # slowest shard's seconds per mutant, which hold that shard's narrowed runs, so no narrowed launch
-    # is added to it. CONTRIBUTING.md ▸ Checking that the tests can fail has the measurements.
-    def fits(self, job, platform, mutant, setup):
-        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
-        found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
-                          re.MULTILINE)
+    # baseline, of its baseline and after its last verdict, added together. The 561 s is a shard's measured
+    # seconds per mutant. Three arms, by `arm`: "reach" is a shard that makes the reach run, for `count`
+    # placed mutants, charged for the reach run and a gate for each mutant, and each mutant charged as a
+    # survivor under `Runtime/`: the session's whole suite and then the launch of the fixtures reading IL;
+    # "failed" the same with a reach run that never finishes, every mutant taking the whole suite; "small"
+    # a shard that takes main's path, which is main's charge: every area's baseline and the whole shard.
+    def fits(self, job, platform, mutant, setup, arm="reach", count=None, workflow="mutation.yml",
+             step=None):
+        text = (REPO_ROOT / ".github/workflows" / workflow).read_text()
+        # Both platforms' measuring steps sit in `mutation-shard`, each with a timeout of its own under the
+        # job's, which must hold both and the steps around them. kill-set.yml's one step is named `step`.
+        found = re.search(r"^      - name: {}\n        timeout-minutes: (\d+)$".format(
+            step or "Measure " + platform), text.partition("\n  {}:".format(job))[2], re.MULTILINE)
         per = mutation_check.SHARD_CEILING.get(platform)
+        count = per if count is None else count
         narrowed = platform in getattr(mutation_check, "NARROWED_PLATFORMS", ())
-        area = self.AREA_LAUNCH if narrowed else 0
-        areas = len({asmdef.parents[2] for asmdef in (REPO_ROOT / mutation_check.PACKAGE / "Runtime").glob(
-            "*/Tests/Editor/*.asmdef")})
+        opening = self.REACH_RUN if narrowed else 0
+        if narrowed and arm in ("reach", "failed"):
+            mutant = max(mutant, self.BASELINE + self.AREA_LAUNCH)
+        if narrowed and arm == "reach" and per is not None:
+            opening += self.GATE_SUITE_SECONDS / mutation_check.REACH_SHARE * count
+        if arm == "small":
+            opening = self.areas() * self.AREA_LAUNCH
         return (per is not None and found is not None
-                and setup + areas * area + per * mutant <= int(found.group(1)) * 60)
+                and setup + opening + count * mutant <= int(found.group(1)) * 60)
 
-    def test_Given_AFullEditModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
-        # Arrange — that shard was cut short by the timeout, so the launches it had not finished are
-        # filled at the mean of those it had; and one mutant hanging at --timeout's 900 s besides.
-        mutant, setup = 493, 201 + 375 + 12 + 900
+    @staticmethod
+    def areas():
+        """How many areas `narrowable` would take: it is asked, over a results file that lists the package's
+        EditMode test assemblies (the ones under a `Tests/Editor` directory) as taking a second each in a
+        suite of a thousand, so what counts as an area's assemblies is its rule and not a copy of it."""
+        runtime = REPO_ROOT / mutation_check.PACKAGE / "Runtime"
+        ran = sorted(json.loads(asmdef.read_text())["name"] for asmdef in runtime.rglob("*.asmdef")
+                     if asmdef.parent.parts[-2:] == ("Tests", "Editor"))
+        results = Path(tempfile.mkdtemp(prefix="areas-")) / "results.xml"
+        results.write_text('<test-run duration="1000">{}</test-run>'.format("".join(
+            '<test-suite type="Assembly" name="{}.dll" duration="1" />'.format(name) for name in ran)))
+        return len(mutation_check.narrowable(results, [path for path in runtime.iterdir() if path.is_dir()]))
+
+    def test_Given_AFullShardWhoseReachRunNeverFinishes_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Arrange — the run is stopped at REACH_BOUND times the baseline, which REACH_RUN charges; no covered
+        # set is then run, and every mutant takes the whole suite at the same measured figure.
+        mutant, setup = 561, 201 + 486 + 12 + 900
 
         # Act
-        fits = self.fits("mutation-shard", "EditMode", mutant, setup)
+        fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="failed",
+                         count=mutation_check.SHARD_CEILING["EditMode"])
 
         # Assert
         self.assertTrue(fits)
+
+    def test_Given_EveryCountOfPlacedMutantsTheReachRunIsMadeFor_When_EveryOneTakesTheWholeSuiteAfterwards_Then_EveryOneFits(self):
+        # Arrange — n placed mutants, each charged the whole suite after the reach run and its gate:
+        # 1599 + 972 + 48.6 n + 717 n, a survivor's charge: the session's whole suite, then the launch of the
+        # fixtures reading IL.
+        mutant, setup = 561, 201 + 486 + 12 + 900
+        counts = range(mutation_check.REACH_MIN_MUTANTS, mutation_check.SHARD_CEILING["EditMode"] + 1)
+
+        # Act
+        fitting = [placed for placed in counts
+                   if self.fits("mutation-shard", "EditMode", mutant, setup, count=placed)]
+
+        # Assert
+        self.assertEqual(fitting, list(counts))
+
+    def test_Given_EveryArmAShardCanTake_When_TheMostMutantsFittingAllOfThemAreCounted_Then_ItIsTheEditModeCeiling(self):
+        # Arrange — derived from the job timeout rather than read back from the constant: a shard of this many
+        # fits whether it makes the reach run, its reach run never finishes, or it is on main's path.
+        mutant, setup = 561, 201 + 486 + 12 + 900
+        largest = max((count for count in range(1, 40)
+                       if all(self.fits("mutation-shard", "EditMode", mutant, setup, arm=arm, count=count)
+                              for arm in ("reach", "failed", "small"))), default=0)
+
+        # Act
+        stated = mutation_check.SHARD_CEILING["EditMode"]
+
+        # Assert
+        self.assertEqual(stated, largest)
+
+    def test_Given_AnEditModeShardOnMainsPath_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Arrange — a shard below the minimum, or assigned a declined mutant: every area's baseline, then every
+        # mutant the shard was assigned.
+        mutant, setup = 561, 201 + 486 + 12 + 900
+
+        # Act
+        fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small")
+
+        # Assert — and the threshold sits inside what a shard can hold, or the arm would never be taken.
+        self.assertEqual((fits, mutation_check.REACH_MIN_MUTANTS <= mutation_check.SHARD_CEILING["EditMode"]),
+                         (True, True))
+
+    def test_Given_ThePlanWhoseCostDealingWouldPileCheapMutantsOnOneShard_When_TheDearestShardIsCharged_Then_ItFitsTheJobTimeout(self):
+        # Arrange — 3 whole-suite and the rest narrowed mutants fill ten shards of the ceiling exactly. Charged at
+        # the 561 s a mutant the ceiling uses, the dearest shard is charged on main's path, the dearer
+        # of the two arms.
+        runtime = REPO_ROOT / mutation_check.PACKAGE / "Runtime"
+        total = mutation_check.MAX_SHARDS * mutation_check.SHARD_CEILING["EditMode"]
+        mutants = [survivor(runtime / ("Reconciler/N.cs" if number > 3 else "W.cs"), number)
+                   for number in range(1, total + 1)]
+        dealt = mutation_check.deal(list(range(1, total + 1)), mutants, REPO_ROOT, "EditMode",
+                                    mutation_check.MAX_SHARDS)
+        mutant, setup = 561, 201 + 486 + 12 + 900
+
+        # Act
+        fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small",
+                         count=max(len(indices) for indices in dealt))
+
+        # Assert
+        self.assertTrue(fits)
+
+    # GREEN_ON_BASE(characterization): the base's 493 s whole-suite figure is also under the 561 s charged here; raising `WHOLE_COST["EditMode"]` to 600 reddens it.
+    def test_Given_TheDealsCostFigures_When_ComparedWithWhatTheCeilingCharges_Then_NoMutantIsDealtDearer(self):
+        # Arrange — the ceiling charges 561 s an EditMode mutant and 934 + 100 s a PlayMode one, so a mutant the
+        # plan deals as narrowed that `narrowable` then declines is still within the charge.
+        edit, play = 561, 934 + 100
+
+        # Act
+        within = (max(mutation_check.NARROWED_COST, mutation_check.WHOLE_COST["EditMode"]) <= edit,
+                  mutation_check.WHOLE_COST["PlayMode"] <= play)
+
+        # Assert
+        self.assertEqual(within, (True, True))
+
+    def test_Given_TheShardJobsMarkerStep_When_ItsCommandsAreRead_Then_LogsIsHandedBackBeforeTheMarkerIsWritten(self):
+        # Arrange — the docker steps run as root and leave Logs/mutation-playmode-shard owned by it, so a
+        # host-side write into it is refused unless the runner user takes the directory back first.
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+        job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
+        step = job.partition("- name: Measure PlayMode")[2].partition("- uses: actions/upload-artifact")[0]
+        commands = step.partition("- if: always()")[2]
+
+        # Act
+        chown = commands.find('sudo chown -R "$(id -u):$(id -g)" Logs')
+        write = commands.find("> Logs/mutation-playmode-shard/")
+
+        # Assert
+        self.assertEqual((chown >= 0, 0 <= chown < write), (True, True))
+
+    def test_Given_TheShardJobsPlayModeStep_When_ItsCommandIsRead_Then_ItMeasuresItsOwnShardsSurvivorsInOneShard(self):
+        # Arrange — the pass runs in the EditMode shard's job, over the survivors of that shard alone: another
+        # shard's survivors would be measured twice, and no `--shard 0/1` would make the run decide the campaign.
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+        job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
+        step = job.partition("- name: Measure PlayMode")[2].partition("- if: always()")[0]
+
+        # Act
+        flags = re.findall(r"--(platform PlayMode|survivors-of|survivors-shard|shard 0/1)\b", step)
+
+        # Assert
+        self.assertEqual(sorted(flags), ["platform PlayMode", "shard 0/1", "survivors-of", "survivors-shard"])
+
+    def test_Given_ThePlayModeStepTimeout_When_TheMostSurvivorsFittingItAreCounted_Then_ItIsThePlayModeCeiling(self):
+        # Arrange — derived from the step timeout rather than read back from the constant.
+        mutant, setup = 934 + 100, 202 + 625 + 11 + 900
+        largest = max((count for count in range(1, 40)
+                       if self.fits("mutation-shard", "PlayMode", mutant, setup, count=count)), default=0)
+
+        # Act
+        stated = mutation_check.SHARD_CEILING["PlayMode"]
+
+        # Assert
+        self.assertEqual(stated, largest)
+
+    def test_Given_TheShardJobsTimeout_When_ComparedWithItsMeasuringSteps_Then_ItHoldsBothAndTheRest(self):
+        # Arrange — the job runs the EditMode step and then the PlayMode one on one runner; what is left
+        # after both is its checkout, restore and uploads, which the measured setup figures do not cover.
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+        job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
+        steps = [int(minutes) for minutes in re.findall(r"^        timeout-minutes: (\d+)$", job, re.MULTILINE)]
+        found = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
+
+        # Act
+        spare = int(found.group(1)) - sum(steps) if found else None
+
+        # Assert
+        self.assertEqual((len(steps), spare is not None and spare >= 15), (2, True))
 
     def test_Given_AFullPlayModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the 100 s are what its five bounded cases spend where a mutant stops the frame
@@ -7785,7 +8211,7 @@ class ShardCeilingTests(unittest.TestCase):
         mutant, setup = 934 + 100, 202 + 625 + 11 + 900
 
         # Act
-        fits = self.fits("mutation-playmode-shard", "PlayMode", mutant, setup)
+        fits = self.fits("mutation-shard", "PlayMode", mutant, setup)
 
         # Assert
         self.assertTrue(fits)
@@ -7835,17 +8261,86 @@ class SessionCampaign(StubbedCampaign):
     lost = False
     unarmed = False
     short = False
+    # The cases the reach run reports, each with the mutant ids it ran: None is a reach run that did not
+    # come out green, which is what a stub that knows nothing of it reports.
+    reach = None
+    # What an own launch whose filter names the IL-reading fixture reports instead of a green run of its one
+    # case (see `il_answer`), and how the unmutated control of that filter comes out: "red" or "short".
+    il_launch = None
+    il_control = None
+    # Whether a mutant whose text joins `a - b` fails to build, as a `+` between strings does.
+    rejects_minus = False
+    reach_cases = ("N.C.A", "N.C.B", "N.C.C", "N.C.D") + tuple("N.C.F{}".format(number) for number in range(36))
+    # A case the reach run reports as failed, and whether it reports one case fewer than the baseline held.
+    failing_case = None
+    missing_case = False
+    # Whether the opening run of a covered set comes out green.
+    gate_green = True
+    # How long each case of the reach run took (seconds), by name; the rest take `case_seconds`.
+    case_seconds = 0.1
+    slow_cases = {}
+    # A case the reach run reports as inconclusive, and the switches it reports armed.
+    inconclusive_case = None
+    reach_armed = ("Probe:0",)
 
     def __init__(self):
         super().__init__()
         self.outcome = "killed"
         self.rewrites = []
         self.launched = []
+        self.scopes = []
         self.during = None
+        self.plans = []
+        self.environments = []
+
+    def reach_session(self, plan, directory):
+        xml = directory / "mutant-000.xml"
+        cases = self.reach_cases[1:] if self.missing_case else self.reach_cases
+        xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0">{1}</test-run>'.format(
+            len(cases), "".join('<test-case fullname="{}" result="{}" duration="{}" />'.format(
+                name, "Failed" if name == self.failing_case else
+                "Inconclusive" if name == self.inconclusive_case else "Passed",
+                self.slow_cases.get(name, self.case_seconds)) for name in cases)))
+        stage = {"name": "coverage", "finished": True, "xml": str(xml), "passed": len(cases),
+                 "failures": [self.failing_case] if self.failing_case else [], "armed": list(self.reach_armed)}
+        (directory / "item-000.json").write_text(json.dumps({"id": 0, "stages": [stage]}))
+        (directory / "reach.jsonl").write_text("".join(
+            json.dumps({"name": name, "ids": sorted(ids)}) + "\n" for name, ids in self.reach.items()))
+        return {0: {"launch": 1, "peak": 0}}, set(), None
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         self.launched.append(Path(results).name)
-        return super().run_suite(_unity, _project, _platform, _scope, results, log, _timeout, _holder)
+        self.scopes.append(list(_scope))
+        answer = super().run_suite(_unity, _project, _platform, _scope, results, log, _timeout, _holder)
+        name = Path(results).name
+        if name == "baseline-il.xml" and self.il_control:
+            Path(results).write_text(FAILING_RESULTS if self.il_control == "red" else
+                                     '<test-run total="0" passed="0" failed="0" inconclusive="0" />')
+        if self.il_launch and name.startswith("mutant-") and "ReaderTests" in " ".join(_scope):
+            return self.il_answer(Path(results), Path(log), answer)
+        if self.rejects_minus and name.startswith("mutant-") and "a - b" in self.source.read_text():
+            Path(log).write_text("Packages/com.velvet.core/Runtime/Probe.cs(5,80): error CS0019: Operator '-' "
+                                 "cannot be applied to operands of type 'string' and 'string'\n")
+        return answer
+
+    def il_answer(self, results, log, answer):
+        """What a launch that runs the fixtures reading IL reports, by `il_launch`."""
+        mode = self.il_launch
+        if mode == "nothing":
+            results.write_text('<test-run total="0" passed="0" failed="0" inconclusive="0" />')
+        elif mode == "timeout_complete":
+            return answer[0], True, 0
+        elif mode == "timeout":
+            results.unlink()
+            return answer[0], True, 0
+        elif mode == "none":
+            results.unlink()
+        elif mode == "build":
+            log.write_text("Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n")
+        elif mode == "fail":
+            results.write_text('<test-run total="3" passed="2" failed="1" inconclusive="0">'
+                               '<test-case fullname="N.ReaderTests.A" result="Failed" /></test-run>')
+        return answer
 
     def rewrite(self, _unity, project, request, _scratch):
         self.rewrites.append(request)
@@ -7855,11 +8350,21 @@ class SessionCampaign(StubbedCampaign):
 
     def session(self, _args, _project, plan, directory, _holder):
         self.during = self.source.read_text()
+        self.plans.append(plan)
+        if plan.get("reach") and self.reach is not None:
+            return self.reach_session(plan, directory)
         assembly = mutation_check.assembly_of(self.source)
         for item in plan["items"]:
             number = item["id"]
             name = directory / "item-{}.json".format(mutation_check.cs_id(number))
             xml = directory / "mutant-{}.xml".format(mutation_check.cs_id(number))
+            planned = {stage["name"]: stage for stage in item["stages"]}
+            if number == 0 and any(stage_name.startswith("covered:") for stage_name in planned):
+                name.write_text(json.dumps({"id": 0, "stages": self.gate_stages(item, directory, assembly)}))
+                continue
+            if any(stage_name.startswith("covered:") for stage_name in planned) and not item.get("confirm"):
+                name.write_text(json.dumps({"id": number, "stages": self.covered_stages(item, xml, assembly)}))
+                continue
             if item.get("confirm"):
                 result = "Failed" if self.unconfirmed else "Passed"
                 xml.write_text('<test-run total="1"><test-case fullname="N.C.Kills" result="{}" />'
@@ -7871,7 +8376,9 @@ class SessionCampaign(StubbedCampaign):
                          "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
             else:
                 xml.write_text('<test-run total="0" passed="0" failed="0" inconclusive="0" />'
-                               if self.short else GREEN_RESULTS)
+                               if self.short else
+                               '<test-run total="1" passed="0" failed="0" inconclusive="1" />'
+                               if self.outcome == "inconclusive" else GREEN_RESULTS)
                 stage = {"name": "whole", "finished": True, "xml": str(xml), "failures": [],
                          "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
             name.write_text(json.dumps({"id": number, "stages": [stage]}))
@@ -7880,13 +8387,45 @@ class SessionCampaign(StubbedCampaign):
         return {position: {"launch": 1, "peak": 0} for position in range(len(plan["items"]))
                 if position not in lost}, lost, None
 
+    def gate_stages(self, item, directory, assembly):
+        """The opening run of each covered set, unmutated, and of each area."""
+        stages = []
+        for planned in item["stages"]:
+            total = len(planned["testNames"]) or 1
+            xml = directory / "mutant-000-{}.xml".format(planned["name"].replace(":", "-"))
+            xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0" />'.format(total))
+            red = planned["name"].startswith("covered:") and not self.gate_green
+            stages.append({"name": planned["name"], "finished": True, "xml": str(xml), "passed": total,
+                           "failures": ["N.C.A"] if red else [], "armed": ["{}:0".format(assembly)]})
+        return stages
+
+    def covered_stages(self, item, xml, assembly):
+        """What the runner records for an item that starts with a covered stage: a kill stops there, and
+        a survivor runs it out and goes on to the whole suite."""
+        armed = [] if self.unarmed else ["{}:{}".format(assembly, item["id"])]
+        if self.outcome == "killed":
+            return [{"name": item["stages"][0]["name"], "finished": True, "cancelled": True,
+                     "failures": ["N.C.Kills"], "ran": 1, "armed": armed}]
+        covered = item["stages"][0]
+        xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0" />'.format(
+            len(covered["testNames"])))
+        whole = Path(str(xml).replace(".xml", "-whole.xml"))
+        whole.write_text(self.baseline_text)
+        return [{"name": covered["name"], "finished": True, "xml": str(xml), "failures": [], "armed": armed,
+                 "ran": len(covered["testNames"])},
+                {"name": "whole", "finished": True, "xml": str(whole), "failures": [], "armed": armed}]
+
     def recorded(self):
         return json.loads((self.project / "out" / "mutant-001.json").read_text())["verdict"]
 
 
-class SessionRoutingTests(unittest.TestCase):
+class SessionRoutingBase(unittest.TestCase):
+    campaign_class = SessionCampaign
+    # What `REACH_MIN_MUTANTS` is held at: a campaign here places one mutant.
+    reach_from = None
+
     def setUp(self):
-        self.campaign = SessionCampaign()
+        self.campaign = self.campaign_class()
         saved = (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file)
         mutation_check.rewrite_schemata = self.campaign.rewrite
         mutation_check.run_session = self.campaign.session
@@ -7895,12 +8434,17 @@ class SessionRoutingTests(unittest.TestCase):
         mutation_check.il_reading_assemblies = lambda _project, ran=None: (
             self.il_asked.append(ran), self.il_read)[1]
         self.addCleanup(self.restore, saved + (READ_IL,))
+        if self.reach_from is not None:
+            self.addCleanup(setattr, mutation_check, "REACH_MIN_MUTANTS", mutation_check.REACH_MIN_MUTANTS)
+            mutation_check.REACH_MIN_MUTANTS = self.reach_from
 
     @staticmethod
     def restore(saved):
         (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file,
          mutation_check.il_reading_assemblies) = saved
 
+
+class SessionRoutingTests(SessionRoutingBase):
     def test_Given_AMutantTheSessionKilled_When_TheCampaignRuns_Then_ItTakesNoLaunchOfItsOwn(self):
         # Arrange
         campaign = self.campaign
@@ -8040,6 +8584,1062 @@ class SessionRoutingTests(unittest.TestCase):
         self.assertEqual(campaign.rewrites, [])
 
 
+READER = "class ReaderTests { void A() { ModuleDefinition.ReadModule(\"x\"); } }"
+ONE_READER_CASE = (
+    '<test-run total="1" passed="1" failed="0" inconclusive="0">'
+    '<test-suite type="Assembly" name="Velvet.Tests.Ran.dll" duration="1" />'
+    '<test-case fullname="N.ReaderTests.A" classname="N.ReaderTests" result="Passed" /></test-run>')
+ONLY_READERS = ["-testFilter", "[.+]ReaderTests$"]
+
+
+class ILReadingBase(SessionRoutingBase):
+    """A project holding one fixture that reads IL, one case of it in the baseline, and an assembly the
+    session reports as read."""
+
+    def setUp(self):
+        super().setUp()
+        tests = self.campaign.source.parent / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.Ran"}))
+        (tests / "ReaderTests.cs").write_text(READER)
+        self.campaign.baseline_text = ONE_READER_CASE
+        self.campaign.outcome = "survived"
+        self.il_read = {mutation_check.assembly_of(self.campaign.source)}
+
+    def own(self):
+        """The scope of each launch of mutant 1."""
+        return [scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
+                if name == "mutant-001.xml"]
+
+
+class ILReadingSurvivorTests(ILReadingBase):
+    """A session survivor in an assembly some fixture reads the IL of stands for every other fixture, so
+    its own launch runs the fixtures reading IL and nothing else."""
+
+    def ran(self):
+        found = re.findall(r"s; cases run: ([^;]*);", self.campaign.printed)
+        return found[-1] if found else None
+
+    def test_Given_ASessionSurvivorInAnAssemblyAFixtureReadsTheILOf_When_ItsOwnLaunchRuns_Then_OnlyTheFixturesReadingILAreSelected(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS])
+
+    def test_Given_TheFixturesReadingILPassAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheyAreRunOnceBeforeAnyMutant(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual([scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
+                          if name == "baseline-il.xml"], [ONLY_READERS])
+
+    # GREEN_ON_BASE(characterization): drop the `held["failed"]` term of the control's check in `mutation_check.py` and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_TheFixturesReadingILRedAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
+        # Arrange — their failure on a mutant would not be the mutation's.
+        self.campaign.il_control = "red"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    # GREEN_ON_BASE(characterization): drop the `held["total"] != il_cases` term of the control's check and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_AControlThatRanOtherCasesThanTheBaselineHolds_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
+        # Arrange — a filter that selected nothing proves nothing about these fixtures.
+        self.campaign.il_control = "short"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    def test_Given_AnILReadingLaunchThatSelectsNoCase_When_ItSurvives_Then_TheWholeSuiteDecides(self):
+        # Arrange — a filter that selected nothing would read every mutant as surviving the fixtures it
+        # was meant to run.
+        self.campaign.il_launch = "nothing"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatTimedOutOverACompleteResult_When_ItSurvives_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "timeout_complete"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatWroteNoResult_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "none"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatTimedOutWithoutAResult_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "timeout"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchWhoseBuildStopped_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "build"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatFailedACase_When_ItEnds_Then_ItIsTheVerdictAndTheWholeSuiteIsNotRun(self):
+        # Arrange — it reports more cases than the baseline holds, which a failure does not make wrong.
+        self.campaign.il_launch = "fail"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual((self.own(), mutation_check.KILLED in self.campaign.printed), ([ONLY_READERS], True))
+
+    def test_Given_AnILReadingLaunchThatFellBackOnTheWholeSuite_When_TheSummaryPrints_Then_ItNamesOnlyTheWholeRun(self):
+        # Arrange
+        self.campaign.il_launch = "nothing"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.ran(), "whole 1")
+
+    def test_Given_AnOwnLaunch_When_TheSummaryPrints_Then_ItNamesHowManyCasesItRan(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.ran(), "fixtures reading IL 1")
+
+    # GREEN_ON_BASE(characterization): let the survivor-only test beside `CALL_REMOVING` pass an inconclusive reading and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_ASessionSurvivorThatWasInconclusive_When_ItsOwnLaunchRuns_Then_ItTakesTheWholeSuite(self):
+        # Arrange — the session's inconclusive case may be any fixture's, not only those reading IL.
+        self.campaign.outcome = "inconclusive"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    # GREEN_ON_BASE(characterization): delete the `if scope:` return of `il_only_classes` and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_AScopeTheCallerChose_When_ASurvivorsOwnLaunchRuns_Then_NoLaunchIsNarrowedToTheFixturesReadingIL(self):
+        # Act
+        self.campaign.run("--max", "1", "--filter", "N.Elsewhere")
+
+        # Assert
+        self.assertEqual([scope for scope in self.campaign.scopes if "[.+]ReaderTests$" in " ".join(scope)], [])
+
+    # GREEN_ON_BASE(characterization): the base launches the whole suite for every such survivor, and deleting the `if not cases` test in `il_only_scope` reddens it.
+    def test_Given_NoFixtureReadingIL_When_ASurvivorsAssemblyIsRead_Then_TheWholeSuiteIsTheOwnLaunch(self):
+        # Arrange — the assembly is read as IL by name, but no fixture file the project holds says so.
+        (self.campaign.source.parent / "Tests" / "Editor" / "ReaderTests.cs").write_text("class ReaderTests { }")
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    def test_Given_AReaderThatIsAlsoATextReader_When_TheScopeIsBuilt_Then_ItIsLeftOutOfIt(self):
+        # Arrange
+        results = self.campaign.project / "baseline.xml"
+        results.write_text(ONE_READER_CASE)
+
+        # Act
+        scope = mutation_check.il_only_scope(self.campaign.project, results, {"ReaderTests"}, [])
+
+        # Assert
+        self.assertEqual(scope, (None, 0))
+
+    def test_Given_AScopeTheCallerChose_When_TheScopeIsBuilt_Then_ThereIsNone(self):
+        # Arrange
+        results = self.campaign.project / "baseline.xml"
+        results.write_text(ONE_READER_CASE)
+
+        # Act
+        scope = mutation_check.il_only_scope(self.campaign.project, results, set(), ["-testFilter", "X"])
+
+        # Assert
+        self.assertEqual(scope, (None, 0))
+
+
+class ILReadingUncoveredTests(ILReadingBase):
+    """A mutant no case ran, in an assembly some fixture reads the IL of, takes the same launch."""
+
+    reach_from = 1
+
+    def setUp(self):
+        super().setUp()
+        self.campaign.reach = {"N.C.A": {99}}
+
+    def test_Given_AMutantNoCaseRanInAnAssemblyAFixtureReadsTheILOf_When_ItsOwnLaunchRuns_Then_OnlyTheFixturesReadingILAreSelected(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS])
+
+
+class CallRemovingCampaign(SessionCampaign):
+    """A mutant whose kept operator takes a call out of the method."""
+
+    BODY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static void Run()
+                {
+                    Work();
+                }
+            }
+        }
+        """)
+
+
+class ILReadingCallRemovalTests(ILReadingBase):
+    """A woven component's IL is read through the callees it reaches, so a survivor that removes a call is
+    not narrowed to the fixtures reading IL."""
+
+    campaign_class = CallRemovingCampaign
+
+    # GREEN_ON_BASE(characterization): delete the `CALL_REMOVING` test on the survivor path and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_ASurvivorThatRemovedACall_When_ItsAssemblyIsReadAsIL_Then_ItsOwnLaunchIsTheWholeSuite(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+
+class ILReadingCallRemovalUncoveredTests(ILReadingBase):
+    campaign_class = CallRemovingCampaign
+    reach_from = 1
+
+    # GREEN_ON_BASE(characterization): delete the `CALL_REMOVING` test on the uncovered path and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_AnUncoveredMutantThatRemovedACall_When_ItsAssemblyIsReadAsIL_Then_ItsOwnLaunchIsTheWholeSuite(self):
+        # Arrange
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+
+class RejectingSessionCampaign(SessionCampaign):
+    """`Log(a + b, ok && other);`: the kept `+ -> -` rewrite does not build, and the cap holds a clause
+    removal behind it."""
+
+    BODY = RejectingJoinCampaign.BODY
+    rejects_minus = True
+
+
+class ILReadingStandInTests(ILReadingBase):
+    """The mutant that stands for a line whose kept mutant is no program was not the session's survivor."""
+
+    campaign_class = RejectingSessionCampaign
+
+    def test_Given_AKeptMutantThatDoesNotBuild_When_AStandInIsMeasured_Then_ItRunsTheWholeSuite(self):
+        # Act
+        self.campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, [], []])
+
+
+class ILFixtureHazardTests(unittest.TestCase):
+    """Fixtures a class filter and a case count cannot follow."""
+
+    def classes(self, declarations):
+        project = Path(tempfile.mkdtemp(prefix="il-hazard-"))
+        tests = project / "Packages" / "P" / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "T.asmdef").write_text(json.dumps({"name": "T"}))
+        (tests / "ReaderTests.cs").write_text(declarations)
+        (tests / "Other.cs").write_text("class Other : ReaderBase { }")
+        return mutation_check.il_only_classes(project, {"T"}, set())
+
+    def test_Given_APlainFixtureReadingIL_When_Named_Then_ItsClassIsReturned(self):
+        # Act
+        classes = self.classes(READER)
+
+        # Assert
+        self.assertEqual(classes, {"ReaderTests"})
+
+    def test_Given_AFixtureTakingArguments_When_Named_Then_NoClassIsReturned(self):
+        # Act
+        classes = self.classes("[TestFixture(1)]\n" + READER)
+
+        # Assert
+        self.assertIsNone(classes)
+
+    def test_Given_AFixtureSourceInTheReadingFile_When_Named_Then_NoClassIsReturned(self):
+        # Act
+        classes = self.classes("[TestFixtureSource(nameof(X))]\n" + READER)
+
+        # Assert
+        self.assertIsNone(classes)
+
+    def test_Given_AClassSomeSourceDerivesFrom_When_Named_Then_NoClassIsReturned(self):
+        # Act
+        classes = self.classes("class ReaderBase { void A() { ModuleDefinition.ReadModule(\"x\"); } }")
+
+        # Assert
+        self.assertIsNone(classes)
+
+    def test_Given_TheFixturesTheRepositoryReadsILIn_When_Named_Then_TheyAreNamedAndNoneIsParameterisedOrDerived(self):
+        # Arrange — the guard that fails the day one is added, so the narrowing is declined rather than wrong.
+        ran = {json.loads(path.read_text())["name"]
+               for path in (REPO_ROOT / mutation_check.PACKAGE).rglob("*.asmdef")
+               if path.parent.parts[-2:] == ("Tests", "Editor")}
+
+        # Act
+        classes = mutation_check.il_only_classes(REPO_ROOT, ran, set())
+
+        # Assert
+        self.assertTrue(classes)
+
+
+class SessionReachTests(SessionRoutingBase):
+    """What the reach run decides about a mutant's launch: against which cases it runs, whether it runs at
+    all, and what a survivor of the narrowed run is owed."""
+
+    reach_from = 1
+
+    def setUp(self):
+        super().setUp()
+        self.campaign.baseline_text = '<test-run total="40" passed="40" failed="0" inconclusive="0" />'
+        self.campaign.reach = {"N.C.A": {1}}
+        # A tenth of this is what a mutant's cases may take together.
+        self.campaign.baseline_seconds = 100.0
+
+    def stages(self, key="name"):
+        plan = self.campaign.plans[-1]
+        item = next(item for item in plan["items"] if item["id"] == 1)
+        return [stage[key] for stage in item["stages"]]
+
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite; replacing the seconds test in `select_by_reach` with `if chosen:` reddens it.
+    def test_Given_AMutantWhoseCasesTakeMoreThanATenthOfTheBaseline_When_TheCampaignRuns_Then_ItTakesTheWholeSuite(self):
+        # Arrange — one case, but twenty seconds against a ten-second budget: a count would have taken it.
+        self.campaign.slow_cases = {"N.C.A": 20}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite; reading an unreadable
+    # duration as `0.0` instead of infinity in `read_cases` reddens it.
+    def test_Given_APassedCaseWithNoReadableDuration_When_TheCampaignRuns_Then_ItsMutantTakesTheWholeSuite(self):
+        # Arrange — a duration that cannot be read must not weigh as nothing.
+        self.campaign.slow_cases = {"N.C.A": "n/a"}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base reads no site as uncovered; making `select_by_reach` call every
+    # unrun site uncovered whatever `unsure` says reddens it.
+    def test_Given_AReachRunWithAnInconclusiveCase_When_TheCampaignRuns_Then_NoSiteIsReadAsUncovered(self):
+        # Arrange — that case stopped where its Assume failed, so the sites after it are unrecorded, not unreached.
+        self.campaign.reach = {"N.C.B": {99}}
+        self.campaign.inconclusive_case = "N.C.A"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base reads no site as uncovered; cutting the `not stage.get("armed")` test in `measure_reach` reddens it.
+    def test_Given_AReachRunWithNoSwitchArmed_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
+        # Arrange — the editor kept a build without the guards.
+        self.campaign.reach = {"N.C.B": {99}}
+        self.campaign.reach_armed = ()
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base reads no site as uncovered; cutting the `endswith(":0")` test in `measure_reach` reddens it.
+    def test_Given_AReachRunArmedOnAMutant_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
+        # Arrange — a switch that read an id is not the unmutated program.
+        self.campaign.reach = {"N.C.B": {99}}
+        self.campaign.reach_armed = ("Probe:0", "Probe:7")
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    def test_Given_ATimeoutShorterThanTwiceTheBaseline_When_TheReachRunIsPlanned_Then_TheTimeoutBoundsIt(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1", "--timeout", "50")
+
+        # Assert
+        self.assertEqual([stage["bound"] for item in self.campaign.plans[0]["items"] for stage in item["stages"]],
+                         [50])
+
+    def test_Given_AReachRunToCharge_When_ItIsPlanned_Then_ItIsStoppedAtTwiceTheBaselinesTime(self):
+        # Arrange — `ShardCeilingTests.REACH_RUN` charges that much for a run that never finishes.
+        self.campaign.baseline_seconds = 100.0
+        bound = mutation_check.REACH_BOUND * 100
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual([stage["bound"] for item in self.campaign.plans[0]["items"] for stage in item["stages"]],
+                         [bound])
+
+    def test_Given_AGateThatFailsUnmutated_When_TheMutantIsKilledInItsCoveredStage_Then_ItTakesItsOwnLaunch(self):
+        # Arrange — the cases fail in that order without any mutation, so their failure is no kill.
+        self.campaign.gate_green = False
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AMutantWithCoveredCases_When_TheSessionIsPlanned_Then_TheSameCasesRunUnmutatedFirst(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        opening = self.campaign.plans[-1]["items"][0]
+        self.assertEqual((opening["id"], [(stage["name"], stage["testNames"]) for stage in opening["stages"]]),
+                         (0, [(mutation_check.covered_name(0), ["N.C.A"])]))
+
+    def test_Given_AnEditModeSession_When_ItOpens_Then_ItsOnlyOpeningWorkIsOneRunOfTheWholeSuite(self):
+        # Arrange — `ShardCeilingTests.REACH_RUN` charges exactly that, in place of the areas' baselines.
+        reach_stage = mutation_check.REACH_STAGE
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        opening = self.campaign.plans[0]
+        self.assertEqual((opening["reach"], [(stage["name"], stage["assemblyNames"], stage["testNames"])
+                                             for item in opening["items"] for stage in item["stages"]]),
+                         (True, [(reach_stage, [], [])]))
+
+    def test_Given_AMutantOneCaseRan_When_TheCampaignRuns_Then_ItsFirstLaunchHoldsThatCaseAlone(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages("testNames")[0], ["N.C.A"])
+
+    def test_Given_AMutantKilledInItsCoveredStage_When_ItsVerdictIsRecorded_Then_TheRecordCarriesTheCasesItRan(self):
+        # Arrange
+        covered = mutation_check.COVERED_STAGE
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        record = json.loads((self.campaign.project / "out" / "mutant-001.json").read_text())
+        self.assertEqual(record["ran"], [[covered + ":0", 1]])
+
+    # GREEN_ON_BASE(characterization): the base records a kill's failing cases too; this holds that a kill
+    # the covered stage took reaches the record by the same entry. Dropping `killers` from the tuple
+    # `session_verdict` returns for a covered kill reddens it.
+    def test_Given_AMutantKilledInItsCoveredStage_When_ItsVerdictIsRecorded_Then_TheRecordNamesTheKillingCase(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        record = json.loads((self.campaign.project / "out" / "mutant-001.json").read_text())
+        self.assertEqual(record["killers"], ["N.C.Kills"])
+
+    def test_Given_AMutantOneCaseRanThatSurvivesIt_When_TheCampaignRuns_Then_TheWholeSuiteRunsBeforeTheVerdict(self):
+        # Arrange
+        self.campaign.outcome = "survived"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), [mutation_check.covered_name(0), "whole"])
+
+    def test_Given_AMutantNoCaseRan_When_TheCampaignRuns_Then_ItIsRecordedUncovered(self):
+        # Arrange — the only site anything reached is mutant 99's.
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.campaign.recorded(), mutation_check.UNCOVERED)
+
+    def test_Given_AMutantNoCaseRan_When_TheCampaignRuns_Then_NoItemIsPlannedForIt(self):
+        # Arrange
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert — the reach run's opening item is the only one any plan held.
+        self.assertEqual([item["id"] for plan in self.campaign.plans for item in plan["items"]], [0])
+
+    def test_Given_AMutantNoCaseRanInAnAssemblyAFixtureReadsTheILOf_When_TheCampaignRuns_Then_ItTakesItsOwnLaunch(self):
+        # Arrange — that fixture sees the guards of every mutant, whatever the cases ran.
+        self.campaign.reach = {"N.C.A": {99}}
+        self.il_read = {mutation_check.assembly_of(self.campaign.source)}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AMutantRunBeforeAnyCaseStarted_When_TheCampaignRuns_Then_ItTakesTheWholeSuite(self):
+        # Arrange — its site ran with the domain, so any case may read what it left.
+        self.campaign.reach = {"N.C.A": {99}, mutation_check.SETUP_CASE: {1}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite, so a reach run missing
+    # a case changes nothing there; cutting the `counts["total"] != total` test in `measure_reach` reddens it.
+    def test_Given_AReachRunMissingACase_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
+        # Arrange — which sites the missing case ran is unknown, so none can be called unreached.
+        self.campaign.reach = {"N.C.A": {99}}
+        self.campaign.missing_case = True
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite; replacing the passed-case
+    # filter in `select_by_reach` with the cases that ran the site reddens it.
+    def test_Given_AReachRunWithAFailingCase_When_TheCampaignRuns_Then_ASiteOnlyThatCaseRanTakesTheWholeSuite(self):
+        # Arrange
+        self.campaign.failing_case = "N.C.A"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    def test_Given_AReachRunWithAFailingCase_When_TheCampaignRuns_Then_NoSiteIsReadAsUncovered(self):
+        # Arrange — the failed case stopped where it failed, so the sites after that point are unrecorded.
+        self.campaign.reach = {"N.C.B": {99}}
+        self.campaign.failing_case = "N.C.A"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite whatever a table holds;
+    # cutting the recorded-something test in `measure_reach` reddens it.
+    def test_Given_AReachRunThatRecordedNothing_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
+        # Arrange — tables never turned on look the same as a suite that ran no site.
+        self.campaign.reach = {}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base never reads reach; cutting the platform test around the
+    # reach run in `measure_in_session` reddens it.
+    def test_Given_APlayModePass_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
+        # Arrange — the pass measures what the EditMode suite left, against the whole PlayMode suite.
+
+        # Act
+        self.campaign.run("--max", "1", "--platform", "PlayMode")
+
+        # Assert
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+
+    def test_Given_AMutantTheSessionKilled_When_TheSummaryPrints_Then_ItNamesHowManyCasesItsLaunchRan(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertIn("[killed] {} 1".format(mutation_check.covered_name(0)), self.campaign.printed)
+
+    def test_Given_AnUncoveredMutant_When_TheSummaryPrints_Then_ItRanNoCases(self):
+        # Arrange
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertIn("[{}] uncovered 0".format(mutation_check.UNCOVERED), self.campaign.printed)
+
+    def test_Given_AnUncoveredMutantAndNoDeclaration_When_TheCampaignDecides_Then_ItFailsTheRun(self):
+        # Arrange — a survivor needs an answer, and a site no case ran is not exempt from asking for one.
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        code = self.campaign.run_over_diff("--max", "1")
+
+        # Assert
+        self.assertEqual(code, 1)
+
+
+class StylingSessionCampaign(SessionCampaign):
+    """A session campaign whose mutant sits under an area with an assembly the baseline ran in a second."""
+
+    SOURCE = "Packages/com.velvet.core/Runtime/Styling/Probe.cs"
+
+
+class SessionReachAreaTests(SessionRoutingBase):
+    """A mutant under an area the baseline could narrow: no session takes the area's own baseline, so the
+    opening holds the covered sets and nothing else."""
+
+    campaign_class = StylingSessionCampaign
+    reach_from = 1
+
+    def setUp(self):
+        super().setUp()
+        tests = self.campaign.source.parent / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.Styling.A"}))
+        self.campaign.baseline_text = ('<test-run total="40" passed="40" failed="0" inconclusive="0" duration="9">'
+                                       '<test-suite type="Assembly" name="Velvet.Tests.Styling.A.dll" '
+                                       'duration="1" /></test-run>')
+        self.campaign.baseline_seconds = 100.0
+        self.campaign.reach = {"N.C.A": {1}}
+
+    def plan_items(self):
+        return [item["id"] for item in self.campaign.plans[-1]["items"]]
+
+    def stages(self):
+        item = next(item for item in self.campaign.plans[-1]["items"] if item["id"] == 1)
+        return [stage["name"] for stage in item["stages"]]
+
+    def test_Given_ACoveredMutantUnderANarrowableArea_When_TheSessionIsPlanned_Then_OnlyItsCoveredSetOpensIt(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        opening = self.campaign.plans[-1]["items"][0]
+        self.assertEqual([stage["name"] for stage in opening["stages"]], [mutation_check.covered_name(0)])
+
+    def test_Given_AWideMutantUnderANarrowableArea_When_TheSessionIsPlanned_Then_ItTakesTheWholeSuiteAlone(self):
+        # Arrange — its cases take longer than the budget; the ceiling charges no area baseline for it.
+        self.campaign.slow_cases = {"N.C.A": 20}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual((self.plan_items(), self.stages()), ([1, -1], ["whole"]))
+
+    def test_Given_FewerMutantsThanTheThreshold_When_TheSessionIsPlanned_Then_NoReachRunIsMade(self):
+        # Arrange
+        mutation_check.REACH_MIN_MUTANTS = 2
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+
+    def test_Given_FewerMutantsThanTheThreshold_When_TheSessionIsPlanned_Then_TheAreaOpensItAndPrecedesTheWholeSuite(self):
+        # Arrange — main's path, kept for the shard too small for a reach run to pay.
+        mutation_check.REACH_MIN_MUTANTS = 2
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual((self.plan_items(), self.stages()), ([0, 1, -1], ["narrowed:Styling", "whole"]))
+
+    def test_Given_AReachRunThatDoesNotStand_When_TheSessionIsPlanned_Then_TheMutantTakesTheWholeSuiteAlone(self):
+        # Arrange
+        self.campaign.missing_case = True
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual((self.plan_items(), self.stages()), ([1, -1], ["whole"]))
+
+
+def probe_body(methods):
+    lines = "\n".join("        internal static bool M{0}(int a, int b) => a <= b;".format(number)
+                      for number in range(methods))
+    return "namespace Velvet\n{\n    internal static class Probe\n    {\n" + lines + "\n    }\n}\n"
+
+
+class SevenMutantCampaign(StylingSessionCampaign):
+    """Seven mutants under a narrowable area, of which the session places six and declines the last."""
+
+    BODY = probe_body(7)
+    DECLINES = 1
+
+    def rewrite(self, _unity, project, request, _scratch):
+        self.rewrites.append(request)
+        ids = [mutant["id"] for entry in request["files"] for mutant in entry["mutants"]]
+        relative = request["files"][0]["path"]
+        return {"placed": ids[:len(ids) - self.DECLINES],
+                "declined": {str(number): "declined for the case" for number in ids[len(ids) - self.DECLINES:]},
+                "files": {relative: self.REWRITTEN}, "fatal": []}
+
+
+class SixMutantCampaign(SevenMutantCampaign):
+    """Six mutants, all placed."""
+
+    BODY = probe_body(6)
+    DECLINES = 0
+
+
+class SixOrSevenMutantsBase(SessionRoutingBase):
+    def setUp(self):
+        super().setUp()
+        tests = self.campaign.source.parent / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.Styling.A"}))
+        self.campaign.baseline_text = ('<test-run total="40" passed="40" failed="0" inconclusive="0" duration="9">'
+                                       '<test-suite type="Assembly" name="Velvet.Tests.Styling.A.dll" '
+                                       'duration="1" /></test-run>')
+        self.campaign.baseline_seconds = 100.0
+        self.campaign.reach = {"N.C.A": {1}}
+
+
+class DeclinedMutantBesideASessionTests(SixOrSevenMutantsBase):
+    """A mutant launched on its own keeps main's area-first path, so a session with one runs no reach run."""
+
+    campaign_class = SevenMutantCampaign
+
+    # GREEN_ON_BASE(characterization): the base runs no reach run; dropping the `len(placed) == len(pending)`
+    # test from `reaching` in `measure_in_session` reddens it.
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
+        # Arrange — six placed meet the threshold, but a seventh needs a launch of its own.
+
+        # Act
+        self.campaign.run("--max", "7")
+
+        # Assert
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+
+    # GREEN_ON_BASE(characterization): the base takes the area's baseline for a launch of its own; making
+    # `measure` skip the areas of its own launches beside a session reddens it.
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_TheDeclinedOneIsPrecededByItsAreasBaseline(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "7")
+
+        # Assert
+        self.assertEqual([name for name in self.campaign.launched if name.startswith("baseline-")],
+                         ["baseline-Styling.xml"])
+
+
+class FourteenMutantCampaign(SixMutantCampaign):
+    """Fourteen mutants, all placed."""
+
+    BODY = probe_body(14)
+
+
+class ManyPlacedMutantsTests(SixOrSevenMutantsBase):
+    campaign_class = FourteenMutantCampaign
+
+    def test_Given_FourteenMutantsAllPlaced_When_TheCampaignRuns_Then_TheReachRunIsMade(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "14")
+
+        # Assert
+        self.assertEqual(self.campaign.plans[0].get("reach"), True)
+
+
+class FullyPlacedShardTests(SixOrSevenMutantsBase):
+    campaign_class = SixMutantCampaign
+
+    def test_Given_AReachRunAndAnItemNoLaunchFinished_When_TheMutantTakesItsOwnLaunch_Then_NoAreaBaselinePrecedesIt(self):
+        # Arrange — the reading does not stand; the whole suite answers all its area could.
+        self.campaign.lost = True
+        self.campaign.outcome = "survived"
+
+        # Act
+        self.campaign.run("--max", "6")
+
+        # Assert
+        self.assertEqual([name for name in self.campaign.launched if name.startswith("baseline-")], [])
+
+    def test_Given_SixMutantsAllPlaced_When_TheCampaignRuns_Then_TheReachRunIsMade(self):
+        # Arrange — the control for the pair above: the same threshold with nothing left for a launch of its own.
+
+        # Act
+        self.campaign.run("--max", "6")
+
+        # Assert
+        self.assertEqual(self.campaign.plans[0].get("reach"), True)
+
+
+class SessionReachSelectionTests(unittest.TestCase):
+    SECONDS = {"N.C.A": 1.0, "N.C.B": 1.0, "N.C.C": 1.0, "N.C.D": 1.0}
+
+    def select(self, reached, setup=(), seconds=SECONDS, budget=10.0, unsure=False):
+        return mutation_check.select_by_reach([1, 2], {case: set(ids) for case, ids in reached.items()},
+                                              set(setup), dict(seconds), budget, unsure)
+
+    def test_Given_ACaseThatRanOneMutantsSite_When_Selected_Then_ThatMutantTakesTheCase(self):
+        # Arrange / Act
+        selection, _ = self.select({"N.C.A": {1}, "N.C.B": {2}})
+
+        # Assert
+        self.assertEqual(selection, {1: ["N.C.A"], 2: ["N.C.B"]})
+
+    def test_Given_NoCaseThatRanAMutantsSite_When_Selected_Then_ItIsUncovered(self):
+        # Arrange / Act
+        _, uncovered = self.select({"N.C.A": {1}})
+
+        # Assert
+        self.assertEqual(uncovered, [2])
+
+    def test_Given_NoCaseThatRanAMutantsSiteAndACaseThatStoppedShort_When_Selected_Then_ItIsNotUncovered(self):
+        # Arrange / Act
+        result = self.select({"N.C.A": {1}}, unsure=True)
+
+        # Assert
+        self.assertEqual(result, ({1: ["N.C.A"]}, []))
+
+    def test_Given_ASiteRunBeforeAnyCase_When_Selected_Then_ItIsNeitherSelectedNorUncovered(self):
+        # Arrange / Act
+        result = self.select({"N.C.A": {1}, "N.C.B": {2}}, setup={2})
+
+        # Assert
+        self.assertEqual(result, ({1: ["N.C.A"]}, []))
+
+    def test_Given_ASiteOnlyACaseThatDidNotPassRan_When_Selected_Then_ItIsNeitherSelectedNorUncovered(self):
+        # Arrange / Act — the case is no candidate killer, and it did run the site, so the site is not unreached.
+        result = self.select({"N.C.A": {1}, "N.C.X": {2}})
+
+        # Assert
+        self.assertEqual(result, ({1: ["N.C.A"]}, []))
+
+    def test_Given_CasesTakingMoreSecondsThanTheBudget_When_Selected_Then_TheMutantTakesTheWholeSuite(self):
+        # Arrange / Act — two cases against a budget of one and a half seconds, though a count of two would pass.
+        result = self.select({"N.C.A": {1}, "N.C.B": {1}, "N.C.C": {2}}, budget=1.5)
+
+        # Assert
+        self.assertEqual(result, ({2: ["N.C.C"]}, []))
+
+    def test_Given_ASlowCaseAmongFew_When_Selected_Then_ItsSecondsAndNotItsCountDecide(self):
+        # Arrange / Act
+        result = self.select({"N.C.A": {1}}, seconds={"N.C.A": 11.0}, budget=10.0)
+
+        # Assert
+        self.assertEqual(result, ({}, [2]))
+
+    def test_Given_CasesTakingExactlyTheBudget_When_Selected_Then_TheMutantTakesThem(self):
+        # Arrange / Act
+        selection, _ = self.select({"N.C.A": {1}, "N.C.B": {1}}, budget=2.0)
+
+        # Assert
+        self.assertEqual(selection, {1: ["N.C.A", "N.C.B"]})
+
+
+class ReachRecordTests(unittest.TestCase):
+    def read(self, text):
+        path = Path(tempfile.mkdtemp(prefix="reach-")) / mutation_check.REACH_FILE
+        path.write_text(text)
+        return mutation_check.read_reached(path)
+
+    def test_Given_LinesOfCasesAndOfTheSetup_When_Read_Then_TheSetupIdsAreKeptApart(self):
+        # Arrange
+        text = ('{"name": "<setup>", "ids": [3]}\n{"name": "N.C.A", "ids": [1, 2]}\n'
+                '{"name": "N.C.A", "ids": [2, 5]}\n')
+
+        # Act
+        reached, setup = self.read(text)
+
+        # Assert
+        self.assertEqual((reached, setup), ({"N.C.A": {1, 2, 5}}, {3}))
+
+    def test_Given_SetupHitsRecordedAfterTheLastCase_When_Read_Then_TheyAreStillTheSetups(self):
+        # Arrange — what ran after the last case ended is filed under the same name as what ran before the first.
+        text = '{"name": "N.C.A", "ids": [1]}\n{"name": "<setup>", "ids": [1]}\n'
+
+        # Act
+        reached, setup = self.read(text)
+
+        # Assert
+        self.assertEqual((reached, setup), ({"N.C.A": {1}}, {1}))
+
+    def test_Given_TheRunnersClose_When_TheStageEnds_Then_ItFilesWhatRanAfterTheLastCaseUnderSetup(self):
+        # Arrange — the runner is not compiled here; this holds its source to the one call that routes the tail.
+        source = (REPO_ROOT / "Assets" / "MutantSchemata" / "Editor" / "SchemataRunner.cs").read_text()
+        close = source.partition("private static void Close(")[2].partition("private static void AwaitDrain")[0]
+
+        # Act
+        filed = "if (plan.reach) RecordReached(SetupCase);" in close
+
+        # Assert
+        self.assertTrue(filed)
+
+    def test_Given_ALineTheEditorPartWrote_When_Read_Then_ItIsSkipped(self):
+        # Arrange
+        text = '{"name": "N.C.A", "ids": [1]}\n{"name": "N.C.B", "ids": [2'
+
+        # Act
+        reached, _ = self.read(text)
+
+        # Assert
+        self.assertEqual(reached, {"N.C.A": {1}})
+
+    def test_Given_NoFile_When_Read_Then_NothingWasReached(self):
+        # Arrange / Act
+        result = mutation_check.read_reached(Path(tempfile.mkdtemp(prefix="reach-")) / "absent.jsonl")
+
+        # Assert
+        self.assertEqual(result, ({}, set()))
+
+
+class ReadCasesTests(unittest.TestCase):
+    def read(self, body):
+        path = Path(tempfile.mkdtemp(prefix="cases-")) / "r.xml"
+        path.write_text("<test-run>{}</test-run>".format(body))
+        return mutation_check.read_cases(path)
+
+    def test_Given_PassedAndFailedCases_When_Read_Then_OnlyThePassingOnesCarrySeconds(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" duration="1.5" />'
+                               '<test-case fullname="B" result="Failed" duration="2" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": 1.5})
+
+    def test_Given_AnInconclusiveCase_When_Read_Then_TheReadingIsUnsure(self):
+        # Arrange / Act
+        _, unsure = self.read('<test-case fullname="A" result="Inconclusive" duration="1" />')
+
+        # Assert
+        self.assertTrue(unsure)
+
+    def test_Given_AFailedCase_When_Read_Then_TheReadingIsUnsure(self):
+        # Arrange / Act
+        _, unsure = self.read('<test-case fullname="A" result="Passed" duration="1" />'
+                              '<test-case fullname="B" result="Failed" duration="1" />')
+
+        # Assert
+        self.assertTrue(unsure)
+
+    def test_Given_OnlyPassedCases_When_Read_Then_TheReadingIsSure(self):
+        # Arrange / Act
+        _, unsure = self.read('<test-case fullname="A" result="Passed" duration="1" />')
+
+        # Assert
+        self.assertFalse(unsure)
+
+    def test_Given_APassedCaseWithNoDuration_When_Read_Then_ItIsInfinitelyLong(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": float("inf")})
+
+    def test_Given_APassedCaseWithAnUnreadableDuration_When_Read_Then_ItIsInfinitelyLong(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" duration="n/a" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": float("inf")})
+
+    def test_Given_ANameThatOccursTwice_When_Read_Then_ItsDurationsAreAdded(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" duration="1" />'
+                               '<test-case fullname="A" result="Passed" duration="2" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": 3.0})
+
+
+class ReachMirrorTests(unittest.TestCase):
+    def test_Given_TheRewritersReachVariable_When_ComparedWithTheCampaigns_Then_TheyAreTheSameSuffix(self):
+        # Arrange
+        source = (Path(mutation_check.__file__).parent / "schemata" / "MutantSchemata.cs").read_text()
+
+        # Act
+        spelled = re.search(r'ReachSuffix = "([^"]+)"', source)
+
+        # Assert
+        self.assertEqual(spelled and spelled.group(1), mutation_check.REACH_SUFFIX)
+
+    def test_Given_TheRunnersReachFile_When_ComparedWithTheCampaigns_Then_TheyAreTheSameName(self):
+        # Arrange
+        source = (REPO_ROOT / "Assets" / "MutantSchemata" / "Editor" / "SchemataRunner.cs").read_text()
+
+        # Act
+        spelled = re.search(r'"(reach\.jsonl)"', source)
+
+        # Assert
+        self.assertEqual(spelled and spelled.group(1), mutation_check.REACH_FILE)
+
+    def test_Given_TheRunnersSetupCase_When_ComparedWithTheCampaigns_Then_TheyAreTheSameName(self):
+        # Arrange
+        source = (REPO_ROOT / "Assets" / "MutantSchemata" / "Editor" / "SchemataRunner.cs").read_text()
+
+        # Act
+        spelled = re.search(r'SetupCase = "([^"]+)"', source)
+
+        # Assert
+        self.assertEqual(spelled and spelled.group(1), mutation_check.SETUP_CASE)
+
+
 class ILReadingAssemblyTests(unittest.TestCase):
     def test_Given_AFixtureReadingTheModuleOfAType_When_Derived_Then_TheTypesAssemblyIsRead(self):
         # Arrange — one assembly a fixture reads by a type, one it never names.
@@ -8121,6 +9721,110 @@ class SessionVerdictTests(unittest.TestCase):
 
         # Assert
         self.assertIsNone(reading)
+
+
+class CoveredVerdictTests(unittest.TestCase):
+    """A covered stage read directly: the campaign stub writes the stages and these write their cases."""
+
+    def setUp(self):
+        self.directory = Path(tempfile.mkdtemp(prefix="covered-"))
+        self.addCleanup(shutil.rmtree, self.directory, ignore_errors=True)
+        self.planned = {"id": 7, "stages": [{"name": "covered:0", "testNames": ["N.C.A", "N.C.B"]},
+                                            {"name": "whole", "testNames": []}]}
+        self.green_gate = {"covered:0": {"name": "covered:0", "finished": True, "passed": 2, "failed": 0,
+                                         "failures": []}}
+
+    def stage(self, name, total, failures=(), omitted=False):
+        xml = self.directory / "{}.xml".format(name)
+        xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0" />'.format(total))
+        return {"name": name, "finished": True, "xml": str(xml), "failures": list(failures),
+                "armed": ["Velvet:7"], "omitted": omitted}
+
+    def read(self, stages, opening=None):
+        return mutation_check.session_verdict({"id": 7, "stages": stages}, self.planned, 7, "Velvet",
+                                              {"whole": 9}, self.green_gate if opening is None else opening,
+                                              {"N.C.Kills": True}, set())
+
+    def test_Given_AKillInTheCoveredStage_When_Read_Then_ItNamesHowManyCasesRanTheSite(self):
+        # Arrange
+        covered = mutation_check.COVERED_STAGE
+        stages = [{"name": covered + ":0", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
+                   "armed": ["Velvet:7"]}]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertEqual(reading, (mutation_check.KILLED, "1 failed among the 2 case(s) that ran the site: Kills",
+                                   ["N.C.Kills"]))
+
+    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
+    # opening-run test in `session_verdict` (`clean_stage(opening.get(...))`) for covered stages reddens it.
+    def test_Given_AKillInACoveredStageWhoseSameCasesFailedUnmutated_When_Read_Then_ItIsNoVerdict(self):
+        # Arrange — an order-dependent failure: the cases fail in that sequence whatever the mutation does.
+        stages = [{"name": "covered:0", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
+                   "armed": ["Velvet:7"]}]
+        red = {"covered:0": dict(self.green_gate["covered:0"], failed=1, failures=["N.C.Kills"])}
+
+        # Act
+        reading = self.read(stages, red)
+
+        # Assert
+        self.assertIsNone(reading)
+
+    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
+    # `last["name"] != "whole"` test in `session_verdict` reddens it.
+    def test_Given_ACoveredStageThatSurvivedAndNoWholeStage_When_Read_Then_ItIsNoVerdict(self):
+        # Arrange — a narrowed survivor is never a verdict.
+        stages = [self.stage("covered:0", 2)]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertIsNone(reading)
+
+    def test_Given_ACoveredStageThatSurvivedAndAGreenWholeStage_When_Read_Then_ItSurvived(self):
+        # Arrange
+        stages = [self.stage("covered:0", 2), self.stage("whole", 9)]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertEqual(reading, (mutation_check.SURVIVED, "", ()))
+
+    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
+    # `stage_expectation` comparison in `session_verdict` reddens it.
+    def test_Given_ACoveredStageShortOfTheCasesItWasHanded_When_Read_Then_ItIsNoVerdict(self):
+        # Arrange — one of the two cases was not found, so the run asked another question.
+        stages = [self.stage("covered:0", 1), self.stage("whole", 9)]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertIsNone(reading)
+
+    def test_Given_ACoveredStageAndAWholeStage_When_TheCasesAreCounted_Then_BothAreNamed(self):
+        # Arrange
+        stages = [dict(self.stage("covered:0", 2), ran=2), self.stage("whole", 9)]
+
+        # Act
+        ran = mutation_check.cases_run({"id": 7, "stages": stages})
+
+        # Assert
+        self.assertEqual(ran, (("covered:0", 2), ("whole", 9)))
+
+    def test_Given_AStageTheRunnerCancelledAtItsFirstFailure_When_TheCasesAreCounted_Then_TheCasesItFinishedAreCounted(self):
+        # Arrange
+        stages = [{"name": "covered:0", "finished": True, "cancelled": True, "failures": ["N.C.Kills"], "ran": 1}]
+
+        # Act
+        ran = mutation_check.cases_run({"id": 7, "stages": stages})
+
+        # Assert
+        self.assertEqual(ran, (("covered:0", 1),))
 
 
 class SessionPlanTests(unittest.TestCase):
@@ -8251,6 +9955,7 @@ class SessionLaunchTests(unittest.TestCase):
         self.args = argparse.Namespace(unity=mutation_check.DEFAULT_UNITY, timeout=900, busy_timeout=0,
                                        editor_arg=[])
         self.commands, self.answers, self.busy = [], [], []
+        self.environments = []
         self.scripts = []
         saved = (mutation_check.launch, mutation_check.unity_busy, mutation_check.wait_for_release,
                  mutation_check.wait_for_quiet)
@@ -8274,6 +9979,7 @@ class SessionLaunchTests(unittest.TestCase):
 
     def launch(self, command, _timeout, _holder, _env, expired):
         self.commands.append(command)
+        self.environments.append(_env)
         self.log = Path(command[command.index("-logFile") + 1])
         # A script returns (timed out, what the editor printed) where the launch was not a plain one.
         timed_out, printed = self.scripts.pop(0)(expired) or (False, "")
@@ -8288,6 +9994,29 @@ class SessionLaunchTests(unittest.TestCase):
 
     def session(self):
         return mutation_check.run_session(self.args, Path("/p"), self.plan, self.directory, None)
+
+    def test_Given_AReachPlan_When_Launched_Then_TheReachVariableIsSet(self):
+        # Arrange
+        self.plan["reach"] = True
+        self.scripts = [self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(self.environments[0].get(mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX), "1")
+
+    def test_Given_AnOrdinaryPlanBesideAnInheritedReachVariable_When_Launched_Then_TheLaunchDoesNotCarryIt(self):
+        # Arrange — a campaign started from a shell that had it set.
+        os.environ[mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX] = "1"
+        self.addCleanup(os.environ.pop, mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX, None)
+        self.scripts = [self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertNotIn(mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX, self.environments[0])
 
     def test_Given_AnItemWhoseEditorDied_When_TheSessionGoesOn_Then_ItIsLostAndTheRestRunInANewLaunch(self):
         # Arrange — the first launch dies in the second mutant's item.
@@ -8800,9 +10529,9 @@ class EditorCountTests(unittest.TestCase):
         self.assertEqual(patterns, {mutation_check.UNITY_RUNNING})
 
 
-class LedgerCampaign(StubbedCampaign):
+class RecordCampaign(StubbedCampaign):
     """Two lines of one boundary mutant each, killed by the first and the second fixture respectively
-    unless `survives` names the mutant, so that a campaign leaves a ledger of known content.
+    unless `survives` names the mutant, so that a campaign leaves a record of known content.
 
     The editor is stubbed as `StubbedCampaign` stubs it; what differs is that a killed mutant's result
     names the case that failed, the way the editor's does, and that every mutant that reached it is
@@ -8832,7 +10561,7 @@ class LedgerCampaign(StubbedCampaign):
         # The platforms whose suite kills a mutant, where it is not both.
         self.only_on = {}
         self.measured = []
-        self.ledgers = self.project / "ledgers"
+        self.record = self.project / "record"
         for relative, fixture in self.FIXTURES.items():
             self.write_fixture(relative, fixture, "Given_A_When_B_Then_" + fixture[:-5])
 
@@ -8862,28 +10591,19 @@ class LedgerCampaign(StubbedCampaign):
                                   str(self.project / "edit"), *arguments)
 
     def decide(self, *arguments):
-        """The verdict job's invocation, keeping the ledger it writes under `ledgers` as run 9001."""
+        """The verdict job's invocation, writing its entries into `record` as run 9001."""
         with mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "9001"}):
             code = self.run_over_diff("--platform", "PlayMode", "--survivors-of",
                                       str(self.project / "edit"), "--collect", str(self.project / "play"),
-                                      "--emit-ledger", str(self.project / "ledger.json"), *arguments)
+                                      "--emit-record", str(self.record), *arguments)
         return code
 
-    def written_ledger(self):
-        """The ledger `decide` wrote, or {} where it wrote none."""
-        path = self.project / "ledger.json"
-        return json.loads(path.read_text()) if path.exists() else {}
-
-    def keep_ledger(self, run=9001):
-        """Files the ledger `decide` wrote where a later plan reads the branch's ledgers from."""
-        if not (self.project / "ledger.json").exists():
-            return
-        self.ledgers.mkdir(exist_ok=True)
-        (self.ledgers / "{:010d}-{}.json".format(run, run)).write_text(
-            (self.project / "ledger.json").read_text())
+    def written_record(self):
+        """{"records": every entry the record holds}."""
+        return {"records": [json.loads(path.read_text()) for path in sorted(self.record.glob("*.json"))]}
 
     def plan(self, *arguments):
-        return self.run_over_diff("--plan", "--reuse-from", str(self.ledgers), "--emit-reuse",
+        return self.run_over_diff("--plan", "--reuse-from", str(self.record), "--emit-reuse",
                                   str(self.project / "reuse.json"), *arguments)
 
     def plan_output(self, name):
@@ -8891,14 +10611,13 @@ class LedgerCampaign(StubbedCampaign):
                      if line.startswith(name + "=")), None)
 
     def after_a_campaign(self):
-        """One campaign run to its verdict and its ledger kept; the second mutant survives it."""
+        """One campaign run to its verdict and its record kept; the second mutant survives it."""
         self.survives = {"mutant-002.xml"}
         self.measure()
         self.run_over_diff("--launch-per-mutant", "--platform", "PlayMode", "--survivors-of",
                            str(self.project / "edit"), "--shard", "0/1", "--output",
                            str(self.project / "play"))
         self.decide()
-        self.keep_ledger()
         self.survives = set()
         self.measured.clear()
 
@@ -8909,9 +10628,10 @@ class FixtureTraceTests(unittest.TestCase):
     def trace(self, campaign, case):
         return mutation_check.fixture_hashes(campaign.project, case, mutation_check.test_index(campaign.project))
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_ACaseOfAFixture_When_Traced_Then_TheFixturesFileIsHashed(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
 
         # Act
         traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe")
@@ -8919,9 +10639,10 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertEqual(sorted(traced or {}), ["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"])
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_ACaseNoFixtureDeclares_When_Traced_Then_ItIsUntraceable(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
 
         # Act
         traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Renamed")
@@ -8929,9 +10650,10 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertIsNone(traced)
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_ACaseNamedOnlyInAComment_When_Traced_Then_ItIsUntraceable(self):
         # Arrange -- the method was deleted and its name left in prose.
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs", "ProbeTests",
                                "Other")
         path = campaign.project / "Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"
@@ -8943,9 +10665,24 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertIsNone(traced)
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
+    def test_Given_AnotherFileSpellingTheFixturesClassInAString_When_Traced_Then_OnlyTheFixturesFileIsHashed(self):
+        # Arrange -- a generator test holding C# source as text declares no class.
+        campaign = RecordCampaign()
+        other = campaign.project / "Packages/com.velvet.core/Runtime/Tests/Editor/OtherTests.cs"
+        other.write_text(other.read_text().replace(
+            "{ }", "{ var source = \"class ProbeTests { void Given_A_When_B_Then_Probe() { } }\"; }"))
+
+        # Act
+        traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe")
+
+        # Assert
+        self.assertEqual(sorted(traced or {}), ["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"])
+
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_AFixtureDerivedFromABaseInAnotherFile_When_Traced_Then_BothFilesAreHashed(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/BaseTests.cs", "BaseTests",
                                "Shared")
         campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs", "ProbeTests",
@@ -8958,9 +10695,10 @@ class FixtureTraceTests(unittest.TestCase):
         self.assertEqual(sorted(name.rsplit("/", 1)[1] for name in traced or {}),
                          ["BaseTests.cs", "ProbeTests.cs"])
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_AParameterisedCaseWithADottedArgument_When_Traced_Then_ItsFixtureIsFound(self):
         # Arrange -- the argument's dot must not be read as a namespace separator.
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
 
         # Act
         traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe(1.5,\"a.b\")")
@@ -8968,9 +10706,10 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(traced or {}), 1)
 
+    # GREEN_ON_BASE(refactor): only the fixture class it builds was renamed with the record.
     def test_Given_ACaseOfANestedFixture_When_Traced_Then_TheDeclaringFileIsHashed(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         relative = "Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"
         (campaign.project / relative).write_text(
             "namespace Velvet.Tests\n{\n    internal sealed class ProbeTests\n    {\n"
@@ -8987,18 +10726,18 @@ class FixtureTraceTests(unittest.TestCase):
 class KillStandingTests(unittest.TestCase):
     """Whether a recorded kill still stands: every way the tree can have moved under it."""
 
-    CASE = LedgerCampaign.CASES["mutant-001.xml"]
+    CASE = RecordCampaign.CASES["mutant-001.xml"]
     PROBE = "Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"
 
     def killed(self):
-        """(campaign, the mutant, its ledger record) for a kill by the first fixture's case."""
-        campaign = LedgerCampaign()
-        path = campaign.source.resolve()
+        """(campaign, the mutant, its record entry) for a kill by the first fixture's case."""
+        campaign = RecordCampaign()
+        path = campaign.source
         mutant = next(m for m in mutation_check.mutations_for(
             path, path.read_text(), {5}) if m.operator == "boundary")
         mutant.verdict, mutant.killers, mutant.platform = mutation_check.KILLED, (self.CASE,), "EditMode"
         index = mutation_check.test_index(campaign.project)
-        record = mutation_check.ledger_record(mutant, campaign.project, index, set(), "9001")
+        record = mutation_check.measured_entry(mutant, campaign.project, index, set(), "9001")
         return campaign, mutant, record
 
     def problem(self, campaign, mutant, record):
@@ -9072,16 +10811,35 @@ class KillStandingTests(unittest.TestCase):
         # Assert
         self.assertIn("only a kill is reused", problem or "")
 
-    def test_Given_AKillWhoseCasesWereAllUntraceable_When_TheKillIsChecked_Then_ItDoesNotStand(self):
-        # Arrange
+    def untraced(self, campaign, mutant, record):
+        """A reading, by `reuse_problem`, of why `record` as a kill traced to no source file does not stand."""
+        entry = dict(record, killers=[], tests=mutation_check.tests_digest(campaign.project))
+        return lambda: mutation_check.reuse_problem(
+            entry, mutant, campaign.project, mutation_check.test_index(campaign.project),
+            mutation_check.tests_digest(campaign.project))
+
+    def test_Given_AKillTracedToNoFile_When_NoTestChanged_Then_ItStands(self):
+        # Arrange — an entry the gate refused for good would hold a release and the catch-up chain.
         campaign, mutant, record = self.killed()
-        record["killers"] = []
+        reread = self.untraced(campaign, mutant, record)
 
         # Act
-        problem = self.problem(campaign, mutant, record)
+        problem = reread()
 
         # Assert
-        self.assertIn("names no killing case", problem or "")
+        self.assertIsNone(problem)
+
+    def test_Given_AKillTracedToNoFile_When_ATestChanged_Then_ItIsMeasuredAgain(self):
+        # Arrange — StrykerJS's rule for a result no culprit test is known for.
+        campaign, mutant, record = self.killed()
+        reread = self.untraced(campaign, mutant, record)
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/NewTests.cs", "NewTests", "Case")
+
+        # Act
+        problem = reread()
+
+        # Assert
+        self.assertIn("a test source changed", problem or "")
 
     def test_Given_ARecordMissingItsFields_When_TheKillIsChecked_Then_ItCannotBeRead(self):
         # Arrange
@@ -9106,101 +10864,119 @@ class KillStandingTests(unittest.TestCase):
 
 
 class ReuseDecisionTests(unittest.TestCase):
-    """Which mutants a plan hands to the shards, given the ledgers of the branch's earlier campaigns."""
+    """Which mutants the record answers, given what an earlier campaign wrote into it: StrykerJS's
+    reuse rule over Velvet's verdicts."""
 
     def mutants_of(self, campaign):
-        path = campaign.source.resolve()
+        path = campaign.source
         return mutation_check.one_per_line(mutation_check.mutations_for(
             path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
 
-    def ledger(self, campaign, run="9001"):
-        return campaign.written_ledger() | {"run": run}
+    def decided(self, campaign):
+        return mutation_check.decide_reuse(self.mutants_of(campaign), directory=campaign.record,
+                                           project=campaign.project)
 
-    def test_Given_NoLedger_When_Decided_Then_NothingIsReusedAndEveryMutantSaysWhy(self):
-        # Arrange
-        campaign = LedgerCampaign()
-
+    def test_Given_AnEmptyRecord_When_Decided_Then_NothingIsReusedAndEveryMutantSaysWhy(self):
         # Act
-        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [], campaign.project)
+        reused, reasons = self.decided(RecordCampaign())
 
         # Assert
         self.assertEqual((reused, sorted(reasons)), ({}, [1, 2]))
 
-    def test_Given_ALedgerOfAnotherToolVersion_When_Decided_Then_NothingIsReused(self):
+    def test_Given_ARecordOfAKillAndASurvivor_When_NothingChanged_Then_BothAreReused(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
-        ledger = self.ledger(campaign) | {"tool": "0" * 64}
 
         # Act
-        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [ledger], campaign.project)
+        reused, _ = self.decided(campaign)
 
         # Assert
-        self.assertEqual((reused, "another version of the tool" in reasons[1]), ({}, True))
+        self.assertEqual({number: entry["verdict"] for number, entry in reused.items()},
+                         {1: mutation_check.KILLED, 2: mutation_check.SURVIVED})
 
-    def test_Given_ALedgerWhereOneMutantWasKilledAndOneSurvived_When_Decided_Then_OnlyTheKillIsReused(self):
-        # Arrange
-        campaign = LedgerCampaign()
+    def test_Given_ATestSourceChangedSinceASurvivorWasRecorded_When_Decided_Then_ItIsMeasuredAgain(self):
+        # Arrange — a new test can be the one that kills it.
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/NewTests.cs", "NewTests", "Case")
 
         # Act
-        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [self.ledger(campaign)], campaign.project)
+        reused, reasons = self.decided(campaign)
+        why = reasons.get(2, "") if sorted(reused) == [1] else "the kill was not reused alone"
 
         # Assert
-        self.assertEqual((sorted(reused), reasons[2]), ([1], "run 9001: it was survived when last measured, "
-                                                          "and only a kill is reused"))
+        self.assertIn("a test source changed", why)
 
-    def test_Given_ANewerLedgerThatSawTheMutantSurvive_When_Decided_Then_AnOlderKillIsNotReused(self):
-        # Arrange -- the newest ledger that holds the mutant decides it.
-        campaign = LedgerCampaign()
+    def test_Given_ARecordOfAnotherMutatorVersion_When_Decided_Then_NothingIsReused(self):
+        # Arrange
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
-        older = self.ledger(campaign, "9000")
-        newer = json.loads(json.dumps(older)) | {"run": "9002"}
-        for record in newer.get("records", []):
-            record["verdict"] = mutation_check.SURVIVED
 
         # Act
-        reused, _ = mutation_check.decide_reuse(self.mutants_of(campaign), [newer, older], campaign.project)
+        with mock.patch.object(mutation_check, "MUTATOR_VERSION", mutation_check.MUTATOR_VERSION + 1):
+            reused, _ = self.decided(campaign)
 
         # Assert
         self.assertEqual(reused, {})
 
-    def test_Given_ANewerLedgerThatLacksTheMutant_When_Decided_Then_AnOlderKillIsReusedFromItsRun(self):
-        # Arrange -- a newer campaign that stopped early recorded some mutants only.
-        campaign = LedgerCampaign()
-        campaign.after_a_campaign()
-        older = self.ledger(campaign, "9000")
-        newer = json.loads(json.dumps(older)) | {"run": "9002", "records": []}
-
-        # Act
-        reused, _ = mutation_check.decide_reuse(self.mutants_of(campaign), [newer, older], campaign.project)
-
-        # Assert
-        self.assertEqual({number: record["reused_from"] for number, record in reused.items()}, {1: "9000"})
-
-    def test_Given_TheMutatedFileEditedSinceTheLedger_When_Decided_Then_EveryMutantInItIsMeasured(self):
+    def test_Given_TheMutatedFileEditedSinceTheRecord_When_Decided_Then_EveryMutantInItIsMeasured(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
-        ledger = self.ledger(campaign)
-        campaign.source.write_text(campaign.BODY.replace("a <= b", "a <= b + 1"))
+        campaign.source.write_text(campaign.BODY + "// edited\n")
 
         # Act
-        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [ledger], campaign.project)
+        reused, _ = self.decided(campaign)
 
         # Assert
-        self.assertEqual((reused, "production code or project files" in reasons[1]), ({}, True))
+        self.assertEqual(reused, {})
+
+    def test_Given_EachVerdictTheRecordKeeps_When_ReadOverTheTreeThatWroteIt_Then_EveryOneIsReused(self):
+        # Arrange — an entry the gate cannot accept over its own tree is unresolved for good: it holds
+        # every release, and every run deals its mutant again.
+        campaign = RecordCampaign()
+        mutant = self.mutants_of(campaign)[0]
+        mutant.platform = "EditMode"
+        shapes = [(verdict, ()) for verdict in mutation_check.RECORDED]
+        shapes += [(mutation_check.KILLED, (RecordCampaign.CASES["mutant-001.xml"],)),
+                   (mutation_check.KILLED, ("Velvet.Tests.Nowhere.Given_A_When_B_Then_Untraceable",))]
+
+        # Act
+        refused = []
+        for number, (verdict, killers) in enumerate(shapes):
+            mutant.verdict, mutant.killers = verdict, killers
+            directory = campaign.project / "record-{}".format(number)
+            mutation_check.write_record(directory, [mutant], {}, campaign.project)
+            reused, reasons = mutation_check.decide_reuse([mutant], directory=directory, project=campaign.project)
+            if 1 not in reused:
+                refused.append("{} {}: {}".format(verdict, killers, reasons.get(1)))
+
+        # Assert
+        self.assertEqual(refused, [])
+
+    def test_Given_TheSameTreeAndRecord_When_DecidedTwice_Then_TheDecisionsAreEqual(self):
+        # Arrange
+        campaign = RecordCampaign()
+        campaign.after_a_campaign()
+
+        # Act
+        first, second = self.decided(campaign), self.decided(campaign)
+
+        # Assert
+        self.assertEqual(json.dumps(first, sort_keys=True), json.dumps(second, sort_keys=True))
 
 
-class LedgerContextTests(unittest.TestCase):
-    """What lapses every kill of a ledger: a file no record hashes, edited since it was written."""
+class RecordContextTests(unittest.TestCase):
+    """What a recorded kill stands on, and what it is left standing through: StrykerJS's rule, which
+    reads the mutated file and the tests and no other file."""
 
     SUPPORT = "Packages/com.velvet.core/Runtime/Tests/Editor/Support.cs"
 
     def reused_after(self, edit, before=None):
-        """The mutants reused from a ledger written before `edit` was made to the tree, and the
-        reasons the others are measured; `before` shapes the tree the ledger is written over."""
-        campaign = LedgerCampaign()
+        """The mutants reused from a record written before `edit` was made to the tree, and the
+        reasons the others are measured; `before` shapes the tree the record is written over."""
+        campaign = RecordCampaign()
         if before is not None:
             before(campaign)
         campaign.write_fixture(self.SUPPORT, "Support", "Help")
@@ -9208,12 +10984,11 @@ class LedgerContextTests(unittest.TestCase):
                                                      "Support\n    {\n    }\n}\n")
         campaign.after_a_campaign()
         edit(campaign)
-        path = campaign.source.resolve()
+        path = campaign.source
         mutants = mutation_check.one_per_line(mutation_check.mutations_for(
             path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
-        ledger = campaign.written_ledger() | {"run": "9001"}
-        reused, reasons = mutation_check.decide_reuse(mutants, [ledger], campaign.project)
-        return sorted(reused), reasons
+        reused, reasons = mutation_check.decide_reuse(mutants, directory=campaign.record, project=campaign.project)
+        return sorted(number for number, entry in reused.items() if entry["verdict"] == mutation_check.KILLED), reasons
 
     def append(self, relative, text="// edit\nclass Edited { }\n"):
         def edit(campaign):
@@ -9222,52 +10997,32 @@ class LedgerContextTests(unittest.TestCase):
             path.write_text((path.read_text() if path.exists() else "") + text)
         return edit
 
-    def test_Given_NothingEditedSinceTheLedger_When_Decided_Then_TheKillIsReused(self):
+    def test_Given_NothingEditedSinceTheRecord_When_Decided_Then_TheKillIsReused(self):
         # Act
         reused, _ = self.reused_after(lambda campaign: None)
 
         # Assert
         self.assertEqual(reused, [1])
 
-    def test_Given_AnotherProductionFileEdited_When_Decided_Then_EveryKillLapses(self):
-        # Arrange -- a kill can be reached through a file that holds no mutant.
+    def test_Given_AnotherProductionFileEdited_When_Decided_Then_TheKillIsStillReused(self):
+        # Arrange -- StrykerJS's documented limitation: a file holding no mutant is not read.
         edit = self.append("Packages/com.velvet.core/Runtime/Other.cs")
 
         # Act
-        reused, reasons = self.reused_after(edit)
+        reused, _ = self.reused_after(edit)
 
         # Assert
-        self.assertEqual((reused, "production code or project files" in reasons[1]), ([], True))
+        self.assertEqual(reused, [1])
 
-    def test_Given_ASharedTestHelperEdited_When_Decided_Then_EveryKillLapses(self):
+    def test_Given_ATestHelperTheKillingCaseDoesNotReachEdited_When_Decided_Then_TheKillIsStillReused(self):
         # Arrange
         edit = self.append("Packages/com.velvet.core/TestUtilities/Helper.cs")
 
         # Act
-        reused, reasons = self.reused_after(edit)
+        reused, _ = self.reused_after(edit)
 
         # Assert
-        self.assertEqual((reused, "test support files" in reasons[1]), ([], True))
-
-    def test_Given_AnAssemblyDefinitionEdited_When_Decided_Then_EveryKillLapses(self):
-        # Arrange
-        edit = self.append("Packages/com.velvet.core/Runtime/Velvet.asmdef", " \n")
-
-        # Act
-        reused, reasons = self.reused_after(edit)
-
-        # Assert
-        self.assertEqual((reused, "production code or project files" in reasons[1]), ([], True))
-
-    def test_Given_ATestsHelperThatDeclaresNoTestEdited_When_Decided_Then_EveryKillLapses(self):
-        # Arrange
-        edit = self.append(self.SUPPORT, "// a helper changed\nclass Added { }\n")
-
-        # Act
-        reused, reasons = self.reused_after(edit)
-
-        # Assert
-        self.assertEqual((reused, "test support files" in reasons[1]), ([], True))
+        self.assertEqual(reused, [1])
 
     def test_Given_ATestFileOfANonKillingFixtureEdited_When_Decided_Then_TheKillIsStillReused(self):
         # Arrange -- the test-only fix: the survivor's fixture gains a case.
@@ -9318,70 +11073,131 @@ class LedgerContextTests(unittest.TestCase):
         # Assert
         self.assertEqual(reused, [1])
 
-    def test_Given_ASetUpFixtureFileAdded_When_Decided_Then_EveryKillLapses(self):
+    OTHER = TESTS + "OtherTests.cs"
+
+    PROBE = TESTS + "ProbeTests.cs"
+    READS = "System.AppDomain.CurrentDomain.GetAssemblies()"
+
+    def killer(self, member, head="", beside=None):
+        """A `before` writing the killing fixture with `member` inside it, `head` above it, and the
+        files of `beside` next to it."""
+        def before(campaign):
+            (campaign.project / self.PROBE).write_text(
+                head + "namespace Velvet.Tests\n{\n    internal sealed class ProbeTests\n    {\n" + member
+                + "        [Test]\n        public void Given_A_When_B_Then_Probe() { }\n    }\n}\n")
+            for relative, text in (beside or {}).items():
+                (campaign.project / relative).parent.mkdir(parents=True, exist_ok=True)
+                (campaign.project / relative).write_text(text)
+        return before
+
+    def reused_past_a_test_only_fix(self, before):
+        """`reused_after` an edit to the fixture that killed nothing, over a tree `before` shaped."""
+        return self.reused_after(self.append(self.OTHER, "class Added { }\n"), before)
+
+    def test_Given_AKillingFixtureReadingTheLoadedAssemblies_When_AnotherFixtureIsEdited_Then_TheKillIsStillReused(self):
+        # Arrange -- StrykerJS's rule reads the killing test's own files and no other, whatever that
+        # test reads at run time; a kill lapsing here for good would hold every release.
+        before = self.killer("        private static object All() => {};\n".format(self.READS))
+
+        # Act
+        reused, reasons = self.reused_past_a_test_only_fix(before)
+        outcome = "reused" if 1 in reused else reasons.get(1)
+
+        # Assert
+        self.assertEqual(outcome, "reused")
+
+
+    def other_with(self, helper):
+        """OtherTests.cs holding its own case and `helper` beside it, a static helper class at top level."""
+        return ("namespace Velvet.Tests\n{\n    internal sealed class OtherTests\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_Other() { }\n    }\n\n" + helper + "}\n")
+
+    HELPERS = "    internal static class Helpers\n    {\n        internal static int Make() => 1;\n    }\n"
+
+    def helper_edited(self, campaign):
+        (campaign.project / self.OTHER).write_text(self.other_with(self.HELPERS.replace("=> 1", "=> 2")))
+
+    def test_Given_AKillingFixtureCallingAHelperInAnotherFixtureFile_When_TheHelperIsEdited_Then_TheKillLapses(self):
         # Arrange
-        edit = self.append(self.TESTS + "Setup.cs", "[SetUpFixture] class Setup { [OneTimeSetUp] void S() { } [Test] void T() { } }\n")
+        before = self.killer("        private static int Made => Helpers.Make();\n",
+                             beside={self.OTHER: self.other_with(self.HELPERS)})
 
         # Act
-        reused, _ = self.reused_after(edit)
+        reused, reasons = self.reused_after(self.helper_edited, before)
 
         # Assert
-        self.assertEqual(reused, [])
+        self.assertIn("OtherTests.cs of its killing case", reasons.get(1, ""))
 
-    def test_Given_AHelperWhoseTestAttributeIsCommentedOut_When_Added_Then_EveryKillLapses(self):
+    def test_Given_AKillingFixtureReachingAHelperThroughAnotherFixtureFile_When_TheHelperIsEdited_Then_TheKillLapses(self):
+        # Arrange -- the killing fixture names only `Middle`, whose file names `Helpers`.
+        middle = ("namespace Velvet.Tests\n{\n    internal static class Middle\n    {\n"
+                  "        internal static int Make() => Helpers.Make();\n        [Test]\n"
+                  "        public static void Case() { }\n    }\n}\n")
+        before = self.killer("        private static int Made => Middle.Make();\n",
+                             beside={self.OTHER: self.other_with(self.HELPERS), self.TESTS + "MiddleTests.cs": middle})
+
+        # Act
+        reused, reasons = self.reused_after(self.helper_edited, before)
+
+        # Assert
+        self.assertIn("OtherTests.cs of its killing case", reasons.get(1, ""))
+
+    EXTENSIONS = ("    internal static class Extensions\n    {\n"
+                  "        internal static int Doubled(this int value) => value * 2;\n    }\n")
+
+    def extension_edited(self, campaign):
+        (campaign.project / self.OTHER).write_text(self.other_with(self.EXTENSIONS.replace("* 2", "* 3")))
+
+    def test_Given_AKillingFixtureCallingAnExtensionMethodInAnotherFixtureFile_When_TheExtensionIsEdited_Then_TheKillLapses(self):
+        # Arrange -- the call spells `Doubled` and never the class declaring it.
+        before = self.killer("        private static int Made => 4.Doubled();\n",
+                             beside={self.OTHER: self.other_with(self.EXTENSIONS)})
+
+        # Act
+        reused, reasons = self.reused_after(self.extension_edited, before)
+
+        # Assert
+        self.assertIn("OtherTests.cs of its killing case", reasons.get(1, ""))
+
+    # GREEN_ON_BASE(characterization): the base reuses this kill, and an extension named in a string keeps it.
+    def test_Given_AKillingFixtureNamingAnExtensionMethodOnlyInAString_When_TheExtensionIsEdited_Then_TheKillIsStillReused(self):
         # Arrange
-        edit = self.append(self.TESTS + "Helper2.cs", "class Helper2 { // [Test]\n void Help() { } }\n")
+        before = self.killer("        private const string Name = \"Doubled\";\n",
+                             beside={self.OTHER: self.other_with(self.EXTENSIONS)})
 
         # Act
-        reused, _ = self.reused_after(edit)
+        reused, _ = self.reused_after(self.extension_edited, before)
 
         # Assert
-        self.assertEqual(reused, [])
+        self.assertEqual(reused, [1])
 
-    def test_Given_ATestDataFileEdited_When_Decided_Then_EveryKillLapses(self):
+    # GREEN_ON_BASE(characterization): the base reuses this kill, and a helper named in a string keeps it.
+    def test_Given_AKillingFixtureNamingAHelperOnlyInAString_When_TheHelperIsEdited_Then_TheKillIsStillReused(self):
         # Arrange
-        edit = self.append(self.TESTS + "data.json", "{}\n")
+        before = self.killer("        private const string Name = \"Helpers\";\n",
+                             beside={self.OTHER: self.other_with(self.HELPERS)})
 
         # Act
-        reused, _ = self.reused_after(edit)
+        reused, _ = self.reused_after(self.helper_edited, before)
 
         # Assert
-        self.assertEqual(reused, [])
+        self.assertEqual(reused, [1])
 
-    def test_Given_APlanReusedUnderOneContext_When_TheVerdictReadsATreeWithOtherTestSupport_Then_TheKillLapses(self):
-        # Arrange
-        campaign = LedgerCampaign()
-        campaign.after_a_campaign()
-        campaign.plan()
-        reuse = str(campaign.project / "reuse.json")
-        campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
-                               str(campaign.project / "edit"))
-        helper = campaign.project / "Packages/com.velvet.core/TestUtilities/Helper.cs"
-        helper.parent.mkdir(parents=True, exist_ok=True)
-        helper.write_text("class Helper { }\n")
+
+class TopLevelTypeTests(unittest.TestCase):
+    """Which types a C# source declares outside every other type, which a killing case's trace follows."""
+
+    def test_Given_TypesNestedAndNot_When_Read_Then_OnlyThoseOutsideAnotherTypeAreFound(self):
+        # Arrange -- a block namespace, a file-scoped one, and members nested two deep.
+        texts = ["namespace A\n{\n    internal sealed class Outer\n    {\n        private sealed class Inner { }\n"
+                 "        internal delegate void Handler(int x);\n    }\n    internal enum Mode { X }\n}\n",
+                 "namespace A.B;\ninternal static class Holder { private struct Item { class Deeper { } } }\n"]
 
         # Act
-        code = campaign.decide("--reuse", reuse)
+        found = [sorted(mutation_check.top_level_types(text)) for text in texts]
 
         # Assert
-        self.assertEqual((code, mutation_check.REUSE_LAPSED in campaign.printed), (1, True))
-
-    def test_Given_APlanReusedUnderOneContext_When_TheVerdictReadsAnotherTree_Then_TheKillLapses(self):
-        # Arrange -- a production file changed between the plan and the verdict.
-        campaign = LedgerCampaign()
-        campaign.after_a_campaign()
-        campaign.plan()
-        reuse = str(campaign.project / "reuse.json")
-        campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
-                               str(campaign.project / "edit"))
-        other = campaign.project / "Packages/com.velvet.core/Runtime/Other.cs"
-        other.write_text("namespace Velvet\n{\n}\n")
-
-        # Act
-        code = campaign.decide("--reuse", reuse)
-
-        # Assert
-        self.assertEqual((code, mutation_check.REUSE_LAPSED in campaign.printed), (1, True))
+        self.assertEqual(found, [["Mode", "Outer"], ["Holder"]])
 
 
 class ReusedKillCampaignTests(unittest.TestCase):
@@ -9389,10 +11205,10 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
     def test_Given_ATestOnlyFixAfterASurvivor_When_Planned_Then_OnlyTheSurvivorIsLeftToMeasure(self):
         # Arrange -- the second fixture gained the test the survivor asked for.
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
         path = campaign.project / "Packages/com.velvet.core/Runtime/Tests/Editor/OtherTests.cs"
-        path.write_text(path.read_text() + "// the test written for the survivor\n")
+        path.write_text(path.read_text() + "class WrittenForTheSurvivor { }\n")
 
         # Act
         campaign.plan()
@@ -9403,11 +11219,10 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
     def test_Given_EveryKillReusable_When_Planned_Then_NoShardIsOwed(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.survives = set()
         campaign.measure()
         campaign.decide()
-        campaign.keep_ledger()
 
         # Act
         campaign.plan()
@@ -9417,27 +11232,27 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
     def test_Given_AKillOnlyThePlayModeSuiteTook_When_Planned_Then_ItIsReusedToo(self):
         # Arrange -- the EditMode pass left the second mutant surviving and the PlayMode pass killed it.
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.only_on = {"mutant-002.xml": ("PlayMode",)}
         campaign.measure()
         campaign.run_over_diff("--launch-per-mutant", "--platform", "PlayMode", "--survivors-of",
                                str(campaign.project / "edit"), "--shard", "0/1", "--output",
                                str(campaign.project / "play"))
         campaign.decide()
-        campaign.keep_ledger()
 
         # Act
         campaign.plan()
 
         # Assert
         self.assertEqual((campaign.plan_output("reusing"), campaign.plan_output("shards"),
-                          [record["platform"] for record in campaign.written_ledger().get("records", [])]),
+                          sorted(record["platform"] for record in campaign.written_record().get("records", []))),
                          ("2", "[]", ["EditMode", "PlayMode"]))
 
     def test_Given_AReusingPlan_When_Printed_Then_ItCountsTheReusedAndNamesWhyTheOtherIsMeasured(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/NewTests.cs", "NewTests", "Case")
 
         # Act
         campaign.plan()
@@ -9446,15 +11261,16 @@ class ReusedKillCampaignTests(unittest.TestCase):
         self.assertEqual(
             [line for line in campaign.printed.splitlines() if line.startswith(("---", "  Packages"))
              and "unreached" not in line],
-            ["--- verdicts reused from earlier campaigns: 1 of 2 ---",
+            ["--- verdicts reused from the record: 1 of 2 ---",
              "--- measured again: 1 of 2 ---",
-             "  Packages/com.velvet.core/Runtime/Probe.cs:6 >= -> > (boundary): run 9001: it was survived "
-             "when last measured, and only a kill is reused"])
+             "  Packages/com.velvet.core/Runtime/Probe.cs:6 >= -> > (boundary): it was survived "
+             "when last measured, and a test source changed since"])
 
     def test_Given_APlanThatReusedAKill_When_ThePassMeasures_Then_OnlyTheOtherMutantReachesTheEditor(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/NewTests.cs", "NewTests", "Case")
         campaign.plan()
         campaign.measured.clear()
 
@@ -9467,8 +11283,9 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
     def test_Given_AReusedKillAndAMeasuredOne_When_Decided_Then_BothAreKilledAndTheRunPasses(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/NewTests.cs", "NewTests", "Case")
         campaign.plan()
         reuse = str(campaign.project / "reuse.json")
         campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
@@ -9483,7 +11300,7 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
     def test_Given_AReusedKillWhoseKillingCaseIsGone_When_Decided_Then_TheRunFailsAndNamesIt(self):
         # Arrange -- the plan reused the kill, and the case was deleted before the verdict read the tree.
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
         campaign.plan()
         reuse = str(campaign.project / "reuse.json")
@@ -9502,35 +11319,34 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
     def test_Given_AReuseFileThatRecordsASurvivorAsKilled_When_Decided_Then_TheSurvivorIsNotAPass(self):
         # Arrange -- the second mutant survived, and the file claims a kill for it.
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
-        records = campaign.written_ledger().get("records", [])
+        records = campaign.written_record().get("records", [])
         survivor = next((record for record in records if record["verdict"] == mutation_check.SURVIVED), {})
         kill = next((record for record in records if record["verdict"] == mutation_check.KILLED), {})
         reuse = campaign.project / "reuse.json"
-        reuse.write_text(json.dumps({"schema": mutation_check.LEDGER_SCHEMA, "reasons": {},
-                                     "context": mutation_check.context_digests(campaign.project), "reused": {
-            "2": dict(survivor, killers=kill.get("killers"), reused_from="9001")}}))
+        reuse.write_text(json.dumps({"schema": mutation_check.RECORD_SCHEMA, "reasons": {}, "pending": [],
+                                     "reused": {"2": dict(survivor, killers=kill.get("killers"))}}))
         campaign.survives = {"mutant-002.xml"}
         campaign.run_over_diff("--launch-per-mutant", "--reuse", str(reuse), "--shard", "0/1", "--output",
                                str(campaign.project / "edit"))
 
         # Act
         code = campaign.decide("--reuse", str(reuse))
+        refusal = campaign.printed if code == 1 else ""
 
         # Assert
-        self.assertEqual((code, mutation_check.REUSE_LAPSED in campaign.printed), (1, True))
+        self.assertIn("\nUNANSWERED  Packages/com.velvet.core/Runtime/Probe.cs:6", refusal)
 
     def test_Given_AReuseFileOfAnotherMutantList_When_Read_Then_TheRunRefusesToMeasureAroundIt(self):
         # Arrange -- the first mutant's kill filed under the second mutant's index.
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
-        kill = next((record for record in campaign.written_ledger().get("records", [])
+        kill = next((record for record in campaign.written_record().get("records", [])
                      if record["verdict"] == mutation_check.KILLED), {})
         reuse = campaign.project / "reuse.json"
-        reuse.write_text(json.dumps({"schema": mutation_check.LEDGER_SCHEMA, "reasons": {},
-                                     "context": mutation_check.context_digests(campaign.project),
-                                     "reused": {"2": dict(kill, reused_from="9001")}}))
+        reuse.write_text(json.dumps({"schema": mutation_check.RECORD_SCHEMA, "reasons": {}, "pending": [],
+                                     "reused": {"2": kill}}))
 
         # Act
         code = campaign.run_over_diff("--launch-per-mutant", "--reuse", str(reuse), "--shard", "0/1",
@@ -9539,10 +11355,11 @@ class ReusedKillCampaignTests(unittest.TestCase):
         # Assert
         self.assertIn("is not that mutant in this tree's list", str(code))
 
-    def test_Given_AReusedKill_When_TheLedgerIsWritten_Then_ItCarriesTheRunThatMeasuredIt(self):
+    def test_Given_AReusedKill_When_TheRecordIsWritten_Then_ItCarriesTheRunThatMeasuredIt(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.after_a_campaign()
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/NewTests.cs", "NewTests", "Case")
         campaign.plan()
         reuse = str(campaign.project / "reuse.json")
         campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
@@ -9552,13 +11369,13 @@ class ReusedKillCampaignTests(unittest.TestCase):
         campaign.decide("--reuse", reuse)
 
         # Assert
-        records = campaign.written_ledger().get("records", [])
+        records = campaign.written_record().get("records", [])
         self.assertEqual([(record["verdict"], record["measured_by"]) for record in records],
                          [(mutation_check.KILLED, "9001"), (mutation_check.KILLED, "9001")])
 
-    def test_Given_AMeasuredKill_When_TheLedgerIsWritten_Then_ItNamesTheCaseAndItsFixtureSource(self):
+    def test_Given_AMeasuredKill_When_TheRecordIsWritten_Then_ItNamesTheCaseAndItsFixtureSource(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
         campaign.survives = {"mutant-002.xml"}
         campaign.measure()
 
@@ -9566,7 +11383,7 @@ class ReusedKillCampaignTests(unittest.TestCase):
         campaign.decide()
 
         # Assert
-        record = next(iter(campaign.written_ledger().get("records", [])), {})
+        record = next(iter(campaign.written_record().get("records", [])), {})
         self.assertEqual(
             ([held["case"] for held in record.get("killers", [])],
              [sorted(held["files"]) for held in record.get("killers", [])], record.get("platform")),
@@ -9574,16 +11391,361 @@ class ReusedKillCampaignTests(unittest.TestCase):
              [["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"]], "EditMode"))
 
     # GREEN_ON_BASE(characterization): a plan asked for no reuse printed none before this change
-    # either. The cases above are the ones that separate a plan reading ledgers from one that does not.
-    def test_Given_APlanOfALocalRun_When_NoLedgerIsGiven_Then_NoReuseLineIsPrinted(self):
+    # either. The cases above are the ones that separate a plan reading the record from one that does not.
+    def test_Given_APlanOfALocalRun_When_NoRecordIsGiven_Then_NoReuseLineIsPrinted(self):
         # Arrange
-        campaign = LedgerCampaign()
+        campaign = RecordCampaign()
 
         # Act
         campaign.run_over_diff("--plan")
 
         # Assert
         self.assertEqual(("reusing=" in campaign.printed, "verdicts reused" in campaign.printed), (False, False))
+
+
+class RecordGateTests(unittest.TestCase):
+    """`--gate`: the record's decision over a diff, taken without an editor."""
+
+    def gate(self, campaign):
+        code = campaign.run_over_diff("--gate", "--reuse-from", str(campaign.record))
+        return code, campaign.printed
+
+    def killed_both(self, body=None):
+        campaign = RecordCampaign(body)
+        campaign.survives = set()
+        campaign.measure()
+        campaign.decide()
+        return campaign
+
+    def final_in_the_record(self):
+        """A campaign whose record holds a timeout for its first mutant and a compile error for its
+        second, as a run that measured them would have written them."""
+        campaign = self.killed_both()
+        for path, verdict in zip(sorted(campaign.record.glob("*.json"),
+                                        key=lambda path: json.loads(path.read_text())["mutant"]["line"]),
+                                 (mutation_check.TIMED_OUT, mutation_check.UNCOMPILABLE)):
+            path.write_text(json.dumps(dict(json.loads(path.read_text()), verdict=verdict, killers=[])))
+        return campaign
+
+    def test_Given_ATimeoutAndACompileErrorInTheRecord_When_Gated_Then_ItPasses(self):
+        # Act — StrykerJS scores the one as detected and the other as no result.
+        code, _ = self.gate(self.final_in_the_record())
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_ATimeoutAndACompileErrorInTheRecord_When_ALaterRunReusesThem_Then_ItPasses(self):
+        # Arrange — failing every run that reuses them would turn each record run red for good.
+        campaign = self.final_in_the_record()
+        campaign.plan()
+        reusing = campaign.plan_output("reusing")
+
+        # Act
+        code = campaign.decide("--reuse", str(campaign.project / "reuse.json"))
+        decided = code if reusing == "2" else "the plan reused {}".format(reusing)
+
+        # Assert
+        self.assertEqual(decided, 0)
+
+    def test_Given_EveryMutantKilledInTheRecord_When_Gated_Then_ItPasses(self):
+        # Act
+        code, _ = self.gate(self.killed_both())
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_AnEmptyRecord_When_Gated_Then_EveryMutantIsUnresolvedAndItFails(self):
+        # Act
+        code, printed = self.gate(RecordCampaign())
+        unresolved = printed.count("\nUNRESOLVED  ") if code == 1 else None
+
+        # Assert
+        self.assertEqual(unresolved, 2)
+
+    def test_Given_ARecordedSurvivorNothingAnswers_When_Gated_Then_ItFailsNamingIt(self):
+        # Arrange
+        campaign = RecordCampaign()
+        campaign.after_a_campaign()
+
+        # Act
+        code, printed = self.gate(campaign)
+        refusal = printed if code == 1 else ""
+
+        # Assert
+        self.assertIn("\nUNANSWERED  Packages/com.velvet.core/Runtime/Probe.cs:6", refusal)
+
+    def test_Given_ADeclarationOverAKilledMutant_When_Gated_Then_ItFailsAsStale(self):
+        # Arrange
+        body = RecordCampaign.BODY.replace(
+            "        internal static bool Ready",
+            "        // MUTANT_SURVIVES(equivalent): every caller clamps the operand already.\n"
+            "        internal static bool Ready")
+
+        # Act
+        code, printed = self.gate(self.killed_both(body))
+        refusal = printed if code == 1 else ""
+
+        # Assert
+        self.assertIn("\nSTALE       ", refusal)
+
+    def test_Given_NoMutableChange_When_Gated_Then_ItPasses(self):
+        # Arrange
+        campaign = RecordCampaign()
+        campaign.source.unlink()
+
+        # Act
+        code, _ = self.gate(campaign)
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_TheSameTreeAndRecord_When_GatedTwice_Then_TheOutputIsTheSame(self):
+        # Arrange
+        campaign = RecordCampaign()
+        campaign.after_a_campaign()
+
+        def answer():
+            """The gate's exit and output, or a value equal to nothing where it printed no summary: two
+            refusals of an unknown flag are not a match."""
+            code, printed = self.gate(campaign)
+            return "{}\n{}".format(code, printed) if "\ngate: " in printed else object()
+
+        # Act
+        first, second = answer(), answer()
+
+        # Assert
+        self.assertEqual(first, second)
+
+
+class CappedPlanTests(unittest.TestCase):
+    """`--cap`: a plan that deals the first mutants the record does not answer and leaves the rest."""
+
+    def test_Given_TwoUnansweredMutantsAndACapOfOne_When_Planned_Then_OneIsDealtAndOneIsPending(self):
+        # Arrange
+        campaign = RecordCampaign()
+
+        # Act
+        campaign.plan("--cap", "1")
+        dealt = campaign.plan_output("shards") if campaign.plan_output("pending") == "1" else None
+
+        # Assert
+        self.assertEqual(dealt, "[0]")
+
+    def test_Given_ACappedPlan_When_ThePassMeasures_Then_OnlyTheFirstMutantReachesTheEditor(self):
+        # Arrange
+        campaign = RecordCampaign()
+        campaign.plan("--cap", "1")
+
+        # Act
+        campaign.run_over_diff("--launch-per-mutant", "--reuse", str(campaign.project / "reuse.json"),
+                               "--shard", "0/1", "--output", str(campaign.project / "edit"))
+
+        # Assert
+        self.assertEqual(campaign.mutants_measured(), ["mutant-001.xml"])
+
+    def test_Given_ACappedCampaign_When_Decided_Then_ThePendingMutantFailsNothingAndIsNotRecorded(self):
+        # Arrange
+        campaign = RecordCampaign()
+        campaign.plan("--cap", "1")
+        reuse = str(campaign.project / "reuse.json")
+        campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
+                               str(campaign.project / "edit"))
+
+        # Act
+        code = campaign.decide("--reuse", reuse)
+        recorded = len(campaign.written_record()["records"]) if code == 0 else None
+
+        # Assert
+        self.assertEqual(recorded, 1)
+
+    def test_Given_TheSameTreeAndRecord_When_PlannedTwiceWithACap_Then_TheDecisionFilesAreEqual(self):
+        # Arrange — a plan that refused writes no file, and an absent file reads as a value of its own,
+        # so two absent files are not a match.
+        campaign = RecordCampaign()
+        decision = campaign.project / "reuse.json"
+
+        def read():
+            return decision.read_text() if decision.is_file() else object()
+
+        campaign.plan("--cap", "1")
+        first = read()
+
+        # Act
+        campaign.plan("--cap", "1")
+
+        # Assert
+        self.assertEqual(read(), first)
+
+
+class LineRangeTests(unittest.TestCase):
+    """`--lines` keeps the mutants on named line ranges of the `--files` sources."""
+
+    def test_Given_ARangeOverFourOfTwelveMethods_When_Planned_Then_OnlyThoseMutantsAreCountedAndEmitted(self):
+        # Arrange — the methods sit on lines 5 to 16, one mutant each.
+        campaign = StubbedCampaign(body=probe_body(12))
+        listed = campaign.project / "list.json"
+
+        # Act
+        code = campaign.run("--plan", "--lines", "{}:5-8".format(campaign.source), "--emit-mutants", str(listed))
+
+        # Assert — the emitted list is what each shard hands back to its own tree.
+        emitted = json.loads(listed.read_text()) if listed.exists() else []
+        self.assertEqual((code, "mutants=4" in campaign.printed, [record["line"] for record in emitted]),
+                         (0, True, [5, 6, 7, 8]))
+
+    def test_Given_ARangeOutsideTheFile_When_Planned_Then_ItIsRefused(self):
+        # Arrange
+        campaign = StubbedCampaign(body=probe_body(12))
+
+        # Act
+        code = campaign.run("--plan", "--lines", "{}:5-999".format(campaign.source))
+
+        # Assert
+        self.assertIn("outside", str(code))
+
+    def test_Given_ARangeHoldingNoMutant_When_Planned_Then_ItIsRefused(self):
+        # Arrange — lines 1 to 4 are the namespace and class braces.
+        campaign = StubbedCampaign(body=probe_body(12))
+
+        # Act
+        code = campaign.run("--plan", "--lines", "{}:1-4".format(campaign.source))
+
+        # Assert
+        self.assertIn("no mutant", str(code))
+
+    def test_Given_ANamedFileWithNoRange_When_Planned_Then_ItIsRefusedRatherThanDroppedUnasked(self):
+        # Arrange — the second file would otherwise keep none of its mutants and the run would still plan.
+        campaign = StubbedCampaign(body=probe_body(12))
+        second = campaign.project / "Packages/com.velvet.core/Runtime/Other.cs"
+        second.write_text(probe_body(3))
+
+        # Act
+        code = campaign.drive("--files", str(campaign.source), str(second), "--plan",
+                              "--lines", "{}:5-8".format(campaign.source))
+
+        # Assert
+        self.assertIn("gives no range", str(code))
+
+
+class KillSetShardTests(unittest.TestCase):
+    """`.github/workflows/kill-set.yml`, whose shard job measures one tree and so is sized as
+    `ShardCeilingTests` sizes `mutation-shard`'s step."""
+
+    WORKFLOW = REPO_ROOT / ".github/workflows/kill-set.yml"
+
+    def text(self):
+        return self.WORKFLOW.read_text()
+
+    def job(self):
+        return self.text().partition("\n  shard:")[2].partition("\n  diff:")[0]
+
+    def timeout_flag(self):
+        return int(re.search(r"--timeout (\d+)", self.job()).group(1))
+
+    def test_Given_TheKillSetStepTimeout_When_TheMostMutantsFittingAreCounted_Then_ItIsTheCampaignsCeiling(self):
+        # Arrange — the campaign's own charges, with the hang allowance (the 900 in its setup) replaced by
+        # the --timeout this workflow passes.
+        edit = (561, 201 + 486 + 12 + self.timeout_flag())
+        play = (934 + 100, 202 + 625 + 11 + self.timeout_flag())
+        fits = ShardCeilingTests("fits").fits
+
+        # Act
+        largest = max((count for count in range(1, 40)
+                       if all(fits("shard", "EditMode", edit[0], edit[1], arm=arm, count=count,
+                                   workflow="kill-set.yml", step="Measure")
+                              for arm in ("reach", "failed", "small"))), default=0)
+        play_fits = fits("shard", "PlayMode", play[0], play[1], workflow="kill-set.yml", step="Measure")
+
+        # Assert
+        self.assertEqual((largest, play_fits), (mutation_check.SHARD_CEILING["EditMode"], True))
+
+    def test_Given_TheShardJobsTimeout_When_ComparedWithItsMeasuringStep_Then_ItHoldsTheStepAndTheRest(self):
+        # Arrange — one tree a job, so one step; what is left is the checkout, restore and upload.
+        job = self.job()
+        steps = [int(minutes) for minutes in re.findall(r"^        timeout-minutes: (\d+)$", job, re.MULTILINE)]
+        found = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
+
+        # Act
+        spare = int(found.group(1)) - sum(steps) if found else None
+
+        # Assert
+        self.assertEqual((len(steps), spare is not None and spare >= 15), (1, True))
+
+    def test_Given_TheMeasuringStep_When_ItsTimeoutFlagIsRead_Then_ItIsThreeTimesTheBaselineAtLeast(self):
+        # Arrange — a hang reads as one only where the baseline times mutation_check.HANG_MARGIN fits the flag.
+        flag = self.timeout_flag()
+
+        # Act
+        floor = mutation_check.HANG_MARGIN * ShardCeilingTests.BASELINE
+
+        # Assert
+        self.assertGreaterEqual(flag, floor)
+
+    def test_Given_TheWorkflow_When_ItsTriggersAreRead_Then_ItIsDispatchedByHandAndRequiredByNothing(self):
+        # Arrange
+        block = re.search(r"^on:\n((?:  .*\n|\n)*)", self.text(), re.MULTILINE).group(1)
+
+        # Act
+        read = (re.findall(r"^  ([a-z_]+):", block, re.MULTILINE), "Required checks (" in self.text())
+
+        # Assert
+        self.assertEqual(read, (["workflow_dispatch"], False))
+
+    def test_Given_TheDiffJob_When_ItsComparisonIsRead_Then_ItReadsTheBaseDirectoryFirst(self):
+        # Arrange
+        job = self.text().partition("\n  diff:")[2]
+
+        # Act
+        read = re.search(r"kill_set_diff\.py (\S+) (\S+)", job).groups()
+
+        # Assert
+        self.assertEqual(read, ("Logs/kill-set-base", "Logs/kill-set-head"))
+
+
+class RecordBudgetTests(unittest.TestCase):
+    """The caps and shard counts mutation.yml declares, against the plan's ceiling and the schedule."""
+
+    @staticmethod
+    def declared(name):
+        """The figure mutation.yml declares as `name`, or None where it declares none."""
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+        found = re.search(r'^  {}: "(\d+)"$'.format(name), workflow, re.MULTILINE)
+        return int(found.group(1)) if found else None
+
+    def fits(self, cap, shards):
+        """Whether `cap` mutants fit `shards` shards of the EditMode ceiling; False where either is undeclared."""
+        cap, shards = self.declared(cap), self.declared(shards)
+        return cap is not None and shards is not None and cap <= shards * mutation_check.SHARD_CEILING["EditMode"]
+
+    def test_Given_ARecordRunsCap_When_ItsShardsCeilingIsTaken_Then_TheCapFitsInsideIt(self):
+        # Act — a cap over the ceiling would make every full run's plan refuse.
+        fits = self.fits("RECORD_CAP", "RECORD_SHARDS")
+
+        # Assert
+        self.assertTrue(fits)
+
+    def test_Given_AnAdvisoryRunsCap_When_ItsShardsCeilingIsTaken_Then_TheCapFitsInsideIt(self):
+        # Act
+        fits = self.fits("ADVISORY_CAP", "ADVISORY_SHARDS")
+
+        # Assert
+        self.assertTrue(fits)
+
+    def test_Given_ARecordRunsShards_When_TheirWavesAreTimed_Then_TheyEndInsideTheSchedulesDay(self):
+        # Arrange — the shard job's own limit and how many of them run at once, read off the workflow;
+        # a figure it does not declare leaves no number to time.
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+        job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
+        figures = [re.search(pattern, job, re.MULTILINE)
+                   for pattern in (r"^    timeout-minutes: (\d+)$", r"^      max-parallel: (\d+)$")]
+        limit, parallel = [int(found.group(1)) if found else None for found in figures]
+        shards = self.declared("RECORD_SHARDS")
+
+        # Act
+        minutes = -(-shards // parallel) * limit if None not in (limit, parallel, shards) else None
+
+        # Assert
+        self.assertEqual(minutes is not None and minutes <= 24 * 60, True)
 
 
 if __name__ == "__main__":

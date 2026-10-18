@@ -25,6 +25,9 @@ namespace Velvet
         // Without the holder, which has let go of the id: its element can come back from the pool as another Motion.
         public LayoutIdLook Released() => new(Opacity, s_released);
 
+        // Released, at the given opacity.
+        public LayoutIdLook Holding(float opacity) => new(opacity, s_released);
+
         // A holder read mid-way through a shared move of its own gives the opacity that move drew it at, and no
         // holder to read again, as promote takes animationValues, which the new lead's animation stops.
         public static LayoutIdLook Read(VisualElement element, LayoutIdProjection? projection) =>

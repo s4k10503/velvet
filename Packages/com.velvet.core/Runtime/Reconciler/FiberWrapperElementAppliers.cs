@@ -5,7 +5,7 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // The className-driven effect appliers: the wrapper-less layers (skew silhouettes, gradient backgrounds,
-    // drop shadow, animate-* motion, ring/outline — each the element's own generateVisualContent / inline
+    // box shadow, animate-* motion, ring/outline — each the element's own generateVisualContent / inline
     // style or a reconciler-invisible sibling, no structural element in the element's own slot) and the one
     // structural-WRAPPER layer (clip-path), plus the gesture (whileHover/whileTap/whileFocus) manipulator.
     // The patcher's PatchElement/PatchMotion and the node factory orchestrate these at patch/create time; the
@@ -24,7 +24,7 @@ namespace Velvet
         private readonly FiberGradientApplier _gradient;
         private readonly FiberAnimateMotionApplier _animate;
         private readonly FiberFilterTransitionApplier _filterTransition;
-        private readonly FiberDropShadowApplier _dropShadow;
+        private readonly FiberBoxShadowApplier _boxShadow;
         private readonly FiberBorderStyleApplier _borderStyle;
         private readonly FiberRingApplier _ring;
         private readonly FiberClipPathApplier _clipPath;
@@ -37,7 +37,7 @@ namespace Velvet
             _gradient = new FiberGradientApplier(ctx);
             _animate = new FiberAnimateMotionApplier(ctx);
             _filterTransition = new FiberFilterTransitionApplier(ctx);
-            _dropShadow = new FiberDropShadowApplier(ctx);
+            _boxShadow = new FiberBoxShadowApplier(ctx);
             _borderStyle = new FiberBorderStyleApplier(ctx);
             _ring = new FiberRingApplier(ctx);
             _clipPath = new FiberClipPathApplier(ctx, wrappers);
@@ -70,11 +70,11 @@ namespace Velvet
             => _filterTransition.ApplyFilterTransitionOnPatch(element, classNames);
 
         internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)
-            => _dropShadow.ApplyShadowOnCreate(element, classNames);
+            => _boxShadow.ApplyShadowOnCreate(element, classNames);
 
         internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
             float skewXDeg, bool canReleaseFace)
-            => _dropShadow.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
+            => _boxShadow.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
 
         internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)
             => _borderStyle.ApplyBorderStyleOnCreate(element, classNames);
@@ -237,7 +237,7 @@ namespace Velvet
             }
             else if (settings != null)
             {
-                _ctx.DroppableBindings[element] = DndDroppableDriver.Attach(element, settings);
+                _ctx.DroppableBindings[element] = DndDroppableDriver.Attach(element, settings, _ctx);
             }
         }
 

@@ -77,6 +77,21 @@ namespace Velvet
         private sealed class Suspension
         {
             public readonly HashSet<object> Owners = new();
+            // The owners that take only what they write out of the element's transitions (Narrow), with those longhands.
+            public readonly Dictionary<object, StyleLonghandSet> Narrowers = new();
+            // The transition-property list Narrow last wrote, null while it has written none, and the rules it read it off.
+            public List<StylePropertyName> Written;
+            public long? Rules;
+            public bool Stale;
+            // The owners NarrowIfIntercepted found nothing to narrow for, with their slots and the rules it read.
+            public readonly Dictionary<object, (MotionTransitionSlots Slots, long? Rules)> Undecided = new();
+            // Where Narrow writes the duration, delay and curve lists too (WriteNarrowed), through MotionTweenTiming's
+            // narrowed layer, and the element's own lists it derived them from, so that a list code writes over them
+            // since is taken (OwnTimingChanged).
+            public bool WroteTiming;
+            public StyleList<TimeValue> OwnDuration;
+            public StyleList<TimeValue> OwnDelay;
+            public StyleList<EasingFunction> OwnCurve;
         }
 
         // Auto-drops entries when an element is collected; a pooled element is scrubbed explicitly through
@@ -157,6 +172,210 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Takes the longhands of <paramref name="drivenSlots"/> out of the element's own transitions on
+        /// <paramref name="owner"/>'s behalf, leaving the element's other transitions running, as Framer leaves the CSS
+        /// transitions of what a layout animation does not write. Where the element's cascade transitions none of those
+        /// longhands over some time — its own classes deciding where the cascade cannot be read — this is a no-op,
+        /// decided again on a pass that finds the element's rules changed (<see cref="Refresh"/>).
+        /// </summary>
+        /// <remarks>
+        /// The element's transitions are read off its cascade (<see cref="StyleCascade.Lists"/>) and written inline
+        /// without those longhands, an <c>all</c> becoming the other longhands the utility tables name. The duration,
+        /// delay and curve lists the element holds inline are its own, and are handed back as the last narrower lets go.
+        /// A variant tween's list in the slot is narrowed instead, and a play's suspension left to suspend everything;
+        /// either is replaced by the narrowed lists as it ends (<see cref="RestoreAfterForeignWrite"/>,
+        /// <see cref="Release"/>).
+        /// </remarks>
+        public static void NarrowIfIntercepted(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+        {
+            var driven = LonghandsOf(drivenSlots);
+            ExcludeFromHeldList(element, driven);
+            if (Intercepts(element, driven) ?? (DeclaredSlots(element) & drivenSlots) != MotionTransitionSlots.None)
+            {
+                Narrow(element, owner, drivenSlots);
+                return;
+            }
+            // Decided again on a pass that finds the element's rules changed
+            // (Given_AFollowerGivenTransitionClassesAsItsLeadLeaves_When_ItsMoveRuns_Then_ItIsDrawnWhereItIsWritten).
+            // Kept with the slots the owner asked about before
+            // (Given_AFollowerGivenTransitionClassesAsALargerLeadLeaves_When_ItsMoveRuns_Then_ItIsDrawnWhereItIsWritten).
+            var undecided = s_suspensions.GetValue(element, static _ => new Suspension()).Undecided;
+            undecided[owner] = ((undecided.TryGetValue(owner, out var asked) ? asked.Slots : MotionTransitionSlots.None) | drivenSlots,
+                StyleCascade.RulesHash(element));
+        }
+
+        /// <summary>
+        /// <see cref="NarrowIfIntercepted"/> for a caller that has decided the element transitions
+        /// <paramref name="drivenSlots"/>, and asks again on each pass, so that a change of the element's rules is taken.
+        /// </summary>
+        public static void Narrow(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+        {
+            var driven = LonghandsOf(drivenSlots);
+            ExcludeFromHeldList(element, driven);
+            var suspension = s_suspensions.GetValue(element, static _ => new Suspension());
+            var narrowed = suspension.Narrowers.GetValueOrDefault(owner, StyleLonghandSet.Empty).Union(driven);
+            suspension.Stale |= !suspension.Narrowers.TryGetValue(owner, out var held) || !held.Equals(narrowed);
+            suspension.Narrowers[owner] = narrowed;
+            WriteNarrowed(element, suspension);
+        }
+
+        /// <summary>
+        /// <see cref="Narrow(VisualElement, object, MotionTransitionSlots)"/> where <paramref name="intercepted"/>, and the
+        /// owner's narrowing released where not, as <see cref="SyncSuspension(VisualElement, object, MotionTransitionSlots, bool)"/>
+        /// re-decides a suspension.
+        /// </summary>
+        public static void Narrow(VisualElement element, object owner, MotionTransitionSlots drivenSlots, bool intercepted)
+        {
+            if (intercepted)
+            {
+                Narrow(element, owner, drivenSlots);
+                return;
+            }
+            ExcludeFromHeldList(element, LonghandsOf(drivenSlots));
+            Release(element, owner);
+        }
+
+        // Writes the element's transitions less every narrower's longhands into the inline lists, unless another layer
+        // holds the slot or the lists written already stand for the element's rules as they are.
+        private static void WriteNarrowed(VisualElement element, Suspension suspension)
+        {
+            var style = element.style;
+            var slot = style.transitionProperty;
+            if (slot.keyword != StyleKeyword.Null && !Wrote(suspension, slot.value)) return;
+            var rules = StyleCascade.RulesHash(element);
+            if (slot.keyword != StyleKeyword.Null && !suspension.Stale && rules == suspension.Rules) return;
+            // Before a style pass has matched the element's rules none can be read: nothing is left to transition until the
+            // next tick, which narrows again
+            // (Given_AFollowerMountedWithItsLead_When_ItsBackgroundChanges_Then_TheBackgroundTransitions).
+            var read = StyleCascade.Lists(element);
+            if (read == null) ScheduleRenarrow(element);
+            var lists = read ?? new TransitionLists(null, null, null, null);
+            var count = lists.Properties.Count;
+            var excluded = StyleLonghandSet.Empty;
+            foreach (var longhands in suspension.Narrowers.Values)
+            {
+                excluded = excluded.Union(longhands);
+            }
+            var names = new List<StylePropertyName>(lists.Properties);
+            var sources = Exclude(names, excluded);
+            style.transitionProperty = names;
+            // Written only where one of them pairs its entries with the properties by position, so that elsewhere a class
+            // changing them is taken by the style pass that sees it
+            // (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming);
+            // a playing tween's stay on top of them, and the element's own come back as the narrowing ends.
+            if (!MotionTweenTiming.Playing(element))
+            {
+                if (Math.Max(lists.Durations.Count, Math.Max(lists.Delays.Count, lists.Curves.Count)) > 1)
+                {
+                    (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve) = MotionTweenTiming.Own(element);
+                    MotionTweenTiming.Narrow(element, Realigned(Cycle(lists.Durations, count), count, sources),
+                        Realigned(Cycle(lists.Curves, count), count, sources), Realigned(Cycle(lists.Delays, count), count, sources));
+                    suspension.WroteTiming = true;
+                }
+                else
+                {
+                    HandBackTiming(element, suspension);
+                }
+            }
+            (suspension.Written, suspension.Rules, suspension.Stale) = (new List<StylePropertyName>(names), rules, read == null);
+        }
+
+        // Kept out of WriteNarrowed: a lambda there capturing its parameter would allocate its closure on every call,
+        // the early exits a steady pass takes included
+        // (Given_ANarrowedLeadMidMove_When_ItsProjectionRefreshes_Then_NothingIsAllocated).
+        private static void ScheduleRenarrow(VisualElement element) => element.schedule.Execute(() => Renarrow(element));
+
+        private static void Renarrow(VisualElement element)
+        {
+            if (!s_suspensions.TryGetValue(element, out var suspension)) return;
+            if (suspension.Narrowers.Count > 0) WriteNarrowed(element, suspension);
+        }
+
+        private static bool Wrote(Suspension suspension, List<StylePropertyName> names) =>
+            suspension.Written != null && names != null && Same(new StyleList<StylePropertyName>(names), new StyleList<StylePropertyName>(suspension.Written));
+
+        // Companion lists repeat to the length of transition-property, as UI Toolkit pairs them, so that one entry can be
+        // taken out of all four by position.
+        private static List<T> Cycle<T>(IList<T> list, int count)
+        {
+            var cycled = new List<T>(count);
+            for (var i = 0; i < count && list is { Count: > 0 }; i++)
+            {
+                cycled.Add(list[i % list.Count]);
+            }
+            return cycled;
+        }
+
+        // Hands the element's own inline lists back once no narrower is left, or narrows for those left.
+        private static void Unnarrow(VisualElement element, Suspension suspension)
+        {
+            if (suspension.Narrowers.Count > 0)
+            {
+                suspension.Stale = true;
+                WriteNarrowed(element, suspension);
+                return;
+            }
+            var style = element.style;
+            var slot = style.transitionProperty;
+            // A tween playing over the narrowing puts the element's own back as it ends, rather than the narrowing's
+            // (Given_ANarrowedMotionWithPairedTimingWhosePoseTweenOutlastsItsMove_When_TheTweenEnds_Then_NoTimingIsLeftInline),
+            // and none of the lists is the narrowing's from here on, whoever holds the slots
+            // (Given_ANarrowedMotionDrivenByAnAnimateClassWhosePoseTweenOutlastsItsMove_When_ItTakesAnArbitraryDuration_Then_NoTransitionIsWrittenInline).
+            HandBackTiming(element, suspension);
+            if (Wrote(suspension, slot.value)) style.transitionProperty = suspension.Owners.Count > 0 ? s_none : StyleKeyword.Null;
+            suspension.Written = null;
+        }
+
+        /// <summary>
+        /// The duration, delay and curve lists the element runs its transitions by inline: its own, which
+        /// <see cref="Narrow"/> keeps beneath the lists it writes while no tween plays on the element, else the slots', a
+        /// tween's while one holds them.
+        /// </summary>
+        internal static (StyleList<TimeValue> Duration, StyleList<TimeValue> Delay, StyleList<EasingFunction> Curve) OwnTiming(
+            VisualElement element)
+        {
+            if (!s_suspensions.TryGetValue(element, out var suspension) || !suspension.WroteTiming || MotionTweenTiming.Playing(element))
+            {
+                return (element.style.transitionDuration, element.style.transitionDelay, element.style.transitionTimingFunction);
+            }
+            return MotionTweenTiming.Own(element);
+        }
+
+        // Whether the element's own lists have changed since the narrowed ones were derived from them, as when its code
+        // writes one over them, which is the element's own from then on
+        // (Given_ANarrowedMotionWhoseCodeWritesItsDelayMidMove_When_TheMoveLands_Then_ThatDelayIsHandedBack).
+        private static bool OwnTimingChanged(VisualElement element, Suspension suspension)
+        {
+            if (!suspension.WroteTiming || MotionTweenTiming.Playing(element)) return false;
+            var (duration, delay, curve) = MotionTweenTiming.Own(element);
+            return !Same(duration, suspension.OwnDuration) || !Same(delay, suspension.OwnDelay) || !Same(curve, suspension.OwnCurve);
+        }
+
+        // Indexed rather than through SequenceEqual, whose enumerators are allocated on each comparison.
+        private static bool Same<T>(StyleList<T> a, StyleList<T> b)
+        {
+            var (x, y) = (a.value ?? NoList<T>.Value, b.value ?? NoList<T>.Value);
+            if (a.keyword != b.keyword || x.Count != y.Count) return false;
+            for (var i = 0; i < x.Count; i++)
+            {
+                if (!EqualityComparer<T>.Default.Equals(x[i], y[i])) return false;
+            }
+            return true;
+        }
+
+        private static class NoList<T>
+        {
+            public static readonly List<T> Value = new();
+        }
+
+        private static void HandBackTiming(VisualElement element, Suspension suspension)
+        {
+            if (!suspension.WroteTiming) return;
+            MotionTweenTiming.Unnarrow(element);
+            suspension.WroteTiming = false;
+        }
+
+        /// <summary>
         /// Re-decides the inline slot for a layer that has just finished writing it itself: back to the
         /// suspension while a driver still holds one, back to the cascade otherwise.
         /// </summary>
@@ -168,29 +387,32 @@ namespace Velvet
         /// </remarks>
         public static void RestoreAfterForeignWrite(VisualElement element)
         {
-            if (s_suspensions.TryGetValue(element, out var suspension) && suspension.Owners.Count > 0)
+            var held = s_suspensions.TryGetValue(element, out var suspension);
+            if (held && suspension.Owners.Count > 0)
             {
                 element.style.transitionProperty = s_none;
                 return;
             }
             element.style.transitionProperty = StyleKeyword.Null;
+            if (held && suspension.Narrowers.Count > 0) WriteNarrowed(element, suspension);
         }
 
-        // Whether the slot holds a value this class did not write, which is a variant tween's transition-property
-        // (StyleAnimationScheduler.ApplyTransitionStyles): a driver can start or stop with the tween's list
+        // Whether the slot holds a value this class did not write, neither its suspension nor a narrowing, which is a
+        // variant tween's transition-property (StyleAnimationScheduler.ApplyTransitionStyles): a driver can start or stop with the tween's list
         // already in the slot (FiberNodePatcher starts a swap before the class passes that attach and detach an
         // animate-* driver, and a layoutId move starts on the layout pass after its patch), and writing or
         // reverting it there would cancel that tween. What puts a still-held suspension back afterwards is the
         // tween's own teardown, through RestoreAfterForeignWrite. Compared by CONTENT rather than by list
         // identity, which the read back out of the slot does not preserve — MotionNativeTransitionGuardSuspensionTests
         // holds that.
-        private static bool HoldsAForeignValue(VisualElement element)
+        internal static bool HoldsAForeignValue(VisualElement element)
         {
             var current = element.style.transitionProperty;
             if (current.keyword != StyleKeyword.Null)
             {
                 var value = current.value;
-                return value == null || value.Count != 1 || value[0] != s_noneName;
+                return (value == null || value.Count != 1 || value[0] != s_noneName)
+                    && !(s_suspensions.TryGetValue(element, out var suspension) && Wrote(suspension, value));
             }
             return false;
         }
@@ -324,6 +546,7 @@ namespace Velvet
             if ((slots & MotionTransitionSlots.Rotate) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Rotate));
             if ((slots & MotionTransitionSlots.Color) != 0) set = set.Union(s_colorProperties);
             if ((slots & MotionTransitionSlots.Length) != 0) set = set.Union(s_lengthProperties);
+            if ((slots & MotionTransitionSlots.Visibility) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Visibility));
             if ((slots & MotionTransitionSlots.Filter) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Filter));
             if ((slots & MotionTransitionSlots.BackgroundPosition) != 0)
             {
@@ -353,17 +576,36 @@ namespace Velvet
         internal static void ExcludeFromHeldList(VisualElement element, StyleLonghandSet driven)
         {
             var held = element.style.transitionProperty.value;
-            if (held == null)
+            // The lists Narrow wrote leave out every narrower's longhands already, and are rewritten as those change.
+            if (held == null || s_suspensions.TryGetValue(element, out var suspension) && Wrote(suspension, held))
             {
                 return;
             }
-            var names = new List<StylePropertyName>(held.Count);
-            // The held entry each kept name takes its duration, easing and delay from.
-            var sources = new List<int>(held.Count);
-            // MUTANT_SURVIVES(equivalent): with nothing left out, the rewrite this skips writes back the names and
-            // timings it read, in the order it read them.
+            // Counted before the write below: a list read out of a slot is refilled by that slot's next write, which
+            // MotionNativeTransitionGuardSuspensionTests pins.
+            var heldCount = held.Count;
+            var names = new List<StylePropertyName>(held);
+            if (Exclude(names, driven) is not { } sources)
+            {
+                return;
+            }
+            element.style.transitionProperty = names;
+            MotionTweenTiming.Write(element, Realigned(element.style.transitionDuration.value, heldCount, sources),
+                Realigned(element.style.transitionTimingFunction.value, heldCount, sources),
+                Realigned(element.style.transitionDelay.value, heldCount, sources));
+        }
+
+        // Takes the driven longhands out of names in place, and returns, for each name left, the entry of the list as
+        // given it takes its duration, easing and delay from; null, the list left as it was, where nothing is taken out.
+        private static List<int>? Exclude(List<StylePropertyName> names, StyleLonghandSet driven)
+        {
+            var held = names.ToArray();
+            var sources = new List<int>(held.Length);
+            // MUTANT_SURVIVES(equivalent): with nothing left out, the list rebuilt below is the list as given.
+            // Its names come back in the order read, each taking its timing from its own entry.
             var changed = false;
-            for (var i = 0; i < held.Count; i++)
+            names.Clear();
+            for (var i = 0; i < held.Length; i++)
             {
                 if (held[i] == s_allName)
                 {
@@ -387,20 +629,26 @@ namespace Velvet
                     sources.Add(i);
                 }
             }
-            if (!changed)
+            return changed ? sources : null;
+        }
+
+        // Whether the element's transitions, as its cascade gives them, run a longhand of driven over some time, named
+        // itself or through `all`; null where the cascade cannot be read.
+        private static bool? Intercepts(VisualElement element, StyleLonghandSet driven)
+        {
+            if (StyleCascade.Lists(element) is not { } lists) return null;
+            for (var i = 0; i < lists.Properties.Count; i++)
             {
-                return;
+                var name = lists.Properties[i];
+                // The duration and delay pair with the name by position, repeating as UI Toolkit repeats them, and an entry
+                // runs where its duration, or its delay, is positive
+                // (Given_AMotionWhoseStylesheetDelaysAZeroDurationTranslate_When_ItsMoveRuns_Then_ItIsDrawnWhereItIsWritten).
+                var duration = lists.Durations.Count > 0 ? StyleFilterTransitionDriver.Milliseconds(lists.Durations[i % lists.Durations.Count]) : 0;
+                var delay = lists.Delays.Count > 0 ? StyleFilterTransitionDriver.Milliseconds(lists.Delays[i % lists.Delays.Count]) : 0;
+                var timed = Math.Max(0, duration) + delay > 0;
+                if (timed && (name == s_allName || NamesADrivenLonghand(name, driven))) return true;
             }
-            // Counted before the write below: a list read out of a slot is refilled by that slot's next write, which
-            // MotionNativeTransitionGuardSuspensionTests pins.
-            var heldCount = held.Count;
-            element.style.transitionProperty = names;
-            WriteRealigned(element.style.transitionDuration.value, heldCount, sources,
-                list => MotionTweenTiming.Write(element, list, null, null));
-            WriteRealigned(element.style.transitionTimingFunction.value, heldCount, sources,
-                list => MotionTweenTiming.Write(element, null, list, null));
-            WriteRealigned(element.style.transitionDelay.value, heldCount, sources,
-                list => MotionTweenTiming.Write(element, null, null, list));
+            return false;
         }
 
         private static bool NamesADrivenLonghand(StylePropertyName name, StyleLonghandSet driven)
@@ -411,19 +659,21 @@ namespace Velvet
             return longhand >= 0 && driven.Contains((StyleLonghand)longhand);
         }
 
-        // Leaves the list as it was where the slot holds none or it does not pair one-to-one with the held list.
-        private static void WriteRealigned<T>(List<T> list, int heldCount, List<int> sources, Action<List<T>> write)
+        // None, leaving the list as it was, where the slot holds none or it does not pair one-to-one with the held list;
+        // the list itself where sources is null, Exclude having taken nothing out.
+        private static List<T> Realigned<T>(List<T> list, int heldCount, List<int> sources)
         {
             if (list == null || list.Count != heldCount)
             {
-                return;
+                return null;
             }
+            if (sources == null) return list;
             var realigned = new List<T>(sources.Count);
             foreach (var source in sources)
             {
                 realigned.Add(list[source]);
             }
-            write(realigned);
+            return realigned;
         }
 
         internal static StyleLonghandSet SetOf(params StyleLonghand[] longhands)
@@ -483,18 +733,63 @@ namespace Velvet
         /// <summary>Drops one owner, handing the element back to the cascade once the LAST owner has let go.</summary>
         public static void Release(VisualElement element, object owner)
         {
-            if (!s_suspensions.TryGetValue(element, out var suspension) || !suspension.Owners.Remove(owner))
+            if (!s_suspensions.TryGetValue(element, out var suspension)) return;
+            suspension.Undecided.Remove(owner);
+            var suspended = suspension.Owners.Remove(owner);
+            var narrowed = suspension.Narrowers.Remove(owner);
+            if (narrowed) Unnarrow(element, suspension);
+            // A narrowing still held takes the slot back from the suspension that ends here
+            // (Given_ANarrowedMotionWhosePulseEndsMidMove_When_ItsBackgroundChanges_Then_TheBackgroundTransitions).
+            if ((suspended || narrowed) && suspension.Owners.Count == 0)
             {
-                return;
-            }
-            if (suspension.Owners.Count == 0)
-            {
-                s_suspensions.Remove(element);
-                if (!HoldsAForeignValue(element))
+                if (!HoldsAForeignValue(element) && !Wrote(suspension, element.style.transitionProperty.value))
                 {
                     element.style.transitionProperty = StyleKeyword.Null;
                 }
+                if (suspension.Narrowers.Count > 0) WriteNarrowed(element, suspension);
             }
+            // The record goes with the last of its owners, narrowers and undecided owners.
+            if (suspension.Owners.Count + suspension.Narrowers.Count + suspension.Undecided.Count == 0) s_suspensions.Remove(element);
+        }
+
+        /// <summary>
+        /// Writes the narrowed lists again where the element's rules have changed since they were written, called on
+        /// each pass a layoutId projection draws the element
+        /// (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming).
+        /// </summary>
+        internal static void Refresh(VisualElement element)
+        {
+            if (!s_suspensions.TryGetValue(element, out var suspension)) return;
+            if (suspension.Undecided.Count > 0) Redecide(element, suspension);
+            if (suspension.Written == null) return;
+            // A variant swap's list holds what a narrower writes until taken out again
+            // (Given_ANarrowedLayoutIdMotionWhosePoseSwapsMidMove_When_ItsMoveRuns_Then_ItIsDrawnWhereItIsWritten).
+            var narrowed = StyleLonghandSet.Empty;
+            foreach (var longhands in suspension.Narrowers.Values)
+            {
+                narrowed = narrowed.Union(longhands);
+            }
+            ExcludeFromHeldList(element, narrowed);
+            if (OwnTimingChanged(element, suspension)) suspension.Stale = true;
+            WriteNarrowed(element, suspension);
+        }
+
+        private static readonly List<object> s_redecided = new();
+
+        private static void Redecide(VisualElement element, Suspension suspension)
+        {
+            var rules = StyleCascade.RulesHash(element);
+            foreach (var (owner, (_, read)) in suspension.Undecided)
+            {
+                if (read != rules) s_redecided.Add(owner);
+            }
+            foreach (var owner in s_redecided)
+            {
+                var slots = suspension.Undecided[owner].Slots;
+                suspension.Undecided.Remove(owner);
+                if (slots != MotionTransitionSlots.None) NarrowIfIntercepted(element, owner, slots);
+            }
+            s_redecided.Clear();
         }
 
         /// <summary>

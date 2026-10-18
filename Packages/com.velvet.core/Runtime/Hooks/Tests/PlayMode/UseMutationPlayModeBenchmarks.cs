@@ -10,8 +10,8 @@ namespace Velvet.Tests.Performance
     [TestFixture]
     internal sealed class UseMutationPlayModeBenchmarks
     {
-        private const int WarmupCount = 5;
-        private const int MeasurementCount = 20;
+        private static readonly int WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int MeasurementCount = BenchmarkRun.Measurements(20);
 
         private static MutationResult<int, int>? s_captured;
         private static Func<int, CancellationToken, VelvetTask<int>> s_mutationFn =
@@ -32,6 +32,8 @@ namespace Velvet.Tests.Performance
         [TearDown]
         public void TearDown() => _mounted.Dispose();
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void UseMutation_OneMutateRoundTrip()
         {

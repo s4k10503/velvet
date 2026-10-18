@@ -393,7 +393,8 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("after").ClassListContains("opacity-0"), Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): a key coming back after its removal already entered.
+        // GREEN_ON_BASE(characterization): a key coming back after its removal already entered on the base.
+        // The added reconcile is the one that drops the removed child now.
         [Test]
         public void Given_AFirstRenderChildUnderInitialFalse_When_ItIsRemovedAndComesBackWithAMotion_Then_ThatMotionEnters()
         {
@@ -415,6 +416,8 @@ namespace Velvet.Tests
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree(true, false));
             _reconciler.Reconcile(Root, Tree(true, false), Tree(false, false));
+            // The reconcile after the removal is the one that drops the child, whose exit had nothing to animate.
+            _reconciler.Reconcile(Root, Tree(false, false), Tree(false, false));
 
             // Act
             _reconciler.Reconcile(Root, Tree(false, false), Tree(true, true));

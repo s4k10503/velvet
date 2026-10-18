@@ -13,6 +13,11 @@ namespace Velvet.Tests
     /// false on the first render.</item>
     /// <item>State updates run inside <c>startTransition</c> are scheduled on the Transition lane and commit on the
     /// next flush, not synchronously during the call.</item>
+    /// <item>Calling the starter renders the declaring component with <c>isPending == true</c> on the Urgent
+    /// lane, ahead of the transition's own render and showing the state from before its writes, whichever
+    /// component the writes land on and inside a discrete handler's own flush. It is owed for a flag still lit as
+    /// the call returns: an <c>async</c> action that suspended, queued work or left a joined call open, not a callback that queued
+    /// nothing, a call joining a transition already open, or a call whose component unmounted meanwhile.</item>
     /// <item>The render that commits a transition observes <c>isPending == true</c> until its terminal commit
     /// completes, then a follow-up render observes it false. It stays lit while something else still is: an
     /// <c>async</c> action in flight, whose pre-<c>await</c> write commits with the flag up, or a second
@@ -58,8 +63,12 @@ namespace Velvet.Tests
     /// component — a synchronous one when its callback returns, an async one on its own completion — even
     /// while another slot's transition work is still queued on the same fiber and even while another slot's
     /// in-flight action writes to it.</item>
-    /// <item>A transition committed by a subsuming parent render clears its pending flag even when a
-    /// <c>UseDeferredValue</c> in the same component holds the transition lane queued.</item>
+    /// <item>A render that does not drain the Transition lane leaves the transition's queued writes queued, and
+    /// the transition pending, whether it is the component's own or an ancestor's pass subsuming it; the
+    /// Transition-lane pass that does drain them commits them and settles the transition.</item>
+    /// <item>A transition committed by a pass that renders a store write rather than a queued state write clears
+    /// its pending flag even when a <c>UseDeferredValue</c> in the same component holds the transition lane
+    /// queued.</item>
     /// <item>A discrete update on the same component keeps its urgent priority while an async transition is in
     /// flight there, unless the handler wrapped it in a <c>startTransition</c> of its own.</item>
     /// <item>Calling the hook outside a render throws an <see cref="InvalidOperationException"/>.</item>
@@ -105,29 +114,31 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_StartedTransition_When_Flushed_Then_ContentCommitAndPendingClearRender()
+        public void Given_StartedTransition_When_Drained_Then_PendingRenderContentCommitAndPendingClearRenderFollowTheMount()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
             s_transitionStart.Invoke(() => s_transitionSetValue.Invoke(1));
 
             // Act
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
-            Assert.AreEqual(3, s_transitionRenderCount,
-                "The transition content commits while pending before the terminal clear renders");
+            Assert.AreEqual(4, s_transitionRenderCount,
+                "The pending render comes first, then the transition content commits while pending, and the terminal clear renders last");
         }
 
+        // GREEN_ON_BASE(refactor): one drain of both tiers stands where one flush of the lane stood, and the
+        // base reaches the same last render by either.
         [Test]
-        public void Given_StartedTransition_When_Flushed_Then_CompletionRenderHasIsPendingFalse()
+        public void Given_StartedTransition_When_Drained_Then_CompletionRenderHasIsPendingFalse()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
             s_transitionStart.Invoke(() => s_transitionSetValue.Invoke(1));
 
             // Act
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
             Assert.IsFalse(s_transitionLastIsPending, "The completion render observes isPending = false");
@@ -176,6 +187,8 @@ namespace Velvet.Tests
             Assert.IsTrue(s_transitionLastIsPending, "isPending stays true while the transition lane remains queued after a Normal interruption");
         }
 
+        // GREEN_ON_BASE(refactor): the arrangement flushes until only the transition lane is left, which is one
+        // flush on the base and the pending render's lanes more on the head; the flush it measures is the same.
         [Test]
         public void Given_NormalInterruptedTransition_When_TransitionLaneFlushed_Then_IsPendingClears()
         {
@@ -183,7 +196,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
             s_transitionStart.Invoke(() => s_transitionSetValue.Invoke(1));
             s_transitionSetValue.Invoke(2); // Normal-priority update interrupts the transition
-            mounted.FlushStateForTest(); // drains the Normal lane; transition lane remains
+            FlushUntilOnlyTheTransitionLaneIsLeft(mounted, s_transitionFiber);
             Assume.That(s_transitionLastIsPending, Is.True, "Precondition: the transition lane is still queued");
 
             // Act — the second flush drains the transition lane
@@ -194,6 +207,192 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region The render that shows isPending
+
+        [Test]
+        public void Given_AStartedTransition_When_OnlyTheImmediateTierDrains_Then_TheComponentRendersIsPendingTrue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            s_transitionStart.Invoke(() => s_transitionSetValue.Invoke(1));
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_transitionLastIsPending, Is.True,
+                "Calling the starter renders isPending ahead of the transition, as React's sync-lane update does");
+        }
+
+        [Test]
+        public void Given_AStartedTransition_When_OnlyTheImmediateTierDrains_Then_ThatRenderShowsTheStateFromBeforeTheWrite()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            s_transitionStart.Invoke(() => s_transitionSetValue.Invoke(1));
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the capture starts below zero, so a pass that never rendered the flag lit fails here too
+            Assert.That(s_transitionValueWhilePending, Is.EqualTo(0),
+                "The write stays on the Transition lane, so the render that shows isPending does not show it");
+        }
+
+        [Test]
+        public void Given_AnAsyncActionThatSuspendedBeforeWriting_When_OnlyTheImmediateTierDrains_Then_TheComponentRendersIsPendingTrue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () => await gate.Task;
+            s_transitionStarter.Invoke(asyncUpdates);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_transitionLastIsPending, Is.True,
+                "An action that has queued nothing yet is pending from its call to its completion");
+        }
+
+        [Test]
+        public void Given_AnAsyncActionThatReturnedACompletedTaskBesideAJoinedCallStillOpen_When_ItsCallReturns_Then_AnUrgentRenderIsOwed()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var gate = new VelvetTaskCompletionSource();
+
+            // Act — the outer action finishes at once, and the call it joined is the one holding the flag
+            s_transitionStarter.Invoke(async () =>
+            {
+                s_transitionStarter.Invoke(async () => await gate.Task);
+                await Task.CompletedTask;
+            });
+
+            // Assert
+            Assert.That(s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Urgent), Is.True,
+                "The flag is lit past the outer call's return, so the render that shows it is owed");
+        }
+
+        [Test]
+        public void Given_AnAsyncActionThatNeverSuspendedButWrote_When_ItsCallReturns_Then_AnUrgentRenderIsOwed()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            Func<VelvetTask> asyncUpdates = async () =>
+            {
+                await Task.CompletedTask;
+                s_transitionSetValue.Invoke(1);
+            };
+
+            // Act
+            s_transitionStarter.Invoke(asyncUpdates);
+
+            // Assert
+            Assert.That(s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Urgent), Is.True,
+                "An action whose write is still queued when it returns leaves isPending lit, so the render that shows it is owed");
+        }
+
+        // GREEN_ON_BASE(characterization): the base asks for no pending render of anything. What this pins is
+        // that the head's request does not outlive the slot the unmount released, which a remount of the fiber
+        // would otherwise find queued.
+        [Test]
+        public void Given_AnAsyncActionThatUnmountsItsComponentBeforeSuspending_When_ItHandsBackItsTask_Then_NoRenderIsAskedOfThatComponent()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+            var child = s_propSetterChildFiber;
+            var gate = new VelvetTaskCompletionSource();
+
+            // Act — the unmount releases the slot the call opened, and the action then suspends
+            s_propSetterChildStart.Invoke(async () =>
+            {
+                FiberRenderer.Unmount(child);
+                await gate.Task;
+            });
+
+            // Assert
+            Assert.That(child.LaneQueue.Contains(FiberUpdatePriority.Urgent), Is.False,
+                "A call whose slot was released asks no render of the component that went away");
+        }
+
+        // GREEN_ON_BASE(characterization): the base renders nothing for a callback that queued nothing. What
+        // this pins is that the pending render is not asked for a flag the callback has already put down.
+        [Test]
+        public void Given_ASynchronousCallbackThatQueuedNothing_When_ItReturns_Then_NoRenderIsOwed()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+
+            // Act
+            s_transitionStarter.Invoke(() => { });
+
+            // Assert
+            Assert.That(s_transitionFiber.IsDirty, Is.False,
+                "A callback that queued nothing has settled as it returned, and a render of it would show the flag down");
+        }
+
+        // GREEN_ON_BASE(characterization): as above, for a call that joins the transition another opened. What
+        // this pins is that the joined call asks for no render of its own while the outer call still owns the
+        // flag, which the outer call's exit then puts down.
+        [Test]
+        public void Given_ANestedCallThatQueuedNothing_When_TheOuterCallbackReturns_Then_NoRenderIsOwed()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+
+            // Act
+            s_transitionStarter.Invoke(() => s_transitionStarter.Invoke(() => { }));
+
+            // Assert
+            Assert.That(s_transitionFiber.IsDirty, Is.False,
+                "Only the call that opened the transition asks for the render that shows it pending");
+        }
+
+        [Test]
+        public void Given_AClickStartingATransition_When_TheHandlerReturns_Then_TheClicksFlushRendersIsPendingTrue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
+
+            // Act — the click's synchronous flush drains the immediate tier only
+            _root.Q<Button>("bump-deferred").SimulateClick();
+
+            // Assert
+            Assert.That(s_clickableLastIsPending, Is.True,
+                "A transition started in a discrete handler shows isPending in the handler's own commit");
+        }
+
+        [Test]
+        public void Given_AChildsTransitionOnTheParentsState_When_OnlyTheImmediateTierDrains_Then_TheChildRendersIsPendingTrue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+            s_propSetterChildStart.Invoke(() => s_propSetterChildSetCount.Invoke(1));
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_propSetterChildLastIsPending, Is.True,
+                "The component that declared the transition renders it pending whichever component the write lands on");
+        }
+
+        #endregion
+
+        // Each lane drains in a flush of its own, so how many flushes leave the transition's alone depends on what
+        // was queued ahead of it.
+        private static void FlushUntilOnlyTheTransitionLaneIsLeft(MountedTree mounted, ComponentFiber fiber)
+        {
+            for (var flushes = 0;
+                 flushes < 4 && fiber.LaneQueue.Count > 0 && fiber.LaneQueue.Min != FiberUpdatePriority.Transition;
+                 flushes++)
+            {
+                mounted.FlushStateForTest();
+            }
+        }
 
         #region Calling UseTransition outside Render
 
@@ -220,8 +419,10 @@ namespace Velvet.Tests
                     s_transitionStarter.Invoke(() => s_transitionSetValue.Invoke(5))));
         }
 
+        // GREEN_ON_BASE(refactor): one drain of both tiers stands where one flush of the lane stood, and the
+        // base commits the inner update by either.
         [Test]
-        public void Given_NestedStartTransition_When_Flushed_Then_InnerUpdateCommits()
+        public void Given_NestedStartTransition_When_Drained_Then_InnerUpdateCommits()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
@@ -229,11 +430,26 @@ namespace Velvet.Tests
                 s_transitionStarter.Invoke(() => s_transitionSetValue.Invoke(5)));
 
             // Act
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
-            Assert.That((s_transitionLastValue, s_transitionRenderCount), Is.EqualTo((5, 3)),
-                "The nested transition's update commits on flush, for the render count a single transition costs");
+            Assert.That(s_transitionLastValue, Is.EqualTo(5), "The nested transition's update commits on the drain");
+        }
+
+        [Test]
+        public void Given_NestedStartTransition_When_Drained_Then_ItCostsTheRendersOfASingleTransition()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            s_transitionStarter.Invoke(() =>
+                s_transitionStarter.Invoke(() => s_transitionSetValue.Invoke(5)));
+
+            // Act
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.That(s_transitionRenderCount, Is.EqualTo(4),
+                "The mount, the pending render, the content commit and the clear are all a nested call adds up to");
         }
 
         // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
@@ -348,13 +564,12 @@ namespace Velvet.Tests
             Assert.IsTrue(s_transitionFiber.IsTransitionPending, "isPending stays true while the async transition is awaiting");
         }
 
-        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
-        // under test arrives cannot tell the two apart. What the bound changes is the run where it
-        // does not: a hang becomes a failure naming the wait.
+        // GREEN_ON_BASE(refactor): the flush that follows the call drains the pending render the head asks for,
+        // and finds nothing on the base, which leaves the fiber clean for the flush the case measures either way.
         [Test]
         public void Given_AsyncStartTransitionAwaitingBeforeAnyUpdate_When_ACleanFiberFlushFires_Then_IsPendingStaysTrue()
         {
-            // Arrange — the action awaits BEFORE its first setState, so the fiber has no pending lane at
+            // Arrange — the action awaits BEFORE its first setState, so the fiber has no transition lane at
             // all while the transition is in flight.
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
             var gate = new VelvetTaskCompletionSource();
@@ -365,6 +580,7 @@ namespace Velvet.Tests
             };
             s_transitionStarter.Invoke(asyncUpdates);
             Assume.That(s_transitionFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
+            mounted.FlushStateForTest();
 
             // Act — a drain callback armed earlier can legitimately fire on this now-clean fiber (e.g.
             // the delayed-tier callback left over after a starvation promotion drained every lane); the
@@ -662,9 +878,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): an async action's isPending clears on completion either way.
-        // What this branch changed is how many lanes it leaves behind, so the case gained a second flush.
-        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
-        // naming it where that stops happening.
+        // The head leaves a lane more behind, the pending render's, so the case gained a third flush, which
+        // finds the fiber clean on the base. The wait it makes is bounded: same wait where the code under
+        // test arrives, a failure naming it where that stops happening.
         [Test]
         public void Given_AsyncStartTransition_When_TaskCompletesAndFlushes_Then_IsPendingClears()
         {
@@ -680,9 +896,11 @@ namespace Velvet.Tests
             s_transitionStarter.Invoke(asyncUpdates);
             var pendingWhileAwaiting = s_transitionFiber.IsTransitionPending;
 
-            // Act — complete the awaited task so the continuation runs, then drain both lanes the action left:
-            // the write before the await is the transition's, the one after it is a Normal update
+            // Act — complete the awaited task so the continuation runs, then drain the lanes the action left:
+            // the pending render the call asked for, the Normal update after the await, and the write before
+            // it, which is the transition's
             gate.TrySetResult();
+            mounted.FlushStateForTest();
             mounted.FlushStateForTest();
             mounted.FlushStateForTest();
 
@@ -727,6 +945,8 @@ namespace Velvet.Tests
                 "Both started slots report pending concurrently");
         }
 
+        // GREEN_ON_BASE(refactor): the arrangement flushes until only the transition lane is left, which is one
+        // flush on the base and the pending render's lanes more on the head; the flush it measures is the same.
         [Test]
         public void Given_TwoStartedTransitions_When_TransitionLaneFlushed_Then_BothSlotsClear()
         {
@@ -735,7 +955,7 @@ namespace Velvet.Tests
             s_twoStartA.Invoke(() => s_twoSetValue.Invoke(1));
             s_twoStartB.Invoke(() => s_twoSetValueB.Invoke(1));
             s_twoSetValue.Invoke(2); // Normal interrupt
-            mounted.FlushStateForTest(); // drains Normal; transition lane remains
+            FlushUntilOnlyTheTransitionLaneIsLeft(mounted, s_twoFiber);
             Assume.That((s_twoLastIsPendingA, s_twoLastIsPendingB), Is.EqualTo((true, true)),
                 "Precondition: both slots are pending while the transition lane is queued");
 
@@ -949,6 +1169,8 @@ namespace Velvet.Tests
                 "The indicator comes down on the commit that renders the transition's content");
         }
 
+        // GREEN_ON_BASE(refactor): the second flush drains the lane the pending render's flush leaves behind, and
+        // finds the child clean on the base.
         [Test]
         public void Given_AChildsTransitionOnTheParentsState_When_TheParentCommitsIt_Then_TheChildRendersPendingAndCleared()
         {
@@ -957,6 +1179,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
             s_propSetterChildStart.Invoke(() => s_propSetterChildSetCount.Invoke(1));
             s_propSetterChildSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_propSetterChildFiber);
             FiberWorkLoop.FlushState(s_propSetterChildFiber);
             var rendersBeforeTheCommit = s_propSetterChildRenderCount;
 
@@ -1163,15 +1386,17 @@ namespace Velvet.Tests
             protected override void ResetCore() => SetState(_ => new TransitionCountState(0));
         }
 
+        // GREEN_ON_BASE(refactor): the flush before the measurement renders the writer with the flag lit on the
+        // head, and finds it clean on the base, where the settle asks for the same one render.
         [Test]
-        public void Given_ATransitionWhoseDeclaringComponentNeverShowedPending_When_ItsDeferredWorkCommits_Then_ItStillCostsThatComponentARender()
+        public void Given_ATransitionWhoseWorkLandsOnAnotherComponent_When_ThatWorkCommits_Then_TheDeclaringComponentRendersOnceToClearItsIndicator()
         {
-            // Arrange — the writer's only render is the mount, with the flag down, so nothing it has on
-            // screen says pending: the render this act measures is one the exit's gate would have declined
+            // Arrange — the writer's pending render has shown the indicator before the reader's work commits
             using var store = new TransitionCountStore();
             s_storeStore = store;
             using var mounted = V.Mount(_root, V.Component(StoreTransitionParentRender, key: "store-transition"));
             s_storeWriterStart.Invoke(() => store.Set(1));
+            FiberWorkLoop.FlushState(s_storeWriterFiber);
             var writerRendersBefore = s_storeWriterRenderCount;
 
             // Act — the reader's commit settles the slot, and the render that settle asks for drains after it
@@ -1184,7 +1409,7 @@ namespace Velvet.Tests
                 (_root.Q<Label>("store-reader-out").text,
                  s_storeWriterRenderCount - writerRendersBefore),
                 Is.EqualTo(("1", 1)),
-                "The settle asks the declaring component for a render it never showed the indicator on");
+                "The settle asks the declaring component for the one render that takes the indicator down");
         }
 
         private static TransitionCountStore s_storeStore;
@@ -1359,62 +1584,196 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region A deferred value holding the same lane
+        #region A transition write queued under a subsuming pass
+
+        // The child queues a transition write of its own state, and the parent's write re-renders it inline with a new prop.
+        private MountedTree MountQueuedChild(bool parentWritesInTheTransition)
+        {
+            var mounted = V.Mount(_root, V.Component(QueueParentRender, key: "queue-parent"));
+            s_queueChildStart.Invoke(() =>
+            {
+                s_queueChildSetCount.Invoke(11);
+                if (parentWritesInTheTransition) s_queueParentSetTick.Invoke(1);
+            });
+            if (!parentWritesInTheTransition) s_queueParentSetTick.Invoke(1);
+            return mounted;
+        }
 
         [Test]
-        public void Given_ATransitionCommittedByASubsumingRender_When_ADeferredValueHoldsTheTransitionLane_Then_IsPendingClears()
+        public void Given_AChildsQueuedTransitionWrite_When_AParentsNormalPassSubsumesTheChild_Then_TheChildStillShowsTheStateBeforeTheWrite()
         {
-            // Arrange — the child holds both hooks, and its transition queues work the parent's next render
-            // commits along with the new prop
-            using var mounted = V.Mount(_root,
-                V.Component(DeferredTransitionParentRender, key: "deferred-transition-parent"));
-            s_deferredChildStart.Invoke(() => s_deferredChildSetCount.Invoke(1));
-            var pendingBeforeParentRender = s_deferredChildFiber.TransitionSlots[0].IsPending;
+            // Arrange
+            using var mounted = MountQueuedChild(parentWritesInTheTransition: false);
 
-            // Act — the parent's state change re-renders the child inline with the new prop; the child's body
-            // re-queues the transition lane for the deferred value while that render runs
+            // Act
+            FiberWorkLoop.FlushState(s_queueParentFiber);
+
+            // Assert
+            Assert.That(_root.Q<Label>("queue-child-out").text, Is.EqualTo("10:1"),
+                "A pass that does not render the Transition lane leaves the write queued, with the new prop rendered");
+        }
+
+        [Test]
+        public void Given_AChildsQueuedTransitionWrite_When_AParentsNormalPassSubsumesTheChild_Then_TheTransitionStaysPending()
+        {
+            // Arrange
+            using var mounted = MountQueuedChild(parentWritesInTheTransition: false);
+
+            // Act
+            FiberWorkLoop.FlushState(s_queueParentFiber);
+
+            // Assert
+            Assert.That(s_queueChildFiber.TransitionSlots[0].IsPending, Is.True,
+                "The write is still queued, so the transition it belongs to has not committed");
+        }
+
+        // GREEN_ON_BASE(characterization): the base wrote the state at the call, so its child's own flush showed the write too.
+        [Test]
+        public void Given_AChildsQueuedTransitionWrite_When_AParentsNormalPassSubsumedTheChild_Then_TheChildsOwnTransitionFlushCommitsTheWrite()
+        {
+            // Arrange
+            using var mounted = MountQueuedChild(parentWritesInTheTransition: false);
+            FiberWorkLoop.FlushState(s_queueParentFiber);
+
+            // Act
+            FiberWorkLoop.FlushState(s_queueChildFiber);
+
+            // Assert
+            Assert.That(_root.Q<Label>("queue-child-out").text, Is.EqualTo("11:1"),
+                "The subsuming pass kept the Transition lane for the render that applies the write");
+        }
+
+        // GREEN_ON_BASE(characterization): the base wrote the state at the call, so the subsuming pass already showed the write; a Transition-lane pass has to keep doing so.
+        [Test]
+        public void Given_AChildsQueuedTransitionWrite_When_AParentsTransitionPassSubsumesTheChild_Then_TheChildShowsTheWrite()
+        {
+            // Arrange
+            using var mounted = MountQueuedChild(parentWritesInTheTransition: true);
+
+            // Act
+            FiberWorkLoop.FlushState(s_queueParentFiber);
+
+            // Assert
+            Assert.That(_root.Q<Label>("queue-child-out").text, Is.EqualTo("11:1"),
+                "A Transition-lane pass that subsumes a child renders its queued write");
+        }
+
+        // GREEN_ON_BASE(characterization): the base discharged the child at any subsuming pass, and the Transition-lane one has to keep settling the transition.
+        [Test]
+        public void Given_AChildsQueuedTransitionWrite_When_AParentsTransitionPassSubsumesTheChild_Then_TheTransitionSettles()
+        {
+            // Arrange
+            using var mounted = MountQueuedChild(parentWritesInTheTransition: true);
+
+            // Act
+            FiberWorkLoop.FlushState(s_queueParentFiber);
+
+            // Assert
+            Assert.That(s_queueChildFiber.TransitionSlots[0].IsPending, Is.False,
+                "The pass that commits the write settles the transition");
+        }
+
+        private static StateUpdater<int> s_queueParentSetTick;
+        private static ComponentFiber s_queueParentFiber;
+        private static ComponentFiber s_queueChildFiber;
+        private static TransitionStarter s_queueChildStart;
+        private static StateUpdater<int> s_queueChildSetCount;
+
+        [Component]
+        private static VNode QueueParentRender()
+        {
+            s_queueParentFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_queueParentSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(QueueChildRender, tick, key: "queue-child"),
+            });
+        }
+
+        [Component]
+        private static VNode QueueChildRender(int tick)
+        {
+            s_queueChildFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(10);
+            var (_, start) = Hooks.UseTransition();
+            s_queueChildStart = start;
+            s_queueChildSetCount = setCount;
+            return V.Label(name: "queue-child-out", text: $"{count}:{tick}");
+        }
+
+        #endregion
+
+        #region A store write a transition queued, under a pass that renders a deferred value
+
+        // The write sits in a store rather than in a state slot, so a pass of the Normal lane renders it and settles
+        // the transition, while the reader's deferred value keeps the Transition lane queued.
+        // GREEN_ON_BASE(characterization): no state slot holds this write, so the base settled the transition the same way.
+        [Test]
+        public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassRendersTheReaderWhoseDeferredValueHoldsTheLane_Then_IsPendingClears()
+        {
+            // Arrange
+            using var store = new TransitionCountStore();
+            s_deferredStore = store;
+            using var mounted = V.Mount(_root, V.Component(DeferredStoreParentRender, key: "deferred-store-parent"));
+            s_deferredChildStart.Invoke(() => store.Set(1));
+            Assume.That(s_deferredChildFiber.TransitionSlots[0].IsPending, Is.True, "Precondition: the transition is pending");
             s_deferredParentSetQuery.Invoke("beta");
+
+            // Act
             FiberWorkLoop.FlushState(s_deferredParentFiber);
 
-            // Assert — four terms, because the pending flag being false proves nothing unless the transition
-            // was pending to begin with, its content is on screen, and the deferred value's lane is still there
-            Assert.That(
-                (pendingBeforeParentRender,
-                 _root.Q<Label>("deferred-transition-out").text,
-                 s_deferredChildFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
-                 s_deferredChildFiber.TransitionSlots[0].IsPending),
-                Is.EqualTo((true, "alpha:1", true, false)),
+            // Assert
+            Assert.That(s_deferredChildFiber.TransitionSlots[0].IsPending, Is.False,
                 "isPending belongs to the slot that queued the work, not to whoever holds the transition lane");
         }
 
+        // GREEN_ON_BASE(characterization): no state slot holds this write, so the base's deferred value asked for the lane again as well.
+        [Test]
+        public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassRendersTheReaderWhoseDeferredValueHoldsTheLane_Then_TheLaneStaysQueued()
+        {
+            // Arrange
+            using var store = new TransitionCountStore();
+            s_deferredStore = store;
+            using var mounted = V.Mount(_root, V.Component(DeferredStoreParentRender, key: "deferred-store-parent"));
+            s_deferredChildStart.Invoke(() => store.Set(1));
+            s_deferredParentSetQuery.Invoke("beta");
+
+            // Act
+            FiberWorkLoop.FlushState(s_deferredParentFiber);
+
+            // Assert
+            Assert.That(s_deferredChildFiber.LaneQueue.Contains(FiberUpdatePriority.Transition), Is.True,
+                "The deferred value asks for the Transition lane again, which is what the case above clears the flag despite");
+        }
+
+        private static TransitionCountStore s_deferredStore;
         private static StateUpdater<string> s_deferredParentSetQuery;
         private static ComponentFiber s_deferredParentFiber;
         private static ComponentFiber s_deferredChildFiber;
         private static TransitionStarter s_deferredChildStart;
-        private static StateUpdater<int> s_deferredChildSetCount;
 
         [Component]
-        private static VNode DeferredTransitionParentRender()
+        private static VNode DeferredStoreParentRender()
         {
             s_deferredParentFiber = FiberAmbientStack.Current;
             var (query, setQuery) = Hooks.UseState("alpha");
             s_deferredParentSetQuery = setQuery;
             return V.Div(children: new VNode[]
             {
-                V.Component(DeferredTransitionChildRender, query, key: "deferred-transition-child"),
+                V.Component(DeferredStoreChildRender, query, key: "deferred-store-child"),
             });
         }
 
         [Component]
-        private static VNode DeferredTransitionChildRender(string query)
+        private static VNode DeferredStoreChildRender(string query)
         {
             s_deferredChildFiber = FiberAmbientStack.Current;
-            var (count, setCount) = Hooks.UseState(0);
+            var count = Hooks.UseStore(s_deferredStore, state => state.Value);
             var (_, start) = Hooks.UseTransition();
             s_deferredChildStart = start;
-            s_deferredChildSetCount = setCount;
             var deferred = Hooks.UseDeferredValue(query);
-            return V.Label(name: "deferred-transition-out", text: $"{deferred}:{count}");
+            return V.Label(name: "deferred-store-out", text: $"{deferred}:{count}");
         }
 
         #endregion
@@ -1715,6 +2074,7 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_clickableSetValue;
         private static VelvetTaskCompletionSource s_clickableGate;
         private static int s_clickableRenderCount;
+        private static bool s_clickableLastIsPending;
 
         [Component]
         private static VNode ClickableTransitionRender()
@@ -1722,9 +2082,10 @@ namespace Velvet.Tests
             s_clickableRenderCount++;
             s_clickableFiber = FiberAmbientStack.Current;
             var (value, setValue) = Hooks.UseState(0);
-            var (_, start) = Hooks.UseTransition();
+            var (isPending, start) = Hooks.UseTransition();
             s_clickableStarter = start;
             s_clickableSetValue = setValue;
+            s_clickableLastIsPending = isPending;
             return V.Div(children: new VNode[]
             {
                 V.Button(name: "bump", onClick: () => setValue.Invoke(v => v + 1)),
@@ -1741,6 +2102,7 @@ namespace Velvet.Tests
         private static int s_transitionRenderCount;
         private static bool s_transitionLastIsPending;
         private static int s_transitionLastValue;
+        private static int s_transitionValueWhilePending;
         private static Action<int> s_transitionSetValue;
         private static Action<Action> s_transitionStart;
         private static TransitionStarter s_transitionStarter;
@@ -1751,6 +2113,7 @@ namespace Velvet.Tests
             s_transitionRenderCount = 0;
             s_transitionLastIsPending = false;
             s_transitionLastValue = 0;
+            s_transitionValueWhilePending = -1;
             s_transitionSetValue = null;
             s_transitionStart = null;
             s_transitionStarter = default;
@@ -1770,11 +2133,11 @@ namespace Velvet.Tests
             s_clickableSetValue = default;
             s_clickableGate = null;
             s_clickableRenderCount = 0;
+            s_clickableLastIsPending = false;
             s_deferredParentSetQuery = default;
             s_deferredParentFiber = null;
             s_deferredChildFiber = null;
             s_deferredChildStart = default;
-            s_deferredChildSetCount = default;
             s_propSetterParentFiber = null;
             s_propSetterChildFiber = null;
             s_propSetterChildStart = default;
@@ -1812,6 +2175,10 @@ namespace Velvet.Tests
             s_transitionStart = start;
             s_transitionStarter = start;
             s_transitionLastIsPending = isPending;
+            if (isPending && s_transitionValueWhilePending < 0)
+            {
+                s_transitionValueWhilePending = value;
+            }
             return V.Label();
         }
 

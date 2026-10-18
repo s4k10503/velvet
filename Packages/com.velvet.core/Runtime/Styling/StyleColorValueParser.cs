@@ -26,7 +26,7 @@ namespace Velvet
             // text-[...] is overloaded: a color value wins, otherwise it falls through to font-size.
             if (prefix == "text-")
             {
-                if (TryParseColor(valueSpan, out var textColor))
+                if (TryParseColor(valueSpan, true, out var textColor))
                 {
                     result = new ArbitraryStyle(ArbitraryProperty.TextColor, textColor);
                     return true;
@@ -37,7 +37,7 @@ namespace Velvet
             // bg-[...] is color-only here; a non-color value (e.g. bg-[addr:...]) rejects.
             if (prefix == "bg-")
             {
-                if (TryParseColor(valueSpan, out var bgColor))
+                if (TryParseColor(valueSpan, true, out var bgColor))
                 {
                     result = new ArbitraryStyle(ArbitraryProperty.BackgroundColor, bgColor);
                     return true;
@@ -63,8 +63,15 @@ namespace Velvet
         // Internal so the shadow, ring, divide, gradient and filter grammars share the one colour grammar, which
         // TryParseCssColor owns.
         internal static bool TryParseColor(ReadOnlySpan<char> valueStr, out Color color)
+            => TryParseColor(valueStr, false, out color);
+
+        // longhand is true for a caller whose CSS equivalent is a colour longhand Chromium's fast path reads
+        // (color, background-color, a border side's colour, outline-color, caret-color): only such a colour can
+        // have its hsl() saturation clamped, as IsPlainHsl describes. A shorthand, a shadow, a gradient, a filter
+        // and a colour mixed with an opacity modifier all read through Chromium's general parser.
+        internal static bool TryParseColor(ReadOnlySpan<char> valueStr, bool longhand, out Color color)
         {
-            if (TryParseCssColor(valueStr.ToString(), out var css))
+            if (TryParseCssColor(valueStr.ToString(), longhand, out var css))
             {
                 color = CssColorMath.ToDisplay(css);
                 return true;
@@ -76,7 +83,7 @@ namespace Velvet
         // Index of the color-opacity-modifier '/' — the first '/' at bracket depth 0 (i.e. not inside a
         // [...] arbitrary value), scanning from start. Returns -1 when there is no such separator, so an
         // in-bracket '/' (aspect-[4/3], bg-[rgb(1/2)]) is never mistaken for the modifier separator.
-        private static int ColorModifierSlashIndex(string s, int start)
+        internal static int ColorModifierSlashIndex(string s, int start)
         {
             var depth = 0;
             for (var i = start; i < s.Length; i++)
@@ -159,7 +166,8 @@ namespace Velvet
             {
                 return false;
             }
-            if (!TryParseColorValue(className, prefixLen, out var color))
+            // MUTANT_SURVIVES(unreachable, literal): the slash found above means TryParseColorValue never reaches the slashless branch that reads longhand.
+            if (!TryParseColorValue(className, prefixLen, false, out var color))
             {
                 return false;
             }
@@ -170,14 +178,14 @@ namespace Velvet
 
         // The value of a color utility from start to the end of token: a palette name or a bracketed color,
         // optionally followed by the opacity modifier, which scales the color's alpha.
-        internal static bool TryParseColorValue(string token, int start, out Color color)
+        internal static bool TryParseColorValue(string token, int start, bool longhand, out Color color)
         {
             // Split base from modifier on the '/' that lies OUTSIDE any [...] bracket, so a bracketed base
             // (bg-[#fff]/50), a bracketed alpha (bg-blue-500/[0.32]), or an in-bracket '/' all resolve right.
             var slash = ColorModifierSlashIndex(token, start);
             if (slash == -1)
             {
-                return VelvetPalette.TryResolveColorToken(token.Substring(start), out color);
+                return VelvetPalette.TryResolveColorToken(token.Substring(start), longhand, out color);
             }
 
             if (!VelvetPalette.TryResolveColorToken(token.Substring(start, slash - start), out color))
@@ -195,31 +203,6 @@ namespace Velvet
             }
 
             color.a *= alpha;
-            return true;
-        }
-
-        // A colour as a utility's suffix spells it: a palette name or a bracketed value, optionally followed by
-        // an opacity modifier, on the terms TryParseColorOpacityModifier reads the same pair.
-        internal static bool TryParseColorSuffix(string suffix, out Color color)
-        {
-            var slash = ColorModifierSlashIndex(suffix, 0);
-            // MUTANT_SURVIVES(equivalent, boundary): a slash at zero leaves an empty base below, which resolves to no colour, as the whole suffix does above.
-            if (slash < 0)
-            {
-                return VelvetPalette.TryResolveColorToken(suffix, out color);
-            }
-
-            if (!VelvetPalette.TryResolveColorToken(suffix.Substring(0, slash), out color))
-            {
-                return false;
-            }
-
-            if (!TryParseAlphaModifier(suffix.AsSpan(slash + 1), out var alpha))
-            {
-                return false;
-            }
-
-            color.a = alpha;
             return true;
         }
 
@@ -255,7 +238,7 @@ namespace Velvet
         // syntax or the space syntax with a '/' alpha, hwb(), transparent, and otherwise the #hex and names
         // ColorUtility parses. Underscores stand in for the spaces a class string cannot carry, as the shadow and
         // clip-path grammars read them.
-        private static bool TryParseCssColor(string value, out CssColor color)
+        private static bool TryParseCssColor(string value, bool longhand, out CssColor color)
         {
             color = default;
             var s = value.Replace('_', ' ').Trim();
@@ -273,20 +256,22 @@ namespace Velvet
                 return false;
             }
             var open = s.IndexOf('(');
-            var space = SpaceOf(s.Substring(0, open).ToLowerInvariant());
+            var name = s.Substring(0, open);
+            var space = SpaceOf(name.ToLowerInvariant());
             if (space == null)
             {
                 return false;
             }
             var body = s.Substring(open + 1, s.Length - open - 2).ToLowerInvariant();
+            var fastName = longhand && (name is "hsl" or "hsla");
             switch (space.Value)
             {
                 case CssColorSpace.Srgb:
                     return TryParseRgb(body, out color);
                 case CssColorSpace.Hsl:
-                    return TryParseHsl(body, out color);
+                    return TryParseHsl(body, fastName, out color);
                 default:
-                    return TryParseModern(body, space.Value, out color);
+                    return TryParseModern(body, space.Value, false, out color);
             }
         }
 
@@ -314,7 +299,8 @@ namespace Velvet
         {
             if (!body.Contains(','))
             {
-                return TryParseModern(body, CssColorSpace.Srgb, out color);
+                // MUTANT_SURVIVES(equivalent, literal): an rgb() channel is clamped to 1 at parse, so the saturation clamp IsPlainHsl gates leaves it as it is.
+                return TryParseModern(body, CssColorSpace.Srgb, false, out color);
             }
             color = new CssColor(CssColorSpace.Srgb, 0, 0, 0, 1);
             var parts = body.Split(',');
@@ -337,11 +323,11 @@ namespace Velvet
         }
 
         // The comma syntax takes a hue and two percentages, and no none.
-        private static bool TryParseHsl(string body, out CssColor color)
+        private static bool TryParseHsl(string body, bool fastName, out CssColor color)
         {
             if (!body.Contains(','))
             {
-                return TryParseModern(body, CssColorSpace.Hsl, out color);
+                return TryParseModern(body, CssColorSpace.Hsl, fastName, out color);
             }
             color = new CssColor(CssColorSpace.Hsl, 0, 0, 0, 1);
             var parts = body.Split(',');
@@ -358,7 +344,8 @@ namespace Velvet
             {
                 return false;
             }
-            color.C1 = Math.Max(color.C1, 0);
+            // Both of Chromium's parsers clamp a comma-syntax saturation at each end, whatever its spelling.
+            color.C1 = Math.Clamp(color.C1, 0, 100);
             return TryParseLegacyAlpha(parts, ref color);
         }
 
@@ -384,7 +371,7 @@ namespace Velvet
 
         // The space syntax: three components, each a number, a percentage or none (read as zero), then an
         // optional '/' alpha. The percentage reference and parse-time clamp are each space's CSS Color 4 table's.
-        private static bool TryParseModern(string body, CssColorSpace space, out CssColor color)
+        private static bool TryParseModern(string body, CssColorSpace space, bool fastName, out CssColor color)
         {
             color = new CssColor(space, 0, 0, 0, 1);
             if (!TrySplitModern(body, out var tokens, out var alphaToken))
@@ -407,16 +394,65 @@ namespace Velvet
                 }
                 color[i] = ClampAtParse(space, i, value);
             }
-            if (alphaToken == null)
+            if (alphaToken != null)
             {
-                return true;
+                if (!TryParseComponent(alphaToken, 1, out var alpha))
+                {
+                    return false;
+                }
+                color.Alpha = Math.Clamp(alpha, 0, 1);
             }
-            if (!TryParseComponent(alphaToken, 1, out var alpha))
+            if (fastName && IsPlainHsl(tokens, alphaToken, body))
             {
-                return false;
+                color.C1 = Math.Min(color.C1, 100);
             }
-            color.Alpha = Math.Clamp(alpha, 0, 1);
             return true;
+        }
+
+        // Chromium clamps a space-syntax saturation to 100% only on the fast path it reads a plain colour with: a
+        // decimal hue with an optional angle unit, two decimal percentages and a decimal alpha that nothing separates
+        // from the closing bracket, each without an exponent, a '+' or a none. A colour with any component spelled
+        // another way reaches its general parser, which leaves the saturation unclamped above. The caller adds the
+        // function's name and the property, which the fast path also keys on. Pinned by
+        // Given_AnHslSaturationAbove100_When_ParsedAsALonghand_Then_ItClampsWhereChromiumReadsItPlain
+        // and Given_AnHslSaturationAbove100_When_ChromiumDeclinesItsFastPath_Then_ItStaysUnclamped.
+        private static bool IsPlainHsl(string[] tokens, string? alpha, string body)
+        {
+            return IsPlainHue(tokens[0])
+                && IsPlainPercent(tokens[1])
+                && IsPlainPercent(tokens[2])
+                && (alpha == null || (IsPlainDecimal(alpha, true) && body.EndsWith(alpha, StringComparison.Ordinal)));
+        }
+
+        private static bool IsPlainHue(string token)
+        {
+            var end = token.Length;
+            for (; end > 0 && char.IsLetter(token[end - 1]); end--)
+            {
+            }
+            return IsPlainDecimal(token.Substring(0, end), true);
+        }
+
+        private static bool IsPlainPercent(string token)
+        {
+            return token.EndsWith("%", StringComparison.Ordinal)
+                && IsPlainDecimal(token.Substring(0, token.Length - 1), false);
+        }
+
+        // An optional '-', digits and an optional fraction; a number with no digits before its point is plain only
+        // where bareFraction allows it. The parser has read every component as a number or as none before this
+        // looks, so a point is always followed by digits.
+        private static bool IsPlainDecimal(string token, bool bareFraction)
+        {
+            var i = token.Length > 0 && token[0] == '-' ? 1 : 0;
+            var whole = SkipDigits(token, ref i);
+            var fraction = 0;
+            if (i < token.Length && token[i] == '.')
+            {
+                i++;
+                fraction = SkipDigits(token, ref i);
+            }
+            return i == token.Length && (whole > 0 || (bareFraction && fraction > 0));
         }
 
         private static double ClampAtParse(CssColorSpace space, int index, double value)
@@ -425,7 +461,8 @@ namespace Velvet
             {
                 return Math.Clamp(value / 255, 0, 1);
             }
-            return index == 1 && space == CssColorSpace.Hsl ? Math.Max(value, 0) : value;
+            // MUTANT_SURVIVES(equivalent): TryParseHue normalises the hue at index 0, so it is never below 0.
+            return index > 0 && space == CssColorSpace.Hsl ? Math.Max(value, 0) : value;
         }
 
         // Splits a space-syntax body into its three components and the alpha after a '/', which may sit with or
@@ -523,15 +560,13 @@ namespace Velvet
             {
                 return false;
             }
-            // A hue at or past double's largest, which an overflowing literal reads as, is 0deg, as Chromium reads it.
-            var hue = number * scale;
-            degrees = Math.Abs(hue) < double.MaxValue ? CssColorMath.NormalizeHue(hue) : 0;
+            degrees = CssColorMath.NormalizeHue(number * scale);
             return true;
         }
 
-        // A literal past double's range reads as double's largest of its sign, which a channel then clamps, as
-        // Chromium reads one: Mono's parser declines such a literal and .NET's returns an infinity, so neither
-        // result is kept.
+        // A literal past float's range reads as float's largest of its sign, as Chromium's tokenizer reads one,
+        // so a hue of 1e300 is the hue of 3.4028235e38 and every component clamps from the same end. A literal
+        // past double's range takes its sign from the token, whether the parser declines it or returns an infinity.
         private static bool TryParseNumber(string token, out double value)
         {
             value = 0;
@@ -539,14 +574,14 @@ namespace Velvet
             {
                 return false;
             }
-            // MUTANT_SURVIVES(unreachable): Mono's parser returns no infinity for a CSS <number> (measured on
-            // Mono 6.8), so on Mono only the decline reaches the largest. On .NET's own parser, which returns one,
-            // the hsl(90_1e999%_50%) row of Given_ALiteralPastDoublesRange_When_Parsed_Then_ItReadsAsChromiumReadsIt
-            // fails without the infinity clause.
-            if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out value) || double.IsInfinity(value))
+            var largest = (double)float.MaxValue;
+            if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+                || double.IsInfinity(parsed))
             {
-                value = token[0] == '-' ? -double.MaxValue : double.MaxValue;
+                value = token[0] == '-' ? -largest : largest;
+                return true;
             }
+            value = Math.Clamp(parsed, -largest, largest);
             return true;
         }
 

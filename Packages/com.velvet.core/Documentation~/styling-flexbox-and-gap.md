@@ -28,14 +28,14 @@ variant payload outranks the base utility on the properties they share, whatever
 declares them in; see
 [styling-variants.md](styling-variants.md#variants-and-the-uss-cascade) for the rule and its limits.
 
-Two family-specific facts survive that:
+Two family-specific facts apply on top of that:
 
-- **Two direction utilities at the same priority still tie**, and `_layout.uss` declares them
-  `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse`, so a literal
-  `"flex-col flex-row"` lays out as a row. Write one, or mark the winner important —
-  `"flex-row !flex-col"` lays out as a column. Neither Tailwind nor Velvet has a bracket form for the
-  direction: Tailwind's `flex-[…]` is the `flex` shorthand, so its `flex-[column]` writes a declaration
-  the browser drops, and Velvet's changes nothing either.
+- **Two direction utilities at the same priority are ordered as Tailwind emits them**, and `_layout.uss`
+  declares them `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse`, so
+  `"flex-col flex-row"` and `"flex-row flex-col"` both lay out as a row. Write one, or mark the winner
+  important — `"flex-row !flex-col"` lays out as a column. Neither Tailwind nor Velvet has a bracket form for the
+  direction: `flex-[…]` is the `flex` shorthand in both (see "Proportional splits" below), so
+  `flex-[column]` is a value the shorthand rejects and changes nothing.
 - **`.flex` and `.grid` set `flex-direction: row` alongside `display`**, so a direction utility never
   displaces them — it holds only part of what they write — and takes the direction from them by
   declaration order instead, both being declared before all four.
@@ -65,8 +65,9 @@ V.Div(className: "flex flex-row gap-x-4", children: ...);
 V.Div(className: "flex flex-col gap-4", children: ...);
 ```
 
-The numeric scale (`gap-0-5`, `gap-1`, `gap-1-5`, `gap-2`, … mapping to the `--space-*` tokens,
-1 unit = 4px) is Tailwind's; the classes are recognized in C#, not by USS selectors — see
+The numeric scale is the spacing scale of [styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps):
+`gap-0-5`, `gap-1`, `gap-1-5`, … and any other multiple of 0.25 such as `gap-13` or `gap-4.5`, 1 unit = 4px. The
+classes are recognized in C#, not by USS selectors — see
 `Runtime/Styling/StyleGapManipulator.cs` and `Runtime/Styling/StyleGapClass.cs`.
 
 Tailwind's `space-x-*` / `space-y-*` (and their negative forms, `-space-x-4`) take the same scale and the
@@ -263,7 +264,7 @@ changes which edges wrap spaces, only non-wrap's single leading/trailing edge ch
 Wrap is read from the same element the direction is (see "Which element the verdict is read from" above),
 and in the same shape, for the same staleness reason: an inline `flex-wrap` first, then the `flex-wrap` /
 `flex-nowrap` / `flex-wrap-reverse` class markers (by `_layout.uss` declaration order —
-`flex-wrap-reverse` beats `flex-nowrap` beats `flex-wrap` when more than one is present), then
+`flex-wrap-reverse` beats `flex-wrap` beats `flex-nowrap` when more than one is present), then
 `resolvedStyle.flexWrap` whenever none of those three is present. Unlike the direction scan there is no
 further "a direction class implies a default" tier: `flex` / `flex-row(-reverse)` / `flex-col(-reverse)`
 say nothing about `flex-wrap`, and since nearly every real container carries one, counting them as
@@ -323,7 +324,7 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   avoids it. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of padding
   on the parent, or wrap the grid, if the overlap matters.
 
-## Proportional splits: `grow-N` / `shrink-N`
+## Proportional splits: `grow-N` / `shrink-N` and `flex-N`
 
 `grow` / `shrink` set a factor of 1, `grow-0` / `shrink-0` a factor of 0, and `grow-<N>` / `shrink-<N>`
 any other whole number, as Tailwind's bare values do: a sidebar carrying `grow` beside a content pane
@@ -334,8 +335,23 @@ The value is a plain number. `grow-1.5`, `grow-02`, `grow-[50%]`, `grow-[2rem]` 
 recognized — a factor has no unit and no sign, the bare form is a whole number spelled as Tailwind
 spells it, and the percent form especially would otherwise read as a factor of fifty.
 
-`basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
-two divide what is left over after every sibling's basis is taken.
+The `flex` shorthand takes Tailwind v4's forms: `flex-<N>` is `flex: <N>` (grow N, shrink 1, basis 0%),
+`flex-<a>/<b>` is `flex: calc(<a>/<b> * 100%)` (grow and shrink 1, that percentage as the basis), and
+`flex-[…]` is `flex: …` with `_` for each space — `flex-[2_1_120px]`, `flex-[none]`, `flex-[1_1_0]`, with
+the keywords in any case and `unset` and `revert` reading as `initial`. A basis is `auto`, a unitless `0`
+after the factors, or any non-negative length `basis-[…]` takes, those the element measures (`2em`, `50vw`,
+`calc(50%+10px)`) included. `flex-1` (`flex: 1`, a 0% basis like every other `flex-<N>`), `flex-auto`, `flex-initial` and
+`flex-none` are USS classes.
+
+Tailwind declares `flex` before `flex-shrink`, `flex-grow` and `flex-basis`, so a longhand beside the
+shorthand takes its own part whichever is listed first, a class or a bracket value alike: `flex-2 shrink-0`
+grows at 2 and does not shrink, and `basis-4 flex-2` has a 16px basis. Two utilities of the shorthand's
+own family, a bundled class beside a `flex-<N>`, `flex-<a>/<b>` or `flex-[…]`, resolve as Tailwind orders
+their names, the later one winning: `flex-none flex-2` neither grows nor shrinks, and `flex-2 flex-1` grows
+at 2.
+
+`basis-[..]` and `w-[..]` are a different thing and do not substitute for the grow and shrink factors:
+they fix a size, where the factors divide what is left over after every sibling's basis is taken.
 
 ## A text item's margin, padding, wrapping and minimum size
 

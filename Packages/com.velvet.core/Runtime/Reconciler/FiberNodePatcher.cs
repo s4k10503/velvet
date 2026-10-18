@@ -375,6 +375,13 @@ namespace Velvet
             // three own the edge and must win, exactly as they already win over a child's own explicit margin
             // — running [&>*]: first makes it behave as if the child itself carried the wrapped class.
             ApplyChildVariantManipulator(element, newClassNames);
+            // A field's input box decides its bounds-spacers from the payloads routed to it, applied or not
+            // (WrapperInfrastructure.CarriesFilter), and a routed payload that is not applied re-syncs nothing.
+            if (!ReferenceEquals(oldClassNames, newClassNames) && StyleInputBoxSurface.IsControl(element)
+                && StyleInputBoxSurface.TryGetBox(element, out var box) && _ctx.VariantGateClasses.ContainsKey(box))
+            {
+                ReSyncVariantGatedPasses(box);
+            }
             ApplyLayoutManipulators(element, newClassNames);
             ApplyStructuralVariants(element);
             ApplyHasClassVariants(element);
@@ -641,10 +648,11 @@ namespace Velvet
             // Runtime variant swap: PatchBaseElement above already synced the class list to the final resting
             // state (appliedNew) via a plain, instant diff, less the inline-resolved tokens ResolveInlineHold
             // holds for the swap to write. When the effective label actually changed WHICH
-            // variant classes are applied AND a transition resolved for the destination pose, replay that same
-            // swap as a VISUAL tween on the scheduler instead — a transition should apply to every animate
-            // update, not just the first. No resolved transition keeps the plain, instant diff (Velvet applies
-            // no implicit default transition).
+            // variant classes are applied, replay that same swap on the scheduler on the destination pose's
+            // transition (ResolvePlayedSwap) — a transition should apply to every animate update, not just the
+            // first. V.Motion gives a Motion that declares none StyleTransition.Fade; a swap whose transition
+            // lands at once (StyleAnimationScheduler.LandsAtOnce), StyleTransitionConfig.None among them, plays
+            // nothing.
             // Gated off an element the scheduler already treats as EXITING (not off PresenceAnchorMotion
             // identity — that field is set for every current AnimatePresence child, including a plain
             // PERSISTING one this swap must still drive when its ambient label changes, e.g. a coordinator
@@ -747,7 +755,7 @@ namespace Velvet
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
                 ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Value4}|{style.PercentEdges}|{style.Color}|{style.Auto}"
-                    + $"|{(style.Custom == null && style.Expression == null ? string.Empty : rawCls)}"
+                    + $"|{(style.Custom == null && style.Expression == null && style.DropShadow == null ? string.Empty : rawCls)}"
                 : rawCls;
 
         private StyleTransitionConfig? ResolvePlayedSwap(VisualElement element, StyleTransitionConfig? swapTransition,
@@ -940,11 +948,15 @@ namespace Velvet
 
         // The base classes, then the variant's classes other than its inline-resolved ones, then the held
         // tokens: the variant tail stays last, where MotionVariantResolver.ResolveApplied puts it.
-        private static string[] ComposeWithHeldTokens(string[] baseClasses, string[] variantClasses,
+        //
+        // A base spacing token a pose or a held token overrides stays out, as it does in
+        // MotionVariantResolver.ResolveApplied, so a hold neither restores it under the held pose nor plays the
+        // swap from it. Every hold composes here, which is the one place that has to say so.
+        internal static string[] ComposeWithHeldTokens(string[] baseClasses, string[] variantClasses,
             string[] heldTokens)
         {
             var composed = new List<string>();
-            composed.AddRange(baseClasses);
+            composed.AddRange(StyleSpacingPrecedence.WithoutOverriddenBase(baseClasses, variantClasses, heldTokens));
             foreach (var cls in variantClasses)
             {
                 if (!TryGetInlineResolvedCore(cls, out _, out _))
@@ -1420,6 +1432,9 @@ namespace Velvet
             {
                 ReapplyOrderedInlineValues(element, oldClasses, newClasses);
             }
+            // Last: the readers of the live list (StyleClipPathClass.TryExtractLive, LiveClasses) end on the last
+            // token of a family, and a token added by this diff sits behind the ones already there.
+            StyleFamilyOrder.RestoreLiveOrder(element, newClasses);
             return true;
         }
 
@@ -1626,7 +1641,7 @@ namespace Velvet
                         removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                     }
 
-                    RemoveClass(element, cls);
+                    RemoveOutgoingClass(element, cls, newClasses);
                 }
             }
             foreach (var cls in newClasses)
@@ -1675,7 +1690,7 @@ namespace Velvet
                             removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                         }
 
-                        RemoveClass(element, cls);
+                        RemoveOutgoingClass(element, cls, newClasses);
                     }
                 }
                 foreach (var cls in newClasses)
@@ -1692,6 +1707,56 @@ namespace Velvet
                 _ctx.BufferPool.ReturnClassSet(oldSet);
                 _ctx.BufferPool.ReturnClassSet(newSet);
             }
+        }
+
+        // An inline-resolved class leaving while another class in the incoming list writes the same property
+        // (w-[300px] to w-[10px]) gives up its layer without the property being resolved. DiffClassList's
+        // reapply applies every incoming inline class afterwards, which resolves it. Pinned by
+        // ArbitraryWidthSwapTransitionTests.
+        private static void RemoveOutgoingClass(VisualElement element, string cls, string[] newClasses)
+        {
+            if (InlineWriteOf(cls) is { } outgoing)
+            {
+                if (WritesInlineProperty(newClasses, outgoing.Property))
+                {
+                    StyleArbitraryValueResolver.Withdraw(element, outgoing.Property, outgoing.Priority);
+                    return;
+                }
+            }
+            RemoveClass(element, cls);
+        }
+
+        private static bool WritesInlineProperty(string[] classes, ArbitraryProperty property)
+        {
+            foreach (var cls in classes)
+            {
+                if (InlineWriteOf(cls)?.Property == property)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The property and layer an inline-resolved class writes, or null for one that writes none or whose
+        // layers are not keyed by property (filter-[name:...]).
+        private static (ArbitraryProperty Property, long Priority)? InlineWriteOf(string raw)
+        {
+            if (!TryGetInlineResolvedCore(raw, out var core, out var important))
+            {
+                return null;
+            }
+            if (!StyleArbitraryValueResolver.TryParse(core, out var style))
+            {
+                return null;
+            }
+            if (style.Property == ArbitraryProperty.FilterCustom)
+            {
+                return null;
+            }
+            return (style.Property, important
+                ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                : StyleLayerPriority.Base);
         }
 
         // Token families a manipulator (or a side-table config pass) owns outright: none of them ever
@@ -2142,6 +2207,25 @@ namespace Velvet
                 => manipulator.UpdatePayloads(_responsive, _dark, _responsiveDeclarations, _darkDeclarations);
         }
 
+        private readonly struct ContainerVariantOp : IManipulatorOp<StyleContainerVariantManipulator>
+        {
+            private readonly ContainerBinding[] _bindings;
+
+            internal ContainerVariantOp(ContainerBinding[] bindings)
+            {
+                _bindings = bindings;
+            }
+
+            public Dictionary<VisualElement, StyleContainerVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.ContainerVariantManipulators;
+
+            public StyleContainerVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleContainerVariantManipulator(ctx, _bindings);
+
+            public void Update(StyleContainerVariantManipulator manipulator)
+                => manipulator.UpdateBindings(_bindings);
+        }
+
         private readonly struct RelationalVariantOp : IManipulatorOp<StyleRelationalVariantManipulator>
         {
             private readonly List<RelationalBindingConfig>? _configs;
@@ -2370,6 +2454,72 @@ namespace Velvet
                 new ConditionalVariantOp(responsive, dark, responsiveDeclarations, darkDecl));
         }
 
+        // Configures the element's StyleContainerVariantManipulator from the container query tokens
+        // (@md:/@max-lg:/@min-[475px]:/@md/main:) in classNames.
+        internal void ApplyContainerVariantManipulator(VisualElement element, string[] classNames)
+        {
+            var bindings = BuildContainerBindings(classNames);
+
+            Configure<ContainerVariantOp, StyleContainerVariantManipulator>(element, bindings.Length > 0,
+                new ContainerVariantOp(bindings));
+        }
+
+        // One binding per distinct prefix spelling, holding every payload written under it. Returns the shared
+        // empty array when no token is a container query.
+        private static ContainerBinding[] BuildContainerBindings(string[] classNames)
+        {
+            if (classNames == null || classNames.Length == 0)
+            {
+                return Array.Empty<ContainerBinding>();
+            }
+
+            Dictionary<string, (StyleContainerQuery Query, List<string> Payloads, List<int> Positions)>? bySpelling = null;
+            for (var i = 0; i < classNames.Length; i++)
+            {
+                if (!TryReadContainerToken(classNames[i], out var spelling, out var query, out var payload))
+                {
+                    continue;
+                }
+                bySpelling ??= new Dictionary<string, (StyleContainerQuery, List<string>, List<int>)>();
+                if (!bySpelling.TryGetValue(spelling, out var entry))
+                {
+                    entry = (query, new List<string>(), new List<int>());
+                    bySpelling[spelling] = entry;
+                }
+                entry.Payloads.Add(payload);
+                entry.Positions.Add(StyleRuleOrder.OrdinalOf(classNames, i));
+            }
+
+            if (bySpelling == null)
+            {
+                return Array.Empty<ContainerBinding>();
+            }
+
+            var bindings = new ContainerBinding[bySpelling.Count];
+            var next = 0;
+            foreach (var (spelling, entry) in bySpelling)
+            {
+                bindings[next++] = new ContainerBinding(spelling, entry.Query, entry.Payloads.ToArray(),
+                    entry.Positions.ToArray());
+            }
+            return bindings;
+        }
+
+        private static bool TryReadContainerToken(string token, out string spelling, out StyleContainerQuery query,
+            out string payload)
+        {
+            spelling = string.Empty;
+            query = default;
+            payload = string.Empty;
+            if (!StyleVariantClass.TryParse(token, out var kind, out var name, out var rest))
+            {
+                return false;
+            }
+            spelling = name ?? string.Empty;
+            payload = rest ?? string.Empty;
+            return kind == StyleVariantKind.Container && StyleContainerQuery.TryParse(spelling, out query);
+        }
+
         // Configures the element's StyleRelationalVariantManipulator from the group-*/peer- tokens (incl. the
         // named group-*/name · peer-*/name forms) in classNames.
         internal void ApplyRelationalVariantManipulator(VisualElement element, string[] classNames)
@@ -2453,14 +2603,15 @@ namespace Velvet
         private static string[] ToPayloadArray(List<string> payloads)
             => payloads?.ToArray() ?? Array.Empty<string>();
 
-        // Applies the three className-driven variant manipulators (pseudo-class hover:/focus:/
-        // active:, conditional dark:/sm:…, relational group-/peer-) in one
+        // Applies the className-driven variant manipulators (pseudo-class hover:/focus:/
+        // active:, conditional dark:/sm:…, container @md:…, relational group-/peer-) in one
         // call. The gap manipulator is deliberately excluded — it must run AFTER children are reconciled.
         internal void ApplyVariantManipulators(VisualElement element, string[] classNames)
         {
             RecordVariantGateSource(element, classNames);
             ApplyVariantManipulator(element, classNames);
             ApplyConditionalVariantManipulator(element, classNames);
+            ApplyContainerVariantManipulator(element, classNames);
             ApplyRelationalVariantManipulator(element, classNames);
             ApplyStructuralVariantConfig(element, classNames);
             ApplyHasVariantManipulator(element, classNames);

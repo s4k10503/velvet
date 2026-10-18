@@ -26,9 +26,11 @@ namespace Velvet.Tests
     /// on its first render, and refetches only once the result is as old as the stale time or the entry was
     /// invalidated. A result landing between a reader's render and its subscription re-renders it.</item>
     /// <item>An entry nothing reads is removed once it has gone unread for the longest garbage-collection time
-    /// a query asked for, by the next sweep — an invalidation or a subscription — unless a request of a function
-    /// taking no token is still in flight for it: then it stays, and readable, until a whole gcTime has passed since the request settled, a
-    /// gcTime of zero included. An entry something reads again, or still reads, is not removed, and a new entry for a key
+    /// a query asked for, by the sweep an invalidation or a subscription runs
+    /// (<c>QueryClientGcTimerTests</c> specifies the client's own removal between them), unless a request of a
+    /// function taking no token is still in flight for it: then it stays, and readable, until a whole gcTime has
+    /// passed since the request settled, a gcTime of zero included. An entry something reads again, or still
+    /// reads, is not removed, and a new entry for a key
     /// whose old entry was removed is not swept with it. An expired entry reads as absent before the sweep,
     /// and a reader mounting over it subscribes to a new entry, while one left by a reader in the commit that
     /// brings the next reader is handed over, whatever its gcTime — a keyed remount, and StrictMode's extra

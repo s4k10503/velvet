@@ -147,6 +147,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEmBasisInTheFlexShorthandUnderATwelvePixelFont_When_Settled_Then_ItIsTwentyFourPixelsTall()
+        {
+            // Act — the parent is a column, so the basis is the child's height; zero factors leave it there.
+            Mount("text-[12px] w-[300px] h-[200px]", "flex-[0_0_2em] w-[10px]");
+
+            // Assert
+            Assert.That(Child.layout.height, Is.EqualTo(24f).Within(0.01f));
+        }
+
+        [Test]
         public void Given_AnEmWidth_When_TheInheritedFontGrows_Then_ItIsRemeasured()
         {
             // Arrange
@@ -648,16 +658,12 @@ namespace Velvet.Tests
         }
 
         // The allocation case below asserts a count of zero, which an instrument stuck at zero also gives.
-        // GREEN_ON_BASE(characterization): the probe already counts this canary's allocation.
+        // GREEN_ON_BASE(refactor): the probe already counts a 16-byte array allocation on the base, which is all this case asserts.
         [Test]
         public void Given_ADelegateAllocatingAKnownArray_When_Probed_Then_TheProbeCountsIt()
         {
-            // Arrange
-            System.Action canary = () => System.GC.KeepAlive(new byte[16]);
-            canary();
-
             // Act
-            var blocks = GCAllocationProbe.MedianBlocksDuring(canary);
+            var blocks = GCAllocationCanary.BlocksForKnownArray();
 
             // Assert
             Assert.That(blocks, Is.GreaterThan(0));

@@ -44,6 +44,15 @@ namespace Velvet
             return false;
         }
 
+        internal static VisualElement? NearestHiddenAtOrAbove(VisualElement? element)
+        {
+            for (var ve = element; ve != null; ve = ve.parent)
+            {
+                if (IsHidden(ve)) return ve;
+            }
+            return null;
+        }
+
         internal static void Release(VisualElement element) => s_hidden.Remove(element);
     }
 }

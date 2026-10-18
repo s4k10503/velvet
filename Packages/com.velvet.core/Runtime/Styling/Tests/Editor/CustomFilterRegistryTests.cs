@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -23,12 +24,12 @@ namespace Velvet.Tests
     /// or re-slotting to the end.</item>
     /// <item>Custom filters participate in per-property layer priority like every other arbitrary value:
     /// a variant layer (hover:) over the same name wins while active and restores the base on clear.</item>
-    /// <item>An unregistered name, an argument that fails its declared slot's grammar, more arguments than
-    /// the declaration, or a malformed argument is not claimed (the token stays an inert class), and the
-    /// variant tokenizer never mistakes the colon inside the brackets for a variant separator.</item>
-    /// <item>Lifecycle: clearing an applied token still removes its layer after the name was unregistered
-    /// (the clear path resolves the name syntactically, not through the registry), and a definition
-    /// destroyed after registration is skipped at compose time instead of throwing.</item>
+    /// <item>An argument that fails its declared slot's grammar, more arguments than the declaration, or a
+    /// malformed argument leaves the token composing nothing, and the variant tokenizer never mistakes the
+    /// colon inside the brackets for a variant separator. A name no live definition answers —
+    /// never registered, unregistered, or destroyed — leaves the element drawing no filter at all.</item>
+    /// <item>Registering, re-registering or unregistering a name resolves every element carrying it again,
+    /// and clearing an applied token removes its layer whatever the registry holds.</item>
     /// <item>Registration validates its inputs: reserved built-in family names (case-insensitively), null
     /// definitions and malformed names are rejected with a warning; a duplicate registration warns and
     /// overwrites.</item>
@@ -48,7 +49,9 @@ namespace Velvet.Tests
         private readonly HashSet<string> _warnedNames =
             (HashSet<string>)typeof(StyleFilterValueParser).GetField("s_warnedUnregistered",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
+        private readonly System.Collections.IDictionary? _customFilterHosts = CustomFilterHosts();
         private Dictionary<string, FilterFunctionDefinition> _definitionsBefore = null!;
+        private List<System.Collections.DictionaryEntry> _customFilterHostsBefore = null!;
         private HashSet<string> _warnedBefore = null!;
 
         [SetUp]
@@ -56,6 +59,8 @@ namespace Velvet.Tests
         {
             _definitionsBefore = new Dictionary<string, FilterFunctionDefinition>(_definitions);
             _warnedBefore = new HashSet<string>(_warnedNames);
+            _customFilterHostsBefore = _customFilterHosts?.Cast<System.Collections.DictionaryEntry>().ToList()
+                ?? new List<System.Collections.DictionaryEntry>();
             _definitions.Clear();
             _warnedNames.Clear();
             try
@@ -101,6 +106,11 @@ namespace Velvet.Tests
                 foreach (var entry in _definitionsBefore) _definitions.Add(entry.Key, entry.Value);
                 _warnedNames.Clear();
                 _warnedNames.UnionWith(_warnedBefore);
+                if (_customFilterHosts != null)
+                {
+                    _customFilterHosts.Clear();
+                    foreach (var entry in _customFilterHostsBefore) _customFilterHosts[entry.Key] = entry.Value;
+                }
             }
         }
 
@@ -302,35 +312,41 @@ namespace Velvet.Tests
             Assert.That((fn.parameterCount, fn.GetParameter(1).floatValue), Is.EqualTo((2, 1f)));
         }
 
-        [Test]
-        public void Given_MoreArgumentsThanTheDeclaration_When_Parsed_Then_TheTokenIsNotClaimed()
+        // GREEN_ON_BASE(characterization): the base leaves each of these an inert class, which composes nothing
+        // either; the layer each now holds, kept for a later registration to read, has to compose nothing too.
+        [TestCase("filter-[dissolve:0.5:0.6]", TestName = "Given_MoreArgumentsThanTheDeclaration_When_Applied_Then_TheClassComposesNothing")]
+        [TestCase("filter-[glow:2]", TestName = "Given_AFloatArgumentForADeclaredColorSlot_When_Applied_Then_TheClassComposesNothing")]
+        [TestCase("filter-[dissolve:#ff0000]", TestName = "Given_AColorArgumentForADeclaredFloatSlot_When_Applied_Then_TheClassComposesNothing")]
+        [TestCase("filter-[dissolve:abc]", TestName = "Given_AMalformedArgument_When_Applied_Then_TheClassComposesNothing")]
+        public void Given_ArgumentsTheDeclarationRefuses_When_Applied_Then_TheClassComposesNothing(string token)
         {
-            // Act — dissolve declares a single slot; a second argument has no slot to land in.
-            var ok = StyleArbitraryValueResolver.TryParse("filter-[dissolve:0.5:0.6]", out _);
+            // Arrange — dissolve declares one float slot and glow a colour then a float.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(el, token, StyleLayerPriority.Base);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(el.style.filter.value?.Select(f => f.type), Is.EqualTo(new[] { FilterFunctionType.Blur }));
         }
 
-        [Test]
-        public void Given_AFloatArgumentForADeclaredColorSlot_When_Parsed_Then_TheTokenIsNotClaimed()
+        // GREEN_ON_BASE(characterization): the base left each of these an inert class beside the rest of the chain;
+        // a body that is CSS filter syntax rather than a name has to stay one, not read as a missing filter.
+        [TestCase("filter-[blur(4px)]", TestName = "Given_ACssFilterFunctionInTheBrackets_When_Applied_Then_TheRestOfTheChainStillDraws")]
+        [TestCase("filter-[url(#x)]", TestName = "Given_ACssUrlInTheBrackets_When_Applied_Then_TheRestOfTheChainStillDraws")]
+        [TestCase("filter-[none]", TestName = "Given_TheCssNoneKeywordInTheBrackets_When_Applied_Then_TheRestOfTheChainStillDraws")]
+        public void Given_ACssFilterBodyInTheBrackets_When_Applied_Then_TheRestOfTheChainStillDraws(string token)
         {
-            // Act — glow's first slot is a color; a bare number fails the slot's grammar rather than
-            // silently binding a float where the shader expects a color.
-            var ok = StyleArbitraryValueResolver.TryParse("filter-[glow:2]", out _);
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(el, token, StyleLayerPriority.Base);
 
             // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        [Test]
-        public void Given_AColorArgumentForADeclaredFloatSlot_When_Parsed_Then_TheTokenIsNotClaimed()
-        {
-            // Act — dissolve's only slot is a float; a color literal fails the slot's grammar.
-            var ok = StyleArbitraryValueResolver.TryParse("filter-[dissolve:#ff0000]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(el.style.filter.value?.Select(f => f.type), Is.EqualTo(new[] { FilterFunctionType.Blur }));
         }
 
         [Test]
@@ -387,23 +403,44 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnUnregisteredCustomFilterName_When_Parsed_Then_TheTokenIsNotClaimed()
+        public void Given_AnUnregisteredNameBesideABuiltIn_When_Applied_Then_NoFilterIsDrawn()
         {
-            // Act — an unknown name must fall through (an inert class), like any unrecognized bracket value.
-            var ok = StyleArbitraryValueResolver.TryParse("filter-[never-registered:1]", out _);
+            // Arrange — CSS ignores the whole chain when a url() names no filter.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[never-registered:1]", StyleLayerPriority.Base);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(el.style.filter.value?.Count ?? 0, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base already warns once per unregistered name.
         [Test]
-        public void Given_AMalformedArgument_When_Parsed_Then_TheTokenIsNotClaimed()
+        public void Given_AnUnregisteredCustomFilterNameParsedTwice_When_Parsed_Then_ItWarnsOnce()
         {
-            // Act — a registered name with an unparseable argument rejects rather than half-applying.
-            var ok = StyleArbitraryValueResolver.TryParse("filter-[dissolve:abc]", out _);
+            // Arrange
+            var warnings = 0;
+            void CountWarning(string message, string stack, LogType type)
+            {
+                if (type == LogType.Warning && message.Contains("[VelvetFilters] \"twice-unregistered\" is not registered")) warnings++;
+            }
+            Application.logMessageReceived += CountWarning;
+
+            // Act
+            try
+            {
+                StyleArbitraryValueResolver.TryParse("filter-[twice-unregistered:1]", out _);
+                StyleArbitraryValueResolver.TryParse("filter-[twice-unregistered:2]", out _);
+            }
+            finally
+            {
+                Application.logMessageReceived -= CountWarning;
+            }
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(warnings, Is.EqualTo(1));
         }
 
         // GREEN_ON_BASE(characterization): pins the engine cap the registry's four-parameter check exists for.
@@ -490,27 +527,25 @@ namespace Velvet.Tests
 
         #region Lifecycle
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Given_ANameUnregisteredAfterApply_When_ReorderedAndCleared_Then_TheFilterIsPreservedWithoutWarningUntilClear(bool reorder)
+        // The element holds a class naming a registration that is then dropped; reorder re-reconciles it with
+        // its classes in another order, which recomposes every filter the element carries.
+        private VisualElement ElementWhoseNameIsUnregistered(Reconciler reconciler, bool reorder, out int warnings)
         {
-            // Arrange — the clear must resolve the name syntactically: routing it through the registry
-            // would make an unregister-while-applied leave the layer composed forever (a ghost filter).
-            using var reconciler = new Reconciler();
+            // The name is struck from the warned set the unregister filled, so a replay that parsed the token
+            // again would warn.
             var root = new VisualElement();
-            var definition = CreateDefinition(new FilterParameter(0f));
-            RegisterForTestRun("ghost-x", definition);
+            RegisterForTestRun("ghost-x", CreateDefinition(new FilterParameter(0f)));
             var oldTree = new VNode[] { V.Div("filter-[ghost-x:0.5] p-[8px] pt-[2px]") };
             reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
             var el = root.ElementAt(0);
             VelvetFilters.Unregister("ghost-x");
-            var warnings = 0;
+            _warnedNames.Remove("ghost-x");
+            var seen = 0;
             void CountWarning(string message, string stack, LogType type)
             {
-                if (type == LogType.Warning && message.Contains("[VelvetFilters] \"ghost-x\" is not registered")) warnings++;
+                if (type == LogType.Warning && message.Contains("[VelvetFilters] \"ghost-x\" is not registered")) seen++;
             }
 
-            // Act — clear the token, then force a full recompose through an unrelated filter utility.
             Application.logMessageReceived += CountWarning;
             try
             {
@@ -524,46 +559,101 @@ namespace Velvet.Tests
             {
                 Application.logMessageReceived -= CountWarning;
             }
-            var retained = el.style.filter.value;
-            var filterKept = retained.Count == 1 && retained[0].customDefinition == definition;
-            var padding = el.style.paddingTop.value.value;
+            warnings = seen;
+            return el;
+        }
+
+        [Test]
+        public void Given_ANameUnregisteredAfterApply_When_TheClassesAreReordered_Then_NoFilterIsDrawn()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+
+            // Act
+            var el = ElementWhoseNameIsUnregistered(reconciler, reorder: true, out _);
+
+            // Assert
+            Assert.That(el.style.filter.value?.Count ?? 0, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base drops no chain, so the padding beside it applies there too.
+        // The drop this branch adds on an unregistered name has to leave the padding applying as well.
+        [Test]
+        public void Given_ANameUnregisteredAfterApply_When_TheClassesAreReordered_Then_TheOtherUtilitiesStillApply()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+
+            // Act — the dropped chain must not take the padding utilities with it.
+            var el = ElementWhoseNameIsUnregistered(reconciler, reorder: true, out _);
+
+            // Assert
+            Assert.That(el.style.paddingTop.value.value, Is.EqualTo(2f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base logs no unregistered-name warning on this replay either.
+        // The re-resolution this branch adds on unregister has to keep the replay silent.
+        [Test]
+        public void Given_ANameUnregisteredAfterApply_When_TheClassesAreReordered_Then_NothingWarns()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+
+            // Act
+            ElementWhoseNameIsUnregistered(reconciler, reorder: true, out var warnings);
+
+            // Assert
+            Assert.That(warnings, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base drops no chain, so a blur applied after the clear draws there.
+        // The drop this branch adds on an unregistered name has to end with the class that caused it.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_ANameUnregisteredAfterApply_When_ClearedAndABlurApplied_Then_OnlyTheBlurIsDrawn(bool reorder)
+        {
+            // Arrange — the clear has to remove the layer whatever the registry now holds under its name, or an
+            // unregister-while-applied leaves the chain dropped after the class is gone.
+            using var reconciler = new Reconciler();
+            var el = ElementWhoseNameIsUnregistered(reconciler, reorder, out _);
+
+            // Act
             StyleArbitraryValueResolver.ClearClassToken(el, "filter-[ghost-x:0.5]", StyleLayerPriority.Base);
             StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
 
-            // Assert — only the blur remains; the unregistered name's layer is gone.
-            var f = el.style.filter.value;
-            Assert.That((filterKept, padding, warnings, f.Count, f[0].type),
-                Is.EqualTo((true, reorder ? 8f : 2f, 0, 1, FilterFunctionType.Blur)));
+            // Assert
+            Assert.That(string.Join(",", el.style.filter.value?.Select(f => f.type) ?? Enumerable.Empty<FilterFunctionType>()),
+                Is.EqualTo("Blur"));
         }
 
-        // GREEN_ON_BASE(characterization): the base keyed the layer by rank alone, so its off-toggle matched; the
-        // case now passes a className position, which the key carries, so it pins that both toggles use it.
         [Test]
-        public void Given_ANameUnregisteredWhileAHoverLayerIsActive_When_TheHoverTogglesOff_Then_TheBaseArgumentsAreRestored()
+        public void Given_ANameUnregisteredWhileAHoverLayerIsActive_When_TheHoverTogglesOffAndTheNameReturns_Then_TheBaseArgumentsCompose()
         {
-            // Arrange — the variant off-toggle re-resolves its payload; that resolution must not depend on
-            // the registry still knowing the name, or the hover layer survives the toggle.
+            // Arrange — the off-toggle has to remove the hover layer while the name resolves to nothing, or the
+            // hover arguments come back with the registration.
             var el = new VisualElement();
             StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[dissolve:0.3]", StyleLayerPriority.Base);
             StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.9]" }, on: true, StyleLayerPriority.Hover,
                 declarations: new[] { 1 });
-            Assume.That(el.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(0.9f),
-                "Precondition: the hover layer overrides the base while active");
             VelvetFilters.Unregister("dissolve");
-
-            // Act — at a className position, as every production caller passes, so the key carries it.
             StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.9]" }, on: false, StyleLayerPriority.Hover,
                 declarations: new[] { 1 });
 
+            var returning = CreateDefinition(new FilterParameter(0f));
+
+            // Act — under another definition, so only a layer read again on its return can compose it.
+            VelvetFilters.Register("dissolve", returning);
+
             // Assert
-            Assert.That(el.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(0.3f));
+            var f = el.style.filter.value;
+            Assert.That(f?.Count == 1 && f[0].customDefinition == returning ? f[0].GetParameter(0).floatValue : float.NaN,
+                Is.EqualTo(0.3f));
         }
 
         [Test]
-        public void Given_ADefinitionDestroyedAfterApply_When_TheFilterRecomposes_Then_TheDeadFunctionIsSkipped()
+        public void Given_ADefinitionDestroyedAfterApply_When_TheFilterRecomposes_Then_NoFilterIsDrawn()
         {
-            // Arrange — a destroyed definition compares equal to null (a dead asset), and the engine's
-            // FilterFunction constructor throws on it; the compose must skip the dead layer instead.
+            // Arrange — a destroyed definition compares equal to null, so the layer names no live filter.
             var el = new VisualElement();
             var doomed = CreateDefinition(new FilterParameter(0f));
             RegisterForTestRun("doomed-x", doomed);
@@ -573,9 +663,271 @@ namespace Velvet.Tests
             // Act — an unrelated filter change forces the recompose that reads the cached layer.
             StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
 
-            // Assert — the recompose survives and carries only the live function.
+            // Assert
+            Assert.That(el.style.filter.value?.Count ?? 0, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never claimed the refused hover token, so the base layer drew
+        // on; the refused layer this branch keeps has to leave it drawing too.
+        [Test]
+        public void Given_ARefusedHoverLayerOverAResolvedBase_When_Composed_Then_TheBaseStillDraws()
+        {
+            // Arrange — CSS drops an invalid declaration at parse time, so the rule under it applies.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[dissolve:0.3]", StyleLayerPriority.Base);
+
+            // Act
+            StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.5:0.6]" }, on: true, StyleLayerPriority.Hover,
+                declarations: new[] { 1 });
+
+            // Assert
             var f = el.style.filter.value;
-            Assert.That((f.Count, f[0].type), Is.EqualTo((1, FilterFunctionType.Blur)));
+            Assert.That(f?.Count == 1 ? f[0].GetParameter(0).floatValue : float.NaN, Is.EqualTo(0.3f));
+        }
+
+        #endregion
+
+        #region Registration reaching mounted elements
+
+        [Test]
+        public void Given_AClassAppliedBeforeItsNameWasRegistered_When_Registered_Then_ItResolvesWithItsArguments()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[late-x:0.6]", StyleLayerPriority.Base);
+
+            // Act
+            RegisterForTestRun("late-x", _fadeDef);
+
+            // Assert
+            var f = el.style.filter.value;
+            Assert.That(f?.Count == 1 ? f[0].GetParameter(0).floatValue : float.NaN, Is.EqualTo(0.6f));
+        }
+
+        [Test]
+        public void Given_TwoNamesAppliedBeforeRegistration_When_RegisteredInTheOtherOrder_Then_TheyComposeInTheOrderApplied()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[late-first:1]", StyleLayerPriority.Base);
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[late-second:1]", StyleLayerPriority.Base);
+
+            // Act
+            RegisterForTestRun("late-second", _waveDef);
+            RegisterForTestRun("late-first", _fadeDef);
+
+            // Assert
+            Assert.That(el.style.filter.value?.Select(f => f.customDefinition), Is.EqualTo(new[] { _fadeDef, _waveDef }));
+        }
+
+        [Test]
+        public void Given_AResolvedName_When_Unregistered_Then_NoFilterIsDrawn()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade:1]", StyleLayerPriority.Base);
+
+            // Act
+            VelvetFilters.Unregister("fade");
+
+            // Assert
+            Assert.That(el.style.filter.value?.Count ?? 0, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AResolvedName_When_RegisteredAgainUnderAnotherDefinition_Then_TheElementComposesTheNewOne()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade:1]", StyleLayerPriority.Base);
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*already registered"));
+
+            // Act
+            VelvetFilters.Register("fade", _waveDef);
+
+            // Assert
+            Assert.That(el.style.filter.value?.Single().customDefinition, Is.EqualTo(_waveDef));
+        }
+
+        [Test]
+        public void Given_ANameRegisteredAgainUnderADefinitionRefusingItsArguments_When_Recomposed_Then_TheBuiltInsAloneCompose()
+        {
+            // Arrange — glow takes a colour then a float, and dissolve one float, so the arguments no longer fit.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[glow:#ff0000:2]", StyleLayerPriority.Base);
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*already registered"));
+
+            // Act
+            VelvetFilters.Register("glow", _dissolveDef);
+
+            // Assert
+            Assert.That(el.style.filter.value?.Select(f => f.type), Is.EqualTo(new[] { FilterFunctionType.Blur }));
+        }
+
+        [Test]
+        public void Given_ARefusedClass_When_ADefinitionAcceptingItsArgumentsIsRegistered_Then_ItResolvesAgain()
+        {
+            // Arrange — the class keeps the arguments a refusing registration could not read.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[glow:#ff0000:2]", StyleLayerPriority.Base);
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*already registered"));
+            VelvetFilters.Register("glow", _dissolveDef);
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*already registered"));
+            var accepting = CreateDefinition(new FilterParameter(Color.white), new FilterParameter(1f));
+
+            // Act — a definition the class never resolved against, so only reading the class again composes it.
+            VelvetFilters.Register("glow", accepting);
+
+            // Assert
+            var f = el.style.filter.value;
+            Assert.That(f?.Count == 1 && f[0].customDefinition == accepting ? f[0].GetParameter(1).floatValue : float.NaN,
+                Is.EqualTo(2f));
+        }
+
+        // Null rather than a throw where the resolver keeps no host list, as a tree from before it does: the
+        // fixture's construction reaches this, so a throw there fails every case before its body runs, where
+        // HostsListedFor's -1 lets the cases reading the list disagree.
+        private static System.Collections.IDictionary? CustomFilterHosts() =>
+            typeof(StyleArbitraryValueResolver).GetField("s_customFilterHosts",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)?.GetValue(null)
+                as System.Collections.IDictionary;
+
+        // The elements the registry would re-resolve for a name, or -1 where it keeps no such list.
+        private static int HostsListedFor(string name)
+        {
+            var hosts = CustomFilterHosts();
+            if (hosts == null || !hosts.Contains(name))
+            {
+                return hosts == null ? -1 : 0;
+            }
+            var entry = hosts[name]!;
+            var list = entry.GetType().GetField("Item1")?.GetValue(entry) as System.Collections.IList;
+            return list?.Count ?? -1;
+        }
+
+        [Test]
+        public void Given_AnElementClearedForReuseAndStyledAgain_When_ItsNameIsRead_Then_ItIsListedOnce()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade-reuse:1]", StyleLayerPriority.Base);
+            StyleArbitraryValueResolver.ClearAll(el);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade-reuse:1]", StyleLayerPriority.Base);
+
+            // Assert
+            Assert.That(HostsListedFor("fade-reuse"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AnElementCleared_When_ItsNameIsRead_Then_ItIsNoLongerListed()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade-cleared:1]", StyleLayerPriority.Base);
+
+            // Act
+            StyleArbitraryValueResolver.ClearAll(el);
+
+            // Assert
+            Assert.That(HostsListedFor("fade-cleared"), Is.EqualTo(0));
+        }
+
+        // Styles elements nothing keeps, so a collection can take them while their name still lists them. A method
+        // of its own so that no frame of the caller's holds one.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static void StyleCollectible(string name, int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), $"filter-[{name}:1]", StyleLayerPriority.Base);
+            }
+        }
+
+        private static List<VisualElement> StyleHeld(string name, int count)
+        {
+            var held = new List<VisualElement>();
+            for (var i = 0; i < count; i++)
+            {
+                held.Add(new VisualElement());
+                StyleArbitraryValueResolver.ApplyClassToken(held[i], $"filter-[{name}:1]", StyleLayerPriority.Base);
+            }
+            return held;
+        }
+
+        private static void Collect()
+        {
+            System.GC.Collect();
+            System.GC.WaitForPendingFinalizers();
+            System.GC.Collect();
+        }
+
+        [Test]
+        public void Given_SixteenCollectedHostsUnderANameNeverPruned_When_AnotherElementTakesIt_Then_TheCollectedAreDropped()
+        {
+            // Arrange — sixteen is the size at which a name that has never been pruned prunes on its next add.
+            RegisterForTestRun("prune-add", _fadeDef);
+            StyleCollectible("prune-add", 16);
+            Collect();
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), "filter-[prune-add:1]", StyleLayerPriority.Base);
+
+            // Assert — the range leaves the collector free to keep some, so long as it took one.
+            Assert.That(HostsListedFor("prune-add"), Is.InRange(1, 16));
+        }
+
+        [Test]
+        public void Given_ANamePrunedWithSixteenLiveHosts_When_TenMoreAreCollectedBeforeItDoubles_Then_TheyStayListed()
+        {
+            // Arrange — the seventeenth add prunes and finds all sixteen live, so the next prune waits for thirty-two.
+            RegisterForTestRun("prune-doubling", _fadeDef);
+            var held = StyleHeld("prune-doubling", 17);
+            StyleCollectible("prune-doubling", 10);
+            Collect();
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), "filter-[prune-doubling:1]", StyleLayerPriority.Base);
+            System.GC.KeepAlive(held);
+
+            // Assert
+            Assert.That(HostsListedFor("prune-doubling"), Is.EqualTo(28));
+        }
+
+        [Test]
+        public void Given_CollectedHostsUnderAName_When_ItIsRegistered_Then_TheCollectedAreDropped()
+        {
+            // Arrange — twelve stay under the sixteen at which an add would prune them first.
+            StyleCollectible("prune-reresolve", 12);
+            var held = StyleHeld("prune-reresolve", 1);
+            Collect();
+
+            // Act
+            RegisterForTestRun("prune-reresolve", _fadeDef);
+            System.GC.KeepAlive(held);
+
+            // Assert — the range leaves the collector free to keep some, so long as it took one.
+            Assert.That(HostsListedFor("prune-reresolve"), Is.InRange(1, 12));
+        }
+
+        [Test]
+        public void Given_ANameRegisteredOverNineLiveHosts_When_SevenMoreAreCollectedBeforeItDoubles_Then_TheyStayListed()
+        {
+            // Arrange — the registration records nine, so the next prune waits for eighteen rather than sixteen.
+            var held = StyleHeld("prune-registered", 9);
+            RegisterForTestRun("prune-registered", _fadeDef);
+            StyleCollectible("prune-registered", 7);
+            Collect();
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), "filter-[prune-registered:1]", StyleLayerPriority.Base);
+            System.GC.KeepAlive(held);
+
+            // Assert
+            Assert.That(HostsListedFor("prune-registered"), Is.EqualTo(17));
         }
 
         #endregion
@@ -600,6 +952,8 @@ namespace Velvet.Tests
             Assert.That(el.style.filter.value[0].customDefinition, Is.EqualTo(second));
         }
 
+        // GREEN_ON_BASE(characterization): the base refuses the registration too. A name nothing is registered
+        // under now parses, as a reference to a missing filter, so the registry is asked rather than the parse.
         [Test]
         public void Given_AReservedBuiltInName_When_Registered_Then_TheRegistrationIsRejected()
         {
@@ -609,8 +963,22 @@ namespace Velvet.Tests
             // Act
             VelvetFilters.Register("blur", CreateDefinition());
 
-            // Assert — the reserved name never resolves as a custom filter.
-            Assert.That(StyleArbitraryValueResolver.TryParse("filter-[blur:1]", out _), Is.False);
+            // Assert
+            Assert.That(VelvetFilters.TryGet("blur", out _), Is.False);
+        }
+
+        [Test]
+        public void Given_TheDropShadowFamilyName_When_Registered_Then_TheRegistrationIsRejected()
+        {
+            // Arrange — the teardown unregisters the name should the registration be accepted.
+            _registered.Add("drop-shadow");
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*reserved"));
+
+            // Act
+            VelvetFilters.Register("drop-shadow", CreateDefinition());
+
+            // Assert
+            Assert.That(VelvetFilters.TryGet("drop-shadow", out _), Is.False);
         }
 
         [Test]
@@ -654,6 +1022,21 @@ namespace Velvet.Tests
             Assert.That(VelvetFilters.Unregister("bad:name"), Is.False);
         }
 
+        [TestCase("blur(4px)", TestName = "Given_ANameHoldingParentheses_When_Registered_Then_TheRegistrationIsRejected")]
+        [TestCase("none", TestName = "Given_TheCssNoneKeyword_When_Registered_Then_TheRegistrationIsRejected")]
+        [TestCase("None", TestName = "Given_TheCssNoneKeywordInAnotherCase_When_Registered_Then_TheRegistrationIsRejected")]
+        public void Given_ANameTheBracketsReadAsCss_When_Registered_Then_TheRegistrationIsRejected(string name)
+        {
+            // Arrange — a filter-[...] body of this shape is CSS syntax, so a registration under it could never be reached.
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*must be non-empty"));
+
+            // Act
+            VelvetFilters.Register(name, CreateDefinition());
+
+            // Assert
+            Assert.That(VelvetFilters.Unregister(name), Is.False);
+        }
+
         [Test]
         public void Given_AReservedNameInUppercase_When_Registered_Then_TheWarningNamesTheCanonicalFamily()
         {
@@ -682,6 +1065,21 @@ namespace Velvet.Tests
 
             // Assert — the registration is intact after the silent no-op.
             Assert.That(VelvetFilters.Unregister("pulse"), Is.True);
+        }
+
+        [Test]
+        public void Given_AnElementCarryingARegisteredName_When_TheSubsystemResetRuns_Then_NoHostIsListedUnderIt()
+        {
+            // Arrange — TearDown puts the process-wide hosts back.
+            StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), "filter-[dissolve:0.4]", StyleLayerPriority.Base);
+            var reset = typeof(StyleArbitraryValueResolver).GetMethod("ResetCustomFilterHosts",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+
+            // Act
+            reset?.Invoke(null, null);
+
+            // Assert
+            Assert.That(HostsListedFor("dissolve"), Is.Zero);
         }
 
         #endregion

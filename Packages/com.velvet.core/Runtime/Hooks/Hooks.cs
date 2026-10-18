@@ -66,8 +66,8 @@ namespace Velvet
         /// - <c>value</c>: current value
         /// - <c>setValue</c>: <see cref="StateUpdater{T}"/>, reference-stable across renders — call
         ///   <c>setValue.Invoke(next)</c> to replace the value, or <c>setValue.Invoke(prev =&gt; next)</c> for the
-        ///   functional updater (reads the latest committed value, safe to invoke from a closure captured by an
-        ///   earlier render).
+        ///   functional updater (receives the state the updates written before it produce, safe to invoke from a
+        ///   closure captured by an earlier render).
         /// </returns>
         public static (T value, StateUpdater<T> setValue) UseState<T>(T initial)
             => UseStateInternalCore(default, initial, "UseState");
@@ -103,9 +103,9 @@ namespace Velvet
             if (index >= fiber.StateSlots.Count)
             {
                 var seed = initialFactory != null ? initialFactory() : initial;
-                var slot = new HookStateSlot<T> { Value = seed };
-                var setValue = HookSetterFactory.CreateStateSetter(slot, () => fiber.IsDisposed, () => RequestRender(fiber));
-                slot.Setter = new StateUpdater<T>(setValue, CreateUpdater(slot, fiber));
+                var slot = new HookStateSlot<T>(seed);
+                slot.Setter = new StateUpdater<T>(
+                    HookSetterFactory.CreateStateSetter(slot, fiber), HookSetterFactory.CreateStateUpdater(slot, fiber));
                 fiber.StateSlots.Add(slot);
                 return (slot.Value, slot.Setter);
             }
@@ -115,22 +115,7 @@ namespace Velvet
                 throw HookSlotTypeMismatch(fiber, hookName, fiber.StateSlots[index].GetType(), typeof(T).Name, index);
             }
 
-            return (typed.Value, typed.Setter);
-        }
-
-        private static Action<Func<T, T>> CreateUpdater<T>(HookStateSlot<T> slot, ComponentFiber fiber)
-        {
-            // The functional updater always reads the latest value via the updater function so it can be
-            // safely invoked inside a closure.
-            return updater =>
-            {
-                if (fiber.IsDisposed) return;
-                if (updater == null) throw new ArgumentNullException(nameof(updater));
-                var next = updater(slot.Value);
-                if (ObjectIs.AreEqual(slot.Value, next)) return;
-                slot.Value = next;
-                RequestRender(fiber);
-            };
+            return (typed.Process(fiber, FiberWorkLoop.RenderLane), typed.Setter);
         }
 
         #endregion
@@ -790,26 +775,30 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Returns a navigate function that pushes (or, when <paramref name="replace"/> is true, replaces)
-        /// the given target path. The target may be
+        /// Returns React Router's <c>navigate</c>: <c>navigate(to, options)</c> pushes (or, with
+        /// <see cref="NavigateOptions.Replace"/>, replaces) the target path, and <c>navigate(delta)</c> moves
+        /// along the history stack. The target may be
         /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>). Relative targets
         /// resolve from the calling component's enclosing Outlet route level. Without one, the router uses
         /// the current leaf route level when matches exist; otherwise it uses the current URL path, or the
-        /// root before the first location. Navigation is driven by the router <c>V.RouterProvider</c>
+        /// root before the first location. <see cref="NavigateOptions.Relative"/> set to
+        /// <see cref="RelativeRoutingType.Path"/> drops URL segments of that route's pathname instead of whole
+        /// routes. Navigation is driven by the router <c>V.RouterProvider</c>
         /// publishes above the caller.
         /// </summary>
-        /// <returns>A stable delegate <c>navigate(to)</c>; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
+        /// <returns>A stable delegate; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
         /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
         /// caller.</exception>
-        public static Func<string, VelvetTask<NavigationResult>> UseNavigate(bool replace = false)
+        public static NavigateFunction UseNavigate()
         {
             _ = Resolve("UseNavigate");
             var router = UseRouterOrThrow("UseNavigate");
-            var mode = replace ? NavigationMode.Replace : NavigationMode.Push;
             var baseRouteIndex = UseBaseRouteIndex();
-            return UseCallback<Func<string, VelvetTask<NavigationResult>>>(
-                to => router.NavigateAsync(to, mode, baseRouteIndex),
-                router, mode, baseRouteIndex);
+            return UseCallback<NavigateFunction>(
+                (to, options) => to.IsDelta
+                    ? router.NavigateAsync(to.Delta)
+                    : router.NavigateAsync(to.To!, options, baseRouteIndex),
+                router, baseRouteIndex);
         }
 
         // Called by the hooks whose React Router counterparts refuse to run outside a router. UseParams,
@@ -1858,12 +1847,8 @@ namespace Velvet
         private static (TState state, Action<TAction> dispatch) CreateReducerSlot<TState, TAction>(
             ComponentFiber fiber, TState initial, Func<TState, TAction, TState> reducer)
         {
-            var slot = new ReducerSlot<TState, TAction>
-            {
-                Value = initial,
-                Reducer = reducer,
-            };
-            slot.Dispatch = HookSetterFactory.CreateReducerDispatch(slot, () => fiber.IsDisposed, () => RequestRender(fiber));
+            var slot = new ReducerSlot<TState, TAction>(initial, reducer);
+            slot.Dispatch = HookSetterFactory.CreateReducerDispatch(slot, fiber);
             fiber.StateSlots!.Add(slot);
             return (slot.Value, slot.Dispatch);
         }
@@ -1878,7 +1863,7 @@ namespace Velvet
             }
 
             typed.Reducer = reducer;
-            return (typed.Value, typed.Dispatch);
+            return (typed.Process(fiber, FiberWorkLoop.RenderLane), typed.Dispatch);
         }
 
         #endregion
@@ -2151,7 +2136,8 @@ namespace Velvet
         /// 2-tuple in the order (<c>isPending</c>, <c>startTransition</c>):
         /// - <c>isPending</c>: true while an update this starter's callback scheduled is queued or being
         ///   committed — through the terminal reconcile slice, wherever the state it wrote lives — and across
-        ///   an async transition's awaits.
+        ///   an async transition's awaits. The component renders it true on the Urgent lane as soon as the
+        ///   call returns with it lit, ahead of the transition's own render.
         /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>, reference-stable across renders. Call
         ///   <c>startTransition.Invoke(() =&gt; ...)</c>
         ///   for synchronous updates or <c>startTransition.Invoke(async () =&gt; ...)</c> for async actions whose
@@ -2350,19 +2336,13 @@ namespace Velvet
             MutateOptions<TVariables, TData>? callOptions,
             bool rethrowOnFailure)
         {
-            if (fiber.IsDisposed)
-            {
-                // A resolved task would hand mutateAsync's caller data no call produced.
-                if (rethrowOnFailure) throw new OperationCanceledException("The component unmounted before the mutation started.");
-                return default!;
-            }
-
             // Two calls run side by side rather than the second aborting the first, as in TanStack, which
             // hands a mutation no signal at all. Cancelling on re-entry dropped the first call's OnSuccess,
-            // so a double-tapped Buy charged the card and never ran the write that follows it. The token
-            // stays because a Unity request wants one on unmount; only the re-entry cancel is gone.
-            var cts = new CancellationTokenSource();
-            slot.Live.Add(cts);
+            // so a double-tapped Buy charged the card and never ran the write that follows it.
+            // Neither does the unmount cancel: TanStack's observer only unsubscribes and the mutation runs
+            // on, so a call made after the unmount runs too and writes no handle. The token the function
+            // receives is the one the caller put on the call's MutateOptions, or none.
+            var token = callOptions?.CancellationToken ?? default;
             // Who may write the OBSERVED result, which is the newest call, as TanStack's observer shows.
             // Ownership is by generation now, not by holding the slot's only token: a superseded call still
             // runs its callbacks, which is what TanStack's Mutation.execute does — it awaits them itself and
@@ -2371,8 +2351,11 @@ namespace Velvet
             // the generation, the one CommitOutcome writes for.
             var mine = ++slot.Generation;
 
-            slot.Result.MarkPending(variables);
-            RequestRender(fiber);
+            if (!IsMutationOwnerGone(fiber, slot))
+            {
+                slot.Result.MarkPending(variables);
+                RequestRender(fiber);
+            }
 
             // A local rather than a slot field, so overlapping calls each hand their callbacks their own
             // context. It is still default when OnMutate throws, and that is what the failure path hands on.
@@ -2382,10 +2365,10 @@ namespace Velvet
                 // After MarkPending and inside the try, which is TanStack's order: OnMutate reads the handle
                 // as this call's pending one, and a throw from it fails the call before MutationFn is reached.
                 context = slot.InvokeOnMutate(variables);
-                // OnMutate ran once above, outside the retries. Each attempt reads the slot's MutationFn, the
-                // latest render's, as v5's retryer reads options.mutationFn on every run.
+                // Each attempt reads the slot's MutationFn, so a re-render during the wait is the one
+                // that runs. The token is the caller's: unmount retires the slot and leaves the wait running.
                 var data = await (slot.Retry ?? RetryPolicy.NoRetry).RunWithStateAsync(
-                    static (call, token) => call.Slot.InvokeMutationFn(call.Variables, token),
+                    static (call, attemptToken) => call.Slot.InvokeMutationFn(call.Variables, attemptToken),
                     new MutationCall<TVariables, TData, TContext>(fiber, slot, variables, mine),
                     new RetryCallbacks<MutationCall<TVariables, TData, TContext>>
                     {
@@ -2393,7 +2376,7 @@ namespace Velvet
                         OnPause = static call => call.ShowIfOwned(static result => result.MarkPaused()),
                         OnContinue = static call => call.ShowIfOwned(static result => result.MarkContinued()),
                     },
-                    cts.Token);
+                    token);
                 // The handlers run before this call's outcome is committed, which is where TanStack
                 // dispatches it: what OnSuccess and OnSettled read is the handle as it stands rather than
                 // their own result. Either one throwing leaves the call a failure with nothing of its own
@@ -2407,15 +2390,6 @@ namespace Velvet
                 }
                 return data;
             }
-            catch (OperationCanceledException cancelled) when (cts.IsCancellationRequested)
-            {
-                // Only an unmount cancels this source. The handlers still run, so a write OnMutate made
-                // optimistically is rolled back from OnError although the request it stood for was cancelled.
-                // The caller's await rejects as well, where it would otherwise read default data as a result.
-                DeliverFailure(slot, cancelled, variables, context);
-                if (rethrowOnFailure) throw;
-                return default!;
-            }
             catch (Exception ex)
             {
                 DeliverFailure(slot, ex, variables, context);
@@ -2426,13 +2400,6 @@ namespace Velvet
                 }
                 if (rethrowOnFailure) throw;
                 return default!;
-            }
-            finally
-            {
-                // Only the owner disposes. Unmount clears the list before cancelling, so a call this
-                // one's cancellation settles reaches here with its source already gone, and disposing
-                // it here would leave that loop cancelling a source this finally had already disposed.
-                if (slot.Live.Remove(cts)) cts.Dispose();
             }
         }
 
@@ -2462,6 +2429,11 @@ namespace Velvet
             }
         }
 
+        // The slot's own mount is what counts, not the fiber: a remount clears the fiber's IsDisposed while
+        // a call from the earlier mount is still in flight, and that call must write and render nothing.
+        private static bool IsMutationOwnerGone(ComponentFiber fiber, HookMutationSlot slot) =>
+            slot.Retired || fiber.IsDisposed;
+
         // The handlers above run whether or not the component is still mounted, as TanStack's option
         // callbacks outlive the observer; only the handle and the render belong to the mounted component.
         // Returns whether this call's outcome is the one the handle shows, which is also when its per-call
@@ -2473,7 +2445,7 @@ namespace Velvet
             TData data,
             Exception? error)
         {
-            if (fiber.IsDisposed) return false;
+            if (IsMutationOwnerGone(fiber, slot)) return false;
             var owns = generation == slot.Generation;
             if (owns)
             {
@@ -2503,10 +2475,11 @@ namespace Velvet
                 Generation = generation;
             }
 
-            // A call writes the handle only while it still holds the current generation, as at its outcome.
+            // A call writes the handle only while it still owns it, as at its outcome: a retired slot is a
+            // mount that has gone, which Fiber.IsDisposed no longer says once a remount has cleared it.
             public void ShowIfOwned(Action<MutationResult<TVariables, TData>> write)
             {
-                if (Fiber.IsDisposed || Generation != Slot.Generation) return;
+                if (IsMutationOwnerGone(Fiber, Slot) || Generation != Slot.Generation) return;
                 write(Slot.Result);
                 RequestRender(Fiber);
             }
@@ -2516,7 +2489,7 @@ namespace Velvet
             ComponentFiber fiber,
             HookMutationSlot<TVariables, TData, TContext> slot)
         {
-            if (fiber.IsDisposed) return;
+            if (IsMutationOwnerGone(fiber, slot)) return;
             slot.Generation++;
             slot.Result.MarkIdle();
             RequestRender(fiber);
@@ -2727,7 +2700,8 @@ namespace Velvet
         /// until its task completes, whether or not the component that started it is still mounted, so one
         /// awaiting a task that never completes holds every later entry. A component rendered by the
         /// Transition-lane drain that lands the last work a transition queued leaves that transition's
-        /// entries out of that render. An entry no
+        /// entries out of that render, and a component holding them that the drain did not render that way is
+        /// rendered without them before that commit's layout effects run. An entry no
         /// render has shown when its owner settles is shown once first. An entry nothing owns is discarded by
         /// the component's next Transition-lane render.
         /// </summary>

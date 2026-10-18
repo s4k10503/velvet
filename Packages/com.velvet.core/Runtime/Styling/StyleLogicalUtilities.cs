@@ -12,7 +12,8 @@ namespace Velvet
     // They resolve inline, as the physical property they stand for. A USS class was rejected: it needs a rule
     // in the bundled sheets and a regenerated StyleUtilityProperties, and an inline layer already takes part
     // in the cascade beside the classes (StyleClassProjection). A bracket value is handed to the physical
-    // utility's own parser with the prefix swapped, so it accepts exactly what the physical one does.
+    // utility's own parser with the prefix swapped, so it accepts exactly what the physical one does. A
+    // logical radius is the exception once it is a layer (AsLayer): it takes a property of its own there.
     //
     // Between two rules of one variant rank the position is the logical property's, not the physical one's:
     // Tailwind emits ms-4 ahead of ml-8 whatever order they are written in, because margin-inline-start sorts
@@ -206,8 +207,8 @@ namespace Velvet
             return true;
         }
 
-        // The widths _borders.uss declares for border-l (LogicalUtilityStyleSheetMirrorTests pins them), plus 0,
-        // which border-0 declares for all four sides.
+        // The widths _borders.uss declares for border-l: LogicalUtilityStyleSheetMirrorTests pins those it writes
+        // in px, and border-l-0 declares the unitless 0.
         private static bool TryParseBorderWidth(ArbitraryProperty property, ReadOnlySpan<char> suffix, out ArbitraryStyle result)
         {
             result = default;
@@ -222,20 +223,56 @@ namespace Velvet
             return true;
         }
 
-        private static bool TryParseRadius(ArbitraryProperty property, string suffix, out ArbitraryStyle result)
+        // The radius a rounded-* suffix names: a step of the scale StyleShadowClass mirrors, or full.
+        internal static bool TryGetRadiusPx(string suffix, out float px)
         {
-            result = default;
-            float px;
             if (suffix == "full")
             {
                 px = FullRadiusPx;
+                return true;
             }
-            else if (!StyleShadowClass.TryGetRadiusPx(suffix, out px))
+            return StyleShadowClass.TryGetRadiusPx(suffix, out px);
+        }
+
+        private static bool TryParseRadius(ArbitraryProperty property, string suffix, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!TryGetRadiusPx(suffix, out var px))
             {
                 return false;
             }
             result = new ArbitraryStyle(property, px, LengthUnit.Pixel);
             return true;
+        }
+
+        // The layer property of each logical radius family, which TryParse hides behind the physical property it
+        // resolves to. A layer of its own is what lets Tailwind's order rank it against the physical utility over
+        // the same corners, as the logical sides of StyleBorderSideColor are.
+        private static readonly System.Collections.Generic.Dictionary<string, ArbitraryProperty> s_radiusLayers = new()
+        {
+            ["rounded-s"] = ArbitraryProperty.BorderStartRadius,
+            ["rounded-e"] = ArbitraryProperty.BorderEndRadius,
+            ["rounded-ss"] = ArbitraryProperty.BorderStartStartRadius,
+            ["rounded-se"] = ArbitraryProperty.BorderStartEndRadius,
+            ["rounded-es"] = ArbitraryProperty.BorderEndStartRadius,
+            ["rounded-ee"] = ArbitraryProperty.BorderEndEndRadius,
+        };
+
+        // style, which TryParse made of core, on the layer property of core's own where core is a logical radius;
+        // style itself for any other token.
+        internal static ArbitraryStyle AsLayer(string core, in ArbitraryStyle style)
+        {
+            if (!StyleArbitraryValueResolver.StartsWithRadiusPrefix(core))
+            {
+                return style;
+            }
+            if (!TryFindFamily(core.AsSpan(), out var family, out _))
+            {
+                return style;
+            }
+            return s_radiusLayers.TryGetValue(family.Name, out var layer)
+                ? new ArbitraryStyle(layer, style.Value, style.Unit)
+                : style;
         }
     }
 }

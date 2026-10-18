@@ -1,28 +1,12 @@
-/* Background Utilities - background-color, background-repeat, -unity-slice-type */
-
-.bg-transparent { background-color: transparent; }
-.bg-background { background-color: var(--color-background); }
-.bg-surface { background-color: var(--color-surface); }
-.bg-surface-strong { background-color: var(--color-surface-strong); }
-.bg-highlight { background-color: var(--color-highlight); }
-.bg-primary { background-color: var(--color-primary); }
-.bg-primary-soft { background-color: var(--color-primary-soft); }
-.bg-primary-faint { background-color: var(--color-primary-faint); }
-.bg-danger { background-color: var(--color-danger); }
-.bg-success { background-color: var(--color-success); }
-.bg-neutral { background-color: var(--color-neutral); }
-.bg-overlay { background-color: var(--color-overlay); }
-.bg-white { background-color: rgb(255, 255, 255); }
-.bg-white-soft { background-color: var(--color-white-soft); }
-.bg-black { background-color: rgb(0, 0, 0); }
+/* Background Utilities - background-repeat, -unity-slice-type (the background colours are in _palette.uss) */
 
 /* Tailwind's bg-repeat family */
-.bg-repeat { background-repeat: repeat; }
 .bg-no-repeat { background-repeat: no-repeat; }
-.bg-repeat-x { background-repeat: repeat-x; }
-.bg-repeat-y { background-repeat: repeat-y; }
+.bg-repeat { background-repeat: repeat; }
 .bg-repeat-round { background-repeat: round; }
 .bg-repeat-space { background-repeat: space; }
+.bg-repeat-x { background-repeat: repeat-x; }
+.bg-repeat-y { background-repeat: repeat-y; }
 
 /* The nine-slice fill mode. The insets and their scale are arbitrary values resolved in C#
    (slice-[12], slice-scale-[2]); Documentation~/styling-backgrounds.md owns the family. */

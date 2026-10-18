@@ -670,6 +670,37 @@ namespace Velvet.Tests
             Assert.That((Root!.Q<Label>("rebind-probe")?.text, s_reboundAttaches), Is.EqualTo(("1", 1)));
         }
 
+        // GREEN_ON_BASE(characterization): the base's drain takes a replacement queued from inside the entry it replaces
+        // in the same drain; the layout commit this branch adds leaves a bare Reconciler's drain as it was.
+        [Test]
+        public void Given_ABareReconcileWhoseSetupRebindsTheRefOfItsOwnElement_When_TheDrainContinues_Then_TheReplacementRunsInTheSameDrain()
+        {
+            // Arrange — no fiber is on the stack, so the drain at the end of the pass attaches the setups, and the
+            // replacement is queued while the drain is inside the entry it replaces.
+            var replacementAttaches = 0;
+            Func<VisualElement, Action> replacement = _ =>
+            {
+                replacementAttaches++;
+                return null;
+            };
+            var rebound = new VNode[] { V.Div(name: "host", refCallback: replacement) };
+            VNode[] first = null;
+            first = new VNode[]
+            {
+                V.Div(name: "host", refCallback: _ =>
+                {
+                    Reconciler.Reconcile(Root, first, rebound);
+                    return null;
+                }),
+            };
+
+            // Act
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), first);
+
+            // Assert
+            Assert.That(replacementAttaches, Is.EqualTo(1));
+        }
+
         // GREEN_ON_BASE(characterization): the base detaches the installed ref at the first patch, so the second
         // patch finds none installed and its callback replaces the queued one.
         [Test]

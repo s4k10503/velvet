@@ -9,10 +9,10 @@ namespace Velvet.Tests.Performance
     [TestFixture]
     internal sealed class RouterNavigationPlayModeBenchmarks
     {
-        private const int WarmupCount = 5;
-        private const int MeasurementCount = 20;
+        private static readonly int WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int MeasurementCount = BenchmarkRun.Measurements(20);
 
-        // GREEN_ON_BASE(characterization): this benchmark asserts nothing, so the base runs it green.
+        // GREEN_ON_BASE(characterization): this benchmark asserts nothing, so the base runs it green. This change takes its counts from BenchmarkRun.
         // This change only moves its probe warm-up onto three windows.
         [Test, Performance]
         public void NavigateAsync_LoaderAndBlocker()

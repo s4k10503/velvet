@@ -682,11 +682,13 @@ namespace Velvet.Tests
                 "A Portal created among the children a boundary hides has its children hidden with them");
         }
 
+        // GREEN_ON_BASE(characterization): the merge base stops the pass at a catch of a failing ref cleanup too, with
+        // the reveal already recorded. What this pins is that the boundary reveals its children on the next render.
         [Test]
         public void Given_ABoundaryHidingItsPrimaryWhoseRevealIsStoppedByACatchAfterIt_When_ItsHostRendersAgain_Then_ItRevealsItsChildren()
         {
-            // Arrange — the boundary beside the Suspense catches an element callback's error in the pass that
-            // reveals, which stops that pass after the Suspense recorded the reveal
+            // Arrange — the boundary beside the Suspense catches a failing ref cleanup in the pass that reveals,
+            // which stops that pass after the Suspense recorded the reveal
             using var mounted = V.Mount(_root, V.Component(AbortHostRender, key: "abort-host"), new MountOptions((_, _) => { }));
             var container = _root.Q<VisualElement>("container");
             var primary = _root.Q<VisualElement>("primary");
@@ -705,7 +707,7 @@ namespace Velvet.Tests
             // boundary's fallback, which shows that the catch stopped the pass
             Assert.That((primary.parent == container, primary.style.display.keyword, _root.DisplayedLabelTexts("|").Contains("caught")),
                 Is.EqualTo((true, StyleKeyword.Null, true)),
-                "The stopped pass revealed nothing, so the boundary still hides its children and reveals them now");
+                "The pass the failing ref cleanup stopped revealed nothing, so the boundary still hides its children and reveals them now");
         }
 
         // GREEN_ON_BASE(characterization): the base discards the inner children, so their ref is not attached.
@@ -1727,10 +1729,17 @@ namespace Velvet.Tests
         private static VNode AbortBoundaryRender(int tick)
         {
             Hooks.UseFallback(_ => V.Label(text: "caught"));
-            return tick == 0 ? V.Label(text: "fine") : V.Component(CallbackThrowingRender, key: "callback");
+            return V.Component(RefDroppingRender, tick, key: "callback");
         }
 
-        // The error boundary is rendered by this host's walk after the Suspense, and an element callback's error is
+        // A ref removed outright is cleaned up where the patch drops it, and a cleanup that fails is not a render
+        // error — see ReconcilerContext.SyncRefCallback.
+        [Component(Compiler = false)]
+        private static VNode RefDroppingRender(int tick)
+            => V.Label(text: "fine",
+                refCallback: tick == 0 ? _ => () => throw new InvalidOperationException("Ref cleanup throw") : null);
+
+        // The error boundary is rendered by this host's walk after the Suspense, and the failing ref cleanup is
         // caught on the aborting path, which stops that walk.
         [Component(Compiler = false)]
         private static VNode AbortHostRender()

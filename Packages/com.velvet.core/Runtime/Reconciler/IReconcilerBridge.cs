@@ -13,12 +13,17 @@ namespace Velvet
         // has placed it in the list, rather than where the row was created, for the reason
         // Reconciler.FinishTopLevelPass gives — and this is the seam that reaches it, because the item loop also
         // runs outside any reconcile pass (BeginDetachedItemScope names when). Hold opens a list of its own for one
-        // range render, which Commit closes, running the queued ref setups and then the held commits; a row the
-        // range discarded, because the range threw or the list was disposed while it rendered, is unmounted by then
-        // and runs nothing. Which queued ref entries run, and when none do, is ReconcilerContext.DrainRefAttaches's
-        // own, and inside a drain the rows' layout work is the drain's, which commits it at the drain's end.
+        // range render, which Commit closes, running the held commits, each attaching the refs of the elements its
+        // row owns; a row the range discarded, because the range threw or the list was disposed while it rendered,
+        // is unmounted by then and runs nothing. Which queued ref entries a commit takes, and when none, is
+        // ReconcilerContext.TakeRefAttaches's own, and inside a drain the rows' layout work is the drain's, which
+        // commits it at the drain's end.
         void HoldRowLayoutEffects();
         void CommitHeldRowLayoutEffects();
+
+        // A range render outside a pass is a render of its own: react-window's scroll and resize renders are state
+        // updates, and React flushes pending passive effects before it renders one.
+        void FlushPendingPassiveEffectsForController();
 
         // A range rendered outside a reconcile pass has no enclosing entry to end with
         // FiberEffects.CommitStrandedLayoutWork, so the controller calls this where a range render returns.

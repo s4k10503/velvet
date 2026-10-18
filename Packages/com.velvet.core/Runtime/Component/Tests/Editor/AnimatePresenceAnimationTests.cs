@@ -197,6 +197,9 @@ namespace Velvet.Tests
 
         #region Exit Animation Completion
 
+        // GREEN_ON_BASE(characterization): a running exit held the element on the base as well.
+        // The added reconcile is the one that drops a child whose exit has nothing to animate, so the exit is what
+        // still holds it.
         [Test]
         public void Given_ExitingElement_When_ExitTransitionRunning_Then_ElementRemainsInDom()
         {
@@ -208,9 +211,10 @@ namespace Velvet.Tests
             AdvancePast(config.DurationSec);
             Assume.That(container.childCount, Is.EqualTo(1), "Precondition: the element entered and is present");
 
-            // Act
+            // Act — the second reconcile is the one that would drop a child whose exit had nothing to animate.
             var withoutChild = new VNode[] { V.AnimatePresence(children: Array.Empty<VNode>()) };
             _reconciler.Reconcile(Root, withChild, withoutChild);
+            _reconciler.Reconcile(Root, withoutChild, new VNode[] { V.AnimatePresence(children: Array.Empty<VNode>()) });
 
             // Assert
             Assert.That(container.childCount, Is.EqualTo(1),
@@ -361,6 +365,30 @@ namespace Velvet.Tests
             // Assert — the ghost-drop re-render still ran despite the throw.
             Assert.That(LabelTexts(), Is.Empty,
                 "The exited element is still removed from the DOM even though onExitComplete threw");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode ThrowingOnExitCompleteBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "caught"));
+            return V.Component(ThrowingOnExitCompleteHostRender, key: "throwing-exit-host");
+        }
+
+        [Test]
+        public void Given_OnExitCompleteThrowsBelowABoundary_When_AnExitTransitionCompletes_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange — Framer Motion calls it from the exit's promise
+            s_throwingExitConfig = NewConfig();
+            using var mounted = V.Mount(Root, V.Component(ThrowingOnExitCompleteBoundaryRender, key: "boundary"));
+            AdvancePast(s_throwingExitConfig.DurationSec);
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test onExitComplete error");
+
+            // Act
+            s_throwingExitShow.Invoke(false);
+            AdvancePast(s_throwingExitConfig.DurationSec);
+
+            // Assert
+            Assert.That(LabelTexts(), Is.Empty);
         }
 
         // The other half of the presence-callback pair. The first two entrances below fire it inside the

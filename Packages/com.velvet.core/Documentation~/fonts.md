@@ -27,8 +27,9 @@ registry that maps family names to Font Assets.
 | `font-bold italic` | **Composes** to bold-and-italic |
 | `bold-italic` | Single-class bold + italic (back-compat) |
 
-Facets follow CSS cascade order — a later class of the same facet wins (`font-bold font-light` →
-light), and the three facets coexist on one element.
+Of two classes of the same facet the one Tailwind emits last wins, whichever is written first
+(`font-bold font-light` and `font-light font-bold` → light; [the order](styling-arbitrary-lengths.md#utilities-a-c-resolver-folds-from-the-class-list)),
+and the three facets coexist on one element.
 
 ## How resolution works
 
@@ -147,7 +148,7 @@ utility UI Toolkit can express; the rest are omitted because UI Toolkit has **no
 them.
 
 **Supported (shipped):** `font-<family>` / `font-thin`…`font-black` / `italic` / `not-italic` /
-`text-xs`…`text-9xl` (font-size) / `text-left|center|right|start|end` (`-unity-text-align`) /
+`text-xs`…`text-9xl` (font-size and line-height) / `text-left|center|right|start|end` (`-unity-text-align`) /
 `tracking-*` (`letter-spacing`) / `leading-*` (`line-height`) /
 `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
 `text-wrap` / `text-nowrap` / `text-balance` / `text-pretty` / `truncate` / `text-ellipsis` / `text-clip`
@@ -180,8 +181,8 @@ synchronously-reachable ascent metric to place it exactly).
 `overline` joins the SAME decoration axis as `underline` / `line-through` / `no-underline`, so
 cascade, inheritance, and the `no-underline` reset all apply to it. The axis stays single-valued,
 which is a deviation: CSS lets `text-decoration-line` combine lines (`underline overline` shows
-both), while Velvet's decoration axis resolves exactly one value, last-token-wins, so
-`underline overline` on one element renders only the overline. **v1 scope:** one rule, positioned
+both), while Velvet's decoration axis resolves exactly one value, the one Tailwind emits last, so
+`underline overline` and `overline underline` on one element render only the underline. **v1 scope:** one rule, positioned
 above the FIRST line only and sized to the text's natural single-line-equivalent width (clamped to
 the content width) — per-line metrics of wrapped text are not publicly reachable in a way usable
 synchronously from `generateVisualContent`, so a multi-line label shows the rule above its top line
@@ -219,16 +220,18 @@ unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percent
 `mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. A math function is read where it
 comes to one of those pixel lengths or one percentage
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A negative value, any other unit, or a
-malformed value is ignored. A bare spacing step (`leading-6`, `leading-3-5`, `leading-px`) emits
-`<line-height=Npx>` at the px value the `--space-*` scale gives that step, as Tailwind's
+malformed value is ignored. A bare spacing step (`leading-6`, `leading-13`, `leading-4.5`, `leading-px`) emits
+`<line-height=Npx>` at the px value the spacing scale gives that step, as Tailwind's
 spacing-based `leading-*` does (`leading-6` is 24px, as `p-6` is, and `leading-px` is 1px); its steps
-are that scale's, written with `-` for `.`.
+are that scale's ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps)), and a
+named preset is read before a step.
 
 A preset and a unitless value are numbers, as in CSS: they emit an em tag, which the **text engine
-itself** resolves against whichever font size is in effect at that point in the string, so every
-text under the class multiplies its own size. An `em` or percentage value is a length CSS computes on
-the element that declares it, from that element's computed font size, and every text under it gets
-that length in pixels: `V.Div("text-[20px] leading-[150%]", V.Label("text-[40px]", …))` emits
+itself** resolves against whichever font size is in effect at that point in the string, so a text
+under the class multiplies the size it displays at, unless a nearer element sets a line height of its own
+(a `leading-*` or a `text-<size>`). An `em` or percentage value is a length CSS computes on
+the element that declares it, from that element's computed font size, and a text under it gets
+that length in pixels unless a nearer element sets its own line height: `V.Div("text-[20px] leading-[150%]", V.Label("text-[40px]", …))` emits
 `<line-height=30px>`, whether the declaring element's size is inline, inherited or a `text-*` scale
 class. Velvet reads the size UI Toolkit resolves for the declaring element
 (`LeadingLengthProbe`, which the bundled stylesheet's `velvet-leading-length` rule arms) and
@@ -241,6 +244,21 @@ size. A bracketed `tracking-[0.025em]` is measured on the element's own font siz
 ancestor's `leading-*` overrides a farther one's). It has no reset utility, unlike the other three
 axes: Tailwind defines no `leading-auto` below `leading-none`, and every preset — `leading-none`'s
 multiplier of 1 included — is already a real value, so there is nothing to reset back to.
+
+**`text-<size>` pairs a line height with its font size**, as Tailwind v4's `--text-<size>--line-height` does,
+and emits it as the same em tag a preset does: `text-xs` 1.3333 · `text-sm` 1.4286 · `text-base` 1.5 ·
+`text-lg` 1.5556 · `text-xl` 1.4 · `text-2xl` 1.3333 · `text-3xl` 1.2 · `text-4xl` 1.1111 · `text-5xl`…`text-9xl` 1.
+The pair is the size class's own line height, so it replaces one an ancestor's `leading-*` set, and it
+inherits like any other leading (it shares the cascade-freshness caveat above). A bare size writes
+`line-height: var(--tw-leading, <pair>)` in Tailwind, so a `leading-*` on the same element beats it whichever
+class comes first and whether either carries `!`. When an element holds several sizes, the pair is the one of
+the size whose font size shows, which is the rule declared last in `_typography.uss` — the one Tailwind
+emits last, so `text-sm` over `text-lg` — or a slash form over any of them. `text-<size>/<leading>` takes the suffix of the matching `leading-*` utility, so `text-sm/6` is a 14px
+font with `leading-6`'s 24px line height, and `text-sm/loose` the 2 multiplier. The slash form is a
+direct `line-height`: an `!` one beats a plain `leading-*`, and otherwise the `leading-*` wins. A suffix that is
+no `leading-*` value leaves the class inert. A bracket size takes the slash too (`text-[14px]/6`,
+`text-[length:14px]/6`) and pairs nothing without it, as in Tailwind. The slash form works behind a variant
+(`hover:text-sm/6`).
 
 **`text-balance` and `text-pretty`** realise CSS `text-wrap: balance` and `text-wrap: pretty` by writing
 line breaks into the text a leaf *displays*, the way text-transform rewrites it. A box the cascade
@@ -304,7 +322,7 @@ while other text collapses as `normal` or `nowrap`. A white-space class (`whites
 `truncate`, whose `white-space: nowrap` resets the collapse as the CSS shorthand does) on the same
 element or on one nearer the text keeps its own value. Velvet writes this per text leaf as an inline
 `white-space`, the way it writes `whitespace-pre-line`. When several of the four meet on one element,
-the later class wins, as they set the same CSS properties; the later of them decides which line
+the one Tailwind emits last wins, as they set the same CSS properties; that one decides which line
 breaking the text gets.
 
 **Not expressible in UI Toolkit (no USS property — intentionally absent):**

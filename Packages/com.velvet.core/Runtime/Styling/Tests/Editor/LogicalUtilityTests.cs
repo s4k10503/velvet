@@ -115,7 +115,6 @@ namespace Velvet.Tests
             "ms-1/2",        // a margin takes no fraction
             "ps-full",
             "rounded-s-1/2",
-            "ms-13",         // not on the spacing scale
             "-start-auto",   // Tailwind has no negative auto
             "-ms-auto",
             "start-1/0",     // no percent stands for a zero denominator
@@ -131,6 +130,21 @@ namespace Velvet.Tests
         // `StyleLogicalUtilities.Family`, which resolves `-ps-4`, `-border-s-2` and `-rounded-s-lg`.
         [TestCaseSource(nameof(DeclinedClasses))]
         public void Given_ClassTheFamilyDoesNotTake_When_Parsed_Then_NothingResolves(string className)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base declines each of these too, a decimal off its scale as much as a
+        // decimal on this change's. What reddens it is reading a logical margin's step as any decimal rather than
+        // a multiple of 0.25, which resolves both.
+        [TestCase("ms-4.1")]
+        [TestCase("me-0.3")]
+        public void Given_ALogicalMarginStepThatIsNoMultipleOfAQuarter_When_Parsed_Then_NothingResolves(
+            string className)
         {
             // Act
             var ok = StyleArbitraryValueResolver.TryParse(className, out _);
@@ -347,14 +361,16 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABaseMlClassAndABaseMsClass_When_Mounted_Then_TheInlineMsHoldsTheEdge()
+        public void Given_ABaseMlClassAndABaseMsClass_When_Mounted_Then_TheMlHoldsTheEdgeInline()
         {
-            // Act — two base utilities on one edge tie, and an inline value outranks a stylesheet class.
+            // Act — Tailwind sorts margin-inline-start ahead of margin-left, so ml-8 holds the edge whichever is
+            // written first; it is written inline, since a rule of the sheet would not be there to outrank an
+            // inline ms-4.
             var leaf = MountLeaf("ml-8 ms-4");
 
             // Assert
             Assert.That((leaf.style.marginLeft.value.value, leaf.ClassListContains("ml-8")),
-                Is.EqualTo((16f, true)));
+                Is.EqualTo((32f, false)));
         }
 
         // GREEN_ON_BASE(characterization): the base resolves no ms- class, so ml-8 holds the edge there too.

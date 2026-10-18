@@ -82,6 +82,34 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 });
 ```
 
+- A removed child leaves on a render after the one that removed it, never in that render, as Framer's
+  `AnimatePresence` drops a child only on the render its exit's completion asks for. A child with nothing to
+  animate — no `V.Motion`, or a `StyleTransitionConfig.None` or zero-duration exit — stays for the commit that
+  removed it, and its exit completes in the passive-effect flush after that render, which runs after the layout
+  effects of its commit: Framer completes a child holding no motion component from `PresenceChild`'s effect, and
+  a motion component's exit with nothing to animate from that exit's promise. A removal that render never
+  committed completes nothing, and the next render that still removes the child completes it after its commit.
+- Under `AnimatePresenceMode.Wait`, while any removed child is exiting, the presence renders the exiting children
+  alone, as Framer's `mode="wait"` does: a present child is not rendered until the render that drops them, one
+  already mounted unmounting with no exit of its own and mounting again with its enter. A child with nothing to
+  animate holds them back for that one render.
+- `onExitComplete` runs when the last removed child's exit completes, ahead of the render that drops it: the
+  passive-effect flush above, or the end of the last exit's animation. An error it throws goes to the nearest
+  error boundary at or above the component rendering the presence, except where an exit played or the child
+  whose exit completed last holds a `V.Motion`: Framer calls it from that exit's promise, so no boundary takes it
+  and it is logged. The exits one render leaves with nothing to animate complete in Framer's order: a Motion whose
+  exit names no target, or one a zero-duration or `StyleTransitionConfig.None` exit reaches at once, completes
+  from its promise, and a child holding no Motion from its effect. A removal from a discrete event (the Urgent
+  lane) settles the effects first, as React flushes the passive effects of a synchronous commit before any promise
+  reaction runs; any other removal settles the promises first. Tree order within each. Disposing the mounted tree
+  first completes an exit still waiting on the passive-effect flush, as React flushes a root's pending passive
+  effects before the render that unmounts it. A presence that leaves the tree while exits play, disposed with it
+  or no longer rendered by its parent, completes those exits as it goes and its `onExitComplete` runs once, as
+  Framer lets them play out and then calls it. An exit also waiting on a `layoutId` landing stays owed: Framer
+  removes a relegated node only through its lead's layout animation, which no longer reaches it once it unmounts.
+  An error from
+  a Motion's `onEnterComplete` reaches no boundary and is logged, as Framer's `onAnimationComplete` runs in a
+  promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the
   parent, so put `flex` / `gap-*` / wrapping on the parent.
 - **Framer's splice semantics:** while a ghost exits, surviving siblings keep their positions;
@@ -142,7 +170,9 @@ completed.
 - A key added to the inner presence while the enclosing child is leaving mounts already leaving, as Framer's
   `PresenceChild` mounts it with `isPresent=false`: its Motions start at their `initial` pose, with no enter, and
   play their `exit` from there. The key counts in the enclosing child's wait while the inner presence's exits
-  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have.
+  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have. A key
+  that places nothing mounts as well, its effects with it, and its exit completes as one with nothing to animate
+  does.
 - The inner presence is found wherever it sits under the enclosing child: written inline under elements, rendered
   by a component, at the top of the child, or inside a `V.Portal`, and whether it mounted with the child or in a
   later render of its own component. When it mounts that way, the nearest enclosing child is the one that
@@ -267,7 +297,12 @@ new StyleTransitionConfig
   Framer Motion's spring by the time since the play started. **Interrupting a running spring — a
   label change mid-spring, or an exit cancelled mid-flight — releases a new one from the current
   value *and velocity***, as Framer starts an interrupted value's next animation. A spring that
-  interrupts a bezier play starts at rest, since a bezier play keeps no velocity. An exit whose delta resolves no channel at all completes immediately.
+  interrupts a running `Bezier` play (or a `Tween` the mount's own clock drives) starts with the velocity of the
+  curve at that moment. A spring that interrupts a native CSS transition starts with the
+  transition's rate at that moment, read off the panel's style animation system. When the interrupted `Bezier` play is on
+  a `MotionPlayback`, the velocity is scaled by that playback's rate, and a paused playback hands on none,
+  whatever the spring is on. A native transition's velocity is handed on only where its unit is the spring
+  channel's. An exit whose delta resolves no channel at all completes after the commit of the render that removed its child, as an exit with nothing to animate does.
 - `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
   slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
   so a frame that arrives late moves the spring as far as the time it covers.
@@ -278,13 +313,14 @@ new StyleTransitionConfig
 ## Driven channels (Spring and Bezier)
 
 Both non-CSS drivers write inline styles every tick. A play reads its targets from the swapped-in
-classes and the element's classes left in place. An explicit swapped-out value takes priority as the
-start. Otherwise, on a mounted element, the start is the current inline value, including a running
-Spring or Bezier frame, or the resolved value when no inline value is set. If a native transition is
-running on that same element and longhand, the play samples its displayed value before cancellation
-or the class swap. A transition on another property does not change this slot's starting value.
-If the native activity lookup is missing or cannot be invoked, the play uses the ordinary inline or
-resolved start described above.
+classes and the element's classes left in place. A slot that a running Spring or Bezier play, or a
+native transition, is moving starts from the value on screen: that play's current frame, or the
+transition's displayed value sampled before cancellation or the class swap. A slot a `controls.Cancel()`
+hold has taken starts from the held value on the channels both name (see *Timelines*). Any other slot
+starts from the swapped-out value when the swapped-out classes name one. Otherwise, on a mounted element,
+the start is the current inline value, or the resolved value when no inline value is set. A transition
+on another property does not change this slot's starting value. If the native activity lookup is
+missing or cannot be invoked, the play uses the ordinary inline or resolved start described above.
 
 - **The transform quartet.** `opacity` and the `translate` / `scale` / `rotate` trio the transform
   utilities write. Naming one on one side of the delta is enough. When only the from-side names
@@ -299,7 +335,7 @@ resolved start described above.
 - **`border-radius`,** from the `rounded-*` scale and the bracket forms, including the per-side and
   per-corner spellings.
 - **Spacing-scale lengths:** width / height / min / max / `size-*`, padding, margin, inset (`top-*`
-  … `inset-y-*`) and `basis-*`, from the `--space-*` scale (`p-4`, `w-64`, `-mt-2`), the sizing
+  … `inset-y-*`) and `basis-*`, from the spacing scale (`p-4`, `w-64`, `-mt-2`, `p-13`; [styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps)), the sizing
   and position fractions (`w-1/2`, `left-1/2`), and the bracket forms. These dirty Yoga layout on
   every tick — the whole subtree relayouts each frame for the length of the play — so reach for a
   transform channel first and animate a length only where the reflow is the point.
@@ -313,11 +349,12 @@ resolved start described above.
   from — so a `text-sm` → `text-2xl` delta lands instantly while `text-[14px]` → `text-[24px]`
   animates. Reach for the bracket form when you want the size to move.
 - **The to-side must name a color or length.** A swapped-out value in the target's unit supplies
-  the start; otherwise a mounted element supplies its current inline or displayed value. Width and
-  height, including their min/max forms, can convert between pixels and percentages through the
-  parent's content box. Other mixed-unit pairs, or an off-panel target with no matching-unit start,
-  land instantly. A color or length with no compatible effective to-side target lands instantly;
-  classes left in place can provide that target when the swap removes a from-side class.
+  the start unless a running Spring or Bezier play, or a native transition, is moving the slot; otherwise a mounted
+  element supplies its current inline or displayed value. Width and height, including their min/max
+  forms, can convert between pixels and percentages through the parent's content box. Other mixed-unit
+  pairs, or an off-panel target with no matching-unit start, land instantly. A color or length with no
+  compatible effective to-side target lands instantly; classes left in place can provide that target when
+  the swap removes a from-side class.
 - **Classes on one side that write the same slot resolve as the cascade resolves them.** A shorthand
   is read slot by slot — `p-8` as four edges, `size-*` as a width and a height, `rounded-*` as four
   corners, `border-*` as four widths — and each slot animates toward whichever class holds it at
@@ -358,9 +395,9 @@ resolved start described above.
   that applies is decided from the element's **class list**, resolved the way the cascade resolves
   it: `transition-property` holds one value, so the utilities that set it do not combine — the
   **last-declared** one present on the element wins outright and the rest contribute nothing. The
-  bundled order is `transition-transform`, `transition-filter`, `transition-all`,
-  `transition-none`, `transition-opacity`, `transition-colors`, `transition-colors-scale`,
-  `transition-colors-scale-opacity`, then the scheduler-applied `anim-*` presets. So
+  bundled order is Tailwind's: `transition-all`, `transition-colors`, `transition-colors-scale`,
+  `transition-colors-scale-opacity`, `transition-filter`, `transition-opacity`,
+  `transition-transform`, `transition-none`, then the scheduler-applied `anim-*` presets. So
   `transition-all transition-colors` transitions the colours only, and
   `transition-all transition-none` transitions nothing, whichever order the class strings appear
   in. `transition-filter` names `filter`, which no driver writes, so it never triggers a
@@ -488,8 +525,10 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 - The element's own `translate-*` and `scale-*` compose with the tween — the tween's translate adds to
   the element's own, its scale multiplies it — and when the tween ends each slot it wrote holds what it
   held before the tween, or whatever something else wrote there while the tween ran, which the tween
-  composes with from its next frame on. A Motion that leaves its panel without being unmounted has
-  its tween ended on its panel's next frame.
+  composes with from its next frame on. While the tween runs, the transitions the element's classes
+  declare go on running for every property but the ones the tween writes, as Framer leaves the CSS
+  transitions of what a layout animation does not animate, and take a change of those classes as it comes.
+  A Motion that leaves its panel without being unmounted has its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
   the id, not the physical element, is what's tracked. An element that leaves the tree hands its box on
   within one batch — the updates one scheduler drain commits together, such as the ordinary updates
@@ -502,17 +541,18 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   and no ancestor is crossfading already, the lead also crossfades with them, as Framer's default does:
   it fades in on circOut over the first half of its move while they fade out linearly between halfway
   and 95% of it. The fade is written as the element's inline opacity over the opacity its classes,
-  variants and drivers give it. While it is written, an element whose transitions cover opacity has them
-  suspended as a play's are (see [Driven channels](#driven-channels-spring-and-bezier)), element-wide
-  unless a variant tween holds the list, and Velvet carries a change of that opacity itself — a class
-  change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — from where the
-  opacity stands, with the duration, delay and easing the element declares for it, running one that
-  outlasts the move on to its end. The others fade from
+  variants and drivers give it. While it is written, the element's transitions go on running for every
+  property but opacity and the others the tween writes, and Velvet carries a change of that opacity itself — a class
+  change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — on the transition the
+  element declares for opacity, as UI Toolkit runs it: one already running when the fade starts runs on
+  from where it had got, inside its delay or past it, and a change back towards where a running one
+  started is shortened by how far that one had got. One that outlasts the move runs on to its end. The others fade from
   the opacity the holder the lead took its box from was drawn at, if that holder was itself moving from
   another's box, or else from its own opacity as it is now, and take no pointer while they are drawn. A
   lead alone under its id instead mixes its opacity from that holder's to its own over the move, written
   the same way. A move of
-  the lead's own that interrupts the crossfade holds the opacities it had reached until that move lands.
+  the lead's own that interrupts its crossfade or its mix holds the opacities they had reached until that
+  move lands.
   The others are hidden again once the lead lands. When the lead leaves the tree, the holder of those
   left that took the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts
   its exit, the latest holder that took the id before it and is not exiting takes the lead, as Framer's
@@ -558,8 +598,12 @@ interval is eased by the timing function its keyframe names, as a CSS animation 
 | `animate-ping` | scales to twice the element's own scale while fading to nothing by three quarters of the loop, on `cubic-bezier(0, 0, 0.2, 1)`, then holds | 1s |
 | `animate-bounce` | lifts the element a quarter of its height and drops it back, the lift easing in on `cubic-bezier(0.8, 0, 1, 1)` and out on `cubic-bezier(0, 0, 0.2, 1)` | 1s |
 
-`animate-none` cancels, and the last *recognised* `animate-*` in the class list wins — an unclaimed
-name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
+`animate-none` cancels. Of two recognised `animate-*` classes the one Tailwind emits last wins, in either
+order, and Tailwind orders them by name: `animate-bounce`, `animate-gradient`, `animate-hue`, `animate-none`,
+`animate-ping`, `animate-pulse`, `animate-shimmer`, `animate-spin`. So `animate-none` cancels the three before it
+in that list, and the four after it outrank it (`animate-spin animate-none` spins). `animate-gradient`,
+`animate-hue` and `animate-shimmer` have no Tailwind utility, so that order is the one the sort gives their names.
+An unclaimed name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
 `animate-hue-[5s]`. The two gradient modes are inert without a gradient
 ([styling-gradients.md](styling-gradients.md)) to pan.
 
@@ -834,9 +878,8 @@ Three consequences worth knowing:
   to the `Fade` preset's timing, so even a bare Motion tweens its label swaps. Pass
   `transition: StyleTransitionConfig.None` for an instant, non-animated swap — and because the
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
-  means exactly that pose animates and the rest are instant. Whether a removal is held as an
-  exiting ghost at all is decided by the same resolved config, so such an exit is not dropped for
-  the node's `None`. A label change into a `None` pose, or one whose bezier transition has zero
+  means exactly that pose animates and the rest are instant. Whether a removal animates is
+  decided by the same resolved config, so such an exit plays the pose despite the node's `None`. A label change into a `None` pose, or one whose bezier transition has zero
   duration, while an earlier swap is still moving the Motion lands the properties that pose names
   within two frames, and leaves the rest moving. One exception: a value the pose repeats from a moving
   tween's target in another kind of spelling — a stylesheet class for an arbitrary value, such as

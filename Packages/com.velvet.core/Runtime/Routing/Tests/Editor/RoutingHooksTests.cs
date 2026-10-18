@@ -232,7 +232,7 @@ namespace Velvet.Tests
 
         private static class Capture
         {
-            public static Func<string, VelvetTask<NavigationResult>>? Navigate;
+            public static NavigateFunction? Navigate;
             public static RouteMatch? Match;
             public static ISearchParams? SearchParams;
             public static SearchParamsSetter? SetSearchParams;
@@ -278,6 +278,60 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(router.CurrentLocation.Path, Is.EqualTo("/about"));
+        }
+
+        [Test]
+        public void Given_CapturedNavigate_When_InvokedWithState_Then_TheCommittedLocationCarriesIt()
+        {
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("home", element: V.Component(StubA)),
+                Route("about", element: V.Component(StubB)),
+            });
+            router.NavigateSync("/home");
+            using var mounted = MountAt(router);
+
+            // Act
+            Capture.Navigate!("/about", new NavigateOptions { State = "carried" }).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(router.CurrentLocation.State, Is.EqualTo("carried"));
+        }
+
+        [Test]
+        public void Given_CapturedNavigate_When_InvokedWithADelta_Then_MovesAlongTheHistory()
+        {
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("home", element: V.Component(StubA)),
+                Route("about", element: V.Component(StubB)),
+            });
+            router.NavigateSync("/home");
+            router.NavigateSync("/about");
+            using var mounted = MountAt(router);
+
+            // Act
+            Capture.Navigate!(-1).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/home"));
+        }
+
+        [Test]
+        public void Given_CapturedNavigate_When_InvokedWithANullPath_Then_NothingIsFound()
+        {
+            // Arrange
+            var router = new Router(new[] { Route("home", element: V.Component(StubA)) });
+            router.NavigateSync("/home");
+            using var mounted = MountAt(router);
+
+            // Act
+            var result = Capture.Navigate!((string)null!).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(result, Is.EqualTo(NavigationResult.NotFound));
         }
 
         [Test]
@@ -714,6 +768,43 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(router.CurrentLocation.Path, Is.EqualTo("/dest"));
+        }
+
+        [Test]
+        public void Given_NavigateElementWithState_When_Mounted_Then_TheCommittedLocationCarriesIt()
+        {
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("start", element: V.Component(StubA)),
+                Route("dest", element: V.Component(StubB)),
+            });
+            router.NavigateSync("/start");
+
+            // Act
+            using var mounted = MountWith(router, V.Navigate("/dest", state: "carried", key: "nav"));
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(router.CurrentLocation.State, Is.EqualTo("carried"));
+        }
+
+        [Test]
+        public void Given_NavigateElementWithPathRelativeRouting_When_Mounted_Then_DotDotDropsOneSegment()
+        {
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("/", children: new[] { Route("team/:id/settings"), Route("team/:id") }),
+            });
+            router.NavigateSync("/team/7/settings");
+
+            // Act
+            using var mounted = MountWith(router, V.Navigate("..", relative: RelativeRoutingType.Path, key: "nav"));
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/team/7"));
         }
 
         [Test]

@@ -14,7 +14,7 @@ namespace Velvet.Tests
     {
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_AnInlineLonghandBeforeAShorthand_When_Mounted_Then_TheMotionTargetMatchesTheLaterShorthand(bool important)
+        public void Given_AnInlineLonghandBeforeAShorthand_When_Mounted_Then_TheMotionTargetMatchesTheLonghand(bool important)
         {
             // Arrange
             var bang = important ? "!" : "";
@@ -31,7 +31,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((Lengths(plan), top, element.style.paddingTop.value.value), Is.EqualTo((
-                "PaddingBottom:0->8 PaddingLeft:0->8 PaddingRight:0->8 PaddingTop:0->8", 8f, 2f)));
+                "PaddingBottom:0->8 PaddingLeft:0->8 PaddingRight:0->8 PaddingTop:0->2", 2f, 2f)));
         }
 
         [Test]
@@ -337,18 +337,18 @@ namespace Velvet.Tests
             Assert.That((plan.Scale?.to, settled.keyword), Is.EqualTo(((float?)1.5f, StyleKeyword.Null)));
         }
 
-        // GREEN_ON_BASE(characterization): same-property inline writes of equal importance follow class order;
-        // adding important ranks must preserve that order within the band.
+        // Same-property inline writes of equal importance follow Tailwind's order, as the mounted element does, so the
+        // 40px write wins whichever is written first.
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_TwoImportantInlineWidthWrites_When_Resolved_Then_TheLaterWriteMatchesTheMountedWidth(bool reversed)
+        public void Given_TwoImportantInlineWidthWrites_When_Resolved_Then_TheOneTailwindEmitsLastMatchesTheMountedWidth(bool reversed)
         {
             // Arrange
             var to = reversed
                 ? new[] { "!w-[20px]", "!w-[40px]" }
                 : new[] { "!w-[40px]", "!w-[20px]" };
             var root = new VisualElement();
-            var target = reversed ? 40f : 20f;
+            const float target = 40f;
 
             // Act
             using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));

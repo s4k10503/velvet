@@ -84,23 +84,47 @@ UNRECORDED = "not measured (no shard recorded it)"
 LOCKED = "not measured (the project lock was held)"
 BUILD_SYSTEM = "not measured (the build system failed)"
 
-SURVIVING = (SURVIVED, INCONCLUSIVE)
+# No case of the suite ran the mutated site, so no launch was made for it. It stands where a survivor
+# does -- the other platform's pass measures it, and the run fails until it is answered -- because a site
+# no EditMode case runs is one a PlayMode case may. It is code with no test, so the answer is a test; a
+# declaration fits only where the state is in fact unreachable or the mutation equivalent.
+UNCOVERED = "uncovered (no case runs the site)"
+
+SURVIVING = (SURVIVED, INCONCLUSIVE, UNCOVERED)
 # The verdicts a decision can pass, besides a survivor a declaration answers. Every other verdict,
 # however it is spelled, fails the decision as one nothing measured.
 DECIDED = (KILLED, HUNG, CRASHED, INAPPLICABLE)
+# Final in the record, though a run that measures them names them: StrykerJS scores a compile error
+# as no result at all and a timeout as detected. Neither is measured again while it stands, and a
+# reused one fails neither a later run nor the release gate.
+RECORDED_FINAL = (UNCOMPILABLE, TIMED_OUT)
+RECORDED = DECIDED + SURVIVING + RECORDED_FINAL
 OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
 
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
 # activation and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail
 # has the measured cost of each.
-SHARD_SIZE = {"EditMode": 6, "PlayMode": 2}
+SHARD_SIZE = {"EditMode": 6, "PlayMode": 1}
 MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
 # charges one on its platform, after the longest measured setup and, where the platform is narrowed,
-# an area's own launch for each area, fit that platform's shard job's timeout in mutation.yml, and that
-# case holds each pair together. The charge is not a worst case, so a full shard can still outrun the
+# the reach run, fit that platform's step timeout in mutation.yml's `mutation-shard` job; the PlayMode
+# figure is the most EditMode survivors one shard's job measures after its own EditMode pass.
+# `ShardCeilingTests` holds each pair together. The charge is not a worst case, so a full shard can still outrun the
 # job, and the mutants it had not reached are then recorded by no shard.
-SHARD_CEILING = {"EditMode": 16, "PlayMode": 10}
+SHARD_CEILING = {"EditMode": 10, "PlayMode": 7}
+# What `deal` charges a mutant, in seconds, so that every shard is given about the same total. Only the
+# ratio of the figures matters to the deal. The narrowed figure is 145, the median over shards of a shard's
+# seconds a mutant on EditMode, which already includes the mutants that took the whole suite; the whole-suite
+# figures are the single slowest shard's seconds a mutant, 493 on EditMode, which the job's timeout cut
+# and which was estimated, and 934 on PlayMode (CONTRIBUTING.md ▸ Checking that the tests can fail
+# defines both). They are different statistics, so the ratio is rough, and 145 is a proxy for a narrowed
+# launch rather than a measurement of one. The ceiling charges every mutant the whole-suite figure.
+# The plan has no baseline, so it cannot know which areas `narrowable` will take, and a mutant it deals as
+# narrowed may take the whole suite; neither figure exceeds the ceiling's charge, so the ceiling holds.
+# A previous campaign's timings are not in the record, which keeps verdicts and no seconds.
+NARROWED_COST = 145
+WHOLE_COST = {"EditMode": 493, "PlayMode": 934}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
 # no licence means no shard would run.
 CEILING_REFUSAL = 4
@@ -110,10 +134,35 @@ CEILING_REFUSAL = 4
 # again on the whole suite, so the narrowed run can end a mutant early and never decides that it
 # survived.
 NARROW_SHARE = 3
-# A platform absent here is not narrowed. PlayMode is absent: its pass measures only what the whole
-# EditMode suite left surviving, and no PlayMode area's own launch has been measured for
-# `ShardCeilingTests` to charge.
+# A platform absent here is not narrowed, by area or by coverage. PlayMode is absent: its pass measures
+# only what the whole EditMode suite left surviving, and no PlayMode area's own launch has been measured
+# for `ShardCeilingTests` to charge.
 NARROWED_PLATFORMS = ("EditMode",)
+# A placed mutant is first run against the cases that ran its site in the unmutated session, and a kill
+# there is its verdict; a mutant surviving that run is measured on the whole suite before it is called
+# a survivor. Each distinct set of those cases is also run once, unmutated, before any mutant, so a kill
+# stands only over a set that passes unmutated in that order: the gate runs sum to at most
+# SHARD_CEILING / REACH_SHARE of the baseline's wall clock, which is why the share is small. It bounds
+# seconds, read off the reach run's cases, and not their number. A mutant whose cases would take more
+# than that takes the whole suite, as does every mutant of a session whose reach run does not stand. A
+# session that runs the reach run places every mutant it was assigned, so it takes no area's own baseline
+# in its opening, and a placed mutant whose reading does not stand takes none afterwards either (below).
+# A survivor under an assembly some fixture reads the IL of is the exception to "a survivor runs the whole
+# suite again": the session's whole-suite stage stands for every fixture but those, and only those run on
+# the mutant built alone.
+REACH_SHARE = 10
+# The reach run is made only for a session that places at least this many mutants and places every
+# mutant it was assigned. Any other session takes the path it took before the reach run existed: the
+# areas' own baselines in its opening, then each mutant's area, then the whole suite, and a mutant
+# launched on its own keeps its area-first launches. The minimum is a decision, not a measured
+# break-even. After a reach run, whether or not it stood, a placed mutant whose reading does not stand
+# launches straight on the whole suite and takes no area stage, and `ShardCeilingTests` charges no area
+# baseline for it. That is a decision taken to fit the job timeout: a mutant that only the area's
+# assemblies run alone would expose is not asked about in that order.
+REACH_MIN_MUTANTS = 6
+# The reach run is stopped at this many times the baseline's wall clock, or --timeout if that is less,
+# so a run that does not finish costs what `ShardCeilingTests` charges it.
+REACH_BOUND = 2
 # A mutant's narrowed launch is killed, and the whole suite decides instead, once it has taken this
 # many times its area's own launch on the unmutated tree -- which runs on the tree the whole baseline
 # built, where a mutant's launch compiles its mutation first. Never later than the whole baseline took,
@@ -176,8 +225,11 @@ UNREADABLE = object()
 # could not take the reading at all. Both stop the tool; only one is about a campaign.
 CARRIED_REFUSAL = 3
 
-# Include generation semantics in verdict identity.
-MUTATION_MODEL_VERSION = 10
+# Which mutants a tree generates and how each one is written into its file: the operator tables, the
+# reading of C# that places them, a mutant's identity and the rewrite. Part of every verdict's identity
+# here and in the record, so raising it measures every mutant again. `MutatorVersionTests` holds a
+# digest of that code to this number, and fails until both move together.
+MUTATOR_VERSION = 10
 
 
 class Mutant:
@@ -203,6 +255,8 @@ class Mutant:
         # verdict: what a later campaign needs to reuse a kill.
         self.killers = ()
         self.platform = None
+        # (stage, cases) for each stage a session ran for it: how many cases its launches ran.
+        self.ran = ()
 
     def effective_operator(self):
         return self.stood or self.operator
@@ -508,6 +562,10 @@ WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 # changes the least about what the line does comes first: it is the one a test is least likely to
 # notice, so a line whose first mutant dies is taken to have been noticed, and one that survives is
 # the question worth asking. The order is a decision rather than a measurement.
+# The operators that take a statement or a clause, and so a call, out of a method. A woven component's IL
+# is read through the callees it reaches, so a fixture reading it can see that removal solo and not in a
+# session, where the guard keeps the call: their survivors are not narrowed to the fixtures reading IL.
+CALL_REMOVING = ("clause removed", "guard removed", "line removed")
 LINE_PRIORITY = ("boundary", "equality", "arithmetic", "clause removed", "logic", "literal",
                  "guard removed", "line removed")
 
@@ -3033,6 +3091,31 @@ def build_error(log):
     return found.group(1).replace("\\", "/") if found else None
 
 
+EXCERPT_LINES = 20
+WORDED_ERROR = re.compile(r"\berror\b", re.IGNORECASE)
+
+
+def log_excerpt(log, limit=EXCERPT_LINES):
+    """For the job log, since CI keeps `log` inside an artifact.
+
+    The last lines ride beside the lines naming an error, since one of those can be incidental to what
+    stopped the launch."""
+    try:
+        lines = [line.strip() for line in Path(log).read_text(errors="replace").splitlines() if line.strip()]
+    except OSError:
+        return "{} could not be read".format(log)
+    errors = list(dict.fromkeys(line for line in lines if ": error " in line))
+    if errors:
+        heading, chosen = "its errors", errors[:limit]
+    else:
+        worded = [line for line in lines if WORDED_ERROR.search(line)][:limit]
+        heading, chosen = "its lines naming an error, then its last lines", list(
+            dict.fromkeys(worded + lines[-limit:]))
+    if not chosen:
+        return "{} is empty".format(log)
+    return "\n".join(["{}, from {}:".format(heading, log)] + ["  " + line for line in chosen])
+
+
 # Any compiler or analyzer error line. The editor log can cut the front off one -- measured,
 # `r/Tests/Editor/InlineOwnerListPoolingTests.cs(45,33): error CS1061: ...` beside three whole copies of
 # it -- so the path is kept as the fragment it arrived as rather than required to open at the root.
@@ -3107,15 +3190,9 @@ QUOTED = re.compile(r'"([A-Za-z_][\w.]*)"')
 DECLARED_TYPE = re.compile(r"\b(?:class|struct|interface|enum|record)\s+([A-Za-z_]\w*)")
 
 
-def il_reading_assemblies(project, ran=None):
-    """The assemblies some fixture reads the IL of: those declaring a type whose `typeof(...).Assembly`
-    such a fixture takes, and those it names by a string equal to an assembly's name.
-
-    Derived as `text_reading_fixtures` is. A name counts whichever .asmdef in the project declares it,
-    test assemblies included, since what matters is only whether a mutated one is among them. Given
-    `ran`, the test assemblies a baseline ran, a fixture in none of them is not counted: a session on
-    that baseline's platform never runs it beside a mutant.
-    """
+def il_reader_files(project, ran=None):
+    """(path, text, the assemblies the project declares by name, each path's owning assembly) for each
+    `*Tests.cs` file reading compiled IL, restricted as `il_reading_assemblies` restricts them."""
     sources, asmdefs, owners = [], {}, {}
     for root, directories, files in os.walk(str(project)):
         directories[:] = [name for name in directories if name not in ("Library", "obj", "Logs", "Temp")]
@@ -3130,7 +3207,7 @@ def il_reading_assemblies(project, ran=None):
                 owners[path.parent] = declared
             elif name.endswith(".cs"):
                 sources.append(path)
-    types, names = set(), set()
+    readers = []
     for path in sources:
         if not path.name.endswith("Tests.cs"):
             continue
@@ -3139,8 +3216,34 @@ def il_reading_assemblies(project, ran=None):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         if IL_READ.search(text):
-            types.update(TYPEOF_ASSEMBLY.findall(text))
-            names.update(name for name in QUOTED.findall(text) if name in asmdefs)
+            readers.append((path, text))
+    return readers, sources, asmdefs
+
+
+def il_reading_fixtures(project, ran=None):
+    """The classes declared in a file that reads compiled IL, whichever assembly it reads.
+
+    A superset of the fixtures `il_reading_assemblies` has in mind, taken whole-file so that a fixture
+    reading an assembly by a route that function does not follow is still among them.
+    """
+    readers, _, _ = il_reader_files(project, ran)
+    return {name for _, text in readers for name in FIXTURE_CLASS.findall(text)}
+
+
+def il_reading_assemblies(project, ran=None):
+    """The assemblies some fixture reads the IL of: those declaring a type whose `typeof(...).Assembly`
+    such a fixture takes, and those it names by a string equal to an assembly's name.
+
+    Derived as `text_reading_fixtures` is. A name counts whichever .asmdef in the project declares it,
+    test assemblies included, since what matters is only whether a mutated one is among them. Given
+    `ran`, the test assemblies a baseline ran, a fixture in none of them is not counted: a session on
+    that baseline's platform never runs it beside a mutant.
+    """
+    readers, sources, asmdefs = il_reader_files(project, ran)
+    types, names = set(), set()
+    for _, text in readers:
+        types.update(TYPEOF_ASSEMBLY.findall(text))
+        names.update(name for name in QUOTED.findall(text) if name in asmdefs)
     if types:
         for path in sources:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -3308,9 +3411,30 @@ SESSION_STAGE_SLACK = 120
 # A reload asked for and not finished within this ends the session: every stage asks for one, so the rest
 # would each wait out their bound.
 SESSION_RELOAD_BOUND = 180
-# The unmutated program the areas' own baselines run under.
+# The item that runs under the unmutated program before any mutant: the areas' own baselines, and the
+# covered sets' gates.
 SESSION_OPENING = 0
 SESSION_MUTANTS = 16
+# The stage that runs the whole suite once under the unmutated program with every switch recording the
+# sites it runs, and the stage a mutant runs against the cases that ran its site.
+REACH_STAGE = "coverage"
+COVERED_STAGE = "covered"
+
+
+def covered_name(number):
+    """The stage a mutant runs its covered cases in, and the opening stage that runs the same cases
+    unmutated: one name per distinct set."""
+    return "{}:{}".format(COVERED_STAGE, number)
+
+
+def is_covered(name):
+    return name.startswith(COVERED_STAGE + ":")
+# Appended to SESSION_SWITCH for the variable that turns recording on; `ReachSuffix` in
+# schemata/MutantSchemata.cs spells it, and `ReachMirrorTests` fails when the two part.
+REACH_SUFFIX = "_REACH"
+# The runner's file of {"name", "ids"} lines, and the name it files what ran before the first case under.
+REACH_FILE = "reach.jsonl"
+SETUP_CASE = "<setup>"
 
 
 def utf16(text):
@@ -3416,12 +3540,43 @@ def stage_counts(stage):
     return read_counts(Path(stage["xml"])) if stage.get("xml") else None
 
 
+def planned_stage(planned, name):
+    return next(stage for stage in planned["stages"] if stage["name"] == name)
+
+
+def stage_expectation(stage, planned, expected):
+    """The cases a whole run of a stage the session ran holds: the ones a covered stage was handed, and
+    for every other stage what `expected` records for its name."""
+    if is_covered(stage["name"]):
+        return len(planned_stage(planned, stage["name"])["testNames"])
+    return expected.get(stage["name"])
+
+
+def cases_run(item):
+    """(stage name, cases the stage ran) for each stage of a session item that ran; None for a stage
+    whose count the runner did not record and whose result file holds none."""
+    found = []
+    for stage in (item or {}).get("stages") or []:
+        if stage.get("omitted"):
+            continue
+        cases = stage.get("ran")
+        if not cases:
+            counts = stage_counts(stage)
+            cases = counts["total"] if counts else None
+        found.append((stage["name"], cases))
+    return tuple(found)
+
+
+def describe_ran(ran):
+    return ", ".join("{} {}".format(name, "?" if cases is None else cases) for name, cases in ran)
+
+
 def session_verdict(item, planned, index, assembly, expected, opening, confirmed, text_readers):
     """(verdict, detail, killers) for one mutant the session measured, or None where what it recorded
     does not stand as a reading -- the mutant then takes its own launch, whose reading does.
 
     `planned` is the plan's item for it; `expected` maps each of its stages to the cases a whole run of
-    that stage holds; `opening` is the areas' baselines under the unmutated program; `confirmed` says,
+    that stage holds; `opening` is the opening item's stages under the unmutated program; `confirmed` says,
     per killing case, whether it passed again under the unmutated program once the segment was done.
     """
     if not item:
@@ -3436,7 +3591,8 @@ def session_verdict(item, planned, index, assembly, expected, opening, confirmed
             continue
         # A kill stands only where the stage's own baseline was green, and its first case passed again
         # under the unmutated program: a case failing there failed on what the session carried, not on
-        # this mutant.
+        # this mutant. A covered stage's baseline is the opening run of the same cases in the same order,
+        # since a case can fail only after the one before it without the mutation being the reason.
         if stage["name"] != "whole" and not clean_stage(opening.get(stage["name"])):
             return None
         names = stage["failures"]
@@ -3448,6 +3604,10 @@ def session_verdict(item, planned, index, assembly, expected, opening, confirmed
         if stage["name"] == "whole":
             detail = "{} failed: {}".format(len(behavioural), ", ".join(
                 name.split(".")[-1] for name in behavioural[:3]))
+        elif is_covered(stage["name"]):
+            detail = "{} failed among the {} case(s) that ran the site: {}".format(
+                len(behavioural), len(planned_stage(planned, stage["name"])["testNames"]),
+                ", ".join(name.split(".")[-1] for name in behavioural[:3]))
         else:
             names_of = {planned_stage["name"]: planned_stage for planned_stage in planned["stages"]}
             detail = "{} failed in {}: {}".format(len(behavioural), ", ".join(
@@ -3460,7 +3620,7 @@ def session_verdict(item, planned, index, assembly, expected, opening, confirmed
     # A survivor stands on complete runs: every stage it ran held every case that stage's baseline did.
     for stage in ran:
         counts = stage_counts(stage)
-        if counts is None or counts["failed"] or counts["total"] != expected.get(stage["name"]):
+        if counts is None or counts["failed"] or counts["total"] != stage_expectation(stage, planned, expected):
             return None
     counts = stage_counts(last)
     if counts["inconclusive"]:
@@ -3468,25 +3628,43 @@ def session_verdict(item, planned, index, assembly, expected, opening, confirmed
     return SURVIVED, "", ()
 
 
-def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceiling, timeout, directory):
-    """The plan a session runs: the areas' baselines under the unmutated program, then each placed
+def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceiling, timeout, directory,
+                 selection=None):
+    """The plan a session runs: the opening item's stages under the unmutated program -- the areas'
+    baselines for `attempts`, and the gate of each distinct set in `selection` -- then each placed
     mutant's stages, with a confirmation after every SESSION_MUTANTS of them.
 
-    A mutant runs the stages its own launches would: its area's assemblies first where the area is
-    narrowed, stopping at a kill there, then the whole suite. An EditMode stage is cancelled at its first
-    failing case rather than run out, since the verdict is decided there, so `killers` is the cases that
-    failed before the stop; a PlayMode stage runs out.
+    A mutant runs the stages its own launches would: its area's assemblies first where the area is in
+    `attempts`, stopping at a kill there, then the whole suite. A mutant in `selection` runs the cases
+    it maps to in place of its area, after the same cases have run once unmutated in the opening, and
+    then the whole suite. An EditMode stage is cancelled at its first failing case rather than run out,
+    since the verdict is decided there, so `killers` is the cases that failed before the stop; a
+    PlayMode stage runs out.
     """
+    selection = selection or {}
     stop = platform == "EditMode"
     opening = []
     for area in sorted(attempts):
         opening.append(session_stage("narrowed:" + area.name, attempts[area], False, ceiling))
+    names = {}
+    for index in placed:
+        if index in selection:
+            names.setdefault(tuple(selection[index]), covered_name(len(names)))
+    for cases, name in names.items():
+        gate = session_stage(name, [], False, ceiling)
+        gate["testNames"] = list(cases)
+        opening.append(gate)
     items = [{"id": SESSION_OPENING, "stages": opening}] if opening else []
     segments = []
     for number, index in enumerate(placed):
         area = area_of(mutants[index - 1].path, project)
         stages = []
-        if area in attempts:
+        if index in selection:
+            name = names[tuple(selection[index])]
+            covered = session_stage(name, [], stop, ceiling, gate=name)
+            covered["testNames"] = list(selection[index])
+            stages.append(covered)
+        elif area in attempts:
             stages.append(session_stage("narrowed:" + area.name, attempts[area], stop, ceiling,
                                         gate="narrowed:" + area.name))
         stages.append(session_stage("whole", whole_scope, stop, timeout))
@@ -3537,6 +3715,9 @@ def run_session(args, project, plan, directory, holder):
                        str(project), "-logFile", str(log)]
             env = dict(os.environ, **{SESSION_PLAN: str(plan_path)})
             env.pop(SESSION_SWITCH, None)
+            env.pop(SESSION_SWITCH + REACH_SUFFIX, None)
+            if plan.get("reach"):
+                env[SESSION_SWITCH + REACH_SUFFIX] = "1"
             launched = [0.0]
             where, peaks, stuck = {}, {}, []
 
@@ -3618,7 +3799,7 @@ def run_session(args, project, plan, directory, holder):
             # The item it died in takes its own launch; the next launch starts past it.
             lost.add(reached)
             if items[reached]["id"] == SESSION_OPENING:
-                return runs, lost, "the session died in the areas' own baselines; read {}".format(log)
+                return runs, lost, "the session died in its opening item; read {}".format(log)
             position = reached + 1
     return runs, lost, None
 
@@ -3651,11 +3832,137 @@ def confirmed_for(plan, position, runs, found):
     return found.get(closing, {})
 
 
+def reach_plan(directory, platform, whole_scope, bound):
+    """The plan of the run that reads which cases run each guarded site: the whole suite once, under the
+    unmutated program, with the switches recording."""
+    stage = session_stage(REACH_STAGE, whole_scope, False, bound)
+    return {"output": str(directory), "platform": platform, "env": SESSION_SWITCH, "reach": True,
+            "items": [{"id": SESSION_OPENING, "stages": [stage]}], "start": 0, "end": 1, "segments": [1]}
+
+
+def read_reached(path):
+    """(case -> the mutant ids it ran, the ids run before any case started) from the runner's file.
+
+    A line the editor part-wrote when it was killed is skipped: the stage that wrote it did not finish,
+    and `measure_reach` refuses a run whose stage did not.
+    """
+    reached, setup = {}, set()
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return reached, setup
+    for line in lines:
+        try:
+            record = json.loads(line)
+            ids = {int(number) for number in record["ids"]}
+            name = record["name"]
+        except (ValueError, KeyError, TypeError):
+            continue
+        if name == SETUP_CASE:
+            setup |= ids
+        else:
+            reached.setdefault(name, set()).update(ids)
+    return reached, setup
+
+
+def read_cases(results):
+    """(passing case -> the seconds it took, whether any case did not pass).
+
+    A case that failed, ended inconclusive or was skipped stopped short, so the sites it would have
+    run after the point it stopped are unrecorded; `select_by_reach` reads that as not knowing, not
+    as not reached. A passing case with no readable duration is infinitely long, so no covered set
+    holding it is chosen, and a name that occurs twice has its durations added.
+    """
+    seconds, unsure = {}, False
+    for case in ET.parse(str(results)).getroot().iter("test-case"):
+        if case.get("result") != "Passed":
+            unsure = True
+            continue
+        try:
+            took = float(case.get("duration"))
+        except (TypeError, ValueError):
+            took = float("inf")
+        seconds[case.get("fullname")] = seconds.get(case.get("fullname"), 0.0) + took
+    return seconds, unsure
+
+
+def select_by_reach(placed, reached, setup, seconds, budget, unsure=False):
+    """(mutant -> the passing cases that ran its site, the mutants no case ran).
+
+    A mutant whose site ran outside every case -- before the first started or after the last ended --
+    has no cases to name; one whose cases would take more than `budget` seconds together (their
+    durations in `seconds`, which holds the passing cases), or none of whose cases passed, has nothing
+    worth narrowing to. Those are left out of both results and take the whole suite. Where `unsure`,
+    some case stopped short, so a site no case ran may be one it would have run: none is uncovered.
+    A site is filed under the case during which it ran; a later case that only reads state that case
+    left is missed here, and the whole stage a survivor of the covered one runs is what catches it.
+    """
+    selection, uncovered = {}, []
+    for index in placed:
+        if index in setup:
+            continue
+        runners = sorted(case for case, ids in reached.items() if index in ids)
+        if not runners:
+            if not unsure:
+                uncovered.append(index)
+            continue
+        chosen = [case for case in runners if case in seconds]
+        if chosen and sum(seconds[case] for case in chosen) <= budget:
+            selection[index] = chosen
+    return selection, uncovered
+
+
+def measure_reach(args, project, directory, whole_scope, total, holder, bound):
+    """(case -> mutant ids it ran, ids run outside every case, the passing cases' seconds, whether a case
+    stopped short) from one run of the whole suite under the unmutated guarded program, or None where that run does not stand.
+
+    It stands when the stage finished over every case the baseline held, with each switch armed on no
+    mutant, and recorded something: a table that recorded nothing is one that was never turned on, and
+    reading it would call every mutant uncovered. A case that did not pass is read, but is not handed
+    to a mutant: a site only such cases ran takes the whole suite.
+    """
+    reach = directory / "reach"
+    reach.mkdir(exist_ok=True)
+    for stale in list(reach.glob("item-*.json")) + list(reach.glob("mutant-*.xml")) + [reach / REACH_FILE]:
+        if stale.exists():
+            stale.unlink()
+    plan = reach_plan(reach, args.platform, whole_scope, min(args.timeout, bound))
+    plan["watch"] = library_files(project)
+    runs, lost, stopped = run_session(args, project, plan, reach, holder)
+    stage = ((read_item(reach, SESSION_OPENING) or {}).get("stages") or [None])[0]
+    counts = stage_counts(stage) if stage else None
+    why = None
+    if stopped or lost or 0 not in runs:
+        why = stopped or "the editor did not finish the run"
+    elif not stage.get("finished") or stage.get("omitted") or counts is None or counts["total"] != total:
+        why = "the run did not report all {} cases".format(total)
+    elif not stage.get("armed") or any(not entry.endswith(":0") for entry in stage["armed"]):
+        why = "a switch was not armed on the unmutated program"
+    else:
+        reached, setup = read_reached(reach / REACH_FILE)
+        if not reached and not setup:
+            why = "it recorded no site, so the tables were never turned on"
+        else:
+            return (reached, setup) + read_cases(stage["xml"])
+    print("the reach run does not stand ({}), so no mutant is read as uncovered or given a covered "
+          "stage".format(why))
+    return None
+
+
+def area_attempts(baseline_results, mutants, indices, project, text_readers):
+    """Area -> the scope its mutants run against first, for each area `narrowable` takes among those of
+    `indices`."""
+    areas = {area_of(mutants[index - 1].path, project) for index in indices} - {None}
+    return {area: excluding(["-assemblyNames", ";".join(names)], text_readers)
+            for area, names in narrowable(baseline_results, areas).items()}
+
+
 def measure_in_session(args, project, holder, output, mutants, pending, baseline_results, baseline,
                        baseline_wall, text_readers, whole_scope, campaign, scope):
     """Measures in one editor every mutant of `pending` the rewriter can place, and returns index ->
-    (verdict, detail) for each whose reading stands, each recorded as `write_verdict` records it.
-    Every other mutant is left to its own launches."""
+    (verdict, detail) for each whose reading stands, each recorded as `write_verdict` records it, whether
+    the session made the reach run, and the mutants whose survival stands for every fixture but those that
+    read IL. Every other mutant is left to its own launches."""
     directory = output / "session"
     directory.mkdir(exist_ok=True)
     for stale in list(directory.glob("item-*.json")) + list(directory.glob("mutant-*.xml")):
@@ -3663,7 +3970,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     request, declined = schemata_request(project, mutants, pending)
     answer = rewrite_schemata(args.unity, project, request, directory) if request["files"] else None
     if answer is None:
-        return {}
+        return {}, False, set()
     placed = [index for index in answer["placed"] if index in pending and index not in declined]
     declined.update({int(key): value for key, value in answer["declined"].items()})
     for index in sorted(declined):
@@ -3671,20 +3978,10 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     if answer["fatal"]:
         print("the rewriter stopped: {}".format("; ".join(answer["fatal"])))
     if not placed:
-        return {}
+        return {}, False, set()
 
-    attempts = {}
     ceiling = min(args.timeout, baseline_wall)
     expected = {"whole": baseline["total"]}
-    if not scope and args.platform in NARROWED_PLATFORMS:
-        areas = {area_of(mutants[index - 1].path, project) for index in placed} - {None}
-        for area, names in narrowable(baseline_results, areas).items():
-            attempts[area] = excluding(["-assemblyNames", ";".join(names)], text_readers)
-    plan, segments = session_plan(project, mutants, placed, attempts, whole_scope, args.platform, ceiling,
-                                  args.timeout, directory)
-    plan["segments"] = segments
-    plan["watch"] = library_files(project)
-
     rewritten = {project / relative: text for relative, text in answer["files"].items()}
     if not wait_for_quiet(args.busy_timeout):
         raise SystemExit("another Unity test run is still in flight after {}s, so this "
@@ -3692,18 +3989,43 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     holder.hold_files({path: (path.read_text(), text) for path, text in rewritten.items()},
                       "{} mutant(s) guarded for one session".format(len(placed)))
     started = time.time()
+    selection, uncovered, reaching = {}, [], False
+    plan, runs, lost, stopped = {"items": []}, {}, set(), None
     try:
         for path, text in rewritten.items():
             path.write_text(text)
-        runs, lost, stopped = run_session(args, project, plan, directory, holder)
+        # The reach run comes first and its plan second: which mutants are measured, and against what, is
+        # read off it.
+        reaching = (args.platform in NARROWED_PLATFORMS
+                    and REACH_MIN_MUTANTS <= len(placed)
+                    and len(placed) == len(pending))
+        standing = measure_reach(args, project, directory, whole_scope, baseline["total"], holder,
+                                 REACH_BOUND * baseline_wall) if reaching else None
+        attempts = {}
+        if not reaching and not scope and args.platform in NARROWED_PLATFORMS:
+            attempts = area_attempts(baseline_results, mutants, placed, project, text_readers)
+        if standing is not None:
+            reached, setup, seconds, unsure = standing
+            selection, uncovered = select_by_reach(placed, reached, setup, seconds,
+                                                   baseline_wall / REACH_SHARE, unsure)
+            print("reach: {} of {} mutant(s) take the cases that ran their site, {} are run by none, {} take "
+                  "the whole suite".format(len(selection), len(placed), len(uncovered),
+                                           len(placed) - len(selection) - len(uncovered)))
+        launched = [index for index in placed if index not in uncovered]
+        plan, segments = session_plan(project, mutants, launched, attempts, whole_scope, args.platform, ceiling,
+                                      args.timeout, directory, selection)
+        plan["segments"] = segments
+        plan["watch"] = library_files(project)
+        runs, lost, stopped = run_session(args, project, plan, directory, holder) \
+            if launched else ({}, set(), None)
     finally:
         if holder.release() is None:
             raise SystemExit("could not put the session's sources back; the record at {} names what is "
                              "outstanding".format(holder.sentinel))
     print("session: {} mutant(s) in {:.0f}s{}".format(len(placed), time.time() - started,
                                                       "; " + stopped if stopped else ""))
-    if not runs:
-        return {}
+    if not runs and not uncovered:
+        return {}, reaching, set()
 
     opening = {stage["name"]: stage for stage in (read_item(directory, SESSION_OPENING) or {}).get("stages", [])}
     for name, stage in opening.items():
@@ -3711,7 +4033,22 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
         expected[name] = counts["total"] if counts else None
     found = confirmations(plan, directory)
     il_read = il_reading_assemblies(project, set(assembly_seconds(baseline_results)[1]))
-    measured = {}
+    measured, il_only = {}, set()
+    for index in uncovered:
+        mutant = mutants[index - 1]
+        if assembly_of(mutant.path) in il_read:
+            # A fixture reading the assembly's IL sees what no case runs, and sees the guards of every
+            # mutant together, so only a launch of its own can say -- of the fixtures that read IL.
+            print("[{}] the reach run read no case running it, but a fixture reads its assembly's IL, so the "
+                  "fixtures reading IL take their own launch".format(index))
+            if mutant.operator not in CALL_REMOVING:
+                il_only.add(index)
+            continue
+        mutant.verdict = UNCOVERED
+        mutant.detail = "none of the {} cases of the unmutated run ran it".format(baseline["total"])
+        mutant.ran = (("uncovered", 0),)
+        write_verdict(output, index, campaign, mutant, project, (), scope)
+        measured[index] = (mutant.verdict, mutant.detail)
     for position, item in enumerate(plan["items"]):
         index = item["id"]
         if item.get("confirm") or index == SESSION_OPENING or position not in runs:
@@ -3722,17 +4059,23 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                                   confirmed_for(plan, position, runs, found), text_readers)
         if reading is not None and reading[0] in SURVIVING and assembly in il_read:
             # The session compiled every guard into the assembly, so a fixture reading its IL read the
-            # union of the mutants rather than this one.
+            # union of the mutants rather than this one. Every other fixture ran the mutant through its
+            # guard, so a plain survivor stands for them, and only the fixtures reading IL are run again.
+            if reading[0] == SURVIVED and mutant.operator not in CALL_REMOVING:
+                il_only.add(index)
             reading = None
         if reading is None:
-            print("[{}] the session's reading does not stand, so it takes its own launch".format(index))
+            print("[{}] the session's reading {}".format(index, "stands for every fixture but those reading IL, "
+                  "which take their own launch" if index in il_only else
+                  "does not stand, so it takes its own launch"))
             continue
         mutant.verdict, mutant.detail, killers = reading
+        mutant.ran = cases_run(read_item(directory, index))
         if runs[position]["peak"]:
             mutant.detail = "{}; {} other editor(s) were up".format(mutant.detail or "-", runs[position]["peak"])
         write_verdict(output, index, campaign, mutant, project, killers, scope)
         measured[index] = (mutant.verdict, mutant.detail)
-    return measured
+    return measured, reaching, il_only
 
 
 # --------------------------------------------------------------------------------------------------
@@ -3811,7 +4154,7 @@ def scope_digest(base, targets, project, platform):
     checked for what it stops voiding on, and this stops on exactly the spans the generator already
     refuses to mutate.
     """
-    parts = ["mutation-model:{}".format(MUTATION_MODEL_VERSION), base, platform]
+    parts = ["mutation-model:{}".format(MUTATOR_VERSION), base, platform]
     for path in sorted(targets, key=str):
         # Repository-relative, so a record does not depend on where the checkout sits: a resolved
         # path and an unresolved one reach the same file and digest differently.
@@ -3826,7 +4169,6 @@ def scope_digest(base, targets, project, platform):
 # and `Logs` sit at the project root, outside these roots, and no directory is skipped by its name
 # at depth: a `Logs` or `obj` folder inside a root holds sources the editor compiles.
 KEY_ROOTS = (PACKAGE, "Assets", "ProjectSettings")
-KEY_FILES = ("Packages/manifest.json", "Packages/packages-lock.json")
 
 
 def is_test_source(relative):
@@ -3834,32 +4176,21 @@ def is_test_source(relative):
     return "/Tests/" in "/" + relative or relative.startswith(PACKAGE + "/TestUtilities/")
 
 
-def key_inputs(project):
-    """(test sources, every other file the editor compiles or imports), as sorted relative paths.
+def test_sources(project):
+    """Every test source the editor compiles or imports, as sorted relative paths.
 
     Prose is left out -- a markdown file, and the `.meta` beside it -- because the fixtures that read
-    the repository's text are the ones no launch runs (`text_reading_fixtures`). Everything else the
-    editor can import is in, a production file the mutants do not touch included: a test that kills a
-    mutant in one file can reach it through another.
+    the repository's text are the ones no launch runs (`text_reading_fixtures`).
     """
-    tests, rest = [], []
-    candidates = list(KEY_FILES)
+    candidates = []
     for root_name in KEY_ROOTS:
         for root, directories, files in os.walk(str(project / root_name)):
             directories[:] = sorted(name for name in directories
                                     if not name.endswith("~"))
             candidates.extend(relative_to(Path(root) / name, project).as_posix()
                               for name in files if not name.endswith((".md", ".md.meta")))
-    for relative in sorted(set(candidates)):
-        if (project / relative).is_file():
-            (tests if is_test_source(relative) else rest).append(relative)
-    return tests, rest
-
-
-def files_digest(project, relatives):
-    parts = ["{}:{}".format(relative, hashlib.sha256((project / relative).read_bytes()).hexdigest())
-             for relative in relatives]
-    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+    return [relative for relative in sorted(set(candidates))
+            if is_test_source(relative) and (project / relative).is_file()]
 
 
 def mutant_record(mutant, project):
@@ -3868,81 +4199,41 @@ def mutant_record(mutant, project):
             "after": mutant.after, "shadowed": sorted(mutant.shadowed)}
 
 
-# The files besides this script that a campaign's shard runs, relative to `scripts/`: what
-# `ci_mutation_shard.py` activates and launches, the modules the campaign imports, the rewriter it
-# builds, and the step that reads the change base. `CampaignKeyTests` holds the list to the imports.
-TOOL_FILES = ("test_quality/ci_mutation_shard.py", "test_quality/unity_running.py",
-              "test_quality/schemata_tool.py", "test_quality/schemata/MutantSchemata.cs",
-              "ci/licensed_editor.py", "ci/change_base.py")
-
-
-def tool_digest(project):
-    """What a verdict depends on that is not the tree under test: this script, `TOOL_FILES`, its
-    operator tables and the workflow that runs the shards."""
-    here = Path(__file__).resolve()
-    held = [here, *(here.parents[1] / name for name in TOOL_FILES),
-            project / ".github/workflows/mutation.yml"]
-    parts = [repr((MUTATION_MODEL_VERSION, OPERATORS, WORD_OPERATORS, LINE_PRIORITY))]
-    parts.extend("{}:{}".format(path.name, hashlib.sha256(path.read_bytes()).hexdigest())
-                 for path in held if path.exists())
-    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
-
-
-def campaign_key(mutants, declared, project):
-    """(the key, {component: digest}) of the campaign a head is owed.
-
-    Two heads with one key ask the same mutants of the same code and tests under the same tool, so a
-    pass on one is a pass on the other. The components are kept apart so that a miss can say which
-    one moved. `declared` is `declarations_for`'s reading, whose `written_here` moves with the merge
-    base; a declaration in a test file (`GREEN_ON_BASE`) is covered by the test sources.
-    """
-    tests, rest = key_inputs(project)
-    mutated = sorted({relative_to(mutant.path, project).as_posix() for mutant in mutants})
-    records = sorted(json.dumps(mutant_record(mutant, project), sort_keys=True) for mutant in mutants)
-    declarations = sorted(json.dumps([relative_to(path, project).as_posix(), subject,
-                                      held.category, held.operator, held.reason, held.written_here])
-                          for (path, subject), held in declared.items())
-    components = {
-        "mutants": hashlib.sha256("\n".join(records).encode()).hexdigest(),
-        "mutated-files": files_digest(project, mutated),
-        "test-sources": files_digest(project, tests),
-        "build-inputs": files_digest(project, [name for name in rest if name not in mutated]),
-        "declarations": hashlib.sha256("\n".join(declarations).encode()).hexdigest(),
-        "tool": tool_digest(project),
-    }
-    joined = "\n".join("{}:{}".format(name, components[name]) for name in sorted(components))
-    return hashlib.sha256(joined.encode()).hexdigest(), components
-
-
 # --------------------------------------------------------------------------------------------------
-# Reusing a kill from an earlier campaign
+# The record: one verdict per mutant, reused while what decided it stands
 # --------------------------------------------------------------------------------------------------
 
-# The ledger's shape, so a reader refuses one written by a tool that laid it out otherwise.
-LEDGER_SCHEMA = 1
+# An entry's shape, so a reader refuses one written by a tool that laid it out otherwise.
+RECORD_SCHEMA = 3
 
 # A kill is recorded with at most this many of its behavioural killing cases, first by name. Each one
 # is a condition on reusing it, so recording every case a widely reaching mutant reddens would tie the
 # kill to an edit in any of that many fixtures.
 MAX_RECORDED_KILLERS = 10
 
-REUSE_LAPSED = "not measured (the reused kill no longer stands)"
+REUSE_LAPSED = "not measured (the recorded verdict no longer stands)"
+# A mutant past `--cap`: left to a later run, and neither a survivor nor a failure of this one.
+PENDING = "not measured yet (past this run's --cap)"
 
 CLASS_HEADER = re.compile(r"\b(?:class|struct)\s+([A-Za-z_]\w*)\b([^{;]*)[{;]")
 BASE_LIST = re.compile(r":\s*([^{]*?)\s*(?:\bwhere\b|$)", re.DOTALL)
 # A parameterised case's name carries its arguments in parentheses, and an argument may hold a dot.
 CASE_NAME = re.compile(r"^([^()]*)(?:\(.*)?$", re.DOTALL)
+IDENTIFIER = re.compile(r"[A-Za-z_]\w*")
+# An extension method is called as `x.Name()`, which never spells the class declaring it.
+EXTENSION_METHOD = re.compile(r"@?([A-Za-z_]\w*)\s*(?:<[^<>()]*>)?\s*\(\s*(?:\[[^\]]*\]\s*)*this\s")
 
 
 def test_index(project):
-    """({class name: [(relative path, base type names)]}, {relative path: comment-free text}), over
-    the test sources a killing case can be declared in.
+    """({class name: [(relative path, base type names)]}, {relative path: comment-free text},
+    {relative path: the other test sources declaring a top-level type or an extension method it
+    spells}), over the test sources a killing case can be declared in.
 
     A class is found by its simple name: a case's full name carries the namespace, which does not
     track folders, and a nested fixture's carries `Outer+Inner`, whose source is the outer's.
     """
-    classes, texts = {}, {}
-    for relative in key_inputs(project)[0]:
+    classes, texts, declarers = {}, {}, {}
+    for relative in test_sources(project):
         if not relative.endswith(".cs"):
             continue
         try:
@@ -3950,23 +4241,32 @@ def test_index(project):
         except OSError:
             continue
         texts[relative] = text
-        for match in CLASS_HEADER.finditer(text):
+        code = code_text(text)
+        for match in CLASS_HEADER.finditer(code):
             bases = BASE_LIST.search(match.group(2))
             names = [re.sub(r"<.*", "", part).strip().split(".")[-1]
                      for part in (bases.group(1).split(",") if bases else ())]
             classes.setdefault(match.group(1), []).append((relative, [name for name in names if name]))
-    return classes, texts
+        for name in top_level_types(code) | set(EXTENSION_METHOD.findall(code)):
+            declarers.setdefault(name, set()).add(relative)
+    uses = {}
+    for relative, text in texts.items():
+        spelt = set(IDENTIFIER.findall(code_text(text, holes=True))) & set(declarers)
+        uses[relative] = set().union(*(declarers[name] for name in spelt)) - {relative}
+    return classes, texts, uses
 
 
 def fixture_hashes(project, case, index):
     """{relative path: sha256} of the files declaring a case's fixture and the fixtures it derives
-    from, or None where the case cannot be traced into the tree.
+    from, and of every test source declaring a top-level type or an extension method one of those
+    spells, followed through such sources in turn; or None where the case cannot be traced into the
+    tree.
 
     A case whose method none of those files declares is untraceable too, which is how a killing case
     that was renamed or deleted reads. An untraceable case is never reused. Hashed in the form
     `digestible` gives, so a comment edit moves nothing and a code edit, a new case included, does.
     """
-    classes, texts = index
+    classes, texts, uses = index
     owner, _, method = CASE_NAME.match(case).group(1).rpartition(".")
     name = re.split(r"[.+]", owner)[-1] if owner else ""
     if not name or not method or name not in classes:
@@ -3982,46 +4282,29 @@ def fixture_hashes(project, case, index):
             pending.extend(bases)
     if not any(re.search(r"\b{}\s*\(".format(re.escape(method)), texts[relative]) for relative in files):
         return None
+    pending = list(files)
+    while pending:
+        for other in uses.get(pending.pop(), ()):
+            if other not in files:
+                files.add(other)
+                pending.append(other)
     return {relative: hashlib.sha256(texts[relative].encode()).hexdigest() for relative in sorted(files)}
 
 
-# An attribute list that holds a test attribute anywhere in it: `[Category("x"), Test]`,
-# `[Timeout(1), UnityTest]`, `[NUnit.Framework.Test]`.
-TEST_ATTRIBUTE = re.compile(
-    r"\[([^\]]*)\]")
-TEST_ATTRIBUTE_NAME = re.compile(
-    r"(?:^|,)\s*(?:[A-Za-z_]\w*\.)*(?:Test|TestCase|TestCaseSource|UnityTest|Theory|Property)\s*(?:\(|,|$)")
-
-# Unity writes a `.meta` beside every file, and one that holds a guid only moves with the file it
-# names. An assembly definition's or reference's is kept: other definitions resolve it by that guid.
-GUID_ONLY_META = re.compile(r"\.meta$")
-KEPT_META = (".asmdef.meta", ".asmref.meta")
+def code_text(text, holes=False):
+    """`text` with its comments, directives and literals blanked, newlines kept. With `holes`, an
+    interpolated string is kept whole, since its holes are code."""
+    spans = [span for span in mask_spans(text) if not (holes and text.startswith("$", span[0]))]
+    mask = code_mask(text, spans)
+    return "".join(character if mask[offset] or character == "\n" else " "
+                   for offset, character in enumerate(text))
 
 
-def declares_a_test(text):
-    return any(TEST_ATTRIBUTE_NAME.search(body) for body in TEST_ATTRIBUTE.findall(text))
-
-
-def is_test_support(relative, text):
-    """Whether a test-side file supports fixtures rather than being one: the shared helpers, every
-    assembly definition and reference, data, and a `.cs` that declares no test or sets up a fixture.
-
-    `text` is the file's comment-free form, so a test attribute that is commented out declares nothing.
-    A `.meta` is not support unless it belongs to an assembly definition or reference: a new fixture
-    file brings its own, and that must not move what the existing fixtures' kills rest on.
-    """
-    if GUID_ONLY_META.search(relative):
-        return relative.endswith(KEPT_META)
-    if relative.startswith(PACKAGE + "/TestUtilities/") or not relative.endswith(".cs"):
-        return True
-    return not declares_a_test(text) or "SetUpFixture" in text
-
-
-def support_digest(project, relatives):
-    """`files_digest` over the support files, with a C# file in its comment-free form so that a comment
-    edited in a shared helper moves nothing."""
+def tests_digest(project):
+    """A hash over every test source, with a C# file in its comment-free form: what a recorded verdict
+    other than a kill stands on, since any test can be the one that starts killing it."""
     parts = []
-    for relative in relatives:
+    for relative in test_sources(project):
         path = project / relative
         if relative.endswith(".cs"):
             held = digestible(path.read_text(encoding="utf-8", errors="replace")).encode()
@@ -4031,40 +4314,39 @@ def support_digest(project, relatives):
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
-def context_digests(project):
-    """What a kill can depend on that no record hashes: {part: digest}.
+TYPE_DECLARATION = re.compile(r"\b(?:class|struct|interface|enum|record(?:\s+(?:class|struct))?)\s+@?([A-Za-z_]\w*)")
+DELEGATE_DECLARATION = re.compile(r"\bdelegate\s+[\w<>\[\],.?\s]*?\s@?([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(")
+# Words TYPE_DECLARATION captures that name no type: `where T : struct where U : class`.
+NOT_A_TYPE = {"where", "class", "struct", "new", "unmanaged", "notnull", "default", "enum", "interface"}
+NAMESPACE_OPENER = re.compile(r"\bnamespace\s+[\w.]+\s*$")
 
-    `build-inputs` is the campaign key's component over every non-test file the editor compiles or
-    imports, the mutated files included -- a kill reached through a production file other than the
-    mutated one, a stylesheet, a project setting or a merged-in base moves it. `test-support` is
-    every test-side file that is not a fixture. A ledger written under other digests is read as
-    holding no reusable kill.
+
+def top_level_types(code):
+    """The types `code` (`code_text`'s form) declares outside every other type.
+
+    A nested type is reached from another file through its outer type's name, which a `using static`
+    of it spells as well. Following nested names too was rejected: it binds every file spelling that
+    short name.
     """
-    tests, rest = key_inputs(project)
-    support = []
-    for relative in tests:
-        text = ""
-        if relative.endswith(".cs"):
-            text = digestible((project / relative).read_text(encoding="utf-8", errors="replace"))
-        if is_test_support(relative, text):
-            support.append(relative)
-    return {"build-inputs": files_digest(project, rest), "test-support": support_digest(project, support)}
+    events = [(match.start(), match.group(), None) for match in re.finditer(r"[{}]", code)]
+    events += [(match.start(), "type", match.group(1))
+               for pattern in (TYPE_DECLARATION, DELEGATE_DECLARATION) for match in pattern.finditer(code)]
+    stack, names, cursor = [], set(), 0
+    for offset, kind, name in sorted(events, key=lambda event: (event[0], event[1] != "type")):
+        if kind == "{":
+            stack.append(bool(NAMESPACE_OPENER.search(code[cursor:offset])))
+            cursor = offset + 1
+        elif kind == "}":
+            if stack:
+                stack.pop()
+            cursor = offset + 1
+        elif all(stack):
+            names.add(name)
+    return names - NOT_A_TYPE
 
 
-def context_moved(recorded, current):
-    """The parts of the context that differ, or all of them where the ledger recorded none."""
-    held = recorded if isinstance(recorded, dict) else {}
-    return sorted(name for name in current if held.get(name) != current[name])
-
-
-def context_reason(moved, run):
-    return "run {} was measured under other {}".format(run, " and ".join(
-        {"build-inputs": "production code or project files", "test-support": "test support files"}[name]
-        for name in moved))
-
-
-def ledger_record(mutant, project, index, text_readers, run):
-    """One measured mutant as the ledger keeps it: its identity, its file's content, its verdict and,
+def measured_entry(mutant, project, index, text_readers, run):
+    """One measured mutant as the record keeps it: its identity, its file's content, its verdict and,
     for a kill, the cases that killed it with the fixture sources they stood on."""
     record = {"mutant": mutant_record(mutant, project), "file": sha(mutant.path),
               "verdict": mutant.verdict, "detail": mutant.detail, "stood": mutant.stood,
@@ -4082,9 +4364,9 @@ def short_case(case):
 
 
 def kill_problem(record, mutant, project, index):
-    """Why a recorded kill does not stand for this mutant in this tree, or None where it does.
-
-    A record that cannot be read as the shape `ledger_record` writes does not stand either.
+    """Why a recorded kill does not stand for this mutant in this tree, or None where it does: a
+    killing case is gone, or a source file it was traced to changed. A record that cannot be read as
+    the shape `measured_entry` writes does not stand either.
     """
     try:
         if record["verdict"] != KILLED:
@@ -4093,8 +4375,6 @@ def kill_problem(record, mutant, project, index):
             return "the record is of another mutant"
         if record["file"] != sha(mutant.path):
             return "its file changed since the kill was recorded"
-        if not record["killers"]:
-            return "the record names no killing case that could be traced to a source file"
         for held in record["killers"]:
             now = fixture_hashes(project, held["case"], index)
             if now is None:
@@ -4109,116 +4389,95 @@ def kill_problem(record, mutant, project, index):
     return None
 
 
-def read_ledgers(directory):
-    """([ledger, ...] newest first, [what could not be read]) from the `*.json` files in `directory`.
+def record_key(mutant, project):
+    """Where the record holds `mutant`'s entry: its identity, its file's bytes and `MUTATOR_VERSION`,
+    hashed.
 
-    File names sort by the run they came from. A directory that is absent holds no ledger, which is
-    the state of a branch whose first campaign this is.
+    The same mutant of the same file under the same mutator has one key, so a later verdict replaces
+    an earlier one and nothing else decides which of two entries counts.
     """
-    ledgers, unread = [], []
-    found = sorted(Path(directory).glob("*.json"), reverse=True) if Path(directory).is_dir() else []
-    for path in found:
-        try:
-            held = json.loads(path.read_text())
-            if (held["schema"] != LEDGER_SCHEMA or not isinstance(held["records"], list)
-                    or not isinstance(held["tool"], str)):
-                raise ValueError("another layout")
-            held["run"] = str(held["run"])
-            ledgers.append(held)
-        except (OSError, ValueError, KeyError, TypeError) as failure:
-            unread.append("{}: {}".format(path.name, failure))
-    return ledgers, unread
+    identity = json.dumps(mutant_record(mutant, project), sort_keys=True)
+    return hashlib.sha256("\n".join((identity, sha(mutant.path), str(MUTATOR_VERSION))).encode()).hexdigest()
 
 
-def record_identity(record):
-    """The recorded mutant as one comparable string, or None where the record has none."""
+def record_entry(directory, key):
+    """The entry the record directory holds under `key`, or None where it holds none it can read."""
+    path = Path(directory) / "{}.json".format(key)
     try:
-        return json.dumps(record["mutant"], sort_keys=True)
-    except (KeyError, TypeError, ValueError):
+        held = json.loads(path.read_text())
+    except (OSError, ValueError):
         return None
+    return held if isinstance(held, dict) and held.get("schema") == RECORD_SCHEMA else None
 
 
-def record_path(record):
+def reuse_problem(entry, mutant, project, index, tests):
+    """Why a recorded verdict does not stand for this mutant in this tree, or None where it does.
+
+    StrykerJS's rule: a kill stands while the cases that killed it are still declared and their files
+    unchanged (`kill_problem`), and any other verdict -- a kill traced to no file among them -- while
+    no test source changed (`tests`, `tests_digest`'s reading of this tree).
+    """
     try:
-        return record["mutant"]["path"]
-    except (KeyError, TypeError):
-        return None
+        if entry["mutant"] != mutant_record(mutant, project) or entry["file"] != sha(mutant.path):
+            return "the record is of another mutant"
+        if entry["verdict"] == KILLED and entry["killers"]:
+            return kill_problem(entry, mutant, project, index)
+        if entry["verdict"] not in RECORDED:
+            return "it was {} when last measured".format(entry["verdict"])
+        if entry["tests"] != tests:
+            return "it was {} when last measured, and a test source changed since".format(entry["verdict"])
+    except (KeyError, TypeError, AttributeError, ValueError):
+        return "the record cannot be read"
+    return None
 
 
-def decide_reuse(mutants, ledgers, project):
-    """({index: the record whose kill is reused}, {index: why the mutant is measured}).
+def decide_reuse(mutants, directory, project):
+    """({index: the entry reused}, {index: why the mutant is measured}), from the record `directory`.
 
-    The newest ledger that holds the mutant decides it, whatever it says: a kill an older ledger holds
-    is not a later one's survivor. Only a kill whose file, mutant, killing cases and tool all stand is
-    reused (`kill_problem` and the tool digest), and every other mutant is measured, a survivor and a
-    declared one included.
+    A pure function of the tree and the record: each mutant's entry is found by `record_key` alone.
     """
     reused, reasons = {}, {}
-    if not ledgers:
-        return reused, {number: "no earlier campaign on the branch left a ledger that could be read"
-                        for number in range(1, len(mutants) + 1)}
-    tool, index, context = tool_digest(project), test_index(project), context_digests(project)
+    index, tests = test_index(project), tests_digest(project)
     for number, mutant in enumerate(mutants, start=1):
-        identity = json.dumps(mutant_record(mutant, project), sort_keys=True)
-        path = relative_to(mutant.path, project).as_posix()
-        why = "no earlier campaign recorded this mutant"
-        for ledger in ledgers:
-            if ledger["tool"] != tool:
-                why = "run {} was measured by another version of the tool".format(ledger["run"])
-                continue
-            moved = context_moved(ledger.get("context"), context)
-            if moved:
-                why = context_reason(moved, ledger["run"])
-                continue
-            records = [record for record in ledger["records"] if isinstance(record, dict)]
-            found = next((record for record in records if record_identity(record) == identity), None)
-            if found is None:
-                if any(record_path(record) == path for record in records):
-                    why = "run {} recorded this file with other mutants: its content changed".format(
-                        ledger["run"])
-                continue
-            problem = kill_problem(found, mutant, project, index)
-            if problem is None:
-                reused[number] = dict(found, reused_from=ledger["run"])
-                why = None
-            else:
-                why = "run {}: {}".format(ledger["run"], problem)
-            break
-        if why is not None:
-            reasons[number] = why
+        entry = record_entry(directory, record_key(mutant, project))
+        problem = ("the record holds no verdict for it" if entry is None
+                   else reuse_problem(entry, mutant, project, index, tests))
+        if problem is None:
+            reused[number] = entry
+        else:
+            reasons[number] = problem
     return reused, reasons
 
 
 def load_reuse(path, mutants, project):
-    """({index: record}, {index: why}, the context the plan decided under) from the file `--emit-reuse`
-    wrote, refused unless each reused record is of the mutant at its index in this tree's list."""
+    """({index: entry}, {index: why}, [the indices past `--cap`]) from the file `--emit-reuse` wrote,
+    refused unless each reused entry is of the mutant at its index in this tree's list."""
     try:
         held = json.loads(Path(path).read_text())
-        context = held["context"]
         reused = {int(number): record for number, record in held["reused"].items()}
         reasons = {int(number): text for number, text in held["reasons"].items()}
-        if held["schema"] != LEDGER_SCHEMA:
+        pending = [int(number) for number in held["pending"]]
+        if held["schema"] != RECORD_SCHEMA:
             raise ValueError("another layout")
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as failure:
         raise SystemExit("{} holds no reuse decision to measure around: {}".format(path, failure))
     for number, record in sorted(reused.items()):
-        if not 1 <= number <= len(mutants) or record_identity(record) != json.dumps(
-                mutant_record(mutants[number - 1], project), sort_keys=True):
-            raise SystemExit("{} reuses a kill at mutant {} that is not that mutant in this tree's "
+        if not 1 <= number <= len(mutants) or not isinstance(record, dict) or record.get(
+                "mutant") != mutant_record(mutants[number - 1], project):
+            raise SystemExit("{} reuses a verdict at mutant {} that is not that mutant in this tree's "
                              "list, so no verdict here would be about the mutants the plan counted"
                              .format(path, number))
-    return reused, reasons, context
+    return reused, reasons, pending
 
 
 def reuse_detail(record):
-    return "reused from run {} (measured in run {}), {} killing case(s) unchanged".format(
-        record.get("reused_from"), record.get("measured_by"), len(record.get("killers") or ()))
+    return "{} in run {}, reused from the record".format(record.get("verdict"), record.get("measured_by"))
 
 
 def reuse_report(mutants, reused, reasons, project):
     """How many verdicts were reused, and why each of the others is measured."""
     again = [number for number in range(1, len(mutants) + 1) if number not in reused]
-    lines = ["--- verdicts reused from earlier campaigns: {} of {} ---".format(len(reused), len(mutants)),
+    lines = ["--- verdicts reused from the record: {} of {} ---".format(len(reused), len(mutants)),
              "--- measured again: {} of {} ---".format(len(again), len(mutants))]
     lines.extend("  {}: {}".format(mutants[number - 1].describe(project),
                                    reasons.get(number, "no reason was recorded for it"))
@@ -4226,25 +4485,26 @@ def reuse_report(mutants, reused, reasons, project):
     return "\n".join(lines)
 
 
-def write_ledger(path, mutants, reused, project):
-    """What this campaign knows about each mutant it decided, for the next one to reuse.
+def write_record(directory, mutants, reused, project):
+    """An entry for each mutant this run gave a `RECORDED` verdict and did not reuse, under its
+    `record_key`.
 
-    A reused kill is carried as it stands, with the run that measured it. A mutant without a decided
-    verdict is left out: one no shard recorded, one that timed out, and a reused kill that lapsed.
+    Every entry written is one `reuse_problem` accepts over the tree that wrote it, since an entry the
+    gate could never accept would hold a release and a catch-up chain for good. A mutant without such
+    a verdict writes none: one no shard recorded, one the project lock or the build system kept from
+    its suite, one past `--cap`, and a reused verdict that lapsed.
     """
     run = os.environ.get("GITHUB_RUN_ID", "")
+    tests = tests_digest(project)
     index, text_readers = test_index(project), text_reading_fixtures(project)
-    records = []
+    Path(directory).mkdir(parents=True, exist_ok=True)
     for number, mutant in enumerate(mutants, start=1):
-        if number in reused:
-            if mutant.verdict == KILLED:
-                records.append({key: value for key, value in reused[number].items()
-                                if key != "reused_from"})
-        elif mutant.verdict in DECIDED + SURVIVING:
-            records.append(ledger_record(mutant, project, index, text_readers, run))
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(json.dumps({"schema": LEDGER_SCHEMA, "run": run, "tool": tool_digest(project),
-                                      "context": context_digests(project), "records": records}, indent=1))
+        if number in reused or mutant.verdict not in RECORDED:
+            continue
+        entry = dict(measured_entry(mutant, project, index, text_readers, run),
+                     schema=RECORD_SCHEMA, mutator=MUTATOR_VERSION, tests=tests)
+        (Path(directory) / "{}.json".format(record_key(mutant, project))).write_text(
+            json.dumps(entry, indent=1, sort_keys=True))
 
 
 def list_mismatch(expected, mutants, project):
@@ -4263,17 +4523,17 @@ def list_mismatch(expected, mutants, project):
     return "the plan's list holds {} mutants and this tree generates {}".format(len(expected), len(mine))
 
 
-def unreported_shards(chosen, platform, mutants):
+def unreported_shards(chosen, platform, mutants, project, most=MAX_SHARDS):
     """{shard K: the mutant indices it was dealt} for the shards `--collect` found no record from.
 
     A shard that died, was cancelled, or timed its baseline out writes nothing for any of its
     mutants, and one that stopped part way writes for some. Only a shard none of whose mutants
     has a verdict is named: a partial one names its own missing mutants through the verdict list.
     """
-    count = shard_count(len(chosen), platform)
+    count = shard_count(len(chosen), platform, most)
     named = {}
     for shard in range(count):
-        dealt = sharded(chosen, (shard, count))
+        dealt = sharded(chosen, (shard, count), mutants, project, platform)
         if dealt and all(mutants[index - 1].verdict == UNRECORDED for index in dealt):
             named[shard] = dealt
     return named, count
@@ -4294,6 +4554,8 @@ def write_verdict(output, index, digest, mutant, project, killers=(), scope=()):
         # Which cases kill which mutant is a reading the decision does not carry, and it is on disk
         # here anyway -- the detail truncates it for a reader rather than because that is all there was.
         "killers": sorted(killers),
+        # (stage, cases) for each stage a session ran: how many cases the mutant's launches ran.
+        "ran": [list(entry) for entry in mutant.ran],
     }, indent=2))
 
 
@@ -4348,6 +4610,7 @@ def collected(directories, index, digest, mutant, project, scope=()):
         if held is not None:
             mutant.stood = held.get("stood")
             mutant.killers = tuple(held.get("killers") or ())
+            mutant.ran = tuple(tuple(entry) for entry in held.get("ran") or ())
             return held.get("verdict"), held.get("detail") or ""
     return UNRECORDED, "no shard's output holds a verdict for it"
 
@@ -4360,20 +4623,92 @@ def parse_shard(text):
     return int(match.group(1)), int(match.group(2))
 
 
-def in_shard(position, shard):
-    """Whether the 1-based `position` is this shard's to run."""
-    return shard is None or (position - 1) % shard[1] == shard[0]
+def line_ranges(specs, targets, named):
+    """[(path, first, last)] from `PATH:FIRST-LAST` specs, each over a file of `targets`, and every file of
+    `targets` must have one.
+
+    A mistyped range, a reversed one, one past the file's end, a file `--files` skipped or never named, and a
+    file left without a range are refused: each would otherwise shrink the list to less than was meant, with
+    the run still reporting.
+    """
+    found = []
+    for spec in specs:
+        match = re.fullmatch(r"(.+):(\d+)-(\d+)", spec)
+        if not match:
+            raise SystemExit("--lines takes PATH:FIRST-LAST, got {!r}".format(spec))
+        path, first, last = Path(match.group(1)).resolve(), int(match.group(2)), int(match.group(3))
+        if path not in targets:
+            raise SystemExit("--lines names {}, which --files {}".format(
+                match.group(1), "skipped as not a mutable package source" if path in named else "does not name"))
+        if first > last:
+            raise SystemExit("--lines range {} is reversed".format(spec))
+        size = len(path.read_text().splitlines())
+        if not 1 <= first or last > size:
+            raise SystemExit("--lines range {}-{} lies outside {}, which has {} line(s)".format(
+                first, last, match.group(1), size))
+        found.append((path, first, last))
+    for path in sorted(set(targets) - {path for path, _, _ in found}):
+        raise SystemExit("--files names {}, which --lines gives no range; its mutants would be dropped "
+                         "unasked".format(path))
+    return found
 
 
-def shard_count(mutants, platform="EditMode"):
-    return min(MAX_SHARDS, -(-mutants // SHARD_SIZE[platform]))
+def in_ranges(ranges, path, line):
+    return any(there == path and first <= line <= last for there, first, last in ranges)
 
 
-def sharded(chosen, shard):
-    """The indices in `chosen` that `shard` measures, dealt by position in `chosen` rather than by
-    index: a second pass chooses the first pass's survivors, and dealt by index, two survivors at
-    indices 2 and 4 both go to the second of two shards."""
-    return [index for position, index in enumerate(chosen, start=1) if in_shard(position, shard)]
+def shard_count(mutants, platform="EditMode", most=MAX_SHARDS):
+    return min(most, -(-mutants // SHARD_SIZE[platform]))
+
+
+def mutant_cost(mutant, project, platform):
+    """What `deal` charges `mutant`, in seconds: `NARROWED_COST` where its first launch could be narrowed
+    to an area, the platform's whole-suite figure otherwise. Read off the path and the platform alone, so
+    every job computes the same figure."""
+    if platform in NARROWED_PLATFORMS and area_of(mutant.path, project) is not None:
+        return NARROWED_COST
+    return WHOLE_COST[platform]
+
+
+def deal(chosen, mutants, project, platform, count):
+    """`count` lists of mutant indices, each ascending: `chosen` longest first, each into the shard that
+    has been charged least so far.
+
+    No shard is given more than `SHARD_CEILING` mutants however cheap they are, since the ceiling is
+    charged per mutant. Ties on the charge go to the lowest shard and equal costs to the lowest index, so
+    every job given one plan deals the same shards. Dealt over `chosen` rather than over all indices, since
+    a second pass chooses the first pass's survivors.
+    """
+    held = [[] for _ in range(count)]
+    totals = [0] * count
+    cost = {index: mutant_cost(mutants[index - 1], project, platform) for index in chosen}
+    for index in sorted(chosen, key=lambda index: (-cost[index], index)):
+        shard = min((shard for shard in range(count) if len(held[shard]) < SHARD_CEILING[platform]),
+                    key=lambda shard: (totals[shard], shard))
+        held[shard].append(index)
+        totals[shard] += cost[index]
+    return [sorted(indices) for indices in held]
+
+
+def sharded(chosen, shard, mutants, project, platform):
+    """The indices in `chosen` that `shard` (K, N) measures, or all of them where there is none."""
+    if shard is None:
+        return list(chosen)
+    return deal(chosen, mutants, project, platform, shard[1])[shard[0]]
+
+
+def spread_report(chosen, mutants, project, platform, count):
+    """Each shard's mutant count and expected cost, then the cheapest and dearest shard and the gap."""
+    if not count:
+        return ""
+    dealt = deal(chosen, mutants, project, platform, count)
+    costs = [sum(mutant_cost(mutants[index - 1], project, platform) for index in indices)
+             for indices in dealt]
+    lines = ["shard {}: {} mutant(s), expected {} s".format(shard, len(indices), cost)
+             for shard, (indices, cost) in enumerate(zip(dealt, costs))]
+    lines.append("expected cost: cheapest shard {} s, dearest {} s, spread {} s".format(
+        min(costs), max(costs), max(costs) - min(costs)))
+    return "\n".join(lines)
 
 
 def listed(label, lines_by_path, project):
@@ -4419,6 +4754,16 @@ def declarations_for(targets, changed):
             declaration.written_here = declaration.written_in(changed.get(path, set()))
             found[(path, subject)] = declaration
     return found
+
+
+def declared_subjects(text, lines):
+    """Every line a declaration in `text` answers for, where `lines` holds any line of that declaration.
+
+    Mutated beside the change's own lines, so a change that writes or rewords a declaration alone has
+    its subject measured: left out, such a change carries no mutant, and the run passes it as having
+    nothing to ask without reading the declaration it wrote.
+    """
+    return {subject for subject, declaration in declarations_in(text) if declaration.written_in(lines)}
 
 
 def body_reach(mutants, body):
@@ -4498,6 +4843,51 @@ def answered(mutants, deferred, declared):
     return unanswered, stale
 
 
+# A fixture that takes arguments is run under names the class filter and the case count below do not follow.
+PARAMETERISED_FIXTURE = re.compile(r"\bTestFixtureSource\b|\bTestFixture(?:Attribute)?\s*\((?!\s*\))")
+
+
+def il_only_classes(project, ran, text_readers):
+    """The fixture classes `il_only_scope` selects, or None where a class filter cannot name their cases:
+    a reading file declaring a fixture with arguments, which includes a generic one, or a class some source
+    derives from -- whose cases run under another name."""
+    readers, sources, _ = il_reader_files(project, ran)
+    classes = {name for _, text in readers for name in FIXTURE_CLASS.findall(text)} - set(text_readers)
+    for _, text in readers:
+        if PARAMETERISED_FIXTURE.search(text):
+            return None
+    texts = [path.read_text(encoding="utf-8", errors="replace") for path in sources]
+    for name in classes:
+        pattern = re.compile(r"\bclass\s+\w+\s*(?:<[^>{;]*>)?\s*:[^{;]*\b" + re.escape(name) + r"\b")
+        if any(pattern.search(text) for text in texts):
+            return None
+    return classes
+
+
+def il_only_scope(project, baseline_results, text_readers, scope):
+    """(the scope that runs only the fixtures reading compiled IL, how many cases the baseline held for
+    them) or (None, 0) where those cannot be named.
+
+    A session survivor stands for every fixture that does not read IL, which ran the mutant through its
+    guard. The ones that do read IL saw every guard together, so they run again on the one mutant built
+    alone. The count is the baseline's for the same classes, so a filter that selects other cases than
+    these is noticed by the caller and the whole suite decides.
+    """
+    if scope:
+        return None, 0
+    classes = il_only_classes(project, set(assembly_seconds(baseline_results)[1]), text_readers)
+    if not classes:
+        return None, 0
+    patterns = [re.compile("[.+]{}$".format(name)) for name in sorted(classes)]
+    cases = sum(1 for case in ET.parse(str(baseline_results)).getroot().iter("test-case")
+                if any(pattern.search(case.get("classname", "")) for pattern in patterns))
+    if not cases:
+        return None, 0
+    chosen = excluding(["-testFilter", ";".join("[.+]{}$".format(name) for name in sorted(classes))],
+                       text_readers)
+    return chosen, cases
+
+
 def measure(args, project, holder, output, targets, mutants, scope, campaign, coverage, selected):
     """Waits for the machine, takes the baseline and gives each mutant whose index is in `selected`
     its verdict, recording each one under `output` as it is reached."""
@@ -4524,7 +4914,8 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
         raise SystemExit("the baseline run did not finish within --timeout, so no mutant can be timed")
     baseline = read_counts(baseline_results)
     if baseline is None:
-        raise SystemExit("the baseline run wrote no result; read {}".format(output / "baseline.log"))
+        raise SystemExit("the baseline run wrote no result; read {}\n{}".format(
+            output / "baseline.log", log_excerpt(output / "baseline.log")))
     if baseline["failed"] or baseline["inconclusive"]:
         raise SystemExit("baseline is not green, so a mutant would read as killed by {}".format(
             ", ".join(failing_names(baseline_results)) or "an inconclusive case"))
@@ -4545,26 +4936,41 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # whose session reading does not stand -- takes its own launches below, as every mutant once did.
     # Not under --editor-arg: the runner starts each stage itself, so an argument meant for the test
     # framework would scope the baseline and the own launches and not the session's stages.
-    in_session = {}
+    in_session, reach_made, il_only = {}, False, set()
     if args.editor_arg and not args.launch_per_mutant:
         print("--editor-arg reaches no session stage, so every mutant takes its own launches")
     if not args.launch_per_mutant and not args.editor_arg:
         pending = [index for index in sorted(selected) if read_verdict(
             output, index, campaign, mutants[index - 1], project, scope) is None]
         if pending:
-            in_session = measure_in_session(args, project, holder, output, mutants, pending,
-                                            baseline_results, baseline, baseline_wall, text_readers,
-                                            excluding(scope, text_readers), campaign, scope)
+            in_session, reach_made, il_only = measure_in_session(
+                args, project, holder, output, mutants, pending, baseline_results, baseline, baseline_wall,
+                text_readers, excluding(scope, text_readers), campaign, scope)
     own = set(selected) - set(in_session)
+    il_scope, il_cases = il_only_scope(project, baseline_results, text_readers, scope) \
+        if il_only else (None, 0)
+    il_only = il_only if il_scope is not None else set()
+    if il_only:
+        # As an area's launch is: the fixtures must pass alone on the unmutated tree, or a failure of
+        # theirs on a mutant would not be the mutation's.
+        control = output / "baseline-il.xml"
+        if control.exists():
+            control.unlink()
+        _, control_timed_out, _ = run_suite(args.unity, project, args.platform, il_scope, control,
+                                            output / "baseline-il.log", min(args.timeout, baseline_wall), holder)
+        held = read_counts(control)
+        if control_timed_out or not held or held["failed"] or held["inconclusive"] or held["total"] != il_cases:
+            print("the fixtures reading IL did not pass alone on the unmutated tree, so their survivors "
+                  "run on the whole suite")
+            il_only = set()
 
     # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
     # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
-    # built. Not
-    # taken under a scope the caller chose, which already asks a question of its own.
+    # built. Not taken under a scope the caller chose, which already asks a question of its own.
     attempts = {}
     ceiling = min(args.timeout, baseline_wall)
-    if not scope and args.platform in NARROWED_PLATFORMS:
-        areas = {area_of(mutants[index - 1].path, project) for index in own} - {None}
+    if not scope and args.platform in NARROWED_PLATFORMS and not reach_made:
+        areas = {area_of(mutants[index - 1].path, project) for index in own - il_only} - {None}
         for area, names in narrowable(baseline_results, areas).items():
             attempt = excluding(["-assemblyNames", ";".join(names)], text_readers) + args.editor_arg
             results = output / "baseline-{}.xml".format(area.name)
@@ -4602,7 +5008,9 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             if first_try and index in in_session:
                 mutant.verdict, mutant.detail = in_session[index]
                 measured += 1
-                print("      {} ({}) in the session".format(mutant.verdict, mutant.detail or "-"))
+                print("      {} ({}) in the session{}".format(
+                    mutant.verdict, mutant.detail or "-",
+                    "; cases run: " + describe_ran(mutant.ran) if mutant.ran else ""))
                 continue
             kept = read_verdict(output, index, campaign, mutant, project, scope) if first_try else None
             if kept is not None:
@@ -4635,8 +5043,10 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             mutant.path.write_text(mutated)
             written[mutant.path] = mutated
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
-            attempt, narrowed_to, narrow_bound, area_cases = attempts.get(
+            il_narrow = first_try and index in il_only
+            attempt, narrowed_to, narrow_bound, area_cases = (None, (), 0, 0) if il_narrow else attempts.get(
                 area_of(mutant.path, project), (None, (), 0, 0))
+            ran = []
             early, wall, neighbours, late, crashed = [], 0.0, 0, False, None
             if attempt is not None:
                 narrowed = output / "mutant-{:03d}-narrowed.xml".format(index)
@@ -4650,6 +5060,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                     timed_out, late = False, True
                 early = narrowed_kill(narrowed, narrowed_log, timed_out, dll, baseline_hashes,
                                       text_readers)
+                ran.append(("narrowed", (read_counts(narrowed) or {}).get("total")))
                 if not early:
                     crashed = mutant_crash(narrowed, narrowed_log, dll, baseline_hashes)
                 # A complete narrowed pass is no verdict, so the whole suite still runs.
@@ -4657,9 +5068,32 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             timed_out = False
             if not early and not crashed:
                 since = time.time()
-                spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
+                spent, timed_out, seen = run_suite(args.unity, project, args.platform,
+                                                   il_scope if il_narrow else launched,
                                                    results, log, args.timeout, holder)
                 wall, neighbours = wall + spent, max(neighbours, seen)
+                if il_narrow:
+                    held = read_counts(results)
+                    ran.append(("fixtures reading IL", held["total"] if held else None))
+                    # Only a launch that completed over the cases the baseline holds for these fixtures
+                    # stands for them -- or one that failed a case, which is a kill whatever it selected.
+                    # A build that stopped, a hang, no result and a different count each leave the whole
+                    # suite to decide.
+                    if timed_out or not held or build_error(log) or not (
+                            held["failed"] or held["total"] == il_cases):
+                        print("      the fixtures reading IL did not complete over their {} cases, so the "
+                              "whole suite runs".format(il_cases))
+                        for stale in (results, log):
+                            if stale.exists():
+                                stale.unlink()
+                        ran.pop()
+                        il_narrow = False
+                        since = time.time()
+                        spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
+                                                           results, log, args.timeout, holder)
+                        wall, neighbours = wall + spent, max(neighbours, seen)
+                if not il_narrow:
+                    ran.append(("whole", (read_counts(results) or {}).get("total")))
                 if timed_out and complete_result(results, since, baseline["total"]):
                     timed_out, late = False, True
                 crashed = mutant_crash(results, log, dll, baseline_hashes)
@@ -4763,12 +5197,13 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                     owner.detail = "{} stood for the line, {} did not compile: {}".format(
                         mutant.operator, owner.operator, mutant.detail or "-")
                     owner.stood = mutant.operator
+            owner.ran = tuple(ran)
             write_verdict(output, index, campaign, owner, project, killers, scope)
             measured += 1
             average = (time.time() - started) / measured
             left = sum(1 for later in selected if later > index)
-            print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
-                mutant.verdict, mutant.detail or "-", wall, average * left, average))
+            print("      {} ({}) in {:.0f}s; cases run: {}; {:.0f}s left at {:.0f}s each".format(
+                mutant.verdict, mutant.detail or "-", wall, describe_ran(ran) or "-", average * left, average))
     finally:
         holder.release()
         # Only a file still holding the mutation written to it: anything else is the original already,
@@ -4783,20 +5218,51 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
               flush=True)
 
 
-def plan_survivors(args, coverage, mutants, chosen, first):
+def plan_survivors(args, coverage, mutants, chosen, first, project):
     """The second pass's plan: the shards its platform needs for the first pass's survivors."""
     print(coverage)
     per = SHARD_CEILING[args.platform]
-    if len(chosen) > MAX_SHARDS * per:
+    if args.survivors_shard is not None:
+        # One job measures them all, after its own first pass.
+        if len(chosen) > per:
+            print("{} mutants of this shard survived the {} suite, more than the {} one job can measure on "
+                  "{} after it.\nWrite the tests they ask for, or split the pull request."
+                  .format(len(chosen), first, per, args.platform))
+            return CEILING_REFUSAL
+        print("{} of {} mutant(s) survived the {} suite in this shard and are measured on {}".format(
+            len(chosen), len(mutants), first, args.platform))
+        print("mutants={}".format(len(chosen)))
+        return 0
+    if len(chosen) > args.max_shards * per:
         print("{} mutants survived the {} suite, more than {} shards of {} can measure on {} inside "
               "the shard job's timeout.\nWrite the tests they ask for, or split the pull request."
-              .format(len(chosen), first, MAX_SHARDS, per, args.platform))
+              .format(len(chosen), first, args.max_shards, per, args.platform))
         return CEILING_REFUSAL
     print("{} of {} mutant(s) survived the {} suite and are measured on {}".format(
         len(chosen), len(mutants), first, args.platform))
+    count = shard_count(len(chosen), args.platform, args.max_shards)
+    print(spread_report(chosen, mutants, project, args.platform, count))
     print("mutants={}".format(len(chosen)))
-    print("shards={}".format(json.dumps(list(range(shard_count(len(chosen), args.platform))))))
+    print("shards={}".format(json.dumps(list(range(count)))))
     return 0
+
+
+def unreported_survivor_shards(first_chosen, survivors, first, mutants, project, most=MAX_SHARDS):
+    """{first-pass shard K: the survivors it left} for the second-pass groups `--collect` found no
+    record from, and the first pass's shard count.
+
+    The second pass runs in the job of each first-pass shard, over that shard's survivors, so a group
+    is named by the shard it belongs to. Named only where none of its survivors has a verdict, as
+    `unreported_shards` names a shard.
+    """
+    count = shard_count(len(first_chosen), first, most)
+    named = {}
+    for shard in range(count):
+        dealt = [index for index in sharded(first_chosen, (shard, count), mutants, project, first)
+                 if index in survivors]
+        if dealt and all(mutants[index - 1].verdict == UNRECORDED for index in dealt):
+            named[shard] = dealt
+    return named, count
 
 
 def report_shard(mutants, selected, shard):
@@ -4812,6 +5278,36 @@ def report_shard(mutants, selected, shard):
     return 0
 
 
+def gate(mutants, reused, reasons, declared, coverage, project):
+    """The record's decision over the diff, made without an editor: 0 where every mutant holds a
+    standing verdict and every survivor among them is answered, 1 otherwise.
+
+    The same tree and the same record give the same lines and the same exit, since nothing here is
+    measured: a mutant the record holds no standing verdict for is unresolved, never a pass.
+    """
+    print(coverage)
+    unresolved = [number for number in range(1, len(mutants) + 1) if number not in reused]
+    for number, record in reused.items():
+        mutants[number - 1].verdict, mutants[number - 1].detail = record["verdict"], reuse_detail(record)
+    unanswered, stale = answered(
+        mutants, {(mutants[number - 1].path, mutants[number - 1].line) for number in unresolved}, declared)
+    for number in unresolved:
+        print("\nUNRESOLVED  {}\n            {}".format(mutants[number - 1].describe(project),
+                                                       reasons.get(number, "-")))
+    for mutant, complaint in unanswered:
+        print("\nUNANSWERED  {}\n            {}".format(mutant.describe(project), complaint))
+    for path, subject, declaration in stale:
+        print("\nSTALE       {}:{} declares a survivor, and line {} has none"
+              .format(relative_to(path, project), declaration.line, subject))
+    print("\ngate: {} mutant(s); {} resolved, {} unresolved, {} unanswered, {} stale".format(
+        len(mutants), len(reused), len(unresolved), len(unanswered), len(stale)))
+    if unresolved:
+        print("An unresolved mutant is one no record run has measured to a verdict yet: the next record "
+              "run on this\nbranch measures it, and `gh workflow run mutation.yml --ref <branch>` starts "
+              "one. A pull request\nanswers an unanswered survivor or a stale declaration.")
+    return 1 if unresolved or unanswered or stale else 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", default=".", help="Unity project root (default: cwd)")
@@ -4819,6 +5315,9 @@ def main():
                         help="branch to diff against, read at refs/remotes/origin/BASE where "
                              "both that and refs/heads/BASE exist (default: main)")
     parser.add_argument("--files", nargs="*", help="mutate these files whole instead of a diff")
+    parser.add_argument("--lines", nargs="+", metavar="PATH:FIRST-LAST",
+                        help="with --files, keep only the mutants on these line ranges of the named files; "
+                             "the list every shard and tree hands back is the filtered one")
     parser.add_argument("--platform", default="EditMode", choices=["EditMode", "PlayMode"])
     parser.add_argument("--assemblies", help="comma-separated test assemblies; default is every one")
     parser.add_argument("--filter", help="fixture or test name, as -testFilter takes it. Narrowing to one "
@@ -4853,12 +5352,20 @@ def main():
                         help="write every mutant this package generates as {path, line, text} and "
                              "stop, for a reader that parses them with something other than this "
                              "script's own model of C#")
+    parser.add_argument("--max-shards", type=int, default=MAX_SHARDS, metavar="N",
+                        help="split a pass across at most N shards, which with --plan sets the ceiling "
+                             "at N shards' worth; every job of one campaign passes the same N "
+                             "(default: {})".format(MAX_SHARDS))
     parser.add_argument("--plan", action="store_true",
                         help="print how many mutants the diff generates and the shards a split run "
                              "would use, as mutants=N and shards=[...] lines, and stop")
-    parser.add_argument("--key", action="store_true",
-                        help="print the campaign key of the diff as campaign-key=HEX, with the "
-                             "digest of each component it is made of, and stop")
+    parser.add_argument("--gate", action="store_true",
+                        help="with --reuse-from, decide the diff from the record alone, without an "
+                             "editor: refuse a mutant the record holds no standing verdict for, an "
+                             "unanswered survivor and a stale declaration")
+    parser.add_argument("--cap", type=int, metavar="N",
+                        help="with --plan, deal at most the first N mutants the record does not "
+                             "answer, in the list's order, and leave the rest to a later run")
     parser.add_argument("--emit-mutants", metavar="FILE",
                         help="with --plan, write the mutant list the plan counted to FILE, for "
                              "every shard and the verdict to measure and decide over")
@@ -4866,8 +5373,8 @@ def main():
                         help="refuse unless this tree generates the mutant list --emit-mutants "
                              "wrote to FILE")
     parser.add_argument("--shard", type=parse_shard, metavar="K/N",
-                        help="measure only every Nth mutant from the (K+1)th and record their "
-                             "verdicts, leaving the decision to --collect")
+                        help="measure only the mutants dealt to shard K of N, by expected cost, "
+                             "and record their verdicts, leaving the decision to --collect")
     parser.add_argument("--collect", nargs="+", metavar="DIR",
                         help="decide the campaign from the verdicts --shard runs recorded in these "
                              "directories, without an editor")
@@ -4875,32 +5382,44 @@ def main():
                         help="take each mutant's verdict from the run on the other platform that "
                              "recorded it in these directories, and measure, plan or collect on "
                              "--platform only the mutants that run left surviving")
+    parser.add_argument("--survivors-shard", type=parse_shard, metavar="K/N",
+                        help="with --survivors-of, take only the mutants the other platform's shard K of N "
+                             "was dealt, so a job measures the survivors of its own first-pass shard")
     parser.add_argument("--reuse-from", metavar="DIR",
-                        help="with --plan, read the ledgers of earlier campaigns in DIR and decide "
-                             "which of this diff's mutants are killed already: a kill is reused when "
-                             "its file and the fixtures that killed it are unchanged, and every other "
-                             "mutant is measured")
+                        help="with --plan or --gate, read the record in DIR and reuse each verdict it "
+                             "holds that still stands: a kill while its killing cases are unchanged, "
+                             "any other verdict while no test source changed")
     parser.add_argument("--emit-reuse", metavar="FILE",
                         help="with --reuse-from, write the decision to FILE, for every job that "
                              "measures or decides to read with --reuse")
     parser.add_argument("--reuse", metavar="FILE",
-                        help="take the kills FILE records as decided and measure around them; "
-                             "--collect checks that each still stands in this tree")
-    parser.add_argument("--emit-ledger", metavar="FILE",
-                        help="with --collect, write what the decision measured to FILE, for a later "
-                             "campaign's --reuse-from")
+                        help="take the verdicts FILE records as decided and measure around them, and "
+                             "leave the mutants past its cap alone; --collect checks that each still "
+                             "stands in this tree")
+    parser.add_argument("--emit-record", metavar="DIR",
+                        help="with --collect, write an entry into the record in DIR for every mutant "
+                             "the decision measured")
     args = parser.parse_args()
-    if args.reuse_from is not None and not args.plan:
-        parser.error("--reuse-from decides what a plan measures; it goes with --plan")
+    if args.reuse_from is not None and not (args.plan or args.gate):
+        parser.error("--reuse-from decides what a plan measures or what the gate holds; it goes with "
+                     "--plan or --gate")
+    if args.gate and (args.reuse_from is None or args.plan or args.files):
+        parser.error("--gate decides a diff from the record --reuse-from names, and plans nothing")
+    if args.cap is not None and args.emit_reuse is None:
+        parser.error("--cap is a plan's decision, which --emit-reuse hands every later job")
     if args.reuse_from is not None and (args.survivors_of is not None or args.reuse is not None):
-        parser.error("--reuse-from reads the ledgers the first pass's plan decides from; a later job "
+        parser.error("--reuse-from reads the record the first pass's plan decides from; a later job "
                      "reads that decision with --reuse")
     if args.emit_reuse is not None and args.reuse_from is None:
         parser.error("--emit-reuse writes the decision --reuse-from takes")
-    if args.emit_ledger is not None and args.collect is None:
-        parser.error("--emit-ledger records a decision; it goes with --collect")
+    if args.emit_record is not None and args.collect is None:
+        parser.error("--emit-record records a decision; it goes with --collect")
     if (args.reuse_from is not None or args.reuse is not None) and args.files:
         parser.error("a reused kill is of a diff's mutants; --files names none")
+    if args.survivors_shard is not None and args.survivors_of is None:
+        parser.error("--survivors-shard narrows what --survivors-of reads; it goes with it")
+    if args.lines and not args.files:
+        parser.error("--lines narrows what --files names")
     if args.shard is not None and args.collect is not None:
         parser.error("--shard measures and --collect decides; a run does one of them")
     if args.survivors_of is not None:
@@ -5040,7 +5559,8 @@ def main():
             else:
                 print("skipping {}: not a mutable package source".format(name))
     else:
-        targets = {path: lines for path, lines in changed.items() if mutable(path, project)}
+        targets = {path: lines | declared_subjects(path.read_text(), lines)
+                   for path, lines in changed.items() if mutable(path, project)}
 
     # A file the mask misreads has offsets no mutant is ever generated from, and the campaign reports
     # that as a line with nothing to ask rather than as a reading it could not take.
@@ -5072,6 +5592,26 @@ def main():
         shared = declined_line_numbers(text, lines)
         if shared:
             declined[path] = shared
+    if args.lines:
+        ranges = line_ranges(args.lines, targets, {Path(name).resolve() for name in args.files})
+        every, before = len(mutants), mutants
+        for path, first, last in ranges:
+            kept = sum(1 for mutant in mutants if mutant.path == path and first <= mutant.line <= last)
+            print("lines: {}:{}-{} keeps {} mutant(s)".format(relative_to(path, project), first, last, kept))
+            if not kept:
+                raise SystemExit("no mutant of {} lies inside lines {}-{}".format(
+                    relative_to(path, project), first, last))
+        mutants = [mutant for mutant in mutants if in_ranges(ranges, mutant.path, mutant.line)]
+        unreached = {path: [number for number in numbers if in_ranges(ranges, path, number)]
+                     for path, numbers in unreached.items()}
+        declined = {path: [number for number in numbers if in_ranges(ranges, path, number)]
+                    for path, numbers in declined.items()}
+        body = [(path, number) for path, number in body if in_ranges(ranges, path, number)]
+        for path in sorted(targets):
+            print("lines: {} keeps {} of its {} mutant(s)".format(
+                relative_to(path, project), sum(1 for mutant in mutants if mutant.path == path),
+                sum(1 for mutant in before if mutant.path == path)))
+        print("lines: {} of {} mutant(s) lie inside the ranges".format(len(mutants), every))
     coverage = reach(mutants, unreached, project, declined)
 
     coverage = "\n".join((coverage, body_reach(mutants, body)))
@@ -5093,36 +5633,32 @@ def main():
     if args.emit_mutants is not None and args.plan:
         Path(args.emit_mutants).write_text(json.dumps([mutant_record(mutant, project)
                                                        for mutant in mutants], indent=1))
-    if args.key:
-        if args.files:
-            raise SystemExit("--key is the key of a diff; --files names no merge base to read it from")
-        key, components = campaign_key(mutants, declarations_for(targets, changed), project)
-        print("campaign-key={}".format(key))
-        for name in sorted(components):
-            print("key-part {} {}".format(name, components[name]))
-        return 0
-
-    # Which mutants an earlier campaign has killed already. Decided once, by the plan, and read from
-    # its file by every job after it, so that every job deals the same mutants to the same shards.
-    reused, reasons, reading = {}, {}, args.reuse_from is not None or args.reuse is not None
+    # Which mutants the record answers already, and which the cap leaves to a later run. Decided once,
+    # by the plan, and read from its file by every job after it, so that every job deals the same
+    # mutants to the same shards.
+    reused, reasons, pending = {}, {}, []
+    reading = args.reuse_from is not None or args.reuse is not None
     if args.reuse_from is not None:
-        ledgers, unread = read_ledgers(args.reuse_from)
-        for note in unread:
-            print("ledger not read -- {}".format(note))
-        reused, reasons = decide_reuse(mutants, ledgers, project)
+        reused, reasons = decide_reuse(mutants, args.reuse_from, project)
+        if args.cap is not None:
+            pending = [number for number in range(1, len(mutants) + 1) if number not in reused][args.cap:]
         if args.emit_reuse is not None:
             Path(args.emit_reuse).write_text(json.dumps({
-                "schema": LEDGER_SCHEMA, "context": context_digests(project), "reused": {str(number): record for number, record in reused.items()},
-                "reasons": {str(number): text for number, text in reasons.items()}}, indent=1))
+                "schema": RECORD_SCHEMA, "reused": {str(number): record for number, record in reused.items()},
+                "reasons": {str(number): text for number, text in reasons.items()},
+                "pending": pending}, indent=1, sort_keys=True))
     elif args.reuse is not None:
-        reused, reasons, planned_under = load_reuse(args.reuse, mutants, project)
+        reused, reasons, pending = load_reuse(args.reuse, mutants, project)
+
+    if args.gate:
+        return gate(mutants, reused, reasons, declarations_for(targets, changed), coverage, project)
 
     if args.plan and args.survivors_of is None:
-        owed = len(mutants) - len(reused)
-        if owed > MAX_SHARDS * SHARD_CEILING[args.platform]:
+        owed = len(mutants) - len(reused) - len(pending)
+        if owed > args.max_shards * SHARD_CEILING[args.platform]:
             print(coverage)
             print("{} mutants is more than {} shards of {} can measure inside the shard job's "
-                  "timeout.\nSplit the pull request.".format(owed, MAX_SHARDS,
+                  "timeout.\nSplit the pull request.".format(owed, args.max_shards,
                                                              SHARD_CEILING[args.platform]))
             return CEILING_REFUSAL
         print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
@@ -5137,7 +5673,13 @@ def main():
         print("mutants={}".format(len(mutants)))
         if reading:
             print("reusing={}".format(len(reused)))
-        print("shards={}".format(json.dumps(list(range(shard_count(owed, args.platform))))))
+        if pending:
+            print("pending={}".format(len(pending)))
+        count = shard_count(owed, args.platform, args.max_shards)
+        dealt = [number for number in range(1, len(mutants) + 1)
+                 if number not in reused and number not in pending]
+        print(spread_report(dealt, mutants, project, args.platform, count))
+        print("shards={}".format(json.dumps(list(range(count)))))
         return 0
 
     if not mutants:
@@ -5169,13 +5711,19 @@ def main():
     # this tree.
     base = merge_base_of(project, args.base)
     campaign = scope_digest(base, targets, project, args.platform)
-    # A reused kill is decided before either pass, and neither pass is asked about it: it is in no
-    # shard's list, so the shard count the plan printed counts the others alone.
+    # A reused verdict is decided before either pass, and neither pass is asked about it: it is in no
+    # shard's list, so the shard count the plan printed counts the others alone. Nor is a mutant past
+    # the cap, which is left to a later run.
     reused = {number: record for number, record in reused.items() if number <= len(mutants)}
     for number, record in reused.items():
-        mutants[number - 1].verdict, mutants[number - 1].detail = KILLED, reuse_detail(record)
+        mutants[number - 1].verdict, mutants[number - 1].detail = record["verdict"], reuse_detail(record)
         mutants[number - 1].stood = record.get("stood")
-    chosen = [number for number in range(1, len(mutants) + 1) if number not in reused]
+    pending = [number for number in pending if number <= len(mutants)]
+    for number in pending:
+        mutants[number - 1].verdict, mutants[number - 1].detail = PENDING, "-"
+    deferred |= {(mutants[number - 1].path, mutants[number - 1].line) for number in pending}
+    chosen = [number for number in range(1, len(mutants) + 1)
+              if number not in reused and number not in pending]
     first = None
     if args.survivors_of is not None:
         # Read under the other platform's key, so a record this platform wrote is never taken as the
@@ -5184,6 +5732,8 @@ def main():
         first = OTHER_PLATFORM[args.platform]
         earlier = scope_digest(base, targets, project, first)
         first_chosen = chosen
+        if args.survivors_shard is not None:
+            first_chosen = sharded(chosen, args.survivors_shard, mutants, project, first)
         for index in first_chosen:
             mutant = mutants[index - 1]
             mutant.verdict, mutant.detail = collected(args.survivors_of, index, earlier, mutant,
@@ -5191,11 +5741,12 @@ def main():
             mutant.platform = first
         chosen = [index for index in first_chosen if mutants[index - 1].verdict in SURVIVING]
         if args.plan:
-            return plan_survivors(args, coverage, mutants, chosen, first)
+            return plan_survivors(args, coverage, mutants, chosen, first, project)
         firsts = {index: mutant.verdict for index, mutant in enumerate(mutants, start=1)}
         # Read here, before the collect below overwrites the verdicts: a first-pass shard that died
         # left its mutants UNRECORDED, and they are in no pass's `chosen`.
-        dead_first, first_count = unreported_shards(first_chosen, first, mutants)
+        dead_first, first_count = unreported_shards(first_chosen, first, mutants, project,
+                                                    args.max_shards)
     if args.collect is not None:
         print(coverage)
         for index in chosen:
@@ -5204,18 +5755,16 @@ def main():
                                                       scope)
             mutant.platform = args.platform
         # Read against this tree rather than taken from the plan's file: the plan decided it on a
-        # runner of its own, and a kill that does not stand here is not a pass.
+        # runner of its own, and a verdict that does not stand here is not a pass.
         if reused:
-            index = test_index(project)
-            moved = context_moved(planned_under, context_digests(project))
+            index, tests = test_index(project), tests_digest(project)
             for number, record in reused.items():
-                problem = (context_reason(moved, record.get("reused_from")) if moved
-                           else kill_problem(record, mutants[number - 1], project, index))
+                problem = reuse_problem(record, mutants[number - 1], project, index, tests)
                 if problem is not None:
                     mutants[number - 1].verdict = REUSE_LAPSED
                     mutants[number - 1].detail = problem
     else:
-        selected = sharded(chosen, args.shard)
+        selected = sharded(chosen, args.shard, mutants, project, args.platform)
         if selected:
             try:
                 measure(args, project, holder, output, targets, mutants, scope, campaign, coverage,
@@ -5239,8 +5788,8 @@ def main():
             else:
                 mutant.detail = "{}: {}".format(first, mutant.detail or "-")
 
-    if args.emit_ledger is not None:
-        write_ledger(args.emit_ledger, mutants, reused, project)
+    if args.emit_record is not None:
+        write_record(args.emit_record, mutants, reused, project)
 
     declared = declarations_for(targets, changed) if whole else {}
     unanswered, stale = answered(mutants, deferred, declared)
@@ -5252,10 +5801,22 @@ def main():
     if not survivors:
         print("(none)")
 
+    # Every mutant a session measured, the killed among them: a kill is the case to look at when a
+    # fixture is suspected, and how few cases it needed is how the narrowing is told to have worked.
+    sized = [m for m in mutants if m.ran]
+    if sized:
+        print("\n--- cases each mutant's launches ran ---")
+        for mutant in sized:
+            print("{}  [{}] {}".format(mutant.describe(project), mutant.verdict, describe_ran(mutant.ran)))
+
     if args.collect is not None and reading:
         print("\n" + reuse_report(mutants, reused, reasons, project))
 
-    unmeasured = [m for m in mutants if m.verdict not in DECIDED + SURVIVING]
+    unmeasured = [m for number, m in enumerate(mutants, start=1)
+                  if m.verdict not in DECIDED + SURVIVING + (PENDING,)
+                  and not (number in reused and m.verdict in RECORDED_FINAL)]
+    if pending:
+        print("\n--- left to a later run, past --cap: {} mutant(s) ---".format(len(pending)))
     if unmeasured:
         print("\n--- mutants nothing was asked of the suite about ---")
         for mutant in unmeasured:
@@ -5272,7 +5833,11 @@ def main():
                                                                              args.platform))
         print("Re-run only the failed jobs; the verdict job then decides again over every record.")
     elif args.collect is not None:
-        named, count = unreported_shards(chosen, args.platform, mutants)
+        if first is not None:
+            named, count = unreported_survivor_shards(first_chosen, set(chosen), first, mutants, project,
+                                                      args.max_shards)
+        else:
+            named, count = unreported_shards(chosen, args.platform, mutants, project, args.max_shards)
         if named:
             # Not a survivor and not a stale declaration: the shard never reached the mutants, so
             # nothing is known about them. Re-running the failed jobs of the run records them.

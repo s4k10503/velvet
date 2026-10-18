@@ -59,6 +59,35 @@ namespace Velvet
         public static bool IsInlineResolved(string core)
             => core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core);
 
+        // TryParse for a token that becomes a layer: a logical radius takes the property of its own that Tailwind's
+        // order ranks it by (StyleLogicalUtilities.AsLayer), where TryParse reads it as the physical property it
+        // resolves to. Every other token is as TryParse leaves it.
+        internal static bool TryParseLayer(string className, out ArbitraryStyle result)
+        {
+            if (!TryParse(className, out result))
+            {
+                return false;
+            }
+            result = StyleLogicalUtilities.AsLayer(className, in result);
+            return true;
+        }
+
+        // TryParseLayer for a reader that orders tokens without applying them (StyleInlineSheetOrder, StyleFamilyOrder):
+        // a filter-[name] naming nothing registered stays unwarned, for the pass that applies the token to report.
+        internal static bool TryParseLayerQuietly(string className, out ArbitraryStyle result)
+        {
+            var was = StyleFilterValueParser.QuietUnregistered;
+            StyleFilterValueParser.QuietUnregistered = true;
+            try
+            {
+                return TryParseLayer(className, out result);
+            }
+            finally
+            {
+                StyleFilterValueParser.QuietUnregistered = was;
+            }
+        }
+
         // Parses using IndexOf + string operations rather than regex — a per-class hot path.
         public static bool TryParse(string className, out ArbitraryStyle result)
         {
@@ -67,6 +96,10 @@ namespace Velvet
             {
                 return false;
             }
+
+            var written = className;
+            className = StyleNamedTextSize.WithoutLengthHint(className);
+            var lengthHinted = !ReferenceEquals(className, written);
 
             if (StyleBorderSideColor.TryParse(className, out result)
                 || StyleLogicalUtilities.TryParse(className, out result))
@@ -80,6 +113,19 @@ namespace Velvet
             // applies to a color, so the negated form is skipped.
             if (className.Length > 0 && className[0] != '-'
                 && StyleColorValueParser.TryParseColorOpacityModifier(className, out result))
+            {
+                return true;
+            }
+
+            // text-<size>/<leading> and text-[<length>]/<leading> set the font-size here because no USS rule can spell the suffix;
+            // StyleTextEffectClass reads the same token for its line height.
+            if (StyleNamedTextSize.TryParseSlashFontSize(written, out result))
+            {
+                return true;
+            }
+
+            // The drop-shadow family takes a modifier after its bracket, which the bracket path below rejects.
+            if (StyleFilterValueParser.TryParseDropShadow(className, out result))
             {
                 return true;
             }
@@ -119,11 +165,13 @@ namespace Velvet
                 return false;
             }
 
-            return TryParseBracketValue(prefix, valueSpan, negate, out result);
+            return TryParseBracketValue(prefix, valueSpan, negate, lengthHinted, out result);
         }
 
+        // lengthHinted: the class carried Tailwind's `length:` type hint, which skips the type tests
+        // TailwindReadsAsLength mirrors.
         private static bool TryParseBracketValue(
-            string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+            string prefix, ReadOnlySpan<char> valueSpan, bool negate, bool lengthHinted, out ArbitraryStyle result)
         {
             result = default;
 
@@ -187,9 +235,28 @@ namespace Velvet
                 if (slice.HasValue) return slice.Value;
             }
 
-            if (!TryGetProperty(prefix, out var property))
+            return TryParseLengthBracket(prefix, valueSpan, negate, lengthHinted, out result);
+        }
+
+        private static bool TryParseLengthBracket(
+            string prefix, ReadOnlySpan<char> valueSpan, bool negate, bool lengthHinted, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!TryGetProperty(prefix, out var property)
+                || (!lengthHinted && !TailwindReadsAsLength(property, valueSpan)))
             {
                 return false;
+            }
+
+            if (TryParseKeywordLength(property, valueSpan, negate, out result))
+            {
+                return true;
+            }
+
+            if (!negate && valueSpan.SequenceEqual("auto".AsSpan()) && TakesAuto(property))
+            {
+                result = ArbitraryStyle.AutoLength(property);
+                return true;
             }
 
             if (!TryParseValue(valueSpan, out var value, out var unit))
@@ -213,6 +280,73 @@ namespace Velvet
             return true;
         }
 
+        // Where Tailwind reads a bracket as either a length or a colour, whether its type tests take this one for
+        // the length; a value they do not is written as a colour, which a browser discards. Every other property
+        // here takes the bracket as written.
+        private static bool TailwindReadsAsLength(ArbitraryProperty property, ReadOnlySpan<char> value)
+        {
+            if (IsBorderWidth(property))
+            {
+                return TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsNumber(value)
+                    || TailwindDataTypes.IsLineWidthKeyword(value);
+            }
+            if (property == ArbitraryProperty.FontSize)
+            {
+                return TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsPercentage(value)
+                    || TailwindDataTypes.IsFontSizeKeyword(value);
+            }
+            return true;
+        }
+
+        private static bool IsBorderWidth(ArbitraryProperty property)
+            => property is ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth
+                or ArbitraryProperty.BorderRightWidth or ArbitraryProperty.BorderBottomWidth
+                or ArbitraryProperty.BorderLeftWidth;
+
+        // A <line-width> keyword (thin, medium, thick) or a font-size keyword, at the sizes Chromium computes,
+        // where Tailwind's type tests hand one to border-width or font-size.
+        private static bool TryParseKeywordLength(
+            ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate)
+            {
+                return false;
+            }
+            var keyword = valueSpan.ToString();
+            if (IsBorderWidth(property) && s_lineWidthKeywords.TryGetValue(keyword, out var width))
+            {
+                result = new ArbitraryStyle(property, width, LengthUnit.Pixel);
+                return true;
+            }
+            if (property != ArbitraryProperty.FontSize)
+            {
+                return false;
+            }
+            if (s_absoluteFontSizes.TryGetValue(keyword, out var size))
+            {
+                result = new ArbitraryStyle(property, size, LengthUnit.Pixel);
+                return true;
+            }
+            return keyword switch
+            {
+                "larger" => TryParseRelativeLength(property, "1.2em".AsSpan(), false, out result),
+                "smaller" => TryParseRelativeLength(property, "calc(1em/1.2)".AsSpan(), false, out result),
+                _ => false,
+            };
+        }
+
+        private static readonly Dictionary<string, float> s_lineWidthKeywords = new()
+        {
+            ["thin"] = 1f, ["medium"] = 3f, ["thick"] = 5f,
+        };
+
+        private static readonly Dictionary<string, float> s_absoluteFontSizes = new()
+        {
+            ["xx-small"] = 9f, ["x-small"] = 10f, ["small"] = 13f, ["medium"] = 16f, ["large"] = 18f,
+            ["x-large"] = 24f, ["xx-large"] = 32f, ["xxx-large"] = 48f,
+        };
+
         // A length only an element can measure — em, a viewport unit, or a math function mixing a percentage
         // with a pixel length — is carried unresolved to ApplyInline, and only for the properties PropertySetters
         // writes, whose setters name the axis their percentage is taken of.
@@ -231,8 +365,9 @@ namespace Velvet
 
         #region Static-scale utility names (no bracket)
 
-        // The preset spacing scale, mirroring --space-* in _tokens.uss (1 unit = 4px; the suffix
-        // uses '-' where CSS writes '.', e.g. mt-2-5 -> 10px). Negative margins (-mt-2) and negative
+        // The spacing steps the bundled stylesheets declare, mirroring --space-* in _tokens.uss (1 unit = 4px; the
+        // suffix uses '-' where CSS writes '.', e.g. mt-2-5 -> 10px). Any other multiple of 0.25 is
+        // StyleSpacingMultiplier's, through TryGetSpacingPx. Negative margins (-mt-2) and negative
         // px translates (-translate-x-6) route here because a USS selector cannot start with '-'.
         private static readonly Dictionary<string, float> s_spacingScale = new()
         {
@@ -244,10 +379,291 @@ namespace Velvet
             ["72"] = 288f, ["80"] = 320f, ["96"] = 384f,
         };
 
-        // Single source for the --space-* spacing scale (1 unit = 4px). Shared so gap-* / space-* parsing
-        // (StyleGapClass) resolves the same preset table as mt-* / p-* here, instead of holding a second copy
-        // that could drift.
-        internal static bool TryGetSpacingPx(string suffix, out float px) => s_spacingScale.TryGetValue(suffix, out px);
+        // Single source for the spacing scale: the --space-* steps above, then any other canonical multiple of
+        // 0.25 (StyleSpacingMultiplier). Shared so gap-* / space-* parsing (StyleGapClass) resolves the same
+        // values as mt-* / p-* here, instead of holding a second copy that could drift.
+        internal static bool TryGetSpacingPx(string suffix, out float px)
+            => s_spacingScale.TryGetValue(suffix, out px) || StyleSpacingMultiplier.TryParse(suffix.AsSpan(), out px);
+
+        // TryGetSpacingPx over a slice, for the per-class gates that must not allocate.
+        private static bool TryGetSpacingPx(ReadOnlySpan<char> suffix, out float px)
+        {
+            if (StyleSpacingMultiplier.TryParse(suffix, out px))
+            {
+                return true;
+            }
+            foreach (var step in s_spacingScale)
+            {
+                if (suffix.SequenceEqual(step.Key.AsSpan()))
+                {
+                    px = step.Value;
+                    return true;
+                }
+            }
+            px = 0f;
+            return false;
+        }
+
+        // The utilities that take a spacing step. A step with a USS rule (mt-2, w-4, mt-1-5) stays a class, so
+        // only the others resolve inline here: mt-13, p-4.5, and every negated one, which no selector can spell.
+        // Of these families Tailwind negates the margin and position ones. A prefix that could be taken for a
+        // longer one (inset- for inset-x-) is not told apart by order: TryParseSpacingStep skips a row whose
+        // suffix is not a step.
+        private static readonly (string Prefix, ArbitraryProperty Property, bool Negatable)[] s_spacingFamilies =
+        {
+            ("p-", ArbitraryProperty.Padding, false),
+            ("px-", ArbitraryProperty.PaddingX, false),
+            ("py-", ArbitraryProperty.PaddingY, false),
+            ("pt-", ArbitraryProperty.PaddingTop, false),
+            ("pr-", ArbitraryProperty.PaddingRight, false),
+            ("pb-", ArbitraryProperty.PaddingBottom, false),
+            ("pl-", ArbitraryProperty.PaddingLeft, false),
+            ("m-", ArbitraryProperty.Margin, true),
+            ("mx-", ArbitraryProperty.MarginX, true),
+            ("my-", ArbitraryProperty.MarginY, true),
+            ("mt-", ArbitraryProperty.MarginTop, true),
+            ("mr-", ArbitraryProperty.MarginRight, true),
+            ("mb-", ArbitraryProperty.MarginBottom, true),
+            ("ml-", ArbitraryProperty.MarginLeft, true),
+            ("w-", ArbitraryProperty.Width, false),
+            ("h-", ArbitraryProperty.Height, false),
+            ("size-", ArbitraryProperty.Size, false),
+            ("min-w-", ArbitraryProperty.MinWidth, false),
+            ("min-h-", ArbitraryProperty.MinHeight, false),
+            ("max-w-", ArbitraryProperty.MaxWidth, false),
+            ("max-h-", ArbitraryProperty.MaxHeight, false),
+            ("basis-", ArbitraryProperty.FlexBasis, false),
+            ("top-", ArbitraryProperty.Top, true),
+            ("right-", ArbitraryProperty.Right, true),
+            ("bottom-", ArbitraryProperty.Bottom, true),
+            ("left-", ArbitraryProperty.Left, true),
+            ("inset-x-", ArbitraryProperty.InsetX, true),
+            ("inset-y-", ArbitraryProperty.InsetY, true),
+            ("inset-", ArbitraryProperty.Inset, true),
+        };
+
+        // The families' properties, to tell a spacing utility from another inline one.
+        private static readonly HashSet<ArbitraryProperty> s_spacingProperties = BuildSpacingProperties();
+
+        private static HashSet<ArbitraryProperty> BuildSpacingProperties()
+        {
+            var properties = new HashSet<ArbitraryProperty>();
+            foreach (var (_, property, _) in s_spacingFamilies)
+            {
+                properties.Add(property);
+            }
+            return properties;
+        }
+
+        internal static bool IsSpacingProperty(ArbitraryProperty property) => s_spacingProperties.Contains(property);
+
+        // The families whose longhand takes `auto`: CSS gives padding none, and a maximum's unbounded value is none,
+        // which the setters write as StyleKeyword.None.
+        private static bool TakesAuto(ArbitraryProperty property)
+            => IsSpacingProperty(property) && !IsPaddingProperty(property)
+                && property is not (ArbitraryProperty.MaxWidth or ArbitraryProperty.MaxHeight);
+
+        private static bool IsPaddingProperty(ArbitraryProperty property)
+            => property is ArbitraryProperty.Padding or ArbitraryProperty.PaddingX or ArbitraryProperty.PaddingY
+                or ArbitraryProperty.PaddingTop or ArbitraryProperty.PaddingRight
+                or ArbitraryProperty.PaddingBottom or ArbitraryProperty.PaddingLeft;
+
+        // True when text begins with the prefix of a spacing family, ignoring a leading minus: the cheap test that
+        // a token can be a spacing utility, which allocates nothing.
+        internal static bool StartsWithSpacingPrefix(string text)
+        {
+            var body = text.AsSpan(text.Length > 0 && text[0] == '-' ? 1 : 0);
+            foreach (var (prefix, _, _) in s_spacingFamilies)
+            {
+                if (body.StartsWith(prefix.AsSpan()))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // True when text begins with `rounded`, the start of every radius utility: the cheap test that a token can
+        // be one, which allocates nothing.
+        internal static bool StartsWithRadiusPrefix(string text)
+            => text.StartsWith(RadiusUtilityName, StringComparison.Ordinal);
+
+        // The families StyleSpacingPrecedence orders: spacing, size, inset, radius, and the flex shorthand with the
+        // two factors it contains besides the basis.
+        internal static bool IsSpacingRadiusOrFlexProperty(ArbitraryProperty property)
+            => IsSpacingProperty(property) || RadiusCornersOf.ContainsKey(property)
+                || property is ArbitraryProperty.Flex or ArbitraryProperty.FlexGrow or ArbitraryProperty.FlexShrink;
+
+        // True when text begins with the prefix of a flex shorthand or factor utility: the cheap test that a token
+        // can be one, which allocates nothing.
+        internal static bool StartsWithFlexPrefix(string text)
+            => text.StartsWith("flex-", StringComparison.Ordinal) || text.StartsWith("grow", StringComparison.Ordinal)
+                || text.StartsWith("shrink", StringComparison.Ordinal);
+
+        // The flex factor classes and the bracket token each equals. FlexFactorClassMirrorTests holds the values
+        // against _layout.uss.
+        private static readonly (string Class, ArbitraryProperty Property, string InlineForm)[] s_flexFactorClasses =
+        {
+            ("grow", ArbitraryProperty.FlexGrow, "grow-[1]"),
+            ("grow-0", ArbitraryProperty.FlexGrow, "grow-[0]"),
+            ("shrink", ArbitraryProperty.FlexShrink, "shrink-[1]"),
+            ("shrink-0", ArbitraryProperty.FlexShrink, "shrink-[0]"),
+        };
+
+        internal static bool IsRadiusProperty(ArbitraryProperty property) => RadiusCornersOf.ContainsKey(property);
+
+        private const string RadiusUtilityName = "rounded";
+
+        // A stylesheet class of a spacing or radius family and the inline token that resolves to the same thing: a
+        // step becomes its pixel bracket, `auto` the bracket keyword and `full` a hundred percent. Whether the
+        // sheets declare a spacing class is read from StyleUtilityProperties, which is generated from them, so only
+        // a name with a rule counts: the sheets declare `-auto` for margins, size, width, height and basis and
+        // `-full` for sizes and basis, and nothing else in these families. A radius class is read off the radius
+        // scale instead (TryReadRadiusClass); RadiusPrecedenceTests checks that the sheets declare a rule for every
+        // step of every family, and the magnitudes are pinned by StyleUtilitiesUssTests and CornerRadiusFitPanelTests.
+        // A flex factor class is read off s_flexFactorClasses. The flex shorthand's own classes (flex-1, flex-none)
+        // are not read: each writes all three longhands, and Tailwind emits the shorthand ahead of the longhands, so
+        // StyleSpacingPrecedence never finds one the narrower of a pair.
+        internal static bool TryReadStylesheetClass(string cls, out ArbitraryProperty property, out string inlineForm)
+        {
+            property = default;
+            inlineForm = string.Empty;
+            if (TryReadSpacingStep(cls, out var step, out var backed) && backed)
+            {
+                property = step.Property;
+                inlineForm = SpacingPrefixOf(property) + "[" + step.Value.ToString("R", CultureInfo.InvariantCulture) + "px]";
+                return true;
+            }
+            if (TryReadRadiusClass(cls, out property, out inlineForm))
+            {
+                return true;
+            }
+            foreach (var (name, factorProperty, form) in s_flexFactorClasses)
+            {
+                if (cls == name)
+                {
+                    property = factorProperty;
+                    inlineForm = form;
+                    return true;
+                }
+            }
+            // MUTANT_SURVIVES(equivalent, boundary): the shortest name read here is a family prefix of two characters and `auto` or `full`, six in all, so a bound of 4 turns away only names none of the loop's rows match.
+            if (cls.Length < 4 || !StyleUtilityProperties.TryGet(cls, out _))
+            {
+                return false;
+            }
+            foreach (var (prefix, familyProperty, _) in s_spacingFamilies)
+            {
+                if (!cls.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                var name = cls.AsSpan(prefix.Length);
+                // MUTANT_SURVIVES(unreachable, clause removed): the guard above admits only a class the sheets declare, and they declare no padding or maximum `-auto` class, which SpacingPrecedenceTests pins.
+                if (name.SequenceEqual("auto".AsSpan()) && TakesAuto(familyProperty))
+                {
+                    property = familyProperty;
+                    inlineForm = prefix + "[auto]";
+                    return true;
+                }
+                if (name.SequenceEqual("full".AsSpan()))
+                {
+                    property = familyProperty;
+                    inlineForm = prefix + "[100%]";
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // A rounded-* class on the scale StyleShadowClass mirrors, read as the radius property it writes and the
+        // bracket token that equals it. The prefix table is walked rather than a family list kept beside it, and a
+        // class is told from a longer family's by its suffix, which only a scale step or full passes.
+        private static bool TryReadRadiusClass(string cls, out ArbitraryProperty property, out string inlineForm)
+        {
+            property = default;
+            inlineForm = string.Empty;
+            if (!StartsWithRadiusPrefix(cls))
+            {
+                return false;
+            }
+            foreach (var entry in s_prefixProperties)
+            {
+                // The bare utility (rounded-t) is the prefix without its trailing '-'.
+                var bare = cls.Length == entry.Key.Length - 1 && entry.Key.StartsWith(cls, StringComparison.Ordinal);
+                if (!bare && !cls.StartsWith(entry.Key, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                var suffix = bare ? string.Empty : cls.Substring(entry.Key.Length);
+                if (suffix.Length == 0 && !bare)
+                {
+                    continue;
+                }
+                if (StyleLogicalUtilities.TryGetRadiusPx(suffix, out var px))
+                {
+                    property = entry.Value;
+                    inlineForm = entry.Key + "[" + px.ToString("R", CultureInfo.InvariantCulture) + "px]";
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The prefix (with its trailing '-') whose utility writes property.
+        private static string SpacingPrefixOf(ArbitraryProperty property)
+        {
+            foreach (var (familyPrefix, familyProperty, _) in s_spacingFamilies)
+            {
+                if (familyProperty == property)
+                {
+                    return familyPrefix;
+                }
+            }
+            return string.Empty;
+        }
+
+        // A step the bundled stylesheets declare no rule for, which resolves inline.
+        private static bool TryParseSpacingStep(string cls, out ArbitraryStyle result)
+            => TryReadSpacingStep(cls, out result, out var stylesheetBacked) && !stylesheetBacked;
+
+        // Any step of a spacing family, and whether the stylesheets declare a class for it: only a positive
+        // step on the --space-* table is one.
+        internal static bool TryReadSpacingStep(string cls, out ArbitraryStyle result, out bool stylesheetBacked)
+        {
+            result = default;
+            // MUTANT_SURVIVES(equivalent, literal): both callers read stylesheetBacked only when this returns true, and every return of true assigns it first.
+            stylesheetBacked = false;
+            if (cls.Length < 3)
+            {
+                return false;
+            }
+            // A step ends in a digit, or in the x of px, which turns most class names away before any prefix is
+            // compared.
+            var last = cls[cls.Length - 1];
+            if (last != 'x' && (last < '0' || last > '9'))
+            {
+                return false;
+            }
+            var negate = cls[0] == '-';
+            var body = cls.AsSpan(negate ? 1 : 0);
+            foreach (var (prefix, property, negatable) in s_spacingFamilies)
+            {
+                if (!body.StartsWith(prefix.AsSpan()) || (negate && !negatable))
+                {
+                    continue;
+                }
+                var suffix = body.Slice(prefix.Length);
+                if (!TryGetSpacingPx(suffix, out var px))
+                {
+                    continue;
+                }
+                stylesheetBacked = !negate && SuffixInKeys(suffix, s_spacingScale);
+                result = new ArbitraryStyle(property, negate ? -px : px, LengthUnit.Pixel);
+                return true;
+            }
+            return false;
+        }
 
         // The rotate preset (degrees). Only the NEGATIVE form routes here: positive rotate-N has a
         // static USS class, while the -rotate-N name has none (USS spells negatives as .rotate-nN).
@@ -279,23 +695,12 @@ namespace Velvet
         // result itself for the "-n"-suffixed (negative) form.
         internal static bool TryGetRotateScale(string suffix, out float degrees) => s_rotateScale.TryGetValue(suffix, out degrees);
 
-        // Maps a margin utility prefix (without the leading '-') to its shorthand ArbitraryProperty.
-        private static readonly Dictionary<string, ArbitraryProperty> s_marginPrefix = new()
-        {
-            ["m-"] = ArbitraryProperty.Margin,
-            ["mx-"] = ArbitraryProperty.MarginX,
-            ["my-"] = ArbitraryProperty.MarginY,
-            ["mt-"] = ArbitraryProperty.MarginTop,
-            ["mr-"] = ArbitraryProperty.MarginRight,
-            ["mb-"] = ArbitraryProperty.MarginBottom,
-            ["ml-"] = ArbitraryProperty.MarginLeft,
-        };
-
         // Cheap dispatch gate: true when cls is a static-scale utility with NO static USS class, so
         // the reconciler must route it to TryParseStaticScale instead of the class list. That set is exactly
         // the names a USS selector cannot spell — any '-'-prefixed margin/rotate/translate name, the
-        // '/'-bearing translate, sizing and position fractions, and the positive per-axis translate/scale
-        // presets (no USS class — a per-axis rule would clobber the other axis via the shorthand). Other
+        // '/'-bearing translate, sizing and position fractions, the positive per-axis translate/scale
+        // presets (no USS class — a per-axis rule would clobber the other axis via the shorthand), and a
+        // spacing step the bundled sheets declare no rule for (mt-13, p-4.5, -top-4). Other
         // positive non-slash names (mt-2, rotate-6) keep their USS classes and are intentionally NOT claimed here.
         internal static bool MayBeStaticScale(string cls)
         {
@@ -312,7 +717,7 @@ namespace Velvet
             // Logical-direction utilities (ms-4, start-1/2, rounded-ss-lg) and per-side border colors
             // (border-b-red-500) have no USS class at all.
             if (IsFractionToken(cls) || StyleLogicalUtilities.TryParse(cls, out _)
-                || StyleBorderSideColor.TryParse(cls, out _))
+                || StyleBorderSideColor.TryParse(cls, out _) || TryParseSpacingStep(cls, out _))
             {
                 return true;
             }
@@ -323,7 +728,7 @@ namespace Velvet
                 {
                     return false; // -skew-x-6 is owned by StyleSkewClass, not this resolver.
                 }
-                return body.StartsWith("m") || body.StartsWith("rotate-") || body.StartsWith("translate-");
+                return IsMarginName(body) || body.StartsWith("rotate-") || body.StartsWith("translate-");
             }
             // Positive per-axis translate presets (translate-x-4, translate-y-2, translate-x-1/2, translate-x-full)
             // have no USS class: a .translate-x-N rule writes the whole `translate: x y` shorthand and clobbers
@@ -337,7 +742,7 @@ namespace Velvet
                     return true;
                 }
                 var suffix = cls.AsSpan("translate-x-".Length); // the x and y prefixes share a length
-                return suffix.SequenceEqual("full".AsSpan()) || SuffixInKeys(suffix, s_spacingScale);
+                return suffix.SequenceEqual("full".AsSpan()) || TryGetSpacingPx(suffix, out _);
             }
             // Per-axis scale presets (scale-x-50 / scale-y-110) have no USS class; route them to the merge path.
             // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here. Span-based to
@@ -346,8 +751,14 @@ namespace Velvet
             {
                 return SuffixInKeys(cls.AsSpan("scale-x-".Length), s_axisScale); // "scale-x-" and "scale-y-" share a length
             }
-            return TryGetFlexFactorPreset(cls, out _, out _);
+            return TryGetFlexFactorPreset(cls, out _, out _) || TryGetFlexPreset(cls, out _);
         }
+
+        // The physical margin utilities, whose negated names no selector can spell. -max-w-4 and -min-h-4 start
+        // with the same letter and are not margins.
+        private static bool IsMarginName(ReadOnlySpan<char> body)
+            => body.StartsWith("m-") || body.StartsWith("mx-") || body.StartsWith("my-") || body.StartsWith("mt-")
+                || body.StartsWith("mr-") || body.StartsWith("mb-") || body.StartsWith("ml-");
 
         // grow-<N> / shrink-<N>: Tailwind's bare factor, a whole number spelled without a sign or a leading
         // zero. grow-0 and shrink-0 are USS classes, so zero is left to the class list.
@@ -378,16 +789,46 @@ namespace Velvet
             return whole != 0;
         }
 
-        // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero.
-        private static bool TryParseWhole(ReadOnlySpan<char> digits, out int whole)
+        // flex-<N> / flex-<a>/<b>: Tailwind's `flex: <N>` (grow N, shrink 1, basis 0%) and
+        // `flex: calc(<a>/<b> * 100%)` (grow 1, shrink 1, that basis). flex-1 is a USS class, so it is left to
+        // the class list.
+        private static bool TryGetFlexPreset(string cls, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!cls.StartsWith("flex-", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var body = cls.AsSpan("flex-".Length);
+            var slash = body.IndexOf('/');
+            if (slash == -1)
+            {
+                if (!TryParseWhole(body, out var grow))
+                {
+                    return false;
+                }
+                result = ArbitraryStyle.Flex(grow, 1f, 0f, LengthUnit.Percent);
+                return grow != 1;
+            }
+            if (!TryParseWhole(body.Slice(0, slash), out var numerator))
+            {
+                return false;
+            }
+            if (!TryParseWhole(body.Slice(slash + 1), out var denominator))
+            {
+                return false;
+            }
+            result = ArbitraryStyle.Flex(1f, 1f, 100f * numerator / denominator, LengthUnit.Percent);
+            return denominator != 0;
+        }
+
+        // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero. Shared by
+        // the flex factors, the flex shorthand and z-<n>.
+        internal static bool TryParseWhole(ReadOnlySpan<char> digits, out int whole)
         {
             whole = 0;
-            // MUTANT_SURVIVES(equivalent): the boundary moves only a lone "0", whose whole of 0 the factor
-            // preset declines with `whole != 0` either way.
             if (digits.Length > 1 && digits[0] == '0')
             {
-                // MUTANT_SURVIVES(equivalent): a leading zero leaves whole at 0, which the factor preset
-                // declines with `whole != 0` whatever this returns.
                 return false;
             }
             return int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out whole);
@@ -429,6 +870,14 @@ namespace Velvet
                 result = new ArbitraryStyle(factorProperty, factor, LengthUnit.Pixel);
                 return true;
             }
+            if (TryGetFlexPreset(className, out result))
+            {
+                return true;
+            }
+            if (TryParseSpacingStep(className, out result))
+            {
+                return true;
+            }
             var negate = className[0] == '-';
             var body = negate ? className.Substring(1) : className;
 
@@ -450,25 +899,11 @@ namespace Velvet
             return TryParseTranslatePreset(body, negate, out result);
         }
 
-        // The margin and rotate presets, whose tables carry the magnitude and take their sign from the name
-        // (see s_rotateScale for why only the negated name routes here). Null when body names neither family.
+        // The negated rotate preset, whose table carries the magnitude and takes its sign from the name (see
+        // s_rotateScale for why only the negated name routes here). Null when body is not a rotate.
         private static bool? TryParseNegatedPreset(string body, out ArbitraryStyle result)
         {
             result = default;
-            foreach (var kvp in s_marginPrefix)
-            {
-                if (!body.StartsWith(kvp.Key, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-                if (!s_spacingScale.TryGetValue(body.Substring(kvp.Key.Length), out var px))
-                {
-                    return false;
-                }
-                result = new ArbitraryStyle(kvp.Value, -px, LengthUnit.Pixel);
-                return true;
-            }
-
             if (body.StartsWith("rotate-", StringComparison.Ordinal))
             {
                 if (!s_rotateScale.TryGetValue(body.Substring("rotate-".Length), out var deg))
@@ -532,7 +967,7 @@ namespace Velvet
             }
             // Both signs route here now: a positive .translate-x-N USS class would write the whole
             // `translate` shorthand and clobber the other axis, so positives merge through TranslateX/Y too.
-            if (s_spacingScale.TryGetValue(suffix, out var px))
+            if (TryGetSpacingPx(suffix, out var px))
             {
                 result = new ArbitraryStyle(property, negate ? -px : px, LengthUnit.Pixel);
                 return true;
@@ -643,7 +1078,7 @@ namespace Velvet
             {
                 return TryParseFloat(value.Slice(0, value.Length - 1), out inset) && inset >= 0f;
             }
-            var digits = value.EndsWith("px".AsSpan()) ? value.Slice(0, value.Length - 2) : value;
+            var digits = value.EndsWith("px".AsSpan(), StringComparison.OrdinalIgnoreCase) ? value.Slice(0, value.Length - 2) : value;
             var whole = int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var pixels);
             inset = pixels;
             return whole;
@@ -656,12 +1091,12 @@ namespace Velvet
             seconds = 0f;
             float scale;
             ReadOnlySpan<char> num;
-            if (value.EndsWith("ms".AsSpan()))
+            if (value.EndsWith("ms".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 num = value.Slice(0, value.Length - 2);
                 scale = 0.001f;
             }
-            else if (value.EndsWith("s".AsSpan()))
+            else if (value.EndsWith("s".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 num = value.Slice(0, value.Length - 1);
                 scale = 1f;
@@ -884,6 +1319,12 @@ namespace Velvet
             [ArbitraryProperty.BorderTopRightRadius] = RadiusCorners.TopRight,
             [ArbitraryProperty.BorderBottomLeftRadius] = RadiusCorners.BottomLeft,
             [ArbitraryProperty.BorderBottomRightRadius] = RadiusCorners.BottomRight,
+            [ArbitraryProperty.BorderStartRadius] = RadiusCorners.TopLeft | RadiusCorners.BottomLeft,
+            [ArbitraryProperty.BorderEndRadius] = RadiusCorners.TopRight | RadiusCorners.BottomRight,
+            [ArbitraryProperty.BorderStartStartRadius] = RadiusCorners.TopLeft,
+            [ArbitraryProperty.BorderStartEndRadius] = RadiusCorners.TopRight,
+            [ArbitraryProperty.BorderEndStartRadius] = RadiusCorners.BottomLeft,
+            [ArbitraryProperty.BorderEndEndRadius] = RadiusCorners.BottomRight,
         };
 
         // Color-valued counterpart to PropertySetters. Color properties take a
@@ -973,6 +1414,9 @@ namespace Velvet
             // die with the rest of the element's layer state. Lazily allocated: most elements never
             // apply a custom filter.
             public List<(string Name, SortedList<long, ArbitraryStyle> Stack)>? Customs;
+
+            // Whether the filter last composed from this map was dropped for a name no live definition answers.
+            public bool FilterChainDropped;
 
             // The class-list half of the same cascade (StyleClassProjection). It lives here because the two
             // halves decide one outcome together — an inline layer a USS class outranks has to stop
@@ -1226,6 +1670,10 @@ namespace Velvet
             var map = s_layers.GetValue(element, static _ => new LayerMap());
             if (style.Property == ArbitraryProperty.FilterCustom)
             {
+                if (FindCustomStack(map, style.Custom!.Name) == null)
+                {
+                    AddCustomFilterHost(style.Custom.Name, element);
+                }
                 ApplyCustomFilterLayer(map, style, priority);
             }
             else
@@ -1254,6 +1702,79 @@ namespace Velvet
                 StyleClassProjection.OnInlineLayersChanged(element, map.Projection);
                 RefreshScaleClassFallback(element, map, previousUniform);
             }
+        }
+
+        // Per registered name, the elements holding a layer stack under it: a registration change re-resolves
+        // those and no others. An element joins a name when its map first holds that name's stack and leaves when
+        // ClearAll drops the map, so it is listed once per name. One the collector took without a ClearAll is
+        // pruned when its name next grows past twice the size it had at the last prune, or is re-resolved.
+        private static readonly Dictionary<string, (List<WeakReference<VisualElement>> Hosts, int Pruned)> s_customFilterHosts = new();
+
+#if UNITY_EDITOR
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetCustomFilterHosts() => s_customFilterHosts.Clear();
+#endif
+
+        private static void AddCustomFilterHost(string name, VisualElement element)
+        {
+            if (!s_customFilterHosts.TryGetValue(name, out var entry))
+            {
+                entry = (new List<WeakReference<VisualElement>>(), 0);
+            }
+            if (entry.Hosts.Count >= 2 * Math.Max(entry.Pruned, 8))
+            {
+                entry.Hosts.RemoveAll(host => !host.TryGetTarget(out _));
+                entry.Pruned = entry.Hosts.Count;
+            }
+            entry.Hosts.Add(new WeakReference<VisualElement>(element));
+            s_customFilterHosts[name] = entry;
+        }
+
+        private static void RemoveCustomFilterHosts(VisualElement element, LayerMap map)
+        {
+            if (map.Customs == null)
+            {
+                return;
+            }
+            foreach (var (name, _) in map.Customs)
+            {
+                if (s_customFilterHosts.TryGetValue(name, out var entry))
+                {
+                    entry.Hosts.RemoveAll(host => !host.TryGetTarget(out var held) || held == element);
+                }
+            }
+        }
+
+        // Parses every filter-[name:args] layer held under name again against what VelvetFilters now has
+        // registered under it, and recomposes each element holding one.
+        internal static void ReresolveCustomFilter(string name)
+        {
+            if (!s_customFilterHosts.TryGetValue(name, out var entry))
+            {
+                return;
+            }
+            var hosts = entry.Hosts;
+            for (var i = hosts.Count - 1; i >= 0; i--)
+            {
+                if (!hosts[i].TryGetTarget(out var element) || !s_layers.TryGetValue(element, out var map))
+                {
+                    hosts.RemoveAt(i);
+                    continue;
+                }
+                var stack = FindCustomStack(map, name);
+                if (stack == null || stack.Count == 0)
+                {
+                    continue;
+                }
+                for (var k = 0; k < stack.Count; k++)
+                {
+                    StyleFilterValueParser.TryParseCustomFilter("filter-", stack.Values[k].Custom!.Token.AsSpan(), false, out var style);
+                    stack[stack.Keys[k]] = style;
+                }
+                ApplyCombinedFilter(element, map);
+            }
+            entry.Pruned = hosts.Count;
+            s_customFilterHosts[name] = entry;
         }
 
         // Registers a filter-[name:args] layer at priority under its own per-name stack (LayerMap.Customs),
@@ -1306,22 +1827,38 @@ namespace Velvet
                 ClearInline(element, property);
                 return;
             }
+            RemoveLayer(map, property, priority);
+            ResolveAndApply(element, property, map);
+            ReleaseUnusedShownImageWatch(element, map);
+            Reproject(element, map);
+        }
+
+        // Drops the layer at priority for property without resolving the property again, for a caller that
+        // applies a layer for the same property next: the inline value stays what it was until that layer
+        // lands. Not for FilterCustom, whose layers are name-keyed (see Clear).
+        internal static void Withdraw(VisualElement element, ArbitraryProperty property, long priority)
+        {
+            if (s_layers.TryGetValue(element, out var map))
+            {
+                RemoveLayer(map, property, priority);
+                ReleaseUnusedShownImageWatch(element, map);
+            }
+        }
+
+        private static void RemoveLayer(LayerMap map, ArbitraryProperty property, long priority)
+        {
             if (map.TryGetValue(property, out var layers))
             {
                 layers.Remove(priority);
                 map.RemoveArrival(property, priority);
                 if (layers.Count == 0) map.Remove(property);
             }
-            ResolveAndApply(element, property, map);
-            ReleaseUnusedShownImageWatch(element, map);
-            Reproject(element, map);
         }
 
         // Clears the layer an ArbitraryStyle applied, using the parsed value itself rather than just its
         // property. The only case this matters today is FilterCustom, whose value carries the NAME that
         // keys the layer stack to remove — and the name is ALL it reads (never the definition or the
-        // arguments), which is what lets the unregistered-name clear fallback synthesize a name-only
-        // style; every other property clears exactly like the (property, priority) overload.
+        // arguments); every other property clears exactly like the (property, priority) overload.
         public static void Clear(VisualElement element, in ArbitraryStyle style, long priority = StyleLayerPriority.Base)
         {
             if (style.Property != ArbitraryProperty.FilterCustom)
@@ -1638,7 +2175,7 @@ namespace Velvet
                 var arrival = map.ArrivalOf(writer, priority);
                 // MUTANT_SURVIVES(equivalent, boundary): live arrivals are positive and unique, including after compaction; distinct writers cannot tie each other or the initial MinValue sentinel.
                 var isNewerArrival = arrival > latest;
-                var byCascade = found ? StyleBorderSideColor.CompareCascade(writer, winner.Property) : 0;
+                var byCascade = found ? StyleSpacingPrecedence.CompareCascade(writer, winner.Property) : 0;
                 if (priority > best || priority == best && (byCascade > 0 || byCascade == 0 && isNewerArrival))
                 {
                     winner = style;
@@ -1876,7 +2413,11 @@ namespace Velvet
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
         {
-            if (element != null && s_layers.TryGetValue(element, out var map)) map.RelativePoll?.Stop();
+            if (element != null && s_layers.TryGetValue(element, out var map))
+            {
+                map.RelativePoll?.Stop();
+                RemoveCustomFilterHosts(element, map);
+            }
             if (element != null) s_layers.Remove(element);
             // What the fit records the radius layers as declaring goes with them.
             if (element != null) CornerRadiusFit.Release(element);
@@ -1890,7 +2431,7 @@ namespace Velvet
         // is the layer the bang selects (Important when present, Base otherwise). Mirror of ClearClassToken.
         public static void ApplyClassToken(VisualElement element, string core, long priority, bool addToClassListFallback = true)
         {
-            if (TryParse(core, out var style))
+            if (TryParseLayer(core, out var style))
             {
                 Apply(element, in style, priority);
             }
@@ -1908,88 +2449,23 @@ namespace Velvet
         // to removing it from the USS class list when neither resolver claims it.
         public static void ClearClassToken(VisualElement element, string core, long priority)
         {
-            if (TryParse(core, out var style))
+            if (TryParseLayer(core, out var style))
             {
                 Clear(element, in style, priority);
             }
-            else if (!TryClearUnregisteredFilterToken(element, core, priority))
+            else if (StyleBackgroundImageResolver.TryParse(core, out _))
             {
-                if (StyleBackgroundImageResolver.TryParse(core, out _))
-                {
-                    StyleBackgroundImageResolver.Clear(element);
-                }
-                else
-                {
-                    element.RemoveFromClassList(core);
-                }
+                StyleBackgroundImageResolver.Clear(element);
+            }
+            else
+            {
+                element.RemoveFromClassList(core);
             }
         }
 
-        // Clears a filter-[name:args] token whose name is not (or no longer) registered. The
-        // registry-gated parse does not claim such a token, but a layer applied while the name WAS
-        // registered is still composed and must leave; the name alone identifies the layer, so it is
-        // resolved syntactically. The class-list removal mirrors the never-registered apply, which
-        // fell through to the class list — each action is a no-op in the other's scenario. Returns
-        // false when the token is not a custom-filter shape at all.
-        internal static bool TryClearUnregisteredFilterToken(VisualElement element, string core, long priority)
-        {
-            if (!TryResolveUnregisteredFilterClear(core, out var style))
-            {
-                return false;
-            }
-            Clear(element, in style, priority);
-            element.RemoveFromClassList(core);
-            return true;
-        }
-
-        // Fallback clear resolution for a filter-[name:args] token whose name is NOT (or no longer)
-        // registered. Apply-side resolution (TryParse) is registry-gated — an unregistered name is not
-        // claimed — but the layer a previous apply registered must stay clearable after an unregister,
-        // or it would ghost in the composed filter forever. The token's shape alone carries everything a
-        // clear needs: the ArbitraryStyle-aware Clear reads only the NAME, so a name-only synthetic style
-        // (null definition, no arguments) suffices. Purely syntactic — no registry lookup, no warning.
-        internal static bool TryResolveUnregisteredFilterClear(string core, out ArbitraryStyle style)
-        {
-            if (StyleFilterValueParser.TryExtractCustomFilterName(core, out var name))
-            {
-                style = new ArbitraryStyle(ArbitraryProperty.FilterCustom,
-                    new CustomFilterValue(name, null!, Array.Empty<FilterParameter>()));
-                return true;
-            }
-            style = default;
-            return false;
-        }
-
-        // Prefixes classifying a core token as part of the composed filter family (the built-in filter
-        // utilities' bracket forms plus filter-[name:…] customs) without resolving it — the class-diff
-        // reapply's skip decision must not itself pay the parse it is avoiding.
-        private static readonly string[] s_filterFamilyTokenPrefixes = BuildFilterFamilyTokenPrefixes();
-
-        private static string[] BuildFilterFamilyTokenPrefixes()
-        {
-            var families = StyleFilterValueParser.BuiltInFamilyNames;
-            var prefixes = new string[families.Length + 1];
-            for (var i = 0; i < families.Length; i++)
-            {
-                prefixes[i] = families[i] + "-[";
-            }
-            prefixes[families.Length] = "filter-[";
-            return prefixes;
-        }
-
-        // True for tokens whose resolved property lands in the composed filter family. Purely
-        // syntactic on the bracket prefix: cheap enough to gate a skip without parsing the value.
-        internal static bool IsFilterFamilyToken(string core)
-        {
-            foreach (var prefix in s_filterFamilyTokenPrefixes)
-            {
-                if (core.StartsWith(prefix, System.StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+        // True for tokens whose resolved property lands in the composed filter family, named presets included.
+        // Purely syntactic, so the class-diff reapply's skip decision does not pay the parse it is avoiding.
+        internal static bool IsFilterFamilyToken(string core) => StyleFilterValueParser.IsFilterLeaf(core);
 
         // Applies the winning layer for a property. Translate and scale are special: their axis layers share
         // one inline `translate` / `scale`, so their winners must be composed before that write.
@@ -2098,7 +2574,7 @@ namespace Velvet
                 {
                     return byKey;
                 }
-                var byCascade = StyleBorderSideColor.CompareCascade(a.Style.Property, z.Style.Property);
+                var byCascade = StyleSpacingPrecedence.CompareCascade(a.Style.Property, z.Style.Property);
                 return byCascade != 0 ? byCascade : map.ArrivalOf(a.Style.Property, a.Key)
                     .CompareTo(map.ArrivalOf(z.Style.Property, z.Key));
             });
@@ -2314,8 +2790,6 @@ namespace Velvet
             }
         }
 
-        // The filter members share one source of truth with the compose order (s_filterOrder), so a new
-        // filter added there is automatically recognized here — no parallel membership list to keep in sync.
         private static bool IsFilter(ArbitraryProperty p) => s_filterSet.Contains(p);
 
         // CSS composes filter functions left-to-right into one `filter` property; UITK matches (one
@@ -2334,9 +2808,14 @@ namespace Velvet
             ArbitraryProperty.FilterSepia,
         };
 
-        // Built from s_filterOrder (declared after it so the textual static-init order is satisfied) so the
-        // filter set is single-sourced — see IsFilter.
-        private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder);
+        // s_filterOrder's members plus the drop-shadow pair, whose two stacks AppendDropShadows reads together
+        // rather than one function per property. Declared after s_filterOrder so the textual static-init order
+        // is satisfied.
+        private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder)
+        {
+            ArbitraryProperty.FilterDropShadow,
+            ArbitraryProperty.FilterDropShadowColor,
+        };
 
         // Writes the filter the element's layers compose, variant layers included, or clears it where none remain.
         internal static void RecomposeFilter(VisualElement element)
@@ -2351,8 +2830,37 @@ namespace Velvet
             }
         }
 
+        // CSS interpolates a filter list holding a url() discretely, so a change into or out of a dropped chain is
+        // written at once rather than handed to either animator.
         private static void ApplyCombinedFilter(VisualElement element, LayerMap map)
         {
+            var wasDropped = map.FilterChainDropped;
+            var functions = ComposeFilter(element, map, out var dropped);
+            map.FilterChainDropped = dropped;
+            if (wasDropped || dropped)
+            {
+                using (StyleFilterEngineWrite.WithoutTransition())
+                {
+                    WriteComposedFilter(element, functions);
+                }
+                return;
+            }
+            WriteComposedFilter(element, functions);
+        }
+
+        private static void WriteComposedFilter(VisualElement element, List<FilterFunction>? functions)
+        {
+            // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
+            // from-side, so it must run BEFORE the instant write below (never observing its own write).
+            if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
+            {
+                StyleFilterEngineWrite.Write(element, functions);
+            }
+        }
+
+        private static List<FilterFunction>? ComposeFilter(VisualElement element, LayerMap map, out bool dropped)
+        {
+            dropped = false;
             List<FilterFunction>? functions = null;
             foreach (var prop in s_filterOrder)
             {
@@ -2365,36 +2873,135 @@ namespace Velvet
                     (functions ??= new List<FilterFunction>()).Add(fn);
                 }
             }
+            AppendDropShadows(element, map, ref functions);
             // Customs compose AFTER every built-in, in first-application order — each entry contributing
             // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
             // SortedList wins" rule the built-ins use above, just keyed by name instead of by
             // ArbitraryProperty. An empty stack is a tombstone holding its name's compose slot (see
-            // LayerMap.Customs). A winning layer whose definition has been DESTROYED since it was applied
-            // compares equal to null (a dead asset) and is skipped: the engine's FilterFunction
-            // constructor throws on a dead definition, and a function bound to one could not render
-            // anything anyway.
-            if (map.Customs != null)
+            // LayerMap.Customs). A layer whose registration refuses its arguments is an invalid declaration's,
+            // which CSS drops at parse time, so the layer under it wins. A winning layer with no definition
+            // names no live filter — never registered, unregistered, or DESTROYED since it was applied, which
+            // compares equal to null — and CSS ignores the whole chain when a url() names no filter.
+            if (map.Customs == null)
             {
-                foreach (var (_, stack) in map.Customs)
+                return functions;
+            }
+            foreach (var (_, stack) in map.Customs)
+            {
+                var top = TopAcceptedLayer(stack);
+                if (top < 0)
                 {
-                    if (stack.Count == 0)
-                    {
-                        continue;
-                    }
-                    var custom = stack.Values[stack.Count - 1].Custom!;
-                    if (custom.Definition == null)
-                    {
-                        continue;
-                    }
-                    (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
+                    continue;
+                }
+                var custom = stack.Values[top].Custom!;
+                if (custom.Definition == null)
+                {
+                    dropped = true;
+                    return null;
+                }
+                (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
+            }
+            return functions;
+        }
+
+        private static int TopAcceptedLayer(SortedList<long, ArbitraryStyle> stack)
+        {
+            for (var i = stack.Count - 1; i >= 0; i--)
+            {
+                if (!stack.Values[i].Custom!.Rejected)
+                {
+                    return i;
                 }
             }
-            // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
-            // from-side, so it must run BEFORE the instant write below (never observing its own write).
-            if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
+            return -1;
+        }
+
+        // Tailwind's drop-shadow utilities write variables rather than the filter. A size writes
+        // --tw-drop-shadow-size, its colours reading --tw-drop-shadow-color, and a colour writes that colour, scaled by
+        // the --tw-drop-shadow-alpha a size's modifier writes. --tw-drop-shadow, which the filter reads, is written by
+        // all of them: a literal size writes its own shadows, none writes an empty one, and every other token
+        // var(--tw-drop-shadow-size), which none leaves to the size under it. At one rank the colour's rule sorts
+        // after the others and wins, so the comparison reads ranks alone, never the rule's place in a key.
+        private static void AppendDropShadows(VisualElement element, LayerMap map, ref List<FilterFunction>? functions)
+        {
+            if (!map.TryGetValue(ArbitraryProperty.FilterDropShadow, out var sizes) || sizes.Count == 0)
             {
-                StyleFilterEngineWrite.Write(element, functions);
+                return;
             }
+            var definition = BuiltInFilterDefinitions.DropShadow;
+            if (definition == null || sizes.Values[sizes.Count - 1].DropShadow is not { } top)
+            {
+                return;
+            }
+            Color? variable = null;
+            var colorWrites = false;
+            if (map.TryGetValue(ArbitraryProperty.FilterDropShadowColor, out var colors) && colors.Count > 0)
+            {
+                var color = colors.Values[colors.Count - 1].Color;
+                color.a *= AlphaVariable(sizes) ?? 1f;
+                variable = color;
+                colorWrites = StyleLayerPriority.RankOf(colors.Keys[colors.Count - 1])
+                    >= StyleLayerPriority.RankOf(sizes.Keys[sizes.Count - 1]);
+            }
+            var literal = top.Literal && !colorWrites;
+            var size = literal ? top : SizeVariable(sizes);
+            if (size == null)
+            {
+                return;
+            }
+            foreach (var shadow in size.Shadows)
+            {
+                var color = shadow.Color;
+                if (!literal)
+                {
+                    if (variable != null)
+                    {
+                        color = variable.Value;
+                    }
+                    else if (size.Alpha != null)
+                    {
+                        color.a = size.Alpha.Value;
+                    }
+                }
+                if (float.IsNaN(color.r))
+                {
+                    var current = element.resolvedStyle.color;
+                    current.a *= color.a;
+                    color = current;
+                }
+                var function = new FilterFunction(definition!);
+                function.AddParameter(new FilterParameter(shadow.X));
+                function.AddParameter(new FilterParameter(shadow.Y));
+                function.AddParameter(new FilterParameter(shadow.Deviation));
+                function.AddParameter(new FilterParameter(color));
+                (functions ??= new List<FilterFunction>()).Add(function);
+            }
+        }
+
+        // The highest layer writing --tw-drop-shadow-size, which none does not.
+        private static DropShadowValue? SizeVariable(SortedList<long, ArbitraryStyle> sizes)
+        {
+            for (var i = sizes.Count - 1; i >= 0; i--)
+            {
+                if (sizes.Values[i].DropShadow is { Shadows: { Length: > 0 } } size)
+                {
+                    return size;
+                }
+            }
+            return null;
+        }
+
+        // The highest layer declaring a modifier: a size without one leaves --tw-drop-shadow-alpha alone.
+        private static float? AlphaVariable(SortedList<long, ArbitraryStyle> sizes)
+        {
+            for (var i = sizes.Count - 1; i >= 0; i--)
+            {
+                if (sizes.Values[i].DropShadow?.Alpha is { } alpha)
+                {
+                    return alpha;
+                }
+            }
+            return null;
         }
 
         // Builds the FilterFunction for a filter-[name:args] custom filter. The public
@@ -2484,7 +3091,8 @@ namespace Velvet
             {
                 // Among transform properties, scale (uniform + per-axis) and both translate axes are composed
                 // by ResolveAndApply's combined appliers and never reach here; what lands is every transform
-                // property written in one go — rotate, transform-origin — plus aspect-ratio and the four-edge Slice.
+                // property written in one go — rotate, transform-origin — plus aspect-ratio, the four-edge Slice and
+                // the flex shorthand's three longhands.
                 case ArbitraryProperty.Rotate:
                     element.style.rotate = new Rotate(new Angle(style.Value, AngleUnit.Degree));
                     return;
@@ -2511,6 +3119,15 @@ namespace Velvet
                 case ArbitraryProperty.SliceType:
                     WriteSliceType(element, style);
                     return;
+                case ArbitraryProperty.Flex:
+                {
+                    var flex = ClipPathLayoutBox.StyleFor(element, style.Property);
+                    flex.flexGrow = style.Value;
+                    flex.flexShrink = style.Value3;
+                    // The basis is written as basis-[…] writes its own, a measured length included.
+                    WriteLength(element, flex, FlexBasisOf(style), PropertySetters[ArbitraryProperty.FlexBasis]);
+                    return;
+                }
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)
@@ -2569,6 +3186,12 @@ namespace Velvet
 
             WriteLength(element, ClipPathLayoutBox.BoxFor(element, style.Property).style, style, setters);
         }
+
+        // A Flex result's basis as the FlexBasis result basis-[…] parses to.
+        private static ArbitraryStyle FlexBasisOf(in ArbitraryStyle flex)
+            => flex.Expression != null ? new ArbitraryStyle(ArbitraryProperty.FlexBasis, flex.Expression)
+                : float.IsNaN(flex.Value2) ? ArbitraryStyle.AutoLength(ArbitraryProperty.FlexBasis)
+                : new ArbitraryStyle(ArbitraryProperty.FlexBasis, flex.Value2, flex.Unit2);
 
         // A relative length is measured per setter, since each carries its own axis and its own stand-in for an
         // indefinite one; a length that cannot be measured yet leaves that slot as it is.
@@ -2673,6 +3296,15 @@ namespace Velvet
                 case ArbitraryProperty.AspectRatio:
                     ClipPathLayoutBox.StyleFor(element, property).aspectRatio = StyleKeyword.Null;
                     return true;
+                case ArbitraryProperty.Flex:
+                {
+                    var flex = ClipPathLayoutBox.StyleFor(element, property);
+                    flex.flexGrow = StyleKeyword.Null;
+                    flex.flexShrink = StyleKeyword.Null;
+                    flex.flexBasis = StyleKeyword.Null;
+                    // MUTANT_SURVIVES(equivalent, literal): the flex shorthand has no entry in the fallback setter tables ClearInline reads.
+                    return true;
+                }
                 // translate and scale are each a single shorthand for both axes (and scale composes the uniform
                 // + per-axis layers), so clearing any one reverts the whole property. In the class-diff reconcile
                 // path the survivors are restored by FiberNodePatcher.ReapplyArbitraryValues; a direct Clear (or a
@@ -2837,6 +3469,8 @@ namespace Velvet
         {
             value = 0;
             unit = LengthUnit.Pixel;
+            // A `_` at either end is the space a browser trims from the declaration Tailwind writes.
+            valueStr = valueStr.Trim("_ ".AsSpan());
 
             bool parsed;
             if (valueStr.Length > 0 && valueStr[valueStr.Length - 1] == '%')
@@ -2848,10 +3482,7 @@ namespace Velvet
                     CultureInfo.InvariantCulture,
                     out value);
             }
-            else if (valueStr.Length > 3
-                     && valueStr[valueStr.Length - 3] == 'r'
-                     && valueStr[valueStr.Length - 2] == 'e'
-                     && valueStr[valueStr.Length - 1] == 'm')
+            else if (valueStr.EndsWith("rem".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 // 1rem resolves to a fixed 16px (UI Toolkit has no rem unit), so the parsed head is
                 // scaled and emitted as a pixel length rather than carried as a distinct unit.
@@ -2862,9 +3493,7 @@ namespace Velvet
                     out value);
                 value *= 16f;
             }
-            else if (valueStr.Length > 1
-                     && valueStr[valueStr.Length - 2] == 'p'
-                     && valueStr[valueStr.Length - 1] == 'x')
+            else if (valueStr.EndsWith("px".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 unit = LengthUnit.Pixel;
                 parsed = float.TryParse(
@@ -2884,11 +3513,13 @@ namespace Velvet
             }
             else
             {
-                parsed = float.TryParse(
+                // A bare number is a length only as 0: the browser rejects the declaration Tailwind writes for
+                // any other.
+                parsed = (float.TryParse(
                     valueStr,
                     NumberStyles.Float,
                     CultureInfo.InvariantCulture,
-                    out value)
+                    out value) && value == 0f)
                     || (StyleLengthExpression.OpensMathFunction(valueStr) && StyleLengthExpression.TryParse(valueStr, out var expression)
                         && expression!.TryFoldConstant(out value, out unit));
             }
@@ -2896,19 +3527,42 @@ namespace Velvet
             return parsed && float.IsFinite(value);
         }
 
-        // CSS's absolute length units at their fixed ratio to a pixel (96 per inch); the match is
-        // case-sensitive, as Tailwind's length test is, so Q is upper case and the rest lower.
+        // CSS's absolute length units at their fixed ratio to a pixel (96 per inch).
         private static readonly (string Suffix, float Pixels)[] s_absoluteUnits =
         {
             ("in", 96f), ("cm", 96f / 2.54f), ("mm", 96f / 25.4f), ("pt", 96f / 72f), ("pc", 16f), ("Q", 96f / 101.6f),
         };
 
-        // The pixels in one of the absolute unit named exactly, for StyleLengthExpression's dimensions.
+        // TryParseArbitraryPixels where Tailwind reads the bracket as either a length or a colour (ring-, ring-offset-):
+        // its length test decides, and hands `2PX` or a bare `2` to the colour branch, which a browser discards.
+        internal static bool TryParseInferredArbitraryPixels(ReadOnlySpan<char> suffix, out float px)
+        {
+            px = 0f;
+            return TryStripBrackets(suffix, 0, out var inner) && TailwindDataTypes.IsLength(inner)
+                && TryParseArbitraryPixels(suffix, out px);
+        }
+
+        // A border-[…] width as TryParseBracketValue reads it, for a reader that has to agree with the width applied.
+        internal static bool TryParseBorderWidthPixels(ReadOnlySpan<char> suffix, out float px)
+        {
+            px = 0f;
+            if (!TryStripBrackets(suffix, 0, out var inner) || !TailwindReadsAsLength(ArbitraryProperty.BorderWidth, inner))
+            {
+                return false;
+            }
+            if (s_lineWidthKeywords.TryGetValue(inner.ToString(), out px))
+            {
+                return true;
+            }
+            return TryParseArbitraryPixels(suffix, out px);
+        }
+
+        // The pixels in one of the absolute units, for StyleLengthExpression's dimensions.
         internal static bool TryGetAbsoluteUnitPixels(ReadOnlySpan<char> unit, out float pixels)
         {
             foreach (var (suffix, perUnit) in s_absoluteUnits)
             {
-                if (unit.SequenceEqual(suffix.AsSpan()))
+                if (unit.Equals(suffix.AsSpan(), StringComparison.OrdinalIgnoreCase))
                 {
                     pixels = perUnit;
                     return true;
@@ -2922,7 +3576,7 @@ namespace Velvet
         {
             foreach (var (suffix, perUnit) in s_absoluteUnits)
             {
-                if (valueStr.Length > suffix.Length && valueStr.EndsWith(suffix.AsSpan(), StringComparison.Ordinal))
+                if (valueStr.EndsWith(suffix.AsSpan(), StringComparison.OrdinalIgnoreCase))
                 {
                     length = suffix.Length;
                     pixels = perUnit;
@@ -2963,7 +3617,8 @@ namespace Velvet
         }
 
         // Parses an angle (used by rotate-[..]) and normalizes it to degrees. Accepts the
-        // deg / rad / grad / turn suffixes; a bare number is degrees.
+        // deg / rad / grad / turn suffixes in any case; a bare number is degrees, which each caller
+        // narrows to what its CSS property takes (IsUnitlessAngle).
         // Internal so the extracted transform/filter parsers share the one angle grammar.
         internal static bool TryParseAngleDegrees(ReadOnlySpan<char> valueStr, out float degrees)
         {
@@ -2971,21 +3626,21 @@ namespace Velvet
 
             var factor = 1f;
             var numeric = valueStr;
-            if (valueStr.EndsWith("deg"))
+            if (valueStr.EndsWith("deg".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 3);
             }
-            else if (valueStr.EndsWith("grad"))
+            else if (valueStr.EndsWith("grad".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 4);
                 factor = 0.9f; // 400 grad = 360 deg
             }
-            else if (valueStr.EndsWith("rad"))
+            else if (valueStr.EndsWith("rad".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 3);
                 factor = Mathf.Rad2Deg;
             }
-            else if (valueStr.EndsWith("turn"))
+            else if (valueStr.EndsWith("turn".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 4);
                 factor = 360f;
@@ -2999,5 +3654,8 @@ namespace Velvet
             degrees = raw * factor;
             return true;
         }
+
+        // Whether an angle TryParseAngleDegrees accepted was a bare number, which is never empty.
+        internal static bool IsUnitlessAngle(ReadOnlySpan<char> valueStr) => !char.IsLetter(valueStr[valueStr.Length - 1]);
     }
 }
