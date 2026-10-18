@@ -712,9 +712,12 @@ A field's `className` background, border, radius, padding, shadow and ring utili
 is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
 is listed with the `[&>*]:` composite notes.
 
-A render changing `maxLength:` while an edit is pending keeps the edit on screen, cut to the new limit,
-and leaves it uncommitted and unreported. When the same render also takes `isDelayed:` off, the cut edit
-is released as above.
+A render changing `maxLength:` leaves the value and a pending edit as they are, uncommitted and
+unreported until Enter or blur. A value longer than the limit is shown in full. Typing or pasting past
+the limit inserts only as many characters as fit at the caret, and the rest is rejected. A finite
+`maxLength:` is not copied onto the field: the field's own `maxLength` keeps a prefix of a longer value,
+so the limit is applied to a key or a paste instead. When the same render also takes `isDelayed:` off,
+the edit is released as above.
 
 ### 2-1a. Event props
 
