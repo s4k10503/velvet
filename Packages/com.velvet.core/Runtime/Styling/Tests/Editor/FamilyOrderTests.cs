@@ -274,6 +274,28 @@ namespace Velvet.Tests
             Assert.That(effect.Decoration, Is.EqualTo(TextDecorationKind.Underline));
         }
 
+        // GREEN_ON_BASE(characterization): the base lets the class written last hold the decoration, which here is no-underline.
+        [Test]
+        public void Given_NoUnderlineWrittenAfterLineThrough_When_TheTextEffectIsParsed_Then_NoUnderlineHolds()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(V.ParseClassNames("line-through no-underline"));
+
+            // Assert
+            Assert.That(effect.Decoration, Is.EqualTo(TextDecorationKind.None));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already sorts no-underline after line-through, so the reset holds when line-through is written last.
+        [Test]
+        public void Given_LineThroughWrittenAfterNoUnderline_When_TheTextEffectIsParsed_Then_NoUnderlineHolds()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(V.ParseClassNames("no-underline line-through"));
+
+            // Assert
+            Assert.That(effect.Decoration, Is.EqualTo(TextDecorationKind.None));
+        }
+
         [Test]
         public void Given_TwoLeadings_When_TheTextEffectIsParsed_Then_TheOneTailwindEmitsLastHolds()
         {
