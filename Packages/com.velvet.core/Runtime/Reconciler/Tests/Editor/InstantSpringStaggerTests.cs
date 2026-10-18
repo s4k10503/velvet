@@ -134,6 +134,7 @@ namespace Velvet.Tests
 
         private static float TranslateX(VisualElement element) => element.style.translate.value.x.value;
 
+        // GREEN_ON_BASE(characterization): the base already holds the child where the bezier drew it through the stagger.
         [Test]
         public void Given_AStaggeredChildMidwayOnABezier_When_ItsLabelChangesToAnInstantSpring_Then_ItHoldsTheValueDrawnThroughItsStagger()
         {

@@ -110,6 +110,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
+        // GREEN_ON_BASE(characterization): the base already stays near the value drawn when the same driver flips the label back.
         [TestCase(TransitionType.Spring, "opacity-0", "opacity-100", "opacity", 0f, 1f)]
         [TestCase(TransitionType.Spring, "translate-x-[0px]", "translate-x-[100px]", "translate-x", 0f, 100f)]
         [TestCase(TransitionType.Spring, "translate-y-[0px]", "translate-y-[100px]", "translate-y", 0f, 100f)]
@@ -142,6 +143,7 @@ namespace Velvet.Tests
             Assert.That(midway ? Read(m, channel) : float.NaN, Is.EqualTo(drawn).Within(0.1f * (high - low)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already moves this channel further for one frame after the flip.
         [Test]
         public void Given_ASpringMotionMovingTowardItsLabel_When_TheLabelFlipsBack_Then_ItKeepsMovingThatWayForAFrame()
         {
@@ -160,6 +162,7 @@ namespace Velvet.Tests
         }
 
         // The play to pose b runs on one driver and the one back to pose a on the other: each pose names its own.
+        // GREEN_ON_BASE(characterization): the base already stays near the value drawn when the return play uses the other driver.
         [TestCase(TransitionType.Bezier, "opacity-0", "opacity-100", "opacity", 0f, 1f)]
         [TestCase(TransitionType.Bezier, "translate-x-[0px]", "translate-x-[100px]", "translate-x", 0f, 100f)]
         [TestCase(TransitionType.Bezier, "w-[0px]", "w-[100px]", "width", 0f, 100f)]
@@ -190,6 +193,7 @@ namespace Velvet.Tests
             Assert.That(midway ? Read(m, channel) : float.NaN, Is.EqualTo(drawn).Within(0.2f * (high - low)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already moves this channel further for one frame when a spring interrupts the bezier.
         [Test]
         public void Given_AMotionMovingTowardItsLabelOnABezier_When_TheLabelFlipsBackOnASpring_Then_ItKeepsMovingThatWayForAFrame()
         {
@@ -207,6 +211,7 @@ namespace Velvet.Tests
             Assert.That(Read(m, "translate-x") - drawn, Is.InRange(0.01f, 20f));
         }
 
+        // GREEN_ON_BASE(characterization): the base ignores a duration, so this is its physics spring, which already keeps moving for a frame.
         [Test]
         public void Given_ASpringItsDurationDescribesMovingTowardItsLabel_When_TheLabelFlipsBack_Then_ItKeepsMovingThatWayForAFrame()
         {
