@@ -28,7 +28,7 @@ namespace Velvet
         // the only filter with a negative preset (-hue-rotate-90).
         private static readonly Dictionary<string, float> s_blurPreset = new()
         {
-            ["none"] = 0f, ["sm"] = 4f, ["md"] = 12f, ["lg"] = 16f, ["xl"] = 24f, ["2xl"] = 40f, ["3xl"] = 64f,
+            ["none"] = 0f, ["xs"] = 4f, ["sm"] = 8f, ["md"] = 12f, ["lg"] = 16f, ["xl"] = 24f, ["2xl"] = 40f, ["3xl"] = 64f,
         };
 
         private static readonly Dictionary<string, float> s_contrastPreset = new()
