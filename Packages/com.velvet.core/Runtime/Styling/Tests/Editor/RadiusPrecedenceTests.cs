@@ -252,8 +252,8 @@ namespace Velvet.Tests
         }
 
         // Tailwind emits rounded-lg before rounded-sm, so the smaller radius holds the corners whichever is written first.
-        [TestCase("rounded-sm rounded-lg", 2f)]
-        [TestCase("rounded-t-sm rounded-t-lg", 2f)]
+        [TestCase("rounded-sm rounded-lg", 4f)]
+        [TestCase("rounded-t-sm rounded-t-lg", 4f)]
         public void Given_RadiusClassesOfOneShadowCasterOnOneProperty_When_TheCornerRadiusIsResolvedWithTheLaterInTailwindsOrderFirst_Then_ItHolds(
             string classNames, float expected)
         {
@@ -266,8 +266,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base lets the last written of two classes that set the same corners hold them.
         // Here that is the one Tailwind emits last; letting the first hold them instead reddens both cases.
-        [TestCase("rounded-lg rounded-sm", 2f)]
-        [TestCase("rounded-t-lg rounded-t-sm", 2f)]
+        [TestCase("rounded-lg rounded-sm", 4f)]
+        [TestCase("rounded-t-lg rounded-t-sm", 4f)]
         public void Given_RadiusClassesOfOneShadowCasterOnOneProperty_When_TheCornerRadiusIsResolvedWithTheLaterInTailwindsOrderLast_Then_ItHolds(
             string classNames, float expected)
         {
@@ -279,8 +279,8 @@ namespace Velvet.Tests
         }
 
         [TestCase("rounded-t-lg rounded-sm", 8f)]
-        [TestCase("rounded-tl-sm rounded-l-lg", 2f)]
-        [TestCase("rounded-lg rounded-ss-sm", 2f)]
+        [TestCase("rounded-tl-sm rounded-l-lg", 4f)]
+        [TestCase("rounded-lg rounded-ss-sm", 4f)]
         public void Given_RadiusClassesOfOneShadowCaster_When_TheCornerRadiusIsResolved_Then_TheOneTailwindEmitsLastHolds(
             string classNames, float expected)
         {
@@ -369,7 +369,7 @@ namespace Velvet.Tests
             // it in the sheet exactly when Tailwind emits it after; two classes of one group write one property,
             // which this rule does not order.
             var families = new[] { "", "-t", "-l", "-tl", "-r", "-tr", "-b", "-br", "-bl" };
-            var steps = new[] { "", "-none", "-sm", "-md", "-lg", "-xl", "-2xl", "-3xl", "-full" };
+            var steps = new[] { "", "-none", "-xs", "-sm", "-md", "-lg", "-xl", "-2xl", "-3xl", "-4xl", "-full" };
             var names = families.SelectMany(family => steps.Select(step => "rounded" + family + step)).ToArray();
             var problems = new List<string>();
 
@@ -419,8 +419,8 @@ namespace Velvet.Tests
                 (int)style.borderBottomRightRadius, (int)style.borderBottomLeftRadius);
         }
 
-        [TestCase("rounded-l-sm rounded-b-lg", "2,0,8,8")]
-        [TestCase("rounded-b-lg rounded-l-sm", "2,0,8,8")]
+        [TestCase("rounded-l-sm rounded-b-lg", "4,0,8,8")]
+        [TestCase("rounded-b-lg rounded-l-sm", "4,0,8,8")]
         [TestCase("rounded-r rounded-t-lg", "8,4,4,0")]
         [TestCase("rounded-t-lg rounded-r", "8,4,4,0")]
         [TestCase("rounded-t-lg rounded-[2px]", "8,8,2,2")]

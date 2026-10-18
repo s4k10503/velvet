@@ -69,12 +69,14 @@ namespace Velvet
         {
             ["none"] = 0f,
             [""] = 4f,      // bare `rounded` == --radius-default
-            ["sm"] = 2f,
+            ["xs"] = 2f,
+            ["sm"] = 4f,
             ["md"] = 6f,
             ["lg"] = 8f,
             ["xl"] = 12f,
             ["2xl"] = 16f,
             ["3xl"] = 24f,
+            ["4xl"] = 32f,
         };
 
         // Single source for the --radius-* scale, keyed by the suffix after a rounded-* prefix (the empty

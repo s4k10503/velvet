@@ -98,15 +98,17 @@
     --color-overlay: rgba(0, 0, 0, 0.6);
     --color-overlay-hover: rgba(0, 0, 0, 0.8);
 
-    /* === Border Radius (Tailwind v3.4 scale) === */
+    /* === Border Radius === */
     --radius-none: 0;
-    --radius-sm: 2px;
+    --radius-xs: 2px;
+    --radius-sm: 4px;
     --radius-default: 4px;
     --radius-md: 6px;
     --radius-lg: 8px;
     --radius-xl: 12px;
     --radius-2xl: 16px;
     --radius-3xl: 24px;
+    --radius-4xl: 32px;
     /* A length, not 50%: Velvet's own painters read the resolved radius as a number, and 50% reaches
        them as 50. RoundedFullSilhouettePlaybackTests' rounded-full shadow corner case reddens under 50%.
        CornerRadiusFit scales it to the box as CSS does; Documentation~/styling-variants.md states where
