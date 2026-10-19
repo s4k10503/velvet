@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "0ea9b5cc08a3478ba99b3ca1dbee55c513907066b6fb67864e6588486d4aec77",
+ "killers": [],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 22,
+  "line": 84,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionDrawnValues.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "survived"
+}

@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed: 1336f), 14783f)",
+ "file": "968733b4f463dd2d49d5d7a98cb9d3fe9b8daa3e4f365a3b006c23a82a4fc468",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionSpringDurationTests.Given_AnOpacitySpringItsDurationDescribes_When_ReleasedFallingWithAVelocity_Then_ItSolvesForTheValuesOwnVelocity(Damping,28.14783f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDurationTests.cs": "099d691e244d4bf2440cb47d8210ed9d1358e3f134b0bc246ba1e85088abe7ad"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionSpringDurationTests.Given_AnOpacitySpringItsDurationDescribes_When_ReleasedFallingWithAVelocity_Then_ItSolvesForTheValuesOwnVelocity(Stiffness,352.1336f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDurationTests.cs": "099d691e244d4bf2440cb47d8210ed9d1358e3f134b0bc246ba1e85088abe7ad"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 68,
+  "line": 242,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs",
+  "shadowed": [
+   "clause removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}

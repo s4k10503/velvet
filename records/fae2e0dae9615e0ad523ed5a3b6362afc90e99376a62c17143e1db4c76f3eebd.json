@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_RunningChannelsBesideOtherNativeSlots_When_NewTargetsAreSelected_Then_OwnedFramesAndNativePaintStayDistinct(Spring)",
+ "file": "0ea9b5cc08a3478ba99b3ca1dbee55c513907066b6fb67864e6588486d4aec77",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionSlotContextTests.Given_RunningChannelsBesideOtherNativeSlots_When_NewTargetsAreSelected_Then_OwnedFramesAndNativePaintStayDistinct(Spring)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSlotContextTests.cs": "b2bebb5d4d8c1da258286ba35d6e0c354e610c254a44b2ad406882a93a86679a",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 23,
+  "line": 97,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionDrawnValues.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}

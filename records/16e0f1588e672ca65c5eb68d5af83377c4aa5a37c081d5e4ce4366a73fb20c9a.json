@@ -1,0 +1,107 @@
+{
+ "detail": "EditMode: 10 failed in Velvet.Tests.Hooks.Editor: Given_AToStepOnAnOpacitySpringRepeating19Times_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnWithIt, Given_AToStepOnARepeatingSpring_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnOnlyAtTheEnd, Given_ASpringDescribedByADurationBetweenSamples_When_ItsHoldIsDerived_Then_ItIsTheNextSample",
+ "file": "62054eb692c9a478b60c130a4cfff8da5f4b29e0cd57094892e0737aad29cd2e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SequenceRepeatHoldTests.Given_AToStepOnARepeatingSpring_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnOnlyAtTheEnd",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/SequenceRepeatHoldTests.cs": "7a5638b88117bae6bcf31d90857afbee23a47c7c23a1f7b12586d1f7caac91ef"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SequenceRepeatHoldTests.Given_AToStepOnAnOpacitySpringRepeating19Times_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnWithIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/SequenceRepeatHoldTests.cs": "7a5638b88117bae6bcf31d90857afbee23a47c7c23a1f7b12586d1f7caac91ef"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SequenceSpringDurationHoldTests.Given_ASpringDescribedByADurationBetweenSamples_When_ItsHoldIsDerived_Then_ItIsTheNextSample",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/SequenceSpringDurationHoldTests.cs": "058dbbddc8fdb342680d72871df92def701010161c89a5a2494bfbe352db7164"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SequenceSpringDurationHoldTests.Given_ASpringDescribedByADurationOnASample_When_ItsHoldIsDerived_Then_ItIsThatSample",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/SequenceSpringDurationHoldTests.cs": "058dbbddc8fdb342680d72871df92def701010161c89a5a2494bfbe352db7164"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SequenceSpringDurationHoldTests.Given_ASpringDescribedByADurationWithADelay_When_ItsHoldIsDerived_Then_ItIsTheDelayPlusTheSample",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/SequenceSpringDurationHoldTests.cs": "058dbbddc8fdb342680d72871df92def701010161c89a5a2494bfbe352db7164"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAnimationSequenceTests.Given_ASpringToStepWithADelay_When_TimePassesTheDurationButNotTheDelayOnTop_Then_TheStepIsStillCurrent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimationSequenceTests.cs": "cf310511b8ccd0d2a71bda8416902100dfdc6165421ef14579ade2f4ac2b1783",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAnimationSequenceTests.Given_ASpringToStepWithNoHold_When_TimeStopsShortOfFramersDuration_Then_TheStepIsStillCurrent(100.0f,10.0f,1.0f,1.05f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimationSequenceTests.cs": "cf310511b8ccd0d2a71bda8416902100dfdc6165421ef14579ade2f4ac2b1783",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAnimationSequenceTests.Given_ASpringToStepWithNoHold_When_TimeStopsShortOfFramersDuration_Then_TheStepIsStillCurrent(100.0f,125.0f,1.0f,4.9f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimationSequenceTests.cs": "cf310511b8ccd0d2a71bda8416902100dfdc6165421ef14579ade2f4ac2b1783",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAnimationSequenceTests.Given_ASpringToStepWithNoHold_When_TimeStopsShortOfFramersDuration_Then_TheStepIsStillCurrent(100.0f,20.0f,1.0f,0.85f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimationSequenceTests.cs": "cf310511b8ccd0d2a71bda8416902100dfdc6165421ef14579ade2f4ac2b1783",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAnimationSequenceTests.Given_ASpringToStepWithNoHold_When_TimeStopsShortOfFramersDuration_Then_TheStepIsStillCurrent(170.0f,26.0f,1.0f,0.7f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimationSequenceTests.cs": "cf310511b8ccd0d2a71bda8416902100dfdc6165421ef14579ade2f4ac2b1783",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 19,
+  "line": 590,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/SequenceWalker.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}

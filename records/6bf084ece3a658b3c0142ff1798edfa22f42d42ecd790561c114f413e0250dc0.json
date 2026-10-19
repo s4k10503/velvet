@@ -1,0 +1,78 @@
+{
+ "detail": "EditMode: 7 failed: Given_ACarryingOpacity_When_ElapsedEqualsDuration_Then_EndReleasesTheDrawing, Given_ACarryingOpacity_When_TheTailLands_Then_TheDrawingIsReleased, Given_ACarryingOpacity_When_TheTailSteps_Then_TheValueAdvances",
+ "file": "9e507bebdd6db9d8dc8ae4f141fc0d1063b59a7ec62e3b91415fa856b1738069",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionOpacityOwnershipTests.Given_ACarryingOpacityOnAHeldClock_When_TheCrossfadeEndsAndThePanelTicks_Then_TheTailMovesOnlyAsFarAsTheClock",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionOpacityOwnershipTests.cs": "5ad338a931e46895ded7b722552e7a6725ca4cef2ea8e291682a2172c3653964",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionOpacityOwnershipTests.Given_ACarryingOpacityWhoseCrossfadeEndsTwice_When_TheClockSteps_Then_ItsTailStepsOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionOpacityOwnershipTests.cs": "5ad338a931e46895ded7b722552e7a6725ca4cef2ea8e291682a2172c3653964",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionOpacityOwnershipTests.Given_ACarryingOpacity_When_ElapsedEqualsDuration_Then_EndReleasesTheDrawing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionOpacityOwnershipTests.cs": "5ad338a931e46895ded7b722552e7a6725ca4cef2ea8e291682a2172c3653964",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionOpacityOwnershipTests.Given_ACarryingOpacity_When_TheTailLands_Then_TheDrawingIsReleased",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionOpacityOwnershipTests.cs": "5ad338a931e46895ded7b722552e7a6725ca4cef2ea8e291682a2172c3653964",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionOpacityOwnershipTests.Given_ACarryingOpacity_When_TheTailSteps_Then_TheValueAdvances",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionOpacityOwnershipTests.cs": "5ad338a931e46895ded7b722552e7a6725ca4cef2ea8e291682a2172c3653964",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionOpacityOwnershipTests.Given_AHeldOpacityTransition_When_AClassWriteStartsCarrying_Then_ItsDurationIsUsed",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionOpacityOwnershipTests.cs": "5ad338a931e46895ded7b722552e7a6725ca4cef2ea8e291682a2172c3653964",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionOpacityOwnershipTests.Given_AnEndedProjectionFade_When_AnInlineWritePrecedesItsNextPass_Then_TheTailAdoptsTheWrite",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionOpacityOwnershipTests.cs": "5ad338a931e46895ded7b722552e7a6725ca4cef2ea8e291682a2172c3653964",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": ";",
+  "before": "_eased = _curve?.Invoke(t) ?? UssEasing.Evaluate(_easing, t);",
+  "column": 12,
+  "line": 1187,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}

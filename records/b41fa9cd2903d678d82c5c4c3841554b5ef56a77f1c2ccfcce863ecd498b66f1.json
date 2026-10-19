@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 7 failed in Velvet.Tests.Reconciler.Editor: Given_AChildsOnlyMotionReplacedInTheRenderRemovingIt_When_ItsExitSettles_Then_TheChildIsRemoved, Given_AComponentChildExiting_When_ItsMotionsExitCompletes_Then_TheChildIsRemoved, Given_AComponentChildRenderedAgain_When_TheKeyIsRemoved_Then_ItIsHeldUntilItsExitCompletes",
+ "detail": "EditMode: 3 failed in Velvet.Tests.Reconciler.Editor: Given_AChildsOnlyMotionReplacedInTheRenderRemovingIt_When_ItsExitSettles_Then_TheChildIsRemoved, Given_AComponentChildExiting_When_ItsMotionsExitCompletes_Then_TheChildIsRemoved, Given_AComponentChildRenderedAgain_When_TheKeyIsRemoved_Then_ItIsHeldUntilItsExitCompletes",
  "file": "b4667ea6265e3a50ebc544df24237135fa5fcec94cc230c4e1618b80894cfc0d",
  "killers": [
   {
    "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AChildsOnlyMotionReplacedInTheRenderRemovingIt_When_ItsExitSettles_Then_TheChildIsRemoved",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "d25be81c78a3f23d3525fcd361d28db855ce74101762af07c20c2deccaa8eee4",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "4d4684cf315b640384742f23256577d656b68237b303c01b0dcf520ae2aede4d",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
    }
@@ -13,7 +13,7 @@
   {
    "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AComponentChildExiting_When_ItsMotionsExitCompletes_Then_TheChildIsRemoved",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "d25be81c78a3f23d3525fcd361d28db855ce74101762af07c20c2deccaa8eee4",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "4d4684cf315b640384742f23256577d656b68237b303c01b0dcf520ae2aede4d",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
    }
@@ -21,45 +21,13 @@
   {
    "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AComponentChildRenderedAgain_When_TheKeyIsRemoved_Then_ItIsHeldUntilItsExitCompletes",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "d25be81c78a3f23d3525fcd361d28db855ce74101762af07c20c2deccaa8eee4",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AKeyedChildWhoseTopIsAnInnerAnimatePresence_When_TheOuterKeyIsRemoved_Then_TheInnerChildDoesNotHoldIt",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "d25be81c78a3f23d3525fcd361d28db855ce74101762af07c20c2deccaa8eee4",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AKeyedFragmentOfTwoElementsExiting_When_ItsMotionsExitCompletes_Then_BothLeaveTogether",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "d25be81c78a3f23d3525fcd361d28db855ce74101762af07c20c2deccaa8eee4",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AMotionInsideAZManagedElementExiting_When_ItsExitCompletes_Then_TheChildIsRemoved",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "d25be81c78a3f23d3525fcd361d28db855ce74101762af07c20c2deccaa8eee4",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
-   }
-  },
-  {
-   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AnAnchorAndADescendantExitingTogether_When_TheAnchorsExitCompletes_Then_TheChildIsHeldForTheSlowerOne",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "d25be81c78a3f23d3525fcd361d28db855ce74101762af07c20c2deccaa8eee4",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "4d4684cf315b640384742f23256577d656b68237b303c01b0dcf520ae2aede4d",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
    }
   }
  ],
- "measured_by": "39031313557",
+ "measured_by": "39153537604",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -76,6 +44,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "d8caee10d5327a14b5add4afde97b1e10b9ce7320f0922c823a6ae382c8d3527",
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
  "verdict": "killed"
 }

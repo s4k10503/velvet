@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Styling.Editor: 4361f), 18932f)",
+ "file": "de471e22f06c0945423a2dc63e2b475a9b34aaca893fc8abf6d3b234afc48a2b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionSpringDurationTests.Given_ACriticallyDampedSpringDescribedByADuration_When_SolvedForAVelocity_Then_ItsPhysicsAreTheOnesThatVelocityGives(Damping,23.18932f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDurationTests.cs": "099d691e244d4bf2440cb47d8210ed9d1358e3f134b0bc246ba1e85088abe7ad"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionSpringDurationTests.Given_ACriticallyDampedSpringDescribedByADuration_When_SolvedForAVelocity_Then_ItsPhysicsAreTheOnesThatVelocityGives(Stiffness,134.4361f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDurationTests.cs": "099d691e244d4bf2440cb47d8210ed9d1358e3f134b0bc246ba1e85088abe7ad"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 66,
+  "line": 101,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DurationSpring.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ATakenOverTransitionWhoseCurveMissesItsEnd_When_ItsDurationHasElapsed_Then_ItIsAtItsTarget",
+ "file": "9e507bebdd6db9d8dc8ae4f141fc0d1063b59a7ec62e3b91415fa856b1738069",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LayoutIdCarryTests.Given_ATakenOverTransitionWhoseCurveMissesItsEnd_When_ItsDurationHasElapsed_Then_ItIsAtItsTarget",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LayoutIdCarryTests.cs": "d7ece00337471df07a6b9fb4c74e1d07b31bcb3a67821b25d255e037a11750b8"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 21,
+  "line": 1189,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}

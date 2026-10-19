@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 15 case(s) that ran the site: Given_AMotionMovingTowardItsLabelOnABezier_When_TheLabelFlipsBackOnASpring_Then_ItKeepsMovingThatWayForAFrame",
+ "file": "a73ee1e6f13eac12eba562e663cb3211be326c6026d67192b4da01de858a6572",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_AMotionMovingTowardItsLabelOnABezier_When_TheLabelFlipsBackOnASpring_Then_ItKeepsMovingThatWayForAFrame",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "d5555540e923e2096457134a42f69d64f78053a242fa86143f5290d2d64278be",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": ";",
+  "before": "state.ElapsedSec = timeSec;",
+  "column": 16,
+  "line": 430,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}

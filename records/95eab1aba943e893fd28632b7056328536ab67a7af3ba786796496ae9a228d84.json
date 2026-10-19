@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "ee686407645486111fa685148cebafe3db471bfc4191ec5f45ce5fc543f80438",
+ "killers": [],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 21,
+  "line": 902,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs",
+  "shadowed": [
+   "equality"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "survived"
+}

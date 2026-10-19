@@ -1,0 +1,44 @@
+{
+ "detail": "EditMode: 3 failed: Given_ASpringDescribedByADurationBetweenSamples_When_ItsHoldIsDerived_Then_ItIsTheNextSample, Given_ASpringDescribedByADurationOnASample_When_ItsHoldIsDerived_Then_ItIsThatSample, Given_ASpringDescribedByADurationWithADelay_When_ItsHoldIsDerived_Then_ItIsTheDelayPlusTheSample",
+ "file": "52c0f3f46f2bba737a40b8cdc00f10516c5bb176433ffaab74e4ae52572f3a25",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SequenceSpringDurationHoldTests.Given_ASpringDescribedByADurationBetweenSamples_When_ItsHoldIsDerived_Then_ItIsTheNextSample",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/SequenceSpringDurationHoldTests.cs": "058dbbddc8fdb342680d72871df92def701010161c89a5a2494bfbe352db7164"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SequenceSpringDurationHoldTests.Given_ASpringDescribedByADurationOnASample_When_ItsHoldIsDerived_Then_ItIsThatSample",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/SequenceSpringDurationHoldTests.cs": "058dbbddc8fdb342680d72871df92def701010161c89a5a2494bfbe352db7164"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SequenceSpringDurationHoldTests.Given_ASpringDescribedByADurationWithADelay_When_ItsHoldIsDerived_Then_ItIsTheDelayPlusTheSample",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/SequenceSpringDurationHoldTests.cs": "058dbbddc8fdb342680d72871df92def701010161c89a5a2494bfbe352db7164"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 25,
+  "line": 101,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransitionConfig.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}

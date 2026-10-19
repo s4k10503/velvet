@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "52c0f3f46f2bba737a40b8cdc00f10516c5bb176433ffaab74e4ae52572f3a25",
+ "killers": [],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "",
+  "before": " && TakesDurationSpring",
+  "column": 31,
+  "line": 112,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransitionConfig.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "survived"
+}

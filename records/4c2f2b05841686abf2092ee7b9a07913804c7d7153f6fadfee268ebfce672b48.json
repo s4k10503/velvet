@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ARepeatWithADelay_When_ItsLastPassIsAboutToEndAndThenEnds_Then_OnlyTheEndSettles",
+ "file": "968733b4f463dd2d49d5d7a98cb9d3fe9b8daa3e4f365a3b006c23a82a4fc468",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SpringRepeatTests.Given_ARepeatWithADelay_When_ItsLastPassIsAboutToEndAndThenEnds_Then_OnlyTheEndSettles",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SpringRepeatTests.cs": "744a4fcfc4f56b7f6d08380729ca0cd32848585a019af8c889fc3198dbf4ec34"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 30,
+  "line": 451,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs",
+  "shadowed": [
+   "boundary",
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}

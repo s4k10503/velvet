@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_ASpringVariantEnterWithAZeroDuration_When_Played_Then_ItCompletesAtOnce",
+ "file": "52c0f3f46f2bba737a40b8cdc00f10516c5bb176433ffaab74e4ae52572f3a25",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionSpringDurationTests.Given_ASpringVariantEnterWithAZeroDuration_When_Played_Then_ItCompletesAtOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDurationTests.cs": "099d691e244d4bf2440cb47d8210ed9d1358e3f134b0bc246ba1e85088abe7ad"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "<",
+  "before": "<=",
+  "column": 63,
+  "line": 128,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransitionConfig.cs",
+  "shadowed": [
+   "arithmetic",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}

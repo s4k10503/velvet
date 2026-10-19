@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ASpringWithParametersAPlayRefuses_When_ItsPlaySpanIsRead_Then_ItIsZero",
+ "file": "dcc4b8ef6f9fbc6cb90e97d6b7b24aec3bdecd209c614cc2ff2d8b1c1816afe8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_ASpringWithParametersAPlayRefuses_When_ItsPlaySpanIsRead_Then_ItIsZero",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  }
+ ],
+ "measured_by": "39153537604",
+ "mutant": {
+  "after": "",
+  "before": " && SpringIntegrator.AreValidParameters(config.Stiffness, config.Damping, config.Mass)",
+  "column": 23,
+  "line": 18,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionPlaySpan.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b31bea1ca34be1ae3e019da21d08076eec790b60be146e79c23effb7efadd815",
+ "verdict": "killed"
+}
