@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnInchLeading_When_ParsedAndApplied_Then_ProducesTheNinetySixPixelTag",
+ "file": "ab40527e84f495fd26b33f63acfc2e3a06ede7b78b6f8142759fa9bd32fc5a4d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnInchLeading_When_ParsedAndApplied_Then_ProducesTheNinetySixPixelTag",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "f9afaa3a4f25432b3f5060e36e776dcc9ae201e67d13a24ee17d1d6ed8c9c564"
+   }
+  }
+ ],
+ "measured_by": "39182889759",
+ "mutant": {
+  "after": "||",
+  "before": "&&",
+  "column": 15,
+  "line": 499,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b5909b53aa8a9d8573de7d7b433b13888be563f97582aae33329437171f362b0",
+ "verdict": "killed"
+}

@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 48 case(s) that ran the site: Given_AnEditADelayedFieldIsHolding_When_ALaterRenderSetsMaxLengthToZero_Then_OnValueChangedHearsNothing",
+ "file": "e180cbf0a3d3b7e2ea463edae129c0140147cdb3486c1c4602e6236a5c89e966",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DelayedMaxLengthEditReportTests.Given_AnEditADelayedFieldIsHolding_When_ALaterRenderSetsMaxLengthToZero_Then_OnValueChangedHearsNothing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DelayedMaxLengthEditReportTests.cs": "f94b8194759e9fc8dc51ce11e234b26fe08943f14fb29f4c24cb09a2c66e6dff",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39182889759",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 25,
+  "line": 542,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPropApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b5909b53aa8a9d8573de7d7b433b13888be563f97582aae33329437171f362b0",
+ "verdict": "killed"
+}

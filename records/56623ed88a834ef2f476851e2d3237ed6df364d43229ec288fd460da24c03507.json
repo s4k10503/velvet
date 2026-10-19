@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "1b9c77c009b3814eeab4227139b806643967aee020e498f5c7e202fdb41533d7",
+ "killers": [],
+ "measured_by": "39182889759",
+ "mutant": {
+  "after": ";",
+  "before": "existing.Value = value;",
+  "column": 16,
+  "line": 40,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberTextFieldLength.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "b5909b53aa8a9d8573de7d7b433b13888be563f97582aae33329437171f362b0",
+ "verdict": "survived"
+}
