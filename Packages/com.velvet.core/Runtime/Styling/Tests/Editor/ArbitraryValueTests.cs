@@ -2916,13 +2916,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_BlurXs_When_Parsed_Then_ResolvesFourPixels()
+        {
+            // Act
+            var recognized = StyleArbitraryValueResolver.TryParse("blur-xs", out var style);
+
+            // Assert
+            Assert.That(recognized ? style.Value : float.NaN, Is.EqualTo(4f));
+        }
+
+        [Test]
         public void Given_BlurPreset_When_Parsed_Then_ResolvesBlurPixelsFromTheNamedScale()
         {
-            // blur-sm is the named preset (4px); no USS class, routed to the filter path.
             var ok = StyleArbitraryValueResolver.TryParse("blur-sm", out var s);
 
             Assume.That(ok, Is.True, "Precondition: blur-sm is a recognized filter preset");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.FilterBlur, 4f)));
+            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.FilterBlur, 8f)));
         }
 
         [Test]
