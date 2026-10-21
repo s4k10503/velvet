@@ -792,7 +792,6 @@ namespace Velvet
             // Count - 1 candidates are taken and Count attempts always find a free one; one more changes nothing.
             for (var attempt = 0; attempt < taken.Count; attempt++)
             {
-                // MUTANT_SURVIVES(equivalent, arithmetic): counting down spells distinct candidates all the same.
                 var repeat = $"{AutoKeyPrefix}dup{++repeats}_{firstChoice}";
                 if (!taken.TryAdd(repeat, 0)) continue;
                 taken[firstChoice] = repeats;
