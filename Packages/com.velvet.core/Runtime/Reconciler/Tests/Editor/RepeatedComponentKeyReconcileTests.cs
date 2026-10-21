@@ -254,6 +254,8 @@ namespace Velvet.Tests
             Assert.That($"{s_seen.GetValueOrDefault("b")},{s_seen.GetValueOrDefault("bb")}", Is.EqualTo("outer,inner"));
         }
 
+        // GREEN_ON_BASE(characterization): the base resolves each of these two keys to its own fiber, since they
+        // sit in separate containers; this pins that the repeat counting added to the spine does not merge them.
         [Test]
         public void Given_ARepeatedKeyInAnElementBesideAnEarlierComponentOfThatKey_When_ItRendersAlone_Then_ItReadsItsOwnProvider()
         {

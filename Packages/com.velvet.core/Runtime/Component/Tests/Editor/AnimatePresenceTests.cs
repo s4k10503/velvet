@@ -537,12 +537,13 @@ namespace Velvet.Tests
             var firstOnly = Presence(
                 V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First")));
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), both);
+            var before = LabelTexts();
 
             // Act
             Reconciler.Reconcile(Root, both, firstOnly);
 
-            // Assert — a child still holds the key, so the repeat is not leaving: it is gone this reconcile.
-            Assert.That(LabelTexts(), Is.EqualTo("First"));
+            // Assert — both rendered, then a child still holding the key means the repeat is not leaving: it is gone this reconcile.
+            Assert.That($"{before}->{LabelTexts()}", Is.EqualTo("First,Second->First"));
         }
 
         #endregion
