@@ -54,8 +54,10 @@ namespace Velvet
         private static float Unspun(VisualElement element, StyleRotate inline) =>
             StyleAnimateDriver.TryReadSpinOwn(element, inline, out _, out var own) ? own : element.resolvedStyle.rotate.angle.ToDegrees();
 
-        // Written into the four corners of into, which is returned; a pass reads them into an array it keeps, so that
-        // reading them allocates nothing (Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated).
+        // Written into the four corners of into, which is returned. A pass that reads them again, as a member behind the
+        // lead does each frame, hands an array it keeps, so that reading them allocates nothing
+        // (Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated); Read, which runs once for a
+        // box taken at a patch or a move's start, hands a new one.
         public static Length[] RadiiOf(VisualElement element, LayoutIdProjection? projection, Length[] into)
         {
             if (projection is { WritesRadii: true })
@@ -75,11 +77,18 @@ namespace Velvet
             for (var corner = 0; corner < 4; corner++)
             {
                 var slot = CornerRadiusFit.InlineCorner(element.style, corner);
-                radii[corner] = RunningStyleTransition.CurrentRadius(element, corner, slot.keyword == StyleKeyword.Undefined ? slot.value
+                radii[corner] = RunningStyleTransition.CurrentRadius(element, corner, Holds(slot) ? Inline(slot)
                     : StyleCascade.Radius(element, corner) ?? new Length(CornerRadiusFit.ResolvedCorner(element.resolvedStyle, corner)));
             }
             return radii;
         }
+
+        // Whether an inline slot gives its corner's radius: a value, or `initial`, which is read as none, the value CSS
+        // gives border-radius
+        // (Given_AHolderWithAnInlineInitialRadius_When_ItsRadiiAreRead_Then_ItIsSquare).
+        private static bool Holds(StyleLength slot) => slot.keyword is StyleKeyword.Undefined or StyleKeyword.Initial;
+
+        private static Length Inline(StyleLength slot) => slot.keyword == StyleKeyword.Initial ? new Length(0f) : slot.value;
 
         // A slot that no longer holds the last value written here was written by someone else, and that value is the
         // element's own from then on, as AdoptForeignWrites takes the transform; a radius slot corner by corner.
@@ -93,7 +102,7 @@ namespace Velvet
                 var slot = CornerRadiusFit.InlineCorner(element.style, corner);
                 if (slot == projection.WrittenRadii[corner]) continue;
                 projection.OwnInlineRadii[corner] = slot;
-                projection.InlineRadii[corner] = slot.keyword != StyleKeyword.Null;
+                projection.InlineRadii[corner] = Holds(slot);
             }
         }
 
@@ -149,7 +158,7 @@ namespace Velvet
             if (!projection.WritesRadii) return Declared(element, own);
             for (var corner = 0; corner < 4; corner++)
             {
-                var target = projection.InlineRadii[corner] ? projection.OwnInlineRadii[corner].value
+                var target = projection.InlineRadii[corner] ? Inline(projection.OwnInlineRadii[corner])
                     : CornerRadiusFit.Fitted(element, corner) ?? StyleCascade.Radius(element, corner) ?? projection.StartRadii[corner];
                 own[corner] = Carry(element, projection, corner, target, dtSec);
             }
@@ -231,7 +240,7 @@ namespace Velvet
                 {
                     var slot = CornerRadiusFit.InlineCorner(element.style, corner);
                     projection.OwnInlineRadii[corner] = slot;
-                    projection.InlineRadii[corner] = slot.keyword == StyleKeyword.Undefined && !CornerRadiusFit.Wrote(element, corner, slot);
+                    projection.InlineRadii[corner] = Holds(slot) && !CornerRadiusFit.Wrote(element, corner, slot);
                 }
                 projection.StartRadii = (Length[])own.Clone();
                 projection.DrawnRadii = new Length[4];

@@ -313,7 +313,7 @@ namespace Velvet
         // Where the lead is drawn, in the frame of this member's parent: Framer projects a member behind the lead
         // onto the lead's box. Read as the lead was last computed, in this pass or the one before.
         private static Rect Followed(VisualElement element, VisualElement leader, ReconcilerContext ctx) =>
-            TryReadBox(leader, leader.layout, ctx, out var box) ? FromRect(element, box, ctx) : element.layout;
+            TryReadBox(leader, leader.layout, ctx, readLook: false, out var box) ? FromRect(element, box, ctx) : element.layout;
 
         // Framer's crossfade and its only-member mix (mix-values.ts): the lead fades in over the first half of its move,
         // on circOut, and the members behind it are drawn at the previous lead's opacity fading out between halfway
@@ -618,7 +618,12 @@ namespace Velvet
             ctx.LayoutIdProjections.TryGetValue(element, out var projection) && projection.Moving;
 
         // The box the element is drawn at while its layout is the given one.
-        private static bool TryReadBox(VisualElement element, Rect layout, ReconcilerContext ctx, out LayoutIdBox box)
+        private static bool TryReadBox(VisualElement element, Rect layout, ReconcilerContext ctx, out LayoutIdBox box) =>
+            TryReadBox(element, layout, ctx, readLook: true, out box);
+
+        // readLook false leaves the look out, for the read a follower makes of its lead on every pass, which uses the
+        // box alone (Given_AMemberBehindARoundedLead_When_ItFollowsTheLeadAgain_Then_NothingIsAllocated).
+        private static bool TryReadBox(VisualElement element, Rect layout, ReconcilerContext ctx, bool readLook, out LayoutIdBox box)
         {
             box = default;
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return false;
@@ -626,7 +631,7 @@ namespace Velvet
             var drawn = ctx.LayoutIdProjections.TryGetValue(element, out var projection) ? Drawn(projection, layout, parentScale) : layout;
             var world = parent.worldTransform;
             box = new LayoutIdBox(parent, drawn, world.MultiplyPoint3x4(drawn.center), drawn.size * AxisLengths(world), parentScale,
-                LayoutIdLook.Read(element, projection));
+                readLook ? LayoutIdLook.Read(element, projection) : null);
             return true;
         }
 

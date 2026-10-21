@@ -34,9 +34,11 @@ namespace Velvet
         BackgroundPosition = 1 << 7,
         // MotionLayoutIdDriver hides a layoutId member that another holder leads through `visibility`.
         Visibility = 1 << 8,
-        // The four corner radii alone, for a layoutId projection that writes them and no other length.
+        // The four corner radii alone, for a layoutId projection that writes them and no other length. Only a driver
+        // reports it: what an element declares is Length, which Contends reads as covering it, and All leaves it out so
+        // that a play suspending All names no radius to take out of a held list.
         Radius = 1 << 9,
-        All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition | Visibility | Radius,
+        All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition | Visibility,
     }
 
     /// <summary>
@@ -127,7 +129,7 @@ namespace Velvet
             {
                 ExcludeFromHeldList(element, LonghandsOf(drivenSlots & ~MotionTransitionSlots.Length).Union(drivenLengths));
             }
-            if ((DeclaredSlots(element) & drivenSlots) == MotionTransitionSlots.None)
+            if (!Contends(DeclaredSlots(element), drivenSlots))
             {
                 return;
             }
@@ -156,7 +158,7 @@ namespace Velvet
         /// </remarks>
         public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots) =>
             SyncSuspension(element, owner, drivenSlots,
-                (DeclaredSlots(element, readInlineDuration: false) & drivenSlots) != MotionTransitionSlots.None);
+                Contends(DeclaredSlots(element, readInlineDuration: false), drivenSlots));
 
         /// <summary>
         /// <see cref="SyncSuspension(VisualElement, object, MotionTransitionSlots)"/> with whether the element
@@ -195,7 +197,7 @@ namespace Velvet
         {
             var driven = LonghandsOf(drivenSlots);
             ExcludeFromHeldList(element, driven);
-            if (Intercepts(element, driven) ?? (DeclaredSlots(element) & drivenSlots) != MotionTransitionSlots.None)
+            if (Intercepts(element, driven) ?? Contends(DeclaredSlots(element), drivenSlots))
             {
                 Narrow(element, owner, drivenSlots);
                 return;
@@ -539,6 +541,12 @@ namespace Velvet
             StyleLonghand.BorderBottomLeftRadius,
             StyleLonghand.BorderBottomRightRadius);
 
+        // Whether what an element declares transitions a slot a driver writes. Length stands for every length-valued
+        // property, the corner radii among them, so it meets a driver's Radius.
+        private static bool Contends(MotionTransitionSlots declared, MotionTransitionSlots driven) =>
+            (declared & driven) != MotionTransitionSlots.None
+            || ((driven & MotionTransitionSlots.Radius) != 0 && (declared & MotionTransitionSlots.Length) != 0);
+
         /// <summary>The driver channels that would contend for the properties a declaration names.</summary>
         private static MotionTransitionSlots SlotsOf(StyleLonghandSet declared)
         {
@@ -549,7 +557,6 @@ namespace Velvet
             if (declared.Contains(StyleLonghand.Rotate)) slots |= MotionTransitionSlots.Rotate;
             if (declared.Overlaps(s_colorProperties)) slots |= MotionTransitionSlots.Color;
             if (declared.Overlaps(s_lengthProperties)) slots |= MotionTransitionSlots.Length;
-            if (declared.Overlaps(s_radiusProperties)) slots |= MotionTransitionSlots.Radius;
             if (declared.Contains(StyleLonghand.Visibility)) slots |= MotionTransitionSlots.Visibility;
             return slots;
         }
@@ -617,12 +624,13 @@ namespace Velvet
                 Realigned(element.style.transitionDelay.value, heldCount, sources));
         }
 
-        // Whether the list holds `all` or a driven longhand, which is what makes Exclude take something out.
+        // Whether the list holds an entry Exclude takes something out of: a driven longhand, or `all` or a shorthand
+        // covering one.
         private static bool Names(List<StylePropertyName> held, StyleLonghandSet driven)
         {
             for (var i = 0; i < held.Count; i++)
             {
-                if (held[i] == s_allName || NamesADrivenLonghand(held[i], driven)) return true;
+                if (Covered(held[i]).Overlaps(driven) || NamesADrivenLonghand(held[i], driven)) return true;
             }
             return false;
         }

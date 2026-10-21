@@ -4886,10 +4886,12 @@ namespace Velvet.Tests
         }
 
 
-        // "a", and a control holding no id, both transitioning everything linearly over a second, turn as classes turn;
-        // some 0.3 s in, "a" moves under "card" from "b" 300px right on a three-second tween, mixing in from "b"'s none.
-        // Returns what read gives of "a" and its projection some 0.2 s on, and the control's rotate.
-        private (float Read, float Control) TakeOverAsItTurns(System.Func<LayoutIdProjection, VisualElement, float> read)
+        // "a", and a control holding no id, both transitioning everything linearly over a second, take the class to as
+        // classes turn; some 0.3 s in, "a" moves under "card" from "b" 300px right on a three-second tween, mixing in
+        // from "b"'s none. Returns what read gives of "a" and its projection some 0.2 s on, and what control gives of the
+        // control.
+        private (float Read, float Control) TakeOverAsItTurns(string to, System.Func<VisualElement, float> control,
+            System.Func<LayoutIdProjection, VisualElement, float> read)
         {
             VelvetStyleUtilities.AttachTo(Root);
             (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
@@ -4897,15 +4899,14 @@ namespace Velvet.Tests
             s_aTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
             (s_aClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
             using var mounted = MountAAlone();
-            (s_aClasses, s_controlClasses) = (s_aClasses + " rotate-90", s_controlClasses + " rotate-90");
+            (s_aClasses, s_controlClasses) = (s_aClasses + " " + to, s_controlClasses + " " + to);
             RenderShared(mounted);
             for (var i = 0; i < 18; i++) Tick();
             (s_aId, s_aLeft) = ("card", 0);
             RenderShared(mounted);
             for (var i = 0; i < 12; i++) Tick();
             var a = Root.Q<VisualElement>("a");
-            return (read(mounted.Root.Reconciler.Context.LayoutIdProjections[a], a),
-                Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees());
+            return (read(mounted.Root.Reconciler.Context.LayoutIdProjections[a], a), control(Root.Q<VisualElement>("control")));
         }
 
 
@@ -4913,7 +4914,8 @@ namespace Velvet.Tests
         public void Given_AMotionTurningOnATransition_When_ItTakesAHeldIdAndMixesItsRotate_Then_ItsOwnRunsAsTheEngineRunsIt()
         {
             // Arrange / Act
-            var (own, control) = TakeOverAsItTurns((projection, _) => projection.RotateCarry.Value);
+            var (own, control) = TakeOverAsItTurns("rotate-90", e => e.resolvedStyle.rotate.angle.ToDegrees(),
+                (projection, _) => projection.RotateCarry.Value);
 
             // Assert — within a degree of the control, which is half way round.
             Assert.That(own, Is.EqualTo(control > 30f && control < 60f ? control : float.NaN).Within(1f));
@@ -4926,7 +4928,7 @@ namespace Velvet.Tests
             // Arrange / Act — "b" holds no rotate, so the mix runs from none to the rotate "a" carries as its own, as far as
             // the move has got. "a"'s own left transitions meanwhile, and the projection measures the box it has then, so the
             // move's progress is how far the translate has come back of what is left to cover.
-            var (difference, _) = TakeOverAsItTurns((projection, a) =>
+            var (difference, _) = TakeOverAsItTurns("rotate-90", e => e.resolvedStyle.rotate.angle.ToDegrees(), (projection, a) =>
                 projection.DrawnRotate - Mathf.LerpUnclamped(0f, projection.RotateCarry.Value, 1f - TranslateX(a) / (300f - a.layout.x)));
 
             // Assert
@@ -5282,10 +5284,9 @@ namespace Velvet.Tests
             element.style.borderTopLeftRadius = StyleKeyword.Null;
             for (var i = 0; i < 2; i++) Tick();
 
-            // Assert — the corner as the rules declare it, not none.
-            var declared = StyleCascade.Radius(element, 0)!.Value.value;
+            // Assert — the 8px the rules declare, not none.
             var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[element].DrawnRadii[0].value;
-            Assert.That(drawn, Is.EqualTo(declared > 1f ? declared : float.NaN).Within(0.01f));
+            Assert.That(drawn, Is.EqualTo(8f).Within(0.01f));
         }
 
         [TestCase(0, 150f)]
@@ -5393,6 +5394,53 @@ namespace Velvet.Tests
             Assert.That(counted && radii[0].unit == LengthUnit.Percent && running ? blocks : -1, Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base's look holds no radii, so its follower read allocates nothing there.
+        // The read must stay free now that a look holds four of them.
+        [Test]
+        public void Given_AMemberBehindARoundedLead_When_ItFollowsTheLeadAgain_Then_NothingIsAllocated()
+        {
+            // Arrange — "a" behind "b", both rounded, some way into the crossfade; one follow to warm it, and a canary
+            // allocating a known array.
+            (s_aClasses, s_bClasses) = ("rounded-[20px]", "rounded-[30px]");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+            var context = mounted.Root.Reconciler.Context;
+            var a = Root.Q<VisualElement>("a");
+            var followed = (Func<VisualElement, VisualElement, ReconcilerContext, Rect>)Delegate.CreateDelegate(
+                typeof(Func<VisualElement, VisualElement, ReconcilerContext, Rect>),
+                typeof(MotionLayoutIdDriver).GetMethod("Followed", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static));
+            Action follow = () => followed(a, context.LayoutIdProjections[a].Leader, context);
+            follow();
+            Action canary = () => GC.KeepAlive(new byte[16]);
+            canary();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(follow);
+            var counted = GCAllocationProbe.MedianBlocksDuring(canary) > 0;
+
+            // Assert — none, where the canary's are counted.
+            Assert.That(counted ? blocks : -1, Is.Zero, $"{blocks} blocks per follow; the canary's counted: {counted}");
+        }
+
+        [Test]
+        public void Given_AHolderWithAnInlineInitialRadius_When_ItsRadiiAreRead_Then_ItIsSquare()
+        {
+            // Arrange — a holder the test's own sheet rounds to twenty pixels, with `initial` in one corner's slot.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            var holder = new VisualElement();
+            holder.AddToClassList("layout-id-test-rounder");
+            holder.style.borderTopLeftRadius = StyleKeyword.Initial;
+            Root.Add(holder);
+            Tick();
+            var radii = new Length[4];
+
+            // Act
+            LayoutIdLook.RadiiOf(holder, null, radii);
+
+            // Assert
+            Assert.That(radii[0].value, Is.Zero);
+        }
+
         [Test]
         public void Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt()
         {
@@ -5424,7 +5472,8 @@ namespace Velvet.Tests
         public void Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt()
         {
             // Arrange / Act
-            var (own, control) = TakeOverAsItTurns("rounded-[20px]", e => e.resolvedStyle.borderTopLeftRadius, p => p.DrawnRadii[0].value);
+            var (own, control) = TakeOverAsItTurns("rounded-[20px]", e => e.resolvedStyle.borderTopLeftRadius,
+                (projection, _) => projection.RadiusCarries[0].Value);
 
             // Assert — within half a pixel of the control, which is half way round.
             Assert.That(own, Is.EqualTo(control > 6f && control < 14f ? control : float.NaN).Within(0.5f));
@@ -5632,7 +5681,7 @@ namespace Velvet.Tests
             // Assert — on screen, the radius written times the scale it is drawn at, about a quarter of the way from ten
             // to thirty pixels, rather than at thirty.
             var element = Root.Q<VisualElement>("shared");
-            Assert.That(element.style.borderTopLeftRadius.value.value * element.style.scale.value.value.x, Is.InRange(12f, 20f));
+            Assert.That(element.style.borderTopLeftRadius.value.value * element.style.scale.value.value.x, Is.InRange(12f, 18f));
         }
 
         // Steps the resizing box to step 1, where it doubles, with s_resizeOrigin as its classes, and plays the frames.
