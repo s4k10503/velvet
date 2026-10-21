@@ -1174,6 +1174,963 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Hook values held by display classes
+
+        // A hook value a handler captures is hoisted by the compiler into a field of a display class, so the hook
+        // call stores into a field and the value is read from it.
+        [Component]
+        public static VNode HandlerCapturingAHookValueComponent()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            return V.Button(text: "add", onClick: () => setCount.Invoke(count + 1));
+        }
+
+        [Component]
+        public static VNode HandlerCapturingAMemoValueComponent()
+        {
+            var label = Hooks.UseMemo(() => "x", System.Array.Empty<object>());
+            return V.Button(text: "go", onClick: () => System.Console.Write(label));
+        }
+
+        [Component]
+        public static VNode HandlerCapturingAWholeTupleComponent()
+        {
+            var pair = Hooks.UseState(0);
+            return V.Button(text: "go", onClick: () => pair.Item2.Invoke(pair.Item1 + 1));
+        }
+
+        private sealed class HookValueHolder
+        {
+            public int Count;
+            public StateUpdater<int> Setter = null!;
+            public string Label = "";
+        }
+
+        [Component]
+        public static VNode HookTupleDeconstructedIntoAnObjectComponent()
+        {
+            var holder = new HookValueHolder();
+            (holder.Count, holder.Setter) = Hooks.UseState(0);
+            return V.Label(text: holder.Count.ToString());
+        }
+
+        [Component]
+        public static VNode HookTupleElementStoredToAnObjectFieldComponent()
+        {
+            var holder = new HookValueHolder();
+            var pair = Hooks.UseState(0);
+            holder.Count = pair.Item1;
+            return V.Label(text: holder.Count.ToString());
+        }
+
+        [Component]
+        public static VNode HookValueStoredToAnObjectFieldComponent()
+        {
+            var holder = new HookValueHolder();
+            holder.Label = Hooks.UseMemo(() => "x", System.Array.Empty<object>());
+            return V.Label(text: holder.Label);
+        }
+
+        [Component]
+        public static VNode HookTupleReadAgainComponent()
+        {
+            var pair = Hooks.UseState(0);
+            var (count, setCount) = pair;
+            return V.Label(text: (count + pair.Item1).ToString());
+        }
+
+        [Component]
+        public static VNode TupleHeldThenDeconstructedComponent()
+        {
+            var pair = Hooks.UseState(0);
+            var count = pair.Item1;
+            var setCount = pair.Item2;
+            if (count < 0) setCount.Invoke(0);
+            return V.Label(text: count.ToString());
+        }
+
+        [Component]
+        public static VNode TupleElementPassedStraightToAHookComponent()
+        {
+            var pair = Hooks.UseState(0);
+            var deferred = Hooks.UseDeferredValue(pair.Item1);
+            return V.Label(text: deferred.ToString());
+        }
+
+        private static int s_heldCount;
+        private static StateUpdater<int> s_heldSetter = null!;
+
+        [Component]
+        public static VNode HookTupleDeconstructedIntoStaticFieldsComponent()
+        {
+            (s_heldCount, s_heldSetter) = Hooks.UseState(0);
+            return V.Label(text: "x");
+        }
+
+        private static (int First, int Second) UsePairHook()
+        {
+            var (first, _) = Hooks.UseState(0);
+            return (first, 1);
+        }
+
+        [Component]
+        public static VNode HandlerCapturingACustomHookPairComponent()
+        {
+            var (first, second) = UsePairHook();
+            return V.Button(text: "go", onClick: () => System.Console.Write(first + second));
+        }
+
+        [Component]
+        public static VNode HandlerCapturingATupleValueComponent()
+        {
+            var (pair, setPair) = Hooks.UseState((1, 2));
+            return V.Button(text: "go", onClick: () => setPair.Invoke(pair));
+        }
+
+        [Component]
+        public static VNode HandlerCapturingTwoHookValuesComponent()
+        {
+            var (a, setA) = Hooks.UseState(0);
+            var (b, setB) = Hooks.UseState(0);
+            return V.Button(text: "go", onClick: () => { setA.Invoke(b); setB.Invoke(a); });
+        }
+
+        [Component]
+        public static VNode HandlerCapturingOnlyASetterComponent()
+        {
+            var (_, setCount) = Hooks.UseState(0);
+            return V.Button(text: "go", onClick: () => setCount.Invoke(1));
+        }
+
+        [Component]
+        public static VNode ValueAndSetterComponent()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            if (count < 0) setCount.Invoke(0);
+            return V.Label(text: count.ToString());
+        }
+
+        [Test]
+        public void Given_AHookValueAHandlerCaptures_When_Woven_Then_ItIsWoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HandlerCapturingAHookValueComponent))), Is.True);
+        }
+
+        [Test]
+        public void Given_AHookValueAHandlerCaptures_When_Woven_Then_TheGateIsKeyedOnTheValueAlone()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(HandlerCapturingAHookValueComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1), "The setter is the one object for the life of the component and is no dependency");
+        }
+
+        [Test]
+        public void Given_AMemoValueAHandlerCaptures_When_Woven_Then_TheGateIsKeyedOnTheValue()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(HandlerCapturingAMemoValueComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AWholeTupleAHandlerCaptures_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HandlerCapturingAWholeTupleComponent))), Is.False,
+                "A tuple held whole compares structurally rather than by reference");
+        }
+
+        [Test]
+        public void Given_AHookTupleDeconstructedIntoAnObject_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HookTupleDeconstructedIntoAnObjectComponent))), Is.False,
+                "Only a display class field is read back for the gate; the fields of any other object are not");
+        }
+
+        [Test]
+        public void Given_AHookTupleElementStoredToAnObjectField_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HookTupleElementStoredToAnObjectFieldComponent))), Is.False,
+                "A hit would skip the store, leaving the field at an earlier render's value");
+        }
+
+        [Test]
+        public void Given_AHookValueStoredToAnObjectField_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HookValueStoredToAnObjectFieldComponent))), Is.False,
+                "A hit would skip the store, leaving the field at an earlier render's value");
+        }
+
+        [Test]
+        public void Given_AHookTupleReadAgainAfterItsDeconstruction_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HookTupleReadAgainComponent))), Is.False,
+                "The tuple read again is a hook value the gate does not compare");
+        }
+
+        [Test]
+        public void Given_ATupleHeldThenDeconstructed_When_Woven_Then_TheGateIsKeyedOnTheValueAlone()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(TupleHeldThenDeconstructedComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ATupleHeldThenDeconstructed_When_Woven_Then_TheGateLeavesNothingOnTheStack()
+        {
+            // Act
+            var pops = HitPathPops(LoadMethod(nameof(TupleHeldThenDeconstructedComponent)));
+
+            // Assert
+            Assert.That(pops, Is.EqualTo(0), "The gate sits after the store of the last element, not between the read and the store");
+        }
+
+        [Test]
+        public void Given_ATupleElementPassedStraightToAHook_When_Woven_Then_TheGateIsKeyedOnTheElementAndTheMemo()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(TupleElementPassedStraightToAHookComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AHookTupleDeconstructedIntoStaticFields_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HookTupleDeconstructedIntoStaticFieldsComponent))), Is.False,
+                "A hit would skip the stores, leaving the fields at an earlier render's values");
+        }
+
+        [Test]
+        public void Given_ACustomHookPairAHandlerCaptures_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HandlerCapturingACustomHookPairComponent))), Is.False,
+                "Only a hook of the library promises its second element stable; a custom hook's is a value the gate does not compare");
+        }
+
+        [Test]
+        public void Given_ATupleValueAHandlerCaptures_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HandlerCapturingATupleValueComponent))), Is.False,
+                "A tuple value compares structurally rather than by reference");
+        }
+
+        [Test]
+        public void Given_OnlyTheSetterAHandlerCaptures_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HandlerCapturingOnlyASetterComponent))), Is.False,
+                "The setter is stable while the value it sets is never captured");
+        }
+
+        [Test]
+        public void Given_TwoHookValuesAHandlerCaptures_When_Woven_Then_TheGateIsKeyedOnBoth()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(HandlerCapturingTwoHookValuesComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AValueAndItsSetter_When_Woven_Then_TheGateIsKeyedOnTheValueAlone()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(ValueAndSetterComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AValueAndItsSetter_When_Woven_Then_TheGateLeavesNothingOnTheStack()
+        {
+            // Act
+            var pops = HitPathPops(LoadMethod(nameof(ValueAndSetterComponent)));
+
+            // Assert
+            Assert.That(pops, Is.EqualTo(0), "The gate sits after the store of the last element, not between the read and the store");
+        }
+
+        #endregion
+
+        #region First reactive scopes
+
+        private static string s_scopeText = "";
+
+        private static string DescribeText(string text) => s_scopeText + text;
+
+        private sealed class RefCarrier : System.Collections.Generic.Dictionary<string, string>
+        {
+            public RefCarrier(MutableRef<string> reference)
+            {
+                reference.Current = "carried";
+            }
+        }
+
+        private sealed class ServiceCarrier : System.Collections.Generic.Dictionary<string, string>
+        {
+            public ServiceCarrier(System.Collections.Generic.List<string> items)
+            {
+                items.Add("carried");
+            }
+        }
+
+        private static System.Collections.Generic.List<string> UseTextItems() => new();
+
+        [Component]
+        public static VNode TwoTextChildrenComponent()
+        {
+            var (left, _) = Hooks.UseState("");
+            var (right, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: left), V.Label(text: right));
+        }
+
+        [Component]
+        public static VNode NestedTextChildrenComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            var (b, _) = Hooks.UseState("");
+            return V.Div("root", V.Div("group", V.Label(text: a), V.Label(text: b)), V.Label(text: b));
+        }
+
+        [Component]
+        public static VNode ConditionalTextChildComponent()
+        {
+            var (flag, _) = Hooks.UseState(false);
+            var (a, _) = Hooks.UseState("");
+            var (b, _) = Hooks.UseState("");
+            return V.Div("root", flag ? V.Label(text: a) : V.Label(text: b), V.Label(text: b));
+        }
+
+        [Component]
+        public static VNode TextChildAfterAHookComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: a), V.Label(text: Hooks.UseId()));
+        }
+
+        [Component]
+        public static VNode TextChildOfAParameterComponent(string title)
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: title), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode FixedTextChildComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: "fixed"), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildCallingAFixtureMethodComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: DescribeText(a)), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode FixtureMethodChildReadingNothingComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: DescribeText("fixed")), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildReadingAStaticComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: s_scopeText), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildrenBuiltInALoopComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            VNode? last = null;
+            for (var i = 0; i < 2; i++)
+            {
+                last = V.Div("row", V.Label(text: a), V.Label(text: a));
+            }
+            return last!;
+        }
+
+        [Component]
+        public static VNode TextChildrenAfterATryFinallyComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            try
+            {
+                s_scopeText = a;
+            }
+            finally
+            {
+                s_scopeText += "x";
+            }
+            return V.Div("root", V.Label(text: a), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode CarrierChildWritingALocalComponent()
+        {
+            var (a, _) = Hooks.UseState(new System.Collections.Generic.List<string>());
+            var written = new System.Collections.Generic.List<string>();
+            return V.Div("root", V.Label(data: new ServiceCarrier(written = a)), V.Label(data: new ServiceCarrier(written)));
+        }
+
+        [Component]
+        public static VNode TextChildCarryingARefComponent()
+        {
+            var counter = Hooks.UseMutableRef("");
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(data: new RefCarrier(counter)), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildReadingAServiceValueComponent()
+        {
+            var items = UseTextItems();
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(data: new ServiceCarrier(items)), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildReadingAReferenceStateComponent()
+        {
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<string>());
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(data: new ServiceCarrier(items)), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildAssigningAParameterComponent(string title)
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: title = a), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode CarrierChildReadingAReassignedHookValueComponent()
+        {
+            var (a, _) = Hooks.UseState(new System.Collections.Generic.List<string>());
+            var (b, _) = Hooks.UseState(new System.Collections.Generic.List<string>());
+            a = b;
+            return V.Div("root", V.Label(data: new ServiceCarrier(a)), V.Label(data: new ServiceCarrier(b)));
+        }
+
+        private static int ScopeGatesOf(string component) => CountHookCalls(LoadMethod(component), ScopeGateName);
+
+        [Test]
+        public void Given_TwoChildrenReadingDifferentHookValues_When_Woven_Then_EachGetsItsOwnScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TwoTextChildrenComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildReadingOneHookValue_When_Woven_Then_ItsScopeIsKeyedOnThatValue()
+        {
+            // Act
+            var dependencies = DependencyCountOfCall(LoadMethod(nameof(TwoTextChildrenComponent)), ScopeGateName, 0);
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ChildrenNestedInAChildReadingBothValues_When_Woven_Then_EveryChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(NestedTextChildrenComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void Given_AChildChoosingBetweenTwoCalls_When_Woven_Then_TheChoiceIsOneScopeKeyedOnWhatItReads()
+        {
+            // Act
+            var dependencies = DependencyCountOfCall(LoadMethod(nameof(ConditionalTextChildComponent)), ScopeGateName, 0);
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_AChildChoosingBetweenTwoCalls_When_Woven_Then_ItsSiblingGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ConditionalTextChildComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_AChildAheadOfALaterHook_When_Woven_Then_TheComponentIsWovenWithNoScopeGate()
+        {
+            // Act
+            var method = LoadMethod(nameof(TextChildAfterAHookComponent));
+
+            // Assert
+            Assert.That((IsWoven(method), CountHookCalls(method, ScopeGateName)), Is.EqualTo((true, 0)));
+        }
+
+        [Test]
+        public void Given_AChildReadingAParameter_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildOfAParameterComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildReadingAParameter_When_Woven_Then_ItsScopeIsKeyedOnThatParameter()
+        {
+            // Act
+            var dependencies = DependencyCountOfCall(LoadMethod(nameof(TextChildOfAParameterComponent)), ScopeGateName, 0);
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHookValueTheBodyReassigns_When_Woven_Then_OnlyTheChildNotReadingItGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(CarrierChildReadingAReassignedHookValueComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingNothing_When_Woven_Then_ItGetsAScopeGateBesideTheOneReadingTheValue()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(FixedTextChildComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ATextChildCallingAMethodOfTheFixture_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildCallingAFixtureMethodComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingNothingButCallingAMethodOfTheFixture_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(FixtureMethodChildReadingNothingComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingAStaticField_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildReadingAStaticComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_TextChildrenBuiltInALoop_When_Woven_Then_NoChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildrenBuiltInALoopComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_TextChildrenAfterATryFinally_When_Woven_Then_NoChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildrenAfterATryFinallyComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AChildWritingALocalALaterChildReads_When_Woven_Then_NoChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(CarrierChildWritingALocalComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AChildHandedAMutableRef_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildCarryingARefComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildHandedAServiceValue_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildReadingAServiceValueComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildHandedAReferenceState_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildReadingAReferenceStateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ATextChildAssigningAParameter_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildAssigningAParameterComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        #endregion
+
+        #region Lambdas and derived values
+
+        private static void Print(string text) => System.Console.Write(text);
+
+        [Component]
+        public static VNode HandlerReadingAStateComponent()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            return V.Div("root", V.Button(text: "add", onClick: () => setCount.Invoke(count + 1)), V.Label(text: count.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerReadingTwoStatesComponent()
+        {
+            var (a, setA) = Hooks.UseState(0);
+            var (b, setB) = Hooks.UseState(0);
+            return V.Div("root", V.Button(text: "swap", onClick: () => { setA.Invoke(b); setB.Invoke(a); }), V.Label(text: a.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerWritingACapturedVariableComponent()
+        {
+            var (a, _) = Hooks.UseState(0);
+            var total = 0;
+            return V.Div("root", V.Button(text: "add", onClick: () => total += a), V.Label(text: a.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerCapturingAParameterComponent(string title)
+        {
+            var (a, _) = Hooks.UseState(0);
+            return V.Div("root", V.Button(text: "show", onClick: () => Print(title)), V.Label(text: a.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerInsideAHandlerComponent()
+        {
+            var (a, setA) = Hooks.UseState(0);
+            var (b, _) = Hooks.UseState(0);
+            return V.Div("root", V.Button(text: "go", onClick: () => { System.Action inner = () => setA.Invoke(a + b); inner(); }), V.Label(text: b.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedNumberComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var doubled = n * 2;
+            return V.Div("root", V.Label(text: doubled.ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedSequenceComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var visible = System.Linq.Enumerable.Where(items, item => item > n);
+            return V.Div("root", V.Label(text: System.Linq.Enumerable.Count(visible).ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedListComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var list = new System.Collections.Generic.List<int> { n };
+            return V.Div("root", V.Label(text: list.Count.ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedTwiceComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var doubled = n * 2;
+            doubled = other * 3;
+            return V.Div("root", V.Label(text: doubled.ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedDelegateComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            System.Func<int> read = () => n;
+            return V.Div("root", V.Label(text: read().ToString()), V.Label(text: other.ToString()));
+        }
+
+        private const string ValueGateName = "TryGetMemoizedValue";
+
+        private static int ValueGatesOf(string component) => CountHookCalls(LoadMethod(component), ValueGateName);
+
+        [Test]
+        public void Given_AHandlerReadingState_When_Woven_Then_TheButtonAndItsSiblingGetAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerReadingAStateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AHandlerReadingState_When_Woven_Then_TheLambdaIsLeftToTheButtonReadingTheSame()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(HandlerReadingAStateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ALambdaHandedToTheRoot_When_Woven_Then_ItGetsAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(HandlerCapturingAHookValueComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHandlerWritingACapturedVariable_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerWritingACapturedVariableComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHandlerCapturingAParameter_When_Woven_Then_TheButtonAndItsSiblingGetAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerCapturingAParameterComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AHandlerBuiltInsideAHandler_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerInsideAHandlerComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ASequenceDerivedOnceFromState_When_Woven_Then_TheLambdaAndTheSequenceGetAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedSequenceComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AListDerivedOnceFromState_When_Woven_Then_NoValueGateIsWoven()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedListComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0), "The body may write to a list afterwards, so it is no value to keep");
+        }
+
+        [Test]
+        public void Given_AListDerivedOnceFromState_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(DerivedListComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ADelegateDerivedOnceFromState_When_Woven_Then_ItGetsAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedDelegateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ANumberDerivedFromState_When_Woven_Then_NoValueGateIsWoven()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedNumberComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0), "An arithmetic expression calls nothing, so there is nothing to keep");
+        }
+
+        [Test]
+        public void Given_ANumberDerivedFromState_When_Woven_Then_EveryChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(DerivedNumberComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_ANumberAssignedTwice_When_Woven_Then_EveryChildStillGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(DerivedTwiceComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(3));
+        }
+
+        #endregion
+
+        #region More reactive scopes
+
+        private sealed class TextCarrier : System.Collections.Generic.Dictionary<string, string>
+        {
+            public TextCarrier(string text)
+            {
+                Add("text", text);
+            }
+        }
+
+        [Component]
+        public static VNode ChildComparingAStructFieldComponent()
+        {
+            var (point, _) = Hooks.UseState(new ScopePoint { X = 3 });
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: point.X > 1 ? "big" : "small"), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildMatchingAPatternComponent()
+        {
+            var (value, _) = Hooks.UseState<object>("x");
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: value is System.Collections.Generic.List<int> list ? list.Count.ToString() : ""), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildCarryingATextComponent()
+        {
+            var (left, _) = Hooks.UseState("");
+            var (right, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: right, data: new TextCarrier(left)));
+        }
+
+        [Test]
+        public void Given_AChildComparingAStructField_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildComparingAStructFieldComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildMatchingAPatternIntoALocal_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildMatchingAPatternComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildHoldingAConstructorOfNoNode_When_Woven_Then_OnlyTheChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildCarryingATextComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1), "What a constructor builds is cached only where it is a node");
+        }
+
+        #endregion
+
         #region Reactive scopes (a gate per child)
 
         private static int s_scopeMutable;
@@ -2732,6 +3689,33 @@ namespace Velvet.Tests
             method.Body.Instructions.Count(instr => instr.OpCode == OpCodes.Newobj
                 && instr.Operand is MethodReference constructor
                 && constructor.DeclaringType.FullName == typeof(object).FullName);
+
+        // The length of the dependency array handed to the `occurrence`th call to a gate: the `ldc.i4 n; newarr object`
+        // that builds it, ahead of the call.
+        private static int DependencyCountOfCall(MethodDefinition method, string gateName, int occurrence)
+        {
+            var gate = method.Body.Instructions.Where(IsHookCallTo(gateName)).ElementAt(occurrence);
+            var array = gate;
+            while (array.OpCode != OpCodes.Newarr) array = array.Previous;
+            var length = array.Previous;
+            return length.OpCode.Code switch
+            {
+                Code.Ldc_I4_0 => 0,
+                Code.Ldc_I4_1 => 1,
+                Code.Ldc_I4_2 => 2,
+                Code.Ldc_I4_3 => 3,
+                Code.Ldc_I4_4 => 4,
+                Code.Ldc_I4_5 => 5,
+                Code.Ldc_I4_6 => 6,
+                Code.Ldc_I4_7 => 7,
+                Code.Ldc_I4_8 => 8,
+                Code.Ldc_I4_S => (sbyte)length.Operand,
+                _ => (int)length.Operand,
+            };
+        }
+
+        private static int GateDependencyCount(MethodDefinition method) =>
+            DependencyCountOfCall(method, nameof(Hooks.TryGetMemoizedVNode), 0);
 
         private static bool InjectsHookCall(MethodDefinition method, string hookMethodName) =>
             method.Body.Instructions.Any(IsHookCallTo(hookMethodName));

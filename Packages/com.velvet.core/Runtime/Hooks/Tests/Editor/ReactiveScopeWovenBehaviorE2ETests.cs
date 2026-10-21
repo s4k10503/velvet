@@ -38,6 +38,7 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_builds.Clear();
             s_ambient = 0;
+            s_setRightText = null;
             s_setLeft = null;
             s_setRight = null;
             s_setCount = null;
@@ -45,6 +46,7 @@ namespace Velvet.Tests
             s_setTick = null;
             s_setShown = null;
             s_setPhase = null;
+            s_setPhaseText = null;
             s_strictCalls = 0;
             s_greeter = new PlainGreeter();
             s_setGreeter = null;
@@ -59,6 +61,7 @@ namespace Velvet.Tests
 
         private static readonly Dictionary<string, int> s_builds = new();
         private static int s_ambient;
+        private static Action<string> s_setRightText;
         private static Action<int> s_setLeft;
         private static Action<int> s_setRight;
         private static Action<int> s_setCount;
@@ -66,6 +69,7 @@ namespace Velvet.Tests
         private static Action<int> s_setTick;
         private static Action<bool> s_setShown;
         private static Action<int> s_setPhase;
+        private static Action<string> s_setPhaseText;
         private static int s_strictCalls;
         private static readonly int[] s_strictTags = { 0, 1, 0, 0 };
 
@@ -86,6 +90,16 @@ namespace Velvet.Tests
             public VNode Nothing => null;
         }
 
+        // Counts where its constructor runs: a V factory takes it as the `data` of an element, so the count is of the
+        // scope's expression running, and it reads nothing but a constant.
+        private sealed class Counted : Dictionary<string, string>
+        {
+            public Counted(string key)
+            {
+                s_builds[key] = Builds(key) + 1;
+            }
+        }
+
         private sealed class HookingToString
         {
             public override string ToString()
@@ -100,6 +114,82 @@ namespace Velvet.Tests
         private static string AmbientLabel(int input) => s_ambient + ":" + input;
 
         #region Components
+
+        [Component]
+        private static VNode TextChildren()
+        {
+            var (left, _) = Hooks.UseState("0");
+            var (right, setRight) = Hooks.UseState("0");
+            s_setRightText = setRight;
+            return V.Div("root",
+                V.Label(name: "left", text: left, data: new Counted("left")),
+                V.Label(name: "right", text: right, data: new Counted("right")));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OptedOutTextChildren()
+        {
+            var (left, _) = Hooks.UseState("0");
+            var (right, setRight) = Hooks.UseState("0");
+            s_setRightText = setRight;
+            return V.Div("root",
+                V.Label(name: "left", text: left, data: new Counted("left")),
+                V.Label(name: "right", text: right, data: new Counted("right")));
+        }
+
+        [Component]
+        private static VNode SkippedTextChild()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            var (text, _) = Hooks.UseState("7");
+            s_setShown = setShown;
+            if (!shown)
+            {
+                return V.Label(name: "hidden", text: "hidden");
+            }
+            return V.Div("root", V.Label(name: "kept", text: text, data: new Counted("kept")), V.Label(name: "tail", text: "tail"));
+        }
+
+        [Component]
+        private static VNode DiscardedTextAttempt()
+        {
+            var (phase, setPhase) = Hooks.UseState("a");
+            var (other, setOther) = Hooks.UseState("0");
+            s_setPhaseText = setPhase;
+            s_setRightText = setOther;
+            if (phase == "b")
+            {
+                setPhase.Invoke("c");
+            }
+            return V.Div("root",
+                V.Label(name: "attempt", text: phase, data: new Counted("attempt")),
+                V.Label(name: "other", text: other));
+        }
+
+        [Component]
+        private static VNode RevertedTextAttempt()
+        {
+            var (phase, setPhase) = Hooks.UseState("a");
+            var (other, setOther) = Hooks.UseState("0");
+            s_setPhaseText = setPhase;
+            s_setRightText = setOther;
+            if (phase == "b")
+            {
+                setPhase.Invoke("a");
+            }
+            return V.Div("root",
+                V.Label(name: "attempt", text: phase, data: new Counted("attempt")),
+                V.Label(name: "other", text: other));
+        }
+
+        // Opted out so that its own gate plays no part in what the case reads.
+        [Component(Compiler = false)]
+        private static VNode CallsAWovenTextComponent()
+        {
+#pragma warning disable VEL103
+            return V.Div("host", TextChildren());
+#pragma warning restore VEL103
+        }
 
         [Component]
         private static VNode TwoChildren()
@@ -359,6 +449,134 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        [Test]
+        public void Given_TwoChildrenReadingDifferentTexts_When_OneChanges_Then_TheOtherIsNotBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TextChildren, key: "text"));
+
+            // Act
+            s_setRightText("1");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("left"), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rebuilds every child on a miss, so it shows the new text too.
+        // What it pins is a scope whose dependencies changed being built again: `true` in place of
+        // `!ObjectIs.AreEqualDeps(slot.LastDeps, deps)` in `TryHitScope` serves the child the first text.
+        [Test]
+        public void Given_TwoChildrenReadingDifferentTexts_When_OneChanges_Then_TheChildReadingItShowsIt()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TextChildren, key: "text"));
+
+            // Act
+            s_setRightText("1");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("right"), Is.EqualTo("1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds every child on every miss of an unwoven body too.
+        // What it pins is the opt-out being read ahead of the scopes: `return true;` in place of
+        // `return CompilerEnabled(attr);` in `IsCandidate` weaves the body and builds its left child once.
+        [Test]
+        public void Given_ATextComponentOptedOutOfTheCompiler_When_OneTextChanges_Then_EveryChildIsBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OptedOutTextChildren, key: "opted-out-text"));
+
+            // Act
+            s_setRightText("1");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("left"), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ATextChildTheRenderDidNotReach_When_ItIsReachedAgainWithEqualInputs_Then_ItIsNotBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SkippedTextChild, key: "skipped-text"));
+            s_setShown(false);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setShown(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("kept"), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the child again and shows it too.
+        // What it pins is the hit handing back the node the scope built: `cached = null;` in place of
+        // `cached = hit?.CachedResult;` in `TryGetMemoizedScope` leaves the label out.
+        [Test]
+        public void Given_ATextChildTheRenderDidNotReach_When_ItIsReachedAgainWithEqualInputs_Then_ItIsShown()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SkippedTextChild, key: "skipped-text"));
+            s_setShown(false);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setShown(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("kept"), Is.EqualTo("7"), "The render that returned early left the child's cache as the last render that built it left it");
+        }
+
+        [Test]
+        public void Given_ATextChildKeptByARenderAfterADiscardedAttempt_When_AnotherTextChanges_Then_ItIsNotBuiltAgain()
+        {
+            // Arrange — the first attempt of the next render reads a text the render-phase update then replaces
+            using var mounted = V.Mount(_root, V.Component(DiscardedTextAttempt, key: "discarded-text"));
+            s_setPhaseText("b");
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setRightText("1");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("attempt"), Is.EqualTo(3), "The committed deps are those of the settled attempt, not of the one that was discarded");
+        }
+
+        [Test]
+        public void Given_ATextChildStagedByAnAttemptTheGateThenHitsOver_When_AnotherTextChanges_Then_ItIsNotBuiltAgain()
+        {
+            // Arrange — the first attempt of the next render builds the child for a text the render-phase update then puts back
+            using var mounted = V.Mount(_root, V.Component(RevertedTextAttempt, key: "reverted-text"));
+            s_setPhaseText("b");
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setRightText("1");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("attempt"), Is.EqualTo(2), "The attempt the gate hit over left no staging for the settle to promote");
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the called component's children as well.
+        // What it pins is a scope with no slot to cache in running its child: `TryGetMemoizedScope` answering
+        // `true` where it was granted none returns the cached nothing in place of the child.
+        [Test]
+        public void Given_AWovenTextComponentCalledAsAMethod_When_Rendered_Then_ItsChildrenAreBuilt()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(CallsAWovenTextComponent, key: "caller-text"));
+
+            // Assert
+            Assert.That(LabelText("left"), Is.EqualTo("0"));
+        }
 
         [Test]
         public void Given_TwoChildrenReadingDifferentStates_When_OneStateChanges_Then_TheOtherIsNotBuiltAgain()

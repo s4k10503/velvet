@@ -329,6 +329,7 @@ namespace Velvet.CodeGen
         private static bool IsNodeType(TypeReference type)
         {
             if (type.IsPrimitive || type.MetadataType == MetadataType.Void || IsArrayOrIndirection(type)
+                // MUTANT_SURVIVES(equivalent, logic): no type of System derives from a node, so resolving one finds none; the clause only spares the resolving.
                 || type.FullName.StartsWith("System.", System.StringComparison.Ordinal))
             {
                 return false;

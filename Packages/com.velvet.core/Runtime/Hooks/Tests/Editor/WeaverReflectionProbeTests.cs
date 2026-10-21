@@ -1828,6 +1828,99 @@ namespace Velvet.Tests
             => method.Body.Instructions.Count(instr => instr.OpCode == OpCodes.Call
                 && instr.Operand is MethodReference callee && callee.Name == name);
 
+        // `var id = Hooks.UseId(null); return V.Div("root", V.Show(tmp = V.Make(id)), <second>);` where `tmp` is an object
+        // local the two children share: the first child stores it before it reads it, the second either does the same
+        // or reads what the first stored.
+        private static MethodDefinition AssembleChildrenSharingAReferenceLocal(ModuleDefinition module,
+            MethodDefinition component, MethodReference useId, bool secondStoresFirst)
+        {
+            var factory = AddFactoryType(module, out _, out var div);
+            var vnode = module.GetType("Velvet.VNode");
+            var show = AddStaticMethod(factory, "Show", vnode, module.TypeSystem.Object);
+            var make = AddStaticMethod(factory, "Make", module.TypeSystem.Object, module.TypeSystem.String);
+            AddScopeGates(module);
+            var id = new VariableDefinition(module.TypeSystem.String);
+            var temporary = new VariableDefinition(module.TypeSystem.Object);
+            component.Body.Variables.Add(id);
+            component.Body.Variables.Add(temporary);
+            var il = component.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc, id));
+            il.Append(Instruction.Create(OpCodes.Ldstr, "root"));
+            il.Append(Instruction.Create(OpCodes.Ldc_I4, 2));
+            il.Append(Instruction.Create(OpCodes.Newarr, component.ReturnType));
+            foreach (var index in new[] { 0, 1 })
+            {
+                il.Append(Instruction.Create(OpCodes.Dup));
+                il.Append(Instruction.Create(OpCodes.Ldc_I4, index));
+                if (index == 0 || secondStoresFirst)
+                {
+                    il.Append(Instruction.Create(OpCodes.Ldloc, id));
+                    il.Append(Instruction.Create(OpCodes.Call, make));
+                    il.Append(Instruction.Create(OpCodes.Stloc, temporary));
+                }
+                il.Append(Instruction.Create(OpCodes.Ldloc, temporary));
+                il.Append(Instruction.Create(OpCodes.Call, show));
+                il.Append(Instruction.Create(OpCodes.Stelem_Ref));
+            }
+            il.Append(Instruction.Create(OpCodes.Call, div));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(component);
+            return component;
+        }
+
+        [Test]
+        public void Given_TwoChildrenEachStoringAReferenceLocalBeforeReadingIt_When_CompilerWeaverRuns_Then_EachGetsAScopeGate()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("SharedReferenceLocalProbe", out var method, out var useId, out _, out _);
+            AssembleChildrenSharingAReferenceLocal(module, method, useId, secondStoresFirst: true);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(CallsTo(method, "TryGetMemoizedScope"), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildReadingAReferenceLocalAnEarlierChildStored_When_CompilerWeaverRuns_Then_NoChildGetsAScopeGate()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("ReadAfterStoreProbe", out var method, out var useId, out _, out _);
+            AssembleChildrenSharingAReferenceLocal(module, method, useId, secondStoresFirst: false);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(CallsTo(method, "TryGetMemoizedScope"), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AChildWhoseExpressionStartsTheMethod_When_CompilerWeaverRuns_Then_ItGetsAScopeGate()
+        {
+            // Arrange — `return V.Single(p);` over two parameters, so that the gate does not cover all it reads
+            using var module = BuildHookShapeProbeModule("FirstInstructionProbe", out var method, out _, out _, out _);
+            var factory = AddFactoryType(module, out _, out _);
+            var single = AddStaticMethod(factory, "Single", method.ReturnType, module.TypeSystem.String);
+            AddScopeGates(module);
+            method.Parameters.Add(new ParameterDefinition("p", Mono.Cecil.ParameterAttributes.None, module.TypeSystem.String));
+            method.Parameters.Add(new ParameterDefinition("q", Mono.Cecil.ParameterAttributes.None, module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldarg, method.Parameters[0]));
+            il.Append(Instruction.Create(OpCodes.Call, single));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(CallsTo(method, "TryGetMemoizedScope"), Is.EqualTo(1));
+        }
+
         [Test]
         public void Given_TwoChildrenSharingATemporaryInitializedAtEachCall_When_CompilerWeaverRuns_Then_EachGetsAScopeGate()
         {

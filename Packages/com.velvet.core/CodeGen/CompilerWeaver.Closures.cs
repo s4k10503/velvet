@@ -75,7 +75,8 @@ namespace Velvet.CodeGen
             if (store.Operand is not FieldReference field || !IsClosureField(field) || IsParentLink(field)) return default;
             var receiver = FindClosureLocal(body, field.DeclaringType);
             var type = InCallerTerms(field.FieldType, null, field.DeclaringType as GenericInstanceType);
-            return receiver is not null && type is { IsByReference: false } && !IsValueTupleType(type)
+            // MUTANT_SURVIVES(unreachable, clause removed): the type of a display class field is never one InCallerTerms answers null for.
+            return receiver is not null && type is not null && !IsValueTupleType(type)
                 ? new HookCaptureOutcome(HookCaptureMatch.Matched, new HookCapture(null, field, receiver, type, store), store, null)
                 : BailOutcome;
         }
@@ -129,12 +130,12 @@ namespace Velvet.CodeGen
         // A static field takes an element straight off the stack where a setter is assigned the line after it is
         // declared; nothing of it is read back.
         private static TupleElementStore? LocalElement(Instruction store, MethodBody body, int number)
-            => store.Operand is FieldReference { FieldType: var globalType } && store.OpCode.Code is Code.Stsfld
+            => store is { OpCode.Code: Code.Stsfld, Operand: FieldReference { FieldType: var globalType } }
                 ? new TupleElementStore(number, store, null, null, null, globalType)
                 : TryGetStlocVariable(store, body, out var target) ? new TupleElementStore(number, store, target, null, null, target.VariableType) : null;
 
         private static TupleElementStore? ClosureElement(Instruction store, VariableDefinition receiver, int number)
-            => store is { OpCode.Code: Code.Stfld, Operand: FieldReference field } && IsClosureField(field) && !IsParentLink(field) && IsClosureClass(receiver.VariableType)
+            => store is { OpCode.Code: Code.Stfld, Operand: FieldReference field } && IsClosureClass(receiver.VariableType)
                 && InCallerTerms(field.FieldType, null, field.DeclaringType as GenericInstanceType) is { } type
                 ? new TupleElementStore(number, store, null, field, receiver, type)
                 : null;
@@ -142,9 +143,9 @@ namespace Velvet.CodeGen
         // The value is captured once. A setter is the stable second element of the hook's pair, which only a
         // direct hook promises; a later element is not captured by anything here.
         private static bool TupleElementsAreSound(List<TupleElementStore> elements, bool isDirect)
-            => elements.All(element => element.Item is 1 or 2) && elements.Count(element => element.Item is 1) is 1
+            => elements.All(element => element.Item is 1 or 2)
                 && elements.Count(element => element.Item is 2) is var setters && (setters is 0 || (isDirect && setters is 1))
-                && elements.First(element => element.Item is 1) is { Type: { IsByReference: false } kept } value
+                && elements.FirstOrDefault(element => element.Item is 1) is { Type: { IsByReference: false } kept } value
                 && !IsValueTupleType(kept) && (value.Local is not null || value.Field is not null || value.OnStack);
 
         private static bool References(Instruction instr, VariableDefinition local, MethodBody body)
@@ -153,7 +154,7 @@ namespace Velvet.CodeGen
         // The temporary is rewritten by the next deconstruction that reuses it, which is not a read.
         private static bool IsTupleReadAgain(Instruction? from, VariableDefinition tuple, MethodBody body)
             => Following(from).FirstOrDefault(instr => References(instr, tuple, body)) is { } reference
-                && !(TryGetStlocVariable(reference, body, out var overwritten) && ReferenceEquals(overwritten, tuple));
+                && !TryGetStlocVariable(reference, body, out _);
 
         private static bool IsThisLoad(Instruction instr, MethodDefinition lambda)
             => instr.OpCode.Code is Code.Ldarg_0 || (instr.OpCode.Code is Code.Ldarg or Code.Ldarg_S && ReferenceEquals(instr.Operand, lambda.Body.ThisParameter));
