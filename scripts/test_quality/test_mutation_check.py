@@ -8242,6 +8242,21 @@ class ShardCeilingTests(unittest.TestCase):
         self.assertEqual(mirrored, [str(getattr(mutation_check, "CEILING_REFUSAL", None))])
 
 
+class CampaignTriggerTests(unittest.TestCase):
+    """The events mutation.yml starts on."""
+
+    def test_Given_TheCampaignWorkflow_When_ItsTriggersAreRead_Then_NoPullRequestIsAmongThem(self):
+        # Arrange
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+        triggers = workflow.partition("\non:\n")[2].partition("\n\n")[0]
+
+        # Act
+        events = re.findall(r"^  ([a-z_]+):", triggers, re.MULTILINE)
+
+        # Assert
+        self.assertEqual(events, ["push", "schedule", "workflow_dispatch"])
+
+
 READ_IL = mutation_check.il_reading_assemblies
 
 
@@ -11703,7 +11718,7 @@ class KillSetShardTests(unittest.TestCase):
 
 
 class RecordBudgetTests(unittest.TestCase):
-    """The caps and shard counts mutation.yml declares, against the plan's ceiling and the schedule."""
+    """The cap and shard count mutation.yml declares, against the plan's ceiling and the schedule."""
 
     @staticmethod
     def declared(name):
@@ -11720,13 +11735,6 @@ class RecordBudgetTests(unittest.TestCase):
     def test_Given_ARecordRunsCap_When_ItsShardsCeilingIsTaken_Then_TheCapFitsInsideIt(self):
         # Act — a cap over the ceiling would make every full run's plan refuse.
         fits = self.fits("RECORD_CAP", "RECORD_SHARDS")
-
-        # Assert
-        self.assertTrue(fits)
-
-    def test_Given_AnAdvisoryRunsCap_When_ItsShardsCeilingIsTaken_Then_TheCapFitsInsideIt(self):
-        # Act
-        fits = self.fits("ADVISORY_CAP", "ADVISORY_SHARDS")
 
         # Assert
         self.assertTrue(fits)

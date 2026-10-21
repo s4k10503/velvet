@@ -224,17 +224,16 @@ checks the code a pull request changed and every mutant on the development branc
 [StrykerJS's incremental mode](https://github.com/stryker-mutator/stryker-js/blob/master/docs/incremental.md),
 which keeps each mutant's result and measures it again only when what decided it changed;
 [PIT's](https://github.com/hcoles/pitest) `--historyInputLocation` and `--historyOutputLocation` are the
-same idea in a third tool. The main line's runs measure what is not known yet and keep what they
-measured, a pull request's run measures its own change against what is kept, and nothing is measured
-again while what decided it stands. The `Mutation campaign` workflow runs:
+same idea in a third tool. Its runs measure what is not known yet and keep what they measured, and
+nothing is measured again while what decided it stands. No pull request starts the campaign: a change
+meets it on the default branch, and a survivor it leaves is answered afterwards. The `Mutation campaign`
+workflow runs:
 
 - on every push to the default branch, nightly, and on a dispatch with no `base`
   (`gh workflow run mutation.yml --ref <branch>`): a **record run** over the campaign's scope, below,
   which writes what it measured into the record;
 - on a dispatch with a `base` (`gh workflow run mutation.yml --ref <branch> -f base=main`): the branch's
-  change against its merge base with `base`, as a local run reads it, written into the record the same way;
-- on every pull request: an **advisory run** over the pull request's change, which reads the record and
-  writes nothing.
+  change against its merge base with `base`, as a local run reads it, written into the record the same way.
 
 No branch-protection rule requires any of them, and [Merging a pull request](#merging-a-pull-request)
 says how a merge leaves the campaign's runs on its head out. What the record decides is a release:
@@ -323,13 +322,12 @@ deals the first `RECORD_CAP` the record does not answer across at most `RECORD_S
 ten at a time (`max-parallel`), so a full run's shards are four waves of the shard job's 360-minute
 limit, 24 hours at the very worst, with the plan, Library, verdict, record and report jobs on top;
 a scheduled run that comes meanwhile waits for it in the concurrency group below. `RecordBudgetTests`
-holds each cap inside its shards' ceiling and the shard waves inside 24 hours. Where a run left mutants pending, recorded at least one entry, and every shard passed, its
+holds the cap inside its shards' ceiling and the shard waves inside 24 hours. Where a run left mutants pending, recorded at least one entry, and every shard passed, its
 `record` job dispatches the next run onto the same ref, which deals the next mutants in the same order,
 since the ones just answered are in the record now. A run that recorded nothing dispatches nothing, so a
 mutant no run can measure stops the chain instead of being dealt to it forever; the next push or night
 deals it again. Record runs on one ref share a concurrency group that cancels nothing, so no two of
-them measure at once, and GitHub keeps only the newest waiting run, which reads the newest head. An advisory
-run deals at most `ADVISORY_CAP` across `ADVISORY_SHARDS`, and a newer head of its pull request cancels it.
+them measure at once, and GitHub keeps only the newest waiting run, which reads the newest head.
 
 **The same tree and the same record give the same answer.** Which mutants a run deals, which entries it
 reuses, and the release gate's mutation half are functions of the git history and the record branch
@@ -384,8 +382,8 @@ with each unanswered survivor and stale declaration the verdict printed, each mu
 and each job that did not pass (`scripts/ci/mutation_report.py`). Mutants past the cap owe no comment:
 a later run measures them. The issue is for people; nothing decides on it. A survivor is answered by a
 pull request that writes the test or the declaration. A declaration a change writes brings the lines it
-answers for into that change's mutants, so the next record run measures them, and the change's own
-advisory run does too: it answers the survivor, or is stale where the mutant now dies. A test that
+answers for into that change's mutants, so the next record run measures them: it answers the survivor,
+or is stale where the mutant now dies. A test that
 answers a survivor changes a test source, so every survivor's entry lapses and the next record run
 measures them again, recording the one the test kills as killed; to see it before merging, measure its
 line on the branch with a local run, which needs an editor:
@@ -419,7 +417,7 @@ measured in that section, against the window it names. A mutant's launch-compile
 sets how many each holds, up to `SHARD_CEILING`; it stops adding shards there, because each shard pays for an image pull, a licence activation and a baseline
 before its first mutant; the PlayMode pass of a shard's survivors pays its own activation and baseline in the same job, not an image pull, and each of its mutants costs more than twice an EditMode one measured on the same run.
 
-**Shard count under an account's concurrent-job cap.** GitHub Free runs 20 hosted jobs at once across the whole account, and one pull request's `Test` is about five of them while a campaign holds one for the plan, one for the Library and one per shard. `MAX_SHARDS` and `ADVISORY_SHARDS` stay at ten, and a record run's forty shards run ten at a time, because the wall clock of a single campaign is what the count is set for, and a shard of fewer mutants pays the same pull, activation and baseline for less work. A campaign that runs while pull requests run CI shares the cap with their `Test` jobs. GitHub's queue has no priority per workflow, so shards a campaign has queued can start ahead of a pull request's `Test` jobs, and its aggregate with them, and `max-parallel` is not used to prevent that. Beyond what the timings below and the cap give, nothing here is measured: no run of two campaigns has been timed, thirteen is the most licence activations seen at once and not a limit, and two pull requests have run CI together without an activation failing, though the activations were not counted. A cap is a reason not to add a PlayMode job per survivor, which is why that pass runs in the shard's own job. Measured over 121 EditMode shards of the 100 pull-request runs
+**Shard count under an account's concurrent-job cap.** GitHub Free runs 20 hosted jobs at once across the whole account, and one pull request's `Test` is about five of them while a campaign holds one for the plan, one for the Library and one per shard. `MAX_SHARDS` stays at ten, and a record run's forty shards run ten at a time, because the wall clock of a single campaign is what the count is set for, and a shard of fewer mutants pays the same pull, activation and baseline for less work. A campaign that runs while pull requests run CI shares the cap with their `Test` jobs. GitHub's queue has no priority per workflow, so shards a campaign has queued can start ahead of a pull request's `Test` jobs, and its aggregate with them, and `max-parallel` is not used to prevent that. Beyond what the timings below and the cap give, nothing here is measured: no run of two campaigns has been timed, thirteen is the most licence activations seen at once and not a limit, and two pull requests have run CI together without an activation failing, though the activations were not counted. A cap is a reason not to add a PlayMode job per survivor, which is why that pass runs in the shard's own job. Measured over 121 EditMode shards of the 100 pull-request runs
 completed on 2026-09-26 and 2026-09-27, before a mutant was narrowed, a shard spent a median of 98 s
 before activating, 82 s of it pulling the image, 36 s activating and 211 s on its baseline, and its
 645 mutants took a median of 190 s. Over the 461 EditMode baselines those runs uploaded, the
@@ -1338,8 +1336,8 @@ or been skipped*: add it once review has settled, and remove it to hold the pull
 takes triage access or above, so only an account holding that can opt a pull request in. The workflow
 does not create the label; it has to exist in the repository.
 
-No merge waits on a mutation campaign. A pull request's advisory run, or a campaign dispatched onto its
-branch, runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
+No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
+branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
 `refuse/merge_unproven_head.py` leave its runs and its checks out of what they read, so one that failed
 or is still running holds nothing. They leave out the `Mutation campaign` commit status as well,
 which a publisher wrote on pull request heads while the campaign gated their merge, and which a head
