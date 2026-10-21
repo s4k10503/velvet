@@ -1,15 +1,16 @@
 name: Mutation campaign
 
-# The mutation campaign, in the shape cargo-mutants and StrykerJS run theirs: every run on the default
-# branch or a dispatched line measures the mutants of the campaign's scope that the record does not
-# answer yet and writes what it measured into the record; a pull request's run measures its own change
-# against that record and writes nothing. No pull request waits on either, and no branch-protection rule
-# requires a check of this workflow. CONTRIBUTING.md ▸ Checking that the tests can fail owns the scope,
-# the record, the cap and the catch-up, and the release gate that reads the record.
+# The mutation campaign, in the shape cargo-mutants and StrykerJS run theirs: every run, nightly, on a
+# push to the default branch or on a dispatch with no `base`, measures the mutants of the campaign's
+# scope that the record does not answer yet and writes what it measured into the record; a dispatch
+# with a `base` measures the change since the merge base with it and writes the record the same way.
+# No pull request runs it,
+# and no branch-protection rule requires a check of this workflow. CONTRIBUTING.md ▸ Checking that the
+# tests can fail owns the scope, the record, the cap and the catch-up, and the release gate that reads
+# the record.
 on:
   push:
     branches: [main]
-  pull_request:
   schedule:
     # 03:17 UTC, a minute picked off the hour.
     - cron: "17 3 * * *"
@@ -20,26 +21,23 @@ on:
         required: false
         default: ""
 
-# A pull request's newer head cancels the run still measuring its older one. Every other run on a ref
-# waits for the one in progress rather than cancelling it, so a run's measurement is never thrown away
-# before its record is written; GitHub keeps only the newest of the waiting ones, which measures from
-# the newest head. Not test.yml's group, so no run of Test cancels a campaign.
+# A run on a ref waits for the one in progress rather than cancelling it, so a run's measurement is
+# never thrown away before its record is written; GitHub keeps only the newest of the waiting ones,
+# which measures from the newest head. Not test.yml's group, so no run of Test cancels a campaign.
 concurrency:
-  group: mutation-${{ github.event_name == 'pull_request' && 'advisory' || 'record' }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: mutation-record-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
-# PYTHONDONTWRITEBYTECODE for the reason test.yml gives. The caps are how many unanswered mutants one
-# run deals at most, and the shard counts what it splits them across; RecordBudgetTests holds each cap
-# inside its shards' ceiling and a record run's shard waves inside a day.
+# PYTHONDONTWRITEBYTECODE for the reason test.yml gives. The cap is how many unanswered mutants one
+# run deals at most, and the shard count what it splits them across; RecordBudgetTests holds the cap
+# inside its shards' ceiling and a run's shard waves inside a day.
 env:
   PYTHONDONTWRITEBYTECODE: "1"
   RECORD_CAP: "400"
   RECORD_SHARDS: "40"
-  ADVISORY_CAP: "100"
-  ADVISORY_SHARDS: "10"
 
 # Timeouts sized as test.yml's are, but for the shard jobs', which ShardCeilingTests holds against the
 # plan's ceiling.
@@ -107,7 +105,7 @@ jobs:
 
       - id: base
         env:
-          MUTATION_SCOPE: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          MUTATION_SCOPE: "1"
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
       # The summary is written before the status is read, and carries stderr, where a refusal other
@@ -117,8 +115,8 @@ jobs:
         env:
           BASE: ${{ steps.base.outputs.sha }}
           HAS_LICENSE: ${{ needs.license-check.outputs.has_license }}
-          CAP: ${{ github.event_name == 'pull_request' && env.ADVISORY_CAP || env.RECORD_CAP }}
-          MAX_SHARDS: ${{ github.event_name == 'pull_request' && env.ADVISORY_SHARDS || env.RECORD_SHARDS }}
+          CAP: ${{ env.RECORD_CAP }}
+          MAX_SHARDS: ${{ env.RECORD_SHARDS }}
         run: |
           set +e
           python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan --emit-mutants mutants.json \
@@ -151,9 +149,9 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # The Library every EditMode shard restores. Test's unity-tests jobs save theirs under a pull
-  # request's own ref, which is not this run's, so this restores what the branch and the default branch
+  # request's own ref, which is not this run's, so this restores what the ref and the default branch
   # hold, imports the head once where no entry carries its exact key, and saves the result under that
-  # key for the shards and for the next campaign on the branch.
+  # key for the shards and for the next campaign on the ref.
   # ---------------------------------------------------------------------------
   library:
     name: Mutation campaign (Library)
@@ -231,7 +229,7 @@ jobs:
 
       - id: base
         env:
-          MUTATION_SCOPE: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          MUTATION_SCOPE: "1"
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
       - name: Measure EditMode
@@ -366,7 +364,7 @@ jobs:
 
       - id: base
         env:
-          MUTATION_SCOPE: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          MUTATION_SCOPE: "1"
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
       # A mutant the record answered keeps that verdict once it is found still standing in this tree. A
@@ -397,7 +395,7 @@ jobs:
           path: verdict.txt
           overwrite: true
 
-      - if: ${{ !cancelled() && github.event_name != 'pull_request' && hashFiles('Logs/mutation-record/*.json') != '' }}
+      - if: ${{ !cancelled() && hashFiles('Logs/mutation-record/*.json') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Mutation campaign record entries
@@ -407,8 +405,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # What the run measured goes onto the record branch (scripts/ci/mutation_record.py), as a commit this
   # job's token creates through the Git Data API, which is the only kind a reader of the branch trusts.
-  # A pull request's run writes nothing. Where the cap left mutants to a later run, this
-  # run recorded something, and every shard passed, the run dispatches the next one onto the same ref,
+  # Where the cap left mutants to a later run, this run recorded something, and every shard passed, the run dispatches the next one onto the same ref,
   # which waits in the concurrency group for nothing but this run: the next measures the following
   # mutants in the same order, since the ones this run answered are now in the record. A run that
   # recorded nothing dispatches nothing, so a mutant no run can measure stops the chain rather than
@@ -418,7 +415,7 @@ jobs:
     name: Mutation campaign (record)
     needs: [license-check, mutation-plan, mutation-shard, mutation-verdict]
     if: >-
-      !cancelled() && github.event_name != 'pull_request'
+      !cancelled()
       && (needs.mutation-verdict.result == 'success' || needs.mutation-verdict.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -455,13 +452,13 @@ jobs:
         run: gh workflow run mutation.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" ${BASE_INPUT:+-f base="$BASE_INPUT"}
 
   # ---------------------------------------------------------------------------
-  # What a record run left to answer, as a comment on the tracking issue (scripts/ci/mutation_report.py).
+  # What a run left to answer, as a comment on the tracking issue (scripts/ci/mutation_report.py).
   # always(), so a run whose plan or shards failed still says so. Nothing decides on the issue: the
   # release gate reads the record.
   # ---------------------------------------------------------------------------
   report:
     name: Mutation campaign (report)
-    if: always() && github.event_name != 'pull_request' && needs.license-check.outputs.has_license == 'true'
+    if: always() && needs.license-check.outputs.has_license == 'true'
     needs: [license-check, mutation-plan, library, mutation-shard, mutation-verdict, record]
     runs-on: ubuntu-latest
     timeout-minutes: 10

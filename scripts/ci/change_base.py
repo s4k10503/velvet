@@ -6,8 +6,7 @@ Every workflow step that hands a script `--base` takes it from here.
 - pull_request: the first parent of the checkout, which is GitHub's test merge of the head into the
   base branch. Not the event's `pull_request.base.sha`: measured on this repository's CI, it named the
   commit the head was cut from while the test merge's first parent was another pull request's merge
-  made since, and the mutation plan and the base-red lane both counted that pull request's lines as
-  this one's.
+  made since, and the base-red lane counted that pull request's lines as this one's.
 - merge_group: the event's `merge_group.base_sha`.
 - workflow_dispatch with a `base` input: the merge base of the checkout with origin's copy of that
   branch, which is what mutation.yml is dispatched with, onto a checkout of the head itself.

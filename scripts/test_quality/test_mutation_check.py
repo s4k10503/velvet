@@ -36,6 +36,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = REPO_ROOT / "Packages/com.velvet.core/Runtime"
 GUIDE = REPO_ROOT / "CONTRIBUTING.md"
@@ -7140,9 +7142,9 @@ class CampaignPlanTests(unittest.TestCase):
         self.assertEqual((code, re.findall(r"^(?:mutants|shards)=.*$", campaign.printed, re.MULTILINE)),
                          (0, ["mutants=0", "shards=[]"]))
 
-    def test_Given_AChangeNoOperatorReaches_When_Planned_Then_ItPassesAndAsksThePullRequestWhy(self):
+    def test_Given_AChangeNoOperatorReaches_When_Planned_Then_ItPassesAndAsksForTheReason(self):
         # Arrange — a local run refuses this change; the plan passes it, naming the lines, so the
-        # reason has to reach the pull request instead.
+        # reason has to reach whoever reads the change's description instead.
         campaign = StubbedCampaign(textwrap.dedent("""\
             namespace Velvet
             {
@@ -7158,7 +7160,7 @@ class CampaignPlanTests(unittest.TestCase):
         code = campaign.run_over_diff("--plan")
 
         # Assert
-        self.assertEqual((code, "Say in the pull request why" in campaign.printed,
+        self.assertEqual((code, "Say, wherever the change is described, why" in campaign.printed,
                           "unreached  Packages/com.velvet.core/Runtime/Probe.cs" in campaign.printed,
                           re.findall(r"^mutants=.*$", campaign.printed, re.MULTILINE)),
                          (0, True, True, ["mutants=0"]))
@@ -7173,7 +7175,7 @@ class CampaignPlanTests(unittest.TestCase):
             code = campaign.run_over_diff("--plan")
 
         # Assert
-        self.assertEqual((code, "Split the pull request" in campaign.printed,
+        self.assertEqual((code, "Split the change" in campaign.printed,
                           "mutants=" in campaign.printed),
                          (getattr(mutation_check, "CEILING_REFUSAL", None), True, False))
 
@@ -8240,6 +8242,20 @@ class ShardCeilingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(mirrored, [str(getattr(mutation_check, "CEILING_REFUSAL", None))])
+
+
+class CampaignTriggerTests(unittest.TestCase):
+    """The events mutation.yml starts on."""
+
+    def test_Given_TheCampaignWorkflow_When_ItsTriggersAreParsed_Then_TheEventsArePushScheduleAndDispatchOnly(self):
+        # Arrange -- YAML 1.1 reads the key `on` as the boolean True.
+        workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/mutation.yml").read_text())
+
+        # Act
+        events = sorted(workflow[True])
+
+        # Assert
+        self.assertEqual(events, ["push", "schedule", "workflow_dispatch"])
 
 
 READ_IL = mutation_check.il_reading_assemblies
@@ -11703,7 +11719,7 @@ class KillSetShardTests(unittest.TestCase):
 
 
 class RecordBudgetTests(unittest.TestCase):
-    """The caps and shard counts mutation.yml declares, against the plan's ceiling and the schedule."""
+    """The cap and shard count mutation.yml declares, against the plan's ceiling and the schedule."""
 
     @staticmethod
     def declared(name):
@@ -11720,13 +11736,6 @@ class RecordBudgetTests(unittest.TestCase):
     def test_Given_ARecordRunsCap_When_ItsShardsCeilingIsTaken_Then_TheCapFitsInsideIt(self):
         # Act — a cap over the ceiling would make every full run's plan refuse.
         fits = self.fits("RECORD_CAP", "RECORD_SHARDS")
-
-        # Assert
-        self.assertTrue(fits)
-
-    def test_Given_AnAdvisoryRunsCap_When_ItsShardsCeilingIsTaken_Then_TheCapFitsInsideIt(self):
-        # Act
-        fits = self.fits("ADVISORY_CAP", "ADVISORY_SHARDS")
 
         # Assert
         self.assertTrue(fits)
