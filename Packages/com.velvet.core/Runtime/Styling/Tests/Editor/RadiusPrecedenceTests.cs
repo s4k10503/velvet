@@ -264,7 +264,7 @@ namespace Velvet.Tests
             Assert.That(ok ? radius : float.NaN, Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(characterization): the base lets the last written of two classes that set the same corners hold them.
+        // GREEN_ON_BASE(characterization): md and lg kept their radii in the v4 rescale, and the base already lets the last written of two classes that set the same corners hold them.
         // Here that is the one Tailwind emits last; letting the first hold them instead reddens both cases.
         [TestCase("rounded-lg rounded-md", 6f)]
         [TestCase("rounded-t-lg rounded-t-md", 6f)]
