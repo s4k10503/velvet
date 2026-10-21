@@ -146,8 +146,8 @@ namespace Velvet
             return true;
         }
 
-        // The shared length grammar reads a bare number as px, which CSS does not, so `@min-[500]` would write a
-        // query no browser matches.
+        // The shared length grammar reads a bare 0 as a length; a container threshold is declined without a unit, 0
+        // included.
         private static bool IsUnitless(string bracketed)
         {
             var last = bracketed[bracketed.Length - 2];

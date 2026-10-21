@@ -161,9 +161,10 @@ namespace Velvet
                 return false;
             }
 
-            // filter-[name:args] is Velvet's custom-filter call, not a type hint.
+            // filter-[name:args] and bg-[addr:key] are Velvet's own colon forms, not type hints.
             string? hint = null;
-            if (prefix != "filter-" && !TrySplitTypeHint(valueSpan, out hint, out valueSpan))
+            var ownColon = prefix == "filter-" || (prefix == "bg-" && valueSpan.StartsWith("addr:".AsSpan(), StringComparison.Ordinal));
+            if (!ownColon && !TrySplitTypeHint(valueSpan, out hint, out valueSpan))
             {
                 return false;
             }
@@ -173,7 +174,8 @@ namespace Velvet
 
         // Tailwind's type hint: a run of a-z and '-' closed by ':' at the start of a bracket (`[length:2PX]`). It
         // replaces the type tests of a utility that has them and is dropped by every other, which writes the value
-        // after it. False when the run is empty or leaves no value, which Tailwind reads as no utility.
+        // after it. An empty run is no hint and the value after the colon is kept (`[:10px]`). False when no value
+        // is left, which Tailwind reads as no utility.
         internal static bool TrySplitTypeHint(ReadOnlySpan<char> inner, out string? hint, out ReadOnlySpan<char> value)
         {
             hint = null;
@@ -183,9 +185,9 @@ namespace Velvet
                 var c = inner[i];
                 if (c == ':')
                 {
-                    hint = inner.Slice(0, i).ToString();
+                    hint = i > 0 ? inner.Slice(0, i).ToString() : null;
                     value = inner.Slice(i + 1);
-                    return i > 0 && !value.Trim("_ ".AsSpan()).IsEmpty;
+                    return !value.Trim("_ ".AsSpan()).IsEmpty;
                 }
                 if (c != '-' && (c < 'a' || c > 'z'))
                 {
@@ -227,7 +229,7 @@ namespace Velvet
             {
                 return null;
             }
-            return hint == null ? cls : string.Concat(cls.Substring(0, open + 1), value.ToString(), cls.Substring(close));
+            return value.Length == close - open - 1 ? cls : string.Concat(cls.Substring(0, open + 1), value.ToString(), cls.Substring(close));
         }
 
         private static bool TryParseBracketValue(
@@ -3524,7 +3526,7 @@ namespace Velvet
         }
 
         // Parses a <length-percentage> token: a '%' suffix is percent; a 'px', 'rem', an absolute unit (in, cm,
-        // mm, pt, pc, Q) or no suffix is pixel (bare numbers default to px, and rem is converted at the fixed
+        // mm, pt, pc, Q) or no suffix is pixel (a bare number is a length only as 0, and rem is converted at the fixed
         // 1rem = 16px scale because UI Toolkit has no rem unit and no document root to resolve a relative font
         // size against). A calc() / min() / max() / clamp() is read when it comes to one pixel length or one
         // percentage whatever it is measured against; one that needs an element to measure against is declined
@@ -3600,15 +3602,15 @@ namespace Velvet
         };
 
         // TryParseArbitraryPixels where Tailwind reads the bracket as either a length or a colour (ring-, ring-offset-):
-        // its length test, or a `length:` hint, decides, and hands `2PX` or a bare `2` to the colour branch.
-        internal static bool TryParseInferredArbitraryPixels(ReadOnlySpan<char> suffix, out float px)
+        // its length test, or a hint the table names for root, decides, and hands `2PX` or a bare `2` to the colour branch.
+        internal static bool TryParseInferredArbitraryPixels(string root, ReadOnlySpan<char> suffix, out float px)
         {
             px = 0f;
             if (!TryStripBrackets(suffix, 0, out var inner) || !TrySplitTypeHint(inner, out var hint, out inner))
             {
                 return false;
             }
-            return (hint != null ? hint == "length" : TailwindDataTypes.IsLength(inner)) && TryParsePixels(inner, out px);
+            return (hint != null ? StyleColorValueParser.HintSelectsNonColour(root, hint) : TailwindDataTypes.IsLength(inner)) && TryParsePixels(inner, out px);
         }
 
         // A non-negative pixel length, the grammar TryParseArbitraryPixels reads inside its bracket.

@@ -161,7 +161,7 @@ namespace Velvet
             var isRingOffset = TryMatchPrefix(cls, "ring-offset-", out var ringOffSuffix);
             if (isRingOffset || TryMatchPrefix(cls, "outline-offset-", out ringOffSuffix))
             {
-                if (TryParseWidthValue(ringOffSuffix, inferred: isRingOffset, out var off))
+                if (TryParseWidthValue(ringOffSuffix, isRingOffset ? "ring-offset" : null, out var off))
                 {
                     slots.Offset = off;
                 }
@@ -205,7 +205,7 @@ namespace Velvet
                 return;
             }
 
-            if (TryParseWidthValue(ringSuffix, inferred: true, out var w))
+            if (TryParseWidthValue(ringSuffix, isRingFamily ? "ring" : "outline", out var w))
             {
                 slots.HasIntent = true;
                 slots.IsOutline = isOutlineFamily;
@@ -267,9 +267,9 @@ namespace Velvet
         }
 
         // A width is either a preset (0/1/2/4/8) or an arbitrary [Npx] (px only — a ring width is pixels).
-        // inferred: whether Tailwind reads this prefix's bracket as a length or a colour
-        // (StyleArbitraryValueResolver.TryParseInferredArbitraryPixels); outline-offset- takes a length alone.
-        private static bool TryParseWidthValue(string? suffix, bool inferred, out float width)
+        // inferredRoot: the prefix's root where Tailwind reads its bracket as a length or a colour
+        // (StyleArbitraryValueResolver.TryParseInferredArbitraryPixels); null for outline-offset-, which takes a length alone.
+        private static bool TryParseWidthValue(string? suffix, string? inferredRoot, out float width)
         {
             width = 0f;
             if (string.IsNullOrEmpty(suffix))
@@ -280,9 +280,9 @@ namespace Velvet
             {
                 return true;
             }
-            if (inferred)
+            if (inferredRoot != null)
             {
-                return StyleArbitraryValueResolver.TryParseInferredArbitraryPixels(suffix.AsSpan(), out width);
+                return StyleArbitraryValueResolver.TryParseInferredArbitraryPixels(inferredRoot, suffix.AsSpan(), out width);
             }
             var written = StyleArbitraryValueResolver.WithoutTypeHint(suffix);
             return written != null && StyleArbitraryValueResolver.TryParseArbitraryPixels(written.AsSpan(), out width);

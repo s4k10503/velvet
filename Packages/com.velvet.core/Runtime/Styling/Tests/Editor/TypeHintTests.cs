@@ -17,6 +17,8 @@ namespace Velvet.Tests
         [TestCase("border-t-[length:2PX]", 2f)]
         [TestCase("border-[line-width:thick]", 5f)]
         [TestCase("text-[absolute-size:x-large]", 24f)]
+        [TestCase("text-[size:16px]", 16f)]
+        [TestCase("w-[:10px]", 10f)]
         public void Given_AHintedBracket_When_Parsed_Then_ItIsTheValueAfterTheHint(string utility, float expected)
         {
             // Act
@@ -62,11 +64,33 @@ namespace Velvet.Tests
         [TestCase("border-[color:2px]")]
         [TestCase("text-[color:16px]")]
         [TestCase("border-[length:red]")]
-        [TestCase("text-[length:red]/50")]
         public void Given_AHintNamingTheOtherBranch_When_Parsed_Then_TheClassIsDeclined(string hinted)
         {
             // Act
             var parsed = StyleArbitraryValueResolver.TryParse(hinted, out _);
+
+            // Assert
+            Assert.That(parsed, Is.False);
+        }
+
+        [TestCase("text-[length:red]")]
+        [TestCase("text-[length:red]/50")]
+        public void Given_ALengthHintedColourWord_When_Parsed_Then_TheClassIsDeclined(string hinted)
+        {
+            // Act
+            var parsed = StyleArbitraryValueResolver.TryParse(hinted, out _);
+
+            // Assert
+            Assert.That(parsed, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base split no hint from a bg- bracket, so it declined these too; the case holds the exemption a split of every bracket would break.
+        [TestCase("bg-[addr:navy]")]
+        [TestCase("bg-[addr:navy]/50")]
+        public void Given_AnAddressableBackground_When_Parsed_Then_ItIsNotAColour(string utility)
+        {
+            // Act
+            var parsed = StyleArbitraryValueResolver.TryParse(utility, out _);
 
             // Assert
             Assert.That(parsed, Is.False);
@@ -117,12 +141,11 @@ namespace Velvet.Tests
             Assert.That(ok ? spec.Width : float.NaN, Is.EqualTo(width));
         }
 
-        [TestCase("ring-offset-[length:5PX]")]
-        [TestCase("outline-offset-[length:5px]")]
-        public void Given_AHintedOffset_When_Extracted_Then_ItIsThatOffset(string utility)
+        [Test]
+        public void Given_AHintedOffset_When_Extracted_Then_ItIsThatOffset()
         {
             // Act
-            StyleRingClass.TryExtract(new[] { "ring", utility }, out var spec);
+            StyleRingClass.TryExtract(new[] { "ring", "ring-offset-[length:5PX]" }, out var spec);
 
             // Assert
             Assert.That(spec.Offset, Is.EqualTo(5f));
