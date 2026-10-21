@@ -4883,8 +4883,8 @@ namespace Velvet.Tests
 
         // "a", and a control holding no id, both transitioning everything linearly over a second, turn as classes turn;
         // some 0.3 s in, "a" moves under "card" from "b" 300px right on a three-second tween, mixing in from "b"'s none.
-        // Returns the rotate "a" carries as its own some 0.2 s on, read off the projection, and the control's.
-        private (float Own, float Control) TakeOverAsItTurns()
+        // Returns what read gives of "a" and its projection some 0.2 s on, and the control's rotate.
+        private (float Read, float Control) TakeOverAsItTurns(System.Func<LayoutIdProjection, VisualElement, float> read)
         {
             VelvetStyleUtilities.AttachTo(Root);
             (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
@@ -4898,8 +4898,9 @@ namespace Velvet.Tests
             (s_aId, s_aLeft) = ("card", 0);
             RenderShared(mounted);
             for (var i = 0; i < 12; i++) Tick();
-            var projection = mounted.Root.Reconciler.Context.LayoutIdProjections[Root.Q<VisualElement>("a")];
-            return (projection.RotateCarry.Value, Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees());
+            var a = Root.Q<VisualElement>("a");
+            return (read(mounted.Root.Reconciler.Context.LayoutIdProjections[a], a),
+                Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees());
         }
 
 
@@ -4907,10 +4908,30 @@ namespace Velvet.Tests
         public void Given_AMotionTurningOnATransition_When_ItTakesAHeldIdAndMixesItsRotate_Then_ItsOwnRunsAsTheEngineRunsIt()
         {
             // Arrange / Act
-            var (own, control) = TakeOverAsItTurns();
+            var (own, control) = TakeOverAsItTurns((projection, _) => projection.RotateCarry.Value);
 
             // Assert — within a degree of the control, which is half way round.
             Assert.That(own, Is.EqualTo(control > 30f && control < 60f ? control : float.NaN).Within(1f));
+        }
+
+
+        [Test]
+        public void Given_AMotionTurningOnATransition_When_ItTakesAHeldIdAndMixesItsRotate_Then_ItIsDrawnAtTheMixOfTheHoldersRotateAndItsOwn()
+        {
+            // Arrange / Act — "b" holds no rotate, so the mix runs from none to the rotate "a" carries as its own, as far as
+            // the move has got, which is how far its translate has come back.
+            var state = "";
+            var (difference, _) = TakeOverAsItTurns((projection, a) =>
+            {
+                var progress = 1f - TranslateX(a) / 300f;
+                state = $"drawn {projection.DrawnRotate}, carry {projection.RotateCarry.Value}, progress by translate {progress}, "
+                    + $"progress by tween {1f - projection.Progress.Value}, fade at {projection.FadeAt}, shared {projection.Shared}, "
+                    + $"holder look rotate {projection.FromLook?.Rotate}, held {projection.Held?.Rotate}, start rotate {projection.StartRotate}";
+                return projection.DrawnRotate - Mathf.LerpUnclamped(0f, projection.RotateCarry.Value, progress);
+            });
+
+            // Assert
+            Assert.That(difference, Is.Zero.Within(0.3f), state);
         }
 
 
