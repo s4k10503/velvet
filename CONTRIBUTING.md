@@ -218,9 +218,10 @@ The run also fails or stops rather than pass over a mutant nobody asked about, a
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 says when it does which.
 
-**The campaign keeps a record of the default branch, and no pull request waits on it.** It follows
+**The campaign keeps a record of the default branch, and no pull request waits on it.** It takes one half of
 [cargo-mutants' CI guide](https://github.com/sourcefrog/cargo-mutants/blob/main/book/src/ci.md), which
-checks the code a pull request changed and every mutant on the development branch, and
+checks the code a pull request changed and every mutant on the development branch: this repository
+measures the development branch and does not check a pull request's change. It also follows
 [StrykerJS's incremental mode](https://github.com/stryker-mutator/stryker-js/blob/master/docs/incremental.md),
 which keeps each mutant's result and measures it again only when what decided it changed;
 [PIT's](https://github.com/hcoles/pitest) `--historyInputLocation` and `--historyOutputLocation` are the

@@ -1,8 +1,10 @@
 name: Mutation campaign
 
 # The mutation campaign, in the shape cargo-mutants and StrykerJS run theirs: every run, nightly, on a
-# push to the default branch or on a dispatch, measures the mutants of the campaign's scope that the
-# record does not answer yet and writes what it measured into the record. No pull request runs it,
+# push to the default branch or on a dispatch with no `base`, measures the mutants of the campaign's
+# scope that the record does not answer yet and writes what it measured into the record; a dispatch
+# with a `base` measures the change since the merge base with it and writes the record the same way.
+# No pull request runs it,
 # and no branch-protection rule requires a check of this workflow. CONTRIBUTING.md ▸ Checking that the
 # tests can fail owns the scope, the record, the cap and the catch-up, and the release gate that reads
 # the record.
@@ -23,7 +25,7 @@ on:
 # never thrown away before its record is written; GitHub keeps only the newest of the waiting ones,
 # which measures from the newest head. Not test.yml's group, so no run of Test cancels a campaign.
 concurrency:
-  group: mutation-${{ github.ref }}
+  group: mutation-record-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
