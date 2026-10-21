@@ -421,7 +421,7 @@ namespace Velvet.Tests
             {
                 MotionSpringDriver.Step(element, growing, 0.1f);
                 start = LengthOf(back);
-                MotionSpringDriver.InheritVelocity(back, growing);
+                MotionSpringDriver.ContinueFrom(back, MotionSpringDriver.Drawn(growing), fromDrawn: false);
                 MotionSpringDriver.Step(element, back, 1f / 60f);
                 next = LengthOf(back);
             }
@@ -451,7 +451,7 @@ namespace Velvet.Tests
             if (moving != null && inheriting != null && atRest != null)
             {
                 MotionSpringDriver.Step(element, moving, 0.1f);
-                MotionSpringDriver.InheritVelocity(inheriting, moving);
+                MotionSpringDriver.ContinueFrom(inheriting, MotionSpringDriver.Drawn(moving), fromDrawn: false);
                 MotionSpringDriver.Step(element, inheriting, 1f / 60f);
                 MotionSpringDriver.Step(element, atRest, 1f / 60f);
                 string Side(SpringChannel? a, SpringChannel? b) => a == null || b == null ? "missing"

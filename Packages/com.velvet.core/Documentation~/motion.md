@@ -82,15 +82,39 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 });
 ```
 
-- `onExitComplete` runs when the last removed child is gone. Where the render that removed it had no exit to play,
-  that is the passive-effect flush after the render, which runs after the layout effects of its commit, as
-  Framer's `PresenceChild` calls it from an effect; a removal that render never committed completes nothing.
-  Where an exit played, it is the end of the last exit's animation. An error it throws goes to the nearest error
-  boundary at or above the component rendering the presence, except where an exit played or a `V.Motion` child
-  was removed: Framer calls it from that exit's promise, so no boundary takes it and it is logged. An error from
-  a Motion's `onEnterComplete` is logged the same way, as Framer's `onAnimationComplete` runs in a promise.
+- A removed child leaves on a render after the one that removed it, never in that render, as Framer's
+  `AnimatePresence` drops a child only on the render its exit's completion asks for. A child with nothing to
+  animate — no `V.Motion`, or a `StyleTransitionConfig.None` or zero-duration exit — stays for the commit that
+  removed it, and its exit completes in the passive-effect flush after that render, which runs after the layout
+  effects of its commit: Framer completes a child holding no motion component from `PresenceChild`'s effect, and
+  a motion component's exit with nothing to animate from that exit's promise. A removal that render never
+  committed completes nothing, and the next render that still removes the child completes it after its commit.
+- Under `AnimatePresenceMode.Wait`, while any removed child is exiting, the presence renders the exiting children
+  alone, as Framer's `mode="wait"` does: a present child is not rendered until the render that drops them, one
+  already mounted unmounting with no exit of its own and mounting again with its enter. A child with nothing to
+  animate holds them back for that one render.
+- `onExitComplete` runs when the last removed child's exit completes, ahead of the render that drops it: the
+  passive-effect flush above, or the end of the last exit's animation. An error it throws goes to the nearest
+  error boundary at or above the component rendering the presence, except where an exit played or the child
+  whose exit completed last holds a `V.Motion`: Framer calls it from that exit's promise, so no boundary takes it
+  and it is logged. The exits one render leaves with nothing to animate complete in Framer's order: a Motion whose
+  exit names no target, or one a zero-duration or `StyleTransitionConfig.None` exit reaches at once, completes
+  from its promise, and a child holding no Motion from its effect. A removal from a discrete event (the Urgent
+  lane) settles the effects first, as React flushes the passive effects of a synchronous commit before any promise
+  reaction runs; any other removal settles the promises first. Tree order within each. Disposing the mounted tree
+  first completes an exit still waiting on the passive-effect flush, as React flushes a root's pending passive
+  effects before the render that unmounts it. A presence that leaves the tree while exits play, disposed with it
+  or no longer rendered by its parent, completes those exits as it goes and its `onExitComplete` runs once, as
+  Framer lets them play out and then calls it. An exit also waiting on a `layoutId` landing stays owed: Framer
+  removes a relegated node only through its lead's layout animation, which no longer reaches it once it unmounts.
+  An error from
+  a Motion's `onEnterComplete` reaches no boundary and is logged, as Framer's `onAnimationComplete` runs in a
+  promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the
   parent, so put `flex` / `gap-*` / wrapping on the parent.
+- Two children given the same key both render, under a warning. A later render in which the repeats keep
+  their relative order keeps each of them. When fewer children with that key remain, the surplus repeats leave
+  at once without playing an exit, and the earlier ones keep their instances.
 - **Framer's splice semantics:** while a ghost exits, surviving siblings keep their positions;
   the ghost holds its slot until the exit completes (the default `Sync` mode).
 - Re-adding a key mid-exit cancels the exit and returns the element to its resting variant —
@@ -149,7 +173,9 @@ completed.
 - A key added to the inner presence while the enclosing child is leaving mounts already leaving, as Framer's
   `PresenceChild` mounts it with `isPresent=false`: its Motions start at their `initial` pose, with no enter, and
   play their `exit` from there. The key counts in the enclosing child's wait while the inner presence's exits
-  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have.
+  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have. A key
+  that places nothing mounts as well, its effects with it, and its exit completes as one with nothing to animate
+  does.
 - The inner presence is found wherever it sits under the enclosing child: written inline under elements, rendered
   by a component, at the top of the child, or inside a `V.Portal`, and whether it mounted with the child or in a
   later render of its own component. When it mounts that way, the nearest enclosing child is the one that
@@ -279,10 +305,25 @@ new StyleTransitionConfig
   transition's rate at that moment, read off the panel's style animation system. When the interrupted `Bezier` play is on
   a `MotionPlayback`, the velocity is scaled by that playback's rate, and a paused playback hands on none,
   whatever the spring is on. A native transition's velocity is handed on only where its unit is the spring
-  channel's. An exit whose delta resolves no channel at all completes immediately.
-- `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
-  slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
-  so a frame that arrives late moves the spring as far as the time it covers.
+  channel's. An exit whose delta resolves no channel at all completes after the commit of the render that removed its child, as an exit with nothing to animate does.
+- A spring its `DurationSec` describes (below) released with a velocity solves its stiffness and
+  damping for that velocity, channel by channel, as Framer's `findSpring` does for each value.
+- A spring setting none of `Stiffness`, `Damping` and `Mass` can be described by `DurationSec` and
+  `Bounce` instead, as Framer's spring `duration` and `bounce` describe one: `Bounce` is how far it
+  overshoots (0 not at all, 0.3 when left null), and the stiffness and damping are the ones Framer's
+  `findSpring` solves for, `DurationSec` held between 0.01 and 10 seconds (0.8 when only `Bounce` is
+  set). Its play lands on its target once `DurationSec` has passed (see *Repeating a play* for the
+  pass), a `layoutId` move on it included. Any of the three physics knobs takes precedence over both.
+- A `DurationSec` of exactly 0 makes any spring instant, physics knobs or not, as Framer makes a
+  transition with a zero duration and no `repeatDelay` instant: it lands on its pose once its
+  `DelaySec` and the stagger its play is given (`StaggerChildrenSec` / `DelayChildrenSec`, or
+  `V.AnimatePresence`'s) have run, at once where both are none. A presence keeps a child whose exit is
+  such a spring until that exit has landed and removes it on the render after; Framer's
+  `animateMotionValue` (motion-dom) resolves the exit of one with no delay in a microtask, without
+  waiting for a frame, and of one with a delay once that delay has run. It repeats nothing. A `RepeatDelaySec` above 0 keeps it a spring, as Framer's
+  does. Outside these two cases a spring's play ends when its slowest channel's spring has run the
+  duration Framer measures for it (see *Repeating a play*), so a frame that arrives late moves the
+  spring as far as the time it covers.
 - Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
@@ -290,9 +331,13 @@ new StyleTransitionConfig
 ## Driven channels (Spring and Bezier)
 
 Both non-CSS drivers write inline styles every tick. A play reads its targets from the swapped-in
-classes and the element's classes left in place. A slot that a running Spring or Bezier play, or a
-native transition, is moving starts from the value on screen: that play's current frame, or the
-transition's displayed value sampled before cancellation or the class swap. A slot a `controls.Cancel()`
+classes and the element's classes left in place. A slot that a running Spring or Bezier play (a Tween
+on a clock other than the panel's, *Clocks*, counting as a Bezier), or a native transition, is moving
+starts from the value on screen: that play's current frame, or the transition's displayed value sampled
+before cancellation or the class swap. On an element that is off its panel, where the screen cannot be
+read, an enter or label change on a Spring or a Bezier that interrupts such a play starts each channel the
+two share from the value that play has reached, as Framer animates every value from the one it has; a length the two hold in
+different units keeps the start below. A slot a `controls.Cancel()`
 hold has taken starts from the held value on the channels both name (see *Timelines*). Any other slot
 starts from the swapped-out value when the swapped-out classes name one. Otherwise, on a mounted element,
 the start is the current inline value, or the resolved value when no inline value is set. A transition
@@ -445,7 +490,8 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
 - A spring's pass is the duration Framer measures for it, which also ends a play that does not
   repeat: the first 50 ms sample at which the spring rests, within 0.5 of its target and moving at
   no more than 2 per second over a travel of 5 or more, within 0.005 and at 0.01 per second under it.
-  Framer hands an opacity and a background color to the browser unless the repeat mirrors or waits
+  A spring its `DurationSec` describes (*Springs*) consults no rest threshold: its pass is that duration
+  on Framer's main thread, and the first 50 ms sample at or past it on the browser. Framer hands an opacity and a background color to the browser unless the repeat mirrors or waits
   between passes. There the spring becomes an easing over a travel of 100, cut at 20 s, onto which
   the value's velocity is carried unscaled, so an opacity on the default spring ends at 1.05 s. Any
   other channel — a translate, scale or rotate among them, since Framer's `x`, `y`, `scale` and
@@ -709,8 +755,12 @@ A step is exactly one of:
   `DelaySec` plus the duration Framer Motion's sequence gives the same spring (clamped to zero when
   the negative delay consumes the hold): a travel of 100,
   sampled every 50ms until it is within 0.5 of its target and moving at no more than 2 per second, and
-  at most 20 seconds. A label does not tell the sequence how far anything moves, and 100 is the travel
-  Framer takes when it cannot read the distance.
+  at most 20 seconds — or, for a spring its `DurationSec` describes, the first 50ms sample at or past
+  that duration. A label does not tell the sequence how far anything moves, and 100 is the travel
+  Framer takes when it cannot read the distance. Framer's sequence hands a spring's duration to the
+  spring rather than making the segment instant, so a step whose spring has a `DurationSec` of exactly
+  0 (and no `RepeatDelaySec`) plays on its physics knobs where it sets any, and otherwise on the spring
+  a 0.01s duration describes, holding 50ms; `state.CurrentTransition` carries that 0.01s duration.
 - **`AnimationSequenceStep.Wait(seconds)`** -- holds the current label for `seconds` with no effect of
   its own.
 - **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances
@@ -753,8 +803,8 @@ offered. They drive the sequence's own timeline -- its step cursor and its clock
 play is the sequence's when it starts on a Motion handed `state.CurrentTransition`, or on a descendant
 taking its label from that Motion (see "Label inheritance" above), whichever transition the swap itself
 plays -- a descendant's mount enter, and a presence child's enter, included when it mounts part-way through.
-`state.CurrentTransition` is a copy of the step's transition for that reason: equal to it in every setting,
-but not the same instance.
+`state.CurrentTransition` is a copy of the step's transition for that reason: equal to it in every setting
+but the zero spring duration the `To` bullet above names, and not the same instance.
 
 - `controls.Pause()` freezes the cursor and holds those plays where they are, their delays included;
   `controls.Play()` resumes both. A play a step starts while the sequence is paused, such as step 0's under
@@ -873,9 +923,8 @@ Three consequences worth knowing:
   to the `Fade` preset's timing, so even a bare Motion tweens its label swaps. Pass
   `transition: StyleTransitionConfig.None` for an instant, non-animated swap — and because the
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
-  means exactly that pose animates and the rest are instant. Whether a removal is held as an
-  exiting ghost at all is decided by the same resolved config, so such an exit is not dropped for
-  the node's `None`. A label change into a `None` pose, or one whose bezier transition has zero
+  means exactly that pose animates and the rest are instant. Whether a removal animates is
+  decided by the same resolved config, so such an exit plays the pose despite the node's `None`. A label change into a `None` pose, or one whose bezier transition has zero
   duration, while an earlier swap is still moving the Motion lands the properties that pose names
   within two frames, and leaves the rest moving. One exception: a value the pose repeats from a moving
   tween's target in another kind of spelling — a stylesheet class for an arbitrary value, such as

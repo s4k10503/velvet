@@ -152,11 +152,11 @@ namespace Velvet
         internal static readonly EngineMember AnimationSystemRotates =
             Field(UIElements, AnimationSystemType, "m_Rotate", AnimationSystemType + "+ValuesRotate");
 
-        internal static readonly EngineMember AnimationSystemLengths =
-            Field(UIElements, AnimationSystemType, "m_Lengths", AnimationSystemType + "+ValuesLength");
-
         internal static readonly EngineMember AnimationSystemTime =
             Field(UIElements, AnimationSystemType, "m_CurrentTime", "System.Double");
+
+        internal static readonly EngineMember AnimationSystemLengths =
+            Field(UIElements, AnimationSystemType, "m_Lengths", AnimationSystemType + "+ValuesLength");
 
         internal static readonly EngineMember AnimationValuesRunning =
             Field(UIElements, AnimationSystemType + "+Values`1", "running", "*");
@@ -195,7 +195,7 @@ namespace Velvet
         internal static readonly EngineMember AnimationStyleReversingStart = Field(UIElements,
             AnimationSystemType + "+Values`1+StyleData", "reversingAdjustedStartValue", "*");
 
-        internal static readonly EngineMember AnimationStyleCurrent =
+        internal static readonly EngineMember AnimationCurrentValue =
             Field(UIElements, AnimationSystemType + "+Values`1+StyleData", "currentValue", "*");
 
         internal static readonly EngineMember OpacityPropertyId =

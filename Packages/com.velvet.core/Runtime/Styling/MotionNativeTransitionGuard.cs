@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
@@ -254,7 +253,7 @@ namespace Velvet
             // next tick, which narrows again
             // (Given_AFollowerMountedWithItsLead_When_ItsBackgroundChanges_Then_TheBackgroundTransitions).
             var read = StyleCascade.Lists(element);
-            if (read == null) element.schedule.Execute(() => Renarrow(element));
+            if (read == null) ScheduleRenarrow(element);
             var lists = read ?? new TransitionLists(null, null, null, null);
             var count = lists.Properties.Count;
             var excluded = StyleLonghandSet.Empty;
@@ -285,6 +284,11 @@ namespace Velvet
             }
             (suspension.Written, suspension.Rules, suspension.Stale) = (new List<StylePropertyName>(names), rules, read == null);
         }
+
+        // Kept out of WriteNarrowed: a lambda there capturing its parameter would allocate its closure on every call,
+        // the early exits a steady pass takes included
+        // (Given_ANarrowedLeadMidMove_When_ItsProjectionRefreshes_Then_NothingIsAllocated).
+        private static void ScheduleRenarrow(VisualElement element) => element.schedule.Execute(() => Renarrow(element));
 
         private static void Renarrow(VisualElement element)
         {
@@ -596,6 +600,9 @@ namespace Velvet
             {
                 return;
             }
+            // Called on every pass a layoutId projection draws, so a list that names none of the driven longhands is left
+            // before anything is copied.
+            if (!Names(held, driven)) return;
             // Counted before the write below: a list read out of a slot is refilled by that slot's next write, which
             // MotionNativeTransitionGuardSuspensionTests pins.
             var heldCount = held.Count;
@@ -608,6 +615,16 @@ namespace Velvet
             MotionTweenTiming.Write(element, Realigned(element.style.transitionDuration.value, heldCount, sources),
                 Realigned(element.style.transitionTimingFunction.value, heldCount, sources),
                 Realigned(element.style.transitionDelay.value, heldCount, sources));
+        }
+
+        // Whether the list holds `all` or a driven longhand, which is what makes Exclude take something out.
+        private static bool Names(List<StylePropertyName> held, StyleLonghandSet driven)
+        {
+            for (var i = 0; i < held.Count; i++)
+            {
+                if (held[i] == s_allName || NamesADrivenLonghand(held[i], driven)) return true;
+            }
+            return false;
         }
 
         // Takes the driven longhands out of names in place, and returns, for each name left, the entry of the list as
@@ -872,7 +889,11 @@ namespace Velvet
         {
             var longhand = Array.IndexOf(s_longhandNames, new StylePropertyName(property));
             if (longhand < 0 || !s_suspensions.TryGetValue(element, out var suspension)) return false;
-            return suspension.Driven.Values.Any(slots => LonghandsOf(slots).Contains((StyleLonghand)longhand));
+            foreach (var slots in suspension.Driven.Values)
+            {
+                if (LonghandsOf(slots).Contains((StyleLonghand)longhand)) return true;
+            }
+            return false;
         }
 
         /// <summary>

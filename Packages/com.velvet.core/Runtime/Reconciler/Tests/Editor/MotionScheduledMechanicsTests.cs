@@ -81,11 +81,13 @@ namespace Velvet.Tests
             (s_modalLeft, s_moverLeft) = (300, -1);
             s_cardTransition = null;
             (s_cardMounted, s_m1Open, s_m2Open) = (false, false, false);
+            s_closeRead = null;
         }
 
         [TearDown]
         public override void TearDown()
         {
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = false;
             _moveMount?.Dispose();
             _moveMount = null;
             base.TearDown();
@@ -4142,7 +4144,7 @@ namespace Velvet.Tests
             var counted = GCAllocationProbe.MedianBlocksDuring(canary) > 0;
 
             // Assert — none, where the canary's are counted.
-            Assert.That(counted ? blocks : -1, Is.Zero);
+            Assert.That(counted ? blocks : -1, Is.Zero, $"{blocks} blocks per refresh; the canary's counted: {counted}");
         }
 
 
@@ -4549,7 +4551,6 @@ namespace Velvet.Tests
             RenderShared(mounted);
             var b = Root.Q<VisualElement>("b");
             var reached = b.style.rotate.value.angle.ToDegrees();
-            Assume.That(reached, Is.GreaterThan(1f));
 
             // Act
             s_bClasses = "rotate-90";
@@ -4557,7 +4558,7 @@ namespace Velvet.Tests
             for (var i = 0; i < 5; i++) Tick();
 
             // Assert
-            Assert.That(b.style.rotate.value.angle.ToDegrees(), Is.EqualTo(reached).Within(0.5f));
+            Assert.That(b.style.rotate.value.angle.ToDegrees(), Is.EqualTo(reached > 1f ? reached : float.NaN).Within(0.5f));
         }
 
 
@@ -4584,7 +4585,7 @@ namespace Velvet.Tests
             // Assert — drawn at its own rotate mixed in from "b"'s none as far as the move has got, its own being where the
             // bezier has got, which runs alongside the move. Read off the projection, since the bezier writes the slot too.
             var a = Root.Q<VisualElement>("a");
-            var progress = 1f - TranslateX(a) / 300f;
+            var progress = 1f - TranslateX(a) / (300f - a.layout.x);
             var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[a].DrawnRotate;
             Assert.That(drawn / progress, Is.EqualTo(90f * progress).Within(3f));
         }
@@ -4815,11 +4816,10 @@ namespace Velvet.Tests
             RenderShared(mounted);
             for (var i = 0; i < 2; i++) Tick();
 
-            // Assert — its own rotate at the quarter turn, read off the mix: the pose tween's list, which the spin took
+            // Assert — its own rotate at the quarter turn, read off the carry: the pose tween's list, which the spin took
             // rotate out of, gives rotate no transition.
             var a = Root.Q<VisualElement>("a");
-            var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[a].DrawnRotate;
-            Assert.That(drawn / (1f - TranslateX(a) / 300f), Is.EqualTo(90f).Within(1f));
+            Assert.That(mounted.Root.Reconciler.Context.LayoutIdProjections[a].RotateCarry.Value, Is.EqualTo(90f).Within(1f));
         }
 
 
@@ -4886,11 +4886,10 @@ namespace Velvet.Tests
         }
 
 
-        // "a", and a control holding no id, both transitioning everything linearly over a second, turn or round as
-        // classes turn; some 0.3 s in, "a" moves under "card" from "b" 300px right on a three-second tween, mixing in
-        // from "b"'s none. Returns "a"'s own some 0.2 s on, read off the projection, and the control's.
-        private (float Own, float Control) TakeOverAsItTurns(string to, System.Func<VisualElement, float> control,
-            System.Func<LayoutIdProjection, float> drawn)
+        // "a", and a control holding no id, both transitioning everything linearly over a second, turn as classes turn;
+        // some 0.3 s in, "a" moves under "card" from "b" 300px right on a three-second tween, mixing in from "b"'s none.
+        // Returns what read gives of "a" and its projection some 0.2 s on, and the control's rotate.
+        private (float Read, float Control) TakeOverAsItTurns(System.Func<LayoutIdProjection, VisualElement, float> read)
         {
             VelvetStyleUtilities.AttachTo(Root);
             (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
@@ -4898,16 +4897,15 @@ namespace Velvet.Tests
             s_aTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
             (s_aClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
             using var mounted = MountAAlone();
-            (s_aClasses, s_controlClasses) = (s_aClasses + " " + to, s_controlClasses + " " + to);
+            (s_aClasses, s_controlClasses) = (s_aClasses + " rotate-90", s_controlClasses + " rotate-90");
             RenderShared(mounted);
             for (var i = 0; i < 18; i++) Tick();
             (s_aId, s_aLeft) = ("card", 0);
             RenderShared(mounted);
             for (var i = 0; i < 12; i++) Tick();
             var a = Root.Q<VisualElement>("a");
-            var own = drawn(mounted.Root.Reconciler.Context.LayoutIdProjections[a]) / (1f - TranslateX(a) / 300f);
-            var native = control(Root.Q<VisualElement>("control"));
-            return (own, native);
+            return (read(mounted.Root.Reconciler.Context.LayoutIdProjections[a], a),
+                Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees());
         }
 
 
@@ -4915,13 +4913,29 @@ namespace Velvet.Tests
         public void Given_AMotionTurningOnATransition_When_ItTakesAHeldIdAndMixesItsRotate_Then_ItsOwnRunsAsTheEngineRunsIt()
         {
             // Arrange / Act
-            var (own, control) = TakeOverAsItTurns("rotate-90", e => e.resolvedStyle.rotate.angle.ToDegrees(), p => p.DrawnRotate);
+            var (own, control) = TakeOverAsItTurns((projection, _) => projection.RotateCarry.Value);
 
             // Assert — within a degree of the control, which is half way round.
             Assert.That(own, Is.EqualTo(control > 30f && control < 60f ? control : float.NaN).Within(1f));
         }
 
 
+        [Test]
+        public void Given_AMotionTurningOnATransition_When_ItTakesAHeldIdAndMixesItsRotate_Then_ItIsDrawnAtTheMixOfTheHoldersRotateAndItsOwn()
+        {
+            // Arrange / Act — "b" holds no rotate, so the mix runs from none to the rotate "a" carries as its own, as far as
+            // the move has got. "a"'s own left transitions meanwhile, and the projection measures the box it has then, so the
+            // move's progress is how far the translate has come back of what is left to cover.
+            var (difference, _) = TakeOverAsItTurns((projection, a) =>
+                projection.DrawnRotate - Mathf.LerpUnclamped(0f, projection.RotateCarry.Value, 1f - TranslateX(a) / (300f - a.layout.x)));
+
+            // Assert
+            Assert.That(difference, Is.Zero.Within(0.3f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base's driver writes no rotate, so the engine runs the element's own rotate
+        // transition there as it runs the control's. A rotate the projection mixes must run on as the engine runs it.
         [Test]
         public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItMovesAgain_Then_ItsRotateRunsOnAsTheEngineRunsIt()
         {
@@ -5000,6 +5014,8 @@ namespace Velvet.Tests
         }
 
 
+        // GREEN_ON_BASE(characterization): the base's driver writes no rotate, so the engine runs the element's own rotate
+        // transition there as it runs the control's. A rotate the projection mixes must run on as the engine runs it.
         [Test]
         public void Given_ALeadWhoseOwnRotateChangesLateInItsMove_When_TheMoveLands_Then_ItsRotateRunsOnAsTheEngineRunsIt()
         {
@@ -5889,7 +5905,7 @@ namespace Velvet.Tests
             var a = Root.Q<VisualElement>("a");
             var written = WrittenOpacity(a);
             var own = written / (1f - (BProgress() - 0.5f) / 0.45f);
-            Assert.That((own > 0.78f && own < 0.95f, Mathf.Abs(a.resolvedStyle.opacity - written) < 0.1f), Is.EqualTo((true, true)));
+            Assert.That(a.resolvedStyle.opacity, Is.EqualTo(own > 0.78f && own < 0.95f ? written : float.NaN).Within(0.1f));
         }
 
         // GREEN_ON_BASE(characterization): the base hands a transition-all lead's transitions back once its move lands.
@@ -5908,7 +5924,7 @@ namespace Velvet.Tests
             AdvancePast(1f);
 
             // Assert
-            Assert.That((suspended, b.style.transitionProperty.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+            Assert.That(suspended ? b.style.transitionProperty.keyword : StyleKeyword.Auto, Is.EqualTo(StyleKeyword.Null));
         }
 
         [Test]
@@ -5979,7 +5995,7 @@ namespace Velvet.Tests
 
             // Assert
             var reused = Root.Q<VisualElement>("reused");
-            Assert.That((ReferenceEquals(original, reused), reused.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+            Assert.That(ReferenceEquals(original, reused) ? reused.style.opacity.keyword : StyleKeyword.Auto, Is.EqualTo(StyleKeyword.Null));
         }
 
         // GREEN_ON_BASE(characterization): the base leaves a class's opacity transition to UI Toolkit, which runs it past any layoutId move.
@@ -6391,7 +6407,44 @@ namespace Velvet.Tests
                             className: $"absolute left-[{s_modalLeft}px] top-[0px] w-[100px] h-[100px]"),
                     }
                     : Array.Empty<VNode>()),
+                s_closeRead == null ? null : V.Component(CloseReaderRender, s_modalOpen, key: "reader"),
             });
+        }
+
+        // Set before a case that suspends the render closing the modal: the read that render waits for.
+        private static VelvetTaskCompletionSource<int> s_closeRead;
+
+        // Reads nothing pending while the modal is open, and s_closeRead once it closes, with no Suspense above.
+        [Component(Compiler = false)]
+        private static VNode CloseReaderRender(bool open)
+        {
+            Hooks.Use<int>(_ => open ? VelvetTask.FromResult(0) : s_closeRead.Task, open);
+            return V.Div(name: "reader");
+        }
+
+        [Test]
+        public void Given_AModalWithNothingToAnimateRelegatingTheCard_When_TheRenderClosingItSuspendsAndIsTakenAgain_Then_TheCardIsRelegatedOnce()
+        {
+            // Arrange — the modal's exit plays nothing, so it waits for the card to land and for its commit.
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            s_modalTransition = StyleTransitionConfig.None;
+            s_closeRead = new VelvetTaskCompletionSource<int>();
+            s_modalOpen = false;
+            using var mounted = V.Mount(Root, V.Component(CardModalRender, key: "root"));
+            Tick();
+            s_modalOpen = true;
+            RenderShared(mounted);
+            AdvancePast(1f);
+            s_modalOpen = false;
+            RenderShared(mounted);
+
+            // Act — the read resolves, and the render it suspended is taken again.
+            s_closeRead.TrySetResult(0);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — one landing waited for: a second relegation would add the card's landing again.
+            Assert.That(mounted.Root.Reconciler.Context.LayoutIdLandings.Count, Is.EqualTo(1));
         }
 
         // Mounts the card, opens the modal over it and lets its tween end, then closes it and plays the frame after.

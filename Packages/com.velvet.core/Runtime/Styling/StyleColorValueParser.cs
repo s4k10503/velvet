@@ -83,7 +83,7 @@ namespace Velvet
         // Index of the color-opacity-modifier '/' — the first '/' at bracket depth 0 (i.e. not inside a
         // [...] arbitrary value), scanning from start. Returns -1 when there is no such separator, so an
         // in-bracket '/' (aspect-[4/3], bg-[rgb(1/2)]) is never mistaken for the modifier separator.
-        private static int ColorModifierSlashIndex(string s, int start)
+        internal static int ColorModifierSlashIndex(string s, int start)
         {
             var depth = 0;
             for (var i = start; i < s.Length; i++)
@@ -203,31 +203,6 @@ namespace Velvet
             }
 
             color.a *= alpha;
-            return true;
-        }
-
-        // A colour as a utility's suffix spells it: a palette name or a bracketed value, optionally followed by
-        // an opacity modifier, on the terms TryParseColorOpacityModifier reads the same pair.
-        internal static bool TryParseColorSuffix(string suffix, out Color color)
-        {
-            var slash = ColorModifierSlashIndex(suffix, 0);
-            // MUTANT_SURVIVES(equivalent, boundary): a slash at zero leaves an empty base below, which resolves to no colour, as the whole suffix does above.
-            if (slash < 0)
-            {
-                return VelvetPalette.TryResolveColorToken(suffix, true, out color);
-            }
-
-            if (!VelvetPalette.TryResolveColorToken(suffix.Substring(0, slash), out color))
-            {
-                return false;
-            }
-
-            if (!TryParseAlphaModifier(suffix.AsSpan(slash + 1), out var alpha))
-            {
-                return false;
-            }
-
-            color.a = alpha;
             return true;
         }
 

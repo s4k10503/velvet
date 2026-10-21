@@ -366,6 +366,8 @@ namespace Velvet.Tests
             Assert.AreEqual(6, s_readerValue);
         }
 
+        // GREEN_ON_BASE(refactor): the immediate drain after the call renders the pending state on the head and
+        // finds the tier empty on the base, where the transition lane stays queued for the flush that parks.
         [Test]
         public void Given_StoreChangedWhileASliceIsParked_When_ThePassResumes_Then_ReadersItCommittedEarlierShowTheSnapshotALaterRowRenders()
         {
@@ -373,6 +375,7 @@ namespace Velvet.Tests
             s_resumeSource = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(ResumeListHost, key: "resume-list"));
             s_resumeStart.Invoke(() => s_resumeSetGen.Invoke(1));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_resumeListFiber.FlushStateWithTinyBudgetForTest();
             var parked = s_resumeListFiber.HasPendingReconcileWorkForTest();
             s_resumeSource.Set(1);

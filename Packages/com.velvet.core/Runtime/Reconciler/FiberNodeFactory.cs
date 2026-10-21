@@ -759,16 +759,13 @@ namespace Velvet
                         FiberLogger.LogWarning("FiberNodeFactory",
                             $"Key \"{child.Key}\" uses reserved prefix \"{AutoKeyPrefix}\". This may conflict with auto-generated keys.");
                     }
-                    var key = child.Key ?? $"{AutoKeyPrefix}{autoIndex++}";
-                    if (indexByKey.TryGetValue(key, out var existingIndex))
+                    var mapKey = PresenceChildMapKey(child.Key, ref autoIndex, indexByKey, out var firstChoice);
+                    if (mapKey != firstChoice)
                     {
                         FiberLogger.LogWarning("FiberNodeFactory",
-                            $"Duplicate key \"{key}\" detected. Later child will overwrite the earlier one.");
-                        result[existingIndex] = (key, child);
-                        continue;
+                            $"Duplicate key \"{firstChoice}\" detected. Both children render; give each child a unique key.");
                     }
-                    indexByKey[key] = result.Count;
-                    result.Add((key, child));
+                    result.Add((mapKey, child));
                 }
                 return result;
             }
@@ -776,6 +773,31 @@ namespace Velvet
             {
                 _ctx.BufferPool.ReturnIndexByKeyMap(indexByKey);
             }
+        }
+
+        // The first occurrence keeps the key it was given. A later one is stored under a map key of its own,
+        // numbered among the repeats of that key: on one shared key the extra child is removed on the
+        // reconcile that drops it, rather than tracked as its own exit, and numbering by repeat rather than
+        // by position keeps a repeat's key when an unrelated sibling is inserted ahead of it. Each key taken
+        // holds the number of repeats it has had, and a spelling already taken, by a key given earlier or by
+        // an earlier repeat, is skipped, so no repeat shares a map key with another child.
+        // FiberContextSpine.PushPresenceChildren calls this same method.
+        internal static string PresenceChildMapKey(
+            string? childKey, ref int autoIndex, Dictionary<string, int> taken, out string firstChoice)
+        {
+            firstChoice = childKey ?? $"{AutoKeyPrefix}{autoIndex++}";
+            if (taken.TryAdd(firstChoice, 0)) return firstChoice;
+            var repeats = taken[firstChoice];
+            // MUTANT_SURVIVES(equivalent, boundary): firstChoice is taken but is no candidate, so at most
+            // Count - 1 candidates are taken and Count attempts always find a free one; one more changes nothing.
+            for (var attempt = 0; attempt < taken.Count; attempt++)
+            {
+                var repeat = $"{AutoKeyPrefix}dup{++repeats}_{firstChoice}";
+                if (!taken.TryAdd(repeat, 0)) continue;
+                taken[firstChoice] = repeats;
+                return repeat;
+            }
+            throw new InvalidOperationException($"No free map key for a repeat of \"{firstChoice}\".");
         }
 
         // The anchor a VirtualList item's Component / Provider root mounts on. It takes a slot in the

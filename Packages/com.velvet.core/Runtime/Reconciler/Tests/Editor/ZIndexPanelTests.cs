@@ -216,8 +216,7 @@ namespace Velvet.Tests
             Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(button),
                 "Precondition: the z-managed button holds focus before the resort");
 
-            // Act — bumps z-10 -> z-20: Reposition detaches and re-inserts the same real element within the
-            // same front container (InsertSorted's own unconditional RemoveFromHierarchy).
+            // Act — bumps z-10 -> z-20 within the same front container.
             store.Set(true);
             _mounted.FlushStateForTest();
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);

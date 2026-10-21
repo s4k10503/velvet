@@ -16,13 +16,6 @@ namespace Velvet
     // between pure math (ComputeSegments) and the live-Painter2D stroke call (StrokeDashed).
     internal static class TextOverlinePainter
     {
-        // The rule sits this far below the FIRST line's top edge, as a fraction of font size. UI Toolkit
-        // exposes no public, synchronously-reachable ascent metric for an arbitrary Font/FontAsset (the
-        // per-glyph vertex hook, PostProcessTextVertices, runs job-dependent and out of sync with
-        // generateVisualContent), so this is a documented approximation rather than a measured ascent line:
-        // most fonts carry some internal leading above the ascender within their em-square, and CSS specifies
-        // overline at the ascent line, not the very top of the line box — nudging down by 15% of the font
-        // size lands near that ascent line for typical font metrics without needing per-font data.
         private const float TopOffsetFraction = 0.15f;
 
         // Typical browsers stroke an underline/overline at roughly 1/16th of the font size; floored at 1px
@@ -36,9 +29,8 @@ namespace Velvet
 
         // Computes the rule's endpoints and stroke width, in the element-local space generateVisualContent
         // paints in (the same space contentRect itself is expressed in). Width is the text's natural
-        // single-line-equivalent width clamped to the content box (v1 scope: one rule above the FIRST line
-        // only — per-line metrics of wrapped text are not reachable here, see the type remarks on
-        // TextOverlineBinding). textBlockHeight is the whole (possibly wrapped, multi-line) text block's
+        // single-line-equivalent width clamped to the content box (one rule above the first line; see
+        // TextOverlineSilhouette). textBlockHeight is the whole text block's
         // measured height — needed by ResolveFirstLineTop to find where a Middle/Lower-anchored block (and so
         // its first line) sits, exactly the way measuredWidth feeds ResolveStartX for the horizontal anchor.
         // Both measurements are supplied by the caller (Draw), never taken here, so this stays a pure
@@ -89,8 +81,7 @@ namespace Velvet
         }
 
         // Honors -unity-text-align's VERTICAL component for where the text BLOCK sits in the content box, then
-        // returns the FIRST line's top edge within it (v1 scope: the rule sits above the first line only, see
-        // the type remarks on TextOverlineBinding). Velvet's own text-center/-left/-right/-start/-end utilities
+        // returns the first line's top edge within it. Velvet's own text-center/-left/-right/-start/-end utilities
         // all resolve to a middle-* anchor (see _typography.uss), which is also UI Toolkit's own unstyled
         // default, so the Middle branch is the common case, not an edge case: an Upper* anchor top-aligns the
         // block to the content box (first line's top == contentRect.yMin, the only case v0 ever computed); a

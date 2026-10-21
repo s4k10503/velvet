@@ -158,23 +158,18 @@ namespace Velvet
             spacer = null;
         }
 
-        // The overflow AABB of a sheared silhouette in the caster's local space, from the shear model
-        // x' = x + (y - h/2)*tanX, y' = y + (x - w/2)*tanY over the box [0,w]x[0,h]: the shear pushes the box
-        // out by half the cross-extent times the tangent on each side.
+        // The overflow AABB of a sheared silhouette in the caster's local space: the box [0,w]x[0,h] grown by
+        // ExpandForShear, which owns the shear model.
         internal static Rect ShearedAabb(float w, float h, float tanX, float tanY)
-        {
-            var ox = 0.5f * h * Mathf.Abs(tanX);
-            var oy = 0.5f * w * Mathf.Abs(tanY);
-            return new Rect(-ox, -oy, w + (2f * ox), h + (2f * oy));
-        }
+            => ExpandForShear(new Rect(0f, 0f, w, h), tanX, tanY);
 
-        // Grows a rect outward by the shear overhang its own extent produces (same model as ShearedAabb),
-        // so a shadow quad on a skewed caster — which shears with the caster — stays covered.
+        // Grows a rect outward, about its centre, by the overhang Tailwind's skewX() skewY() shear gives its own
+        // extent, so a shadow quad on a skewed caster — which shears with the caster — stays covered.
         internal static Rect ExpandForShear(Rect r, float tanX, float tanY)
         {
-            var ox = 0.5f * r.height * Mathf.Abs(tanX);
-            var oy = 0.5f * r.width * Mathf.Abs(tanY);
-            return new Rect(r.xMin - ox, r.yMin - oy, r.width + (2f * ox), r.height + (2f * oy));
+            var halfW = (0.5f * r.width * Mathf.Abs(1f + (tanX * tanY))) + (0.5f * r.height * Mathf.Abs(tanX));
+            var halfH = (0.5f * r.width * Mathf.Abs(tanY)) + (0.5f * r.height);
+            return new Rect(r.center.x - halfW, r.center.y - halfH, 2f * halfW, 2f * halfH);
         }
 
         // The left/top border width the class list implies, in px, so a caller can shift the paint AABB into
@@ -271,9 +266,9 @@ namespace Velvet
             {
                 return false;
             }
-            // TryParseArbitraryPixels already verifies the bracket shape itself, so a non-bracket (or
+            // TryParseBorderWidthPixels already verifies the bracket shape itself, so a non-bracket (or
             // malformed-bracket) token falls straight through to the plain-integer form below.
-            if (StyleArbitraryValueResolver.TryParseArbitraryPixels(s, out width))
+            if (StyleArbitraryValueResolver.TryParseBorderWidthPixels(s, out width))
             {
                 return true;
             }

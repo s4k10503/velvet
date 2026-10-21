@@ -4,23 +4,23 @@ What the package adds to a build, and what it costs you.
 
 ## Shaders
 
-Three of Velvet's paints are drawn by first-party shaders rather than by UI Toolkit: the drop shadow behind
-`shadow-*` / `drop-shadow-*`, the sheared silhouette a `bg-gradient-*` gets on a `skew-*` element, and the
-`brightness-*` / `saturate-*` filters ([styling-filters.md](styling-filters.md) owns what those two do).
-The four shader files live in `Runtime/Styles/Shaders/` and are looked up by name from C# alone.
+Three of Velvet's paints are drawn by first-party shaders rather than by UI Toolkit: the shadow behind
+`shadow-*`, the sheared silhouette a `bg-gradient-*` gets on a `skew-*` element, and the `brightness-*` /
+`saturate-*` / `drop-shadow-*` filters ([styling-filters.md](styling-filters.md) owns what those do).
+The five shader files live in `Runtime/Styles/Shaders/` and are looked up by name from C# alone.
 
 Unity's manual states that a build strips shader variants the scenes in it do not use, and none of these is
 in a scene. So the package adds them to **Graphics Settings ▸ Always Included Shaders** in an
 `IPreprocessBuildWithReport` step and removes them again in the matching post-process step. There is nothing
 to install, no list to maintain and no build step to run.
 
-That the four names are in Always Included Shaders while the build runs is pinned by
+That the five names are in Always Included Shaders while the build runs is pinned by
 `BundledShaderInclusionTests`. If a shader-backed paint draws nothing in your build, the player log carries a
 `Shader not found` warning naming it, and that is a bug report worth filing.
 
 **What that costs.**
 
-- All four shaders are compiled into every player build unless the project opts out. **Project Settings ▸
+- All five shaders are compiled into every player build unless the project opts out. **Project Settings ▸
   Velvet** lists each one; untick a shader and the build leaves it out of Always Included Shaders. The choice
   is saved in the project's ProjectSettings folder, so it travels with the project. A paint whose
   shader reaches the player by no other route draws nothing there and logs the warning described at the
@@ -100,11 +100,10 @@ Some engine members Velvet depends on have no public API, so it reaches them by 
 focus controller still holds of an element leaving it, an element's focus pseudo-state and composite-root
 flag, UI Toolkit's internal property-change event, a text input's record of an open IME composition, the
 `@import`s of a stylesheet, the cached opacity, rotate, corner radii
-and transition lists and which longhands a shorthand covers, used by
-[layoutId moves](motion.md#shared-element-layout-animation-layoutid),
-native transition activity, and the timing and values of a running one, used by
+and transition lists used by [layoutId crossfades](motion.md#shared-element-layout-animation-layoutid),
+the transitions a panel is running and which longhands a shorthand covers, native transition activity, and the timing and values of a running one, used by
 [current-value starts](motion.md#driven-channels-spring-and-bezier), a spring's inherited velocity and the
-opacity, rotate and corner radii a crossfade carries on,
+opacity and rotate a crossfade carries on (`RunningStyleTransition.TakeOverRotate` reads the running rotate),
 and a panel's version, layout-phase flag, style updater and that updater's traversal flag, an element's layout
 node, last layout and version increment, and the node's layout computation, dirty flag and new-layout flag, which
 a commit uses to lay the panel out before its layout effects and callback refs read it

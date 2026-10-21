@@ -10,4 +10,5 @@
   gap manipulator, as they are for the steps they already took.
 - `leading-<n>` takes the same steps (`leading-13` is an absolute 52px line height), and a named leading is read
   first.
-- `z-<n>` takes any whole number up to 2147483647 (`z-15`, `-z-15`), not only 0, 10, 20, 30, 40 and 50.
+- `z-<n>` takes a whole number written as Tailwind v4 writes one (`z-15`, `-z-15`), not only 0, 10, 20, 30, 40
+  and 50.
