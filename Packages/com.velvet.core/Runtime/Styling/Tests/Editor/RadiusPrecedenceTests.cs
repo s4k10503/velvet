@@ -266,8 +266,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base lets the last written of two classes that set the same corners hold them.
         // Here that is the one Tailwind emits last; letting the first hold them instead reddens both cases.
-        [TestCase("rounded-lg rounded-sm", 4f)]
-        [TestCase("rounded-t-lg rounded-t-sm", 4f)]
+        [TestCase("rounded-lg rounded-md", 6f)]
+        [TestCase("rounded-t-lg rounded-t-md", 6f)]
         public void Given_RadiusClassesOfOneShadowCasterOnOneProperty_When_TheCornerRadiusIsResolvedWithTheLaterInTailwindsOrderLast_Then_ItHolds(
             string classNames, float expected)
         {
