@@ -1039,7 +1039,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ATweenRunningUnderAnimateHue_When_APatchRemovesIt_Then_ItsFrameIsWrittenAtOnce()
         {
-            // Arrange — a blur tween from 4 to 12 started, then an animate-hue frame written over it.
+            // Arrange — a blur tween from 8 to 12 started, then an animate-hue frame written over it.
             const string before = "transition-filter duration-300 blur-sm";
             const string tweening = "transition-filter duration-300 blur-md";
             const string animated = "transition-filter duration-300 animate-hue blur-md";

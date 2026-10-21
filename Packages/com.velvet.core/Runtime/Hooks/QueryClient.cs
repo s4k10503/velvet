@@ -952,7 +952,7 @@ namespace Velvet
             Poll().Forget();
         }
 
-        // TanStack's focusManager.isFocused(), which a refetch interval asks at each tick.
+        // TanStack's focusManager.isFocused(), a visibility reading, which a refetch interval asks at each tick.
         internal static bool IsVisible() => TryRead(s_readVisible, ref s_visibleFailureLogged) ?? true;
 
         internal static void Unwatch(QueryClient client)
