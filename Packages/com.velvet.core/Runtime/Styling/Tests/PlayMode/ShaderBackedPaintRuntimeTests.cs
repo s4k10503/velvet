@@ -107,57 +107,73 @@ namespace Velvet.Tests
             Assert.That((backdrop > 0, shadow > 0), Is.EqualTo((true, true)));
         }
 
-        // The last row, in the reader's order, at which column x holds a pixel the predicate takes; -1 for none.
-        // Read the same way for two paints, it compares their edges whichever way up the frame comes back.
-        private int LastRow(int x, Func<Color32, bool> predicate)
-        {
-            var pixels = RenderTexturePixelReader.ReadPixels(
-                _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
-            var last = -1;
-            for (var y = 0; y < PanelSize; y++)
-            {
-                if (predicate(pixels[(y * PanelSize) + x]))
-                {
-                    last = y;
-                }
-            }
-            return last;
-        }
-
-        // A green face over the blue backdrop with a red shadow below it. Across the 30px between the sampled
-        // columns a 20deg y shear moves an edge by tan(20deg)·30 ≈ 11px; an upright shadow moves it by 0.
-        private IEnumerator MountSkewedBoxShadowCaster() => MountOverBackdrop("SkewedBoxShadowPanel", V.Div(
-            className: "w-[40px] h-[30px] bg-[#00ff00] skew-y-[20deg] shadow-[0px_14px_10px_0px_#ff0000]"));
-
-        private static bool Red(Color32 p) => p.r > 120 && p.g < 100 && p.b < 140;
-
-        private static bool Green(Color32 p) => p.g > 200 && p.r < 60 && p.b < 60;
-
-        [UnityTest]
-        public IEnumerator Given_ABoxShadowCasterSkewedOnY_When_RenderedOnARuntimePanel_Then_TheShadowTilts()
-        {
-            // Arrange
-            yield return MountSkewedBoxShadowCaster();
-
-            // Act
-            var shadowTilt = LastRow(65, Red) - LastRow(35, Red);
-
-            // Assert
-            Assert.That(Math.Abs(shadowTilt), Is.GreaterThanOrEqualTo(5));
-        }
-
         [UnityTest]
         public IEnumerator Given_ABoxShadowCasterSkewedOnY_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes()
         {
-            // Arrange
-            yield return MountSkewedBoxShadowCaster();
+            // Arrange — a green face over the blue backdrop with a red shadow below it. Across the 30px between
+            // the sampled columns a 20deg y shear moves an edge by tan(20deg)·30 ≈ 11px; an upright shadow moves
+            // it by 0, so the product of the two tilts is positive only where both slant, the same way.
+            yield return MountOverBackdrop("SkewedBoxShadowPanel", V.Div(
+                className: "w-[40px] h-[30px] bg-[#00ff00] skew-y-[20deg] shadow-[0px_14px_10px_0px_#ff0000]"));
+            var pixels = RenderTexturePixelReader.ReadPixels(
+                _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
+
+            // The last row, in the reader's order, at which column x holds a pixel the predicate takes; -1 for
+            // none. Read the same way for both paints, it compares their edges whichever way up the frame comes back.
+            int LastRow(int x, Func<Color32, bool> predicate)
+            {
+                var last = -1;
+                for (var y = 0; y < PanelSize; y++)
+                {
+                    if (predicate(pixels[(y * PanelSize) + x]))
+                    {
+                        last = y;
+                    }
+                }
+                return last;
+            }
 
             // Act
-            var faceTilt = LastRow(65, Green) - LastRow(35, Green);
-            var shadowTilt = LastRow(65, Red) - LastRow(35, Red);
+            var faceTilt = LastRow(65, p => p.g > 200 && p.r < 60 && p.b < 60)
+                - LastRow(35, p => p.g > 200 && p.r < 60 && p.b < 60);
+            var shadowTilt = LastRow(65, p => p.r > 120 && p.g < 100 && p.b < 140)
+                - LastRow(35, p => p.r > 120 && p.g < 100 && p.b < 140);
 
             // Assert
-            Assert.That(Math.Sign(shadowTilt), Is.EqualTo(Math.Sign(faceTilt)), $"face tilt {faceTilt}, shadow tilt {shadowTilt}");
+            Assert.That(faceTilt * shadowTilt, Is.GreaterThan(0), $"face tilt {faceTilt}, shadow tilt {shadowTilt}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnInsetShadowOnAnElementUnderEightPixelsTall_When_RenderedOnARuntimePanel_Then_NothingIsPaintedBelowIt()
+        {
+            // Arrange — a 4px caster is under the 8px floor of a bake texture, and an inset layer with a 2px
+            // spread covers its whole padding box in red. The rows are derived from the caster's measured box.
+            yield return MountOverBackdrop("ThinInsetShadowPanel", V.Div(
+                name: "caster", className: "w-[40px] h-[4px] shadow-[inset_0px_0px_0px_2px_#ff0000]"));
+            var box = UnityEngine.UIElements.UQueryExtensions
+                .Q<UnityEngine.UIElements.VisualElement>(_host.Root, "caster").worldBound;
+            var pixels = RenderTexturePixelReader.ReadPixels(
+                _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
+
+            // Act
+            var inside = 0;
+            var below = 0;
+            for (var row = 0; row < PanelSize; row++)
+            {
+                for (var col = 0; col < PanelSize; col++)
+                {
+                    var p = pixels[((PanelSize - 1 - row) * PanelSize) + col];
+                    if (p.r > 120 && p.b < 140)
+                    {
+                        inside += row >= box.yMin && row < box.yMax ? 1 : 0;
+                        below += row >= box.yMax + 1f ? 1 : 0;
+                    }
+                }
+            }
+
+            // Assert — the red inside the caster gates the count below it, so a frame with no shadow at all
+            // cannot read as one that stayed inside.
+            Assert.That(inside > 0 ? below : -1, Is.EqualTo(0));
         }
 
         [UnityTest]

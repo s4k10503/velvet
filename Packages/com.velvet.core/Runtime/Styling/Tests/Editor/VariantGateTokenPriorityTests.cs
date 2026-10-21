@@ -53,9 +53,13 @@ namespace Velvet.Tests
             element.SimulateEvent(evt);
         }
 
+        // The front layer's blur, read by name so this fixture builds against a binding holding one `Spec` as
+        // well as one holding `Layers`.
         private static float BlurOf(ReconcilerScope scope, VisualElement element)
             => scope.Reconciler.Context.ShadowBindings.TryGetValue(element, out var binding)
-                ? binding.Layers[0].Blur
+                ? (typeof(BoxShadowBinding).GetField("Layers")?.GetValue(binding) is ShadowSpec[] layers
+                    ? layers[0].Blur
+                    : ((ShadowSpec)typeof(BoxShadowBinding).GetField("Spec").GetValue(binding)).Blur)
                 : NoShadow;
 
         // Lights both layers of "bg-[#FFFFFF] dark:shadow-lg hover:shadow-sm" in the given order and reports
@@ -107,6 +111,7 @@ namespace Velvet.Tests
                     name: "card", data: data),
             };
 
+        // GREEN_ON_BASE(refactor): only BlurOf changed, to read the shadow's front layer by name; this case's own text is the base's.
         [Test]
         public void Given_TwoVariantsAssertingOneGapTokenWithNoLiteralBase_When_OneTurnsOff_Then_TheGapKeepsDriving()
         {
@@ -129,6 +134,7 @@ namespace Velvet.Tests
                 Is.EqualTo((Space4, Space4)));
         }
 
+        // GREEN_ON_BASE(refactor): only BlurOf changed, to read the shadow's front layer by name; this case's own text is the base's.
         [Test]
         public void Given_TwoPrioritiesOfTheShadowFamily_When_TheSameStateIsReachedByEitherSignalOrder_Then_TheSameShadowPaints()
         {
@@ -147,6 +153,7 @@ namespace Velvet.Tests
             Assert.That((hoverThenDark, darkThenHover), Is.EqualTo((expected, expected)));
         }
 
+        // GREEN_ON_BASE(refactor): only BlurOf changed, to read the shadow's front layer by name; this case's own text is the base's.
         [Test]
         public void Given_TwoAttributeRulesOfTheShadowFamily_When_TheSameStateIsReachedByEitherRuleOrder_Then_TheSameShadowPaints()
         {
@@ -163,6 +170,7 @@ namespace Velvet.Tests
             Assert.That((stateThenBusy, busyThenState), Is.EqualTo((expected, expected)));
         }
 
+        // GREEN_ON_BASE(refactor): only BlurOf changed, to read the shadow's front layer by name; this case's own text is the base's.
         [Test]
         public void Given_OneValueClaimedByTwoAttributeRules_When_ItsLaterRuleOutranksTheOtherValue_Then_ThatValuePaints()
         {
@@ -187,6 +195,7 @@ namespace Velvet.Tests
             Assert.That(BlurOf(scope, scope.Root.Q<VisualElement>("card")), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(refactor): only BlurOf changed, to read the shadow's front layer by name; this case's own text is the base's.
         [Test]
         public void Given_AContainerBlanketHoverRule_When_TheChildDeclaresItsOwnHoverRule_Then_TheContainersRuleWins()
         {
@@ -211,6 +220,7 @@ namespace Velvet.Tests
             Assert.That(BlurOf(scope, child), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(refactor): only BlurOf changed, to read the shadow's front layer by name; this case's own text is the base's.
         [Test]
         public void Given_AStackedVariantBesideThePlainOneItWraps_When_BothAreLit_Then_TheStackedOneWins()
         {
@@ -229,6 +239,7 @@ namespace Velvet.Tests
             Assert.That(BlurOf(scope, card), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(refactor): only BlurOf changed, to read the shadow's front layer by name; this case's own text is the base's.
         [Test]
         public void Given_AnEventDrivenHasRuleBesideAClassHasRule_When_BothAreLit_Then_TheOneTailwindEmitsLaterWins()
         {
@@ -256,6 +267,7 @@ namespace Velvet.Tests
             Assert.That(row[1].style.marginLeft.value.value, Is.EqualTo(Space4));
         }
 
+        // GREEN_ON_BASE(refactor): only BlurOf changed, to read the shadow's front layer by name; this case's own text is the base's.
         [Test]
         public void Given_ATiedPairBesideARuleThatNeverApplies_When_BothOfThePairAreLit_Then_TheDeadRuleDoesNotRank()
         {
@@ -280,6 +292,7 @@ namespace Velvet.Tests
             Assert.That(BlurOf(scope, scope.Root.Q<VisualElement>("card")), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(refactor): only BlurOf changed, to read the shadow's front layer by name; this case's own text is the base's.
         [Test]
         public void Given_TwoTiedRulesResolved_When_TheClassNameSwapsTheirValues_Then_TheOtherValuePaints()
         {
@@ -308,6 +321,7 @@ namespace Velvet.Tests
             Assert.That(BlurOf(scope, scope.Root.Q<VisualElement>("card")), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(refactor): only BlurOf changed, to read the shadow's front layer by name; this case's own text is the base's.
         [Test]
         public void Given_ALiteralBaseTokenReassertedByTheStrongerVariant_When_AWeakerVariantNamesTheSameFamily_Then_TheStrongerPayloadPaints()
         {

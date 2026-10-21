@@ -33,7 +33,7 @@ namespace Velvet
     // caster. The bake produces a WHITE texture with the coverage in alpha — the layer's color is applied
     // as the quad's vertex tint at draw time, so a color change retints without re-baking.
     //
-    // The texture covers ShadowRect at one texel per pixel, upright OR sheared (skewDeg follows a skewed
+    // The texture covers ShadowRect at one texel per pixel (until QuadSize's clamp), upright OR sheared (skewDeg follows a skewed
     // caster, x and y in degrees); the LRU cache below bounds the per-shape bakes.
     internal static class BoxShadowBaker
     {
@@ -55,7 +55,9 @@ namespace Velvet
 
         // Most-recently-used at the TAIL of s_silhouetteLru, least at the HEAD; a node-by-key map keeps
         // touch/evict O(1) and keeps the list in lockstep with the cache (no duplicate or orphaned nodes).
-        private const int MaxSilhouetteCacheEntries = 64;
+        // Each layer of a shadow is its own entry and a preset has up to two, so this doubles the 64 entries
+        // that held one entry per shadow.
+        private const int MaxSilhouetteCacheEntries = 128;
         private static readonly LinkedList<(long shape, long radii, long borders, int w, int h, int skewCenti, long offset)>
             s_silhouetteLru = new();
         private static readonly Dictionary<(long shape, long radii, long borders, int w, int h, int skewCenti, long offset),
@@ -167,8 +169,9 @@ namespace Velvet
             return Mathf.Max(radius + spread, 0f);
         }
 
-        // The pixel size the silhouette is baked at for a shadow rect of that size. The paint binding sizes its
-        // draw quad to this so one texel maps to one pixel.
+        // The pixel size the silhouette texture is baked at for a shadow rect of that size, clamped to what a
+        // texture holds. The shader spans the whole texture over the rect, so the draw quad is the rect itself
+        // and this size sets only the resolution.
         internal static void QuadSize(Vector2 rectSize, out int quadW, out int quadH)
         {
             quadW = Mathf.Clamp(Mathf.CeilToInt(rectSize.x), 8, 2048);

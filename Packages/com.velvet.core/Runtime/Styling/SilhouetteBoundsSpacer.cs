@@ -158,15 +158,10 @@ namespace Velvet
             spacer = null;
         }
 
-        // The overflow AABB of a sheared silhouette in the caster's local space, from the shear model
-        // x' = x + (y - h/2)*tanX, y' = y + (x - w/2)*tanY over the box [0,w]x[0,h]: the shear pushes the box
-        // out by half the cross-extent times the tangent on each side.
+        // The overflow AABB of a sheared silhouette in the caster's local space: the box [0,w]x[0,h] grown by
+        // ExpandForShear, which owns the shear model.
         internal static Rect ShearedAabb(float w, float h, float tanX, float tanY)
-        {
-            var ox = 0.5f * h * Mathf.Abs(tanX);
-            var oy = 0.5f * w * Mathf.Abs(tanY);
-            return new Rect(-ox, -oy, w + (2f * ox), h + (2f * oy));
-        }
+            => ExpandForShear(new Rect(0f, 0f, w, h), tanX, tanY);
 
         // Grows a rect outward, about its centre, by the overhang Tailwind's skewX() skewY() shear gives its own
         // extent, so a shadow quad on a skewed caster — which shears with the caster — stays covered.

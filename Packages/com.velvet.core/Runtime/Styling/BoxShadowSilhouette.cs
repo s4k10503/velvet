@@ -24,8 +24,8 @@ namespace Velvet
         // SkewSilhouette that suppresses + repaints its sheared fill/border, so the shadow paint must NOT
         // suppress or repaint the face — it paints ONLY the (sheared) shadow quad, behind that sheared fill.
         // An UPRIGHT shadowed caster has no SkewSilhouette, so the shadow paint owns the face: it suppresses
-        // the native chrome and repaints an upright fill + border ON TOP of the shadow quad, so the opaque fill
-        // covers the shadow's interior and offset-up overlap, leaving only the outer halo (the box shadow).
+        // the native chrome and repaints an upright fill + border ON TOP of the outer shadow quads, keeping the
+        // fill above their anti-aliased cut edge, with the inset layers between the fill and the border.
         public bool CasterSkewed;
         // The corner radii the bakes round to (top-left, top-right, bottom-right, bottom-left). Resolved from
         // rounded-* off-panel and from the laid-out resolvedStyle once on a panel.
@@ -389,14 +389,13 @@ namespace Velvet
                 return; // no graphics device / shader yet — retry on the next geometry change
             }
 
-            // The rect the bake was sized from, anchored at its top-left and drawn at the baked texel size so one
-            // texel maps to one pixel.
+            // The quad is the rect the bake's UVs span, at its real size: the texture is sized by QuadSize, which
+            // clamps, so a quad at the texture's size would not match the rect the UVs span.
             var rect = BoxShadowBaker.ShadowRect(box, layer, skew);
-            BoxShadowBaker.QuadSize(rect.size, out var quadW, out var quadH);
             var minX = rect.x;
             var minY = rect.y;
-            var maxX = minX + quadW;
-            var maxY = minY + quadH;
+            var maxX = rect.xMax;
+            var maxY = rect.yMax;
 
             // UVs are raw 0..1 (UI Toolkit remaps them into the atlas slot); the texture's alpha carries the
             // SDF antialiasing. texUV.y is flipped (box top samples v = 1) to match the bake orientation and

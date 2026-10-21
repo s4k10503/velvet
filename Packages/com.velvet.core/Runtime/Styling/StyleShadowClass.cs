@@ -268,8 +268,8 @@ namespace Velvet
 
         // Resolves the top-left corner radius (px) from the rounded-* / rounded-t-* /
         // rounded-l-* / rounded-tl-* classes that affect the top-left corner, mirroring the
-        // --radius-* token scale. The shader has a single uniform corner radius, so the top-left
-        // corner is taken as representative. Of the matching classes the one Tailwind emits last wins, as
+        // --radius-* token scale. BoxShadowSilhouette uses it as the pre-layout stand-in for all four corners;
+        // once laid out, each corner's own resolved radius replaces it. Of the matching classes the one Tailwind emits last wins, as
         // StyleSpacingPrecedence ranks them and StyleRuleOrder.CompareUtilities orders two that set the same corners. Returns false for
         // rounded-full / arbitrary radii (those resolve via resolvedStyle.borderTopLeftRadius
         // once laid out) and when no rounding class is present.

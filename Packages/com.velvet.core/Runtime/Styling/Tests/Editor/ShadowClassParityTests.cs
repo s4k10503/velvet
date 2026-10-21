@@ -56,7 +56,7 @@ namespace Velvet.Tests
             var found = StyleShadowClass.TryExtract(new[] { "shadow-inner" }, out var spec);
 
             // Assert
-            Assert.That(found && spec.Length > 0 && spec[0].Inset, Is.True);
+            Assert.That(found && spec[0].Inset, Is.True);
         }
 
         [TestCase(0, true, TestName = "Given_AnArbitraryShadowWithTheInsetKeyword_When_Extracted_Then_ThatLayerIsInset")]
@@ -76,10 +76,12 @@ namespace Velvet.Tests
         public void Given_ATailwindPreset_When_Extracted_Then_ItsLayersAreBlack()
         {
             // Act
-            StyleShadowClass.TryExtract(new[] { "shadow-lg" }, out var spec);
+            var found = StyleShadowClass.TryExtract(new[] { "shadow-lg" }, out var spec);
 
             // Assert
-            Assert.That(System.Array.FindAll(spec, l => l.Color.r != 0f || l.Color.g != 0f || l.Color.b != 0f).Length,
+            Assert.That(found
+                    ? System.Array.FindAll(spec, l => l.Color.r != 0f || l.Color.g != 0f || l.Color.b != 0f).Length
+                    : -1,
                 Is.EqualTo(0));
         }
 
@@ -96,7 +98,7 @@ namespace Velvet.Tests
             Assert.That(found ? Describe(spec) : "none", Is.EqualTo("0 1 2 0 1, 3 4 5 -1 0.5"));
         }
 
-        // GREEN_ON_BASE(characterization): the base rejects this bracket too, reading the comma inside a token.
+        // GREEN_ON_BASE(characterization): the base rejects this bracket too.
         [Test]
         public void Given_AnArbitraryShadowListWithAMalformedLayer_When_Extracted_Then_TheWholeListIsRejected()
         {
@@ -241,7 +243,6 @@ namespace Velvet.Tests
             Assert.That(found && spec[0].Color.a == 0.5f, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): runs of spaces read as one separator before and still do, in a layer.
         [Test]
         public void Given_AnArbitraryShadowWithDoubledSpaces_When_Extracted_Then_TheEmptyTokensAreSkipped()
         {

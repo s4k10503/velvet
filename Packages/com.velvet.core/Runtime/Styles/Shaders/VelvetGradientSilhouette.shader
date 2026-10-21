@@ -6,8 +6,8 @@ Shader "Velvet/GradientSilhouette"
     // generateVisualContent, so the slant pokes beyond the box (a background-image would clip it). It
     // supersedes the earlier vertex-textured fan mesh, whose triangle edges had no antialiasing.
     //
-    // The fragment unshears each pixel (the inverse of the [[1,skewX],[skewY,1]] shear about the box
-    // centre, matching SkewSilhouette.Shear), evaluates an upright rounded-box SDF for the shape + AA,
+    // The fragment unshears each pixel (the inverse of the skewX() skewY() shear about the box
+    // centre, matching SilhouetteFace.Shear), evaluates an upright rounded-box SDF for the shape + AA,
     // and fills with the gradient evaluated on the UPRIGHT box (so the gradient runs the same way as the
     // non-skew background, then shears with the geometry). Stop colours arrive as raw
     // Vectors (no gamma conversion); the bake target is a Linear RenderTexture.
@@ -342,10 +342,10 @@ Shader "Velvet/GradientSilhouette"
                 float2 buv = float2(input.uv.x, 1.0 - input.uv.y);
                 float2 c = (buv - 0.5) * quad;
 
-                // Unshear: inverse of M = [[1, skewX],[skewY, 1]] (shear about the box centre).
-                float det = 1.0 - (_SkewX * _SkewY);
-                det = (abs(det) < 1e-4) ? ((det < 0.0) ? -1e-4 : 1e-4) : det;
-                float2 upright = float2(c.x - (_SkewX * c.y), c.y - (_SkewY * c.x)) / det;
+                // Unshear: inverse of Tailwind's skewX() skewY(), M = [[1 + skewX*skewY, skewX],[skewY, 1]]
+                // about the box centre, whose determinant is 1 so its inverse is
+                // [[1, -skewX],[-skewY, 1 + skewX*skewY]].
+                float2 upright = float2(c.x - (_SkewX * c.y), ((1.0 + (_SkewX * _SkewY)) * c.y) - (_SkewY * c.x));
 
                 float2 halfSize = _ElementSize.xy * 0.5;
                 // Select the corner radius by the quadrant in the UPRIGHT (unsheared) box. y-down: y<0 is

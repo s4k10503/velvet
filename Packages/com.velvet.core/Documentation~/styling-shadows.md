@@ -37,11 +37,23 @@ Each layer follows CSS Backgrounds 3:
   offset and shrunk by a positive spread, its corner radii taken by the same rule with the spread negated. It
   is drawn above the element's background and below its border.
 - **Blur.** A Gaussian whose standard deviation is half the blur radius.
-- **Outside only.** An outer shadow draws nothing inside the element's border box, so a translucent background
-  shows what is behind the element rather than its shadow.
+- **Outside only.** An outer shadow is cut out where the element's border box lies, down to a half-pixel
+  anti-aliased edge, so a translucent background shows what is behind the element rather than its shadow.
 - **Order.** The first layer of a list is drawn on top.
 - **Transform.** On a `skew-*` element the whole layer shears with the element about its centre, offset
-  included.
+  included. With both `skew-x-*` and `skew-y-*` the shear is Tailwind's `skewX() skewY()` product, which is also
+  how the element's own face, its bounds and its children's seating are sheared.
 
 Each corner keeps its own radius. A padding-box corner is the border-box radius less the wider of the two borders
-meeting there.
+meeting there. Corner radii are circular: a corner has one radius, where CSS's `border-radius` takes a horizontal
+and a vertical one. Where the two borders at a corner differ, the wider is taken off both axes, where CSS takes
+each border off its own axis and leaves an elliptical corner.
+
+## Not supported
+
+These classes read as no shadow, so they are inert and an earlier `shadow-*` stays in force:
+
+- `shadow-<color>` and `shadow-lg/50`: the colour of a preset layer cannot be changed. Write the layers out in
+  `shadow-[…]` with a colour.
+- `shadow-[#f00]`: a bracket must hold at least the two offset lengths.
+- `inset-shadow-*`: write an `inset` layer in `shadow-[…]`, or use `shadow-inner`.

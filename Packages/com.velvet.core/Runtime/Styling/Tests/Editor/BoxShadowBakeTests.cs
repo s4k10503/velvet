@@ -160,6 +160,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AShadowOnACasterSkewedOnBothAxes_When_ItsRectIsTaken_Then_ItSpansTheFacesShearedCorners()
+        {
+            // Arrange — the shadow of no blur covers the 200x60 box padded by ExtraPadding, and the caster's own
+            // face is sheared by SilhouetteFace.Shear, so the shadow must be as wide as that face's corners.
+            var tan = Mathf.Tan(12f * Mathf.Deg2Rad);
+            var pad = BoxShadowBaker.ExtraPadding;
+            var corners = new[]
+            {
+                new Vector2(-pad, -pad), new Vector2(200f + pad, -pad),
+                new Vector2(200f + pad, 60f + pad), new Vector2(-pad, 60f + pad),
+            };
+            var xs = System.Array.ConvertAll(corners, c => SilhouetteFace.Shear(c, 200f, 60f, tan, tan).x);
+
+            // Act
+            var rect = BoxShadowBaker.ShadowRect(Box(200f, 60f), Layer(0f), new Vector2(12f, 12f));
+
+            // Assert
+            Assert.That(rect.width, Is.EqualTo(Mathf.Max(xs) - Mathf.Min(xs)).Within(1e-3f));
+        }
+
+        [Test]
         public void Given_AnOffsetShadowOnACasterSkewedOnY_When_ItsRectIsTaken_Then_TheOffsetShearsWithTheBox()
         {
             // Arrange — skewY(45deg) carries an offset of (10, 0) to (10, 10), so the shadow centres on the box
@@ -178,15 +199,16 @@ namespace Velvet.Tests
         {
             TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
 
-            // Arrange — the rect the paint draws the bake into, which a texel each way has to cover.
+            // Arrange — with no blur the padded box is 102x42; skewY(45deg) lifts each of its sides by half its
+            // width, so the shadow spans 102 + 42 = 144px vertically, whatever ShadowRect says. Whole texels
+            // round that span up by less than one.
             var skew = new Vector2(0f, 45f);
-            var rect = BoxShadowBaker.ShadowRect(Box(100f, 40f), Layer(0f), skew);
 
             // Act
             var tex = BoxShadowBaker.GetOrBakeSilhouette(Box(100f, 40f), Layer(0f), skew);
 
             // Assert
-            Assert.That(tex != null ? tex.height : -1, Is.GreaterThanOrEqualTo(rect.height));
+            Assert.That(tex != null ? tex.height : -1, Is.EqualTo(144).Within(1));
         }
 
         [TestCase(-7.5f, -7.5f, 1f, TestName = "Given_AShadowOnABoxRoundedAtOneCorner_When_Baked_Then_TheSquareCornerOfTheSpreadShapeCoversThePoint")]
