@@ -4546,7 +4546,6 @@ namespace Velvet.Tests
             RenderShared(mounted);
             var b = Root.Q<VisualElement>("b");
             var reached = b.style.rotate.value.angle.ToDegrees();
-            Assume.That(reached, Is.GreaterThan(1f));
 
             // Act
             s_bClasses = "rotate-90";
@@ -4554,7 +4553,7 @@ namespace Velvet.Tests
             for (var i = 0; i < 5; i++) Tick();
 
             // Assert
-            Assert.That(b.style.rotate.value.angle.ToDegrees(), Is.EqualTo(reached).Within(0.5f));
+            Assert.That(b.style.rotate.value.angle.ToDegrees(), Is.EqualTo(reached > 1f ? reached : float.NaN).Within(0.5f));
         }
 
 
@@ -4919,6 +4918,8 @@ namespace Velvet.Tests
         }
 
 
+        // GREEN_ON_BASE(characterization): the base's driver writes no rotate, so the engine runs the element's own rotate
+        // transition there as it runs the control's. A rotate the projection mixes must run on as the engine runs it.
         [Test]
         public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItMovesAgain_Then_ItsRotateRunsOnAsTheEngineRunsIt()
         {
@@ -4997,6 +4998,8 @@ namespace Velvet.Tests
         }
 
 
+        // GREEN_ON_BASE(characterization): the base's driver writes no rotate, so the engine runs the element's own rotate
+        // transition there as it runs the control's. A rotate the projection mixes must run on as the engine runs it.
         [Test]
         public void Given_ALeadWhoseOwnRotateChangesLateInItsMove_When_TheMoveLands_Then_ItsRotateRunsOnAsTheEngineRunsIt()
         {

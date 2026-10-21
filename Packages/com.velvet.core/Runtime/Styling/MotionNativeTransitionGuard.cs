@@ -589,6 +589,9 @@ namespace Velvet
             {
                 return;
             }
+            // Called on every pass a layoutId projection draws, so a list that names none of the driven longhands is left
+            // before anything is copied.
+            if (!Names(held, driven)) return;
             // Counted before the write below: a list read out of a slot is refilled by that slot's next write, which
             // MotionNativeTransitionGuardSuspensionTests pins.
             var heldCount = held.Count;
@@ -601,6 +604,16 @@ namespace Velvet
             MotionTweenTiming.Write(element, Realigned(element.style.transitionDuration.value, heldCount, sources),
                 Realigned(element.style.transitionTimingFunction.value, heldCount, sources),
                 Realigned(element.style.transitionDelay.value, heldCount, sources));
+        }
+
+        // Whether the list holds `all` or a driven longhand, which is what makes Exclude take something out.
+        private static bool Names(List<StylePropertyName> held, StyleLonghandSet driven)
+        {
+            for (var i = 0; i < held.Count; i++)
+            {
+                if (held[i] == s_allName || NamesADrivenLonghand(held[i], driven)) return true;
+            }
+            return false;
         }
 
         // Takes the driven longhands out of names in place, and returns, for each name left, the entry of the list as
