@@ -832,7 +832,7 @@ public static class PointerSurface
 >
 > Sibling **elements** are matched by position the same way, a `null` among them holding its slot: in `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div`, the surviving wrapper keeps its own element and the `Row` inside it keeps its own state, keyed or not.
 
-A container of direct plain elements warns once for each repeated sibling key, on mount and every update; both siblings render. An update with unique sibling keys produces no duplicate-key warning, even if the previous render repeated a key.
+A container of direct plain elements warns once for each repeated sibling key, on mount and every update; both siblings render. An update with unique sibling keys produces no duplicate-key warning, even if the previous render repeated a key. Sibling components that share a key both render, the repeat is warned about, and each keeps its own state. A later render in which the repeats keep their relative order keeps each sibling's elements.
 
 ### 2-4. Context
 
