@@ -5361,6 +5361,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALayoutIdMotionRoundedByItsRulesWithAnInlineInitialRadius_When_ItDoublesInPlace_Then_ItIsDrawnSquare()
+        {
+            // Arrange — the test's own sheet rounds the box to twenty pixels; `initial` is in one corner's slot before the
+            // move starts.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            s_resizeOrigin = "layout-id-test-rounder";
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            element.style.borderTopLeftRadius = StyleKeyword.Initial;
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler.Context.LayoutIdProjections[element].DrawnRadii[0].value, Is.Zero);
+        }
+
+        [Test]
         public void Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated()
         {
             // Arrange — the test's own sheet; a holder rounded at 50% by its rules, read off them since a percent is not
