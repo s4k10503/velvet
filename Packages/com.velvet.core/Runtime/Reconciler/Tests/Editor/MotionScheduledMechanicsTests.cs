@@ -4899,11 +4899,11 @@ namespace Velvet.Tests
             (s_aId, s_aLeft) = ("card", 0);
             RenderShared(mounted);
             var a = Root.Q<VisualElement>("a");
-            afterFrame?.Invoke(mounted.Root.Reconciler.Context.LayoutIdProjections[a], a);
+            afterFrame?.Invoke(mounted.Root.Reconciler.Context.LayoutIdProjections.GetValueOrDefault(a), a);
             for (var i = 0; i < 12; i++)
             {
                 Tick();
-                afterFrame?.Invoke(mounted.Root.Reconciler.Context.LayoutIdProjections[a], a);
+                afterFrame?.Invoke(mounted.Root.Reconciler.Context.LayoutIdProjections.GetValueOrDefault(a), a);
             }
             return (read(mounted.Root.Reconciler.Context.LayoutIdProjections[a], a),
                 Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees());
@@ -4935,7 +4935,7 @@ namespace Velvet.Tests
                     + $"progress by tween {1f - projection.Progress.Value}, fade at {projection.FadeAt}, shared {projection.Shared}, "
                     + $"holder look rotate {projection.FromLook?.Rotate}, held {projection.Held?.Rotate}, start rotate {projection.StartRotate}";
                 return projection.DrawnRotate - Mathf.LerpUnclamped(0f, projection.RotateCarry.Value, progress);
-            }, (projection, a) => frames += $" [x {TranslateX(a)} tween {1f - projection.Progress.Value} drawn {projection.DrawnRotate} carry {projection.RotateCarry.Value} moving {projection.Moving}]");
+            }, (projection, a) => frames += projection == null ? $" [none, left {a.layout.x}]" : $" [x {TranslateX(a)}, left {a.layout.x}, tween {1f - projection.Progress.Value} drawn {projection.DrawnRotate} carry {projection.RotateCarry.Value} moving {projection.Moving}]");
 
             // Assert
             Assert.That(difference, Is.Zero.Within(0.3f), state + frames);
