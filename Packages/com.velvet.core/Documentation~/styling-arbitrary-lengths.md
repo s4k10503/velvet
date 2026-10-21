@@ -36,8 +36,8 @@ which leaves the class inert as it does in a browser:
 - `ring-*`, `ring-offset-*` and `from-*` / `via-*` / `to-*` take the length alone, so `ring-[2]` is a colour.
 
 A type hint, a lower-case word and a colon at the start of a bracket (`[length:…]`, `[color:…]`), is read by the
-utilities this page covers, by `ring-*`, `outline-*`, `gap-*`, `divide-*`, `shadow-*`, `skew-*`, `z-*`, the leading after
-`text-*/`, gradient stops and the border colours. A utility that writes its bracket through drops it, so
+utilities this page covers, by `ring-*`, `outline-*`, `gap-*`, `divide-*`, `shadow-*`, `skew-*`, `z-*`, the leading a
+`text-*` takes after its slash, gradient stops and the border colours. A utility that writes its bracket through drops it, so
 `w-[length:10px]` is `w-[10px]` and `rotate-[angle:45deg]` is `rotate-[45deg]`; an empty hint (`w-[:10px]`) is none.
 One of those above takes the branch the hint names in place of its tests — `length` or `line-width` for `border-*`;
 `size`, `length`, `percentage`, `absolute-size` or `relative-size` for `text-*`; `length`, `number` or `percentage`
