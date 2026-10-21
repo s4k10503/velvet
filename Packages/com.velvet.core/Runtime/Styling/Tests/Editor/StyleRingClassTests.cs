@@ -131,6 +131,7 @@ namespace Velvet.Tests
                 Is.EqualTo((2f, false)));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the outline width under a ring colour too; the case holds the width apart from the colour fact in the case below, which the base's one tuple assertion packed together.
         [Test]
         public void Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineDefaultWidthSurvives()
         {
