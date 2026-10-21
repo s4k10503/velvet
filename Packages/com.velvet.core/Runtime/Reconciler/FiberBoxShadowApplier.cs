@@ -35,14 +35,15 @@ namespace Velvet
             }
             // A skewed caster's shadow follows the sheared silhouette (the box-shadow behavior);
             // create-time resolves the skew here, the patch path forwards it from ApplySkewOnPatch.
-            var skewXDeg = StyleSkewClass.TryExtract(classNames, out var skew) ? skew.XDeg : 0f;
+            var skew = StyleSkewClass.TryExtract(classNames, out var extracted) ? extracted : default;
             // ApplySkewOnCreate ran before this (the factory order), so a skewed caster already has a
             // SkewSilhouette owning its face. When skewed, the shadow paints ONLY the shadow quad (the skew
             // layer repaints the sheared fill/border); when upright, the shadow paint owns the face itself,
             // suppressing the native chrome and repainting an upright fill over the shadow quad. skew-y casters
-            // have skewXDeg 0 yet are skewed, so this gate is the SkewBindings presence, not the X angle.
+            // have an X angle of 0 yet are skewed, so this gate is the SkewBindings presence, not the X angle.
             var casterSkewed = _ctx.SkewBindings.ContainsKey(element);
-            var shadowBinding = BoxShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
+            var shadowBinding = BoxShadowSilhouette.Attach(element, spec, classNames, skew.XDeg, skew.YDeg,
+                casterSkewed);
             _ctx.ShadowBindings[element] = shadowBinding;
             BoxShadowSilhouette.SetWantSpacer(element, shadowBinding, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
         }
@@ -56,7 +57,7 @@ namespace Velvet
         // The shadow is a paint, not a wrapper, so a Motion can carry a shadow paint without becoming an
         // AnimatePresence anchor (nothing structural is added).
         internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
-            float skewXDeg, bool canReleaseFace)
+            SkewSpec skew, bool canReleaseFace)
         {
             var bound = _ctx.ShadowBindings.TryGetValue(element, out var binding);
             // Fast path: no shadow anywhere near this element.
@@ -65,28 +66,29 @@ namespace Velvet
                 return;
             }
 
-            var spec = default(ShadowSpec);
+            var spec = System.Array.Empty<ShadowSpec>();
             var want = !clipActive && StyleShadowClass.TryExtract(classNames, out spec);
 
             // ApplySkewOnPatch ran before this (the shared pass order), so the SkewBindings entry is in its
             // post-patch state: a skewed caster's face is owned by its SkewSilhouette, an upright caster's by
-            // this shadow paint. Tracks skew-y too (a skewXDeg-0 yet skewed caster keeps a SkewBinding).
+            // this shadow paint. Tracks skew-y too (an X-angle-0 yet skewed caster keeps a SkewBinding).
             var casterSkewed = _ctx.SkewBindings.ContainsKey(element);
 
             if (want && bound)
             {
                 BoxShadowSilhouette.Sync(element, binding, new BoxShadowSyncRequest
                 {
-                    Spec = spec,
+                    Layers = spec,
                     ClassNames = classNames,
-                    SkewXDeg = skewXDeg,
+                    SkewXDeg = skew.XDeg,
+                    SkewYDeg = skew.YDeg,
                     CasterSkewed = casterSkewed,
                 }, canReleaseFace);
                 BoxShadowSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
             }
             else if (want)
             {
-                var fresh = BoxShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
+                var fresh = BoxShadowSilhouette.Attach(element, spec, classNames, skew.XDeg, skew.YDeg, casterSkewed);
                 _ctx.ShadowBindings[element] = fresh;
                 BoxShadowSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
             }

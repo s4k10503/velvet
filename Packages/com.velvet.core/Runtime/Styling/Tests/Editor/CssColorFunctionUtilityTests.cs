@@ -73,7 +73,7 @@ namespace Velvet.Tests
             var ok = StyleShadowClass.TryExtract(new[] { "shadow-[0_4px_8px_hsl(210_40%_50%_/_50%)]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? Channels(spec.Color) : Unresolved,
+            Assert.That(ok ? Channels(spec[0].Color) : Unresolved,
                 Is.EqualTo(new[] { 0.3f, 0.5f, 0.7f, 0.5f }).Within(Tolerance));
         }
 
@@ -84,7 +84,7 @@ namespace Velvet.Tests
             var ok = StyleShadowClass.TryExtract(new[] { "shadow-[0_4px_8px_rgb(51,_102,_153)]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? Channels(spec.Color) : Unresolved,
+            Assert.That(ok ? Channels(spec[0].Color) : Unresolved,
                 Is.EqualTo(new[] { 0.2f, 0.4f, 0.6f, 1f }).Within(Tolerance));
         }
 

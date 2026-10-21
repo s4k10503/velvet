@@ -6,10 +6,9 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     /// <summary>
-    /// A resolved shadow preset: the SDF shader inputs a <c>shadow-*</c> utility maps to. Corner radius is
-    /// deliberately NOT part of the spec — it follows the target's own <c>rounded-*</c> radius (resolved at
-    /// layout time, or from the class scale off-panel), so a card and a pill get the right shadow silhouette
-    /// without restating the radius on the shadow.
+    /// One layer of a CSS box-shadow list. Corner radius is deliberately NOT part of the spec — it follows the
+    /// target's own <c>rounded-*</c> radius (resolved at layout time, or from the class scale off-panel), so a
+    /// card and a pill get the right shadow silhouette without restating the radius on the shadow.
     /// </summary>
     internal readonly struct ShadowSpec
     {
@@ -19,48 +18,51 @@ namespace Velvet
         public readonly float Spread;
         // Horizontal offset (px). The presets are centered (0); only an arbitrary shadow-[x y …] sets it.
         public readonly float OffsetX;
+        // An inner shadow (CSS's `inset`), drawn inside the padding box rather than outside the border box.
+        public readonly bool Inset;
 
         public ShadowSpec(Color color, float blur, float offsetY, float spread)
             : this(color, blur, offsetY, spread, 0f)
         {
         }
 
-        public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX)
+        public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX, bool inset = false)
         {
             Color = color;
             Blur = blur;
             OffsetY = offsetY;
             Spread = spread;
             OffsetX = offsetX;
+            Inset = inset;
         }
     }
 
-    // Parses Velvet's shadow-* utility classes into a ShadowSpec
-    // preset, and resolves the companion rounded-* corner radius the shadow follows. Same shape as
-    // StyleGapClass / StyleVariantClass: a cheap prefix gate
-    // (HasShadowClass) plus a cascade-correct extractor (TryExtract, last
-    // matching class wins).
-    // The scale is graduated for the soft, iOS/macOS-style SDF shadow Velvet renders (a glow, not a CSS
-    // hard edge), so the blur values are larger than a literal CSS box-shadow. Alpha derives from
-    // the --color-shadow token (rgba(4, 12, 24, …) in _tokens.uss), stepped per
-    // preset. shadow-none is a recognized utility that resolves to "no shadow" (so it can override
-    // an earlier shadow-lg in the cascade). Arbitrary values (shadow-[x_y_blur_spread_color], underscores
-    // for spaces) are parsed positionally as CSS box-shadow lengths plus an optional color; the
-    // SDF shadow has a single uniform softness, so the four-channel CSS shadow collapses to one layer.
+    // Parses Velvet's shadow-* utility classes into the layers of a box-shadow list, and resolves the companion
+    // rounded-* corner radius the shadow follows. Same shape as StyleGapClass / StyleVariantClass: a cheap
+    // prefix gate (HasShadowClass) plus a cascade-correct extractor (TryExtract, last matching class wins).
+    // The presets are Tailwind v4's --shadow-* theme values. shadow-none is a recognized utility that resolves
+    // to "no shadow" (so it can override an earlier shadow-lg in the cascade). Arbitrary values
+    // (shadow-[x_y_blur_spread_color], underscores for spaces, commas between layers) are parsed per layer
+    // positionally as CSS box-shadow lengths plus an optional color.
     internal static class StyleShadowClass
     {
-        // Base RGB from --color-shadow (rgba(4, 12, 24, *)); alpha graduated per preset.
-        private static Color ShadowColor(float alpha) => new(4f / 255f, 12f / 255f, 24f / 255f, alpha);
+        private static Color Black(float alpha) => new(0f, 0f, 0f, alpha);
 
-        // suffix → (color, blur, offsetY, spread). "" is the bare `shadow` (the DEFAULT).
-        private static readonly Dictionary<string, ShadowSpec> Presets = new()
+        // The colour an arbitrary layer without one takes.
+        private static readonly Color ArbitraryDefaultColor = new(4f / 255f, 12f / 255f, 24f / 255f, 0.20f);
+
+        // suffix → layers, first on top, as theme.css declares --shadow-* (and --shadow for the bare `shadow`).
+        private static readonly Dictionary<string, ShadowSpec[]> Presets = new()
         {
-            ["sm"] = new ShadowSpec(ShadowColor(0.16f), 8f, 2f, 0f),
-            [""] = new ShadowSpec(ShadowColor(0.20f), 14f, 3f, 0f),
-            ["md"] = new ShadowSpec(ShadowColor(0.24f), 22f, 5f, 0f),
-            ["lg"] = new ShadowSpec(ShadowColor(0.28f), 34f, 8f, 0f),
-            ["xl"] = new ShadowSpec(ShadowColor(0.32f), 48f, 12f, 0f),
-            ["2xl"] = new ShadowSpec(ShadowColor(0.40f), 64f, 18f, 0f),
+            ["2xs"] = new[] { new ShadowSpec(Black(0.05f), 0f, 1f, 0f) },
+            ["xs"] = new[] { new ShadowSpec(Black(0.05f), 2f, 1f, 0f) },
+            [""] = new[] { new ShadowSpec(Black(0.1f), 3f, 1f, 0f), new ShadowSpec(Black(0.1f), 2f, 1f, -1f) },
+            ["sm"] = new[] { new ShadowSpec(Black(0.1f), 3f, 1f, 0f), new ShadowSpec(Black(0.1f), 2f, 1f, -1f) },
+            ["md"] = new[] { new ShadowSpec(Black(0.1f), 6f, 4f, -1f), new ShadowSpec(Black(0.1f), 4f, 2f, -2f) },
+            ["lg"] = new[] { new ShadowSpec(Black(0.1f), 15f, 10f, -3f), new ShadowSpec(Black(0.1f), 6f, 4f, -4f) },
+            ["xl"] = new[] { new ShadowSpec(Black(0.1f), 25f, 20f, -5f), new ShadowSpec(Black(0.1f), 10f, 8f, -6f) },
+            ["2xl"] = new[] { new ShadowSpec(Black(0.25f), 50f, 25f, -12f) },
+            ["inner"] = new[] { new ShadowSpec(Black(0.05f), 4f, 2f, 0f, 0f, inset: true) },
         };
 
         // Mirrors --radius-* in _tokens.uss. rounded-full / arbitrary radii are left to the
@@ -113,12 +115,12 @@ namespace Velvet
             return false;
         }
 
-        // Returns the resolved spec for the last recognized shadow-* utility in
-        // classNames (CSS cascade: later classes win). Returns false when no shadow is
-        // wanted — either no shadow class at all, or the winning class is shadow-none.
-        public static bool TryExtract(string[] classNames, out ShadowSpec spec)
+        // Returns the layers of the last recognized shadow-* utility in classNames (CSS cascade: later classes
+        // win), first on top. Returns false when no shadow is wanted — either no shadow class at all, or the
+        // winning class is shadow-none.
+        public static bool TryExtract(string[] classNames, out ShadowSpec[] spec)
         {
-            spec = default;
+            spec = Array.Empty<ShadowSpec>();
             if (classNames == null)
             {
                 return false;
@@ -140,9 +142,9 @@ namespace Velvet
             return found;
         }
 
-        private static bool TryParse(string cls, out ShadowSpec spec, out bool wantShadow)
+        private static bool TryParse(string cls, out ShadowSpec[] spec, out bool wantShadow)
         {
-            spec = default;
+            spec = Array.Empty<ShadowSpec>();
             wantShadow = false;
             if (string.IsNullOrEmpty(cls))
             {
@@ -168,15 +170,16 @@ namespace Velvet
                 wantShadow = false;
                 return true;
             }
-            if (Presets.TryGetValue(suffix, out spec))
+            if (Presets.TryGetValue(suffix, out var preset))
             {
+                spec = preset;
                 wantShadow = true;
                 return true;
             }
             // Arbitrary value: shadow-[x_y_blur_spread_#color] (underscores are spaces). Sits AFTER the
             // preset lookup so a named preset never reaches it.
             if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
-                && TryParseArbitrary(inner.ToString(), out spec))
+                && TryParseArbitraryList(inner.ToString(), out spec))
             {
                 wantShadow = true;
                 return true;
@@ -185,11 +188,29 @@ namespace Velvet
             return false;
         }
 
-        // Parses the inner body of a shadow-[…] arbitrary value. Tokens are whitespace-separated (the
-        // className uses '_' for spaces); each is classified as a length (CSS box-shadow offset/blur/spread,
-        // assigned positionally as x, y, blur, spread) or a color (the shared StyleColorValueParser grammar). At least the x+y offsets are required (matching CSS); blur/spread
-        // default to 0 and the color defaults to the DEFAULT preset tint. Percent lengths are rejected (the SDF
-        // bake is pixel-based).
+        // Parses the inner body of a shadow-[…] arbitrary value: comma-separated layers, first on top. One
+        // malformed layer rejects the whole list, as the browser drops a box-shadow value it cannot read.
+        private static bool TryParseArbitraryList(string body, out ShadowSpec[] spec)
+        {
+            spec = Array.Empty<ShadowSpec>();
+            var layers = StyleGradientClass.SplitTopLevel(body, ',');
+            var parsed = new ShadowSpec[layers.Count];
+            for (var i = 0; i < layers.Count; i++)
+            {
+                if (!TryParseArbitrary(layers[i], out parsed[i]))
+                {
+                    return false;
+                }
+            }
+            spec = parsed;
+            return parsed.Length > 0;
+        }
+
+        // Parses one layer. Tokens are whitespace-separated (the className uses '_' for spaces); each is
+        // classified as a length (CSS box-shadow offset/blur/spread, assigned positionally as x, y, blur, spread)
+        // or a color (the shared StyleColorValueParser grammar). At least the x+y offsets are required (matching
+        // CSS); blur/spread default to 0 and the color defaults to ArbitraryDefaultColor. Percent lengths are
+        // rejected, as CSS rejects them in a box-shadow.
         private static bool TryParseArbitrary(string body, out ShadowSpec spec)
         {
             spec = default;
@@ -203,11 +224,17 @@ namespace Velvet
             tokens.RemoveAll(t => t.Length == 0);
             var lengths = new float[4]; // x, y, blur, spread
             var lengthCount = 0;
-            var color = ShadowColor(0.20f); // the bare-shadow DEFAULT tint
+            var color = ArbitraryDefaultColor;
             var hasColor = false;
+            var inset = false;
 
             foreach (var token in tokens)
             {
+                if (token == "inset" && !inset)
+                {
+                    inset = true;
+                    continue;
+                }
                 if (StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out var value, out var unit)
                     && unit == LengthUnit.Pixel)
                 {
@@ -233,15 +260,18 @@ namespace Velvet
                 return false; // a box-shadow needs at least x and y offsets
             }
 
-            // x, y, blur, spread — collapse onto the single-softness SDF shadow.
-            spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0]);
+            if (lengths[2] < 0f)
+            {
+                return false; // CSS rejects a negative blur radius
+            }
+            spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0], inset);
             return true;
         }
 
         // Resolves the top-left corner radius (px) from the rounded-* / rounded-t-* /
         // rounded-l-* / rounded-tl-* classes that affect the top-left corner, mirroring the
-        // --radius-* token scale. The shader has a single uniform corner radius, so the top-left
-        // corner is taken as representative. Of the matching classes the one Tailwind emits last wins, as
+        // --radius-* token scale. BoxShadowSilhouette uses it as the pre-layout stand-in for all four corners;
+        // once laid out, each corner's own resolved radius replaces it. Of the matching classes the one Tailwind emits last wins, as
         // StyleSpacingPrecedence ranks them and StyleRuleOrder.CompareUtilities orders two that set the same corners. Returns false for
         // rounded-full / arbitrary radii (those resolve via resolvedStyle.borderTopLeftRadius
         // once laid out) and when no rounding class is present.

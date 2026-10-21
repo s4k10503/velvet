@@ -440,8 +440,8 @@ namespace Velvet
             _appliers.ApplyParticlesSpacer(element, classNames);
             if (paintTail)
             {
-                var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
-                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
+                var skew = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
+                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skew, canReleaseFace);
                 _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
             }
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
