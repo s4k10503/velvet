@@ -261,7 +261,7 @@ namespace Velvet.Tests
             var ok = StyleShadowClass.TryResolveCornerRadius(classNames.Split(' '), out var radius);
 
             // Assert
-            Assert.That((ok, radius), Is.EqualTo((true, expected)));
+            Assert.That(ok ? radius : float.NaN, Is.EqualTo(expected));
         }
 
         // GREEN_ON_BASE(characterization): the base lets the last written of two classes that set the same corners hold them.
@@ -275,7 +275,7 @@ namespace Velvet.Tests
             var ok = StyleShadowClass.TryResolveCornerRadius(classNames.Split(' '), out var radius);
 
             // Assert
-            Assert.That((ok, radius), Is.EqualTo((true, expected)));
+            Assert.That(ok ? radius : float.NaN, Is.EqualTo(expected));
         }
 
         [TestCase("rounded-t-lg rounded-sm", 8f)]
@@ -288,7 +288,7 @@ namespace Velvet.Tests
             var ok = StyleShadowClass.TryResolveCornerRadius(classNames.Split(' '), out var radius);
 
             // Assert
-            Assert.That((ok, radius), Is.EqualTo((true, expected)));
+            Assert.That(ok ? radius : float.NaN, Is.EqualTo(expected));
         }
 
         // GREEN_ON_BASE(characterization): the base returns the base list itself whenever no pose token touches it.
