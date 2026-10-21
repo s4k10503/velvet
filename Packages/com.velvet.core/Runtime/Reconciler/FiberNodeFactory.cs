@@ -747,9 +747,8 @@ namespace Velvet
             try
             {
                 var autoIndex = 0;
-                for (var childIndex = 0; childIndex < children.Length; childIndex++)
+                foreach (var child in children)
                 {
-                    var child = children[childIndex];
                     if (child == null)
                     {
                         continue;
@@ -760,7 +759,7 @@ namespace Velvet
                         FiberLogger.LogWarning("FiberNodeFactory",
                             $"Key \"{child.Key}\" uses reserved prefix \"{AutoKeyPrefix}\". This may conflict with auto-generated keys.");
                     }
-                    var mapKey = PresenceChildMapKey(child.Key, childIndex, ref autoIndex, indexByKey, out var firstChoice);
+                    var mapKey = PresenceChildMapKey(child.Key, ref autoIndex, indexByKey, out var firstChoice);
                     if (mapKey != firstChoice)
                     {
                         FiberLogger.LogWarning("FiberNodeFactory",
@@ -777,14 +776,24 @@ namespace Velvet
         }
 
         // The first occurrence keeps the key it was given. A later one is stored under a map key of its own,
-        // spelled from its index in the children array: on one shared key the extra child is removed on the
-        // reconcile that drops it, rather than tracked as its own exit.
+        // numbered among the repeats of that key: on one shared key the extra child is removed on the
+        // reconcile that drops it, rather than tracked as its own exit, and numbering by repeat rather than
+        // by position keeps a repeat's key when an unrelated sibling is inserted ahead of it. Each key taken
+        // holds the number of repeats it has had; a repeat's own spelling is taken too, so a later key spelled
+        // the same way is a repeat of it rather than a silent collision.
         // FiberContextSpine.PushPresenceChildren calls this same method.
         internal static string PresenceChildMapKey(
-            string? childKey, int childIndex, ref int autoIndex, Dictionary<string, int> taken, out string firstChoice)
+            string? childKey, ref int autoIndex, Dictionary<string, int> taken, out string firstChoice)
         {
             firstChoice = childKey ?? $"{AutoKeyPrefix}{autoIndex++}";
-            return taken.TryAdd(firstChoice, 0) ? firstChoice : $"{AutoKeyPrefix}dup{childIndex}_{firstChoice}";
+            if (taken.TryAdd(firstChoice, 0)) return firstChoice;
+            // MUTANT_SURVIVES(equivalent, arithmetic): counting down spells distinct keys all the same, and the
+            // numbering only has to differ from one repeat to the next.
+            var repeats = taken[firstChoice] + 1;
+            taken[firstChoice] = repeats;
+            var repeat = $"{AutoKeyPrefix}dup{repeats}_{firstChoice}";
+            taken[repeat] = 0;
+            return repeat;
         }
 
         // The anchor a VirtualList item's Component / Provider root mounts on. It takes a slot in the

@@ -506,12 +506,10 @@ namespace Velvet
             var presencePosition = FiberKeying.Presence(position, presence.Key, nodeIndex);
             var taken = new Dictionary<string, int>();
             var autoIndex = 0;
-            for (var childIndex = 0; childIndex < presence.Children.Length; childIndex++)
+            foreach (var child in presence.Children)
             {
-                var child = presence.Children[childIndex];
                 if (child == null) continue;
-                var childKey = FiberNodeFactory.PresenceChildMapKey(
-                    child.Key, childIndex, ref autoIndex, taken, out _);
+                var childKey = FiberNodeFactory.PresenceChildMapKey(child.Key, ref autoIndex, taken, out _);
                 var childPosition = FiberKeying.PresenceChild(presencePosition, childKey);
                 if (PushEnclosingProviders(new[] { child }, childPosition, in walk))
                 {
@@ -524,13 +522,12 @@ namespace Velvet
 
         // Element children, and a Provider reconciled as an element, open a walk of their own.
         // Their occurrence count starts at zero there; this scope does the same.
-        private static bool PushInFreshScope(
-            VNode?[] nodes, WalkPosition position, in SpineWalk walk, bool rootProviderChildrenStartAtWalkRoot = false)
+        private static bool PushInFreshScope(VNode?[] nodes, WalkPosition position, in SpineWalk walk)
         {
             walk.Claims.PushScope();
             try
             {
-                return PushEnclosingProviders(nodes, position, in walk, rootProviderChildrenStartAtWalkRoot);
+                return PushEnclosingProviders(nodes, position, in walk);
             }
             finally
             {

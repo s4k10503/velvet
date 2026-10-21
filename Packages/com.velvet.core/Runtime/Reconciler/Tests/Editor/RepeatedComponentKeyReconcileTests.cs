@@ -18,6 +18,8 @@ namespace Velvet.Tests
     /// stands ahead of it.</item>
     /// <item>A fallback that uses a key its failed output also used is not reported as a repeat.</item>
     /// <item>An AnimatePresence whose children have distinct keys reports no repeat.</item>
+    /// <item>Repeated presence children keep their instances, in order, when an unrelated child is inserted ahead
+    /// of them and when they change places.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -27,6 +29,7 @@ namespace Velvet.Tests
         private static readonly Dictionary<string, Action<int>> s_setters = new();
         private static readonly Dictionary<string, string> s_seen = new();
         private static bool s_markerThrows;
+        private static Action<int> s_setPhase = _ => { };
 
         private readonly List<string> _warnings = new();
         private VisualElement _root;
@@ -38,6 +41,7 @@ namespace Velvet.Tests
             s_setters.Clear();
             s_seen.Clear();
             s_markerThrows = false;
+            s_setPhase = _ => { };
             _warnings.Clear();
             Application.logMessageReceived += OnLog;
         }
@@ -49,6 +53,8 @@ namespace Velvet.Tests
         {
             if (type == LogType.Warning) _warnings.Add(message);
         }
+
+        private string LabelTexts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
 
         private static void Bump(string who)
         {
@@ -125,6 +131,64 @@ namespace Velvet.Tests
             });
 
         [Component(Compiler = false)]
+        private static VNode ScopeHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Component<string>(Reader, "outer-reader", key: "x"),
+                V.Div(children: new VNode[]
+                {
+                    V.Provider(ThemeContext, "inner", new VNode[]
+                    {
+                        V.Component<string>(Reader, "inner-reader", key: "x"),
+                    }),
+                }),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode PresenceFragmentHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Provider(ThemeContext, "outer", new VNode[]
+                {
+                    V.AnimatePresence(children: new VNode[]
+                    {
+                        V.Fragment(new VNode[] { V.Component<string>(Reader, "reader", key: "r") }),
+                    }),
+                }),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode Holder(string label)
+        {
+            var (mounted, _) = Hooks.UseState(label);
+            return V.Label(text: mounted + ">" + label);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ShiftingPresenceHost()
+        {
+            var (phase, setPhase) = Hooks.UseState(0);
+            s_setPhase = n => setPhase.Invoke(n);
+            var first = V.Component<string>(Holder, "A" + phase, key: "x");
+            var second = V.Component<string>(Holder, "B" + phase, key: "x");
+            return V.AnimatePresence(children: phase switch
+            {
+                0 => new VNode[] { first, second },
+                1 => new VNode[] { V.Label(text: "C", key: "y"), first, second },
+                _ => new VNode[] { second, first },
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode AcrossBoundaryHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Component<string>(Reader, "one", key: "s"),
+                V.Component(MarkerBoundary, key: "boundary"),
+                V.Component<string>(Reader, "two", key: "s"),
+            });
+
+        [Component(Compiler = false)]
         private static VNode Marker(string who)
         {
             if (s_markerThrows)
@@ -175,17 +239,33 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARepeatedKeyUnderAComponentThatRepeatsItsSiblingsKey_When_TheInnerRepeatRendersAlone_Then_ItReadsTheNearestProvider()
+        public void Given_ARepeatedKeyUnderAComponentThatRepeatsItsSiblingsKey_When_EachLevelRendersAlone_Then_EachReadsItsNearestProvider()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(NestHost, key: "host"));
 
-            // Act
+            // Act — the outer repeat first, then the repeat inside it; each walk starts from its own spine.
+            Bump("b");
+            mounted.FlushStateForTest();
             Bump("bb");
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(s_seen.GetValueOrDefault("bb"), Is.EqualTo("inner"));
+            Assert.That($"{s_seen.GetValueOrDefault("b")},{s_seen.GetValueOrDefault("bb")}", Is.EqualTo("outer,inner"));
+        }
+
+        [Test]
+        public void Given_ARepeatedKeyInAnElementBesideAnEarlierComponentOfThatKey_When_ItRendersAlone_Then_ItReadsItsOwnProvider()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ScopeHost, key: "host"));
+
+            // Act
+            Bump("inner-reader");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_seen.GetValueOrDefault("inner-reader"), Is.EqualTo("inner"));
         }
 
         [Test]
@@ -200,6 +280,63 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_seen.GetValueOrDefault("reader"), Is.EqualTo("outer"));
+        }
+
+        [Test]
+        public void Given_AFragmentChildOfAPresence_When_ItsComponentRendersAlone_Then_ItReadsTheProvidedValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PresenceFragmentHost, key: "host"));
+
+            // Act
+            Bump("reader");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_seen.GetValueOrDefault("reader"), Is.EqualTo("outer"));
+        }
+
+        [Test]
+        public void Given_RepeatedPresenceChildren_When_AnUnrelatedChildIsInsertedAheadOfThem_Then_EachKeepsItsHookState()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ShiftingPresenceHost, key: "host"));
+
+            // Act
+            s_setPhase(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("C,A0>A1,B0>B1"));
+        }
+
+        [Test]
+        public void Given_RepeatedPresenceChildren_When_TheyChangePlaces_Then_EachInstanceStaysInItsOccurrence()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ShiftingPresenceHost, key: "host"));
+
+            // Act
+            s_setPhase(2);
+            mounted.FlushStateForTest();
+
+            // Assert — the first occurrence is still the instance mounted first, now given the other child's props.
+            Assert.That(LabelTexts(), Is.EqualTo("A0>B2,B0>A2"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reports the repeat across a catching boundary too; this pins
+        // that a catch between the repeats does not make the second one go unreported.
+        [Test]
+        public void Given_ARepeatedKeyAcrossABoundaryThatCatches_When_Mounted_Then_TheRepeatIsStillReported()
+        {
+            // Arrange
+            s_markerThrows = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(AcrossBoundaryHost, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(_warnings.Count(warning => warning.Contains("Duplicate component key")), Is.GreaterThan(0));
         }
 
         // GREEN_ON_BASE(characterization): the base reports no repeat for this arrangement either; this pins that

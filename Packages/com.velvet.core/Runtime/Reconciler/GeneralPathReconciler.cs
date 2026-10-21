@@ -695,14 +695,15 @@ namespace Velvet
 
             // The failed output and the fallback are walked under one component position. Claims the failed
             // output took must not make a fallback child a repeat of a child the failed output already counted.
-            internal Dictionary<(ComponentFiber? parent, long slotPath, string key, object identity), int>
+            internal Dictionary<(ComponentFiber? parent, long slotPath, string key, object identity), int>?
                 CopyComponentKeyClaims()
-                => new(_componentKeyClaims);
+                => _componentKeyClaims.Count == 0 ? null : new(_componentKeyClaims);
 
             internal void RestoreComponentKeyClaims(
-                Dictionary<(ComponentFiber? parent, long slotPath, string key, object identity), int> snapshot)
+                Dictionary<(ComponentFiber? parent, long slotPath, string key, object identity), int>? snapshot)
             {
                 _componentKeyClaims.Clear();
+                if (snapshot == null) return;
                 foreach (var entry in snapshot) _componentKeyClaims[entry.Key] = entry.Value;
             }
 
@@ -2041,6 +2042,12 @@ namespace Velvet
             {
                 foreach (var entry in state.Committed) prevCommitted.Add(entry);
                 foreach (var (key, _) in newKeyed) newKeySet.Add(key);
+                // Presence is judged per key given, not per map key: a previous repeat whose key some child still
+                // holds is not leaving, so it is dropped without an exit.
+                foreach (var (key, node) in prevCommitted)
+                {
+                    if (node.Key is { } given && given != key && newKeySet.Contains(given)) newKeySet.Add(key);
+                }
 
                 var blockEnters = ShouldBlockPresenceEnters(presence, prevCommitted, newKeySet, state);
                 BuildPresenceEmissionPlan(newKeyed, prevCommitted, newKeySet, plan);

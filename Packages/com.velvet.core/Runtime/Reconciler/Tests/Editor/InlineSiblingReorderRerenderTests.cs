@@ -377,8 +377,8 @@ namespace Velvet.Tests
 
             // Assert — each position holds the element it held at mount: 0 and 1, and -1 for an element that is new.
             Assert.That(
-                host.Children().Select(child => Array.IndexOf(mountedElements, child)).ToArray(),
-                Is.EqualTo(new[] { 0, 1 }));
+                string.Join(",", host.Children().Select(child => Array.IndexOf(mountedElements, child))),
+                Is.EqualTo("0,1"));
         }
 
         [Test]

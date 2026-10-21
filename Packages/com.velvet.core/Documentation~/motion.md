@@ -112,8 +112,9 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the
   parent, so put `flex` / `gap-*` / wrapping on the parent.
-- Two children given the same key both render, under a warning. A later render in the same order
-  keeps both. When a single child with that key remains, the later occurrence is the one that exits.
+- Two children given the same key both render, under a warning. A later render in which the repeats keep
+  their relative order keeps each of them. When fewer children with that key remain, the surplus repeats leave
+  at once without playing an exit, and the earlier ones keep their instances.
 - **Framer's splice semantics:** while a ghost exits, surviving siblings keep their positions;
   the ghost holds its slot until the exit completes (the default `Sync` mode).
 - Re-adding a key mid-exit cancels the exit and returns the element to its resting variant —

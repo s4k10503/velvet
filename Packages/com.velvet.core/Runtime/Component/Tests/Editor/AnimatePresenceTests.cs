@@ -23,7 +23,7 @@ namespace Velvet.Tests
     /// directly into the parent with no intermediate wrapper element; a multi-element resolved range occupies
     /// several slots and every one is removed when its key exits.</item>
     /// <item>Patching adds, updates, removes, and reorders keyed children so DOM order matches VNode order;
-    /// duplicate keys both render, and a later render in the same order keeps both; a null-keyed child
+    /// duplicate keys both render, and a later render keeping their relative order keeps both; a null-keyed child
     /// receives a position-based auto key that coexists with explicit keys.</item>
     /// <item>On exit, a child with a real transition stays in the DOM until the transition completes (and is
     /// retained if re-added meanwhile), whereas a child with no transition or
@@ -493,6 +493,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARepeatAndALaterKeySpelledLikeTheRepeatsKey_When_InitialRender_Then_AllThreeCommit()
+        {
+            // Arrange — the third key is the one the second child's map key is spelled as.
+            var tree = Presence(
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First")),
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("Second")),
+                V.Motion(key: "__ap_auto_dup1_dup", transition: StyleTransitionConfig.None, children: Label("Third")));
+
+            // Act
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("First,Second,Third"));
+        }
+
+        [Test]
         public void Given_DuplicateKeys_When_UpdatedInTheSameOrder_Then_BothChildrenShowTheNewText()
         {
             // Arrange
@@ -512,7 +528,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_DuplicateKeys_When_TheRepeatIsRemoved_Then_ItStaysForThatReconcile()
+        public void Given_DuplicateKeys_When_TheRepeatIsRemoved_Then_ItLeavesAtOnceWithoutAnExit()
         {
             // Arrange
             var both = Presence(
@@ -525,8 +541,8 @@ namespace Velvet.Tests
             // Act
             Reconciler.Reconcile(Root, both, firstOnly);
 
-            // Assert — the first child is still present, and the repeat has not left yet.
-            Assert.That(LabelTexts(), Is.EqualTo("First,Second"));
+            // Assert — a child still holds the key, so the repeat is not leaving: it is gone this reconcile.
+            Assert.That(LabelTexts(), Is.EqualTo("First"));
         }
 
         #endregion
