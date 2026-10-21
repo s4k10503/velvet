@@ -4884,8 +4884,9 @@ namespace Velvet.Tests
 
         // "a", and a control holding no id, both transitioning everything linearly over a second, turn or round as
         // classes turn; some 0.3 s in, "a" moves under "card" from "b" 300px right on a three-second tween, mixing in
-        // from "b"'s none. Returns "a"'s own some 0.2 s on, read off the projection, and the control's.
-        private (float Own, float Control) TakeOverAsItTurns(string to, System.Func<VisualElement, float> control,
+        // from "b"'s none. Returns "a"'s own some 0.2 s on, read off the projection, and the control's, with a line naming
+        // the state they were read in.
+        private (float Own, float Control, string State) TakeOverAsItTurns(string to, System.Func<VisualElement, float> control,
             System.Func<LayoutIdProjection, float> drawn)
         {
             VelvetStyleUtilities.AttachTo(Root);
@@ -4897,13 +4898,33 @@ namespace Velvet.Tests
             (s_aClasses, s_controlClasses) = (s_aClasses + " " + to, s_controlClasses + " " + to);
             RenderShared(mounted);
             for (var i = 0; i < 18; i++) Tick();
+            var runningBefore = RunsARotateTransition(Root.Q<VisualElement>("a"));
             (s_aId, s_aLeft) = ("card", 0);
             RenderShared(mounted);
+            var runningAfterRender = RunsARotateTransition(Root.Q<VisualElement>("a"));
             for (var i = 0; i < 12; i++) Tick();
             var a = Root.Q<VisualElement>("a");
-            var own = drawn(mounted.Root.Reconciler.Context.LayoutIdProjections[a]) / (1f - TranslateX(a) / 300f);
+            var projection = mounted.Root.Reconciler.Context.LayoutIdProjections[a];
+            var own = drawn(projection) / (1f - TranslateX(a) / 300f);
             var native = control(Root.Q<VisualElement>("control"));
-            return (own, native);
+            var state = $"carry value {projection.RotateCarry.Value}, carry target {projection.RotateCarry.Target}, "
+                + $"engine rotate transition running before the move's render {runningBefore} and after it {runningAfterRender}, "
+                + $"control resolved rotate {native}, a's translate x {TranslateX(a)}, drawn rotate {projection.DrawnRotate}, "
+                + $"writes rotate {projection.WritesRotate}, start rotate {projection.StartRotate}";
+            return (own, native, state);
+        }
+
+        // Whether the panel is running a rotate transition on the element, read as RunningStyleTransition's take-over does.
+        private static bool RunsARotateTransition(VisualElement element)
+        {
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+            var type = typeof(RunningStyleTransition);
+            var find = type.GetMethod("Find", flags)!;
+            var found = find.Invoke(null, new[]
+            {
+                element, type.GetField("s_rotates", flags)!.GetValue(null), type.GetField("s_rotateId", flags)!.GetValue(null),
+            });
+            return found != null;
         }
 
 
@@ -4911,10 +4932,10 @@ namespace Velvet.Tests
         public void Given_AMotionTurningOnATransition_When_ItTakesAHeldIdAndMixesItsRotate_Then_ItsOwnRunsAsTheEngineRunsIt()
         {
             // Arrange / Act
-            var (own, control) = TakeOverAsItTurns("rotate-90", e => e.resolvedStyle.rotate.angle.ToDegrees(), p => p.DrawnRotate);
+            var (own, control, state) = TakeOverAsItTurns("rotate-90", e => e.resolvedStyle.rotate.angle.ToDegrees(), p => p.DrawnRotate);
 
             // Assert — within a degree of the control, which is half way round.
-            Assert.That(own, Is.EqualTo(control > 30f && control < 60f ? control : float.NaN).Within(1f));
+            Assert.That(own, Is.EqualTo(control > 30f && control < 60f ? control : float.NaN).Within(1f), state);
         }
 
 
