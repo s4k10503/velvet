@@ -587,7 +587,9 @@ namespace Velvet
             if (transition.Type == TransitionType.Spring)
             {
                 return transition.DelaySec
-                    + (float)repeat.TotalSec(SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass));
+                    + (float)repeat.TotalSec(transition.SpringSettleSec is { } settleSec
+                        ? MotionSpringDriver.SampledEndSec(settleSec)
+                        : SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass));
             }
 
             var hold = transition.DurationSec + transition.DelaySec;
@@ -629,9 +631,14 @@ namespace Velvet
         // segment once.
         private const float MaxSegmentRepeat = 20f;
         private static readonly ConditionalWeakTable<StyleTransitionConfig, StyleTransitionConfig> s_segmentOnce = new();
+        private static readonly ConditionalWeakTable<StyleTransitionConfig, StyleTransitionConfig> s_inSequence = new();
 
-        private static StyleTransitionConfig SegmentTransition(StyleTransitionConfig transition)
+        private static StyleTransitionConfig SegmentTransition(StyleTransitionConfig authored)
         {
+            // Cached, as the repeat's copy below is, so a step arriving again hands the same transition on.
+            var transition = authored.SpringIsInstant
+                ? s_inSequence.GetValue(authored, static instant => instant.InSequence())
+                : authored;
             if (transition.Repeat < MaxSegmentRepeat)
             {
                 return transition;

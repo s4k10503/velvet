@@ -58,7 +58,7 @@ namespace Velvet.Tests
             var spring = SpringOverEveryChannel();
 
             // Act
-            MotionSpringDriver.InheritVelocity(spring, LinearBezierAtHalf(), 1f);
+            MotionSpringDriver.ContinueFrom(spring, BezierTweenDriver.Drawn(LinearBezierAtHalf(), 1f), fromDrawn: false);
 
             // Assert
             Assert.That(StartVelocity(spring, channel), Is.EqualTo(Slope).Within(0.5f));

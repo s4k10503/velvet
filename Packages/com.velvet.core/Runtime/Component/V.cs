@@ -2568,7 +2568,8 @@ namespace Velvet
         /// transition preset (e.g. setting only the duration while keeping the preset's other fields).
         /// To disable animation entirely (immediate mount / unmount), pass <c>transition: StyleTransitionConfig.None</c>.
         /// Note: when <c>DurationSec</c> is 0 (including <c>StyleTransitionConfig.None</c>), <c>delay</c> is ignored
-        /// and completion is immediate.
+        /// and completion is immediate, except for a <c>Spring</c> with no <c>RepeatDelaySec</c>, which is instant
+        /// but waits out <c>delay</c> before it lands (see <c>motion.md</c>).
         /// </summary>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -2577,7 +2578,8 @@ namespace Velvet
         /// <paramref name="variants"/> entry naming its own replaces it for swaps into that pose.</param>
         /// <param name="duration">Override the transition duration (seconds).</param>
         /// <param name="easing">Override the transition easing mode.</param>
-        /// <param name="delay">Override the transition delay (seconds). Ignored when <c>DurationSec</c> is 0.</param>
+        /// <param name="delay">Override the transition delay (seconds). Ignored when <c>DurationSec</c> is 0, unless the
+        /// transition is a <c>Spring</c> with no <c>RepeatDelaySec</c>, which waits it out.</param>
         /// <param name="onEnterComplete">Callback invoked when the enter transition finishes.</param>
         /// <param name="children">Child VNodes rendered inside the motion element.</param>
         /// <param name="props">Optional FiberElementProps (text / tooltip / enabled / etc.) bag.</param>

@@ -11,13 +11,13 @@ element's rendered output, the CSS `filter` equivalent. Velvet exposes it two wa
 
 Every filter utility on an element — built-in or custom — composes into the **one** inline
 `filter` list, so they merge rather than overwrite: `blur-sm grayscale-[0.5]` produces
-`filter: blur(4px) grayscale(0.5)`.
+`filter: blur(8px) grayscale(0.5)`.
 
 ## Built-in filter utilities
 
 | Utility | Values | Notes |
 |---|---|---|
-| `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/12/16/24/40/64px | bracket: `px`, `rem` (at 16px), an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`) or a bare `0`; no `%`, as CSS `blur()` takes none. A math function that comes to pixels is read; `em`, `vw` and the other lengths only an element can measure are not ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)) |
+| `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`xs`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/8/12/16/24/40/64px | bracket: `px`, `rem` (at 16px), an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`) or a bare `0`; no `%`, as CSS `blur()` takes none. A math function that comes to pixels is read; `em`, `vw` and the other lengths only an element can measure are not ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)) |
 | `contrast-<n>` / `contrast-[N]` | presets 0–200 (× 0.01); bracket ≥ 0, or a percentage | |
 | `grayscale` / `grayscale-0` / `grayscale-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
 | `invert` / `invert-0` / `invert-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
@@ -109,7 +109,7 @@ registration that accepts the arguments resolves it.
 ### Composition and layering
 
 - Custom functions compose **after** the built-in utilities, in the order their classes first
-  applied: `blur-sm filter-[dissolve:0.4]` → `blur(4px) dissolve(0.4)`.
+  applied: `blur-sm filter-[dissolve:0.4]` → `blur(8px) dissolve(0.4)`.
 - Each registered name is its own layer stack, so `filter-[dissolve:0.4] filter-[glitch:0.1]`
   are independent — and a variant over one name (`hover:filter-[dissolve:0.9]`) restores that
   name's base arguments on hover-off without touching the others.
@@ -170,14 +170,14 @@ either animator (Group E of `FilterTransitionPanelTests`). Any other change is d
 CSS: a filter added *before* an existing one (`grayscale` → `blur grayscale`), or a position whose function
 changes. The native filter types the utilities compose (`blur`, `contrast`, `grayscale`, `hue-rotate`, `invert`,
 `sepia`) and the first-party built-in customs (`brightness`, `saturate`, `drop-shadow`) interpolate, so
-`transition-filter duration-300` tweens `blur-0` → `blur-md` (or `brightness-100` → `brightness-150`) smoothly.
+`transition-filter duration-300` tweens `blur-none` → `blur-md` (or `brightness-100` → `brightness-150`) smoothly.
 A `drop-shadow` added or removed at the end fades from or to every length `0` and a transparent colour, as CSS
 pads it: those are the neutrals its definition declares.
 
 A user custom filter is a `url()` reference in CSS's terms, and CSS interpolates a filter list holding one
 discretely. So a change where the element's filter holds a `filter-[name:args]` before or after it applies at
 once under either animator: `filter-[glow:#f00:2]` → `hover:filter-[glow:#00f:6]`, a custom appearing or going,
-and a built-in beside a custom (`blur-0 filter-[glow:2]` → `blur-md filter-[glow:2]`) alike. The same holds for
+and a built-in beside a custom (`blur-none filter-[glow:2]` → `blur-md filter-[glow:2]`) alike. The same holds for
 the first filter utility written over a stylesheet `filter` that holds a custom filter function. Such a change
 stops a filter tween already running on the element.
 

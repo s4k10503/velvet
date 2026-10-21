@@ -13,10 +13,12 @@ Both talk to `$GITHUB_REPOSITORY` through `gh api`, as the token in `$GH_TOKEN`.
 **Who wrote the record is checked, not assumed.** No ruleset can be set on the branch from here, so
 the writer is enforced by what a commit carries. `publish` creates its commit through the Git Data
 API with the workflow's `GITHUB_TOKEN`, giving no author, committer or signature of its own, and moves
-the branch only forward. `fetch` walks the branch's first-parent history and refuses the whole record
-where any commit is not one GitHub reports as verified with reason `valid` and committed by
-`TRUSTED_COMMITTER`, naming it. A person with write access can still push to the branch, or an
-administrator rewrite it; a commit GitHub did not sign as the bot is refused rather than read.
+the branch only forward. `fetch` walks the branch's first-parent history and refuses the whole record where any commit is
+not one GitHub reports as verified with reason `valid`, authored by `TRUSTED_AUTHOR` and committed by
+`TRUSTED_COMMITTER`, naming it. That refuses an unsigned push, a commit authored by a named person
+and a commit committed by anyone but `web-flow`. It does not tell this workflow from another that
+writes the same way, nor from a commit someone with write access has `web-flow` sign with the bot
+named as author; an administrator can also rewrite the branch.
 
 An entry's name is its content key, so two runs that wrote the same key wrote the same mutant of the
 same file under the same mutator, and a later one replacing an earlier one is the newer verdict.
@@ -43,8 +45,10 @@ ENTRIES = "records"
 
 PUSH_ATTEMPTS = 5
 
-# The login GitHub reports as the committer of a commit the workflow's token created.
-TRUSTED_COMMITTER = "github-actions[bot]"
+# The logins GitHub reports on a commit the workflow's token created through the Git Data API: the
+# bot as author, and the web-flow account that signs it as committer.
+TRUSTED_AUTHOR = "github-actions[bot]"
+TRUSTED_COMMITTER = "web-flow"
 
 
 class ApiError(RuntimeError):
@@ -81,19 +85,23 @@ def remote_branch(project):
 
 
 def foreign_commits(project, slug, call=gh_api):
-    """Each commit on the fetched branch's first-parent history that is not GitHub-signed by
-    `TRUSTED_COMMITTER`, as "sha: why", oldest last. A first-parent history names each commit once,
-    so each is asked about once."""
+    """Each commit on the fetched branch's first-parent history that GitHub does not report as
+    verified with reason `valid`, authored by `TRUSTED_AUTHOR` and committed by `TRUSTED_COMMITTER`,
+    as "sha: why", oldest last. A first-parent history names each commit once, so each is asked
+    about once."""
     history = git("rev-list", "--first-parent", "refs/remotes/origin/{}".format(RECORD_BRANCH),
                   cwd=project).stdout.split()
     problems = []
     for sha in history:
         held = call("GET", "repos/{}/commits/{}".format(slug, sha)) or {}
         verification = (held.get("commit") or {}).get("verification") or {}
+        author = (held.get("author") or {}).get("login")
         committer = (held.get("committer") or {}).get("login")
         if verification.get("verified") is not True or verification.get("reason") != "valid":
             problems.append("{}: GitHub does not report it signed (verified {}, reason {})".format(
                 sha, verification.get("verified"), verification.get("reason")))
+        elif author != TRUSTED_AUTHOR:
+            problems.append("{}: authored by {}, not {}".format(sha, author, TRUSTED_AUTHOR))
         elif committer != TRUSTED_COMMITTER:
             problems.append("{}: committed by {}, not {}".format(sha, committer, TRUSTED_COMMITTER))
     return problems
