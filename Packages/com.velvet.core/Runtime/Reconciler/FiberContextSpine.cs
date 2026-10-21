@@ -100,13 +100,7 @@ namespace Velvet
 
             internal void PopScope() => _scope = _scopes.Pop();
 
-            internal void Clear()
-            {
-                _counts.Clear();
-                _scopes.Clear();
-                _scope = 0;
-                _nextScope = 1;
-            }
+            internal void Clear() => _counts.Clear();
         }
 
         // Pushes the Provider values that enclose target onto the live cursor and
@@ -349,18 +343,14 @@ namespace Velvet
             if (provider.Children != null)
             {
                 // Children starting at the walk root are the ones a Provider reconciled as an element reconciles.
-                if (childrenStartAtWalkRoot)
-                {
-                    if (PushInFreshScope(
-                            FiberKeying.UnwrapLoneFragment(provider.Children), FiberKeying.WalkRoot, in walk))
-                    {
-                        return true;
-                    }
-                }
-                else if (PushEnclosingProviders(
-                             provider.Children,
-                             FiberKeying.ProviderChild(position, provider.Key, nodeIndex),
-                             in walk))
+                var found = childrenStartAtWalkRoot
+                    ? PushInFreshScope(
+                        FiberKeying.UnwrapLoneFragment(provider.Children), FiberKeying.WalkRoot, in walk)
+                    : PushEnclosingProviders(
+                        provider.Children,
+                        FiberKeying.ProviderChild(position, provider.Key, nodeIndex),
+                        in walk);
+                if (found)
                 {
                     return true;
                 }
@@ -516,11 +506,12 @@ namespace Velvet
             var presencePosition = FiberKeying.Presence(position, presence.Key, nodeIndex);
             var taken = new Dictionary<string, int>();
             var autoIndex = 0;
-            foreach (var child in presence.Children)
+            for (var childIndex = 0; childIndex < presence.Children.Length; childIndex++)
             {
+                var child = presence.Children[childIndex];
                 if (child == null) continue;
-                var childKey = FiberNodeFactory.PresenceChildMapKey(child.Key, ref autoIndex, taken, out _);
-                if (child is FragmentNode) continue;
+                var childKey = FiberNodeFactory.PresenceChildMapKey(
+                    child.Key, childIndex, ref autoIndex, taken, out _);
                 var childPosition = FiberKeying.PresenceChild(presencePosition, childKey);
                 if (PushEnclosingProviders(new[] { child }, childPosition, in walk))
                 {

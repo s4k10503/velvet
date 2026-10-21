@@ -369,15 +369,16 @@ namespace Velvet.Tests
             // Arrange
             using var mounted = V.Mount(_root, V.Component(DupHost, key: "host"));
             var host = _root.Q<VisualElement>("dup-host");
-            var first = host.ElementAt(0);
-            var second = host.ElementAt(1);
+            var mountedElements = host.Children().ToArray();
 
             // Act — the same two siblings, in the same order, with a new render of each.
             s_setVersion.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(new[] { host.ElementAt(0), host.ElementAt(1) }, Is.EqualTo(new[] { first, second }));
+            // Assert — each position holds the element it held at mount: 0 and 1, and -1 for an element that is new.
+            Assert.That(
+                host.Children().Select(child => Array.IndexOf(mountedElements, child)).ToArray(),
+                Is.EqualTo(new[] { 0, 1 }));
         }
 
         [Test]
@@ -393,8 +394,8 @@ namespace Velvet.Tests
 
             // Assert — the text each sibling mounted with stays on that sibling, and the new render reaches both.
             Assert.That(
-                new[] { ((Label)host.ElementAt(0)).text, ((Label)host.ElementAt(1)).text },
-                Is.EqualTo(new[] { "a:0>a:1", "b:0>b:1" }));
+                string.Join(",", host.Children().Cast<Label>().Select(label => label.text)),
+                Is.EqualTo("a:0>a:1,b:0>b:1"));
         }
     }
 

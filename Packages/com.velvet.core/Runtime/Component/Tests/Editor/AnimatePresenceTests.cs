@@ -478,7 +478,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_DuplicateKeys_When_InitialRender_Then_BothChildrenCommit()
         {
-            // Arrange
+            // Arrange — the repeat is reported (LogAssert also fails if no warning fires).
+            UnityEngine.TestTools.LogAssert.Expect(
+                UnityEngine.LogType.Warning, new System.Text.RegularExpressions.Regex("Both children render"));
             var tree = Presence(
                 V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First")),
                 V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("Second")));
