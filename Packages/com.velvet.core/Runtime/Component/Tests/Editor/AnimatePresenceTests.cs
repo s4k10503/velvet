@@ -509,6 +509,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AKeySpelledLikeARepeatsKeyAheadOfTheRepeat_When_InitialRender_Then_AllThreeCommit()
+        {
+            // Arrange — the first key is the one the repeat's map key would otherwise be spelled as.
+            var tree = Presence(
+                V.Motion(key: "__ap_auto_dup1_dup", transition: StyleTransitionConfig.None, children: Label("Zero")),
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First")),
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("Second")));
+
+            // Act
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("Zero,First,Second"));
+        }
+
+        [Test]
         public void Given_DuplicateKeys_When_UpdatedInTheSameOrder_Then_BothChildrenShowTheNewText()
         {
             // Arrange

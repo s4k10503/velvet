@@ -18,6 +18,8 @@ namespace Velvet.Tests
     /// stands ahead of it.</item>
     /// <item>A fallback that uses a key its failed output also used is not reported as a repeat.</item>
     /// <item>An AnimatePresence whose children have distinct keys reports no repeat.</item>
+    /// <item>Repeated components keep their instances, in order, when an unrelated sibling is inserted ahead of
+    /// them and when they change places.</item>
     /// <item>Repeated presence children keep their instances, in order, when an unrelated child is inserted ahead
     /// of them and when they change places.</item>
     /// </list>
@@ -180,6 +182,21 @@ namespace Velvet.Tests
         }
 
         [Component(Compiler = false)]
+        private static VNode ShiftingInlineHost()
+        {
+            var (phase, setPhase) = Hooks.UseState(0);
+            s_setPhase = n => setPhase.Invoke(n);
+            var first = V.Component<string>(Holder, "A" + phase, key: "x");
+            var second = V.Component<string>(Holder, "B" + phase, key: "x");
+            return V.Div(children: phase switch
+            {
+                0 => new VNode[] { first, second },
+                1 => new VNode[] { V.Label(text: "C", key: "y"), first, second },
+                _ => new VNode[] { second, first },
+            });
+        }
+
+        [Component(Compiler = false)]
         private static VNode AcrossBoundaryHost()
             => V.Div(children: new VNode[]
             {
@@ -323,6 +340,34 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert — the first occurrence is still the instance mounted first, now given the other child's props.
+            Assert.That(LabelTexts(), Is.EqualTo("A0>B2,B0>A2"));
+        }
+
+        [Test]
+        public void Given_RepeatedComponents_When_AnUnrelatedSiblingIsInsertedAheadOfThem_Then_EachKeepsItsHookState()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ShiftingInlineHost, key: "host"));
+
+            // Act
+            s_setPhase(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("C,A0>A1,B0>B1"));
+        }
+
+        [Test]
+        public void Given_RepeatedComponents_When_TheyChangePlaces_Then_EachInstanceStaysInItsOccurrence()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ShiftingInlineHost, key: "host"));
+
+            // Act
+            s_setPhase(2);
+            mounted.FlushStateForTest();
+
+            // Assert
             Assert.That(LabelTexts(), Is.EqualTo("A0>B2,B0>A2"));
         }
 

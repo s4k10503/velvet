@@ -779,21 +779,26 @@ namespace Velvet
         // numbered among the repeats of that key: on one shared key the extra child is removed on the
         // reconcile that drops it, rather than tracked as its own exit, and numbering by repeat rather than
         // by position keeps a repeat's key when an unrelated sibling is inserted ahead of it. Each key taken
-        // holds the number of repeats it has had; a repeat's own spelling is taken too, so a later key spelled
-        // the same way is a repeat of it rather than a silent collision.
+        // holds the number of repeats it has had, and a spelling already taken, by a key given earlier or by
+        // an earlier repeat, is skipped, so no repeat shares a map key with another child.
         // FiberContextSpine.PushPresenceChildren calls this same method.
         internal static string PresenceChildMapKey(
             string? childKey, ref int autoIndex, Dictionary<string, int> taken, out string firstChoice)
         {
             firstChoice = childKey ?? $"{AutoKeyPrefix}{autoIndex++}";
             if (taken.TryAdd(firstChoice, 0)) return firstChoice;
-            // MUTANT_SURVIVES(equivalent, arithmetic): counting down spells distinct keys all the same, and the
-            // numbering only has to differ from one repeat to the next.
-            var repeats = taken[firstChoice] + 1;
-            taken[firstChoice] = repeats;
-            var repeat = $"{AutoKeyPrefix}dup{repeats}_{firstChoice}";
-            taken[repeat] = 0;
-            return repeat;
+            var repeats = taken[firstChoice];
+            // MUTANT_SURVIVES(equivalent, boundary): firstChoice is taken but is no candidate, so at most
+            // Count - 1 candidates are taken and Count attempts always find a free one; one more changes nothing.
+            for (var attempt = 0; attempt < taken.Count; attempt++)
+            {
+                // MUTANT_SURVIVES(equivalent, arithmetic): counting down spells distinct candidates all the same.
+                var repeat = $"{AutoKeyPrefix}dup{++repeats}_{firstChoice}";
+                if (!taken.TryAdd(repeat, 0)) continue;
+                taken[firstChoice] = repeats;
+                return repeat;
+            }
+            throw new InvalidOperationException($"No free map key for a repeat of \"{firstChoice}\".");
         }
 
         // The anchor a VirtualList item's Component / Provider root mounts on. It takes a slot in the
