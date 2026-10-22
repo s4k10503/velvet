@@ -86,6 +86,25 @@ namespace Velvet
             ["to"] = new[] { "length", "percentage" },
         };
 
+        // Whether the browser rejects value where it is written as a <color>: a value TryParseColor does not read,
+        // unless it is a function or a bare word, which this does not judge (var(), oklch(), currentcolor, a named
+        // colour TryParseColor does not know).
+        internal static bool RejectsAsColour(string value)
+        {
+            if (value.IndexOf('(') >= 0 || TryParseColor(value.AsSpan(), out _))
+            {
+                return false;
+            }
+            foreach (var c in value)
+            {
+                if ((c < 'a' || c > 'z') && (c < 'A' || c > 'Z'))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Internal so the shadow, ring, divide, gradient and filter grammars share the one colour grammar, which
         // TryParseCssColor owns.
         internal static bool TryParseColor(ReadOnlySpan<char> valueStr, out Color color)

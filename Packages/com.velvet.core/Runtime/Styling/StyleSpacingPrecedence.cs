@@ -502,7 +502,7 @@ namespace Velvet
         // `hover:focus:` and `focus:hover:` name one rule's variants, so plain ones compare as a set. An arbitrary
         // selector variant (`[&>*]:`) is order-sensitive, as Tailwind reads `[&>*]:hover:` and `hover:[&>*]:` as
         // different selectors, so those keep their order.
-        private static string VariantSetOf(string variants)
+        internal static string VariantSetOf(string variants)
         {
             if (variants.Length == 0)
             {
@@ -510,6 +510,18 @@ namespace Velvet
             }
             var parts = new List<string>();
             var ordered = new List<string>();
+            foreach (var part in VariantPartsOf(variants))
+            {
+                (part.StartsWith("[", StringComparison.Ordinal) ? ordered : parts).Add(part);
+            }
+            parts.Sort(StringComparer.Ordinal);
+            return string.Join(":", parts) + "|" + string.Join(":", ordered);
+        }
+
+        // The variants in front of a payload as written, split at each ':' outside brackets.
+        internal static List<string> VariantPartsOf(string variants)
+        {
+            var parts = new List<string>();
             var depth = 0;
             var start = 0;
             for (var i = 0; i < variants.Length; i++)
@@ -524,13 +536,11 @@ namespace Velvet
                 }
                 else if (variants[i] == ':' && depth == 0)
                 {
-                    var part = variants.Substring(start, i - start);
-                    (part.StartsWith("[", StringComparison.Ordinal) ? ordered : parts).Add(part);
+                    parts.Add(variants.Substring(start, i - start));
                     start = i + 1;
                 }
             }
-            parts.Sort(StringComparer.Ordinal);
-            return string.Join(":", parts) + "|" + string.Join(":", ordered);
+            return parts;
         }
 
         private static bool SameSlot(Reading a, Reading z)

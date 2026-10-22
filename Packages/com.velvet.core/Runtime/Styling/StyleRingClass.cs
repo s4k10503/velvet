@@ -149,8 +149,8 @@ namespace Velvet
 
         // Whether the box-shadow Tailwind composes for these classes is one the browser discards, which takes the
         // ring and every shadow-* with it: a ring whose colour, width or offset colour the browser rejects, or a
-        // shadow-[…] holding a bare non-zero number. The ring colour and width are read last class winning, as
-        // Accumulate reads them.
+        // shadow-[…] the browser rejects as a box-shadow (StyleShadowClass.HoldsRejectedValue). The ring colour and
+        // width, and the shadow, are read last class winning, as Accumulate and StyleShadowClass.TryExtract read them.
         internal static bool DiscardsBoxShadow(string[]? classNames)
         {
             if (classNames == null)
@@ -199,8 +199,9 @@ namespace Velvet
                 && ((ringShadow && (ringWidthRejected || ringColourRejected)) || (offsetWidth && offsetColourRejected) || shadowRejected);
         }
 
-        // One ring- or ring-offset- suffix as Tailwind types it: a width (rejected when the browser would reject
-        // it) or a colour (rejected likewise); a palette name it does not know sets neither.
+        // One ring- or ring-offset- suffix as Tailwind types it: a width or a colour, each rejected only where the
+        // browser rejects it, so a function or a unit Velvet does not read is not; a palette name it does not know
+        // sets neither.
         private static void ReadBoxShadowPart(string suffix, string root, ref bool width, ref bool colourRejected,
             out bool widthRejected)
         {
@@ -222,14 +223,15 @@ namespace Velvet
             {
                 return;
             }
+            var value = inner.ToString();
             if (hint != null ? StyleColorValueParser.HintSelectsNonColour(root, hint) : TailwindDataTypes.IsLength(inner))
             {
                 width = true;
-                widthRejected = !StyleArbitraryValueResolver.TryParseValue(inner, out _, out _)
-                    && !StyleLengthExpression.TryParse(inner, out _);
+                widthRejected = value.IndexOf('(') < 0 && !StyleCompositeRejection.IsLength(value)
+                    && !StyleArbitraryValueResolver.TryParseValue(inner, out _, out _);
                 return;
             }
-            colourRejected = !StyleColorValueParser.TryParseColor(inner, out _);
+            colourRejected = StyleColorValueParser.RejectsAsColour(value);
         }
 
         private static void Accumulate(string cls, ref RingSlots slots)

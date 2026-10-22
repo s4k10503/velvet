@@ -194,34 +194,92 @@ namespace Velvet
             return false;
         }
 
-        // Whether cls is a box-shadow utility Tailwind generates: shadow, a preset, shadow-none or a bracket.
+        // Whether cls is a utility Tailwind writes a box-shadow for: shadow, a preset, shadow-none, or a bracket it does
+        // not type as a colour, which it writes into --tw-shadow-color alone.
         internal static bool DeclaresBoxShadow(string cls)
-            => cls == "shadow" || (cls.StartsWith("shadow-", StringComparison.Ordinal)
-                && (cls == "shadow-none" || Presets.ContainsKey(cls.Substring("shadow-".Length)) || cls["shadow-".Length] == '['));
+        {
+            if (cls == "shadow" || cls == "shadow-none"
+                || (cls.StartsWith("shadow-", StringComparison.Ordinal) && Presets.ContainsKey(cls.Substring("shadow-".Length))))
+            {
+                return true;
+            }
+            return TryReadBracket(cls, out var hint, out var value)
+                && (hint != null ? hint != "color" : !TailwindDataTypes.IsColor(value.AsSpan()));
+        }
 
-        // Whether cls is a shadow-[…] Tailwind writes as a box-shadow value that the browser rejects because it
-        // holds a bare non-zero number (`shadow-[0_4_8_#000]`).
+        // Whether cls is a shadow-[…] whose value the browser rejects as a box-shadow, for a class DeclaresBoxShadow
+        // takes. Each layer is two to four lengths in a row, the third not negative, with at most one colour and one
+        // inset around them; a layer holding a var() is not judged, nor is a function or a word as a colour
+        // (StyleColorValueParser.RejectsAsColour).
         internal static bool HoldsRejectedValue(string cls)
         {
-            if (!cls.StartsWith("shadow-[", StringComparison.Ordinal)
-                || !StyleArbitraryValueResolver.TryStripBrackets(cls, "shadow-".Length, out var inner)
-                || !StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
-                || hint == "color" || (hint == null && StyleColorValueParser.TryParseColor(inner, out _)))
+            if (!TryReadBracket(cls, out _, out var value))
             {
                 return false;
             }
-            foreach (var layer in StyleGradientClass.SplitTopLevel(inner.ToString(), ','))
+            foreach (var layer in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))
             {
-                foreach (var token in StyleGradientClass.SplitTopLevel(layer.Replace('_', ' '), ' '))
+                if (layer.IndexOf("var(", StringComparison.OrdinalIgnoreCase) < 0 && RejectsAsLayer(layer))
                 {
-                    if (float.TryParse(token, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n)
-                        && n != 0f)
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
             return false;
+        }
+
+        private static bool RejectsAsLayer(string layer)
+        {
+            var lengths = 0;
+            var lengthsEnded = false;
+            var colours = 0;
+            var insets = 0;
+            foreach (var token in StyleGradientClass.SplitTopLevel(layer, ' '))
+            {
+                if (token.Length == 0)
+                {
+                    continue;
+                }
+                if (!TailwindDataTypes.IsColor(token.AsSpan()) && (token == "0" || StyleCompositeRejection.IsLength(token)
+                    || TailwindMathSpacing.HasMathFunction(token)))
+                {
+                    if (lengthsEnded || (lengths == 2 && token[0] == '-'))
+                    {
+                        return true;
+                    }
+                    lengths++;
+                    continue;
+                }
+                lengthsEnded = lengths > 0;
+                if (string.Equals(token, "inset", StringComparison.OrdinalIgnoreCase))
+                {
+                    insets++;
+                }
+                else if (StyleColorValueParser.RejectsAsColour(token))
+                {
+                    return true;
+                }
+                else
+                {
+                    colours++;
+                }
+            }
+            return lengths < 2 || lengths > 4 || colours > 1 || insets > 1;
+        }
+
+        // The bracket of a shadow-[…] class with its type hint split off, whatever /modifier follows it.
+        private static bool TryReadBracket(string cls, out string? hint, out string value)
+        {
+            hint = null;
+            value = string.Empty;
+            const string open = "shadow-[";
+            var close = cls.LastIndexOf(']');
+            if (!cls.StartsWith(open, StringComparison.Ordinal) || close <= open.Length
+                || !StyleArbitraryValueResolver.TrySplitTypeHint(cls.AsSpan(open.Length, close - open.Length), out hint, out var span))
+            {
+                return false;
+            }
+            value = span.ToString();
+            return true;
         }
 
         // Parses the inner body of a shadow-[…] arbitrary value: comma-separated layers, first on top. One

@@ -673,7 +673,10 @@ namespace Velvet
             {
                 return new StopToken { IsColor = true, Color = c };
             }
-            return suffix.Length > 0 && suffix[0] == '[' ? new StopToken { IsColor = true, Color = Color.clear } : default;
+            return StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                && StyleColorValueParser.RejectsAsColour(inner.ToString())
+                ? new StopToken { IsColor = true, Color = Color.clear }
+                : default;
         }
 
         // A type hint picks the branch in place of Tailwind's tests: a length or percentage hint the position,
@@ -693,9 +696,15 @@ namespace Velvet
             {
                 return new StopToken { IsPosition = true, Position = p, PositionPx = float.NaN };
             }
-            // A position the browser rejects is the registered initial one: both NaN, which ReadStop reads so.
-            return TryParseStopLength(plain.Substring(1, plain.Length - 2), out var px)
-                ? new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px }
+            var value = plain.Substring(1, plain.Length - 2);
+            if (TryParseStopLength(value, out var px))
+            {
+                return new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px };
+            }
+            // Tailwind registers the stop positions as <length-percentage>, so one the browser rejects is the initial
+            // position, which both NaN stand for in ReadStop; one it takes that the line cannot place is ignored.
+            return StyleCompositeRejection.TakesLengthPercentage(value.Replace('_', ' ').Trim())
+                ? default
                 : new StopToken { IsPosition = true, Position = float.NaN, PositionPx = float.NaN };
         }
 
