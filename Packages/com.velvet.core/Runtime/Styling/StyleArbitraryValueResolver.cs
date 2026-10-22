@@ -2502,6 +2502,19 @@ namespace Velvet
         internal static bool IsDriven(VisualElement element, HeldSlot slot)
             => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.IsDriven(slot);
 
+        // The color a hold keeps on slot, or null where none is held there.
+        internal static Color? HeldColor(VisualElement element, HeldSlot slot)
+            => s_layers.TryGetValue(element, out var map) ? map.Holds?.ColorOf(slot) : null;
+
+        // Drops the hold on slot and leaves what is written there, which code outside Velvet wrote over it.
+        internal static void LetGo(VisualElement element, HeldSlot slot)
+        {
+            if (s_layers.TryGetValue(element, out var map))
+            {
+                map.Holds?.Drop(slot);
+            }
+        }
+
         // Hands slot back when a gap, grid or divide manipulator holds it on element, and leaves it alone
         // otherwise: an inline value nothing here wrote is not this layer's to clear.
         internal static void HandBackIfHeld(VisualElement element, HeldSlot slot)

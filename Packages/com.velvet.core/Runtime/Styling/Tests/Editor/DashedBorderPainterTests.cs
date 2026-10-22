@@ -66,11 +66,12 @@ namespace Velvet.Tests
             Assert.That(dots.All(d => d.From == d.To), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base spaces every dot two widths apart, which a 22-unit edge keeps.
         [Test]
         public void Given_ADottedEdge_When_SegmentsComputed_Then_ConsecutiveDotsAreTwoWidthsApart()
         {
-            // Arrange
-            var edge = new List<Vector2> { new(0f, 0f), new(20f, 0f) };
+            // Arrange — 22 units at width 2 leaves a remainder of 2 over 4, which moves neither end dot.
+            var edge = new List<Vector2> { new(0f, 0f), new(22f, 0f) };
 
             // Act — dots are spaced by 2× the line width along the arc.
             var dots = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dotted);
@@ -156,6 +157,47 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((dots[0].To - dots[0].From).magnitude, Is.EqualTo(2f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATwoPixelDottedEdgeAMultipleOfFourLong_When_SegmentsComputed_Then_ItEndsOnAWholeDot()
+        {
+            // Arrange — 2px dots two widths apart leave a gap at the end of 20 units, so the last dot is drawn on
+            // its own at 18 to 20.
+            var edge = new List<Vector2> { new(0f, 0f), new(20f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[dots.Count - 1].To.x, Is.EqualTo(20f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATwoPixelDottedEdgeAMultipleOfFourLong_When_SegmentsComputed_Then_ItsFirstGapLosesAPixel()
+        {
+            // Arrange — the first dot is drawn on its own at 0 to 2 and the pattern resumes a pixel early, at 3.
+            var edge = new List<Vector2> { new(0f, 0f), new(20f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 2f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[1].From.x, Is.EqualTo(3f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AThreePixelDottedEdgeOneOverAMultipleOfSix_When_SegmentsComputed_Then_ThePatternStopsShortOfTheLastDot()
+        {
+            // Arrange — on 25 units the dots start at 0, 5, 11 and 17, and a last one is drawn on its own at 22 to
+            // 25; a pattern run on to the end would put a fifth dot at 23 ahead of it.
+            var edge = new List<Vector2> { new(0f, 0f), new(25f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 3f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[4].From.x, Is.EqualTo(22f).Within(1e-3f));
         }
 
         [Test]

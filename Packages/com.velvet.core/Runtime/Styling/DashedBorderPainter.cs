@@ -25,6 +25,7 @@ namespace Velvet
         // callbacks run sequentially on the main thread, so a single shared buffer is safe (no re-entrancy).
         private static readonly List<(Vector2 From, Vector2 To)> s_segments = new();
         private static readonly List<(float Start, float End)> s_intervals = new();
+        private static readonly Vector2[] s_side = new Vector2[2];
 
         // A no-op for Solid (the native border already draws that), a near-transparent color, or a
         // hairline width — callers do not pre-filter for the latter two.
@@ -36,6 +37,23 @@ namespace Velvet
                 return;
             }
             ComputeSegments(polyline, closed, lineWidth, style, s_segments);
+            Stroke(painter, lineWidth, color);
+        }
+
+        // Strokes one side of a square-cornered size.x × size.y box on its own, as StrokeDashed's guards allow.
+        public static void StrokeSide(Painter2D painter, DivideEdge side, Vector2 size, float lineWidth, Color color,
+            BorderLineStyle style)
+        {
+            if (style == BorderLineStyle.Solid || color.a <= 0.004f || lineWidth <= 0.01f)
+            {
+                return;
+            }
+            ComputeSideRuns(side, size, lineWidth, style, s_segments);
+            Stroke(painter, lineWidth, color);
+        }
+
+        private static void Stroke(Painter2D painter, float lineWidth, Color color)
+        {
             if (s_segments.Count == 0)
             {
                 return;
@@ -80,6 +98,24 @@ namespace Velvet
             Emit(polyline, closed, s_intervals, output);
         }
 
+        // The runs one side of a square-cornered size.x × size.y box paints: a line of its own from outer corner
+        // to outer corner along the middle of the side's band, so each side starts and ends its own pattern.
+        public static void ComputeSideRuns(DivideEdge side, Vector2 size, float lineWidth, BorderLineStyle style,
+            List<(Vector2 From, Vector2 To)> output)
+        {
+            var half = lineWidth * 0.5f;
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the line it strokes
+            (s_side[0], s_side[1]) = side switch
+            {
+                DivideEdge.Left => (new Vector2(half, 0f), new Vector2(half, size.y)),
+                DivideEdge.Right => (new Vector2(size.x - half, 0f), new Vector2(size.x - half, size.y)),
+                DivideEdge.Top => (new Vector2(0f, half), new Vector2(size.x, half)),
+                DivideEdge.Bottom => (new Vector2(0f, size.y - half), new Vector2(size.x, size.y - half)),
+            };
+#pragma warning restore CS8524
+            ComputeSegments(s_side, closed: false, lineWidth, style, output);
+        }
+
         // The painted stretches along an outline of the given length, by arc length, in order. The pattern is
         // sized by the width rounded to a whole pixel, and stroked at the width itself.
         private static void Intervals(float length, bool closed, float lineWidth, BorderLineStyle style,
@@ -116,9 +152,59 @@ namespace Velvet
             {
                 gap = BestGap(length, dash, gap, closed);
             }
-            for (var at = 0f; at < length - 1e-4f; at += dash + gap)
+            if (style == BorderLineStyle.Dotted && !closed)
             {
-                intervals.Add((at, Mathf.Min(at + dash, length)));
+                SquareDots(length, (int)width, dash, gap, intervals);
+                return;
+            }
+            Repeat(0f, length, dash, gap, intervals);
+        }
+
+        private static void Repeat(float from, float to, float dash, float gap, List<(float Start, float End)> intervals)
+        {
+            for (var at = from; at < to - 1e-4f; at += dash + gap)
+            {
+                intervals.Add((at, Mathf.Min(at + dash, to)));
+            }
+        }
+
+        // How an open line of square dots ends, by its width and its whole length's remainder over two widths:
+        // whether the first dot is drawn on its own, the pixels it grows by, the pixels its gap gains (or, below
+        // zero, loses), whether the last dot is drawn on its own, and the pixels it grows by. The pattern alone
+        // leaves a gap or a part dot at an end unless the length is an odd multiple of the width.
+        private static readonly (bool Start, int Growth, int Offset, bool End, int EndGrowth)[][] s_squareDotEnds =
+        {
+            new[] { (true, 1, 1, false, 0), (false, 0, 0, false, 0) },
+            new[] { (true, 0, -1, true, 0), (true, 0, -1, false, 0), (false, 0, 0, false, 0), (true, 0, 1, false, 0) },
+            new[]
+            {
+                (true, 1, 1, true, 1), (true, 0, -1, true, 0), (true, 0, -1, false, 0),
+                (false, 0, 0, false, 0), (true, 0, 1, false, 0), (true, 0, 1, true, 0),
+            },
+        };
+
+        // An open line of square dots with a whole dot at each end (s_squareDotEnds): a first dot drawn on its own
+        // moves the pattern to two widths past the line's start, give or take its gap's pixel, and a last dot
+        // drawn on its own stops the pattern a pixel short of it.
+        private static void SquareDots(float length, int width, float dash, float gap,
+            List<(float Start, float End)> intervals)
+        {
+            var ends = s_squareDotEnds[width - 1][(int)Mathf.Round(length) % (2 * width)];
+            var from = 0f;
+            var to = length;
+            if (ends.Start)
+            {
+                intervals.Add((0f, width + ends.Growth));
+                from = (2 * width) + ends.Offset;
+            }
+            if (ends.End)
+            {
+                to = length - (width + ends.EndGrowth + 1);
+            }
+            Repeat(from, to, dash, gap, intervals);
+            if (ends.End)
+            {
+                intervals.Add((length - width - ends.EndGrowth, length));
             }
         }
 

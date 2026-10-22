@@ -293,7 +293,6 @@ namespace Velvet.Tests
         [TestCase("!divide-x-4 divide-x-2 divide-gray-200", DivideImportance.Width)]
         [TestCase("divide-x-4 divide-gray-200!", DivideImportance.Color)]
         [TestCase("!divide-x-4 !divide-gray-200", DivideImportance.Width | DivideImportance.Color)]
-        [TestCase("divide-x-4 !divide-dashed", DivideImportance.None)]
         public void Given_DivideTokens_When_Extracted_Then_TheSpecCarriesTheImportanceOfTheWinningWidthAndColor(
             string className, DivideImportance expected)
         {
@@ -302,6 +301,16 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(spec.Important, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AnImportantDivideStyle_When_Extracted_Then_TheSpecMarksTheStyleImportant()
+        {
+            // Act
+            StyleDivideClass.TryExtract(new[] { "divide-x-4", "!divide-dashed" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Important, Is.EqualTo(DivideImportance.Style));
         }
 
         [Test]
@@ -1191,6 +1200,141 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_ADividedChildCarriesBorderSolid_Then_ItsDividerIsSolid()
+        {
+            // Arrange — the child's border-solid outranks Tailwind's zero-specificity divide-dashed.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-solid") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.DivideDashBindings.ContainsKey(scope.Root[0][1]), Is.False);
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_ADividedChildCarriesBorderDotted_Then_ItsDividerIsDotted()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-dotted") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Style,
+                Is.EqualTo(BorderLineStyle.Dotted));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never reads a child's border-style class under a divider.
+        [Test]
+        public void Given_AnImportantDashedDivideRow_When_ADividedChildCarriesBorderSolid_Then_ItsDividerStaysDashed()
+        {
+            // Arrange — an important declaration outranks the child's class.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x !divide-dashed", "border-solid") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.DivideDashBindings.ContainsKey(scope.Root[0][1]), Is.True);
+        }
+
+        [Test]
+        public void Given_AColoredSolidDivideRow_When_TheChildsCodeWritesItsEdgeColorAndTheDividerApplies_Then_ThatColorStands()
+        {
+            // Arrange — an inline style outranks Tailwind's zero-specificity divide color.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) });
+            var child = scope.Root[0][1];
+            child.style.borderRightColor = Color.blue;
+
+            // Act — the container applies again, as it does when the child's classes change.
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+
+            // Assert
+            Assert.That(child.style.borderRightColor.value, Is.EqualTo(Color.blue));
+        }
+
+        // GREEN_ON_BASE(characterization): the base holds every divide color over a color the child's code wrote.
+        [Test]
+        public void Given_AnImportantColoredSolidDivideRow_When_TheChildsCodeWritesItsEdgeColorAndTheDividerApplies_Then_TheDivideColorStands()
+        {
+            // Arrange — an important declaration outranks an inline style.
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[] { Row("flex flex-row divide-x !divide-gray-200", 3) });
+            var child = scope.Root[0][1];
+            child.style.borderRightColor = Color.blue;
+
+            // Act
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+
+            // Assert
+            Assert.That(child.style.borderRightColor.value, Is.EqualTo(gray200));
+        }
+
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_TheChildsCodeWritesItsEdgeColor_Then_TheDashTakesIt()
+        {
+            // Arrange — the code writes over the mask on the divided edge.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) });
+            var child = scope.Root[0][1];
+            child.style.borderRightColor = Color.blue;
+
+            // Act
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child]),
+                Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_ADividedChildWithABracketBorderColor_When_ItsCodeWritesItsDashedEdgeColor_Then_TheDashTakesIt()
+        {
+            // Arrange — an inline style outranks the child's own class.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-[#ff0000]") });
+            var child = scope.Root[0][1];
+            child.style.borderRightColor = Color.blue;
+
+            // Act
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child]),
+                Is.EqualTo(Color.blue));
+        }
+
+        // GREEN_ON_BASE(characterization): the base paints a dash in the child's own layer over its code's color.
+        [Test]
+        public void Given_ADividedChildWithAnImportantBracketBorderColor_When_ItsCodeWritesItsDashedEdgeColor_Then_TheDashKeepsTheClasses()
+        {
+            // Arrange — an important declaration outranks an inline style.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "!border-[#ff0000]") });
+            var child = scope.Root[0][1];
+            child.style.borderRightColor = Color.blue;
+
+            // Act
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child]),
+                Is.EqualTo(Color.red));
         }
 
         // GREEN_ON_BASE(characterization): the base already paints a dashed divider in the divide color. What

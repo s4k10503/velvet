@@ -20,7 +20,7 @@ namespace Velvet
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
 
         // Suppresses only the native border color (never the background) and captures its effective color,
-        // reusing the shared sentinel machinery. Border uses the LEFT side (a single uniform stroke).
+        // reusing the shared sentinel machinery. The LEFT side's color strokes every side.
         public readonly SilhouetteFaceStash Face = new(includeBackground: false);
 
         // Pass-throughs onto Face so the reconciler / tests read the stash state directly off the binding.
@@ -28,8 +28,8 @@ namespace Velvet
         public bool HasStash => Face.HasStash;
         public bool SuppressionApplied => Face.SuppressionApplied;
 
-        // Reusable polyline buffer for the outline (rebuilt each Draw from the live layout), so a steady-state
-        // repaint allocates nothing.
+        // Reusable polyline buffer for a rounded box's outline (rebuilt each Draw from the live layout), so a
+        // steady-state repaint allocates nothing.
         public readonly List<Vector2> Polyline = new();
     }
 
@@ -56,6 +56,18 @@ namespace Velvet
     /// </remarks>
     internal static class BorderStyleSilhouette
     {
+        private static readonly DivideEdge[] s_sides = { DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom, DivideEdge.Left };
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the width it reads
+        private static float SideWidth(IResolvedStyle rs, DivideEdge side) => side switch
+        {
+            DivideEdge.Left => rs.borderLeftWidth,
+            DivideEdge.Right => rs.borderRightWidth,
+            DivideEdge.Top => rs.borderTopWidth,
+            DivideEdge.Bottom => rs.borderBottomWidth,
+        };
+#pragma warning restore CS8524
+
         // Wires the paint + stash callbacks onto the element and returns the binding. The first stash (capture
         // the border color, then suppress the native border color) is driven, in order of reliability: a
         // synchronous attempt here, then a GeometryChangedEvent, then CustomStyleResolvedEvent — mirroring
@@ -151,18 +163,37 @@ namespace Velvet
                 return;
             }
 
-            // The width is never suppressed — only the color — so it reads real off the live resolved style,
-            // exactly like the skew silhouette's border stroke.
-            var borderWidth = ve.resolvedStyle.borderLeftWidth;
-            if (borderWidth <= 0.01f)
+            // Pre-stash frame (the first paint racing the stash): read the live color directly — the native
+            // border is still visible this frame, so the overdraw is identical-colored.
+            var rs = ve.resolvedStyle;
+            var color = binding.HasStash ? binding.BorderColor : rs.borderLeftColor;
+            if (color.a <= 0.004f)
             {
                 return;
             }
 
-            // Pre-stash frame (the first paint racing the stash): read the live color directly — the native
-            // border is still visible this frame, so the overdraw is identical-colored.
-            var color = binding.HasStash ? binding.BorderColor : ve.resolvedStyle.borderLeftColor;
-            if (color.a <= 0.004f)
+            // A box with square corners strokes each side on its own, at that side's width, from corner to corner,
+            // so every side starts and ends its own pattern; the side a dashed divider paints is left to it.
+            if (rs.borderTopLeftRadius <= 0f && rs.borderTopRightRadius <= 0f && rs.borderBottomRightRadius <= 0f
+                && rs.borderBottomLeftRadius <= 0f)
+            {
+                var size = new Vector2(w, h);
+                var divided = DivideDashPainter.BoundEdge(ve);
+                foreach (var side in s_sides)
+                {
+                    if (side != divided)
+                    {
+                        DashedBorderPainter.StrokeSide(mgc.painter2D, side, size, SideWidth(rs, side), color,
+                            binding.Spec.Style);
+                    }
+                }
+                return;
+            }
+
+            // The width is never suppressed — only the color — so it reads real off the live resolved style,
+            // exactly like the skew silhouette's border stroke.
+            var borderWidth = rs.borderLeftWidth;
+            if (borderWidth <= 0.01f)
             {
                 return;
             }

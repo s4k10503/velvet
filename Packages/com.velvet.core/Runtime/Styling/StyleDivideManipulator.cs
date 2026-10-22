@@ -204,7 +204,8 @@ namespace Velvet
             // A skew silhouette or a drop shadow owns the child's border face and repaints a solid border, so a
             // dashed divider on the same child would fight it — route it through the solid path (documented known
             // limitation). Gates on EITHER owner, mirroring the element-level border-dashed gate.
-            var dashed = (_spec.Style == BorderLineStyle.Dashed || _spec.Style == BorderLineStyle.Dotted)
+            var style = EdgeStyle(child);
+            var dashed = (style == BorderLineStyle.Dashed || style == BorderLineStyle.Dotted)
                 && !_ctx.SkewBindings.ContainsKey(child)
                 && !_ctx.ShadowBindings.ContainsKey(child);
 
@@ -232,11 +233,11 @@ namespace Velvet
 
             if (binding != null)
             {
-                DivideDashPainter.Update(child, binding, edge, _spec.Style);
+                DivideDashPainter.Update(child, binding, edge, style);
             }
             else
             {
-                binding = DivideDashPainter.Attach(child, edge, _spec.Style);
+                binding = DivideDashPainter.Attach(child, edge, style);
                 _ctx.DivideDashBindings[child] = binding;
             }
             binding.Divider = _spec.HasColor ? _spec.Color : (Color?)null;
@@ -246,6 +247,18 @@ namespace Velvet
             {
                 binding.Driven = driven;
             }
+        }
+
+        // The line style the divided edge takes: a border-style class of the child's own beats the divide's
+        // zero-specificity one, as border-solid or border-dotted does under Tailwind's divide-dashed, unless the
+        // divide's is important. A child's border-style class takes no important modifier.
+        private BorderLineStyle EdgeStyle(VisualElement child)
+        {
+            if ((_spec.Important & DivideImportance.Style) != 0)
+            {
+                return _spec.Style;
+            }
+            return StyleBorderStyleClass.StyleOf(child) ?? _spec.Style;
         }
 
         // The color a motion driver wrote on the edge before the mask took it, where one drives the slot.
@@ -295,8 +308,23 @@ namespace Velvet
             {
                 return inline.value;
             }
-            if (StyleArbitraryValueResolver.IsHeld(child, slot)
-                || StyleArbitraryValueResolver.ResolveLayered(child, slot) != null)
+            return CodeWrittenColor(child, slot, inline);
+        }
+
+        // A color the child's own code wrote on slot: one that is not what a hold here or a layer of the child's
+        // own puts there. A driver's, a mask and a face layer's suppression sentinel are not one either.
+        private static Color? CodeWrittenColor(VisualElement child, HeldSlot slot, StyleColor inline)
+        {
+            if (inline.keyword != StyleKeyword.Undefined || SilhouetteFace.IsSentinel(inline.value)
+                || StyleArbitraryValueResolver.IsDriven(child, slot))
+            {
+                return null;
+            }
+            if (StyleArbitraryValueResolver.HeldColor(child, slot) is { } held && held == inline.value)
+            {
+                return null;
+            }
+            if (StyleArbitraryValueResolver.ResolveLayered(child, slot) is { } layered && layered.Color == inline.value)
             {
                 return null;
             }
@@ -319,7 +347,9 @@ namespace Velvet
         }
 
         // Holds the divide-{color} on every edge of a divided child but skip, where the child's own classes set
-        // no color of their own, and hands back the edges this manipulator holds and no longer colors.
+        // no color of their own and its own code wrote none, and hands back the edges this manipulator holds and no
+        // longer colors. A color the child's code wrote stands over a plain divide-{color}, as an inline style
+        // outranks it, so the hold lets go of that edge without writing; an important one is held over it.
         private void WriteColors(VisualElement child, DivideEdge? skip, bool isDivider)
         {
             var colorImportant = (_spec.Important & DivideImportance.Color) != 0;
@@ -333,6 +363,11 @@ namespace Velvet
                 if (isDivider && _spec.HasColor
                     && !ChildOutranks(child, slot, colorImportant))
                 {
+                    if (!colorImportant && CodeWrittenColor(child, slot, InlineColor(child, edge)) != null)
+                    {
+                        StyleArbitraryValueResolver.LetGo(child, slot);
+                        continue;
+                    }
                     StyleArbitraryValueResolver.Hold(child, slot, new StyleColor(_spec.Color));
                     StyleArbitraryValueResolver.Yield(child, slot, colorImportant);
                 }

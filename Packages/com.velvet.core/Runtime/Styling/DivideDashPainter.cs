@@ -38,9 +38,6 @@ namespace Velvet
         // The width the child's border resolves to on Edge: the divider's own, or a width of the child's own that
         // the divider gave way to, so the dash is drawn as wide as the border it stands in for.
         public float Width => DivideDashPainter.StrokeWidth(Child, Edge);
-
-        // Reusable 2-point buffer for the divider segment (rebuilt each Draw from the live layout).
-        public readonly Vector2[] Segment = new Vector2[2];
     }
 
     // Attaches / updates / detaches a divided child's dashed / dotted divider paint. The binding must register
@@ -97,6 +94,10 @@ namespace Velvet
             Unregister(binding);
             child.MarkDirtyRepaint();
         }
+
+        // The edge a dashed divider paints on child, which the child's own border-dashed outline leaves to it.
+        internal static DivideEdge? BoundEdge(VisualElement child)
+            => s_bound.TryGetValue(child, out var binding) ? binding.Edge : null;
 
         private static void OnStyleResolved(DivideDashChildBinding binding)
         {
@@ -201,10 +202,12 @@ namespace Velvet
         }
 
         // A motion driver's color wins unless an important declaration does — an important divide-{color}, or one of
-        // the child's own the write gives way to — as on the slot (StyleArbitraryValueResolver.ApplyDriven). Then the
-        // divide-{color} where no class of the child's own outranks it, giving way to a layer of the child's own as
-        // a solid divider's hold does (StyleDivideManipulator.WriteColors); then a layer of the child's own; then a
-        // color written inline on the child; then the color the child's own style rules give the edge.
+        // the child's own the write gives way to — as on the slot (StyleArbitraryValueResolver.ApplyDriven). Then a
+        // color the child's own code wrote inline, unless an important declaration holds the edge, as an inline
+        // style outranks every declaration but an important one. Then the divide-{color} where no class of the
+        // child's own outranks it, giving way to a layer of the child's own as a solid divider's hold does
+        // (StyleDivideManipulator.WriteColors); then a layer of the child's own; then the color the child's own
+        // style rules give the edge.
         internal static Color PaintColor(DivideDashChildBinding binding)
         {
             var slot = StyleDivideManipulator.ColorSlot(binding.Edge);
@@ -214,6 +217,12 @@ namespace Velvet
                 && !StyleArbitraryValueResolver.ImportantWinsOverDriven(binding.Child, slot))
             {
                 return driven;
+            }
+            if (binding.Inline is { } inline && !(divides && binding.DividerImportant)
+                && !StyleArbitraryValueResolver.DeclaresImportantOwn(binding.Child, slot)
+                && StyleArbitraryValueResolver.ResolveLayered(binding.Child, slot, importantOnly: true) == null)
+            {
+                return inline;
             }
             if (binding.Divider is { } divider && divides)
             {
@@ -225,7 +234,7 @@ namespace Velvet
             {
                 return layered.Color;
             }
-            return binding.Inline ?? RulesColor(binding.Child, binding.Edge);
+            return RulesColor(binding.Child, binding.Edge);
         }
 
         // The child's own inline slot on the edge holds the mask, so the color its style rules give the edge —
@@ -263,29 +272,9 @@ namespace Velvet
                 return;
             }
 
-            // The divider edge in the child's own local space, inset by the border's half-width so the dashed
-            // line straddles the edge exactly where a solid inline border of the same width would sit.
-            var half = binding.Width * 0.5f;
-            switch (binding.Edge)
-            {
-                case DivideEdge.Left:
-                    binding.Segment[0] = new Vector2(half, 0f);
-                    binding.Segment[1] = new Vector2(half, h);
-                    break;
-                case DivideEdge.Right:
-                    binding.Segment[0] = new Vector2(w - half, 0f);
-                    binding.Segment[1] = new Vector2(w - half, h);
-                    break;
-                case DivideEdge.Top:
-                    binding.Segment[0] = new Vector2(0f, half);
-                    binding.Segment[1] = new Vector2(w, half);
-                    break;
-                case DivideEdge.Bottom:
-                    binding.Segment[0] = new Vector2(0f, h - half);
-                    binding.Segment[1] = new Vector2(w, h - half);
-                    break;
-            }
-            DashedBorderPainter.StrokeDashed(mgc.painter2D, binding.Segment, closed: false, binding.Width, binding.Color, binding.Style);
+            // The divider is stroked where a solid inline border of the same width would sit, as a side of its own.
+            DashedBorderPainter.StrokeSide(mgc.painter2D, binding.Edge, new Vector2(w, h), binding.Width, binding.Color,
+                binding.Style);
         }
     }
 }

@@ -97,6 +97,11 @@ namespace Velvet
 
         public bool IsHeld(HeldSlot slot) => (_mask & Bit(slot)) != 0;
 
+        public UnityEngine.Color? ColorOf(HeldSlot slot)
+            => IsHeld(slot) && _colors != null && _colors[(int)slot].keyword == StyleKeyword.Undefined
+                ? _colors[(int)slot].value
+                : null;
+
         public bool IsDriven(HeldSlot slot) => (_driven & Bit(slot)) != 0;
 
         // The pixels a held length carries, and the part of them a gap does not contribute: a space rule's.
