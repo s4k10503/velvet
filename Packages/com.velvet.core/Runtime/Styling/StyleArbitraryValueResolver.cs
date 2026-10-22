@@ -2508,6 +2508,18 @@ namespace Velvet
         internal static bool IsDriven(VisualElement element, HeldSlot slot)
             => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.IsDriven(slot);
 
+        // Writes back what a hold or a per-frame driver keeps on the four border color slots, which a face
+        // layer's release has just nulled along with its own suppression.
+        internal static void ReassertBorderColors(VisualElement element)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            ReassertHolds(element, map, s_colorSlots);
+            RewriteDriven(element, map, StyleArbitraryLonghands.Of(ArbitraryProperty.BorderColor));
+        }
+
         // The color a hold keeps on slot, or null where none is held there.
         internal static Color? HeldColor(VisualElement element, HeldSlot slot)
             => s_layers.TryGetValue(element, out var map) ? map.Holds?.ColorOf(slot) : null;

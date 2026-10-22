@@ -1373,6 +1373,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AReversedDashedRow_When_ADividedChildGainsBorderDashed_Then_ItsDividedEdgeStaysMasked()
+        {
+            // Arrange — no side of the child holds a color of its own, so its outline releases its first stash in
+            // the patch that attaches it.
+            using var scope = new ReconcilerScope();
+            const string row = "flex flex-row divide-x divide-x-reverse divide-dashed";
+            var before = new VNode[] { DividerRowWithColoredChild(row, "") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var child = scope.Root[0][1];
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { DividerRowWithColoredChild(row, "border-dashed") });
+
+            // Assert
+            Assert.That(SilhouetteFace.IsSentinel(child.style.borderLeftColor.value), Is.True);
+        }
+
+        [Test]
         public void Given_AColorTheChildsCodeWroteOverADash_When_TheDividerTurnsSolid_Then_ThatColorStands()
         {
             // Arrange — the dash takes the written color and masks the edge again.

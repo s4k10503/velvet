@@ -20,7 +20,7 @@ namespace Velvet
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
 
         // Suppresses only the native border color (never the background) and captures its effective color,
-        // reusing the shared sentinel machinery. The LEFT side's color strokes every side.
+        // reusing the shared sentinel machinery, a color per side.
         public readonly SilhouetteFaceStash Face = new(includeBackground: false);
 
         // Pass-throughs onto Face so the reconciler / tests read the stash state directly off the binding.
@@ -174,16 +174,17 @@ namespace Velvet
                 return;
             }
 
-            // Pre-stash frame (the first paint racing the stash): read the live color directly — the native
-            // border is still visible this frame, so the overdraw is identical-colored.
-            var color = binding.HasStash ? binding.BorderColor : ve.resolvedStyle.borderLeftColor;
-
-            // Each side is painted on its own at its own width, cut to its own corner of the box
-            // (DashedBorderPainter.ComputeSidePieces).
+            // Each side is painted on its own, in its own color at its own width, cut to its own corner of the box
+            // (DashedBorderPainter.ComputeSidePieces). Pre-stash frame (the first paint racing the stash): read
+            // the live color directly — the native border is still visible this frame, so the overdraw is
+            // identical-colored.
             foreach (var side in s_sides)
             {
                 if (PaintsSide(ve, side))
                 {
+                    var color = binding.HasStash
+                        ? binding.Face.BorderColors[(int)side]
+                        : SilhouetteFace.ResolvedBorderColor(ve.resolvedStyle, side);
                     DashedBorderPainter.PaintSide(mgc.painter2D, side, box, color, binding.Spec.Style);
                 }
             }
