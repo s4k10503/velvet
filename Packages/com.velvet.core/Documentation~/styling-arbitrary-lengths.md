@@ -108,24 +108,28 @@ Only what the browser rejects counts. A function, `var()`, `currentColor` or a c
 length in a unit a stop cannot place (`via-[length:2em]`), discard nothing, and Velvet leaves such a class
 unread.
 
-Tailwind composes four more families through one declaration each: `translate-x-*` and `translate-y-*`;
-`scale-x-*`, `scale-y-*` and the uniform `scale-<n>` (a bracketed `scale-[…]` is written as `scale` alone);
-`skew-x-*` and `skew-y-*`; and the filters, `blur-*` to `sepia-*`, `hue-rotate-*` and `drop-shadow-*`. Each
-utility writes custom properties of the element, and whenever the value holding one of them is one the browser
-rejects, the family's declaration is dropped and the family draws nothing: `translate-x-4 translate-y-[10]`
-translates nowhere, `blur-sm brightness-[abc]` filters nothing, and `drop-shadow-lg blur-[2]` loses its drop
-shadow. Velvet answers which value holds as it does for any value of the property, in the state the element is in:
-an important one first (`!translate-y-[10] hover:translate-y-2 translate-x-4` translates nowhere, hovered or not),
-then the one whose variants rank higher, by the selector they add and then by the order Tailwind registers them,
-with every breakpoint at or below the viewport's applying, then the one Tailwind emits last, in whatever order
-they are written. So `blur-[2] blur-md` blurs as `blur-md`, while `translate-y-[10] translate-y-2 translate-x-4`
-translates nowhere, Tailwind emitting `translate-y-[10]` after `translate-y-2`;
-`translate-x-4 hover:translate-y-[10]` translates along x until hovered and not at all while hovered; and
+Tailwind composes four more families through one declaration each: `translate-*`, `translate-x-*` and
+`translate-y-*`; `scale-x-*`, `scale-y-*` and the uniform `scale-<n>` (a bracketed `scale-[…]` is written as
+`scale` alone); `skew-x-*` and `skew-y-*`; and the filters, `blur-*` to `sepia-*`, `hue-rotate-*` and
+`drop-shadow-*`. Each utility writes custom properties of the element, and whenever the value holding one of them
+is one the browser rejects, the family's declaration is dropped and the family draws nothing:
+`translate-x-4 translate-y-[10]` translates nowhere, `blur-sm brightness-[abc]` filters nothing, and
+`drop-shadow-lg blur-[2]` loses its drop shadow. Velvet answers which value holds as it does for any value of the
+property, in the state the element is in: an important one first
+(`!translate-y-[10] hover:translate-y-2 translate-x-4` translates nowhere, hovered or not), then the one whose
+variants rank higher, by the selector they add and then by the order Tailwind registers them, with every
+breakpoint at or below the viewport's applying, then the one Tailwind emits last, in whatever order they are
+written. So `blur-[2] blur-md` blurs as `blur-md`, while `translate-y-[10] translate-y-2 translate-x-4` translates
+nowhere, Tailwind emitting `translate-y-[10]` after `translate-y-2`; `translate-x-4 hover:translate-y-[10]`
+translates along x until hovered and not at all while hovered; and
 `translate-x-4 hover:translate-y-[10] focus:translate-y-2` translates along both axes while hovered and focused,
-the `focus:` value holding. A `drop-shadow-*` colour and size are separate values, as Tailwind writes them. Velvet
-draws no `translate-<n>`, `translate-[…]` or `skew-<n>`, which write both axes, so their values hold nothing here,
-and it writes a uniform `scale-<n>` from the stylesheet, which a `scale-x-*` or `scale-y-*` value holds over
-whatever its variants. A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with them.
+the `focus:` value holding. A `drop-shadow-*` colour and size are separate values, as Tailwind writes them. A
+utility writing both axes (`translate-4`, `translate-[10px]`, `translate-full`, `translate-px`, `translate-1/2`,
+and their negations) holds each axis as an axis utility does, and an axis utility of the same rank holds over it,
+Tailwind emitting it later: `translate-x-4 translate-[10]` translates nowhere, its y holding the rejected value. A
+uniform `scale-<n>` writes both scale axes the same way and ranks against `scale-x-*` and `scale-y-*` by its
+variants: `scale-50 hover:scale-x-[2]` keeps its y at 0.5 while hovered. A `rotate-[…]` and a `scale-[…]` the
+browser rejects take nothing with them.
 
 ## Lengths only an element can measure
 
@@ -202,7 +206,7 @@ A spacing utility takes a bare number as Tailwind v4 does: any non-negative mult
 canonical decimal form is that many 4px steps, so `p-13` is 52px, `gap-4.5` 18px and `w-0.25` 1px. `.5`,
 `4.50`, `05` and `4.1` are not steps and leave the class unresolved. The utilities are padding, margin
 (`m-*`, `mx-*`, `ps-*`, …), `gap-*`, `space-x-*` / `space-y-*`, `w-*`, `h-*`, `size-*`, `min-*` / `max-*`
-width and height, `basis-*`, `top-*` … `inset-*` and the logical insets, `translate-x-*` / `translate-y-*`,
+width and height, `basis-*`, `top-*` … `inset-*` and the logical insets, `translate-*` / `translate-x-*` / `translate-y-*`,
 and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). `auto` is not a step: it is
 read as the table above says. A minus sign negates the margin, inset, translate and `space-*` utilities (`-mt-13`, `-top-4.5`), as in Tailwind;
 padding, sizing, `basis-*` and `gap-*` take none.

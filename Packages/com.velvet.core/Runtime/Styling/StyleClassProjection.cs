@@ -366,6 +366,23 @@ namespace Velvet
                 return claim;
             }
 
+            // The class match accepts at the highest key the element holds it at, whether or not a layer above
+            // took its longhands, and the first held at that key; null for none.
+            public string? Strongest(System.Predicate<string> match)
+            {
+                string? strongest = null;
+                var key = long.MinValue;
+                foreach (var entry in _entries)
+                {
+                    if (entry.Priority > key && match(entry.Class))
+                    {
+                        strongest = entry.Class;
+                        key = entry.Priority;
+                    }
+                }
+                return strongest;
+            }
+
             public bool HasImportantClass(string cls)
             {
                 foreach (var entry in _entries)

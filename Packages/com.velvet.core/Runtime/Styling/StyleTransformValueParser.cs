@@ -50,12 +50,13 @@ namespace Velvet
                     valueSpan, negate, out result);
             }
 
-            // translate-x-/translate-y- are lengths (px/%) routed here (not through TryGetProperty) so all
+            // translate-x-/translate-y-/translate- are lengths (px/%) routed here (not through TryGetProperty) so all
             // four transform properties share one parse-and-apply path (the Apply/Clear transform switch).
-            if (prefix == "translate-x-" || prefix == "translate-y-")
+            if (prefix == "translate-x-" || prefix == "translate-y-" || prefix == "translate-")
             {
                 return TryParseTranslate(
-                    prefix == "translate-x-" ? ArbitraryProperty.TranslateX : ArbitraryProperty.TranslateY,
+                    prefix == "translate-x-" ? ArbitraryProperty.TranslateX
+                    : prefix == "translate-y-" ? ArbitraryProperty.TranslateY : ArbitraryProperty.Translate,
                     valueSpan, negate, out result);
             }
 

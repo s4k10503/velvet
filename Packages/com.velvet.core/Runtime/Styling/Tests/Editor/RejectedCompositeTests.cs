@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -61,6 +62,7 @@ namespace Velvet.Tests
         [TestCase("translate-x-4 hover:translate-y-[10]", "none - 0")]
         [TestCase("!translate-y-[10] hover:translate-y-2 translate-x-4", "none - 0")]
         [TestCase("translate-y-[10] translate-y-2 translate-x-4", "none - 0")]
+        [TestCase("translate-x-4 translate-[10]", "none - 0")]
         [TestCase("sm:translate-x-[10] md:translate-y-6", "none - 0")]
         [TestCase("translate-x-4 dark:hover:translate-y-[10] hover:translate-y-2", "none - 0")]
         [TestCase("scale-x-[2] scale-y-[2px]", "- none 0")]
@@ -76,9 +78,21 @@ namespace Velvet.Tests
             Assert.That(composed, Is.EqualTo(expected));
         }
 
+        [TestCase("sm:translate-8 sm:translate-x-[10] focus:translate-x-2", "8,32 - 0")]
+        [TestCase("translate-x-2 translate-y-[3] hover:translate-y-1 md:translate-4", "16,4 - 0")]
+        [TestCase("translate-x-4 sm:translate-x-[10] md:translate-8 md:translate-y-6", "32,24 - 0")]
+        [TestCase("-translate-px translate-y-full", "-1,100 - 0")]
+        [TestCase("translate-1/2", "50,50 - 0")]
+        public void Given_LayersWritingBothTranslateAxes_When_Composed_Then_EachAxisHoldsByRank(string classes, string expected)
+        {
+            // Act
+            var composed = Composed(classes);
+
+            // Assert
+            Assert.That(composed, Is.EqualTo(expected));
+        }
+
         // GREEN_ON_BASE(characterization): the base read no rejected value, and in these no rejected value holds.
-        [TestCase("sm:translate-y-8 sm:translate-x-[10] focus:translate-x-2", "8,32 - 0")]
-        [TestCase("translate-x-2 translate-y-[3] hover:translate-y-1 md:translate-x-4", "16,4 - 0")]
         [TestCase("translate-x-0 sm:translate-x-[10] md:translate-x-4 hover:translate-y-1", "16,4 - 0")]
         [TestCase("sm:translate-x-[10] md:translate-y-6 dark:translate-x-2", "8,24 - 0")]
         [TestCase("hover:translate-y-6 sm:translate-x-[10] md:translate-x-4", "16,24 - 0")]
@@ -95,6 +109,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(composed, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AUniformScaleBelowAHoverAxisScale_When_Hovered_Then_TheOtherAxisKeepsTheUniformScale()
+        {
+            // Arrange — hover:bg-red-500 is a class payload, which is what builds the class projection that takes
+            // scale-50 off the element once hover:scale-x-[2] outranks it.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "box", className: "scale-50 hover:scale-x-[2] hover:bg-red-500"));
+            var box = root.Q("box");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                box.SimulateEvent(over);
+            }
+            var scale = box.style.scale.value.value;
+
+            // Assert — NaN where the hover's own axis did not land.
+            Assert.That(Mathf.Approximately(scale.x, 2f) ? scale.y : float.NaN, Is.EqualTo(0.5f).Within(1e-4f));
         }
 
         [Test]

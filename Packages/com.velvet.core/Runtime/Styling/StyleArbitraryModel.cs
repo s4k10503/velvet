@@ -254,6 +254,9 @@ namespace Velvet
         ScaleY,       // scale-y-[1.5]    -> scale y axis        (Value = unitless factor, merges with x)
         TranslateX,   // translate-x-[Np] -> translate x axis    (Value + Unit, merges with y)
         TranslateY,   // translate-y-[Np] -> translate y axis    (Value + Unit, merges with x)
+        // translate-4 / translate-[Np] writes both axes, each holding against that axis's layers at its own rank;
+        // at one rank the axis utility holds, Tailwind emitting it after the one writing both.
+        Translate,    // translate-[Np]   -> translate x and y   (Value + Unit)
         Rotate,       // rotate-[45deg]   -> rotate: <deg>       (Value = degrees)
         // origin-[33%_75%] -> transform-origin: <x> <y> <z>. One class carries every component, so unlike the
         // axis pairs above it is one property with a pair payload (Value/Unit + Value2/Unit2, z in Value3).

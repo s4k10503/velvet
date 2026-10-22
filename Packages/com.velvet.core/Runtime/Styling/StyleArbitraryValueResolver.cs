@@ -825,6 +825,13 @@ namespace Velvet
                 var suffix = cls.AsSpan("translate-x-".Length); // the x and y prefixes share a length
                 return suffix.SequenceEqual("full".AsSpan()) || TryGetSpacingPx(suffix, out _);
             }
+            // The presets writing both axes (translate-4, translate-1/2, translate-full, translate-px) have no USS
+            // class either, and merge with the axis layers the same way.
+            if (cls.StartsWith("translate-", StringComparison.Ordinal))
+            {
+                var suffix = cls.AsSpan("translate-".Length);
+                return cls.IndexOf('/') >= 0 || suffix.SequenceEqual("full".AsSpan()) || TryGetSpacingPx(suffix, out _);
+            }
             // Per-axis scale presets (scale-x-50 / scale-y-110) have no USS class; route them to the merge path.
             // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here. Span-based to
             // keep this per-class hot gate allocation-free (matching the AsSpan style above).
@@ -1026,13 +1033,14 @@ namespace Velvet
             result = default;
             var isX = body.StartsWith("translate-x-", StringComparison.Ordinal);
             var isY = !isX && body.StartsWith("translate-y-", StringComparison.Ordinal);
-            if (!isX && !isY)
+            if (!isX && !isY && !body.StartsWith("translate-", StringComparison.Ordinal))
             {
                 return false;
             }
 
-            var suffix = body.Substring("translate-x-".Length); // the x and y prefixes share a length
-            var property = isX ? ArbitraryProperty.TranslateX : ArbitraryProperty.TranslateY;
+            // the x and y prefixes share a length
+            var suffix = body.Substring(isX || isY ? "translate-x-".Length : "translate-".Length);
+            var property = isX ? ArbitraryProperty.TranslateX : isY ? ArbitraryProperty.TranslateY : ArbitraryProperty.Translate;
             // The slash form (percent of the element's own size), translate-x-full (100%) and the spacing-scale
             // presets route to the same TranslateX/Y merge so an x and a y preset compose instead of clobbering
             // via the `translate` shorthand.
@@ -1728,8 +1736,13 @@ namespace Velvet
         // highest priority a class beat, and layers die from the bottom up, so the top layer sitting at or
         // below the floor means every layer does.
         private static bool TryWinningLayer(LayerMap map, ArbitraryProperty property, out ArbitraryStyle style)
+            => TryWinningKey(map, property, out style, out _);
+
+        // TryWinningLayer, with the winning layer's key.
+        private static bool TryWinningKey(LayerMap map, ArbitraryProperty property, out ArbitraryStyle style, out long key)
         {
             style = default;
+            key = 0;
             if (!map.TryGetValue(property, out var layers) || layers.Count == 0)
             {
                 return false;
@@ -1740,6 +1753,7 @@ namespace Velvet
                 return false;
             }
             style = layers.Values[top];
+            key = layers.Keys[top];
             return true;
         }
 
@@ -2552,7 +2566,8 @@ namespace Velvet
         // one inline `translate` / `scale`, so their winners must be composed before that write.
         private static void ResolveAndApply(VisualElement element, ArbitraryProperty property, LayerMap map)
         {
-            if (property == ArbitraryProperty.TranslateX || property == ArbitraryProperty.TranslateY)
+            if (property == ArbitraryProperty.TranslateX || property == ArbitraryProperty.TranslateY
+                || property == ArbitraryProperty.Translate)
             {
                 ApplyCombinedTranslate(element, map);
                 return;
@@ -2792,8 +2807,8 @@ namespace Velvet
 
         private static void ApplyCombinedTranslate(VisualElement element, LayerMap map)
         {
-            var hasX = TryWinningLayer(map, ArbitraryProperty.TranslateX, out var xw);
-            var hasY = TryWinningLayer(map, ArbitraryProperty.TranslateY, out var yw);
+            var hasX = TryWinningAxis(map, ArbitraryProperty.TranslateX, out var xw);
+            var hasY = TryWinningAxis(map, ArbitraryProperty.TranslateY, out var yw);
             if (!hasX && !hasY)
             {
                 element.style.translate = StyleKeyword.Null;
@@ -2809,6 +2824,19 @@ namespace Velvet
             var x = hasX ? new Length(xw.Value, xw.Unit) : new Length(0f);
             var y = hasY ? new Length(yw.Value, yw.Unit) : new Length(0f);
             element.style.translate = new Translate(x, y);
+        }
+
+        // The layer holding one translate axis: the winning layer of the axis or of Translate, which writes both,
+        // whichever has the higher key, the axis on a tie (see ArbitraryProperty.Translate).
+        private static bool TryWinningAxis(LayerMap map, ArbitraryProperty axis, out ArbitraryStyle style)
+        {
+            var hasAxis = TryWinningKey(map, axis, out style, out var axisKey);
+            if (TryWinningKey(map, ArbitraryProperty.Translate, out var both, out var bothKey) && (!hasAxis || bothKey > axisKey))
+            {
+                style = both;
+                return true;
+            }
+            return hasAxis;
         }
 
         private static void ApplyCombinedScale(VisualElement element, LayerMap map)
@@ -2844,8 +2872,16 @@ namespace Velvet
             }
         }
 
+        // A uniform scale-<n> writes both axes' variables; a scale-x-* or scale-y-* layer above it takes one axis, and
+        // the projection then takes the class off the element, so the other axis is read from the class the
+        // projection holds highest rather than from the live list.
         private static float UniformScaleFromClasses(VisualElement element)
         {
+            if (TryGetProjection(element)?.Strongest(cls => TryGetUniformScalePreset(cls, out _)) is { } held)
+            {
+                TryGetUniformScalePreset(held, out var strongest);
+                return strongest;
+            }
             var uniform = 1f;
             var position = -1;
             foreach (var cls in element.GetClasses())
@@ -3424,6 +3460,7 @@ namespace Velvet
                 // single combined translate/scale when that matters.
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
+                case ArbitraryProperty.Translate:
                     element.style.translate = StyleKeyword.Null;
                     return true;
                 case ArbitraryProperty.Scale:

@@ -476,6 +476,11 @@ namespace Velvet
             {
                 count = ScaleDeclarationsOf(inline, property);
             }
+            else if (inline && set.Contains(StyleLonghand.Translate))
+            {
+                // A variable per axis it writes, and translate itself: translate-4 is emitted ahead of translate-x-4.
+                count = property == ArbitraryProperty.Translate ? 3 : 2;
+            }
             order.Sort();
             return (order, count);
         }

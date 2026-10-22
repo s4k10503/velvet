@@ -3,7 +3,7 @@ using System;
 
 namespace Velvet
 {
-    // Tailwind writes translate-x-* / translate-y-*, scale-x-* / scale-y-*, skew-x-* / skew-y-* and the filter
+    // Tailwind writes translate-*, scale-x-* / scale-y-*, skew-x-* / skew-y-* and the filter
     // utilities as custom properties that one declaration per family composes (translate: var(--tw-translate-x)
     // var(--tw-translate-y), filter: var(--tw-blur,) var(--tw-brightness,) …). A value the browser rejects in one
     // of them makes that declaration invalid at computed-value time once it holds its property, so the family draws
@@ -19,6 +19,7 @@ namespace Velvet
         {
             ("translate-x-", ArbitraryProperty.TranslateX, "translate", true),
             ("translate-y-", ArbitraryProperty.TranslateY, "translate", true),
+            ("translate-", ArbitraryProperty.Translate, "translate", true),
             ("scale-x-", ArbitraryProperty.ScaleX, "scale", true),
             ("scale-y-", ArbitraryProperty.ScaleY, "scale", true),
             ("blur-", ArbitraryProperty.FilterBlur, "blur", false),
