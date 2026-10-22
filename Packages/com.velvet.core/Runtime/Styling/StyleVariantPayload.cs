@@ -289,7 +289,7 @@ namespace Velvet
         // Deliberately NOT the same set as the re-sync trigger: entering this one also routes the element
         // to the composed class source on every later patch, which costs an array per patch, and that is
         // only worth paying for a token a pass has to READ back out of the class array.
-        private static bool IsVariantGateToken(string core)
+        internal static bool IsVariantGateToken(string core)
             => StyleGapClass.IsGapToken(core)
                 || StyleGridClass.IsGridToken(core)
                 || StyleDivideClass.IsDivideToken(core)

@@ -46,6 +46,12 @@
   variants and the `while*Class` and drag channels, as any element does. It used to draw none of them, and
   logged a warning for a shadow.
 
+- The classes a play shows — a `V.Motion` pose's, an `AnimatePresence` enter or exit class — apply bracket
+  values and the utilities Velvet realises itself (`gap-*`, `shadow-*`, `ring-*`, `skew-*`, gradients,
+  `animate-*`, `border-dashed`, `uppercase`, …) while the play shows them, and one of the latter that the
+  element's resting pose carries stops applying while the play has the pose's class off. A play's class used
+  to apply only a utility backed by a plain USS rule.
+
 ### Fixed
 
 - A `V.Motion` hovered through a `hover:` rule of its className while its enter played kept the class of the
