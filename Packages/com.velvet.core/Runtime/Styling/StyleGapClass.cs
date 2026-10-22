@@ -58,7 +58,7 @@ namespace Velvet
         {
             gap = 0f;
             axis = GapAxis.Auto;
-            if (string.IsNullOrEmpty(cls))
+            if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }

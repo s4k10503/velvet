@@ -148,7 +148,7 @@ namespace Velvet
         {
             isX = false;
             deg = 0f;
-            if (string.IsNullOrEmpty(cls))
+            if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }

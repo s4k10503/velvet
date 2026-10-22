@@ -263,6 +263,10 @@ namespace Velvet
         {
             axis = DivideAxis.Horizontal;
             width = 0f;
+            if (!StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
+            {
+                return false;
+            }
 
             string suffix;
             if (cls.StartsWith("divide-x", StringComparison.Ordinal))
