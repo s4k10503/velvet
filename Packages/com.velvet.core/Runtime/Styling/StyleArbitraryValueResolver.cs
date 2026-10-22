@@ -2874,10 +2874,11 @@ namespace Velvet
 
         // A uniform scale-<n> writes both axes' variables; a scale-x-* or scale-y-* layer above it takes one axis, and
         // the projection then takes the class off the element, so the other axis is read from the class the
-        // projection holds highest rather than from the live list.
+        // projection holds highest rather than from the live list. Two held at one key settle by the stylesheet's
+        // order, as the live list does below.
         private static float UniformScaleFromClasses(VisualElement element)
         {
-            if (TryGetProjection(element)?.Strongest(cls => TryGetUniformScalePreset(cls, out _)) is { } held)
+            if (TryGetProjection(element)?.Strongest(UniformScalePlace) is { } held)
             {
                 TryGetUniformScalePreset(held, out var strongest);
                 return strongest;
@@ -2895,6 +2896,15 @@ namespace Velvet
                 }
             }
             return uniform;
+        }
+
+        private static int UniformScalePlace(string cls)
+        {
+            if (!TryGetUniformScalePreset(cls, out _))
+            {
+                return -1;
+            }
+            return StyleUtilityProperties.TryGet(cls, out var rule) ? rule.CascadePosition : -1;
         }
 
         private static bool TryGetUniformScalePreset(string cls, out float scale)

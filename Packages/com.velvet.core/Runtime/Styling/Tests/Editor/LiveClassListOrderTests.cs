@@ -897,7 +897,7 @@ namespace Velvet.Tests
             Assert.That(new[] { fromAdded.x, fromAdded.y, fromReversed.x, fromReversed.y,
                     higherFromAdded.x, higherFromAdded.y, higherFromReversed.x, higherFromReversed.y }
                     .Concat(classChangeReadings).ToArray(),
-                Is.EqualTo(new[] { 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 1f, 0.75f, 1f,
+                Is.EqualTo(new[] { 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 0.9f,
                     1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f,
                     1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f }).Within(0.0001f));
         }

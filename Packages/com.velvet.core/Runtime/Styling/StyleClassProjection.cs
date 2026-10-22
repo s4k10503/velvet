@@ -366,18 +366,26 @@ namespace Velvet
                 return claim;
             }
 
-            // The class match accepts at the highest key the element holds it at, whether or not a layer above
-            // took its longhands, and the first held at that key; null for none.
-            public string? Strongest(System.Predicate<string> match)
+            // The class `rank` accepts at the highest key the element holds it at, whether or not a layer above
+            // took its longhands, and of those at that key the one `rank` places highest; null for none. A rank
+            // below zero declines the class.
+            public string? Strongest(System.Func<string, int> rank)
             {
                 string? strongest = null;
                 var key = long.MinValue;
+                var place = -1;
                 foreach (var entry in _entries)
                 {
-                    if (entry.Priority > key && match(entry.Class))
+                    if (entry.Priority < key)
+                    {
+                        continue;
+                    }
+                    var entryPlace = rank(entry.Class);
+                    if (entryPlace >= 0 && (entry.Priority > key || entryPlace > place))
                     {
                         strongest = entry.Class;
                         key = entry.Priority;
+                        place = entryPlace;
                     }
                 }
                 return strongest;
