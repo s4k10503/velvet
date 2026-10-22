@@ -76,7 +76,7 @@
 47c72dff7bf5	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 4857aa169d44	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 4919bddab474	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
-4940fc21d9ba	Runtime/Styling/StyleAnimateClass.cs,Runtime/Styling/StyleBorderStyleClass.cs,Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleRingClass.cs,Runtime/Styling/StyleShadowClass.cs,Runtime/Styling/StyleSkewClass.cs
+4940fc21d9ba	Runtime/Styling/StyleAnimateClass.cs,Runtime/Styling/StyleBorderStyleClass.cs,Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleRingClass.cs,Runtime/Styling/StyleSkewClass.cs
 4b83c8a1b0a4	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 4be52690cf80	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 4c4467250645	Runtime/Styling/StyleArbitraryValueResolver.cs,Runtime/Styling/StyleColorValueParser.cs
@@ -91,7 +91,7 @@
 55a910e1b222	Runtime/Reconciler/FiberElementFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 571b6482684a	CodeGen/CompilerWeaver.cs,CodeGen/MetadataRegistrationWeaver.cs
 573181af3eab	Runtime/AssemblyInfo.cs,TestUtilities/AssemblyInfo.cs
-57edfde1dd5b	Runtime/Component/ComponentFiber.cs,Runtime/Hooks/FocusManager.cs,Runtime/Reconciler/FiberContextSpine.cs,Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Styling/StyleGradientClass.cs
+57edfde1dd5b	Runtime/Component/ComponentFiber.cs,Runtime/Hooks/FocusManager.cs,Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Styling/StyleGradientClass.cs
 589e61a90167	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 5913011f3428	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 5a5349e5d244	Runtime/Reconciler/FiberBoxShadowApplier.cs,Runtime/Reconciler/FiberRingApplier.cs
@@ -120,7 +120,6 @@
 75fcbc0ff622	Runtime/Styling/StyleArbitraryValueResolver.cs,Runtime/Styling/StyleTransformValueParser.cs
 77226595c553	Runtime/Styling/StyleVariantClass.cs,Runtime/Styling/VariantSignalSource.cs
 78a3e04d06c8	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
-7c884bc8107f	Runtime/Styling/StyleAnimateClass.cs,Runtime/Styling/StyleShadowClass.cs
 7cbae1161c72	Runtime/Reconciler/ReconcilerContext.cs,Runtime/Styling/StyleClassProjection.cs
 7e15a5f31cbd	Runtime/Styling/BoxShadowSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 7ea6c679674e	CodeGen/CompilerWeaver.cs,CodeGen/MetadataRegistrationWeaver.cs
@@ -149,7 +148,7 @@
 9117305738db	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 912432e490df	Runtime/Styling/StyleRingClass.cs,Runtime/Styling/VelvetPalette.cs
 9173cd8ff28b	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
-9254272bc5aa	Runtime/Reconciler/FiberTextFieldLength.cs,Runtime/Styling/MotionClock.cs,Runtime/Styling/MotionOpacity.cs
+9254272bc5aa	Runtime/Reconciler/FiberTextFieldLength.cs,Runtime/Styling/LayoutIdLook.cs,Runtime/Styling/MotionClock.cs,Runtime/Styling/MotionOpacity.cs
 9268efd8c671	Runtime/Reconciler/DndActiveDrag.cs,Runtime/Reconciler/FiberFocusNavigator.cs
 92d110f5c880	Runtime/Reconciler/ChildReconciler.cs,Runtime/Reconciler/GeneralPathReconciler.cs
 9383b8104235	Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleSkewClass.cs
@@ -183,6 +182,7 @@ b4ea0c6ca69d	Runtime/Styling/StyleStructuralVariantClass.cs,Runtime/Styling/Styl
 b7d1b2a93e98	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 b8fec61b1274	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 b96e63847524	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
+b9ad3c4c8fc8	Runtime/Styling/RunningStyleTransition.cs,Runtime/Styling/StyleCascade.cs
 b9bdeac538e9	Runtime/Reconciler/FiberSliderKeyboard.cs,Runtime/Styling/StyleArbitraryValueResolver.cs
 b9c523114335	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs
 bae03dca3a92	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs,Runtime/Styling/StyleTextItemManipulator.cs

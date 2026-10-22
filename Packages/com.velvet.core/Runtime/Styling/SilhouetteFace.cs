@@ -56,8 +56,8 @@ namespace Velvet
     // its pipeline, BEFORE generateVisualContent, so a painter that needs to sit behind OR ahead of the fill —
     // a sheared face, an offset shadow halo — cannot interleave with the native chrome) and REPAINT that chrome
     // in the element's own generateVisualContent: SkewSilhouette repaints it sheared; BoxShadowSilhouette
-    // repaints it UPRIGHT (tanX = tanY = 0) on top of a shadow quad so the opaque fill covers the shadow's
-    // interior. The two shared pieces are the captured-face STASH (sentinel suppression + color capture +
+    // repaints it UPRIGHT (tanX = tanY = 0) on top of the outer shadow quads, keeping the fill above their
+    // anti-aliased cut edge. The two shared pieces are the captured-face STASH (sentinel suppression + color capture +
     // patch-time re-sync) and the rounded-rect path BUILDER (sheared, an upright box being the zero-shear case).
     internal static class SilhouetteFace
     {
@@ -79,11 +79,17 @@ namespace Velvet
 
         private const float Kappa = 0.5522848f; // cubic-bezier quarter-circle constant
 
-        // CSS skew about the box center (transform-origin: center, the default skew origin):
-        // x' = x + (y − h/2)·tan(θx), y' = y + (x − w/2)·tan(θy). With tanX = tanY = 0 this is the identity, so
-        // the same path builder draws an upright box (the drop-shadow fill) and a sheared one (the skew face).
+        // Tailwind's `skewX() skewY()` about the box center (transform-origin: center, the default skew origin):
+        // with u = x − w/2 and v = y − h/2, x' = x + u·tanX·tanY + v·tanX and y' = y + u·tanY. This is the same
+        // product BoxShadowBaker.Shear and the shadow shader's unshear use, so a shadow and the face it sits
+        // behind shear alike. With tanX = tanY = 0 it is the identity, so the same path builder draws an upright
+        // box and a sheared one.
         internal static Vector2 Shear(Vector2 p, float w, float h, float tanX, float tanY)
-            => new(p.x + ((p.y - (h * 0.5f)) * tanX), p.y + ((p.x - (w * 0.5f)) * tanY));
+        {
+            var u = p.x - (w * 0.5f);
+            var v = p.y - (h * 0.5f);
+            return new Vector2(p.x + (u * tanX * tanY) + (v * tanX), p.y + (u * tanY));
+        }
 
         // Builds the rounded-rect path (inset on all sides) onto a Painter2D, shearing every point. A thin
         // wrapper over EmitShearedRoundedRectPath: BeginPath, emit the outline through a passthrough sink,

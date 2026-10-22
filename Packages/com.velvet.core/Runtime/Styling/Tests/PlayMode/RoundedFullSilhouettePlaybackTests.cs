@@ -207,7 +207,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already bounds an oversized radius in the shadow bake.
-        // Unbounding it, `Mathf.Min(binding.CornerRadius, bound)` -> `binding.CornerRadius`, reddens it.
+        // Unbounding it, `Mathf.Min(r.x, bound)` -> `r.x` in BoxShadowSilhouette.BoxOf, reddens it.
         [UnityTest]
         public IEnumerator Given_ABoxWithAnOversizedInlineRadiusWearingAShadow_When_Painted_Then_ItsHaloReachesTheScreen()
         {
@@ -261,7 +261,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already bakes a radius the box can carry as declared.
-        // Bounding every radius instead, `Mathf.Min(binding.CornerRadius, bound)` -> `bound`, reddens it.
+        // Bounding every radius instead, `Mathf.Min(r.z, bound)` -> `bound` in BoxShadowSilhouette.BoxOf, reddens it.
         [UnityTest]
         public IEnumerator Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRounded3xl_Then_TheShadowCornerKeepsItsTwentyFourPixelRadius()
         {

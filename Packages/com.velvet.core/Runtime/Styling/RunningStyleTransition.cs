@@ -16,6 +16,7 @@ namespace Velvet
         private static readonly PropertyInfo? s_system = EngineMember.PanelStyleAnimationSystem.ResolveProperty();
         private static readonly FieldInfo? s_now = EngineMember.AnimationSystemTime.ResolveField();
         private static readonly FieldInfo? s_floats = EngineMember.AnimationSystemFloats.ResolveField();
+        private static readonly FieldInfo? s_rotates = EngineMember.AnimationSystemRotates.ResolveField();
         // Declared on the generic definitions; read through the members of the constructed type a value is (Close).
         private static readonly FieldInfo? s_running = EngineMember.AnimationValuesRunning.ResolveField();
         private static readonly MethodInfo? s_indexOf = EngineMember.AnimationDataSetIndexOf.ResolveMethod();
@@ -30,11 +31,12 @@ namespace Velvet
         private static readonly FieldInfo? s_to = EngineMember.AnimationStyleEnd.ResolveField();
         private static readonly FieldInfo? s_reversingStart = EngineMember.AnimationStyleReversingStart.ResolveField();
         private static readonly object? s_opacityId = EngineMember.OpacityPropertyId.ResolveField()?.GetValue(null);
+        private static readonly object? s_rotateId = EngineMember.RotatePropertyId.ResolveField()?.GetValue(null);
         private static readonly bool s_readable = Array.TrueForAll(
             new MemberInfo?[]
             {
-                s_system, s_now, s_floats, s_running, s_indexOf, s_timings, s_styles, s_startTime, s_duration, s_curve, s_eased,
-                s_shortening, s_from, s_to, s_reversingStart,
+                s_system, s_now, s_floats, s_rotates, s_running, s_indexOf, s_timings, s_styles, s_startTime, s_duration,
+                s_curve, s_eased, s_shortening, s_from, s_to, s_reversingStart,
             },
             m => m != null);
 
@@ -43,6 +45,9 @@ namespace Velvet
         // Has the carry run on from the element's running opacity transition, if it has one.
         public static void TakeOverOpacity(VisualElement element, LayoutIdCarry carry) =>
             TakeOver(element, carry, s_floats, s_opacityId, value => (float)value);
+
+        public static void TakeOverRotate(VisualElement element, LayoutIdCarry carry) =>
+            TakeOver(element, carry, s_rotates, s_rotateId, value => ((Rotate)value).angle.ToDegrees());
 
         private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property, Func<object, float> read)
         {

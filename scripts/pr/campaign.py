@@ -1,9 +1,9 @@
 """Which workflow runs are the mutation campaign's.
 
 No pull request waits on the campaign, and CONTRIBUTING.md ▸ Checking that the tests can fail owns
-why: the runs on a pull request's head are advisory, and the record on the default branch is what the
-release gate reads. A run of `WORKFLOW` on a pull request's head is therefore no evidence about its
-merge: `settle.py` and `refuse/merge_unproven_head.py` leave its runs, its checks and its old commit
+why: the record on the default branch is what the release gate reads. No pull request starts the
+campaign, but a dispatch onto a pull request's branch runs on its head, and a run of `WORKFLOW` there
+is no evidence about the merge: `settle.py` and `refuse/merge_unproven_head.py` leave its runs, its checks and its old commit
 status out of what they read (`others`, `suites`, `NAME`, `STATUS_CONTEXT`).
 """
 

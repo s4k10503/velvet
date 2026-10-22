@@ -81,8 +81,6 @@ gates-act-value	Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryV
 gates-act-value	Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs	Velvet.Tests.ArbitraryValueTests.Given_TransformOriginSingleComponentClass_When_Parsed_Then_TheSecondIsHalfAndNotTheFirst	ok
 gates-act-value	Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs	Velvet.Tests.ArbitraryValueTests.Given_TranslateXArbitraryClass_When_Parsed_Then_ResolvesTranslateXAsPixelLength	ok
 gates-act-value	Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs	Velvet.Tests.ArbitraryValueTests.Given_TranslateYArbitraryClass_When_Parsed_Then_ResolvesTranslateYWithValue	ok
-gates-act-value	Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowBakeTests.cs	Velvet.Tests.BoxShadowBakeTests.Given_AShadowBake_When_SampledInTheHaloBand_Then_TheExteriorTexelIsVisible	tex
-gates-act-value	Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowBakeTests.cs	Velvet.Tests.BoxShadowBakeTests.Given_AShadowBake_When_Sampled_Then_TheInteriorTexelIsOpaque	tex
 gates-act-value	Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowBakeTests.cs	Velvet.Tests.BoxShadowBakeTests.Given_TwoCornersRoundingToSamePixel_When_Baked_Then_TheyBakeToTheSameSize	a != null && b != null
 gates-act-value	Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ChildVariantClassParityTests.cs	Velvet.Tests.ChildVariantClassParityTests.Given_ChildVariantToken_When_Parsed_Then_ExtractsPayload	ok
 gates-act-value	Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ChildVariantClassParityTests.cs	Velvet.Tests.ChildVariantClassParityTests.Given_ChildVariantWrappingStateVariantPayload_When_Parsed_Then_AcceptsComposedPayload	ok

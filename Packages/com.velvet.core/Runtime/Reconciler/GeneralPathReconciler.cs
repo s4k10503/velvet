@@ -679,6 +679,34 @@ namespace Velvet
             // are in the container.
             public int NewProviderOrdinal;
 
+            // A component's own output continues in this walk and restarts SlotPath, so the parent is part
+            // of the count: a nested component that repeats its parent's key is not a sibling of it.
+            private readonly Dictionary<(ComponentFiber? parent, long slotPath, string key, object identity), int>
+                _componentKeyClaims = new();
+
+            internal int ClaimComponentOccurrence(
+                ComponentFiber? parent, long slotPath, string key, object identity)
+            {
+                var id = (parent, slotPath, key, identity);
+                _componentKeyClaims.TryGetValue(id, out var seen);
+                _componentKeyClaims[id] = seen + 1;
+                return seen;
+            }
+
+            // The failed output and the fallback are walked under one component position. Claims the failed
+            // output took must not make a fallback child a repeat of a child the failed output already counted.
+            internal Dictionary<(ComponentFiber? parent, long slotPath, string key, object identity), int>?
+                CopyComponentKeyClaims()
+                => _componentKeyClaims.Count == 0 ? null : new(_componentKeyClaims);
+
+            internal void RestoreComponentKeyClaims(
+                Dictionary<(ComponentFiber? parent, long slotPath, string key, object identity), int>? snapshot)
+            {
+                _componentKeyClaims.Clear();
+                if (snapshot == null) return;
+                foreach (var entry in snapshot) _componentKeyClaims[entry.Key] = entry.Value;
+            }
+
             // Every field a walk may set is scrubbed here: a stale reference surviving into the next
             // rent would silently splice one walk's destination or fiber accumulators into another's.
             public void Clear()
@@ -697,6 +725,7 @@ namespace Velvet
                 NewProviderOrdinal = 0;
                 OffscreenPrimaries.Clear();
                 HiddenPrimaryElements.Clear();
+                _componentKeyClaims.Clear();
             }
         }
 
@@ -986,8 +1015,11 @@ namespace Velvet
             int nodeIndex)
         {
             var identity = component.ResolvedIdentity;
-            var slotKey = FiberKeying.ResolveInlineRegistryPositionKey(
-                position, component.Key, nodeIndex,
+            var occurrence = component.Key is { } explicitKey
+                ? walk.ClaimComponentOccurrence(_ctx.FiberStack.Current, position.SlotPath, explicitKey, identity)
+                : 0;
+            var slotKey = FiberKeying.ResolveInlineComponentPosition(
+                occurrence, position, component.Key, nodeIndex,
                 _ctx.ComponentRegistry.InlinePositionKeyBoxes,
                 _ctx.ComponentRegistry.InlineExplicitPositionKeyBoxes);
             // Read the Portal scope member of this component's registry key before ExpandFiberPreviousTree
@@ -1021,19 +1053,11 @@ namespace Velvet
                 // path accumulates them in result.
                 var emittedCount = commit != null ? commit.NewElements.Count : result!.Count;
                 var currentSlotStart = walk.SlotStart + emittedCount;
-                // Two same-identity siblings sharing one explicit key resolve to the
-                // SAME registry fiber; expanding it once per sibling would emit one
-                // component's DOM twice while its slot bookkeeping tracks only the last
-                // position (with hook state shared across both copies). Mirror the
-                // leaf-level duplicate guard: warn and skip the repeat before
-                // GetOrCreate can clobber the first occurrence's slot.
-                var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity, portalScope, walk.Parent);
-                if (priorFiber != null && walk.NewFibers.Contains(priorFiber))
+                if (occurrence > 0)
                 {
                     FiberLogger.LogWarning("GeneralPathReconciler",
-                        $"Duplicate component key detected among siblings: '{component.Key ?? slotKey}'. " +
-                        "The repeated sibling is skipped; give each sibling a unique key.");
-                    return;
+                        $"Duplicate component key detected among siblings: '{component.Key}'. " +
+                        "Both siblings render; give each sibling a unique key.");
                 }
                 ComponentFiber fiber;
                 try
@@ -1097,6 +1121,7 @@ namespace Velvet
             var completionsBefore = _ctx.PendingCompletions.Count;
             var fibersBefore = _ctx.BufferPool.RentFiberSet();
             fibersBefore.UnionWith(walk.NewFibers);
+            var claimsBefore = walk.CopyComponentKeyClaims();
             try
             {
                 BoundaryCaughtSignal? caught = null;
@@ -1121,6 +1146,7 @@ namespace Velvet
                 DisposingFailedOutputOf(boundary, () => DropFibersTheFailedOutputAdded(walk, fibersBefore));
                 // A boundary above that caught an error out of the disposal has replaced this one with its fallback.
                 if (boundary.IsDisposed) return;
+                walk.RestoreComponentKeyClaims(claimsBefore);
                 ForgetOldRowsOf(commit, boundary);
                 // What the failed output recorded against the boundary itself, for an AnimatePresence or a
                 // Suspense it rendered directly; its descendants' records go with the fibers dropped above.
@@ -2016,6 +2042,12 @@ namespace Velvet
             {
                 foreach (var entry in state.Committed) prevCommitted.Add(entry);
                 foreach (var (key, _) in newKeyed) newKeySet.Add(key);
+                // Presence is judged per key given, not per map key: a previous repeat whose key some child still
+                // holds is not leaving, so it is dropped without an exit.
+                foreach (var (key, node) in prevCommitted)
+                {
+                    if (node.Key is { } given && given != key && newKeySet.Contains(given)) newKeySet.Add(key);
+                }
 
                 var blockEnters = ShouldBlockPresenceEnters(presence, prevCommitted, newKeySet, state);
                 BuildPresenceEmissionPlan(newKeyed, prevCommitted, newKeySet, plan);

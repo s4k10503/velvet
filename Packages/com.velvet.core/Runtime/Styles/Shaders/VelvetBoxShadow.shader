@@ -1,34 +1,43 @@
 Shader "Velvet/BoxShadow"
 {
-    // Soft, iOS/macOS-style box shadow rendered with an SDF rounded box so the blur follows the
-    // target's corner radius. The C# side passes a small TARGET size in _ElementSize; this pass inflates it by
-    // (_BlurRadius + extraPadding) so the blur has room to fade inside the quad, and outputs white RGB with the
-    // falloff in alpha (the shadow color/strength is applied later as a tint).
+    // One layer of a CSS box-shadow. An outer layer is the caster's border box moved by the offset and grown (or
+    // shrunk) by the spread, blurred by a Gaussian whose standard deviation is half the blur radius, and cut out
+    // where the border box lies, since CSS draws an outer shadow only outside it. An inset layer is the padding
+    // box with a hole — the padding box moved by the offset and shrunk by the spread, blurred the same way —
+    // drawn only inside the padding box. The C# side passes the clip box (border box or padding box) and the
+    // shape (blurred box or hole) as half-sizes, centres relative to the quad's centre and per-corner radii,
+    // and the quad's size. It outputs white RGB with the coverage in alpha (the layer's colour is applied later
+    // as a tint).
     //
     // This pass is BAKED once into a texture (BoxShadowBaker uses Graphics.Blit) and that texture is drawn as
-    // a single quad in the caster element's OWN generateVisualContent — FIRST, before the binding repaints the
-    // caster's upright fill + border, so the silhouette sits behind the caster's chrome. The bake is the FULL
-    // soft silhouette (interior opaque); the repainted opaque fill covers the interior and the offset-up
-    // overlap, leaving only the outer halo. It is deliberately NOT used as a live per-element material
-    // (style.unityMaterial): UITK freezes a custom-material element's draw-command order at first generation, so
-    // a shadow first generated under an animating ancestor transform would composite in FRONT of its caster.
-    // Going through the normal textured-quad path keeps plain depth-first order, with no custom-material command
-    // to misorder. The shadow is a NON-structural paint: no wrapper, so it does not alter the caster's layout
-    // and it follows a transform on the caster (CSS box-shadow parity).
+    // a single quad in the caster element's OWN generateVisualContent. It is deliberately NOT used as a live
+    // per-element material (style.unityMaterial): UITK freezes a custom-material element's draw-command order at
+    // first generation, so a shadow first generated under an animating ancestor transform would composite in
+    // FRONT of its caster. Going through the normal textured-quad path keeps plain depth-first order, with no
+    // custom-material command to misorder. The shadow is a NON-structural paint: no wrapper, so it does not
+    // alter the caster's layout and it follows a transform on the caster (CSS box-shadow parity).
     //
     // URP only: SubShader is tagged "UniversalPipeline". The showcase project is converted to URP for
     // this reason (see Assets/Editor/URPSetup.cs).
     Properties
     {
         [MainTexture] _MainTex("Texture", 2D) = "white" {}
-        _ShadowColor("Shadow Color", Color) = (0, 0, 0, 0.35)
         _BlurRadius("Blur Radius", Range(0, 100)) = 40
-        _CornerRadius("Corner Radius", Range(0, 100)) = 32
-        _Spread("Spread", Range(0, 50)) = 0
+        // xy: the shape's half-size; zw: its centre relative to the quad's centre.
+        _Shape("Shape", Vector) = (50, 50, 0, 0)
+        // Per-corner radii, top-left, top-right, bottom-right, bottom-left.
+        _ShapeRadii("Shape Radii", Vector) = (0, 0, 0, 0)
+        // xy: the clip box's half-size; zw: its centre relative to the quad's centre.
+        _Clip("Clip", Vector) = (50, 50, 0, 0)
+        _ClipRadii("Clip Radii", Vector) = (0, 0, 0, 0)
+        // xy: the quad's size.
         _ElementSize("Element Size", Vector) = (100, 100, 0, 0)
-        // tan() of the caster's skew-x angle. Non-zero shears the silhouette so the shadow follows
-        // a skew-x-* caster (baked full-size by BoxShadowBaker).
+        // 1 for an inset layer, 0 for an outer one.
+        _Inset("Inset", Float) = 0
+        // tan() of the caster's skew-x and skew-y angles. Non-zero shears the silhouette so the shadow
+        // follows a skewed caster (baked full-size by BoxShadowBaker).
         _SkewX("Skew X (tan)", Range(-2, 2)) = 0
+        _SkewY("Skew Y (tan)", Range(-2, 2)) = 0
     }
 
     SubShader
@@ -48,7 +57,7 @@ Shader "Velvet/BoxShadow"
             ZWrite Off
             ZTest Always
             // Baked via Graphics.Blit into an offscreen texture, so write the frag's raw RGBA (white, alpha =
-            // SDF falloff) directly with no blending — blending here would mix the alpha with the uninitialized
+            // coverage) directly with no blending — blending here would mix the alpha with the uninitialized
             // render-target and corrupt the bake. Compositing happens later on the in-element shadow quad.
             Blend Off
 
@@ -73,12 +82,15 @@ Shader "Velvet/BoxShadow"
                 float4 color : COLOR;
             };
 
-            half4 _ShadowColor;
-            half _BlurRadius;
-            half _CornerRadius;
-            half _Spread;
+            float _BlurRadius;
+            float4 _Shape;
+            float4 _ShapeRadii;
+            float4 _Clip;
+            float4 _ClipRadii;
             float4 _ElementSize;
+            float _Inset;
             float _SkewX;
+            float _SkewY;
 
             Varyings vert(Attributes input)
             {
@@ -89,64 +101,99 @@ Shader "Velvet/BoxShadow"
                 return output;
             }
 
-            // Signed distance to a rounded box.
-            // Ref: Inigo Quilez - https://iquilezles.org/articles/distfunctions2d/
-            half sdRoundedBox(float2 p, float2 b, half r)
+            // The radius of the corner p lies towards, y-down: radii are (top-left, top-right, bottom-right,
+            // bottom-left).
+            float cornerOf(float2 p, float4 radii)
             {
+                float top = p.x < 0.0 ? radii.x : radii.y;
+                float bottom = p.x < 0.0 ? radii.w : radii.z;
+                return p.y < 0.0 ? top : bottom;
+            }
+
+            // Signed distance to a rounded box with a radius per corner.
+            // Ref: Inigo Quilez - https://iquilezles.org/articles/distfunctions2d/
+            float sdRoundedBox(float2 p, float2 b, float4 radii)
+            {
+                float r = min(cornerOf(p, radii), min(b.x, b.y));
                 float2 q = abs(p) - b + r;
                 return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
             }
 
-            half4 frag(Varyings input) : SV_Target
+            // A Gaussian-blurred rounded box, after Evan Wallace's "Fast Rounded Rectangle Shadows": exact along
+            // x through erf, integrated along y in four samples spanning three standard deviations. A row takes
+            // its left and right extents from the corners on its own half of the box.
+            float gaussian(float x, float sigma)
             {
-                // _ElementSize carries the TARGET element's size (set from C# via SetTargetSize),
-                // not this shadow quad's size. The shadow quad is target + padding*2.
-                float2 targetSize = _ElementSize.xy;
+                return exp(-(x * x) / (2.0 * sigma * sigma)) / (2.50662827463 * sigma);
+            }
 
-                float extraPadding = 5.0;
-                float padding = _BlurRadius + extraPadding;
-                float2 elementSize = targetSize + float2(padding * 2.0, padding * 2.0);
+            float2 erf2(float2 x)
+            {
+                float2 s = sign(x);
+                float2 a = abs(x);
+                x = 1.0 + (0.278393 + (0.230389 + 0.078108 * (a * a)) * a) * a;
+                x *= x;
+                return s - s / (x * x);
+            }
 
-                // UV -> pixel position centered on the shadow quad.
-                float2 pixelPos = (input.uv - 0.5) * elementSize;
+            float extentAt(float y, float corner, float2 halfSize)
+            {
+                float delta = min(halfSize.y - corner - abs(y), 0.0);
+                return halfSize.x - corner + sqrt(max(0.0, corner * corner - delta * delta));
+            }
 
-                // Unshear: evaluate the upright rounded-box SDF at the unsheared coordinate so the
-                // rendered alpha follows the skewed caster's silhouette. The quad is padded enough
-                // (blur + ExtraPadding per side) for small slant angles to stay inside it.
-                pixelPos.x += pixelPos.y * _SkewX;
+            float blurredRowX(float x, float y, float sigma, float4 radii, float2 halfSize)
+            {
+                float cap = min(halfSize.x, halfSize.y);
+                float left = extentAt(y, min(y < 0.0 ? radii.x : radii.w, cap), halfSize);
+                float right = extentAt(y, min(y < 0.0 ? radii.y : radii.z, cap), halfSize);
+                float2 integral = 0.5 + 0.5 * erf2(float2(x - right, x + left) * (0.70710678 / sigma));
+                return integral.y - integral.x;
+            }
 
-                // Half the target size is the SDF box's core extent.
-                float2 halfSize = targetSize * 0.5 - _Spread;
-                halfSize = max(halfSize, float2(1.0, 1.0)); // guard against negative extents
+            float blurredRoundedBox(float2 p, float2 halfSize, float4 radii, float sigma)
+            {
+                float low = p.y - halfSize.y;
+                float high = p.y + halfSize.y;
+                float start = clamp(-3.0 * sigma, low, high);
+                float end = clamp(3.0 * sigma, low, high);
+                float step = (end - start) / 4.0;
+                float y = start + step * 0.5;
+                float value = 0.0;
+                for (int i = 0; i < 4; i++)
+                {
+                    value += blurredRowX(p.x, p.y - y, sigma, radii, halfSize) * gaussian(y, sigma) * step;
+                    y += step;
+                }
+                return value;
+            }
 
-                half dist = sdRoundedBox(pixelPos, halfSize, _CornerRadius);
-                dist -= _Spread;
+            float4 frag(Varyings input) : SV_Target
+            {
+                // UV -> pixel position centered on the quad, y-down as the caster's box is.
+                float2 c = (float2(input.uv.x, 1.0 - input.uv.y) - 0.5) * _ElementSize.xy;
 
-                // Blur radius drives the soft-edge fade range. The silhouette is FULL: the alpha fades
-                // SYMMETRICALLY around the box boundary — 1 deep inside, ~0.5 AT the edge, ramping to 0 at
-                // +blur/2 outside — a soft edge with NO interior cut and NO hard rim. The interior is left
-                // OPAQUE on purpose: the in-element paint draws this offset silhouette FIRST, then repaints the
-                // caster's UPRIGHT fill + border over it, so the opaque fill covers the silhouette's interior
-                // and its offset-up overlap, leaving only the outer soft halo (mostly below the offset-down
-                // box) — exactly the visible part of a behind-the-element box shadow, with no top shadow and
-                // no hard edge.
-                half softness = max(_BlurRadius, 1.0);
-                half alpha = 1.0 - smoothstep(-softness * 0.5, softness * 0.5, dist);
+                // Unshear: evaluate the upright boxes at the unsheared coordinate so the rendered alpha follows
+                // the skewed caster's silhouette. The shear is Tailwind's transform, skewX() skewY():
+                // M = [[1 + skewX*skewY, skewX],[skewY, 1]], whose determinant is 1, so its inverse is
+                // [[1, -skewX],[-skewY, 1 + skewX*skewY]].
+                float2 p = float2(c.x - (_SkewX * c.y), ((1.0 + (_SkewX * _SkewY)) * c.y) - (_SkewY * c.x));
 
-                // This pass is NOT applied as a live per-element UITK material (style.unityMaterial): UI Toolkit
-                // freezes a custom-material element's draw-command order at first generation and never re-derives
-                // it, so a shadow whose subtree is first generated under an animating ancestor transform composites
-                // IN FRONT of its caster and stays wrong. Instead BoxShadowBaker BAKES this pass once into an
-                // RGBA texture (Graphics.Blit) and BoxShadowSilhouette draws it as a single quad in the caster's
-                // own generateVisualContent — FIRST, before it repaints the caster's upright fill + border, so the
-                // silhouette renders BEHIND the caster's chrome in plain depth-first order with no custom-material
-                // command to misorder. The baked texture is the FULL silhouette (interior included and opaque);
-                // the repainted opaque fill covers the interior, leaving only the outer halo. RGB is white and
-                // alpha is the falloff, so the runtime shadow color/strength is the quad's vertex tint — letting a
-                // color change retint without re-baking.
-                half4 shadowColor = half4(1.0, 1.0, 1.0, alpha);
+                float2 shapeP = p - _Shape.zw;
+                float sigma = _BlurRadius * 0.5;
+                float shape;
+                if (sigma < 0.01)
+                {
+                    shape = saturate(0.5 - sdRoundedBox(shapeP, _Shape.xy, _ShapeRadii));
+                }
+                else
+                {
+                    shape = saturate(blurredRoundedBox(shapeP, _Shape.xy, _ShapeRadii, sigma));
+                }
+                float clip = saturate(0.5 - sdRoundedBox(p - _Clip.zw, _Clip.xy, _ClipRadii));
 
-                return shadowColor;
+                float alpha = _Inset > 0.5 ? clip * (1.0 - shape) : shape * (1.0 - clip);
+                return float4(1.0, 1.0, 1.0, alpha);
             }
             ENDHLSL
         }

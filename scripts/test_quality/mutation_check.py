@@ -5226,7 +5226,7 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
         # One job measures them all, after its own first pass.
         if len(chosen) > per:
             print("{} mutants of this shard survived the {} suite, more than the {} one job can measure on "
-                  "{} after it.\nWrite the tests they ask for, or split the pull request."
+                  "{} after it.\nWrite the tests they ask for, or split the change."
                   .format(len(chosen), first, per, args.platform))
             return CEILING_REFUSAL
         print("{} of {} mutant(s) survived the {} suite in this shard and are measured on {}".format(
@@ -5235,7 +5235,7 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
         return 0
     if len(chosen) > args.max_shards * per:
         print("{} mutants survived the {} suite, more than {} shards of {} can measure on {} inside "
-              "the shard job's timeout.\nWrite the tests they ask for, or split the pull request."
+              "the shard job's timeout.\nWrite the tests they ask for, or split the change."
               .format(len(chosen), first, args.max_shards, per, args.platform))
         return CEILING_REFUSAL
     print("{} of {} mutant(s) survived the {} suite and are measured on {}".format(
@@ -5304,7 +5304,7 @@ def gate(mutants, reused, reasons, declared, coverage, project):
     if unresolved:
         print("An unresolved mutant is one no record run has measured to a verdict yet: the next record "
               "run on this\nbranch measures it, and `gh workflow run mutation.yml --ref <branch>` starts "
-              "one. A pull request\nanswers an unanswered survivor or a stale declaration.")
+              "one. A change\nanswers an unanswered survivor or a stale declaration.")
     return 1 if unresolved or unanswered or stale else 0
 
 
@@ -5658,7 +5658,7 @@ def main():
         if owed > args.max_shards * SHARD_CEILING[args.platform]:
             print(coverage)
             print("{} mutants is more than {} shards of {} can measure inside the shard job's "
-                  "timeout.\nSplit the pull request.".format(owed, args.max_shards,
+                  "timeout.\nSplit the change.".format(owed, args.max_shards,
                                                              SHARD_CEILING[args.platform]))
             return CEILING_REFUSAL
         print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
@@ -5666,9 +5666,9 @@ def main():
             print(reuse_report(mutants, reused, reasons, project))
         if unreached and not mutants:
             # Passed rather than refused, where a local run refuses: a change with nothing to ask
-            # cannot earn a pass any other way, so the lines are named and the pull request says why.
+            # cannot earn a pass any other way, so the lines are named and the change's description says why.
             print("No operator reaches any of the changed code lines above, so nothing is measured "
-                  "and the\ncampaign passes. Say in the pull request why the change is not something "
+                  "and the\ncampaign passes. Say, wherever the change is described, why it is not something "
                   "a mutation\ncan ask about.")
         print("mutants={}".format(len(mutants)))
         if reading:
