@@ -173,6 +173,7 @@ namespace Velvet
             // What is left undelivered is held by a parked pass or names a boundary that is gone, which nothing
             // delivers.
             ctx.PendingCaughtErrorReports.RemoveAll(static report => !report.Boundary.IsMounted);
+            ctx.ErrorsDuringFallbackSwap.RemoveAll(static taken => !taken.Boundary.IsMounted);
         }
 
         private const int MaxFollowUpCommits = 100;
@@ -491,7 +492,7 @@ namespace Velvet
             if (due == null) return;
             for (var i = 0; i < due.Count; i++)
             {
-                FiberErrorBoundary.ReportCaughtError(ctx, due[i].Error, due[i].Info);
+                FiberErrorBoundary.ReportCaughtError(ctx, boundary, due[i].Error, due[i].Info);
             }
         }
 

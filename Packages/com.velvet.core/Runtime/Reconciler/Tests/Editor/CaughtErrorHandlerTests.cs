@@ -74,9 +74,9 @@ namespace Velvet.Tests
             _host?.Dispose();
         }
 
-        private static MountOptions RecordingOrder { get; } = new((_, _) => s_order.Add("caught"));
+        private static MountOptions RecordingOrder { get; } = new MountOptions { OnCaughtError = (_, _) => s_order.Add("caught") };
 
-        private static MountOptions CountingReports { get; } = new((_, _) => s_reportCount++);
+        private static MountOptions CountingReports { get; } = new MountOptions { OnCaughtError = (_, _) => s_reportCount++ };
 
         private MountedTree Mount(Func<VNode> child)
         {
@@ -84,11 +84,13 @@ namespace Velvet.Tests
             return V.Mount(
                 _root,
                 V.Component(BoundaryRender, key: "boundary"),
-                new MountOptions((exception, _) => _calls.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => _calls.Add(exception.Message) });
         }
 
         private string Outcome() => $"{string.Join(", ", _calls)} | {_root.FindFirstLabel()?.text}";
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnOnCaughtErrorHandler_When_ABoundaryCatches_Then_ItReceivesTheCaughtExceptionAndTheComponentStack()
         {
@@ -101,7 +103,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(
                 _root,
                 V.Component(BoundaryRender, key: "boundary"),
-                new MountOptions((exception, info) => received = (exception, info)));
+                new MountOptions { OnCaughtError = (exception, info) => received = (exception, info) });
 
             // Assert
             Assert.That(
@@ -232,6 +234,8 @@ namespace Velvet.Tests
             Assert.That(Outcome(), Is.EqualTo("fallback content boom | fallback"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnOnCaughtErrorHandlerThatThrows_When_ABoundaryCatchesALayoutEffectsError_Then_TheMountCompletesWithTheFallback()
         {
@@ -245,7 +249,7 @@ namespace Velvet.Tests
                 _mounted = V.Mount(
                     _root,
                     V.Component(BoundaryRender, key: "boundary"),
-                    new MountOptions((_, _) => throw new InvalidOperationException("handler boom")));
+                    new MountOptions { OnCaughtError = (_, _) => throw new InvalidOperationException("handler boom") });
             }
             catch (InvalidOperationException)
             {
@@ -332,6 +336,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("other, fallback, caught"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryThatCaughtALayoutEffectsError_When_AnOuterBoundaryReplacesItInTheSameCommit_Then_OnlyTheOuterBoundaryReports()
         {
@@ -339,7 +345,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(
                 _root,
                 V.Component(OuterBoundaryRender, key: "outer"),
-                new MountOptions((exception, _) => _calls.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => _calls.Add(exception.Message) });
 
             // Assert
             Assert.That(string.Join(", ", _calls), Is.EqualTo("two"));
@@ -380,6 +386,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_SiblingBoundariesCatchingInReverseTreeOrderInOnePassiveDrain_When_TheirFallbacksCommit_Then_TheReportsFollowTreeOrderAndEachFallbacksLayoutEffects()
         {
@@ -388,7 +396,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(
                 _root,
                 V.Component(PassiveBoundaryPairRender, key: "pair"),
-                new MountOptions((exception, _) => s_order.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => s_order.Add(exception.Message) });
             _mounted.FlushEffectsForTest();
             s_setFirstTick.Invoke(1);
             s_setSecondTick.Invoke(1);
@@ -623,6 +631,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryHoldingAReportFromARender_When_AnEarlierSiblingsLayoutEffectThrowsIntoAnOuterBoundaryInTheSameCommit_Then_OnlyTheOuterBoundaryReports()
         {
@@ -634,7 +644,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(
                 _root,
                 V.Component(OuterAroundSiblingAndInnerBoundaryRender, key: "outer"),
-                new MountOptions((exception, _) => _calls.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => _calls.Add(exception.Message) });
 
             // Assert
             Assert.That(string.Join(", ", _calls), Is.EqualTo("two"));
@@ -713,6 +723,8 @@ namespace Velvet.Tests
                 Is.EqualTo("1 kept before | 0 kept after"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_SiblingBoundariesWhoseFallbacksBothHaveLayoutEffectsCatchingInReverseTreeOrder_When_TheirFallbacksCommit_Then_EachReportFollowsItsOwnFallbacksLayoutEffect()
         {
@@ -720,7 +732,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(
                 _root,
                 V.Component(NamedFallbackBoundaryPairRender, key: "pair"),
-                new MountOptions((exception, _) => s_order.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => s_order.Add(exception.Message) });
             _mounted.FlushEffectsForTest();
             s_setFirstTick.Invoke(1);
             s_setSecondTick.Invoke(1);
@@ -733,8 +745,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback one, one, fallback two, two"));
         }
 
-        // GREEN_ON_BASE(characterization): the base reports both catches in catch order at the catch, and the
-        // queue that now holds them must keep the second while it delivers the first.
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_TwoBoundariesCatchingLayoutEffectsErrorsInOneCommit_When_Mounted_Then_EachReportsOnceInCatchOrder()
         {
@@ -742,7 +754,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(
                 _root,
                 V.Component(BoundaryPairRender, key: "pair"),
-                new MountOptions((exception, _) => _calls.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => _calls.Add(exception.Message) });
 
             // Assert
             Assert.That(string.Join(", ", _calls), Is.EqualTo("one, two"));

@@ -7,10 +7,18 @@ namespace Velvet
     {
         private static readonly MountOptions s_defaultMountOptions = new();
 
+        private static readonly Func<Exception, ErrorInfo, VNode> s_renderNothing = static (_, _) => Fragment();
+
         /// <summary>
         /// Mounts a VNode tree onto <paramref name="target"/>, establishing it as a render root and performing
         /// the initial render. Dispose the returned <see cref="MountedTree"/> to unmount.
         /// </summary>
+        /// <remarks>
+        /// An error no error boundary in the tree catches unmounts the whole tree, as React's root does: its effect
+        /// cleanups run as on any unmount, <paramref name="target"/> is left without the tree's elements, and the
+        /// error is reported to <see cref="MountOptions.OnUncaughtError"/>. The handle stays valid, and
+        /// disposing it is still how the root is released.
+        /// </remarks>
         /// <param name="target">The VisualElement to mount onto.</param>
         /// <param name="tree">
         /// The VNode tree to mount (V.Provider, V.Component, V.Div, etc.).
@@ -36,9 +44,12 @@ namespace Velvet
             if (options == null) throw new ArgumentNullException(nameof(options));
             var root = new RootTree(tree);
             var rootFiber = FiberRenderer.CreateRoot(root.Render);
+            rootFiber.IsMountRoot = true;
+            rootFiber.FallbackFactory = s_renderNothing;
             try
             {
-                FiberRenderer.Mount(rootFiber, target, onCaughtError: options.OnCaughtError, motionClock: options.MotionClock);
+                FiberRenderer.Mount(rootFiber, target, onCaughtError: options.OnCaughtError,
+                    onUncaughtError: options.OnUncaughtError, motionClock: options.MotionClock);
             }
             catch
             {
@@ -125,6 +136,8 @@ namespace Velvet
         {
             if (_disposed) throw new InvalidOperationException("Cannot update an unmounted root.");
             _tree.Tree = tree ?? throw new ArgumentNullException(nameof(tree));
+            // A root that unmounted its tree for an uncaught error renders the new one, as React's root.render does.
+            Root.CaughtError = null;
             FiberWorkLoop.ScheduleRerender(Root, FiberUpdatePriority.Urgent);
             Root.Reconciler!.Context.BatchScheduler.FlushImmediate();
         }
@@ -143,7 +156,9 @@ namespace Velvet
             // continuations must not resurrect the tree. FiberRenderer.Dispose sets IsDisposed
             // before unmounting so IsDisposed-gated closures (UseMutation continuations,
             // optimistic update commits) short-circuit instead of mutating a torn-down fiber.
+            var context = Root.Reconciler?.Context;
             FiberRenderer.Dispose(Root);
+            if (context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(context);
         }
     }
 }

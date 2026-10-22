@@ -129,12 +129,14 @@ namespace Velvet.Tests
 
         #region A callback that throws
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ACallbackThatThrows_When_TheTransitionLaneRenders_Then_TheErrorReachesTheBoundaryAboveTheDeclaringComponent()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(StarterBoundaryRender, key: "starter-boundary"),
-                new MountOptions((_, _) => { }));
+                new MountOptions { OnCaughtError = (_, _) => { } });
             var threw = false;
 
             // Act
@@ -153,13 +155,15 @@ namespace Velvet.Tests
                 "The callback's error is thrown from the declaring component's Transition-lane render, as React's is");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ACallbackThatWritesItsParentThenThrows_When_TheParentsTransitionPassReachesIt_Then_TheErrorReachesTheBoundary()
         {
             // Arrange — the parent's write puts the parent on the lane too, so the child's render is the one the
             // parent's pass reaches rather than a flush of its own
             using var mounted = V.Mount(_root, V.Component(FilterBoundaryRender, key: "filter-boundary"),
-                new MountOptions((_, _) => { }));
+                new MountOptions { OnCaughtError = (_, _) => { } });
 
             // Act
             s_filterStart.Invoke(() =>
@@ -174,13 +178,15 @@ namespace Velvet.Tests
                 "A declaring component reached by an ancestor's Transition-lane pass throws the error there");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ACallbackThatThrew_When_AnUrgentPassOfTheParentRendersTheDeclaringComponentFirst_Then_TheTransitionLaneStillThrowsTheError()
         {
             // Arrange — the parent's own update renders the declaring component on the immediate tier, ahead of
             // the Transition lane the error waits on
             using var mounted = V.Mount(_root, V.Component(FilterBoundaryRender, key: "filter-boundary"),
-                new MountOptions((_, _) => { }));
+                new MountOptions { OnCaughtError = (_, _) => { } });
             s_filterStart.Invoke(() => throw new InvalidOperationException("filter boom"));
             s_filterSet.Invoke(1);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
@@ -193,12 +199,14 @@ namespace Velvet.Tests
                 "A render off the Transition lane leaves the error for that lane, as React's urgent render does");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_TwoCallbacksThatThrow_When_TheTransitionLaneRenders_Then_TheSecondErrorIsThrown()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(StarterBoundaryRender, key: "starter-boundary"),
-                new MountOptions((_, _) => { }));
+                new MountOptions { OnCaughtError = (_, _) => { } });
 
             // Act
             try
@@ -216,12 +224,14 @@ namespace Velvet.Tests
                 "The outcome rendered is that of the call whose callback returned last");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnActionThatFaultsAfterALaterCallReturned_When_TheTransitionLaneRendersBeforeTheLaterOneSettles_Then_NoErrorIsThrown()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(StarterBoundaryRender, key: "starter-boundary"),
-                new MountOptions((_, _) => { }));
+                new MountOptions { OnCaughtError = (_, _) => { } });
             var first = new VelvetTaskCompletionSource();
             var second = new VelvetTaskCompletionSource();
             s_throwingStart.Invoke(async () =>
@@ -240,12 +250,14 @@ namespace Velvet.Tests
                 "React dispatches each call's outcome where its callback returns, so the later call's pending one is last");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnActionStartedInsideACallbackThatThenThrows_When_TheActionsAwaitResumes_Then_TheCallbacksErrorIsThrown()
         {
             // Arrange — the action returns a completed task, so its settlement is an await the open scope holds back
             using var mounted = V.Mount(_root, V.Component(StarterBoundaryRender, key: "starter-boundary"),
-                new MountOptions((_, _) => { }));
+                new MountOptions { OnCaughtError = (_, _) => { } });
             try
             {
                 s_throwingStart.Invoke(() =>
@@ -267,12 +279,14 @@ namespace Velvet.Tests
                 "The action's callback returned first, so the outer callback's error is the outcome rendered");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ACallbackThatThrowsThenOneThatSucceeds_When_TheTransitionLaneRenders_Then_NoErrorIsThrown()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(StarterBoundaryRender, key: "starter-boundary"),
-                new MountOptions((_, _) => { }));
+                new MountOptions { OnCaughtError = (_, _) => { } });
 
             // Act
             try

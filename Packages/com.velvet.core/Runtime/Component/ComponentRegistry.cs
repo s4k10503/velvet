@@ -463,10 +463,7 @@ namespace Velvet
             }
             if (doomed == null) return;
             // Snapshotted first: DisposeFiberInternal removes each from the set this walk reads.
-            foreach (var fiber in doomed)
-            {
-                if (!fiber.IsDisposed) DisposeFiberInternal(fiber);
-            }
+            DisposeTogether(doomed);
         }
 
         internal void DisposeAndRemove(ComponentFiber fiber)
@@ -559,11 +556,17 @@ namespace Velvet
             List<ComponentFiber>? snapshot = null;
             CollectFibersUnder(orphanRoots, ref snapshot);
             if (snapshot == null) return;
-            for (var i = 0; i < snapshot.Count; i++)
+            DisposeTogether(snapshot);
+        }
+
+        // One deletion: begun on every fiber of it before the first is disposed (ComponentFiber.BeginDeletion). A
+        // fiber disposed by an earlier one's cascade is skipped.
+        private void DisposeTogether(List<ComponentFiber> doomed)
+        {
+            ComponentFiber.BeginDeletion(doomed);
+            for (var i = 0; i < doomed.Count; i++)
             {
-                var fiber = snapshot[i];
-                if (fiber.IsDisposed) continue;
-                DisposeFiberInternal(fiber);
+                if (!doomed[i].IsDisposed) DisposeFiberInternal(doomed[i]);
             }
         }
 
@@ -626,11 +629,7 @@ namespace Velvet
             if (doomed == null) return;
             // Snapshotted first: DisposeFiberInternal mutates the dictionary this walk reads, through
             // its own child cleanup cascades as well as its own unregister.
-            foreach (var fiber in doomed)
-            {
-                if (fiber.IsDisposed) continue;
-                DisposeFiberInternal(fiber);
-            }
+            DisposeTogether(doomed);
         }
 
         private static bool IsInsideAny(VisualElement? mountPoint, HashSet<VisualElement> roots)

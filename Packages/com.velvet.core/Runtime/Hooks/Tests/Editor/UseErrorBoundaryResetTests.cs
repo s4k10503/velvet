@@ -296,6 +296,9 @@ namespace Velvet.Tests
             // Arrange
             LogAssert.Expect(LogType.Exception,
                 new Regex("InvalidOperationException.*UseErrorBoundary must be called below"));
+            // The root takes the error no boundary catches, and its default report warns after it
+            LogAssert.Expect(LogType.Warning, new Regex(
+                @"^An error occurred in the <UseErrorBoundaryResetTests\.NoBoundaryAboveRender> component\."));
 
             // Act
             using var mounted = V.Mount(_root, V.Component(NoBoundaryAboveRender, key: "child"));
