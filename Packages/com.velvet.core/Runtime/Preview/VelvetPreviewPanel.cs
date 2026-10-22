@@ -21,6 +21,9 @@ namespace Velvet
     {
         private const int TextureDepth = 24;
 
+        // Below any sorting order a layer host takes, which sits a few hundred from its declaring panel's.
+        private const float ClearSortingOrder = -1e6f;
+
         private readonly GameObject _host;
         private readonly PanelSettings _settings;
         private readonly GameObject _clearHost;
@@ -61,7 +64,7 @@ namespace Velvet
             _clearSettings.hideFlags = HideFlags.HideAndDontSave;
             _clearSettings.themeStyleSheet = PanelHostFactory.SharedEmptyTheme;
             _clearSettings.scaleMode = PanelScaleMode.ConstantPixelSize;
-            _clearSettings.sortingOrder = float.MinValue;
+            _clearSettings.sortingOrder = ClearSortingOrder;
             _clearSettings.clearColor = true;
             _clearSettings.colorClearValue = Color.clear;
             _clearSettings.SetScreenToPanelSpaceFunction(OffPanel);
@@ -76,7 +79,10 @@ namespace Velvet
 
         private static UIDocument CreateDocument(PanelSettings settings)
         {
-            var host = new GameObject(nameof(VelvetPreviewPanel)) { hideFlags = HideFlags.HideAndDontSave };
+            // Hidden in the active scene the way PanelHostFactory's hosts are, so a scene change destroys it;
+            // IsAlive reports that.
+            var host = new GameObject(nameof(VelvetPreviewPanel));
+            VelvetObjectUtil.HideFrameworkSceneObject(host);
             var document = host.AddComponent<UIDocument>();
             document.panelSettings = settings;
             return document;
@@ -116,6 +122,9 @@ namespace Velvet
             if (_settings.scaleMode != mode) _settings.scaleMode = mode;
             if (_settings.scale != value) _settings.scale = value;
         }
+
+        // False once a scene change has destroyed the panel's GameObjects.
+        internal bool IsAlive => !_disposed && _host != null && _clearHost != null;
 
         public void Dispose()
         {

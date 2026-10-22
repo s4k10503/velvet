@@ -740,6 +740,13 @@ namespace Velvet.Editor.Preview
         private void TickPanel()
         {
             if (_panel == null) return;
+            if (!_panel.IsAlive)
+            {
+                SetPanelSettings(_panelSettings);
+                return;
+            }
+
+            ShowPanelTexture();
             if (!EditorApplication.isPlaying) EditorApplication.QueuePlayerLoopUpdate();
             _canvas?.MarkDirtyRepaint();
             if (_outline || _measure) _overlay?.Refresh();
