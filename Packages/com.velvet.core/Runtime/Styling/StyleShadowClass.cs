@@ -65,6 +65,14 @@ namespace Velvet
             ["inner"] = new[] { new ShadowSpec(Black(0.05f), 4f, 2f, 0f, 0f, inset: true) },
         };
 
+        // suffix → layers of inset-shadow-*, Tailwind v4's --inset-shadow-* theme values. There is no bare inset-shadow.
+        private static readonly Dictionary<string, ShadowSpec[]> InsetPresets = new()
+        {
+            ["2xs"] = new[] { new ShadowSpec(Black(0.05f), 0f, 1f, 0f, 0f, inset: true) },
+            ["xs"] = new[] { new ShadowSpec(Black(0.05f), 1f, 1f, 0f, 0f, inset: true) },
+            ["sm"] = new[] { new ShadowSpec(Black(0.05f), 4f, 2f, 0f, 0f, inset: true) },
+        };
+
         // Mirrors --radius-* in _tokens.uss. rounded-full / arbitrary radii are left to the
         // geometry-driven resolvedStyle path (TryResolveCornerRadius returns false for them).
         private static readonly Dictionary<string, float> RadiusScale = new()
@@ -97,7 +105,11 @@ namespace Velvet
         public static bool IsShadowClass(string cls)
             => !string.IsNullOrEmpty(cls) && (cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal));
 
-        // Cheap early-out gate: true when ANY class is shadow or begins with shadow-. Used
+        // inset-shadow-* writes the inset-shadow layers of the same box-shadow, so it is drawn by this paint.
+        private static bool IsInsetShadowClass(string cls)
+            => !string.IsNullOrEmpty(cls) && cls.StartsWith("inset-shadow-", StringComparison.Ordinal);
+
+        // Cheap early-out gate: true when ANY class is shadow, or begins with shadow- or inset-shadow-. Used
         // to skip the full parse on the ~99% of elements that carry no shadow class and no binding.
         public static bool HasShadowClass(string[] classNames)
         {
@@ -107,7 +119,7 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                if (IsShadowClass(cls))
+                if (IsShadowClass(cls) || IsInsetShadowClass(cls))
                 {
                     return true;
                 }
@@ -115,56 +127,67 @@ namespace Velvet
             return false;
         }
 
-        // Returns the layers of the last recognized shadow-* utility in classNames (CSS cascade: later classes
-        // win), first on top. Returns false when no shadow is wanted — either no shadow class at all, or the
-        // winning class is shadow-none.
+        // Returns the layers of the last recognized inset-shadow-* utility in classNames followed by those of the last
+        // recognized shadow-* utility (CSS cascade: later classes win), first on top, as Tailwind lists the inset
+        // shadow ahead of the shadow in one box-shadow. Returns false when that leaves no layer, each family having no
+        // recognized class or its -none last.
         public static bool TryExtract(string[] classNames, out ShadowSpec[] spec)
         {
             spec = Array.Empty<ShadowSpec>();
-            if (classNames == null)
+            // A box-shadow the browser discards takes every shadow-* and inset-shadow-* with it.
+            if (classNames == null || StyleRingClass.DiscardsBoxShadow(classNames))
             {
                 return false;
             }
 
-            var found = false;
-            // A box-shadow the browser discards takes every shadow-* with it.
-            var discarded = StyleRingClass.DiscardsBoxShadow(classNames);
+            var outer = Array.Empty<ShadowSpec>();
+            var inset = Array.Empty<ShadowSpec>();
             foreach (var cls in classNames)
             {
-                if (discarded && IsShadowClass(cls))
+                // A recognized utility overrides earlier ones of its family; its -none empties the family.
+                if (TryParse(cls!, "shadow", Presets, out var parsed))
                 {
-                    continue;
+                    outer = parsed;
                 }
-                if (TryParse(cls!, out var parsed, out var wantShadow))
+                else if (TryParse(cls!, "inset-shadow", InsetPresets, out parsed))
                 {
-                    // A recognized utility overrides earlier ones; shadow-none flips found back to false.
-                    found = wantShadow;
-                    if (wantShadow)
-                    {
-                        spec = parsed;
-                    }
+                    inset = parsed;
                 }
             }
-            return found;
+            if (inset.Length == 0 || outer.Length == 0)
+            {
+                spec = inset.Length == 0 ? outer : inset;
+                return spec.Length > 0;
+            }
+            spec = new ShadowSpec[inset.Length + outer.Length];
+            inset.CopyTo(spec, 0);
+            outer.CopyTo(spec, inset.Length);
+            return true;
         }
 
-        private static bool TryParse(string cls, out ShadowSpec[] spec, out bool wantShadow)
+        // Reads cls as a utility of the family root names, spec being its layers, empty for its -none. The bare
+        // root is the empty suffix, a preset of shadow's and of none of inset-shadow's.
+        private static bool TryParse(string cls, string root, Dictionary<string, ShadowSpec[]> presets,
+            out ShadowSpec[] spec)
         {
             spec = Array.Empty<ShadowSpec>();
-            wantShadow = false;
-            if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
+            if (string.IsNullOrEmpty(cls) || !cls.StartsWith(root, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            if (!StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }
 
             string suffix;
-            if (cls == "shadow")
+            if (cls == root)
             {
                 suffix = "";
             }
-            else if (cls.StartsWith("shadow-", StringComparison.Ordinal))
+            else if (cls[root.Length] == '-')
             {
-                suffix = cls.Substring("shadow-".Length);
+                suffix = cls.Substring(root.Length + 1);
             }
             else
             {
@@ -173,25 +196,18 @@ namespace Velvet
 
             if (suffix == "none")
             {
-                wantShadow = false;
                 return true;
             }
-            if (Presets.TryGetValue(suffix, out var preset))
+            if (presets.TryGetValue(suffix, out var preset))
             {
                 spec = preset;
-                wantShadow = true;
                 return true;
             }
             // Arbitrary value: shadow-[x_y_blur_spread_#color] (underscores are spaces). Sits AFTER the
-            // preset lookup so a named preset never reaches it.
-            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
-                && TryParseArbitraryList(inner.ToString(), out spec))
-            {
-                wantShadow = true;
-                return true;
-            }
-            // Unrecognized shadow-* utility: not a known value.
-            return false;
+            // preset lookup so a named preset never reaches it. Tailwind writes `inset` ahead of each layer of an
+            // inset-shadow-[…].
+            return StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                && TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out spec);
         }
 
         // One custom property of the element's box-shadow and the class holding it: the last of those writing it in
@@ -222,8 +238,8 @@ namespace Velvet
             }
         }
 
-        // Whether cls is an inset-shadow-* or inset-ring-* class, which Velvet draws nothing for but whose values
-        // take part in the box-shadow the others share (StyleRingClass.DiscardsBoxShadow).
+        // Whether cls is an inset-shadow-* or inset-ring-* class, whose values take part in the box-shadow the others
+        // share (StyleRingClass.DiscardsBoxShadow). Velvet draws inset-shadow-* and nothing for inset-ring-*.
         internal static bool IsInsetBoxShadowClass(string cls)
             => cls.StartsWith("inset-shadow", StringComparison.Ordinal) || cls.StartsWith("inset-ring", StringComparison.Ordinal);
 
@@ -383,14 +399,15 @@ namespace Velvet
 
         // Parses the inner body of a shadow-[…] arbitrary value: comma-separated layers, first on top. One
         // malformed layer rejects the whole list, as the browser drops a box-shadow value it cannot read.
-        private static bool TryParseArbitraryList(string body, out ShadowSpec[] spec)
+        // inset: every layer is drawn as an inset one, as an inset-shadow-[…] writes it.
+        private static bool TryParseArbitraryList(string body, bool inset, out ShadowSpec[] spec)
         {
             spec = Array.Empty<ShadowSpec>();
             var layers = StyleGradientClass.SplitTopLevel(body, ',');
             var parsed = new ShadowSpec[layers.Count];
             for (var i = 0; i < layers.Count; i++)
             {
-                if (!TryParseArbitrary(layers[i], out parsed[i]))
+                if (!TryParseArbitrary(inset ? "inset " + layers[i] : layers[i], out parsed[i]))
                 {
                     return false;
                 }

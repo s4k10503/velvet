@@ -24,10 +24,10 @@ namespace Velvet.SourceGenerators.Tests
     /// </remarks>
     public sealed class BundledStyleSheetCensusTests
     {
-        private const int SurveyedRuleCount = 2278;
-        private const int SurveyedSingleClassRuleCount = 2240;
+        private const int SurveyedRuleCount = 2410;
+        private const int SurveyedSingleClassRuleCount = 2372;
         private const int SurveyedDistinctPropertyNameCount = 65;
-        private const int SurveyedUtilityClassCount = 2169;
+        private const int SurveyedUtilityClassCount = 2301;
         private const int SurveyedTransitionUtilityCount = 36;
 
         private static readonly Census Surveyed = Census.OfBundledStyleSheets();
@@ -62,6 +62,36 @@ namespace Velvet.SourceGenerators.Tests
             Assert.Equal(
                 (File.ReadAllText(CommittedRadiusSheetPath()), ""),
                 (derived.EmittedSheet, string.Join("\n", derived.Problems.Select(p => p.ToString()))));
+        }
+
+        [Fact]
+        public void Given_ThePaletteSource_When_ThePaletteSheetIsDerivedAfresh_Then_TheCommittedSheetMatches()
+        {
+            // Arrange
+            var sheetPath = Path.Combine(BundledStyleSheetDirectory(), PaletteDerivation.SheetFileName);
+
+            // Act
+            var derived = PaletteDerivation.Build(File.ReadAllText(PaletteSourcePath()), File.ReadAllText(sheetPath));
+
+            // Assert
+            Assert.Equal(
+                (File.ReadAllText(sheetPath), ""),
+                (derived.EmittedSheet, string.Join("\n", derived.Problems.Select(p => p.ToString()))));
+        }
+
+        [Fact]
+        public void Given_ThePaletteSource_When_ThePaletteTableIsDerivedAfresh_Then_TheCommittedTableMatches()
+        {
+            // Arrange
+            var sheetPath = Path.Combine(BundledStyleSheetDirectory(), PaletteDerivation.SheetFileName);
+
+            // Act
+            var derived = PaletteDerivation.Build(File.ReadAllText(PaletteSourcePath()), File.ReadAllText(sheetPath));
+
+            // Assert
+            Assert.Equal(
+                File.ReadAllText(Path.Combine(SolutionPaths.RuntimeRoot(), "Styling", PaletteDerivation.TableFileName)),
+                derived.EmittedTable);
         }
 
         [Fact]
@@ -266,7 +296,7 @@ namespace Velvet.SourceGenerators.Tests
             // Arrange
             var expected = new Dictionary<SelectorShape, int>
             {
-                [SelectorShape.SingleClass] = 2240,
+                [SelectorShape.SingleClass] = 2372,
                 [SelectorShape.ClassWithPseudoClass] = 32,
                 [SelectorShape.ClassWithStateMarker] = 3,
                 [SelectorShape.Root] = 2,
@@ -456,6 +486,9 @@ namespace Velvet.SourceGenerators.Tests
         /// <summary>Where the committed table lives, which is also where the build script writes it.</summary>
         private static string CommittedTablePath() =>
             Path.Combine(SolutionPaths.RuntimeRoot(), "Styling", "StyleUtilityProperties.g.cs");
+
+        private static string PaletteSourcePath() =>
+            Path.Combine(SolutionPaths.GeneratorsRoot(), "src", "Velvet.StyleTable", PaletteDerivation.SourceFileName);
 
         private static string CommittedRadiusSheetPath() =>
             Path.Combine(BundledStyleSheetDirectory(), CornerRadiusDeclarationSheet.FileName);

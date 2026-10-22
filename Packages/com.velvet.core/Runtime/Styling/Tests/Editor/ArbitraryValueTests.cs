@@ -123,12 +123,12 @@ namespace Velvet.Tests
         [Test]
         public void Given_BackgroundPaletteColorWithOpacityModifier_When_Parsed_Then_ResolvesBaseColorWithAlpha()
         {
-            // Act — bg-red-500 (#ef4444) at 50% alpha.
+            // Act — bg-red-500 (#fb2c36) at 50% alpha.
             var ok = StyleArbitraryValueResolver.TryParse("bg-red-500/50", out var s);
 
             // Assert — ok + property + base red channel + alpha in one shot (RED-without: ok is false).
             Assert.That((ok, s.Property, Mathf.RoundToInt(s.Color.r * 255f), s.Color.a),
-                Is.EqualTo((true, ArbitraryProperty.BackgroundColor, 239, 0.5f)));
+                Is.EqualTo((true, ArbitraryProperty.BackgroundColor, 251, 0.5f)));
         }
 
         [Test]

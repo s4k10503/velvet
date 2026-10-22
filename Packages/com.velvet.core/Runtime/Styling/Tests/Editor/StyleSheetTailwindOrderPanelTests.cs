@@ -13,7 +13,6 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class StyleSheetTailwindOrderPanelTests : PanelTestBase
     {
-        private static readonly Color Red500 = new Color32(0xEF, 0x44, 0x44, 0xFF);
 
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
@@ -101,8 +100,8 @@ namespace Velvet.Tests
             // Act
             var leaf = MountAndResolve(className);
 
-            // Assert
-            Assert.That(leaf.resolvedStyle.backgroundColor, Is.EqualTo(Red500));
+            // Assert — red-500, #fb2c36.
+            Assert.That(leaf.resolvedStyle.backgroundColor, Is.EqualTo((Color)new Color32(0xFB, 0x2C, 0x36, 0xFF)));
         }
 
         [TestCase("text-sm text-lg")]

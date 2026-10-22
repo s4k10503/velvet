@@ -20,8 +20,15 @@ follows a transform on the element, as a CSS box-shadow does. `drop-shadow-*` is
 | `shadow-inner` | `inset 0 2px 4px 0` black at 5% |
 | `shadow-none` | none |
 | `shadow-[<shadow>(,<shadow>)*]` | each shadow two to four lengths (x, y, blur, spread), an optional colour and an optional `inset`, with `_` for spaces: `shadow-[0_4px_8px_-2px_#0004,inset_0_1px_2px_#0002]` |
+| `inset-shadow-2xs` | `inset 0 1px` black at 5% |
+| `inset-shadow-xs` | `inset 0 1px 1px` black at 5% |
+| `inset-shadow-sm` | `inset 0 2px 4px` black at 5% |
+| `inset-shadow-none` | none |
+| `inset-shadow-[<shadow>(,<shadow>)*]` | as `shadow-[…]` without the `inset`, which is written ahead of every shadow: `inset-shadow-[0_2px_4px_#0004]` |
 
-The presets are Tailwind v4's `--shadow-*` theme values. A layer of a bracketed shadow without a colour takes
+The presets are Tailwind v4's `--shadow-*` and `--inset-shadow-*` theme values. An `inset-shadow-*` and a `shadow-*`
+on one element are both drawn, the `inset-shadow-*` layers listed first, and each `-none` removes its own family's
+layers alone. A layer of a bracketed shadow without a colour takes
 `rgb(4 12 24 / 0.2)`, where CSS takes `currentColor`. A negative blur, a percentage, or any layer that does not
 read rejects the whole bracket, as the browser drops a `box-shadow` value it cannot read.
 
@@ -54,7 +61,6 @@ each border off its own axis and leaves an elliptical corner.
 
 These classes read as no shadow, so they are inert and an earlier `shadow-*` stays in force:
 
-- `shadow-<color>` and `shadow-lg/50`: the colour of a preset layer cannot be changed. Write the layers out in
-  `shadow-[…]` with a colour.
+- `shadow-<color>`, `inset-shadow-<color>` and `shadow-lg/50`: the colour of a preset layer cannot be changed. Write
+  the layers out in `shadow-[…]` or `inset-shadow-[…]` with a colour.
 - `shadow-[#f00]`: a bracket must hold at least the two offset lengths.
-- `inset-shadow-*`: write an `inset` layer in `shadow-[…]`, or use `shadow-inner`.

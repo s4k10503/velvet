@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -56,12 +55,6 @@ namespace Velvet
         // outline-width's initial value, medium: the width of an outline whose style a class set and whose width
         // no class did.
         private const float MediumOutlineWidth = 3f;
-
-        // suffix → width (px). Shared by ring-{N} and outline-{N}; the ring/outline width scale.
-        private static readonly Dictionary<string, float> WidthScale = new()
-        {
-            ["0"] = 0f, ["1"] = 1f, ["2"] = 2f, ["4"] = 4f, ["8"] = 8f,
-        };
 
         // True when cls belongs to either family this layer owns (recognized or not-yet-valid). Both the
         // array gate below and the variant-payload gate answer through this one predicate, so which tokens
@@ -219,7 +212,7 @@ namespace Velvet
         // is a length; RejectedValueTests pins both.
         private static void ReadBoxShadowPart(string suffix, string root, bool important, ref BandSlots slots)
         {
-            if (WidthScale.ContainsKey(suffix) || IsPositiveInteger(suffix))
+            if (IsPositiveInteger(suffix))
             {
                 slots.Width.Offer(important, false);
                 return;
@@ -407,7 +400,8 @@ namespace Velvet
             return false;
         }
 
-        // A width is either a preset (0/1/2/4/8) or an arbitrary [Npx] (px only — a ring width is pixels).
+        // A width is a whole number of pixels written bare, as Tailwind's isPositiveInteger reads one, or an arbitrary
+        // [Npx] (px only — a ring width is pixels).
         // inferredRoot: the prefix's root where Tailwind reads its bracket as a length or a colour
         // (StyleArbitraryValueResolver.TryParseInferredArbitraryPixels); null for outline-offset-, which takes a length alone.
         private static bool TryParseWidthValue(string? suffix, string? inferredRoot, out float width)
@@ -417,8 +411,9 @@ namespace Velvet
             {
                 return false;
             }
-            if (WidthScale.TryGetValue(suffix, out width))
+            if (IsPositiveInteger(suffix))
             {
+                width = float.Parse(suffix, System.Globalization.CultureInfo.InvariantCulture);
                 return true;
             }
             if (inferredRoot != null)

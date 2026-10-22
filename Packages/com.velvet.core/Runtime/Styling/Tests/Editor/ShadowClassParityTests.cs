@@ -269,6 +269,53 @@ namespace Velvet.Tests
             Assert.That(want, Is.False);
         }
 
+        // The presets are Tailwind v4's --inset-shadow-* values. Every layer of either form is inset.
+        [TestCase("inset-shadow-2xs", "0 1 0 0 0.05 inset")]
+        [TestCase("inset-shadow-xs", "0 1 1 0 0.05 inset")]
+        [TestCase("inset-shadow-sm", "0 2 4 0 0.05 inset")]
+        [TestCase("inset-shadow-[0_2px_4px_#00000044]", "0 2 4 0 0.27 inset")]
+        public void Given_AnInsetShadowClass_When_Extracted_Then_ItsLayersAreInsetOnes(string cls, string expected)
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(new[] { cls }, out var spec);
+
+            // Assert
+            Assert.That(
+                found ? Describe(spec) + (System.Array.TrueForAll(spec, l => l.Inset) ? " inset" : " outer") : "none",
+                Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AnInsetShadowBesideAShadow_When_Extracted_Then_TheInsetLayersAreListedFirst()
+        {
+            // Act — written after the shadow, and listed ahead of it all the same.
+            var found = StyleShadowClass.TryExtract(new[] { "shadow-md", "inset-shadow-sm" }, out var spec);
+
+            // Assert
+            Assert.That(found ? Describe(spec) : "none", Is.EqualTo("0 2 4 0 0.05, 0 4 6 -1 0.1, 0 2 4 -2 0.1"));
+        }
+
+        [TestCase("inset-shadow-sm shadow-md shadow-none", "0 2 4 0 0.05")]
+        [TestCase("inset-shadow-sm shadow-md inset-shadow-none", "0 4 6 -1 0.1, 0 2 4 -2 0.1")]
+        public void Given_OneFamilysNone_When_Extracted_Then_TheOtherFamilysLayersRemain(string classes, string expected)
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(classes.Split(' '), out var spec);
+
+            // Assert
+            Assert.That(found ? Describe(spec) : "none", Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AnInsetShadowClass_When_Gated_Then_HasShadowClassLetsItThrough()
+        {
+            // Act
+            var has = StyleShadowClass.HasShadowClass(new[] { "inset-shadow-sm" });
+
+            // Assert
+            Assert.That(has, Is.True);
+        }
+
         [Test]
         public void Given_ADropShadowClass_When_Gated_Then_HasShadowClassPassesItBy()
         {

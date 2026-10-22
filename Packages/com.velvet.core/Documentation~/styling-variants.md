@@ -316,7 +316,8 @@ two `focus:ring-2` siblings render the same whichever was focused first. `ring-i
 an opaque full-bleed child, where CSS paints an inset box-shadow under the element's children.
 
 A band is drawn by a class that names one, as in Tailwind v4: `ring` (1px), `ring-<n>`, `ring-[…]`, `outline`
-(1px), `outline-<n>` and `outline-[…]`. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
+(1px), `outline-<n>` and `outline-[…]`. `<n>` is any whole number of pixels written without a leading zero (`ring-3`),
+as it is in `ring-offset-<n>` and `outline-offset-<n>`. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
 colours only its own family's band, so `outline ring-red-500` is an outline in the text colour. A band whose
 family names no colour, or names `ring-current` / `outline-current`, is drawn in the element's text colour and
 follows it as it changes. Velvet still

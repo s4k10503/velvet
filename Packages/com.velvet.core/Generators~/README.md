@@ -169,9 +169,11 @@ Generators~/
 ├── src/Velvet.SourceGenerators.Bootstrap/    (second compile of the sibling's sources — see "How this solution opts in")
 │   └── Velvet.SourceGenerators.Bootstrap.csproj
 ├── src/Velvet.SourceGenerators.CodeFixes/    (ships to ../Runtime/Plugins/Analyzers/)
-├── src/Velvet.StyleTable/                    (console tool — writes ../Runtime/Styling/StyleUtilityProperties.g.cs and ../Runtime/Styles/_radius_declared.uss)
+├── src/Velvet.StyleTable/                    (console tool — writes ../Runtime/Styling/StyleUtilityProperties.g.cs, ../Runtime/Styles/_radius_declared.uss,
+│   │                                          the palette tokens in ../Runtime/Styles/_palette.uss and ../Runtime/Styling/VelvetPaletteColors.g.cs)
 │   ├── Velvet.StyleTable.csproj              (CLI entry point below)
-│   ├── Program.cs                            (CLI: --styles <dir> --output <file> --radius-output <file>)
+│   ├── Program.cs                            (CLI: --styles <dir> --output <file> --radius-output <file>
+│   │                                          --palette-source <file> --palette-output <file>)
 │   ├── UssStyleSheetParser.cs                (rules and declarations, straight off the text)
 │   ├── UssCascadeOrder.cs                    (the @import order the importer flattens the sheets to)
 │   ├── UssSelector.cs                        (which selector shapes the table can model)
@@ -179,7 +181,9 @@ Generators~/
 │   ├── UssProblem.cs                         (USS001-USS012 — why a derivation refused to write)
 │   ├── StyleUtilityTableBuilder.cs           (stylesheets → class → property set)
 │   ├── StyleUtilityTableEmitter.cs           (property set → C# source)
-│   └── CornerRadiusDeclarationSheet.cs       (stylesheets → each rule's corner radii as custom properties)
+│   ├── CornerRadiusDeclarationSheet.cs       (stylesheets → each rule's corner radii as custom properties)
+│   ├── PaletteColors.css                     (the palette in OKLCH, the source the next file derives from)
+│   └── PaletteDerivation.cs                  (OKLCH → sRGB palette tokens and the C# palette table)
 └── tests/Velvet.SourceGenerators.Tests/      (abridged)
     ├── Velvet.SourceGenerators.Tests.csproj
     ├── SourceBuilderTests.cs
@@ -206,9 +210,11 @@ It is a build-time tool rather than a source generator because the answer is a f
 
 Committing generated source is only safe with a guard, and `BundledStyleSheetCensusTests` is it: it re-derives from the stylesheets and compares against the committed file. Unlike the two DLLs — which embed the git `HEAD` commit id and so can never be byte-compared against a rebuild — the emitted C# is deterministic, so the comparison is exact. `generators.yml` triggers on `Runtime/**`, so a stylesheet edit runs it whether or not any code changed.
 
-Failures are reported as `USS001`-`USS012` and refuse to write either output. They are deliberately outside the `VEL###` space the analyzers use: nothing can suppress a build-script failure through an `.editorconfig` severity, and sharing the namespace would invite someone to try. Each code marks an assumption the table depends on — that `:root` declares only custom properties, that a utility declares no custom property, that every property name resolves to the pinned UI Toolkit vocabulary, that one class carries one gate and is declared by one rule, that the sheets arrive in the aggregator's `@import` order, that no gated rule declares `transition-property` — so the assumption cannot rot silently.
+Failures are reported as `USS001`-`USS012` and refuse to write any output. They are deliberately outside the `VEL###` space the analyzers use: nothing can suppress a build-script failure through an `.editorconfig` severity, and sharing the namespace would invite someone to try. Each code marks an assumption the table depends on — that `:root` declares only custom properties, that a utility declares no custom property, that every property name resolves to the pinned UI Toolkit vocabulary, that one class carries one gate and is declared by one rule, that the sheets arrive in the aggregator's `@import` order, that no gated rule declares `transition-property` — so the assumption cannot rot silently.
 
 The same run writes `../Runtime/Styles/_radius_declared.uss`, which restates every bundled rule's corner radii as custom properties under that rule's own selector, in cascade order. `CornerRadiusFit` reads them to learn the radius a class declares while it holds a fitted radius inline, where no public reading of the element sees the declared one. The restating rules declare nothing but custom properties, so the table reads them as token blocks, and `BundledStyleSheetCensusTests` compares the committed sheet against a fresh derivation exactly as it does the table.
+
+The same run converts the palette, written in OKLCH in the file `PaletteDerivation.SourceFileName` names beside it, to sRGB, as CSS Color 4 converts it, with each channel clipped to the gamut, and writes it twice: as the `:root` block of `../Runtime/Styles/_palette.uss`, whose rules are left as written, and as `../Runtime/Styling/VelvetPaletteColors.g.cs`, which `VelvetPalette` resolves an inline colour from. The table is derived from the palette sheet as the run rewrites it, and `BundledStyleSheetCensusTests` compares both palette outputs against a fresh derivation. A colour the source writes other than as `oklch(<L>% <C> <H>)` is `USS001`, as is a palette sheet with no `:root` block.
 
 Four partials declare no rules and are expected to: `StyleUtilities.uss` is nothing but `@import`, and `_gap.uss`, `_presets.uss` and `_states.uss` describe utility families Velvet realises in C# rather than in USS (each says so in its own header). Their classes are therefore absent from the table, which from the table's side looks identical to a class that sets nothing — `BundledStyleSheetCensusTests` pins the list so the distinction stays visible.
 

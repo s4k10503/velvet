@@ -209,6 +209,29 @@ namespace Velvet.Tests
             Assert.That(Extract("outline-2", "outline-offset-4").Offset, Is.EqualTo(4f));
         }
 
+        // 3 is off the 0/1/2/4/8 Tailwind suggests, which is not the set it reads.
+        [TestCase("ring-3")]
+        [TestCase("outline-3")]
+        public void Given_ABareWidthOffTheSuggestedScale_When_Extracted_Then_ItIsThatManyPixels(string width)
+        {
+            // Act
+            var resolved = Extract(width).Width;
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo(3f));
+        }
+
+        [TestCase("ring-2", "ring-offset-3")]
+        [TestCase("outline-2", "outline-offset-3")]
+        public void Given_ABareOffsetOffTheSuggestedScale_When_Extracted_Then_ItIsThatManyPixels(string band, string offset)
+        {
+            // Act
+            var resolved = Extract(band, offset).Offset;
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo(3f));
+        }
+
         [Test]
         public void Given_RingArbitraryHexColor_When_Extracted_Then_ResolvesThatColor()
         {

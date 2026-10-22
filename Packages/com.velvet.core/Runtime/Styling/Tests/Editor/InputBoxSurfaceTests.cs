@@ -78,6 +78,7 @@ namespace Velvet.Tests
         [TestCase("ps-3")]
         [TestCase("pe-3")]
         [TestCase("shadow-lg")]
+        [TestCase("inset-shadow-sm")]
         [TestCase("ring-2")]
         [TestCase("outline-2")]
         [TestCase("hover:bg-red-500")]
