@@ -96,8 +96,9 @@ a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar
 ([styling-colors.md](styling-colors.md)). A missing tail is padded from the declaration's
 defaults — the same values the USS parser pads with — so a bare `filter-[name]` applies the
 declared defaults outright. Supplying more arguments than the declaration, or an argument that
-fails its slot's grammar, refuses the arguments as a whole. (UI Toolkit's `FilterFunction` holds at most 4
-parameters, so a definition declaring more is rejected at registration.)
+fails its slot's grammar, refuses the arguments as a whole. UI Toolkit's `FilterFunction` holds at most 4
+parameters, and adding a fifth throws (`CustomFilterRegistryTests` pins the engine's cap), so a definition
+declaring more is rejected at registration.
 
 A name nothing is registered under is a reference to a missing filter: the element draws no filter at
 all, its built-in utilities included, as CSS ignores the whole chain when a `url()` names no filter. The
