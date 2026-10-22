@@ -30,7 +30,7 @@ In C#, methods conventionally use PascalCase, so the names always differ from Re
 
 | React | Velvet | Semantic Difference |
 |-------|--------|----------------|
-| `useEffect(fn, deps)` | `Hooks.UseEffect(fn, deps)` | Nearly equivalent. Runs after its commit, at the next frame boundary after paint, unless something runs it first. As in React, a drain of queued updates, a resumed time-sliced slice and a `V.VirtualList` range render run the pending effects before they render; a discrete event runs them before its handler's update renders, whether or not there is one; and the effects of a commit React gives the sync lane — a discrete event's, a layout effect's or callback ref's state write's, a `UseSyncExternalStore` change's — run as that commit ends, before paint. An update an effect schedules from any of these flushes is an ordinary one, and where the flush preceded a transition — the Transition tier's drain, a parked transition's resumed slice — it renders before the transition. No flush runs inside a layout commit or a passive drain already under way. **Velvet deviation:** pending effects belong to their root: React flushes every root's pending effects before any root renders, while a render of one `V.Mount` root here flushes only its own. 2-pass cleanup → effect ordering. A component a time-sliced transition pass rendered before it finished runs its effects after that pass commits, not between its slices |
+| `useEffect(fn, deps)` | `Hooks.UseEffect(fn, deps)` | Nearly equivalent. Runs after its commit, at the next frame boundary after paint, unless something runs it first. As in React, a drain of queued updates, a resumed time-sliced slice and a `V.VirtualList` range render run the pending effects before they render; a discrete event runs them before its handler's update renders, whether or not there is one; and the effects of a commit React gives the sync lane — a discrete event's, a layout effect's or callback ref's state write's, a `UseSyncExternalStore` or `Hooks.UseStore` change's — run as that commit ends, before paint. An update an effect schedules from any of these flushes is an ordinary one, which waits for the next drain, unless the same flush forces the re-render `UseSyncExternalStore` or `UseStore` asks for when its subscription or snapshot check finds the store changed: that takes the sync lane, and the drain renders again before the flush returns, the scheduled post-paint flush included, taking the ordinary updates with it, as React's sync flush renders every pending sync, input and default lane together; and where the flush preceded a transition — the Transition tier's drain, a parked transition's resumed slice — it renders before the transition. No flush runs inside a layout commit or a passive drain already under way. **Velvet deviation:** pending effects belong to their root: React flushes every root's pending effects before any root renders, while a render of one `V.Mount` root here flushes only its own. 2-pass cleanup → effect ordering. A component a time-sliced transition pass rendered before it finished runs its effects after that pass commits, not between its slices |
 | `useLayoutEffect(fn, deps)` | `Hooks.UseLayoutEffect(fn, deps)` | Runs synchronously immediately after reconcile, with the committed tree laid out: as a layout read in React forces the reflow, `layout`, `resolvedStyle` and `worldBound` read inside it reflect this commit, on mount as on update, in the panel the tree is mounted on and in its `V.Portal(layer:)` and `V.WorldSpace` panels, and a state update it makes re-renders before the frame is painted. The factory of a `Hooks.UseImperativeHandle` built in the same commit, and a `refCallback:` attached in it, read the same laid-out tree, and the commit's `Hooks.UseInsertionEffect`s run before its refs attach. A commit made inside the panel's own layout pass — the rows a `V.VirtualList` renders as its viewport is laid out, once the list holds them, or a tree mounted from a `GeometryChangedEvent` callback — reads its elements laid out as well. The commit computes the layout without sending `GeometryChangedEvent`s; the panel's layout pass sends them afterwards, one dispatch at a time. **Velvet deviation:** what a UI Toolkit control settles from those events settles in that pass, after the commit, so a layout effect inside a `ScrollView` whose content has just come to overflow reads its scrollers as they were. A commit attaches each `refCallback:` as React's layout phase reaches its element: after everything inside the element and after the layout effects of the components below it, and ahead of the layout effects of the component that rendered the element. A layout effect therefore finds the refs of its own component's elements, of its descendants' and of its earlier siblings' set, and, on mount, an ancestor element's or a later sibling's not yet. The layout cleanups of the commit run after the refs it replaces detach and before the new ones attach. **Velvet deviation:** the commit detaches every ref it replaces before the first layout cleanup, where React detaches each in the mutation phase's post-order walk, so a layout cleanup finds the old ref of an element above its component already detached, which React's still has attached. |
 | `useInsertionEffect(fn, deps)` | `Hooks.UseInsertionEffect(fn, deps)` | Nearly equivalent. Runs synchronously after render, before every `UseLayoutEffect` of the same commit. For style injection; must not read layout or refs |
 | `useOptimistic(state, updateFn)` | `Hooks.UseOptimistic(state, applyOptimistic)` | Returns `(optimisticState, addOptimistic)`. Every render folds the pass-through state through the outstanding entries in the order `addOptimistic` received them, so an entry still outstanding lands on the authoritative state as it now is rather than on the state it was added over. An entry added while a `startTransition` callback runs — an `async` action's up to the point it first suspends — belongs to the innermost transition open there whose `isPending` is lit, and is discarded when that transition settles, or when no `async` action is left in flight (below): whether or not the pass-through state changed, and whether the action succeeded or faulted. An entry added where no such transition is open while an `async` action is in flight — that action's own code past a suspension included — belongs to every action in flight together. As in React, the actions in flight are entangled: a transition that settles while any is in flight hands its entries to them, so they are discarded once none is left, the last completing. An action counts from its start until its task completes, whether or not the component that started it is still mounted, as React's entangled scope waits on the promise: one awaiting a task that never completes holds every later transition's entries, its component's unmount included, until the next Play Mode entry. Before this an unmount gave the action up. The render `addOptimistic` requests is an ordinary one at the priority a setter called there would take outside a transition, so the value shows before the transition commits; an entry whose transition settles before any render showed it — a synchronous callback that queued nothing — is shown by that render and discarded by the component's next Transition-lane render. An entry nothing owns is discarded by the component's next Transition-lane render too; added outside every `startTransition` callback it logs a warning in the editor, and added in a callback whose starter's component has unmounted it does not. A Transition-lane drain that lands the last work a transition queued renders the component it drains, and any component its pass renders, without that transition's entries, so that commit already shows them gone as React's revert lane does. Where that settle lands inside a flush or inside the terminal slice of a time-sliced reconcile, each component holding the entries is rendered without them before that commit's layout effects run: a holder the pass does not reach, and one it rendered before the settle, included. A holder that is unmounted, hidden under a fallback or in a detached host keeps its render for the scheduler, and so does a settle no flush lands, an `async` action completing for one: those revert in a later commit, after the layout effects of the one that settled |
@@ -499,7 +499,7 @@ operators or buffering — see `StoreStateNotifier<T>`), corresponding to Zustan
 | Zustand | Velvet |
 |---------|--------|
 | `create<T>((set, get) => ({ ... }))` | `sealed class MyStore : Store<TState> { /* logic */ }` |
-| `useStore(myStore, s => s.field)` | `Hooks.UseStore(store, s => s.field)` (inside a component function; obtain `store` via `UseContext`) |
+| `useStore(myStore, s => s.field)` | `Hooks.UseStore(store, s => s.field)` (inside a component function; obtain `store` via `UseContext`). Subscribes in the commit's passive effects and re-renders on the Urgent lane, inside `startTransition` too, as `useSyncExternalStore` does — see [External stores](#external-stores) |
 | `useStore(myStore, s => s.field, shallow)` | `Hooks.UseStore(store, s => s.field, customComparer)` |
 | `set(newState)` | `SetState(s => s with { ... })` (protected, inside the Store) |
 | `get()` | `store.Current` (snapshot) / `store.Subscribe(...)` / `store.Select(...)` (change notifications) |
@@ -568,22 +568,27 @@ It follows React's `useSyncExternalStore`:
 
 - **Snapshots are compared with `Object.is` and must be cached.** A notification re-renders the
   component when `getSnapshot` then returns a value that is not `Object.is`-equal to the one it last
-  rendered, or throws (the render repeats the call, so the exception reaches the error boundary). So
+  committed, or throws (the render repeats the call, so the exception reaches the error boundary). So
   `getSnapshot` returns the same instance until the store changes, and in the Editor the hook logs an
   error the first time two consecutive reads in one render differ. A `getSnapshot` that projects a field
   (`() => model.Current.Count`) re-renders when that field changes, not when another one does. A render
   that returns another snapshot than the previous one, or that subscribes, checks the snapshot again
-  once it commits, so a `getSnapshot` that builds a new snapshot on every read
+  in its passive effects, so a `getSnapshot` that builds a new snapshot on every read
   re-renders the component after every render until the scheduler's update-depth limit drops the update
-  and logs an error.
-- **`subscribe` is called on mount and whenever its identity changes.** The hook compares it with the
+  and logs an error. In the Editor the caching error is logged once per hook, where React warns only
+  once.
+- **`subscribe` is called in the passive effects of the first commit and whenever its identity changes.** The hook compares it with the
   previous render's using delegate equality, so a method group on the same instance
   (`inventory.Subscribe`) keeps one subscription across renders, while a lambda capturing a local is a
-  new closure every render and re-subscribes every render, as an inline subscribe function does in
-  React; the StrictMode diagnostic render does not subscribe. Switching to another store's `subscribe`
+  new closure every render and re-subscribes on every commit, as an inline subscribe function does in
+  React. A render that throws or suspends, and an attempt a render-phase update re-runs, subscribe and
+  unsubscribe nothing, and what they read never reaches the effects an earlier commit left pending. The
+  StrictMode diagnostic render does not subscribe; StrictMode runs the mount's effects twice, so
+  `subscribe` is called, its unsubscribe run, and `subscribe` called again, as React double-invokes a
+  mount effect. Switching to another store's `subscribe`
   removes the previous subscription first. Unmounting removes it; an unsubscribe that throws there is
-  handled as a throwing effect cleanup is, and the component's other subscriptions are still removed. A change the store raises while
-  `subscribe` runs is rendered by the render that subscribed.
+  handled as a throwing effect cleanup is, and the component's other subscriptions are still removed. A change the store makes between
+  the render and the subscription, or while `subscribe` runs, re-renders the component once it is subscribed.
 - **The change callback must be invoked on the Unity main thread.** Invoked from another thread it
   throws `InvalidOperationException` back to the invoker and schedules nothing; marshal the
   notification to the main thread first. The re-render it schedules takes the Urgent lane and never the
@@ -593,15 +598,23 @@ It follows React's `useSyncExternalStore`:
   delegates — the same method group on the same instance — read the snapshot the pass's first read
   pinned, even when the store changes partway through it, the same guarantee `Hooks.UseStore` gives
   readers of one `Store<T>`; the change re-renders them in a later pass, which pins afresh, the delayed
-  tier's included. A reader that first subscribes after the store moved
-  past the pin renders the pin, then asks for that re-render itself once the render commits. Readers
+  tier's included. A reader whose pin the store has moved past renders the pin,
+  then asks for that re-render itself in its passive effects. Readers
   holding different closures are not pinned to each other. A render outside a drain — the initial
   mount, a synchronous flush, or a time-sliced render resumed after its drain returned — reads the
-  live snapshot, and so does a render whose `subscribe` raises a change while it runs. The scheduler's
+  live snapshot. The scheduler's
   resume of a parked time-sliced pass flushes such a re-render first, so readers the pass committed in an
   earlier slice show the changed snapshot before the next slice renders it.
 
-For a Velvet `Store<T>`, `Hooks.UseStore` stays the shorter form, with a selector and a comparer.
+There is no `getServerSnapshot` parameter: nothing renders on a server.
+
+For a Velvet `Store<T>`, `Hooks.UseStore` stays the shorter form, with a selector and a comparer. It
+subscribes in the commit's passive effects in the same way, so a change made before they run re-renders
+the component once they do, and a change it is notified of re-renders it as `UseSyncExternalStore`'s does,
+as Zustand's `useStore` builds on `useSyncExternalStore`: on the Urgent lane, inside `startTransition` too,
+flushed from the main thread's posted work. A reader whose render read a pin the store has moved past asks for
+that re-render in its passive effects, as `UseSyncExternalStore` does. A `startTransition` callback that only
+writes a store queues no transition work, so its `isPending` settles as the callback returns.
 
 ### 1-4. What a dependency list means
 

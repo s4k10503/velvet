@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+
 namespace Velvet.TestUtilities
 {
     /// <summary>
@@ -16,15 +20,59 @@ namespace Velvet.TestUtilities
 
         /// <summary>
         /// Immediately flushes the dirty state after a hook setter fires and triggers a re-render.
-        /// Iteratively walks the entire tree produced by V.Mount along the fiber tree and calls
-        /// FiberWorkLoop.FlushState on each fiber.
-        /// Test-only. Must not be used from production code.
+        /// First runs the passive effects earlier commits left pending, as a drain does before it renders and as
+        /// React's <c>act()</c> does, so an update one of them schedules is flushed here too. Then iteratively walks
+        /// the entire tree produced by V.Mount along the fiber tree and calls FiberWorkLoop.FlushState on each fiber,
+        /// and takes out of the immediate tier each entry whose fiber holds no Urgent or Normal lane any more, as the
+        /// drain that rendered it would have. Test-only. Must not be used from production code.
         /// </summary>
-        // Bypasses: the batch scheduler's tier and drain buffer: production calls FiberWorkLoop.FlushState from inside DrainImmediate, over the buffer that pass built.
+        // Bypasses: the batch scheduler's drain buffer and its passes: production calls FiberWorkLoop.FlushState from inside DrainImmediate, over the buffer that pass built, and runs a sync-lane pass's passive flush as it ends.
         public static void FlushStateForTest(this MountedTree mounted)
         {
+            mounted.FlushEffectsForTest();
             FiberTreeTraversal.Visit(mounted.Root, FiberWorkLoop.FlushState);
+            ConsumeRenderedImmediateEntries(mounted);
         }
+
+        /// <summary>
+        /// As <see cref="FlushStateForTest"/>, leaving the passive effects earlier commits left pending as they are,
+        /// for a case about what a render does while they still wait. Test-only.
+        /// </summary>
+        // Bypasses: the batch scheduler's drain buffer and its passes, as FlushStateForTest does, and the passive flush a drain runs before it renders.
+        public static void FlushStateKeepingPassiveEffectsForTest(this MountedTree mounted)
+        {
+            FiberTreeTraversal.Visit(mounted.Root, FiberWorkLoop.FlushState);
+            ConsumeRenderedImmediateEntries(mounted);
+        }
+
+        // A drain takes its entries out of the tier before it renders them and clears the sync-lane flag with each
+        // pass; an entry or a flag a state flush left behind would have the next drain, or a passive flush's closing
+        // sync flush, render again what it already rendered and whatever has queued since. A fiber still holding an
+        // immediate-tier lane keeps its entry, and one holding only a Transition lane keeps its delayed one.
+        private static void ConsumeRenderedImmediateEntries(MountedTree mounted)
+        {
+            var scheduler = mounted.Root.Reconciler?.Context.BatchScheduler;
+            if (scheduler == null) return;
+            var order = (List<ComponentFiber>)SchedulerField("_immediateOrder").GetValue(scheduler);
+            var set = (HashSet<ComponentFiber>)SchedulerField("_immediateSet").GetValue(scheduler);
+            for (var i = order.Count - 1; i >= 0; i--)
+            {
+                var fiber = order[i];
+                if (fiber.IsDirty && HoldsImmediateLane(fiber)) continue;
+                order.RemoveAt(i);
+                set.Remove(fiber);
+            }
+            if (order.Count > 0) return;
+            SchedulerField("_syncLaneQueued").SetValue(scheduler, false);
+            SchedulerField("_externalStoreRenderQueued").SetValue(scheduler, false);
+        }
+
+        private static bool HoldsImmediateLane(ComponentFiber fiber)
+            => fiber.LaneQueue.Contains(FiberUpdatePriority.Urgent) || fiber.LaneQueue.Contains(FiberUpdatePriority.Normal);
+
+        private static FieldInfo SchedulerField(string name)
+            => typeof(FiberBatchScheduler).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new MissingFieldException(typeof(FiberBatchScheduler).FullName, name);
 
         /// <summary>
         /// Immediately fires any pending UseEffect (post-paint async) callbacks for the whole tree

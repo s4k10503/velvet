@@ -829,7 +829,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base parked the fragment in its completed-exit window.
-        // The passive flush added is the one the completion now settles in.
+        // The removal is the drain a store notification asks for, which consumes its sync-lane request and leaves the
+        // drop render its completion asks for waiting; a state flush would leave the request queued for the next
+        // passive flush to drain together with the drop.
         [Test]
         public void Given_ACompletedFragmentExit_When_ReentryHasOnlyATweenedInitialPose_Then_AnInstantClassicEnterKeepsThePoseHeldUntilItsSwap()
         {
@@ -855,7 +857,7 @@ namespace Velvet.Tests
             var element = parent.Q<VisualElement>("variant");
             var ctx = _mounted.Root.Reconciler.Context;
             store.Set(1);
-            _mounted.FlushStateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
             _mounted.FlushEffectsForTest();
             var presence = ctx.PresenceStates.Values.Single();
             var completedGhost = presence.ExitComplete.Contains("entry");

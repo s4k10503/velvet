@@ -118,12 +118,15 @@ namespace Velvet.Tests
                 "The entry keeps a copy of what it was handed, so the reader's next key's function does not run for it");
         }
 
-        // GREEN_ON_BASE(characterization): after A leaves, the base's first reader is B, whose function is the expected one; this case pins that A leaving does not replace the options B handed the entry.
+        // GREEN_ON_BASE(characterization): after A leaves, the base's first reader is B, whose function is the expected one.
+        // This case pins that A leaving does not replace the options B handed the entry. A's commit when its request
+        // lands is flushed before B mounts, so its options are handed before B's rather than after them.
         [Test]
         public void Given_TheEarlierReaderMovingToAnotherKey_When_TheKeyItLeftIsInvalidated_Then_TheLaterReadersFunctionRuns()
         {
             // Arrange
             using var mounted = MountA();
+            mounted.FlushEffectsForTest();
             using var other = MountB();
             s_setPageA.Invoke(2);
             Flush(mounted);

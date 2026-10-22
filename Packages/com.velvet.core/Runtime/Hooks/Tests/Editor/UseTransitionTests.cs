@@ -1291,29 +1291,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ATransitionWritingOnlyAStoreOtherComponentsRead_When_ThatWorkCommits_Then_TheDeclaringComponentClearsItsIndicator()
+        public void Given_ATransitionWritingOnlyAStoreOtherComponentsRead_When_TheCallbackReturns_Then_TheDeclaringComponentIsNotPending()
         {
-            // Arrange — the writer's callback touches nothing of its own, so the only fiber the transition
-            // enrols is the reader's, which the reader's own flush renders without going near the writer
+            // Arrange — a store change forces a sync-lane render wherever it is made, so the callback queues no
+            // transition work and has settled by the time it returns
             using var store = new TransitionCountStore();
             s_storeStore = store;
             using var mounted = V.Mount(_root, V.Component(StoreTransitionParentRender, key: "store-transition"));
+            mounted.FlushEffectsForTest();
+
+            // Act
             s_storeWriterStart.Invoke(() => store.Set(1));
-            s_storeWriterSetTick.Invoke(1);
-            FiberWorkLoop.FlushState(s_storeWriterFiber);
-            var indicatorBeforeTheCommit = _root.Q<Label>("store-writer-pending").text;
 
-            // Act — the delayed tier drains the reader's transition lane
-            mounted.GetSchedulerForTest().DrainDelayedForTest();
-
-            // Assert — three terms: an indicator that was never up comes down for free, and one that came
-            // down proves nothing unless the work the transition deferred has landed
-            Assert.That(
-                (indicatorBeforeTheCommit,
-                 _root.Q<Label>("store-reader-out").text,
-                 _root.Q<Label>("store-writer-pending").text),
-                Is.EqualTo(("pending", "1", "idle")),
-                "A component whose transition wrote only elsewhere renders again when that work commits");
+            // Assert
+            Assert.IsFalse(s_storeWriterFiber.TransitionSlots[0].IsPending);
         }
 
         [Test]
@@ -1386,30 +1377,20 @@ namespace Velvet.Tests
             protected override void ResetCore() => SetState(_ => new TransitionCountState(0));
         }
 
-        // GREEN_ON_BASE(refactor): the flush before the measurement renders the writer with the flag lit on the
-        // head, and finds it clean on the base, where the settle asks for the same one render.
         [Test]
-        public void Given_ATransitionWhoseWorkLandsOnAnotherComponent_When_ThatWorkCommits_Then_TheDeclaringComponentRendersOnceToClearItsIndicator()
+        public void Given_ATransitionWritingAStoreAComponentReads_When_TheReaderIsNotified_Then_ItsRenderIsQueuedOnTheUrgentLane()
         {
-            // Arrange — the writer's pending render has shown the indicator before the reader's work commits
+            // Arrange
             using var store = new TransitionCountStore();
             s_storeStore = store;
             using var mounted = V.Mount(_root, V.Component(StoreTransitionParentRender, key: "store-transition"));
+            mounted.FlushEffectsForTest();
+
+            // Act
             s_storeWriterStart.Invoke(() => store.Set(1));
-            FiberWorkLoop.FlushState(s_storeWriterFiber);
-            var writerRendersBefore = s_storeWriterRenderCount;
 
-            // Act — the reader's commit settles the slot, and the render that settle asks for drains after it
-            FiberWorkLoop.FlushState(s_storeReaderFiber);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-
-            // Assert — the reader's output is folded in, since a write that never landed settles nothing and
-            // the render count would then read zero for the reason the case is arranged to rule out
-            Assert.That(
-                (_root.Q<Label>("store-reader-out").text,
-                 s_storeWriterRenderCount - writerRendersBefore),
-                Is.EqualTo(("1", 1)),
-                "The settle asks the declaring component for the one render that takes the indicator down");
+            // Assert — the reader's own queue holds what its notification scheduled, which the transition does not defer
+            Assert.IsTrue(s_storeReaderFiber.LaneQueue.Contains(FiberUpdatePriority.Urgent));
         }
 
         private static TransitionCountStore s_storeStore;
@@ -1451,15 +1432,19 @@ namespace Velvet.Tests
 
         #region A callback enrolling two fibers
 
+        // GREEN_ON_BASE(characterization): the base's slot already waited on both fibers its callback enrolled.
+        // The callback writes each sibling's own state rather than a store, whose change no longer joins a transition.
         [Test]
         public void Given_ATransitionCallbackThatEnrolledTwoFibers_When_TheFirstOfThemCommits_Then_ItStaysPendingUntilTheSecondDoes()
         {
-            // Arrange — one store write reaches two sibling readers, so the callback enrols two fibers and
-            // neither one's flush renders the other
-            using var store = new TransitionCountStore();
-            s_twoReaderStore = store;
+            // Arrange — the callback writes the state of two siblings, so it enrols two fibers and neither one's
+            // flush renders the other
             using var mounted = V.Mount(_root, V.Component(TwoReaderStoreParentRender, key: "two-reader"));
-            s_twoReaderWriterStart.Invoke(() => store.Set(1));
+            s_twoReaderWriterStart.Invoke(() =>
+            {
+                s_twoReaderFirstSet.Invoke(1);
+                s_twoReaderSecondSet.Invoke(1);
+            });
 
             // Act — each reader is flushed on its own, so the two commits are separable
             FiberWorkLoop.FlushState(s_twoReaderFirstFiber);
@@ -1474,7 +1459,8 @@ namespace Velvet.Tests
                 "A slot waits on every fiber its callback enrolled, not on the first of them to commit");
         }
 
-        private static TransitionCountStore s_twoReaderStore;
+        private static StateUpdater<int> s_twoReaderFirstSet;
+        private static StateUpdater<int> s_twoReaderSecondSet;
         private static ComponentFiber s_twoReaderWriterFiber;
         private static ComponentFiber s_twoReaderFirstFiber;
         private static ComponentFiber s_twoReaderSecondFiber;
@@ -1502,7 +1488,8 @@ namespace Velvet.Tests
         private static VNode TwoReaderStoreFirstReaderRender()
         {
             s_twoReaderFirstFiber = FiberAmbientStack.Current;
-            var value = Hooks.UseStore(s_twoReaderStore, s => s.Value);
+            var (value, setValue) = Hooks.UseState(0);
+            s_twoReaderFirstSet = setValue;
             return V.Label(name: "two-reader-first-out", text: value.ToString());
         }
 
@@ -1510,7 +1497,8 @@ namespace Velvet.Tests
         private static VNode TwoReaderStoreSecondReaderRender()
         {
             s_twoReaderSecondFiber = FiberAmbientStack.Current;
-            var value = Hooks.UseStore(s_twoReaderStore, s => s.Value);
+            var (value, setValue) = Hooks.UseState(0);
+            s_twoReaderSecondSet = setValue;
             return V.Label(name: "two-reader-second-out", text: value.ToString());
         }
 
@@ -1700,80 +1688,6 @@ namespace Velvet.Tests
             s_queueChildStart = start;
             s_queueChildSetCount = setCount;
             return V.Label(name: "queue-child-out", text: $"{count}:{tick}");
-        }
-
-        #endregion
-
-        #region A store write a transition queued, under a pass that renders a deferred value
-
-        // The write sits in a store rather than in a state slot, so a pass of the Normal lane renders it and settles
-        // the transition, while the reader's deferred value keeps the Transition lane queued.
-        // GREEN_ON_BASE(characterization): no state slot holds this write, so the base settled the transition the same way.
-        [Test]
-        public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassRendersTheReaderWhoseDeferredValueHoldsTheLane_Then_IsPendingClears()
-        {
-            // Arrange
-            using var store = new TransitionCountStore();
-            s_deferredStore = store;
-            using var mounted = V.Mount(_root, V.Component(DeferredStoreParentRender, key: "deferred-store-parent"));
-            s_deferredChildStart.Invoke(() => store.Set(1));
-            Assume.That(s_deferredChildFiber.TransitionSlots[0].IsPending, Is.True, "Precondition: the transition is pending");
-            s_deferredParentSetQuery.Invoke("beta");
-
-            // Act
-            FiberWorkLoop.FlushState(s_deferredParentFiber);
-
-            // Assert
-            Assert.That(s_deferredChildFiber.TransitionSlots[0].IsPending, Is.False,
-                "isPending belongs to the slot that queued the work, not to whoever holds the transition lane");
-        }
-
-        // GREEN_ON_BASE(characterization): no state slot holds this write, so the base's deferred value asked for the lane again as well.
-        [Test]
-        public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassRendersTheReaderWhoseDeferredValueHoldsTheLane_Then_TheLaneStaysQueued()
-        {
-            // Arrange
-            using var store = new TransitionCountStore();
-            s_deferredStore = store;
-            using var mounted = V.Mount(_root, V.Component(DeferredStoreParentRender, key: "deferred-store-parent"));
-            s_deferredChildStart.Invoke(() => store.Set(1));
-            s_deferredParentSetQuery.Invoke("beta");
-
-            // Act
-            FiberWorkLoop.FlushState(s_deferredParentFiber);
-
-            // Assert
-            Assert.That(s_deferredChildFiber.LaneQueue.Contains(FiberUpdatePriority.Transition), Is.True,
-                "The deferred value asks for the Transition lane again, which is what the case above clears the flag despite");
-        }
-
-        private static TransitionCountStore s_deferredStore;
-        private static StateUpdater<string> s_deferredParentSetQuery;
-        private static ComponentFiber s_deferredParentFiber;
-        private static ComponentFiber s_deferredChildFiber;
-        private static TransitionStarter s_deferredChildStart;
-
-        [Component]
-        private static VNode DeferredStoreParentRender()
-        {
-            s_deferredParentFiber = FiberAmbientStack.Current;
-            var (query, setQuery) = Hooks.UseState("alpha");
-            s_deferredParentSetQuery = setQuery;
-            return V.Div(children: new VNode[]
-            {
-                V.Component(DeferredStoreChildRender, query, key: "deferred-store-child"),
-            });
-        }
-
-        [Component]
-        private static VNode DeferredStoreChildRender(string query)
-        {
-            s_deferredChildFiber = FiberAmbientStack.Current;
-            var count = Hooks.UseStore(s_deferredStore, state => state.Value);
-            var (_, start) = Hooks.UseTransition();
-            s_deferredChildStart = start;
-            var deferred = Hooks.UseDeferredValue(query);
-            return V.Label(name: "deferred-store-out", text: $"{deferred}:{count}");
         }
 
         #endregion
@@ -2134,10 +2048,6 @@ namespace Velvet.Tests
             s_clickableGate = null;
             s_clickableRenderCount = 0;
             s_clickableLastIsPending = false;
-            s_deferredParentSetQuery = default;
-            s_deferredParentFiber = null;
-            s_deferredChildFiber = null;
-            s_deferredChildStart = default;
             s_propSetterParentFiber = null;
             s_propSetterChildFiber = null;
             s_propSetterChildStart = default;
@@ -2151,7 +2061,8 @@ namespace Velvet.Tests
             s_storeWriterRenderCount = 0;
             s_storeWriterStart = default;
             s_storeWriterSetTick = default;
-            s_twoReaderStore = null;
+            s_twoReaderFirstSet = default;
+            s_twoReaderSecondSet = default;
             s_twoReaderWriterFiber = null;
             s_twoReaderFirstFiber = null;
             s_twoReaderSecondFiber = null;
