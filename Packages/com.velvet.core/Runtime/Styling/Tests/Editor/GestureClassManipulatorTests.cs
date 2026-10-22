@@ -1042,6 +1042,8 @@ namespace Velvet.Tests
             var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(StyleSheetPath);
             Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
             _window.rootVisualElement.styleSheets.Add(sheet);
+            // The sheet's dark token set applies under the class this binding puts on the root.
+            VelvetStyleUtilities.BindThemeTo(_window.rootVisualElement);
         }
 
         public override void TearDown()

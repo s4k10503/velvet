@@ -732,8 +732,6 @@ namespace Velvet.Tests
             Assert.That(box.Q<TextElement>().ClassListContains("truncate"), Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base's play never touches the input box's clip. Keeping the clip only
-        // for a class the element keeps that is the clip itself (StyleAnimationClassUtils.ClipStays) reddens this case.
         [Test]
         public void Given_ATruncatingMotionTextField_When_AnEntersTextOverflowUtilityLeaves_Then_ItsInputBoxStillClips()
         {

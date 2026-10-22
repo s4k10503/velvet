@@ -103,7 +103,8 @@ namespace Velvet
             return routed?.ToArray() ?? classNames;
         }
 
-        // Whether elementType is a field control whose factory routes. V.Custom<T> asks this for its T.
+        // Whether elementType is a field control whose factory routes. V.Custom<T> asks this for its T, and V.Motion
+        // for its elementType.
         public static bool IsControlType(Type elementType)
         {
             var type = elementType;

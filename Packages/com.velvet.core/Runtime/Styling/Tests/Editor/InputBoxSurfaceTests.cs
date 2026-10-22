@@ -23,10 +23,10 @@ namespace Velvet.Tests
 
         private static string Joined(string[] classNames) => string.Join("|", classNames);
 
-        // StyleAnimationClassUtils.ClipStays names the utilities that imply the box's clip; the bundled table is what
-        // decides which those are.
+        // StyleAnimationClassUtils.ClipStays names the text-overflow utilities, each of which carries the box's clip or
+        // implies it; the bundled table is what decides which those are.
         [Test]
-        public void Given_TheBundledUtilities_When_TheOnesImplyingTheBoxClipAreCollected_Then_TheyAreTheOnesAPlayKeepsTheClipFor()
+        public void Given_TheBundledUtilities_When_TheTextOverflowOnesAreCollected_Then_TheyAreTheOnesAPlayKeepsTheClipFor()
         {
             // Arrange
             var table = (System.Collections.IDictionary)typeof(StyleUtilityProperties)
@@ -40,7 +40,10 @@ namespace Velvet.Tests
             var implying = new List<string>();
             foreach (string cls in table.Keys)
             {
-                if (StyleInputBoxSurface.ImpliesBoxClip(cls)) implying.Add(cls);
+                if (StyleUtilityProperties.TryGet(cls, out var rule) && rule.Properties.Contains(StyleLonghand.TextOverflow))
+                {
+                    implying.Add(cls);
+                }
             }
             implying.Sort(StringComparer.Ordinal);
             var sorted = new List<string>(named);

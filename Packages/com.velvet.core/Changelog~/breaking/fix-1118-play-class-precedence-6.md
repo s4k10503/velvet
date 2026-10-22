@@ -74,6 +74,8 @@
 - On a field control a class a play shows lands where the className's does: a surface utility on the input
   box, `truncate`, `text-ellipsis` and `text-clip` on the text the box draws as well, with `overflow-hidden`,
   and a transition utility on both. On a clipped element a `clip-path-*` class a play shows re-shapes the clip.
+  A `V.Motion` whose `elementType` is a field control sends its className's surface utilities to the input box,
+  as `V.TextField` does; they used to stay on the outer control.
 
 ### Fixed
 

@@ -340,9 +340,15 @@ namespace Velvet.Tests
             s_children = new VNode[] { V.Div(className: "w-full h-full bg-[#ff0000]") };
             yield return MountAndWiden("ClipAfterImage");
 
-            // Act — an image given inline while its scale holds still.
+            // Act — an image given inline while its scale holds still. The clip goes back over the slot at the
+            // projection's next pass rather than at the write, so the read waits for that write as well as for time.
             _texture = new Texture2D(4, 4);
             Card.style.backgroundImage = new StyleBackground(_texture);
+            var deadline = Time.realtimeSinceStartupAsDouble + 5.0;
+            while (Card.style.backgroundImage.value.vectorImage == null && Time.realtimeSinceStartupAsDouble < deadline)
+            {
+                yield return null;
+            }
             yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
 
             // Assert — clipped outside the circle, while the child shows inside it.

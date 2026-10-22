@@ -2654,7 +2654,9 @@ namespace Velvet
                 Key = key,
                 ElementType = elementType ?? typeof(VisualElement),
                 Name = name,
-                ClassNames = ParseClassNames(className),
+                ClassNames = elementType != null && StyleInputBoxSurface.IsControlType(elementType)
+                    ? ParseFieldClassNames(className)
+                    : ParseClassNames(className),
                 Transition = resolvedTransition,
                 TransitionDefaulted = transition == null && duration == null && easing == null && delay == null,
                 Children = children ?? EmptyChildren,

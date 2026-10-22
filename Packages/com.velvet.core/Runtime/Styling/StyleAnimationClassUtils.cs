@@ -129,7 +129,8 @@ namespace Velvet
             changes.Settle(ctx);
         }
 
-        // The text-overflow utilities, each of which implies the box's clip (StyleInputBoxSurface.ImpliesBoxClip).
+        // The text-overflow utilities: truncate carries the box's clip, the others imply it
+        // (StyleInputBoxSurface.ImpliesBoxClip).
         private static readonly string[] s_clipping = { "truncate", "text-ellipsis", "text-clip" };
 
         // Whether the box's clip has a source besides the class being taken off: a class the element keeps that is

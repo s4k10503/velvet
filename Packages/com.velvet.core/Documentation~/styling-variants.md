@@ -465,8 +465,8 @@ A declared `label:` seats the label element ahead of the input, and it takes the
 lands on the box the value is shown in; UI Toolkit draws a field as an outer control around a child box (the
 element carrying `unity-base-field__input`, `#unity-text-input` in a text field) that the theme dresses. So
 the field factories — `V.TextField`, `V.IntegerField`, `V.DropdownField` and `V.Custom<T>` for a `T` that is
-a text-input field (`FloatField`, `DoubleField`, `LongField`, …) or a popup field (`PopupField<T>`, …) — send
-these to the box:
+a text-input field (`FloatField`, `DoubleField`, `LongField`, …) or a popup field (`PopupField<T>`, …), and
+`V.Motion` for such an `elementType` — send these to the box:
 
 - backgrounds, including the gradient utilities (`bg-*`, `bg-linear-*`, `from-*` / `via-*` / `to-*`) and
   the nine-slice ones (`slice-*`, [styling-backgrounds.md](styling-backgrounds.md));
