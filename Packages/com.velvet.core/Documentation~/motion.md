@@ -573,10 +573,11 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   give it while the tween runs is composed with from the frame after the styles take it, on the transition
   the element declares for that property, as UI Toolkit would run it; one already running as the tween starts
   writing the slot runs on from where it had got, and one still running as the tween lands runs on to its end,
-  through any tween that starts on the Motion meanwhile. A change of its bundled `scale-*`, `rotate-*` or
-  `origin-*` classes is taken from the frame of the render that makes it, a render that hands it the lead
-  included, rather than from the frame after; one a stylesheet of the application's own makes is taken once
-  the styles have.
+  through any tween that starts on the Motion meanwhile. A render that changes its classes, one that hands
+  it the lead included, draws the scale, rotate and transform origin its bundled `scale-*`, `rotate-*` and
+  `origin-*` classes give it from that render's frame, where the bundled stylesheet is attached above it and
+  no other rule could give it that property: a rule of another stylesheet, a variant gated on a pseudo-class,
+  or an `anim-*` class. Where one could, the property is drawn as it was until the styles take the change.
   A translate given as a percent of the element's size is drawn at that percent of the size the element has
   on each frame, as UI Toolkit draws it, rather than transitioning towards a new pixel value when the size
   changes. A change of either axis of the translate, or of the scale, starts both axes over on the

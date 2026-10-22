@@ -7,14 +7,12 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that the values PendingClassTransform reads off a class name are the ones the bundled sheet's rule for
+    /// Specifies that the values BundledClassTransform reads off a class name are the ones the bundled sheet's rule for
     /// that class declares.
     /// </summary>
     [TestFixture]
-    internal sealed class PendingClassTransformTests
+    internal sealed class BundledClassTransformTests
     {
-        // GREEN_ON_BASE(construction): both sides here are the repository's own content.
-        // Change `.origin-top-left { transform-origin: left top; }` to `right top` in `_transforms.uss` and this is what reddens.
         [Test]
         public void Given_TheBundledScaleRotateAndOriginClasses_When_TheirNamesAreRead_Then_EachGivesWhatItsSheetRuleDeclares()
         {
@@ -32,16 +30,16 @@ namespace Velvet.Tests
         // The rule the sheet would hold for the class, as the reader gives its value; null for a class it reads nothing off.
         private static string Declaration(string name)
         {
-            if (PendingClassTransform.TryScaleOf(name, out var scale))
+            if (BundledClassTransform.TryScaleOf(name, out var scale))
             {
                 var factor = scale.ToString(CultureInfo.InvariantCulture);
                 return $".{name} {{ scale: {factor} {factor}; }}";
             }
-            if (PendingClassTransform.TryRotateOf(name, out var degrees))
+            if (BundledClassTransform.TryRotateOf(name, out var degrees))
             {
                 return $".{name} {{ rotate: {degrees.ToString(CultureInfo.InvariantCulture)}deg; }}";
             }
-            if (PendingClassTransform.TryOriginOf(name, out var origin))
+            if (BundledClassTransform.TryOriginOf(name, out var origin))
             {
                 return $".{name} {{ transform-origin: {Side(origin.x, "left", "right")} {Side(origin.y, "top", "bottom")}; }}";
             }

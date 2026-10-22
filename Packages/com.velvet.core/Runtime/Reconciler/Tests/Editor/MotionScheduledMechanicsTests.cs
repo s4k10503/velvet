@@ -2984,6 +2984,48 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnUnturnedHolderTakingTheLeadBackInTheRenderThatTurnsIt_When_ThatFrameIsDrawn_Then_ItIsMixedFromThePreviousHoldersRotate()
+        {
+            // Arrange — the bundled sheet attached; "b", twice a's side, has taken the id from it and landed, neither turned.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aSize, s_bSize) = (100, 200);
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+
+            // Act — one render takes "b" away, which hands "a" the lead from b's box, and turns "a" by 12 degrees; the frame
+            // after it.
+            (s_bMounted, s_aClasses) = (false, "rotate-12");
+            RenderShared(mounted);
+
+            // Assert — drawn as far from b's rotate towards its new own as its move has got, rather than at its own.
+            var a = Root.Q<VisualElement>("a");
+            var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection);
+            var expected = moving ? 12f * (1f - projection.Progress.Value) : float.NaN;
+            Assert.That(a.resolvedStyle.rotate.angle.ToDegrees(), Is.EqualTo(expected).Within(0.1f));
+        }
+
+        [Test]
+        public void Given_AMovingLeadScaledByAStylesheetClass_When_ARenderAfterTheFramesPassRescalesIt_Then_ItsSlotHoldsTheNewScaleBeforeTheNextFrame()
+        {
+            // Arrange — "b", scaled by one and a half by the bundled sheet and twice a's side, part way through taking the id
+            // from "a".
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aSize, s_bSize, s_bClasses) = (100, 200, "scale-150");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — a render after the frame has drawn the projections rescales "b", with no frame after it.
+            s_bClasses = "scale-125";
+            s_setStep.Invoke(++s_sharedRenders);
+            mounted.FlushStateForTest();
+
+            // Assert — the slot holds its own one and a quarter times the scale its move draws it at.
+            var b = Root.Q<VisualElement>("b");
+            var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(b, out var projection);
+            Assert.That(moving ? b.style.scale.value.value.x / projection.Scale.x : float.NaN, Is.EqualTo(1.25f).Within(0.01f));
+        }
+
+        [Test]
         public void Given_AHolderPivotedByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatMovesItsOrigin_Then_ItsFirstFrameIsDrawnWhereItsMoveIs()
         {
             // Arrange — the bundled sheet pivoting "a" on its top left corner; "b", twice its side, has taken the id from it

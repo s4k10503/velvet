@@ -58,7 +58,7 @@ namespace Velvet
             ctx.LayoutIdTimings[element] = timing;
             // A projection draws a class change the style pass has yet to take from this render on, read off the classes,
             // whether this render's pass ran before the patch or the panel's frame did.
-            if (PendingClassTransform.Observe(element) && ctx.LayoutIdProjections.TryGetValue(element, out var drawing))
+            if (BundledClassTransform.Observe(element) && ctx.LayoutIdProjections.TryGetValue(element, out var drawing))
             {
                 Project(drawing.Host, ctx);
             }
@@ -390,7 +390,7 @@ namespace Velvet
             else if (projection is { Shared: true, Moving: true, FromLook: { } from })
             {
                 var progress = CrossfadeProgress(projection);
-                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection, s_passDt), progress);
+                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.MixTarget(element, projection, s_passDt), progress);
                 radii = LayoutIdLook.Mix(from.Radii, LayoutIdLook.OwnRadii(element, projection, s_passDt, projection.OwnRadiiBuffer), progress,
                     projection.MixedRadii);
             }
@@ -630,13 +630,14 @@ namespace Velvet
             return StyleCascade.Translate(element) ?? new Translate(new Length(start.x), new Length(start.y), start.z);
         }
 
-        // As OwnTranslate, for the scale.
+        // As OwnTranslate, for the scale, with what a class change the style pass has yet to take gives it ahead of the rules
+        // (BundledClassTransform).
         private static Vector3 OwnScale(VisualElement element, LayoutIdProjection projection)
         {
             var inline = projection.OwnInlineScale;
             if (inline.keyword == StyleKeyword.Undefined) return inline.value.value;
             if (inline.keyword != StyleKeyword.Null) return Vector3.one;
-            return PendingClassTransform.DeclaredScale(element)
+            return BundledClassTransform.DeclaredScale(element)
                 ?? (StyleCascade.Scale(element) is { } declared ? declared.value : projection.StartScale);
         }
 
@@ -776,7 +777,7 @@ namespace Velvet
         // An inline origin outranks the classes.
         private static Vector2 TransformOrigin(VisualElement element) =>
             element.style.transformOrigin.keyword != StyleKeyword.Undefined
-            && PendingClassTransform.DeclaredOrigin(element) is { } fraction
+            && BundledClassTransform.DeclaredOrigin(element) is { } fraction
                 ? Vector2.Scale(fraction, element.layout.size)
                 : (Vector2)element.resolvedStyle.transformOrigin;
 
@@ -825,7 +826,7 @@ namespace Velvet
             MotionOpacity.Forget(element);
             LayoutIdLook.Forget(element);
             ProjectedCornerFace.Forget(element);
-            PendingClassTransform.Forget(element);
+            BundledClassTransform.Forget(element);
             CancelPendingSettle(element, ctx);
         }
 
@@ -834,6 +835,7 @@ namespace Velvet
         internal static void Forget(VisualElement element, ReconcilerContext ctx)
         {
             if (!ctx.ElementToLayoutId.Remove(element, out var layoutId)) return;
+            BundledClassTransform.Forget(element);
             RemoveMember(element, layoutId, ctx);
             Unfollow(element, ctx);
             End(element, ctx);
