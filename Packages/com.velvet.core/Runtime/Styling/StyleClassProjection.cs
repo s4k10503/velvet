@@ -564,18 +564,20 @@ namespace Velvet
             public bool FallsUnder(TransformPart claimed)
                 => (Supplies & ~claimed) == TransformPart.None || (OverriddenBy & claimed) != TransformPart.None;
 
-            public static TransformParts Of(ArbitraryProperty property) => property switch
+            public static TransformParts Of(ArbitraryProperty property)
+                => s_parts.TryGetValue(property, out var parts) ? parts : default;
+
+            private static readonly Dictionary<ArbitraryProperty, TransformParts> s_parts = new()
             {
-                ArbitraryProperty.TranslateX => Axis(TransformPart.TranslateX),
-                ArbitraryProperty.TranslateY => Axis(TransformPart.TranslateY),
-                ArbitraryProperty.Translate => Axis(TransformPart.TranslateX | TransformPart.TranslateY),
-                ArbitraryProperty.ScaleX => new TransformParts(TransformPart.ScaleX, TransformPart.ScaleBracket,
+                [ArbitraryProperty.TranslateX] = Axis(TransformPart.TranslateX),
+                [ArbitraryProperty.TranslateY] = Axis(TransformPart.TranslateY),
+                [ArbitraryProperty.Translate] = Axis(TransformPart.TranslateX | TransformPart.TranslateY),
+                [ArbitraryProperty.ScaleX] = new(TransformPart.ScaleX, TransformPart.ScaleBracket,
                     TransformPart.ScaleX | TransformPart.ScaleDeclared),
-                ArbitraryProperty.ScaleY => new TransformParts(TransformPart.ScaleY, TransformPart.ScaleBracket,
+                [ArbitraryProperty.ScaleY] = new(TransformPart.ScaleY, TransformPart.ScaleBracket,
                     TransformPart.ScaleY | TransformPart.ScaleDeclared),
-                ArbitraryProperty.Scale => new TransformParts(TransformPart.ScaleBracket, TransformPart.ScaleDeclared,
+                [ArbitraryProperty.Scale] = new(TransformPart.ScaleBracket, TransformPart.ScaleDeclared,
                     TransformPart.ScaleBracket | TransformPart.ScaleDeclared),
-                _ => default,
             };
 
             // A bundled class writing either longhand writes every variable of it, as a uniform scale-<n> does.
