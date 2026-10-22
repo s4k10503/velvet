@@ -94,6 +94,8 @@ namespace Velvet.Tests
         [TestCase("translate-1/2", "50,50 - 0")]
         [TestCase("-scale-50 scale-x-75", "- 0.75,-0.5 0")]
         [TestCase("-scale-y-50", "- 1,-0.5 0")]
+        [TestCase("scale-33 scale-x-120", "- 1.2,0.33 0")]
+        [TestCase("scale-y-07 scale-y-5", "- 1,0.05 0")]
         public void Given_LayersWritingBothAxes_When_Composed_Then_EachAxisHoldsByRank(string classes, string expected)
         {
             // Act

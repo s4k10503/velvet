@@ -774,21 +774,15 @@ namespace Velvet
             ["12"] = 12f, ["45"] = 45f, ["90"] = 90f, ["180"] = 180f,
         };
 
-        // The per-axis scale presets (scale-x-50 -> 0.5), mirroring the uniform .scale-N USS classes in
-        // _transforms.uss. These have no standalone USS class because a separate .scale-x-N / .scale-y-N rule
-        // would write the whole `scale: x y` and clobber the other axis; instead they route through the
-        // ScaleX/ScaleY merge path (like scale-x-[..]) so the two axes compose onto one inline `scale`.
-        private static readonly Dictionary<string, float> s_axisScale = new()
+        // A scale preset's factor from its bare value, which Tailwind reads as a whole-number percent spelled without a
+        // leading zero (scale-33 -> 0.33, scale-07 no utility). Shared with MotionSpringClassParser's uniform-scale
+        // recognition so the two cannot read one class differently.
+        internal static bool TryGetAxisScale(ReadOnlySpan<char> suffix, out float scale)
         {
-            ["0"] = 0f, ["50"] = 0.5f, ["75"] = 0.75f, ["90"] = 0.9f, ["95"] = 0.95f,
-            ["100"] = 1f, ["105"] = 1.05f, ["110"] = 1.1f, ["125"] = 1.25f, ["150"] = 1.5f,
-        };
-
-        // Single source for the uniform .scale-N USS class's own numeric scale (identical mapping to
-        // s_axisScale above, just keyed by the bare suffix rather than the "scale-x-"/"scale-y-" prefixed
-        // form) — shared so MotionSpringClassParser's uniform-scale recognition resolves the SAME table
-        // instead of holding a second copy that could drift, mirroring TryGetSpacingPx's precedent.
-        internal static bool TryGetAxisScale(string suffix, out float scale) => s_axisScale.TryGetValue(suffix, out scale);
+            var parsed = TryParseWhole(suffix, out var percent);
+            scale = percent / 100f;
+            return parsed;
+        }
 
         // Single source for the rotate preset's magnitude (degrees), keyed by the UNSIGNED suffix — shared so
         // MotionSpringClassParser's rotate-N / rotate-nN recognition resolves the SAME magnitude table instead
@@ -847,12 +841,10 @@ namespace Velvet
                 var suffix = cls.AsSpan("translate-".Length);
                 return cls.IndexOf('/') >= 0 || suffix.SequenceEqual("full".AsSpan()) || TryGetSpacingPx(suffix, out _);
             }
-            // Per-axis scale presets (scale-x-50 / scale-y-110) have no USS class; route them to the merge path.
-            // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here. Span-based to
-            // keep this per-class hot gate allocation-free (matching the AsSpan style above).
-            if (ScalePresetAxis(cls.AsSpan()) is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY)
+            // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here.
+            if (ScalePresetAxis(cls.AsSpan()) != null)
             {
-                return IsScalePreset(cls.AsSpan());
+                return IsInlineScalePreset(cls);
             }
             return TryGetFlexFactorPreset(cls, out _, out _) || TryGetFlexPreset(cls, out _);
         }
@@ -862,10 +854,17 @@ namespace Velvet
         private static bool IsNegatedStaticScale(ReadOnlySpan<char> body)
             => IsMarginName(body) || body.StartsWith("rotate-") || body.StartsWith("translate-") || IsScalePreset(body);
 
-        // Whether body is a scale preset, uniform or per-axis, whose value the preset table holds.
+        // Whether body is a scale preset, uniform or per-axis, with a bare value Tailwind reads.
         private static bool IsScalePreset(ReadOnlySpan<char> body)
             => ScalePresetAxis(body) is { } axis
-                && SuffixInKeys(body.Slice(axis == ArbitraryProperty.ScaleBoth ? "scale-".Length : "scale-x-".Length), s_axisScale);
+                && TryGetAxisScale(body.Slice(axis == ArbitraryProperty.ScaleBoth ? "scale-".Length : "scale-x-".Length), out _);
+
+        // A positive scale preset no USS class spells: every per-axis one, since a .scale-x-N rule would write the
+        // whole `scale` and clobber the other axis, and a uniform one the bundled sheet declares no class for
+        // (scale-33, beside the sheet's scale-50).
+        private static bool IsInlineScalePreset(string cls)
+            => IsScalePreset(cls.AsSpan())
+                && (ScalePresetAxis(cls.AsSpan()) != ArbitraryProperty.ScaleBoth || !StyleUtilityProperties.TryGet(cls, out _));
 
         // The physical margin utilities, whose negated names no selector can spell. -max-w-4 and -min-h-4 start
         // with the same letter and are not margins.
@@ -1029,19 +1028,19 @@ namespace Velvet
         }
 
         // The scale presets no USS class spells: a per-axis one, routed to the same ScaleX/ScaleY merge as the
-        // bracket form so the axes compose onto one inline `scale`, and a negated one, -scale-50 writing both axes'
-        // variables as the positive scale-<n> class does. Null when body is a positive uniform preset, which is that
-        // class, or names no scale.
+        // bracket form so the axes compose onto one inline `scale`, and a uniform one the bundled sheet has no class
+        // for or a negated one, scale-33 and -scale-50 writing both axes' variables as the sheet's scale-<n> classes
+        // do. Null when body is one of those classes, or names no scale.
         private static bool? TryParseScalePreset(string body, bool negate, out ArbitraryStyle result)
         {
             result = default;
             var axis = ScalePresetAxis(body);
-            if (axis == null || (axis == ArbitraryProperty.ScaleBoth && !negate))
+            if (axis == null || (axis == ArbitraryProperty.ScaleBoth && !negate && StyleUtilityProperties.TryGet(body, out _)))
             {
                 return null;
             }
             var prefix = axis == ArbitraryProperty.ScaleBoth ? "scale-".Length : "scale-x-".Length;
-            if (!s_axisScale.TryGetValue(body.Substring(prefix), out var factor))
+            if (!TryGetAxisScale(body.AsSpan(prefix), out var factor))
             {
                 return false;
             }
@@ -3462,7 +3461,7 @@ namespace Velvet
         {
             scale = 1f;
             return cls.StartsWith("scale-", StringComparison.Ordinal)
-                && TryGetAxisScale(cls.Substring("scale-".Length), out scale);
+                && TryGetAxisScale(cls.AsSpan("scale-".Length), out scale);
         }
 
         // transition-duration is a StyleList<TimeValue> (not a StyleLength), so the winning duration-[..] layer

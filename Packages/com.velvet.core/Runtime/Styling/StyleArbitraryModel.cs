@@ -255,8 +255,9 @@ namespace Velvet
         Scale,        // scale-[1.4]      -> scale: <v> <v>      (Value = unitless factor; per-axis fallback)
         ScaleX,       // scale-x-[.5]     -> scale x axis        (Value = unitless factor, merges with y)
         ScaleY,       // scale-y-[1.5]    -> scale y axis        (Value = unitless factor, merges with x)
-        // -scale-50 writes both axes' variables, as the positive scale-<n> class does, each holding against that
-        // axis's layers at its own rank; at one rank the axis utility holds, as for Translate.
+        // -scale-50, and a scale-<n> the bundled sheet has no class for (scale-33), write both axes' variables, as the
+        // sheet's scale-<n> classes do, each holding against that axis's layers at its own rank; at one rank the axis
+        // utility holds, as for Translate.
         ScaleBoth,    // -scale-50        -> scale x and y       (Value = unitless factor)
         TranslateX,   // translate-x-[Np] -> translate x axis    (Value + Unit, merges with y)
         TranslateY,   // translate-y-[Np] -> translate y axis    (Value + Unit, merges with x)

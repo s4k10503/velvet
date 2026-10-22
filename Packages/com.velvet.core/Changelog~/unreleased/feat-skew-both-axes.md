@@ -10,3 +10,6 @@
 - `-scale-<n>`, `-scale-x-<n>` and `-scale-y-<n>` scale by the negative factor, mirroring the element, as Tailwind
   writes them; they drew nothing. `-scale-<n>` writes both axes the way `scale-<n>` does, so `-scale-50 scale-x-75`
   gives `(0.75, -0.5)`.
+- `scale-<n>`, `scale-x-<n>` and `scale-y-<n>`, negated or not, take any whole number as a percent, as Tailwind does
+  (`scale-33`, `scale-x-120`); a value outside the bundled presets drew nothing. A leading zero is declined
+  (`scale-07`), as Tailwind generates no rule for it.
