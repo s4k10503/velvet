@@ -19,8 +19,7 @@ namespace Velvet
 
         // The native-face stash + sentinel suppression shared with the drop-shadow layer: the rectangular
         // background / border are suppressed with a sentinel color and re-painted sheared, so their effective
-        // colors must be captured before suppression. Border uses the LEFT side (the sheared outline is a
-        // single uniform stroke, so per-side colors/widths collapse to one).
+        // colors must be captured before suppression.
         public readonly SilhouetteFaceStash Face = new();
 
         // Pass-throughs onto Face so the reconciler / tests read the stash state directly off the binding.
@@ -282,19 +281,9 @@ namespace Velvet
             // CSS paints an inset shadow above the background and below the border.
             BoxShadowSilhouette.DrawInsetLayers(mgc, ve, w, h);
 
-            var borderColor = binding.HasStash ? binding.BorderColor : ve.resolvedStyle.borderLeftColor;
-            var borderWidth = ve.resolvedStyle.borderLeftWidth;
-            if (borderWidth > 0.01f && borderColor.a > 0.004f)
-            {
-                // Stroke centered on a half-width-inset path ≈ CSS's inside border. Drawn after the fill
-                // so the outline sits on top and follows the shear, keeping the slanted edge crisp.
-                SilhouetteFace.BuildShearedRoundedRect(p,
-                    ShearedRoundedRect.ForElement(ve, borderWidth * 0.5f, w, h, tanX, tanY));
-                p.strokeColor = borderColor;
-                p.lineWidth = borderWidth;
-                p.lineJoin = LineJoin.Miter;
-                p.Stroke();
-            }
+            // Drawn after the fill so the outline sits on top and follows the shear, keeping the slanted edge crisp.
+            SilhouetteFace.PaintBorder(p, ve, SilhouetteFace.BorderOf(ve, binding.Face),
+                new SilhouetteFace.Shearing(w, h, tanX, tanY));
         }
 
         // Re-bakes the gradient silhouette when the element's size / skew / spec changed since the last bake

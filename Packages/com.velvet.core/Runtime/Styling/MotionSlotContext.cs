@@ -96,11 +96,12 @@ namespace Velvet
             var longhands = StyleArbitraryLonghands.Of(slot);
             var owner = Owner(slot);
             var style = owner.style;
+            // A projected face's hidden slot holds none of the element's own (ProjectedCornerFace.InlineOf).
             var hasInline = slot == ArbitraryProperty.BorderColor
-                ? HoldsBorderEdge(owner, DivideEdge.Top, style.borderTopColor)
-                    || HoldsBorderEdge(owner, DivideEdge.Right, style.borderRightColor)
-                    || HoldsBorderEdge(owner, DivideEdge.Bottom, style.borderBottomColor)
-                    || HoldsBorderEdge(owner, DivideEdge.Left, style.borderLeftColor)
+                ? HoldsBorderEdge(owner, DivideEdge.Top, ProjectedCornerFace.InlineOf(owner, 1, style.borderTopColor))
+                    || HoldsBorderEdge(owner, DivideEdge.Right, ProjectedCornerFace.InlineOf(owner, 2, style.borderRightColor))
+                    || HoldsBorderEdge(owner, DivideEdge.Bottom, ProjectedCornerFace.InlineOf(owner, 3, style.borderBottomColor))
+                    || HoldsBorderEdge(owner, DivideEdge.Left, ProjectedCornerFace.InlineOf(owner, 4, style.borderLeftColor))
                 : TryReadInline(slot, out _) && !HasRunningNativeTransition(slot) && OwnsInline(owner, longhands);
             if (!hasInline) return false;
             foreach (var property in _inlineBySwap)
@@ -284,6 +285,12 @@ namespace Velvet
             {
                 return TryReadBorderColor(out value);
             }
+            // A projected face draws the colour its hidden slot does not hold.
+            if (FaceSlotOf(slot) is { } faceSlot && ProjectedCornerFace.Drawn(Owner(slot), faceSlot) is { } drawn)
+            {
+                value = new ArbitraryStyle(slot, drawn);
+                return true;
+            }
             if (HasRunningNativeTransition(slot))
             {
                 return TryReadResolved(slot, out value)
@@ -384,15 +391,19 @@ namespace Velvet
                 case ArbitraryProperty.TextColor:
                     return Color(slot, style.color, out value);
                 case ArbitraryProperty.BackgroundColor:
-                    return FaceColor(slot, null, style.backgroundColor, out value);
+                    return FaceColor(slot, null, ProjectedCornerFace.InlineOf(Owner(slot), 0, style.backgroundColor), out value);
                 case ArbitraryProperty.BorderTopColor:
-                    return EdgeColor(slot, DivideEdge.Top, style.borderTopColor, out value);
+                    return EdgeColor(slot, DivideEdge.Top, ProjectedCornerFace.InlineOf(Owner(slot), 1, style.borderTopColor),
+                        out value);
                 case ArbitraryProperty.BorderRightColor:
-                    return EdgeColor(slot, DivideEdge.Right, style.borderRightColor, out value);
+                    return EdgeColor(slot, DivideEdge.Right,
+                        ProjectedCornerFace.InlineOf(Owner(slot), 2, style.borderRightColor), out value);
                 case ArbitraryProperty.BorderBottomColor:
-                    return EdgeColor(slot, DivideEdge.Bottom, style.borderBottomColor, out value);
+                    return EdgeColor(slot, DivideEdge.Bottom,
+                        ProjectedCornerFace.InlineOf(Owner(slot), 3, style.borderBottomColor), out value);
                 case ArbitraryProperty.BorderLeftColor:
-                    return EdgeColor(slot, DivideEdge.Left, style.borderLeftColor, out value);
+                    return EdgeColor(slot, DivideEdge.Left, ProjectedCornerFace.InlineOf(Owner(slot), 4, style.borderLeftColor),
+                        out value);
                 case ArbitraryProperty.BorderTopWidth:
                     return Float(slot, style.borderTopWidth, out value);
                 case ArbitraryProperty.BorderRightWidth:
@@ -448,16 +459,33 @@ namespace Velvet
             }
         }
 
+        // The ProjectedCornerFace colour slot (StyleCascade.FaceColor's order) a slot is, or null.
+        private static int? FaceSlotOf(ArbitraryProperty slot)
+        {
+            var index = System.Array.IndexOf(s_faceSlots, slot);
+            return index >= 0 ? index : null;
+        }
+
+        private static readonly ArbitraryProperty[] s_faceSlots =
+        {
+            ArbitraryProperty.BackgroundColor, ArbitraryProperty.BorderTopColor, ArbitraryProperty.BorderRightColor,
+            ArbitraryProperty.BorderBottomColor, ArbitraryProperty.BorderLeftColor,
+        };
+
         private bool TryReadBorderColor(out ArbitraryStyle value)
         {
             var owner = Owner(ArbitraryProperty.BorderColor);
             var style = owner.style;
             var resolved = owner.resolvedStyle;
             var native = !_drivenByRunningPlay(ArbitraryProperty.BorderColor);
-            var top = ReadBorderEdge(owner, native, DivideEdge.Top, style.borderTopColor, resolved.borderTopColor);
-            var right = ReadBorderEdge(owner, native, DivideEdge.Right, style.borderRightColor, resolved.borderRightColor);
-            var bottom = ReadBorderEdge(owner, native, DivideEdge.Bottom, style.borderBottomColor, resolved.borderBottomColor);
-            var left = ReadBorderEdge(owner, native, DivideEdge.Left, style.borderLeftColor, resolved.borderLeftColor);
+            var top = ProjectedCornerFace.Drawn(owner, 1)
+                ?? ReadBorderEdge(owner, native, DivideEdge.Top, style.borderTopColor, resolved.borderTopColor);
+            var right = ProjectedCornerFace.Drawn(owner, 2)
+                ?? ReadBorderEdge(owner, native, DivideEdge.Right, style.borderRightColor, resolved.borderRightColor);
+            var bottom = ProjectedCornerFace.Drawn(owner, 3)
+                ?? ReadBorderEdge(owner, native, DivideEdge.Bottom, style.borderBottomColor, resolved.borderBottomColor);
+            var left = ProjectedCornerFace.Drawn(owner, 4)
+                ?? ReadBorderEdge(owner, native, DivideEdge.Left, style.borderLeftColor, resolved.borderLeftColor);
             value = new ArbitraryStyle(ArbitraryProperty.BorderColor, top);
             return top.Equals(right) && top.Equals(bottom) && top.Equals(left);
         }

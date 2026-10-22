@@ -5744,26 +5744,71 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALayoutIdMotionWithAPixelRadius_When_ItsTweenStartsScaledDifferentlyOnEachAxis_Then_TheRadiusIsDividedByTheirGeometricMean()
+        public void Given_ALayoutIdMotionWithAPixelRadius_When_ItsTweenStartsScaledDifferentlyOnEachAxis_Then_ItsRadiusSlotsHoldNone()
         {
             // Arrange / Act — laid out at 400×200 from 100×100, so drawn at a quarter across and a half down.
             s_resizeTo = new Vector2Int(400, 200);
             var element = ResizeBoxWithOrigin("rounded-[20px]");
 
-            // Assert — twenty over the square root of an eighth.
-            Assert.That(element.style.borderTopLeftRadius.value.value, Is.EqualTo(20f / Mathf.Sqrt(0.125f)).Within(0.5f));
+            // Assert — none, where one length a corner would draw it elliptical.
+            Assert.That(element.style.borderTopLeftRadius.value.value, Is.Zero);
         }
 
         [Test]
-        public void Given_ALayoutIdMotionRoundedFullStartingAtAQuarterOfItsWidth_When_ItsTweenStarts_Then_ItsCornersFitItsBox()
+        public void Given_ALayoutIdMotionStartingTwiceAsWideAndHalfAsTallAsItIsLaidOut_When_ItsTweenStarts_Then_ItsRadiusSlotsHoldNone()
         {
-            // Arrange / Act — round at 100×100, laid out at 400×200, so its radius divided by the scale would overlap its
-            // own on the 200px sides.
-            s_resizeTo = new Vector2Int(400, 200);
-            var element = ResizeBoxWithOrigin("rounded-[50px]");
+            // Arrange / Act — laid out at 50×200 from 100×100, so drawn at twice across and half down, whose product is one.
+            s_resizeTo = new Vector2Int(50, 200);
+            var element = ResizeBoxWithOrigin("rounded-[20px]");
 
-            // Assert — scaled down to half the 200px sides, as CSS scales radii that overlap.
-            Assert.That(element.style.borderTopLeftRadius.value.value, Is.EqualTo(100f).Within(0.5f));
+            // Assert
+            Assert.That(element.style.borderTopLeftRadius.value.value, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AnOverflowHiddenLayoutIdMotionWithAPixelRadius_When_ItsTweenStartsScaledDifferentlyOnEachAxis_Then_ItIsClippedToAVectorImage()
+        {
+            // Arrange / Act — the bundled sheet; clipping, drawn at a quarter across and a half down.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_resizeTo = new Vector2Int(400, 200);
+            var element = ResizeBoxWithOrigin("rounded-[20px] overflow-hidden");
+
+            // Assert — the image UI Toolkit stencils the content to, in place of the rounded box it would stencil to.
+            Assert.That(element.style.backgroundImage.value.vectorImage, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's layoutId projection never writes the background-image slot.
+        // Dropping `style.backgroundImage = state.Own.Image` from ProjectedCornerFace.HandBackImage reddens this case.
+        [Test]
+        public void Given_AnOverflowHiddenLayoutIdMotionClippedToAVectorImage_When_ItsTweenLands_Then_ItsBackgroundImageSlotIsHandedBack()
+        {
+            // Arrange — the bundled sheet; clipping, drawn at a quarter across and a half down.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_resizeTo = new Vector2Int(400, 200);
+            var element = ResizeBoxWithOrigin("rounded-[20px] overflow-hidden");
+
+            // Act
+            AdvancePast(3f);
+
+            // Assert — empty again, as it was before the move.
+            Assert.That(element.style.backgroundImage.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's layoutId projection never writes the background-color slot.
+        // Writing `Cleared` where ProjectedCornerFace.StepTail writes a landed slot's `color.Own` reddens this case.
+        [Test]
+        public void Given_ALayoutIdMotionWithABackgroundAndAPixelRadius_When_ItsTweenStartedScaledDifferentlyOnEachAxisLands_Then_ItsBackgroundSlotIsHandedBack()
+        {
+            // Arrange — the bundled sheet; blue, drawn at a quarter across and a half down.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_resizeTo = new Vector2Int(400, 200);
+            var element = ResizeBoxWithOrigin("rounded-[20px] bg-blue-500");
+
+            // Act
+            AdvancePast(3f);
+
+            // Assert
+            Assert.That(element.style.backgroundColor.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
         [Test]
