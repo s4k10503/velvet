@@ -560,9 +560,14 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   placed apart tween across the distance between them; within one parent, the rect relative to it is
   compared, so a Motion nested in a moving one tweens only its own move inside it. A layoutId Motion
   inside one that grows or shrinks keeps its own size and its offset from its parent's drawn corner on
-  every frame of the outer tween, whether or not it moved itself — Framer's scale correction. One rotated
-  by its own class inside an outer one stretching by different factors on its two axes is not kept
-  exactly: no scale and translate undo a stretch at an angle to the element's axes. A move that
+  every frame of the outer tween, whether or not it moved itself — Framer's scale correction. One drawn at a
+  rotate other than a quarter turn inside an outer one stretching by different factors on its two axes is
+  drawn as Framer draws it, turned and unsheared at its own size: no rotate about the axis out of the panel
+  and scale undo a stretch at an angle to the element's axes, so on a screen panel Velvet turns it about an
+  axis in the panel's plane as well, which the panel draws flattened, until the stretch ends. While it is
+  turned that way the panel picks it anywhere in the box bounding where it is drawn rather than on its face
+  alone. One that clips its content, sits inside one that clips, or holds one is not kept exactly, as Unity
+  documents a 3D rotate as masking wrongly on a screen panel, and nor is one on a world-space panel. A move that
   lands while a tween is still running starts from where the element is drawn, not from its last layout.
   A box in a rotated or sheared frame (a rotated element inside a non-uniformly scaled one) starts
   unrotated over the same centre, at the drawn lengths of its sides.

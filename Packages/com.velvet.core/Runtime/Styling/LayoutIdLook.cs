@@ -239,22 +239,28 @@ namespace Velvet
                 var own = OwnRotate(element, projection, 0f);
                 // Left alone, the slot shows a class change once the style pass takes it.
                 if (float.IsNaN(rotate) || Mathf.Approximately(rotate, Unstyled(element) ?? own)) return;
-                // A running spin's frame in the slot is the spin's; what it turns from is the element's own.
-                projection.OwnInlineRotate = StyleAnimateDriver.TryReadSpinOwn(element, element.style.rotate, out var spinOwn, out _)
-                    ? spinOwn
-                    : element.style.rotate;
-                projection.WritesRotate = true;
-                projection.StartRotate = own;
-                projection.RotateCarry.Land(own, Tag(DeclaredRotate(element, projection)));
-                RunningStyleTransition.TakeOverRotate(element, projection.RotateCarry);
-                MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Rotate);
-                StyleAnimateDriver.YieldSlots(element, projection, MotionLayoutIdDriver.WrittenSlots(projection));
+                TakeRotate(element, projection, own);
             }
             projection.DrawnRotate = float.IsNaN(rotate) ? OwnRotate(element, projection, dtSec) : rotate;
             // A running spin leaves the slot to the projection and its turn is added here, as the projection adds a
             // bounce's lift or a ping's growth.
             element.style.rotate = new Rotate(new Angle(projection.DrawnRotate + StyleAnimateDriver.CurrentSpinDeg(element), AngleUnit.Degree));
             projection.WrittenRotate = element.style.rotate;
+        }
+
+        // Takes the rotate slot over from the rotate the element is drawn at, own, which its carry starts from.
+        public static void TakeRotate(VisualElement element, LayoutIdProjection projection, float own)
+        {
+            // A running spin's frame in the slot is the spin's; what it turns from is the element's own.
+            projection.OwnInlineRotate = StyleAnimateDriver.TryReadSpinOwn(element, element.style.rotate, out var spinOwn, out _)
+                ? spinOwn
+                : element.style.rotate;
+            projection.WritesRotate = true;
+            projection.StartRotate = own;
+            projection.RotateCarry.Land(own, Tag(DeclaredRotate(element, projection)));
+            RunningStyleTransition.TakeOverRotate(element, projection.RotateCarry);
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Rotate);
+            StyleAnimateDriver.YieldSlots(element, projection, MotionLayoutIdDriver.WrittenSlots(projection));
         }
 
         // Draws the element with the given radii, or its own for null, so that the scale it is drawn at leaves them as

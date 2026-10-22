@@ -330,6 +330,10 @@ namespace Velvet
         internal static readonly EngineMember TransformVersionChange =
             Field(UIElements, VersionChangeType, "Transform", "enum:" + VersionChangeType);
 
+        // LayoutIdTilt: whether a panel draws in screen space.
+        internal static readonly EngineMember PanelIsFlat = ReadProperty(UIElements,
+            "UnityEngine.UIElements.BaseVisualElementPanel", "isFlat", "System.Boolean");
+
         internal static readonly EngineMember PanelDuringLayoutPhase = ReadProperty(UIElements,
             "UnityEngine.UIElements.BaseVisualElementPanel", "duringLayoutPhase", "System.Boolean");
 
