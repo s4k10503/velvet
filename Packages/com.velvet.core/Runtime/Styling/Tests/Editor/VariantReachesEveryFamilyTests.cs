@@ -64,12 +64,13 @@ namespace Velvet.Tests
             ["StyleRingClass.IsRingClass"] = "ring-2",
             ["StyleFontClass.IsFontToken"] = "italic",
             ["StyleTextEffectClass.IsTextEffectToken"] = "uppercase",
+            ["StyleCustomPropertyClass.IsCustomPropertyToken"] = "[width:120px]",
         };
 
         // A ratchet on the declaration, because the two-directional check alone is satisfied by deleting a
         // family from the dispatcher AND its representative here — one plausible cleanup edit that removes a
         // family's coverage with both tests green.
-        private const int FamilyFloor = 17;
+        private const int FamilyFloor = 18;
 
         // What a family's representative acts on, written bare in every render of that family's cells. Velvet
         // draws no inset ring, so what the inset representative changes is the box-shadow its rejected width discards.
@@ -153,7 +154,7 @@ namespace Velvet.Tests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-        // GREEN_ON_BASE(characterization): the family reader runs over the literal gate strings below, and this branch changes neither it nor them, so the base reads them the same way.
+        // GREEN_ON_BASE(characterization): this branch adds a declared family and changes neither the family reader nor the gate strings below.
         [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
         [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
             "StyleGapClass.IsGapToken")]
@@ -435,6 +436,10 @@ namespace Velvet.Tests
                          // rather than a payload's effect. Substring rather than a list, which costs a
                          // family registry its term should one ever be named for a variant.
                          .Where(property => !property.Name.Contains("Variant", StringComparison.Ordinal))
+                         // The record of the custom-property tokens a reconcile toggled from the class list
+                         // itself, which only a bare render enters: a gated one reaches the same reader through
+                         // the dispatcher, and what the reader writes is compared in the styles.
+                         .Where(property => property.Name != "CustomPropertyClasses")
                          .OrderBy(property => property.Name, StringComparer.Ordinal))
             {
                 if (property.GetValue(context) is not System.Collections.IDictionary registry)

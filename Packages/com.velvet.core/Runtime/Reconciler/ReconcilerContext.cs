@@ -487,6 +487,10 @@ namespace Velvet
         // before re-deriving. Cleared on element cleanup / reconciler dispose.
         public Dictionary<VisualElement, List<(string[] Payloads, int[] Declarations)>> SupportsVariants { get; } = new();
 
+        // The element's own custom-property tokens as FiberNodePatcher.ApplyCustomPropertyConfig last applied them,
+        // so a class-list change toggles only the ones that moved. Cleared on element cleanup / reconciler dispose.
+        public Dictionary<VisualElement, List<(string Core, long Priority, int Declaration, int Order)>> CustomPropertyClasses { get; } = new();
+
         // text-transform / text-decoration / whitespace-pre-line / leading-* (uppercase / underline / … / the
         // pre-line collapse / line-height). UI Toolkit has no property for any of them, so they are realised
         // by mutating the displayed text (StyleTextEffectResolver). TextEffects holds each element's OWN
@@ -1313,6 +1317,10 @@ namespace Velvet
         // reaches) to find and tear down the real element living elsewhere in the tree. NOT a pure side-table
         // — removing an entry here always accompanies detaching the real element from its container.
         public Dictionary<VisualElement, VisualElement> ZLayerPlaceholders { get; } = new();
+
+        // The elements whose class list FiberZLayerCoordinator.TryClassify last classified, keyed by the element
+        // carrying the classes, so a z a custom property supplies can stack one that its patch left unstacked.
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> ZLayerCandidates { get; } = new();
 
         // Real element -> its z-layer bookkeeping. A pure side-table (its own teardown is a plain Remove — the
         // container detach and placeholder bookkeeping live in ZLayerPlaceholders/ZLayerHosts instead), so it
@@ -2995,6 +3003,7 @@ namespace Velvet
                 AttributeVariants,
                 DataAttributes,
                 SupportsVariants,
+                CustomPropertyClasses,
                 MotionAppliedClasses,
                 MotionHeldInline,
                 MotionInlineExits,

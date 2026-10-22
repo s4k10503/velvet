@@ -447,8 +447,8 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleZIndexClass.cs",
-          "anchor": "public static bool TryExtract(string[] classNames, out int z)",
-          "neuter": "z = 0; return false;"
+          "anchor": "public static bool TryExtract(string[] classNames, out int z, out string? winnerClass)",
+          "neuter": "z = 0; winnerClass = null; return false;"
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleZIndexClass.cs",

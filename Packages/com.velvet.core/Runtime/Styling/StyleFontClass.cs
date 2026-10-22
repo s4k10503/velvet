@@ -241,7 +241,9 @@ namespace Velvet
             return true;
         }
 
-        // font-[weight:550] / font-[550] → weight; font-[addr:key] / font-[Inter] → family.
+        // font-[weight:550] / font-[550] / font-[number:550] → weight; font-[addr:key] / font-[Inter] /
+        // font-[family-name:Inter] / font-[generic-name:serif] → family. A family other than an addr: key is read as
+        // Tailwind reads a bracket: `_` is a space and `\_` an underscore.
         private static bool ParseArbitrary(string value, ref FontFacets facets)
         {
             if (value.Length == 0)
@@ -249,9 +251,9 @@ namespace Velvet
                 return false;
             }
 
-            if (value.StartsWith("weight:", StringComparison.Ordinal))
+            if (value.StartsWith("weight:", StringComparison.Ordinal) || value.StartsWith("number:", StringComparison.Ordinal))
             {
-                return TryParseWeight(value.Substring("weight:".Length), ref facets);
+                return TryParseWeight(value.Substring(value.IndexOf(':') + 1), ref facets);
             }
 
             // A bare number is a weight (font-[550]); anything else (incl. addr:key) is a family.
@@ -260,13 +262,34 @@ namespace Velvet
                 return true;
             }
 
-            facets.Family = value;
+            var family = value.StartsWith("family-name:", StringComparison.Ordinal)
+                    || value.StartsWith("generic-name:", StringComparison.Ordinal)
+                ? value.Substring(value.IndexOf(':') + 1)
+                : value;
+            // CSS-wide inherit or unset: the element takes its parent's family, as if it named none.
+            if (family is "inherit" or "unset")
+            {
+                facets.Family = null;
+                facets.HasFamily = false;
+                return true;
+            }
+            // An addr: key keeps its underscores, and takes `\_` for one as any family does.
+            facets.Family = family.StartsWith("addr:", StringComparison.Ordinal)
+                ? family.Replace("\\_", "_")
+                : StyleCustomPropertyClass.Decode(family);
             facets.HasFamily = true;
             return true;
         }
 
         private static bool TryParseWeight(string raw, ref FontFacets facets)
         {
+            // CSS-wide inherit or unset: the element takes its parent's weight, as if it named none.
+            if (raw is "inherit" or "unset")
+            {
+                facets.Weight = default;
+                facets.HasWeight = false;
+                return true;
+            }
             if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
             {
                 return false;

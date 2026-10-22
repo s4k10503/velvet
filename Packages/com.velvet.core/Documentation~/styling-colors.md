@@ -61,7 +61,7 @@ The functions follow CSS Color 4:
   plus or minus that value: 0deg in degrees or turns, 216deg in gradians and 240deg in radians, and 144deg and
   120deg for the negative gradians and radians.
 - **Function names, `none` and angle units** are read in any case.
-- **The opacity modifier** (`bg-[…]/50`, `bg-red-500/50`, `text-…/[0.3]`) multiplies the colour's alpha, as
+- **The opacity modifier** (`bg-[…]/50`, `bg-red-500/50`, `text-…/[0.3]`, `text-…/[30%]`) multiplies the colour's alpha, as
   Tailwind v4's `color-mix(in oklab, <colour> 50%, transparent)` does: `bg-[#ff000080]/50` has an alpha of a
   quarter.
 
@@ -72,4 +72,5 @@ The functions follow CSS Color 4:
   `#ef4444`, not v4's `oklch(63.7% 0.237 25.331)`. Write the v4 value in brackets to get it.
 - **A colour outside sRGB**, which an `hsl()` or `hwb()` whose components lie outside their ranges can
   describe, has each channel clipped to 0–1 where CSS Color 4 maps it into the gamut.
-- **`calc()`, `var()`, `currentColor` and relative colour syntax** are not read.
+- **`calc()`, `currentColor` and relative colour syntax** are not read. A `var()` is replaced by the custom
+  property it reads before the colour is read ([styling-custom-properties.md](styling-custom-properties.md)).

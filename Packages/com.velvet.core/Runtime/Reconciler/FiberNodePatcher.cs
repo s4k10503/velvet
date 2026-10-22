@@ -290,36 +290,29 @@ namespace Velvet
         // picks up the new occupant without any change to those call sites.
         private void PatchZLayerElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
         {
-            var oldIsZ = FiberZLayerCoordinator.TryClassify(oldNode.ClassNames, oldNode.Props, out _);
-            var newIsZ = FiberZLayerCoordinator.TryClassify(newNode.ClassNames, newNode.Props, out var newResolvedZ);
-
-            if (!oldIsZ)
-            {
-                // none -> z: `element` is still the ordinary, in-flow element.
-                PatchElement(element, oldNode, newNode);
-                FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, element, newResolvedZ);
-                return;
-            }
-
-            // `element` is the placeholder for both remaining branches (oldIsZ is true): the real element
-            // lives elsewhere and must be resolved before it can be patched.
-            if (!_ctx.ZLayerPlaceholders.TryGetValue(element, out var real))
-            {
-                // Defensive: a live tree should never reach a z-managed placeholder with no registered real
-                // element. Patching the placeholder itself would be wrong (it is not the declared content),
-                // so at minimum do not silently drop the node's props/children.
-                PatchElement(element, oldNode, newNode);
-                return;
-            }
-
+            // Read off the placeholder registry rather than the old class list: a z-* class reading a custom
+            // property stacks or unstacks the element as that resolves, with no patch (FiberZLayerCoordinator.
+            // Restack), and the patch below can do the same before the relocation is decided.
+            var real = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
             PatchElement(real, oldNode, newNode);
-            if (newIsZ)
+            var classified = FiberZLayerCoordinator.TryClassify(newNode.ClassNames, newNode.Props, out var newResolvedZ);
+            var isZ = FiberZLayerCoordinator.Stacks(_ctx, FiberZLayerCoordinator.ClassElementOf(_ctx, real), classified,
+                ref newResolvedZ);
+            var placeholder = FiberZLayerCoordinator.PlaceholderOf(_ctx, real);
+            if (placeholder == null)
             {
-                FiberZLayerCoordinator.Reposition(_ctx, element, real, newResolvedZ);
+                if (isZ)
+                {
+                    FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, real, newResolvedZ);
+                }
+            }
+            else if (isZ)
+            {
+                FiberZLayerCoordinator.Reposition(_ctx, placeholder, real, newResolvedZ);
             }
             else
             {
-                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, element, real);
+                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, placeholder, real);
             }
         }
 
@@ -327,12 +320,14 @@ namespace Velvet
         // resolves, so the old side is read off the placeholder registry and the new side once the patch ran.
         private void PatchMotionSlot(VisualElement element, MotionNode oldNode, MotionNode newNode)
         {
-            var wasZ = _ctx.ZLayerPlaceholders.TryGetValue(element, out var real);
-            var motion = wasZ ? real : element;
+            var motion = _ctx.ZLayerPlaceholders.TryGetValue(element, out var real) ? real : element;
             PatchMotion(motion, oldNode, newNode);
-            var isZ = FiberZLayerCoordinator.TryClassify(
+            var classified = FiberZLayerCoordinator.TryClassify(
                 RestingClassSet(motion, newNode.ClassNames).Merged, newNode.Props, out var resolvedZ);
-            if (!wasZ)
+            var isZ = FiberZLayerCoordinator.Stacks(_ctx, motion, classified, ref resolvedZ);
+            // Read again after the patch, for the reason PatchZLayerElement gives.
+            var placeholder = FiberZLayerCoordinator.PlaceholderOf(_ctx, motion);
+            if (placeholder == null)
             {
                 if (isZ)
                 {
@@ -341,11 +336,11 @@ namespace Velvet
             }
             else if (isZ)
             {
-                FiberZLayerCoordinator.Reposition(_ctx, element, motion, resolvedZ);
+                FiberZLayerCoordinator.Reposition(_ctx, placeholder, motion, resolvedZ);
             }
             else
             {
-                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, element, motion);
+                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, placeholder, motion);
             }
         }
 
@@ -1559,6 +1554,8 @@ namespace Velvet
                 // resolver (e.g. font-[..] by StyleFontResolver) and must not enter the USS class list.
                 StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority, addToClassListFallback: false);
             }
+            // A custom-property reader on the base layer shares it with the tokens just re-applied.
+            StyleCustomProperties.ReassertBase(element, affectedLonghands);
         }
 
         // The longhands the classes write whatever state the element is in: an inline-resolved token's arbitrary
@@ -1588,7 +1585,8 @@ namespace Velvet
         private static bool TryGetInlineResolvedCore(string rawCls, out string core, out bool important)
         {
             core = StyleArbitraryValueResolver.StripImportant(rawCls, out important);
-            return !IsEmptyOrVariantToken(rawCls) && StyleArbitraryValueResolver.IsInlineResolved(core);
+            return !IsEmptyOrVariantToken(rawCls) && StyleArbitraryValueResolver.IsInlineResolved(core)
+                && !StyleCustomPropertyClass.IsCustomPropertyToken(core);
         }
 
         private static bool IsEmptyOrVariantToken(string rawCls)
@@ -1806,6 +1804,13 @@ namespace Velvet
                 return true;
             }
 
+            // Custom-property tokens resolve on the element (ApplyCustomPropertyConfig) and never enter the class
+            // list.
+            if (StyleCustomPropertyClass.IsCustomPropertyToken(StyleArbitraryValueResolver.StripImportant(cls, out _)))
+            {
+                return true;
+            }
+
             // font-[...] arbitrary font classes are resolved from the whole class array by
             // StyleFontResolver and applied as inline style; like other arbitrary values they must not
             // enter the USS class list.
@@ -1859,7 +1864,7 @@ namespace Velvet
         // None of IsManipulatorOwnedClass's token families ever entered the class list (see AddClass), so
         // there is nothing here to remove for them; each family's applied payload is cleared elsewhere by
         // its own owning pass on the class change instead (the variant manipulator; the child-variant /
-        // structural / has-variant / attribute / supports config passes; StyleFontResolver; or
+        // structural / has-variant / attribute / supports / custom-property config passes; StyleFontResolver; or
         // StyleTextEffectResolver re-resolving) — never by this method.
         private static void RemoveClass(VisualElement element, string cls)
         {
@@ -2618,6 +2623,96 @@ namespace Velvet
             ApplyHasClassVariantConfig(element, classNames);
             ApplyAttributeVariantConfig(element, classNames);
             ApplySupportsVariantConfig(element, classNames);
+            ApplyCustomPropertyConfig(element, classNames);
+        }
+
+        // The element's own custom-property tokens (StyleCustomPropertyClass), applied as payloads at the base
+        // layer, or the important one for a token with the bang. Only the tokens that changed are toggled, the
+        // ones leaving first, since a declaration changing value leaves and arrives at the same layer.
+        private void ApplyCustomPropertyConfig(VisualElement element, string[] classNames)
+        {
+            List<(string Core, long Priority, int Declaration, int Order)>? tokens = null;
+            if (classNames != null)
+            {
+                for (var i = 0; i < classNames.Length; i++)
+                {
+                    var cls = classNames[i];
+                    if (IsEmptyOrVariantToken(cls))
+                    {
+                        continue;
+                    }
+                    var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
+                    if (!string.IsNullOrEmpty(core) && StyleCustomPropertyClass.IsCustomPropertyToken(core))
+                    {
+                        // A reader takes the layer the literal base utilities share, where its rule place ranks it
+                        // against them (StyleCustomProperties.Settle); a declaration ranks only against declarations,
+                        // by rule place.
+                        var order = StyleRuleOrder.OrdinalOf(classNames, i);
+                        var declares = StyleCustomPropertyClass.TryDeclaration(core, out _, out _);
+                        (tokens ??= new List<(string, long, int, int)>()).Add((core,
+                            important ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base) : StyleLayerPriority.Base,
+                            declares ? order : StyleVariantPayload.NoDeclaration, order));
+                    }
+                }
+            }
+            _ctx.CustomPropertyClasses.TryGetValue(element, out var previous);
+            if (previous == null && tokens == null)
+            {
+                return;
+            }
+            var leaving = new List<(string Core, long Priority, int Declaration, int Order)>();
+            var arriving = new List<(string Core, long Priority, int Declaration, int Order)>();
+            foreach (var token in previous ?? new List<(string, long, int, int)>())
+            {
+                if (tokens == null || !tokens.Contains(token))
+                {
+                    leaving.Add(token);
+                }
+            }
+            foreach (var token in tokens ?? new List<(string, long, int, int)>())
+            {
+                if (previous == null || !previous.Contains(token))
+                {
+                    arriving.Add(token);
+                }
+            }
+            if (tokens == null)
+            {
+                _ctx.CustomPropertyClasses.Remove(element);
+            }
+            else
+            {
+                _ctx.CustomPropertyClasses[element] = tokens;
+            }
+            // Recorded before a reader leaves, since what it hands its layer back to is this render's literals.
+            StyleCustomProperties.RecordClasses(element, classNames ?? Array.Empty<string>());
+            StyleCustomProperties.Hold();
+            try
+            {
+                ToggleCustomPropertyTokens(element, leaving, on: false);
+                ToggleCustomPropertyTokens(element, arriving, on: true);
+                StyleCustomProperties.RerankSplit(element);
+            }
+            finally
+            {
+                StyleCustomProperties.ReleaseHeld();
+            }
+        }
+
+        // Declarations before consumers, so a consumer arriving with the declaration it reads resolves once.
+        private void ToggleCustomPropertyTokens(VisualElement element,
+            List<(string Core, long Priority, int Declaration, int Order)> tokens, bool on)
+        {
+            for (var pass = 0; pass < 2; pass++)
+            {
+                foreach (var (core, priority, declaration, order) in tokens)
+                {
+                    if (StyleCustomPropertyClass.TryDeclaration(core, out _, out _) == (pass == 0))
+                    {
+                        StyleCustomProperties.Toggle(element, core, on, priority, declaration, _ctx, order);
+                    }
+                }
+            }
         }
 
         // Configures (creates / updates / removes) the element's StyleHasVariantManipulator from the
@@ -3295,7 +3390,7 @@ namespace Velvet
             var previous = state?.Resolved;
             var resolved = reconciled == null ? LiveClasses(element)
                 : state == null ? reconciled
-                : ComposeVariantClasses(reconciled, state, state.Resolved);
+                : ComposeVariantClasses(element, reconciled, state, state.Resolved);
             var classesChanged = !ReferenceEquals(previous, resolved);
             if (state != null)
             {
@@ -3442,7 +3537,7 @@ namespace Velvet
             // the composition only while it is actually hovered, and a dictionary probe the rest of the time.
             var resolved = !state.Composes
                 ? newClassNames
-                : ComposeVariantClasses(newClassNames, state, state.Resolved);
+                : ComposeVariantClasses(element, newClassNames, state, state.Resolved);
             changed = !ReferenceEquals(oldClassNames, newClassNames)
                 || !ReferenceEquals(state.Resolved, resolved);
             state.Reconciled = newClassNames;
@@ -3469,7 +3564,7 @@ namespace Velvet
                 || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
                 || !state.Composes
                     ? classNames
-                    : ComposeVariantClasses(classNames, state, state.Resolved);
+                    : ComposeVariantClasses(element, classNames, state, state.Resolved);
 
         // Builds classNames plus every variant-applied gate token, handing back reuse unchanged when the
         // result would match it token for token, and classNames itself when no payload is lit.
@@ -3493,13 +3588,18 @@ namespace Velvet
         // token applied to.
         //
         // A token a play withheld (VariantGateState.Withheld) is left out of the head.
-        private static string[] ComposeVariantClasses(string[] classNames, VariantGateState state, string[]? reuse)
+        private static string[] ComposeVariantClasses(VisualElement element, string[] classNames, VariantGateState state,
+            string[]? reuse)
         {
             var tokens = state.Tokens;
             var withheld = state.Withheld;
             if (tokens.Count == 0 && withheld.Count == 0)
             {
                 return classNames;
+            }
+            if (StyleCustomProperties.AnyPlaced(element))
+            {
+                return ComposePlacedClasses(element, classNames, tokens, withheld, reuse);
             }
             var head = withheld.Count == 0 ? classNames.Length : CountKept(classNames, withheld);
             var total = head + tokens.Count;
@@ -3540,6 +3640,69 @@ namespace Velvet
                 }
             }
             return kept;
+        }
+
+        private static readonly List<string> s_placedScratch = new();
+        private static readonly List<int> s_placedAt = new();
+
+        // ComposeVariantClasses for an element whose custom-property readers apply payloads at the base layer: a
+        // reader's payload sits before the first reconciled token Tailwind orders after the reader (the reader
+        // ties after an equal one), so a family reading the last token of the composed array ranks it against the
+        // element's literal utilities as Tailwind does. A payload no reader owns follows them all, as it does
+        // without readers, and a token a play withheld is left out as ComposeVariantClasses leaves it.
+        private static string[] ComposePlacedClasses(VisualElement element, string[] classNames, List<string> tokens,
+            List<string> withheld, string[]? reuse)
+        {
+            s_placedScratch.Clear();
+            s_placedAt.Clear();
+            foreach (var token in tokens)
+            {
+                s_placedAt.Add(StyleCustomProperties.PlaceOf(element, token));
+            }
+            for (var j = 0; j < classNames.Length; j++)
+            {
+                if (!Kept(classNames[j], withheld))
+                {
+                    continue;
+                }
+                var ordinal = StyleRuleOrder.OrdinalOf(classNames, j);
+                for (var i = 0; i < tokens.Count; i++)
+                {
+                    if (s_placedAt[i] >= 0 && s_placedAt[i] < ordinal)
+                    {
+                        s_placedScratch.Add(tokens[i]);
+                        s_placedAt[i] = -2;
+                    }
+                }
+                s_placedScratch.Add(classNames[j]);
+            }
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (s_placedAt[i] >= 0)
+                {
+                    s_placedScratch.Add(tokens[i]);
+                }
+            }
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (s_placedAt[i] == -1)
+                {
+                    s_placedScratch.Add(tokens[i]);
+                }
+            }
+            if (reuse != null && reuse.Length == s_placedScratch.Count)
+            {
+                var same = true;
+                for (var i = 0; i < reuse.Length && same; i++)
+                {
+                    same = reuse[i] == s_placedScratch[i];
+                }
+                if (same)
+                {
+                    return reuse;
+                }
+            }
+            return s_placedScratch.ToArray();
         }
 
         // Whether array carries exactly tokens from start on.

@@ -448,6 +448,8 @@ namespace Velvet
         private static (List<int> Order, int Count) PropertySortOf(string utility)
         {
             var core = StyleArbitraryValueResolver.StripImportant(utility, out _);
+            // A custom-property reader sorts as the utility it resolves to, whose property is known before its value.
+            core = StyleCustomProperties.SortableOf(core) ?? core;
             var inline = false;
             var property = default(ArbitraryProperty);
             StyleLonghandSet set;

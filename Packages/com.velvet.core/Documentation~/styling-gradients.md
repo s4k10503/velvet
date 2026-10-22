@@ -120,5 +120,5 @@ both.
 
 - Not read, and so leaving the class inert: interpolation spaces other than the seven above (`hwb`,
   `xyz`, `display-p3`, …), a centre written in lengths or with edge offsets (`at_20px_30px`,
-  `at_right_10px_bottom_20px`), `var()` in a stop, a math function in a stop that does not come to one
+  `at_right_10px_bottom_20px`), a math function in a stop that does not come to one
   length or one percentage, and a colour the grammar [styling-colors.md](styling-colors.md) describes does not read.

@@ -72,9 +72,10 @@ inside nested functions is declined sooner. `clamp(low, value, high)` is `max(lo
 `low` above `high` wins. What CSS rejects is declined and leaves the class inert: adding a number to a length
 (`calc(1px+2)`), multiplying two lengths, dividing by a length, a result that is a plain number (`calc(4)`)
 and `clamp()` without three arguments. Valid CSS that is not read here is declined too: any function other
-than these four (`var()`, `env()`, `round()`, …), and, as a deliberate deviation, a division by zero and a
+than these four (`env()`, `round()`, …), and, as a deliberate deviation, a division by zero and a
 length too large for a float, both of which CSS reads by clamping an infinite result to the range of lengths
-it supports.
+it supports. A `var()` is replaced by the custom property it reads before the bracket is read
+([styling-custom-properties.md](styling-custom-properties.md)).
 
 So `top-[calc(1rem+4px)]`, `gap-[min(2rem,24px)]`, `blur-[calc(2px*3)]`,
 `shadow-[calc(1rem+4px)_4px_8px_#101820]` and `w-[calc(100%/3)]` resolve as the plain length would.
@@ -103,10 +104,10 @@ ring, Tailwind emitting `ring-[5PX]` first, while `ring-[length:2] ring-4` disca
 `from-` / `via-` / `to-` colour that is no colour (`from-[1IN]`) leaves its stop transparent, and a position that
 is no length or percentage (`from-[length:red]`) returns the stop to its initial position: 0%, 50% or 100%.
 
-Only what the browser rejects counts. A function, `var()`, `currentColor` or a colour name Velvet does not read
-(`ring-[oklch(62.3%_0.214_259.815)]`, `ring-[var(--brand)]`, `from-[var(--x)]`, `ring-[rebeccapurple]`), and a
-length in a unit a stop cannot place (`via-[length:2em]`), discard nothing, and Velvet leaves such a class
-unread.
+Only what the browser rejects counts. A function other than `var()`, `currentColor` or a colour name Velvet does
+not read (`ring-[oklch(62.3%_0.214_259.815)]`, `ring-[rebeccapurple]`), and a length in a unit a stop cannot place
+(`via-[length:2em]`), discard nothing, and Velvet leaves such a class unread. A `var()` is resolved first, and the
+value it resolves to is the one judged ([styling-custom-properties.md](styling-custom-properties.md)).
 
 Tailwind composes four more families through one declaration each: `translate-*`, `translate-x-*` and
 `translate-y-*`; `scale-x-*`, `scale-y-*` and the uniform `scale-<n>` (a bracketed `scale-[…]` is written as
