@@ -87,9 +87,10 @@ and a line height are the parent's.
 - A declaration in a class changing, on a render or as a variant turns on or off: every reader in the element's
   subtree, in the same pass.
 - The element attaching to a panel, which is when it first has the ancestors its declarations come from.
-- A stylesheet's declaration changing: in the style pass that applies it, for a reader below the declaring element
-  whose value is a style property; a reader on the declaring element itself, and one Velvet paints itself, at the
-  panel's next scheduler tick.
+- A stylesheet's declaration changing in value: in the style pass that applies it, for a reader below the declaring
+  element whose value is a style property; a reader on the declaring element itself, and one Velvet paints itself,
+  at the panel's next scheduler tick. Whether a declaration that stops applying because its rule no longer
+  matches is seen in that pass has not been measured.
 
 ## Not supported
 
