@@ -5033,18 +5033,18 @@ namespace Velvet.Tests
         }
 
 
-        [TestCase("scale-150", "scale-125", 200, true, 1.3f, 1.47f, 0.015f)]
-        [TestCase("translate-y-[40px]", "translate-y-[0px]", 100, false, 8f, 32f, 1f)]
+        [TestCase("scale-150", "scale-125", true, 1.3f, 1.47f)]
+        [TestCase("translate-y-[40px]", "translate-y-[0px]", false, 8f, 32f)]
         public void Given_AHolderOnATransition_When_ItTakesTheLeadBackInTheRenderThatChangesItsTransform_Then_ItRunsAsTheEngineRunsIt(
-            string from, string to, int bSize, bool scale, float low, float high, float within)
+            string from, string to, bool scale, float low, float high)
         {
             // Arrange — the bundled sheet; "a", and a control holding no id, both transitioning everything linearly over a
-            // second, carrying the class from; "b", bSize square, has taken the id from "a" and landed, and what that
-            // landing handed back to the engine has run out. "b" twice the side of "a" has the move draw "a" scaled; one
-            // size and one top have it write "a"'s translate across alone.
+            // second, carrying the class from; "b" has taken the id from "a" and landed, and what that landing handed back
+            // to the engine has run out. For a scale "b" is twice the side of "a", so that the move draws "a" scaled; for a
+            // translate one size and one top have it write "a"'s translate across alone.
             const string transitioning = "transition-all duration-1000 ease-linear";
             VelvetStyleUtilities.AttachTo(Root);
-            s_bSize = bSize;
+            s_bSize = scale ? 200 : 100;
             (s_aClasses, s_controlClasses) = ($"{transitioning} {from}", $"{transitioning} {from}");
             using var mounted = MountBOverA();
             AdvancePast(2.5f);
@@ -5056,13 +5056,13 @@ namespace Velvet.Tests
             for (var i = 0; i < 24; i++) Tick();
 
             // Assert — "a"'s own scale or own translate down within a frame of the control's, part way from one to the
-            // other.
+            // other: 0.015 of a scale, 1px of a translate.
             var a = Root.Q<VisualElement>("a");
             var control = Root.Q<VisualElement>("control").resolvedStyle;
             var expected = scale ? control.scale.value.x : control.translate.y;
             var own = !mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection) ? float.NaN
                 : scale ? a.style.scale.value.value.x / projection.Scale.x : a.style.translate.value.y.value;
-            Assert.That(own, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(within));
+            Assert.That(own, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(scale ? 0.015f : 1f));
         }
 
 
