@@ -158,6 +158,9 @@ namespace Velvet.Tests
             Assert.That(Drawn(box), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(characterization): the base merges a pose after the element's own classes already. Merging the
+        // pose ahead of them in MotionVariantResolver.ResolveAppliedAt reddens the first row; dropping the rejected
+        // check in ApplyCombinedTranslate reddens the second.
         [TestCase("translate-y-[10]", "translate-y-4", "0,16 - 0")]
         [TestCase("translate-x-4", "translate-y-[10]", "none - 0")]
         public void Given_AnOwnClassAndAPoseOfOneComposedFamily_When_ThePoseApplies_Then_ThePoseHoldsTheAxisItNamesOverTheOwnClass(
@@ -174,12 +177,15 @@ namespace Velvet.Tests
             Assert.That(Drawn(root.Q("box")), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(characterization): this branch changes nothing on the scale path. Dropping the rejected check
+        // in ApplyCombinedScale, which RefreshScaleClassFallback re-draws through, reddens it.
         [Test]
-        public void Given_AChannelUniformScaleBesideARejectedAxis_When_AProjectionChangeMovesTheUniformScale_Then_NothingIsScaled()
+        public void Given_AChannelUniformScaleBesideARejectedAxis_When_ABaseClassMovesTheUniformScale_Then_NothingIsScaled()
         {
             // Arrange — the gesture, presence and drag channels add their classes through AddClasses, which leaves
             // the projection alone; the control's taken axis is what makes a later projection change re-draw the
-            // other one from the uniform scale.
+            // other one from the uniform scale. The change is at the base rank: a scale class above it outranks
+            // the base axis layer and takes it off, rejected or not.
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Div(children: new VNode[]
             {
@@ -188,15 +194,15 @@ namespace Velvet.Tests
             }));
             var box = root.Q("box");
             var control = root.Q("control");
-            StyleAnimationClassUtils.AddClasses(box, new[] { "scale-150" });
-            StyleAnimationClassUtils.AddClasses(control, new[] { "scale-150" });
+            StyleAnimationClassUtils.AddClasses(box, new[] { "scale-90" });
+            StyleAnimationClassUtils.AddClasses(control, new[] { "scale-90" });
 
-            // Act
-            StyleClassProjection.Add(box, "scale-90", StyleLayerPriority.Hover);
-            StyleClassProjection.Add(control, "scale-90", StyleLayerPriority.Hover);
+            // Act — scale-150 follows scale-90 in the stylesheet, so the uniform scale moves to 1.5.
+            StyleClassProjection.Add(box, "scale-150", StyleLayerPriority.Base);
+            StyleClassProjection.Add(control, "scale-150", StyleLayerPriority.Base);
 
-            // Assert — Undefined where the control's y did not follow scale-90, so the change re-drew nothing.
-            Assert.That(Mathf.Approximately(control.style.scale.value.value.y, 0.9f)
+            // Assert — Undefined where the control's y did not follow scale-150, so the change re-drew nothing.
+            Assert.That(Mathf.Approximately(control.style.scale.value.value.y, 1.5f)
                     ? box.style.scale.keyword
                     : StyleKeyword.Undefined,
                 Is.EqualTo(StyleKeyword.None));

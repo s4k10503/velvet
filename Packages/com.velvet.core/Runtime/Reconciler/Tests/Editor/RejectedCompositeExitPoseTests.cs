@@ -48,6 +48,8 @@ namespace Velvet.Tests
                 : System.Array.Empty<VNode>());
         }
 
+        // GREEN_ON_BASE(characterization): the base plays the exit pose over the own rejected value already. Handing
+        // WithExitClasses an empty exit class in place of the pose's reddens it.
         [Test]
         public void Given_AnOwnRejectedTranslateAndAnExitPoseOutrankingIt_When_TheChildIsRemoved_Then_TheExitTranslates()
         {
