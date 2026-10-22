@@ -20,6 +20,7 @@
 - A `V.Motion` swap no longer animates a slot that a resting class or value in force under a variant holds
   (`focus:scale-50`, `focus:translate-8`, `focus:opacity-50`, `focus:bg-red-500`); the element keeps drawing that
   value, so the slot lands. A pose class the swap adds stays off the element while such a holder outranks it, as
-  in CSS, where it used to be put back and drawn over the holder.
+  in CSS, where it used to be put back and drawn over the holder, and a pose class the swap removes stays while a
+  variant in force names the same class (`opacity-50` beside `hover:opacity-50`).
 - A `V.Motion` swap beside a resting translate or scale axis holding a value the browser rejects
   (`translate-x-[10]`) lands, where it used to animate the other axis and then drop the translation.

@@ -82,6 +82,9 @@ namespace Velvet
             }
         }
 
+        internal static bool HoldsUnderVariant(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.HoldsUnderVariant(cls) == true;
+
         internal static bool Suppresses(VisualElement element, string cls)
             => StyleArbitraryValueResolver.TryGetProjection(element)?.Suppresses(cls) == true;
 
@@ -433,6 +436,18 @@ namespace Velvet
                 {
                     if (entry.Class == cls && !entry.Dead && StyleLayerPriority.UnderVariant(entry.Priority)
                         && entry.Properties.Overlaps(longhands))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            public bool HoldsUnderVariant(string cls)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (entry.Class == cls && !entry.Dead && StyleLayerPriority.UnderVariant(entry.Priority))
                     {
                         return true;
                     }

@@ -7139,6 +7139,35 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHoverOpacityInForceNamingTheFromPose_When_ASpringVariantSwapsItOut_Then_TheHoverOpacityIsDrawn()
+        {
+            // Arrange — the swap takes the pose's opacity-50 out while hover:opacity-50, the same class, still applies.
+            VelvetStyleUtilities.AttachTo(Root);
+            var spring = new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f };
+            var poses = new Dictionary<string, MotionVariant> { ["hidden"] = "opacity-50", ["visible"] = "opacity-100" };
+            VNode[] Tree(string label) => new VNode[]
+            {
+                V.Motion(key: "box", name: "box", className: "hover:opacity-50", variants: poses, animate: label,
+                    transition: spring),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
+            AdvancePast(0.5f);
+            var box = Root.Q<VisualElement>("box");
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                box.SimulateEvent(over);
+            }
+            Tick();
+
+            // Act
+            _reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(box.resolvedStyle.opacity, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_AnInheritingOrchestratorWithItsOwnChildStagger_When_TheAncestorLabelFlips_Then_TheGrandchildWaitsForBothDelays()
         {
             // Arrange — "mid" both CLAIMS a delay from "gp"'s orchestration (it inherits gp's label and

@@ -23,7 +23,8 @@ namespace Velvet
         }
 
         // Removes each class, except one kept names, which is added instead: a play may have removed it
-        // before the caller that keeps it recorded it as present.
+        // before the caller that keeps it recorded it as present. A class a variant payload in force still holds
+        // stays too, as its variant rule still applies once the plain one is gone.
         internal static void RemoveClasses(VisualElement element, string[]? classes, string[]? kept = null)
         {
             if (classes == null) return;
@@ -36,7 +37,7 @@ namespace Velvet
                         element.AddToClassList(cls);
                     }
                 }
-                else
+                else if (!StyleClassProjection.HoldsUnderVariant(element, cls))
                 {
                     element.RemoveFromClassList(cls);
                 }
