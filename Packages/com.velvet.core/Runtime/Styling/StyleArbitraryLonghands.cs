@@ -119,6 +119,7 @@ namespace Velvet
             Set(sets, ArbitraryProperty.Scale, StyleLonghand.Scale);
             Set(sets, ArbitraryProperty.ScaleX, StyleLonghand.Scale);
             Set(sets, ArbitraryProperty.ScaleY, StyleLonghand.Scale);
+            Set(sets, ArbitraryProperty.ScaleBoth, StyleLonghand.Scale);
             Set(sets, ArbitraryProperty.TranslateX, StyleLonghand.Translate);
             Set(sets, ArbitraryProperty.TranslateY, StyleLonghand.Translate);
             Set(sets, ArbitraryProperty.Translate, StyleLonghand.Translate);

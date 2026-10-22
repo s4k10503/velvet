@@ -14,9 +14,9 @@ namespace Velvet.Tests
     /// re-render happened to bring the bare token in literally.
     /// </summary>
     /// <remarks>
-    /// Each case asserts the style write the layer actually makes — the face-suppression sentinel a
-    /// silhouette installs so it can repaint the face itself, the baked gradient texture, the pan oversize —
-    /// rather than class membership, which is true whether or not the layer ever ran. <c>dark:</c> needs no
+    /// Each case asserts what the layer actually made — the face-suppression sentinel a silhouette installs so
+    /// it can repaint the face itself, the baked gradient texture, the pan oversize, the angle a skew binding
+    /// carries — rather than class membership, which is true whether or not the layer ever ran. <c>dark:</c> needs no
     /// panel: the conditional manipulator subscribes to <see cref="VelvetTheme"/>'s theme signal when it
     /// attaches to the element and evaluates it off-panel, so a bare reconciler crosses the same side channel
     /// a breakpoint crossing uses. GWT, one assert per case.
@@ -53,6 +53,38 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(SilhouetteFace.IsSentinel(card.style.backgroundColor.value), Is.True);
+        }
+
+        // NaN where the element carries no skew binding.
+        private static float SkewX(ReconcilerScope scope, VisualElement card)
+            => scope.Reconciler.Context.SkewBindings.TryGetValue(card, out var binding) ? binding.Spec.XDeg : float.NaN;
+
+        [Test]
+        public void Given_APerAxisSkewAndADarkPlainSkew_When_TheThemeTurnsDark_Then_ThePayloadTakesTheXAxis()
+        {
+            // Arrange — a rule behind a variant outranks the base while the variant holds, whichever of the two is per-axis.
+            using var scope = new ReconcilerScope();
+            var card = Mount(scope, "skew-x-12 dark:skew-6");
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert
+            Assert.That(SkewX(scope, card), Is.EqualTo(6f));
+        }
+
+        [Test]
+        public void Given_AnImportantSkewAndADarkImportantPlainSkew_When_TheThemeTurnsDark_Then_ThePayloadTakesTheXAxis()
+        {
+            // Arrange — a plain payload would lose to the important base, so the payload keeps its bang.
+            using var scope = new ReconcilerScope();
+            var card = Mount(scope, "!skew-x-12 dark:!skew-6");
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert
+            Assert.That(SkewX(scope, card), Is.EqualTo(6f));
         }
 
         [Test]

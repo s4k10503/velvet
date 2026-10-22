@@ -206,7 +206,7 @@ namespace Velvet.Tests
         public void Given_AHintedSkew_When_Parsed_Then_ItIsThatAngle()
         {
             // Act
-            var ok = StyleSkewClass.TryParse("skew-x-[angle:10deg]", out _, out var deg);
+            var ok = StyleSkewClass.TryParse("skew-x-[angle:10deg]", out _, out var deg, out _);
 
             // Assert
             Assert.That(ok ? deg : float.NaN, Is.EqualTo(10f));

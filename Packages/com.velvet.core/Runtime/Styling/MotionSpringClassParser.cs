@@ -129,10 +129,9 @@ namespace Velvet
                 axis = SpringAxis.Opacity;
                 return true;
             }
-            // Uniform scale-N: the bare suffix mirrors the per-axis scale-x-/scale-y- preset's own numeric
-            // scale exactly, so it is looked up in that same table rather than a duplicate one.
+            // Uniform scale-N, its bare value read as the resolver reads a scale preset's.
             if (core.StartsWith("scale-", System.StringComparison.Ordinal)
-                && StyleArbitraryValueResolver.TryGetAxisScale(core.Substring("scale-".Length), out value))
+                && StyleArbitraryValueResolver.TryGetAxisScale(core.AsSpan("scale-".Length), out value))
             {
                 axis = SpringAxis.Scale;
                 return true;
@@ -162,6 +161,7 @@ namespace Velvet
                         value = arbitrary.Value;
                         return true;
                     case ArbitraryProperty.Scale:
+                    case ArbitraryProperty.ScaleBoth:
                         axis = SpringAxis.Scale;
                         value = arbitrary.Value;
                         return true;
@@ -751,7 +751,8 @@ namespace Velvet
             if (StyleArbitraryValueResolver.IsInlineResolved(core) && StyleArbitraryValueResolver.TryParseLayer(core, out var inline))
             {
                 var declaresScale = inline.Property
-                    is ArbitraryProperty.Scale or ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
+                    is ArbitraryProperty.Scale or ArbitraryProperty.ScaleBoth or ArbitraryProperty.ScaleX
+                        or ArbitraryProperty.ScaleY;
                 token = new RankedToken
                 {
                     Precedence = (declaresScale ? AxisScaleRank : InlineRank) + (important ? ImportantRank : 0)

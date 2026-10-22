@@ -55,7 +55,7 @@ Packages/com.velvet.core/Runtime/Styling/SilhouetteFace.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleAnimateClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleAnimateDriver.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs	3
-Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs	44
+Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs	45
 Packages/com.velvet.core/Runtime/Styling/StyleBorderSideColor.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleCascade.cs	7
 Packages/com.velvet.core/Runtime/Styling/StyleClassProjection.cs	1
@@ -77,7 +77,6 @@ Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs	9
 Packages/com.velvet.core/Runtime/Styling/StyleRuleOrder.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleSkewChildTranslateManipulator.cs	1
-Packages/com.velvet.core/Runtime/Styling/StyleSkewClass.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleSlotRecipe.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleSpacingPrecedence.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleStackedVariantManipulator.cs	1

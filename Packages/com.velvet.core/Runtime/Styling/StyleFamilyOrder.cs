@@ -24,9 +24,10 @@ namespace Velvet
         private static readonly Func<string, int> s_byKey = _ => 0;
         private static readonly Func<string, int> s_noLane = _ => 0;
 
-        // A token belongs to the first family that claims it. The families on s_byKey carry longhands the sort key counts and
-        // are ordered by StyleRuleOrder.CompareUtilities: a slash size declares a line height beside its font size,
-        // and a nine-slice inset writes as many longhands as the edges it names. The others are ordered by their
+        // A token belongs to the first family that claims it. The families on s_byKey carry declarations the sort key counts
+        // and are ordered by StyleRuleOrder.CompareUtilities: a slash size declares a line height beside its font size,
+        // a nine-slice inset writes as many longhands as the edges it names, and a skew-<n> declares --tw-skew-y, which
+        // property-order.ts lists ahead of the transform a skew-x-* declares next. The others are ordered by their
         // lane, then by candidate name, where Tailwind's sort ends for two utilities that declare the same properties.
         private static readonly (Func<string, bool> Claims, Func<string, int> Lane)[] s_families =
         {
@@ -41,7 +42,7 @@ namespace Velvet
             (StyleShadowClass.IsInsetBoxShadowClass, s_noLane),
             (StyleRingClass.IsRingClass, RingLane),
             (token => StyleClipPathClass.IsClipPathClass(token), s_noLane),
-            (token => StyleSkewClass.IsSkewClass(token), s_noLane),
+            (token => StyleSkewClass.IsSkewClass(token), s_byKey),
             (IsBackgroundImageToken, s_noLane),
             (token => StyleBorderStyleClass.IsBorderStyleClass(token), s_noLane),
             (StyleAnimateClass.IsAnimateClass, s_noLane),

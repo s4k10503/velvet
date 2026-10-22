@@ -52,9 +52,9 @@ Swapping one bracketed value for another that writes the same property (`w-[300p
 without `!`) leaves the old inline value in place until the new one is written, so a `transition-*` or
 `duration-*` on the element runs between the two.
 
-An angle (`rotate-[…]`, `skew-x-[…]`, `hue-rotate-[…]`, a gradient's) is read in `deg`, `grad`, `rad` or `turn`,
+An angle (`rotate-[…]`, `skew-[…]`, `skew-x-[…]`, `hue-rotate-[…]`, a gradient's) is read in `deg`, `grad`, `rad` or `turn`,
 and a time (`duration-[…]`, `animate-spin-[…]` and the other loops) in `ms` or `s`, each in any case. A bare number
-is read only where the CSS property Tailwind writes takes one: `0` in `skew-x-[…]`, `hue-rotate-[…]` and
+is read only where the CSS property Tailwind writes takes one: `0` in `skew-[…]`, `skew-x-[…]`, `hue-rotate-[…]` and
 `bg-linear-[…]`, and none in `rotate-[…]`, whose `rotate` property takes no bare `0`, or in a time.
 
 A math function follows CSS's grammar with Tailwind's spelling. `_` stands for a space. CSS wants a space
@@ -110,7 +110,7 @@ unread.
 
 Tailwind composes four more families through one declaration each: `translate-*`, `translate-x-*` and
 `translate-y-*`; `scale-x-*`, `scale-y-*` and the uniform `scale-<n>` (a bracketed `scale-[…]` is written as
-`scale` alone); `skew-x-*` and `skew-y-*`; and the filters, `blur-*` to `sepia-*`, `hue-rotate-*` and
+`scale` alone); `skew-<n>`, `skew-x-*` and `skew-y-*`; and the filters, `blur-*` to `sepia-*`, `hue-rotate-*` and
 `drop-shadow-*`. Each utility writes custom properties of the element, and whenever the value holding one of them
 is one the browser rejects, the family's declaration is dropped and the family draws nothing:
 `translate-x-4 translate-y-[10]` translates nowhere, and `blur-sm brightness-[abc]`, `drop-shadow-lg blur-[2]` and
@@ -129,7 +129,7 @@ filters nothing, while `blur-sm drop-shadow-[#ggg]` blurs. A
 utility writing both axes (`translate-4`, `translate-[10px]`, `translate-full`, `translate-px`, `translate-1/2`,
 and their negations) holds each axis as an axis utility does, and an axis utility of the same rank holds over it,
 Tailwind emitting it later: `translate-x-4 translate-[10]` translates nowhere, its y holding the rejected value. A
-uniform `scale-<n>` writes both scale axes the same way and ranks against `scale-x-*` and `scale-y-*` by its
+uniform `scale-<n>` or `-scale-<n>` writes both scale axes the same way and ranks against `scale-x-*` and `scale-y-*` by its
 variants: `scale-50 hover:scale-x-[2]` keeps its y at 0.5 while hovered. A variant's value of one axis leaves the
 other axis to the value holding it: `translate-8 hover:translate-x-2` translates by 8 and 32 while hovered. A
 `scale-[…]` declares `scale` itself rather than either axis, so where its rank is at or above every axis utility's

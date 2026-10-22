@@ -86,6 +86,7 @@ namespace Velvet.Tests
         [TestCase("translate-x-[0px]", "translate-x-[100px]")]
         [TestCase("translate-y-[0px]", "translate-y-[100px]")]
         [TestCase("scale-50", "scale-150")]
+        [TestCase("scale-33", "-scale-67")]
         [TestCase("rotate-0", "rotate-90")]
         [TestCase("bg-[#000000]", "bg-[#ffffff]")]
         [TestCase("w-[0px]", "w-[100px]")]

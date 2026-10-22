@@ -2194,11 +2194,13 @@ namespace Velvet.Tests
             Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("scale-y-110"), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base claims no bare value outside its preset table, 07 among them.
+        // Read the bare value with int.TryParse rather than TryParseWhole and this reddens.
         [Test]
-        public void Given_UnknownScaleXPreset_When_DispatchGateChecked_Then_NotClaimed()
+        public void Given_AScaleXValueWithALeadingZero_When_DispatchGateChecked_Then_NotClaimed()
         {
-            // 37 is not a scale preset, so it is not claimed (falls through; not a recognized utility).
-            Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("scale-x-37"), Is.False);
+            // Tailwind generates no rule for a bare value with a leading zero, so it falls through unclaimed.
+            Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("scale-x-07"), Is.False);
         }
 
         [Test]

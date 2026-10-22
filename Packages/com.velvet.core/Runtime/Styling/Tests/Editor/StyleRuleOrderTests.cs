@@ -24,15 +24,36 @@ namespace Velvet.Tests
             Assert.That(ordinals, Is.EqualTo(new[] { 1, 0 }));
         }
 
-        // Tailwind 4.3.3 emits each earlier utility ahead of the later one: compile.ts puts the rule with more
-        // declarations first, and scale-<n> declares three variables beside scale, an axis utility one, and
-        // scale-[..] only scale, while a slash size declares its line-height as a named size does.
+        // Tailwind emits each earlier utility ahead of the later one: compile.ts orders two rules by the first
+        // property-order.ts index their declarations differ on, a --tw-* variable taking one of its own, then puts the
+        // rule with more declarations first. scale-<n> declares three variables beside scale, an axis utility one,
+        // and scale-[..] only scale, while a slash size declares its line-height as a named size does; those rows were
+        // measured against Tailwind 4.3.3. The transform rows were measured against 4.1.11, whose list runs
+        // translate, scale and rotate, each followed by its variables, then --tw-skew-x, --tw-skew-y and transform,
+        // ahead of flex-direction and opacity; a pair under one variant is ordered the same way.
+        [TestCase("skew-6", "-skew-x-12")]
+        [TestCase("hover:skew-6", "hover:-skew-x-12")]
+        [TestCase("dark:skew-[3deg]", "dark:-skew-y-3")]
+        [TestCase("skew-x-12", "skew-y-3")]
+        [TestCase("skew-x-12", "flex-row")]
+        [TestCase("hover:skew-6", "hover:flex-row")]
+        [TestCase("skew-6", "opacity-50")]
+        [TestCase("rotate-6", "skew-x-12")]
+        [TestCase("hover:rotate-6", "hover:skew-6")]
+        [TestCase("scale-50", "rotate-6")]
+        [TestCase("hover:scale-x-50", "hover:rotate-6")]
+        [TestCase("translate-x-[4px]", "scale-50")]
+        [TestCase("-scale-50", "scale-x-75")]
+        [TestCase("scale-33", "scale-50")]
+        [TestCase("hover:-scale-33", "hover:scale-x-120")]
+        [TestCase("translate-x-[4px]", "translate-y-[4px]")]
+        [TestCase("hover:translate-[4px]", "hover:translate-x-[4px]")]
         [TestCase("scale-100", "-scale-[0.5]")]
         [TestCase("scale-95", "-scale-x-[1]")]
         [TestCase("scale-x-50", "scale-[.5]")]
         [TestCase("text-lg/7", "text-sm")]
         [TestCase("text-[14px]/6", "text-sm")]
-        public void Given_TwoUtilitiesWhoseDeclarationCountsDecideTheirOrder_When_Ordered_Then_TheEarlierOneTakesTheEarlierPlace(
+        public void Given_TwoUtilitiesWhoseDeclarationsDecideTheirOrder_When_Ordered_Then_TheEarlierOneTakesTheEarlierPlace(
             string earlier, string later)
         {
             // Act

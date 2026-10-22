@@ -74,7 +74,6 @@
 4940fc21d9ba	Runtime/Styling/StyleAnimateClass.cs,Runtime/Styling/StyleBorderStyleClass.cs,Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleRingClass.cs,Runtime/Styling/StyleSkewClass.cs
 4b83c8a1b0a4	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 4be52690cf80	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
-4c4467250645	Runtime/Styling/StyleArbitraryValueResolver.cs,Runtime/Styling/StyleColorValueParser.cs
 4c5fb9cef5dc	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 4ccfb9cc4c92	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs
 4eba047e9086	Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Reconciler/WrapperInfrastructure.cs,Runtime/Styling/StyleFilterValueParser.cs

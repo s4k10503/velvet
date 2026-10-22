@@ -774,21 +774,15 @@ namespace Velvet
             ["12"] = 12f, ["45"] = 45f, ["90"] = 90f, ["180"] = 180f,
         };
 
-        // The per-axis scale presets (scale-x-50 -> 0.5), mirroring the uniform .scale-N USS classes in
-        // _transforms.uss. These have no standalone USS class because a separate .scale-x-N / .scale-y-N rule
-        // would write the whole `scale: x y` and clobber the other axis; instead they route through the
-        // ScaleX/ScaleY merge path (like scale-x-[..]) so the two axes compose onto one inline `scale`.
-        private static readonly Dictionary<string, float> s_axisScale = new()
+        // A scale preset's factor from its bare value, which Tailwind reads as a whole-number percent spelled without a
+        // leading zero (scale-33 -> 0.33, scale-07 no utility). Shared with MotionSpringClassParser's uniform-scale
+        // recognition so the two cannot read one class differently.
+        internal static bool TryGetAxisScale(ReadOnlySpan<char> suffix, out float scale)
         {
-            ["0"] = 0f, ["50"] = 0.5f, ["75"] = 0.75f, ["90"] = 0.9f, ["95"] = 0.95f,
-            ["100"] = 1f, ["105"] = 1.05f, ["110"] = 1.1f, ["125"] = 1.25f, ["150"] = 1.5f,
-        };
-
-        // Single source for the uniform .scale-N USS class's own numeric scale (identical mapping to
-        // s_axisScale above, just keyed by the bare suffix rather than the "scale-x-"/"scale-y-" prefixed
-        // form) — shared so MotionSpringClassParser's uniform-scale recognition resolves the SAME table
-        // instead of holding a second copy that could drift, mirroring TryGetSpacingPx's precedent.
-        internal static bool TryGetAxisScale(string suffix, out float scale) => s_axisScale.TryGetValue(suffix, out scale);
+            var parsed = TryParseWhole(suffix, out var percent);
+            scale = percent / 100f;
+            return parsed;
+        }
 
         // Single source for the rotate preset's magnitude (degrees), keyed by the UNSIGNED suffix — shared so
         // MotionSpringClassParser's rotate-N / rotate-nN recognition resolves the SAME magnitude table instead
@@ -798,7 +792,7 @@ namespace Velvet
 
         // Cheap dispatch gate: true when cls is a static-scale utility with NO static USS class, so
         // the reconciler must route it to TryParseStaticScale instead of the class list. That set is exactly
-        // the names a USS selector cannot spell — any '-'-prefixed margin/rotate/translate name, the
+        // the names a USS selector cannot spell — any '-'-prefixed margin/rotate/translate/scale name, the
         // '/'-bearing translate, sizing and position fractions, the positive per-axis translate/scale
         // presets (no USS class — a per-axis rule would clobber the other axis via the shorthand), and a
         // spacing step the bundled sheets declare no rule for (mt-13, p-4.5, -top-4). Other
@@ -824,12 +818,7 @@ namespace Velvet
             }
             if (cls[0] == '-')
             {
-                var body = cls.AsSpan(1);
-                if (body.StartsWith("skew-"))
-                {
-                    return false; // -skew-x-6 is owned by StyleSkewClass, not this resolver.
-                }
-                return IsMarginName(body) || body.StartsWith("rotate-") || body.StartsWith("translate-");
+                return IsNegatedStaticScale(cls.AsSpan(1));
             }
             // Positive per-axis translate presets (translate-x-4, translate-y-2, translate-x-1/2, translate-x-full)
             // have no USS class: a .translate-x-N rule writes the whole `translate: x y` shorthand and clobbers
@@ -852,15 +841,30 @@ namespace Velvet
                 var suffix = cls.AsSpan("translate-".Length);
                 return cls.IndexOf('/') >= 0 || suffix.SequenceEqual("full".AsSpan()) || TryGetSpacingPx(suffix, out _);
             }
-            // Per-axis scale presets (scale-x-50 / scale-y-110) have no USS class; route them to the merge path.
-            // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here. Span-based to
-            // keep this per-class hot gate allocation-free (matching the AsSpan style above).
-            if (cls.StartsWith("scale-x-", StringComparison.Ordinal) || cls.StartsWith("scale-y-", StringComparison.Ordinal))
+            // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here.
+            if (ScalePresetAxis(cls.AsSpan()) != null)
             {
-                return SuffixInKeys(cls.AsSpan("scale-x-".Length), s_axisScale); // "scale-x-" and "scale-y-" share a length
+                return IsInlineScalePreset(cls);
             }
             return TryGetFlexFactorPreset(cls, out _, out _) || TryGetFlexPreset(cls, out _);
         }
+
+        // A negated name no selector can spell, by its body: a margin, rotate, translate or scale preset. A negated
+        // skew is none of them, StyleSkewClass owning it.
+        private static bool IsNegatedStaticScale(ReadOnlySpan<char> body)
+            => IsMarginName(body) || body.StartsWith("rotate-") || body.StartsWith("translate-") || IsScalePreset(body);
+
+        // Whether body is a scale preset, uniform or per-axis, with a bare value Tailwind reads.
+        private static bool IsScalePreset(ReadOnlySpan<char> body)
+            => ScalePresetAxis(body) is { } axis
+                && TryGetAxisScale(body.Slice(axis == ArbitraryProperty.ScaleBoth ? "scale-".Length : "scale-x-".Length), out _);
+
+        // A positive scale preset no USS class spells: every per-axis one, since a .scale-x-N rule would write the
+        // whole `scale` and clobber the other axis, and a uniform one the bundled sheet declares no class for
+        // (scale-33, beside the sheet's scale-50).
+        private static bool IsInlineScalePreset(string cls)
+            => IsScalePreset(cls.AsSpan())
+                && (ScalePresetAxis(cls.AsSpan()) != ArbitraryProperty.ScaleBoth || !StyleUtilityProperties.TryGet(cls, out _));
 
         // The physical margin utilities, whose negated names no selector can spell. -max-w-4 and -min-h-4 start
         // with the same letter and are not margins.
@@ -930,8 +934,7 @@ namespace Velvet
             return denominator != 0;
         }
 
-        // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero. Shared by
-        // the flex factors, the flex shorthand and z-<n>.
+        // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero.
         internal static bool TryParseWhole(ReadOnlySpan<char> digits, out int whole)
         {
             whole = 0;
@@ -998,7 +1001,7 @@ namespace Velvet
                 }
             }
 
-            var scale = TryParseAxisScalePreset(body, negate, out result);
+            var scale = TryParseScalePreset(body, negate, out result);
             if (scale.HasValue)
             {
                 return scale.Value;
@@ -1024,29 +1027,33 @@ namespace Velvet
             return null;
         }
 
-        // Per-axis scale presets (positive only; a flip is the arbitrary scale-x-[-1]). Routed to the same
-        // ScaleX/ScaleY merge as the bracket form so the axes compose onto one inline `scale`. Null when body
-        // names neither axis.
-        private static bool? TryParseAxisScalePreset(string body, bool negate, out ArbitraryStyle result)
+        // The scale presets no USS class spells: a per-axis one, routed to the same ScaleX/ScaleY merge as the
+        // bracket form so the axes compose onto one inline `scale`, and a uniform one the bundled sheet has no class
+        // for or a negated one, scale-33 and -scale-50 writing both axes' variables as the sheet's scale-<n> classes
+        // do. Null when body is one of those classes, or names no scale.
+        private static bool? TryParseScalePreset(string body, bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (negate)
+            var axis = ScalePresetAxis(body);
+            if (axis == null || (axis == ArbitraryProperty.ScaleBoth && !negate && StyleUtilityProperties.TryGet(body, out _)))
             {
                 return null;
             }
-            var isScaleX = body.StartsWith("scale-x-", StringComparison.Ordinal);
-            if (!isScaleX && !body.StartsWith("scale-y-", StringComparison.Ordinal))
-            {
-                return null;
-            }
-            if (!s_axisScale.TryGetValue(body.Substring("scale-x-".Length), out var factor))
+            var prefix = axis == ArbitraryProperty.ScaleBoth ? "scale-".Length : "scale-x-".Length;
+            if (!TryGetAxisScale(body.AsSpan(prefix), out var factor))
             {
                 return false;
             }
-            result = new ArbitraryStyle(
-                isScaleX ? ArbitraryProperty.ScaleX : ArbitraryProperty.ScaleY, factor, LengthUnit.Pixel);
+            result = new ArbitraryStyle(axis.Value, negate ? -factor : factor, LengthUnit.Pixel);
             return true;
         }
+
+        // The scale property a preset body writes ("scale-x-" and "scale-y-" share a length); null for no scale.
+        private static ArbitraryProperty? ScalePresetAxis(ReadOnlySpan<char> body)
+            => body.StartsWith("scale-x-".AsSpan()) ? ArbitraryProperty.ScaleX
+                : body.StartsWith("scale-y-".AsSpan()) ? ArbitraryProperty.ScaleY
+                : body.StartsWith("scale-".AsSpan()) ? ArbitraryProperty.ScaleBoth
+                : null;
 
         private static bool TryParseTranslatePreset(string body, bool negate, out ArbitraryStyle result)
         {
@@ -3081,7 +3088,7 @@ namespace Velvet
                 ApplyCombinedTranslate(element, map);
                 return;
             }
-            if (property == ArbitraryProperty.Scale
+            if (property == ArbitraryProperty.Scale || property == ArbitraryProperty.ScaleBoth
                 || property == ArbitraryProperty.ScaleX || property == ArbitraryProperty.ScaleY)
             {
                 ApplyCombinedScale(element, map);
@@ -3352,10 +3359,24 @@ namespace Velvet
             return hasAxis;
         }
 
+        // The layer holding one scale axis, as TryWinningAxis picks for translate: the axis's own or a negated uniform
+        // preset writing both (ArbitraryProperty.ScaleBoth), whichever has the higher key, the axis on a tie.
+        private static bool TryWinningScaleAxis(LayerMap map, ArbitraryProperty axis, out ArbitraryStyle style, out long key)
+        {
+            var hasAxis = TryWinningKey(map, axis, out style, out key);
+            if (TryWinningKey(map, ArbitraryProperty.ScaleBoth, out var both, out var bothKey) && (!hasAxis || bothKey > key))
+            {
+                style = both;
+                key = bothKey;
+                return true;
+            }
+            return hasAxis;
+        }
+
         private static void ApplyCombinedScale(VisualElement element, LayerMap map)
         {
-            var hasX = TryWinningLayer(map, ArbitraryProperty.ScaleX, out var xw);
-            var hasY = TryWinningLayer(map, ArbitraryProperty.ScaleY, out var yw);
+            var hasX = TryWinningScaleAxis(map, ArbitraryProperty.ScaleX, out var xw, out _);
+            var hasY = TryWinningScaleAxis(map, ArbitraryProperty.ScaleY, out var yw, out _);
             if (!hasX && !hasY && !TryWinningLayer(map, ArbitraryProperty.Scale, out _))
             {
                 element.style.scale = StyleKeyword.Null;
@@ -3384,8 +3405,8 @@ namespace Velvet
         // declaration replaces it and it supplies neither axis.
         private static bool TryDrawnScaleBracket(LayerMap map, out ArbitraryStyle bracket)
         {
-            var hasX = TryWinningKey(map, ArbitraryProperty.ScaleX, out _, out var xKey);
-            var hasY = TryWinningKey(map, ArbitraryProperty.ScaleY, out _, out var yKey);
+            var hasX = TryWinningScaleAxis(map, ArbitraryProperty.ScaleX, out _, out var xKey);
+            var hasY = TryWinningScaleAxis(map, ArbitraryProperty.ScaleY, out _, out var yKey);
             return TryWinningKey(map, ArbitraryProperty.Scale, out bracket, out var bracketKey)
                 && (!hasX || bracketKey >= xKey) && (!hasY || bracketKey >= yKey);
         }
@@ -3393,7 +3414,8 @@ namespace Velvet
         private static void RefreshScaleClassFallback(VisualElement element, LayerMap map, float? previousUniform)
         {
             if (previousUniform.HasValue && !TryDrawnScaleBracket(map, out _)
-                && TryWinningLayer(map, ArbitraryProperty.ScaleX, out _) != TryWinningLayer(map, ArbitraryProperty.ScaleY, out _)
+                && TryWinningScaleAxis(map, ArbitraryProperty.ScaleX, out _, out _)
+                    != TryWinningScaleAxis(map, ArbitraryProperty.ScaleY, out _, out _)
                 && previousUniform.Value != UniformScaleFromClasses(element))
             {
                 ApplyCombinedScale(element, map);
@@ -3439,7 +3461,7 @@ namespace Velvet
         {
             scale = 1f;
             return cls.StartsWith("scale-", StringComparison.Ordinal)
-                && TryGetAxisScale(cls.Substring("scale-".Length), out scale);
+                && TryGetAxisScale(cls.AsSpan("scale-".Length), out scale);
         }
 
         // transition-duration is a StyleList<TimeValue> (not a StyleLength), so the winning duration-[..] layer
@@ -4026,6 +4048,7 @@ namespace Velvet
                     element.style.translate = StyleKeyword.Null;
                     return true;
                 case ArbitraryProperty.Scale:
+                case ArbitraryProperty.ScaleBoth:
                 case ArbitraryProperty.ScaleX:
                 case ArbitraryProperty.ScaleY:
                     element.style.scale = StyleKeyword.Null;

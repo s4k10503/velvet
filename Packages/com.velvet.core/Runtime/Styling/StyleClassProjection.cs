@@ -596,6 +596,8 @@ namespace Velvet
                     TransformPart.ScaleX | TransformPart.ScaleDeclared),
                 [ArbitraryProperty.ScaleY] = new(TransformPart.ScaleY, TransformPart.ScaleBracket,
                     TransformPart.ScaleY | TransformPart.ScaleDeclared),
+                [ArbitraryProperty.ScaleBoth] = new(TransformPart.ScaleX | TransformPart.ScaleY, TransformPart.ScaleBracket,
+                    TransformPart.ScaleX | TransformPart.ScaleY | TransformPart.ScaleDeclared),
                 [ArbitraryProperty.Scale] = new(TransformPart.ScaleBracket, TransformPart.ScaleDeclared,
                     TransformPart.ScaleBracket | TransformPart.ScaleDeclared),
             };

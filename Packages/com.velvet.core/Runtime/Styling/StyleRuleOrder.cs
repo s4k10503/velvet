@@ -14,7 +14,8 @@ namespace Velvet
     {
         // Tailwind v4's property-order.ts (tailwindcss@fa81d697), kept to the properties a UI Toolkit longhand
         // maps to, the shorthand and logical properties s_shorthandIndexes, StyleLogicalUtilities and
-        // StyleBorderSideColor place tokens by, plus line-height (see s_lineHeightIndex), in that file's order. Tailwind leaves a property it does
+        // StyleBorderSideColor place tokens by, line-height (see s_lineHeightIndex), and the transform variables
+        // and transform itself (see TransformVariablesOf), in that file's order. Tailwind leaves a property it does
         // not list out of the sort, and so does PropertySortOf.
         private static readonly string[] s_tailwindPropertyOrder =
         {
@@ -24,7 +25,9 @@ namespace Velvet
             "margin-block-start", "margin-block-end", "margin-top", "margin-right",
             "margin-bottom", "margin-left", "display", "aspect-ratio", "height", "max-height", "min-height", "width",
             "max-width", "min-width", "flex", "flex-shrink", "flex-grow", "flex-basis", "transform-origin", "translate",
-            "scale", "rotate", "cursor", "flex-direction", "flex-wrap", "align-content", "align-items",
+            "--tw-translate-x", "--tw-translate-y", "--tw-translate-z", "scale", "--tw-scale-x", "--tw-scale-y",
+            "--tw-scale-z", "rotate", "--tw-rotate-x", "--tw-rotate-y", "--tw-rotate-z", "--tw-skew-x", "--tw-skew-y",
+            "transform", "cursor", "flex-direction", "flex-wrap", "align-content", "align-items",
             "justify-content", "align-self", "overflow", "border-radius", "border-start-start-radius", "border-start-end-radius",
             "border-end-end-radius", "border-end-start-radius", "border-top-left-radius", "border-top-right-radius",
             "border-bottom-right-radius", "border-bottom-left-radius", "border-width", "border-inline-width",
@@ -385,16 +388,54 @@ namespace Velvet
             return null;
         }
 
-        // The declarations Tailwind counts for a scale-<n> utility: the three --tw-scale variables and scale. compile.ts
-        // sorts the rule with more declarations first, so scale-100 is emitted ahead of -scale-[.5], which declares
-        // scale alone, and an axis utility (scale-x-50) sits between them with its one variable. StyleRuleOrderTests
-        // pins the order against what Tailwind emits.
-        private const int ScaleClassDeclarations = 4;
-        private const int ScaleAxisDeclarations = 2;
+        private static readonly int[] s_translateVariables = IndexesOf("--tw-translate-x", "--tw-translate-y");
+        private static readonly int[] s_translateXVariable = IndexesOf("--tw-translate-x");
+        private static readonly int[] s_translateYVariable = IndexesOf("--tw-translate-y");
+        private static readonly int[] s_scaleVariables = IndexesOf("--tw-scale-x", "--tw-scale-y", "--tw-scale-z");
+        private static readonly int[] s_scaleXVariable = IndexesOf("--tw-scale-x");
+        private static readonly int[] s_scaleYVariable = IndexesOf("--tw-scale-y");
+        private static readonly int[] s_skewDeclarations = IndexesOf("--tw-skew-x", "--tw-skew-y", "transform");
+        private static readonly int[] s_skewXDeclarations = IndexesOf("--tw-skew-x", "transform");
+        private static readonly int[] s_skewYDeclarations = IndexesOf("--tw-skew-y", "transform");
 
-        private static int ScaleDeclarationsOf(bool inline, ArbitraryProperty property)
-            => !inline ? ScaleClassDeclarations
-                : property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY ? ScaleAxisDeclarations : 1;
+#pragma warning disable CS8524 // no discard arm: a new axis has to state what it declares
+        private static int[] SkewDeclarationsOf(SkewAxis axis) => axis switch
+        {
+            SkewAxis.Both => s_skewDeclarations,
+            SkewAxis.X => s_skewXDeclarations,
+            SkewAxis.Y => s_skewYDeclarations,
+        };
+#pragma warning restore CS8524
+
+        private static int[] IndexesOf(params string[] properties) => Array.ConvertAll(properties, TailwindIndexOf);
+
+        // The property-order indexes a translate or scale utility declares beside the property its longhand maps to,
+        // and every one a skew declares, a skew mapping to no longhand. Tailwind orders two utilities by the first
+        // index they differ on, then puts the one with more declarations first: scale-100, with its three variables,
+        // ahead of scale-x-50 and scale-[.5]; skew-6 ahead of -skew-x-12, whose --tw-skew-x is followed by transform
+        // rather than --tw-skew-y, and ahead of flex-row, whose flex-direction property-order.ts lists after
+        // transform. StyleRuleOrderTests pins these against what Tailwind emits.
+        private static int[] TransformVariablesOf(string core, bool inline, ArbitraryProperty property, StyleLonghandSet set)
+        {
+            if (StyleSkewClass.IsSkewClass(core))
+            {
+                return SkewDeclarationsOf(StyleSkewClass.AxisOf(core));
+            }
+            if (set.Contains(StyleLonghand.Scale))
+            {
+                return !inline || property == ArbitraryProperty.ScaleBoth ? s_scaleVariables
+                    : property == ArbitraryProperty.ScaleX ? s_scaleXVariable
+                    : property == ArbitraryProperty.ScaleY ? s_scaleYVariable
+                    : Array.Empty<int>();
+            }
+            if (inline && set.Contains(StyleLonghand.Translate))
+            {
+                return property == ArbitraryProperty.TranslateX ? s_translateXVariable
+                    : property == ArbitraryProperty.TranslateY ? s_translateYVariable
+                    : s_translateVariables;
+            }
+            return Array.Empty<int>();
+        }
 
         // A named size (text-lg) and a slash size (text-lg/7, text-[14px]/6) declare line-height beside font-size.
         private static bool DeclaresLineHeight(StyleLonghandSet set, bool inline, string core)
@@ -403,7 +444,7 @@ namespace Velvet
 
         // The Tailwind property-order indexes of what the utility writes, ascending, and how many declarations
         // Tailwind counts for it: its longhands, plus the line-height a named or slash text size also declares, except
-        // where a variable beside the property adds to them (see ScaleClassDeclarations).
+        // where a variable beside the property adds to them (TransformVariablesOf).
         private static (List<int> Order, int Count) PropertySortOf(string utility)
         {
             var core = StyleArbitraryValueResolver.StripImportant(utility, out _);
@@ -472,15 +513,9 @@ namespace Velvet
                 order.Clear();
                 order.Add(shorthand);
             }
-            if (set.Contains(StyleLonghand.Scale))
-            {
-                count = ScaleDeclarationsOf(inline, property);
-            }
-            else if (inline && set.Contains(StyleLonghand.Translate))
-            {
-                // A variable per axis it writes, and translate itself: translate-4 is emitted ahead of translate-x-4.
-                count = property == ArbitraryProperty.Translate ? 3 : 2;
-            }
+            var variables = TransformVariablesOf(core, inline, property, set);
+            count += variables.Length;
+            order.AddRange(variables);
             order.Sort();
             return (order, count);
         }
