@@ -248,9 +248,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AClickMountingAStoreCheckAndAnEffectWrite_When_TheClickFlushes_Then_TheEffectsOrdinaryUpdateRendersWithTheCheck()
+        public void Given_AClickMountingAStoreWriteAndAStateWriteInEffects_When_TheClickFlushes_Then_TheStateWriteRendersWithTheStoreRerender()
         {
-            // Arrange — the reader's layout effect changes the store before its subscription exists
+            // Arrange — the click's commit runs its passive effects as it ends: the reader's own effect changes the
+            // store, which forces its re-render, and the setter's effect queues an ordinary update
             s_counter = new ExternalSource<int>(0);
             s_mountStoreCheck = true;
             using var mounted = V.Mount(_root, V.Component(ClickMountHostRender, key: "click-host"));
@@ -826,21 +827,21 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Button(name: "show", onClick: () => setShown.Invoke(true)),
-                shown && s_mountStoreCheck ? V.Component(LayoutWritingReaderRender, key: "reader") : null,
+                shown && s_mountStoreCheck ? V.Component(EffectWritingReaderRender, key: "reader") : null,
                 shown ? V.Component(EffectSetterRender, key: "setter") : null,
             });
         }
 
         [Component]
-        private static VNode LayoutWritingReaderRender()
+        private static VNode EffectWritingReaderRender()
         {
             var value = Hooks.UseSyncExternalStore(s_counter.Subscribe, s_counter.GetSnapshot);
-            Hooks.UseLayoutEffect(() =>
+            Hooks.UseEffect(() =>
             {
                 if (s_counter.GetSnapshot() == 0) s_counter.Set(1);
                 return (Action)null;
             }, Array.Empty<object>());
-            return V.Label(name: "layout-reader", text: value.ToString());
+            return V.Label(name: "effect-reader", text: value.ToString());
         }
 
         [Component]
