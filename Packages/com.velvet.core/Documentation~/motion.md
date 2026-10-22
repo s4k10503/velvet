@@ -623,13 +623,19 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 - **A rotate and a border radius mix with the box.** A Motion that takes its box from another holder mixes
   its `rotate` and its border radius from that holder's to its own over the move, as Framer's `mixValues`
   does, and leaves the slots alone where both holders match. A scaled Motion's pixel border radius is divided
-  by the scale it is drawn at; a percent radius, which scales with the box, is left as it is. Where the two axes
-  scale differently Velvet deviates from Framer, which writes each corner's radius per axis (`x% y%`): a style
-  takes one length per corner, so the radius is divided by the geometric mean of the two scales and the
-  corner is drawn elliptical, its horizontal and vertical radii in the ratio of the two scales — 1:2 for a
-  lead laid out at 400×200 starting over a 100×100 holder's box. Radii Velvet fits at rest — those a
-  `rounded-*` class or its bracket form gives — that would overlap on a side are scaled down together, as CSS
-  scales them. A radius or rotate the Motion is given meanwhile is drawn as it is given, on the transition it
+  by the scale it is drawn at on each axis, as Framer's `correctBorderRadius` writes it (`x% y%`), so its
+  corners are drawn circular; a percent radius, which scales with the box, is left as it is. A style takes one
+  length per corner, so while the two axes scale differently the Motion's radius slots hold none and Velvet
+  paints its background colour, background image, border, ring and shadow rounded per axis, those slots holding
+  Velvet's values until the move hands them back. A Motion that clips its content (`overflow-hidden`) clips it
+  to its rounded border edge then, so a bordered one clips at its border edge rather than at its padding edge.
+  A background image is painted where its `background-size` is one `-unity-background-scale-mode` spells
+  (stretched, `cover` or `contain`, centred and unrepeated), without antialiasing along the rounded corners; a
+  Motion with any other image, a nine-sliced one or a vector image keeps one length per corner, its radius
+  divided by the geometric mean of the two scales and its corners drawn elliptical, as is a skewed Motion's
+  gradient. Radii Velvet fits at rest — those a `rounded-*` class or its bracket form gives — that would
+  overlap on a side are scaled down together, as CSS scales them; while a Motion is painted rounded per axis,
+  every radius is. A radius or rotate the Motion is given meanwhile is drawn as it is given, on the transition it
   changes by, such as a variant swap's. A rotate is drawn at once while a Spring or Bezier play writes it; a
   radius a play writes into the slot is taken as the Motion's own from then on, and carried on the timing a
   variant swap's list gave it, else the one UI Toolkit runs it by. A running `animate-spin` turns the rotate on

@@ -46,8 +46,9 @@ Each layer follows CSS Backgrounds 3:
 
 Each corner keeps its own radius. A padding-box corner is the border-box radius less the wider of the two borders
 meeting there. Corner radii are circular: a corner has one radius, where CSS's `border-radius` takes a horizontal
-and a vertical one. Where the two borders at a corner differ, the wider is taken off both axes, where CSS takes
-each border off its own axis and leaves an elliptical corner.
+and a vertical one — except on a `V.Motion` a `layoutId` move draws at a different scale on each axis, whose
+corners take one per axis ([motion.md](motion.md)). Where the two borders at a corner differ, the wider is taken
+off both axes, where CSS takes each border off its own axis and leaves an elliptical corner.
 
 ## Not supported
 
