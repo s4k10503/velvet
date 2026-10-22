@@ -34,32 +34,50 @@ namespace Velvet
 
         // The yielding slots that give way only to an important layer.
         private int _importantOnlyMask;
+
+        // The slots a per-frame driver writes now, which every hold but an important one leaves to it
+        // (StyleArbitraryValueResolver.ApplyDriven).
+        private int _driven;
+
+        // An important hold is one yielding only to an important layer: an important divide's (Yield).
+        private int Overridden => _driven & ~(_yieldMask & _importantOnlyMask);
         private StyleLength[]? _lengths;
+
+        // The part of each held length a gap contributes, indexed like _lengths.
+        private float[]? _gaps;
         private StyleFloat[]? _floats;
         private StyleColor[]? _colors;
 
         public static int Bit(HeldSlot slot) => 1 << (int)slot;
 
-        public void Set(HeldSlot slot, StyleLength value)
+        public void Set(HeldSlot slot, StyleLength value, float gap)
         {
             (_lengths ??= new StyleLength[HeldSlotGroups.SlotCount])[(int)slot] = value;
-            _mask |= Bit(slot);
-            _yieldMask &= ~Bit(slot);
+            (_gaps ??= new float[HeldSlotGroups.SlotCount])[(int)slot] = gap;
+            Take(slot);
         }
 
         public void Set(HeldSlot slot, StyleFloat value)
         {
             (_floats ??= new StyleFloat[HeldSlotGroups.SlotCount])[(int)slot] = value;
-            _mask |= Bit(slot);
-            _yieldMask &= ~Bit(slot);
+            Take(slot);
         }
 
         public void Set(HeldSlot slot, StyleColor value)
         {
             (_colors ??= new StyleColor[HeldSlotGroups.SlotCount])[(int)slot] = value;
+            Take(slot);
+        }
+
+        private void Take(HeldSlot slot)
+        {
             _mask |= Bit(slot);
             _yieldMask &= ~Bit(slot);
         }
+
+        public void Drive(int slots) => _driven |= slots;
+
+        public void Release(int slots) => _driven &= ~slots;
 
         public void Drop(HeldSlot slot) => _mask &= ~Bit(slot);
 
@@ -71,14 +89,25 @@ namespace Velvet
 
         public bool YieldsOnlyToImportant(HeldSlot slot) => (_importantOnlyMask & Bit(slot)) != 0;
 
-        public bool Yields(HeldSlot slot) => (_yieldMask & _mask & Bit(slot)) != 0;
+        public bool Yields(HeldSlot slot) => (_yieldMask & _mask & ~Overridden & Bit(slot)) != 0;
 
         public bool IsHeld(HeldSlot slot) => (_mask & Bit(slot)) != 0;
+
+        public bool IsDriven(HeldSlot slot) => (_driven & Bit(slot)) != 0;
+
+        // The pixels a held length carries, and the part of them a gap does not contribute: a space rule's.
+        public float Length(HeldSlot slot) => _lengths?[(int)slot].value.value ?? 0f;
+
+        public float OwnPart(HeldSlot slot) => Length(slot) - (_gaps?[(int)slot] ?? 0f);
+
+        // The gap part of a held, driven slot, which a driver's value adds to.
+        public float DrivenGap(HeldSlot slot)
+            => (_mask & _driven & Bit(slot)) != 0 && _gaps != null ? _gaps[(int)slot] : 0f;
 
         // Writes every held slot among slots back onto style.
         public void Reassert(IStyle style, int slots)
         {
-            var due = _mask & slots;
+            var due = _mask & slots & ~Overridden;
             for (var i = 0; due != 0; i++, due >>= 1)
             {
                 if ((due & 1) != 0)

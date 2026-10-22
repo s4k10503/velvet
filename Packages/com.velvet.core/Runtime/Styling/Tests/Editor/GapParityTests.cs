@@ -148,6 +148,149 @@ namespace Velvet.Tests
             });
         }
 
+        // A play holding element's left margin at its from pose, ml-[3px], through the driver route names; returns
+        // that route's release of the margin.
+        private static System.Action DriveLeftMargin(VisualElement element, string route)
+        {
+            var plan = MotionSpringClassParser.Resolve(new[] { "ml-[3px]" }, new[] { "ml-[9px]" });
+            if (route == "spring")
+            {
+                var spring = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f)!;
+                MotionSpringDriver.ApplyCurrentValues(element, spring);
+                return () => MotionSpringDriver.ClearInlineOverrides(element, spring);
+            }
+            var bezier = BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, durationSec: 1f)!;
+            BezierTweenDriver.ApplyCurrentValues(element, bezier);
+            if (route == "bezier channel")
+            {
+                return () => BezierTweenDriver.ReleaseChannels(element, bezier, StyleLonghandSet.Of(StyleLonghand.MarginLeft));
+            }
+            return () => BezierTweenDriver.ClearInlineOverrides(element, bezier);
+        }
+
+        [TestCase("bezier", TestName = "Given_ABezierPlayOnAGappedChildsMargin_When_ThePlayIsCleared_Then_TheGapMarginComesBack")]
+        [TestCase("bezier channel", TestName = "Given_ABezierPlayOnAGappedChildsMargin_When_ItsMarginChannelIsReleased_Then_TheGapMarginComesBack")]
+        [TestCase("spring", TestName = "Given_ASpringPlayOnAGappedChildsMargin_When_ThePlayIsCleared_Then_TheGapMarginComesBack")]
+        public void Given_APlayOnAGappedChildsMargin_When_ItReleasesTheMargin_Then_TheGapMarginComesBack(string route)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { Row("flex flex-row gap-x-4", 3) });
+            var child = scope.Root[0][1];
+            var release = DriveLeftMargin(child, route);
+
+            // Act
+            release();
+
+            // Assert
+            Assert.That(child.style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        // arrival is "layer" for an important ml-[5px] layer, else the classes the important hover payload adds,
+        // in that order: ml-4 sits after ml-2 in the stylesheet, so it wins between them whichever arrives first.
+        [TestCase("layer", 5f, TestName = "Given_APlayOnAGappedChildsMargin_When_AnImportantMarginLayerOfItsOwnArrives_Then_TheGapAddsToIt")]
+        [TestCase("ml-2", Space2, TestName = "Given_APlayOnAGappedChildsMargin_When_AnImportantMarginClassOfItsOwnArrives_Then_TheGapAddsToIt")]
+        [TestCase("ml-px", 1f, TestName = "Given_APlayOnAGappedChildsMargin_When_AnImportantPxMarginClassArrives_Then_TheGapAddsToItsToken")]
+        [TestCase("ml-4 ml-2", Space4, TestName = "Given_APlayOnAGappedChildsMargin_When_TwoImportantMarginClassesArriveLaterFirst_Then_TheGapAddsToTheLaterDeclared")]
+        [TestCase("ml-2 ml-4", Space4, TestName = "Given_APlayOnAGappedChildsMargin_When_TwoImportantMarginClassesArriveEarlierFirst_Then_TheGapAddsToTheLaterDeclared")]
+        public void Given_APlayOnAGappedChildsMargin_When_AnImportantMarginOfItsOwnArrives_Then_TheGapAddsToIt(
+            string arrival, float own)
+        {
+            // Arrange — the important margin outranks the play, and CSS adds a margin of any origin to the gap.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { Row("flex flex-row gap-x-4", 3) });
+            var child = scope.Root[0][1];
+            var plan = MotionSpringClassParser.Resolve(new[] { "ml-[3px]" }, new[] { "ml-[9px]" });
+            var state = BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, durationSec: 1f)!;
+            BezierTweenDriver.ApplyCurrentValues(child, state);
+            var hover = StyleLayerPriority.ImportantOf(StyleLayerPriority.Hover);
+            if (arrival == "layer")
+            {
+                StyleArbitraryValueResolver.Apply(child, new ArbitraryStyle(ArbitraryProperty.MarginLeft, 5f, LengthUnit.Pixel), hover);
+            }
+            else
+            {
+                foreach (var cls in arrival.Split(' '))
+                {
+                    StyleClassProjection.Add(child, cls, hover);
+                }
+            }
+
+            // Act — the play's next frame.
+            BezierTweenDriver.Step(child, state, 0f);
+
+            // Assert
+            Assert.That(child.style.marginLeft.value.value, Is.EqualTo(Space4 + own));
+        }
+
+        [Test]
+        public void Given_APlayOnAChildsMarginBeforeItsRowHasAGap_When_TheGapApplies_Then_ItAddsToTheDrivenMargin()
+        {
+            // Arrange — a mount's from-pose lands before the row's gap first applies.
+            using var scope = new ReconcilerScope();
+            var before = new VNode[] { Row("flex flex-row", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var child = scope.Root[0][1];
+            DriveLeftMargin(child, "bezier");
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { Row("flex flex-row gap-x-4", 3) });
+
+            // Assert
+            Assert.That(child.style.marginLeft.value.value, Is.EqualTo(Space4 + 3f));
+        }
+
+        [Test]
+        public void Given_AWrappingGapRow_When_APlayDrivesTheRowsOwnMargin_Then_TheNegativeHalfGapAddsToIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { Row("flex flex-row flex-wrap gap-4", 4) });
+            var container = Container(scope.Root);
+
+            // Act
+            DriveLeftMargin(container, "bezier");
+
+            // Assert
+            Assert.That(container.style.marginLeft.value.value, Is.EqualTo(3f - Half4));
+        }
+
+        [Test]
+        public void Given_AGridWithAColumnGap_When_APlayDrivesTheSecondColumnsMargin_Then_TheColumnGapAddsToIt()
+        {
+            // Arrange — a grid item's margin sits inside its area, which starts past the column gap.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { Row("grid grid-cols-2 gap-x-4", 2) });
+            var child = scope.Root[0][1];
+
+            // Act
+            DriveLeftMargin(child, "bezier");
+
+            // Assert
+            Assert.That(child.style.marginLeft.value.value, Is.EqualTo(Space4 + 3f));
+        }
+
+        // GREEN_ON_BASE(characterization): main writes a played margin over the space margin it replaces.
+        // Moving AddGap's `_gaps[(int)slot] += value` into Add counts the space as gap, which reddens this.
+        [Test]
+        public void Given_ASpacedRow_When_APlayDrivesAChildsSpacedMargin_Then_TheDrivenMarginReplacesTheSpace()
+        {
+            // Arrange — space-x is a rule on the child, which an animated value outranks; only a gap adds.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { Row("flex flex-row space-x-4", 3) });
+            var child = scope.Root[0][0];
+            Assume.That(child.style.marginRight.value.value, Is.EqualTo(Space4),
+                "Precondition: a row that spaced nothing would leave 3px either way");
+            var plan = MotionSpringClassParser.Resolve(new[] { "mr-[3px]" }, new[] { "mr-[9px]" });
+            var state = BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, durationSec: 1f)!;
+
+            // Act
+            BezierTweenDriver.ApplyCurrentValues(child, state);
+
+            // Assert
+            Assert.That(child.style.marginRight.value.value, Is.EqualTo(3f));
+        }
+
         [Test]
         public void Given_FlexRowGapX4_When_Reconciled_Then_EqualLeadingMarginBetweenChildrenAndNoTrailing()
         {

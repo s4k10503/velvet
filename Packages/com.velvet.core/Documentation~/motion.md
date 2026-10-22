@@ -396,6 +396,16 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   class no number is read from (`rounded-tl-full` beside `rounded-3xl`, `scale-x-[.5]` beside
   `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. Per-axis scale
   composition remains undriven beside an important uniform inline scale declaration.
+- **A driven value stands over the element's own utilities, short of an important one.** While a driver
+  writes a length or a color, the value it writes holds its slot against the element's variant layers
+  (`dark:`, `sm:`, `hover:` and the rest), a `space-*` margin, a `divide-*` color or width and the column
+  width a grid gives a child, as an animation's declarations outrank them in CSS, and the element's own
+  value comes back when the play releases the slot. An important declaration of the element's own
+  (`!w-[80px]`, an important `divide-*`) keeps what it wins, as `!important` outranks an animation; one the
+  play's own pose carries does not, since that pose's end value is what the play drives toward, and neither does
+  one of the pose an interrupted exit reverses to. A gap, a grid's included, adds to a driven margin, and to an
+  important margin of the element's own that outranks the play
+  ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)).
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing

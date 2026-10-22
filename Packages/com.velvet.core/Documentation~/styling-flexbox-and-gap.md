@@ -314,14 +314,21 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   capturing each child's pre-gap base margin once and re-deriving it on every re-apply (reconcile /
   geometry / attach), and a re-apply reads back the already-gap-modified inline value with no way to
   tell base from gap. Only native UITK `gap` composes the two. Workaround: use padding, an inner
-  wrapper, or a different axis when a child needs its own margin on the gap edge. Margins on a
+  wrapper, or a different axis when a child needs its own margin on the gap edge. A `V.Motion` animating
+  that margin is the exception: while it drives the margin, the gap is added to the driven value, as CSS
+  adds an item's margin to the gap, and so is an important margin of the child's own that outranks the
+  animation. An important margin that names no length, `ml-auto` or a `calc()` bracket, takes no gap; a
+  spacing step is read off Velvet's scale rather than `--space-*`, the limit
+  [styling-arbitrary-lengths.md](styling-arbitrary-lengths.md) gives for its rewrites. A grid adds its column and row gaps to a child's driven margin the same way, and takes the
+  driven margin out of the child's column width, so the child moves inside its column. Margins on a
   **different** edge than the gap are preserved, so `mt-2` on a child under a non-wrap `gap-x-4` row
   is untouched. (Under the wrap half-margin path every side a gap spaces belongs to it, so an explicit child
   margin there is overwritten.)
 - **Wrap path overwrites the container's own margin.** The wrap half-margin path writes the
   container's own margins to the negated halves, so an explicit container margin (e.g. `m-4` on the same
   element that carries `flex-wrap gap-4`) is **overwritten** while a wrapping gap is active, and comes
-  back when it stops. Non-wrap containers never touch the container's own margin. Workaround: put the
+  back when it stops. A `V.Motion` animating the container's margin is the exception, as for a child.
+  Non-wrap containers never touch the container's own margin. Workaround: put the
   margin on an **outer wrapper** around the wrapping gap container.
 - **Wrap outer bleed.** The wrap path's container negative margin (half of each gap) bleeds that half
   **outward**, overlapping the container's own siblings or its parent's padding by it. The

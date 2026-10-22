@@ -2063,6 +2063,7 @@ namespace Velvet
                 // PendingAttach was already unregistered), so handing off here would just park a dead
                 // entry in _pendingEnters forever instead of finalizing below.
                 MotionSpringDriver.Retarget(spring);
+                StyleArbitraryValueResolver.Redrive(element);
                 spring.OnSettled = null;
                 CancelPending(_pendingEnters, element);
                 _pendingEnters[element] = pending;
@@ -2093,6 +2094,7 @@ namespace Velvet
                 // started (bezier.Tick != null) — a cancel that lands while still parked behind the delay
                 // has no running tick to redirect and nothing would ever start one, so it finalizes below.
                 BezierTweenDriver.Retarget(bezier);
+                StyleArbitraryValueResolver.Redrive(element);
                 bezier.OnSettled = null;
                 CancelPending(_pendingEnters, element);
                 _pendingEnters[element] = pending;

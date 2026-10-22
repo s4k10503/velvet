@@ -330,7 +330,7 @@ namespace Velvet
         /// Releases every inline slot this state ever wrote — and the transition suspension
         /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
         /// See <see cref="MotionSpringDriver.ClearInlineOverrides"/> for why the surviving arbitrary-value
-        /// layers are re-asserted only after every slot has been nulled.
+        /// layers and holds are re-asserted only after every slot has been nulled.
         /// </summary>
         public static void ClearInlineOverrides(VisualElement element, BezierTweenState state)
         {
@@ -340,11 +340,11 @@ namespace Velvet
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
             if (state.Colors != null)
             {
-                foreach (var c in state.Colors) StyleArbitraryValueResolver.ClearInline(element, c.Property);
+                foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
             }
             if (state.Lengths != null)
             {
-                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
+                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ReleaseDriven(element, l.Property);
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
             StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
@@ -644,7 +644,7 @@ namespace Velvet
                 foreach (var c in state.Colors)
                 {
                     var progress = Value(state, c.Progress, shared);
-                    StyleArbitraryValueResolver.ApplyInline(element,
+                    StyleArbitraryValueResolver.ApplyDriven(element,
                         new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, progress)));
                 }
             }
@@ -653,7 +653,7 @@ namespace Velvet
                 foreach (var l in state.Lengths)
                 {
                     var v = MotionPropertyInterpolation.LerpLength(l.Property, l.Value.From, l.Value.To, Eased(state, l.Value, shared));
-                    StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
+                    StyleArbitraryValueResolver.ApplyDriven(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
