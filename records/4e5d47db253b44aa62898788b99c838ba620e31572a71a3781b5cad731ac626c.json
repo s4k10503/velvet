@@ -1,0 +1,51 @@
+{
+ "detail": "EditMode: 3 failed: Given_FirstOfTwoSubscriptionsThrowsOnUnsubscribe_When_Unmounted_Then_TheSecondIsStillRemoved, Given_ABoundaryWhoseChildsCleanupThrows_When_TheTreeIsDisposed_Then_TheHandlerIsHandedIt, Given_TwoEffectCleanupsThatThrow_When_TheTreeIsDisposed_Then_EachIsReportedOnceBothHaveRun",
+ "file": "23f0d9f89bfd24e892ea9e5fa089914f60c0b7e218bf20b07251c9e44b461bcd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UncaughtErrorHandlerTests.Given_ABoundaryWhoseChildsCleanupThrows_When_TheTreeIsDisposed_Then_TheHandlerIsHandedIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorHandlerTests.cs": "28bbe9304f66c322d6c17d45e1152105d557a820a79b7dce869e770c180a8a38",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorRootTests.cs": "21256c6fb6bece7f046735e1c78f1a01aa9e491104e6d5b9ec5f8b4a14484b15",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UncaughtErrorHandlerTests.Given_TwoEffectCleanupsThatThrow_When_TheTreeIsDisposed_Then_EachIsReportedOnceBothHaveRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorHandlerTests.cs": "28bbe9304f66c322d6c17d45e1152105d557a820a79b7dce869e770c180a8a38",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorRootTests.cs": "21256c6fb6bece7f046735e1c78f1a01aa9e491104e6d5b9ec5f8b4a14484b15",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_FirstOfTwoSubscriptionsThrowsOnUnsubscribe_When_Unmounted_Then_TheSecondIsStillRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "5946072ba5f1bbaaa4b51c59ef7efe3996173b8ccfc10dc4ff4d274b10352731",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 23,
+  "line": 161,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.Mount.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Preview.Editor: Given_AnErrorABoundaryCatchesThenASetupTeardownThatThrows_When_SmokeTested_Then_ItFailsWithTheTeardowns, Given_AnErrorABoundaryInTheStoryCatches_When_SmokeTested_Then_ItPasses",
+ "file": "beb36d193fa0471f961d81ae65fd0c108bf0d9ec1a0f2b962d214b635cedbbee",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VelvetPreviewSmokeTestTests.Given_AnErrorABoundaryCatchesThenASetupTeardownThatThrows_When_SmokeTested_Then_ItFailsWithTheTeardowns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Preview/Tests/Editor/VelvetPreviewSmokeTestTests.cs": "28a269285379bfb3f76008dc0a7543a354dcc6c13a987832b1bc0ff9108151c3",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VelvetPreviewSmokeTestTests.Given_AnErrorABoundaryInTheStoryCatches_When_SmokeTested_Then_ItPasses",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Preview/Tests/Editor/VelvetPreviewSmokeTestTests.cs": "28a269285379bfb3f76008dc0a7543a354dcc6c13a987832b1bc0ff9108151c3",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": ";",
+  "before": "FiberErrorBoundary.LogCaughtError(exception, info);",
+  "column": 24,
+  "line": 49,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Preview/VelvetPreviewSmokeTest.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

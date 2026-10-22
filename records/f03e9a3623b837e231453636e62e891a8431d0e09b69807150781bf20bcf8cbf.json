@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ABezierPlayOnAGappedChildsMargin_When_ThePlayIsCleared_Then_TheGapMarginComesBack",
+ "file": "7015c17237187bf32d4ace440dca1b018b459ca42ced7800d100c8fc71dbfe1d",
+ "killers": [],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": ";",
+  "before": "foreach (var l in state.Lengths) StyleArbitraryValueResolver.ReleaseDriven(element, l.Property);",
+  "column": 16,
+  "line": 347,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

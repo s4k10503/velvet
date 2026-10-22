@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Reconciler.Editor: Given_ABoundaryWhoseChildsCleanupThrows_When_TheTreeIsDisposed_Then_TheHandlerIsHandedIt, Given_TwoEffectCleanupsThatThrow_When_TheTreeIsDisposed_Then_EachIsReportedOnceBothHaveRun",
+ "file": "d687e6186267468897f6277e6c0e99546a16175ca7a53abb72e0798729477d3a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UncaughtErrorHandlerTests.Given_ABoundaryWhoseChildsCleanupThrows_When_TheTreeIsDisposed_Then_TheHandlerIsHandedIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorHandlerTests.cs": "28bbe9304f66c322d6c17d45e1152105d557a820a79b7dce869e770c180a8a38",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorRootTests.cs": "21256c6fb6bece7f046735e1c78f1a01aa9e491104e6d5b9ec5f8b4a14484b15",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UncaughtErrorHandlerTests.Given_TwoEffectCleanupsThatThrow_When_TheTreeIsDisposed_Then_EachIsReportedOnceBothHaveRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorHandlerTests.cs": "28bbe9304f66c322d6c17d45e1152105d557a820a79b7dce869e770c180a8a38",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorRootTests.cs": "21256c6fb6bece7f046735e1c78f1a01aa9e491104e6d5b9ec5f8b4a14484b15",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": ";",
+  "before": "ReportUncaughtError(ctx, thrown[i].Error, thrown[i].Info);",
+  "column": 16,
+  "line": 397,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived (inconclusive); PlayMode: -",
+ "file": "b9e11215a83bb7cea86d3f73a2f0666b88a209c6e9fbfcf62069ef5471ebd45a",
+ "killers": [],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 23,
+  "line": 207,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowBaker.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "survived"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "7015c17237187bf32d4ace440dca1b018b459ca42ced7800d100c8fc71dbfe1d",
+ "killers": [],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": ";",
+  "before": "foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);",
+  "column": 16,
+  "line": 343,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "survived"
+}

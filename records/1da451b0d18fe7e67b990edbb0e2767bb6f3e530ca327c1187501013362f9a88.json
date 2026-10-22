@@ -1,0 +1,57 @@
+{
+ "detail": "EditMode: 5 failed among the 70 case(s) that ran the site: Given_ChildWithoutTransition_When_RemovedAndReconciledAgain_Then_ElementLeaves, Given_MultiElementSuspenseChild_When_KeyExits_Then_EveryElementOfTheRangeIsRemoved, Given_TransitionConfigNone_When_RemovedAndReconciledAgain_Then_ElementLeaves",
+ "file": "0ce808bc4e2572bd4985c119a967455b90dedd076168685ab6666ef48e1c2802",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_ChildWithoutTransition_When_RemovedAndReconciledAgain_Then_ElementLeaves",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "90f467fce2e9d5f2a31d474859cd39bf366ef9f3e59073602e104b531f5f71db",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_MultiElementSuspenseChild_When_KeyExits_Then_EveryElementOfTheRangeIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "90f467fce2e9d5f2a31d474859cd39bf366ef9f3e59073602e104b531f5f71db",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_TransitionConfigNone_When_RemovedAndReconciledAgain_Then_ElementLeaves",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "90f467fce2e9d5f2a31d474859cd39bf366ef9f3e59073602e104b531f5f71db",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_WaitModeAndAnExitWithNothingToAnimate_When_KeySwapsAndReconcilesAgain_Then_TheNewChildMountsOnTheReconcileThatDropsTheOld",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "90f467fce2e9d5f2a31d474859cd39bf366ef9f3e59073602e104b531f5f71db",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_WaitModeWithAChildThatStays_When_AnotherChildIsRemovedAndReconciledAgain_Then_OnlyTheStayingChildRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "90f467fce2e9d5f2a31d474859cd39bf366ef9f3e59073602e104b531f5f71db",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": ";",
+  "before": "StagePendingSettle(pass.State, pass.Walk.Commit!, pass.BoundaryFiber, key, pending);",
+  "column": 12,
+  "line": 2346,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

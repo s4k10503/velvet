@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ABezierPlayAtItsStart_When_ItsVelocityIsRead_Then_ItsTimeIsWhereItWas",
+ "file": "7015c17237187bf32d4ace440dca1b018b459ca42ced7800d100c8fc71dbfe1d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionVelocityHandOverTests.Given_ABezierPlayAtItsStart_When_ItsVelocityIsRead_Then_ItsTimeIsWhereItWas",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionVelocityHandOverTests.cs": "86431680b2814cc2191228325bbcb1d55f52cf738ae9f6a1557ce868aacb657f"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": ";",
+  "before": "state.ElapsedSec = now;",
+  "column": 16,
+  "line": 438,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

@@ -1,0 +1,52 @@
+{
+ "detail": "EditMode: 5 failed in Velvet.Tests.Styling.Editor: Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"TranslateX\"), Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"TranslateY\"), Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"Scale\")",
+ "file": "7015c17237187bf32d4ace440dca1b018b459ca42ced7800d100c8fc71dbfe1d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionVelocityHandOverTests.Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"Rotate\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionVelocityHandOverTests.cs": "86431680b2814cc2191228325bbcb1d55f52cf738ae9f6a1557ce868aacb657f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionVelocityHandOverTests.Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"Scale\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionVelocityHandOverTests.cs": "86431680b2814cc2191228325bbcb1d55f52cf738ae9f6a1557ce868aacb657f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionVelocityHandOverTests.Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"TranslateX\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionVelocityHandOverTests.cs": "86431680b2814cc2191228325bbcb1d55f52cf738ae9f6a1557ce868aacb657f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionVelocityHandOverTests.Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"TranslateY\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionVelocityHandOverTests.cs": "86431680b2814cc2191228325bbcb1d55f52cf738ae9f6a1557ce868aacb657f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionVelocityHandOverTests.Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"Width\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionVelocityHandOverTests.cs": "86431680b2814cc2191228325bbcb1d55f52cf738ae9f6a1557ce868aacb657f"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": ";",
+  "before": "state.ElapsedSec = timeSec;",
+  "column": 16,
+  "line": 430,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

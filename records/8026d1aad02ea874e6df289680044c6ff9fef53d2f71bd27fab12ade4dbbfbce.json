@@ -1,0 +1,48 @@
+{
+ "detail": "EditMode: 3 failed in Velvet.Tests.Reconciler.Editor: Given_ARepeatedKeyAfterAnElement_When_TheRepeatRendersAlone_Then_ItReadsTheProvidedValue, Given_ARepeatedKeyUnderAComponentThatRepeatsItsSiblingsKey_When_EachLevelRendersAlone_Then_EachReadsItsNearestProvider, Given_TwoSiblingsWithTheSameKeyUnderAProvider_When_TheSecondRendersAlone_Then_ItReadsTheProvidedValue",
+ "file": "6bf147e76da8a3c3fc63c0bf44fdd6db29c91643be82b76daa9881f44baf55b3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RepeatedComponentKeyReconcileTests.Given_ARepeatedKeyAfterAnElement_When_TheRepeatRendersAlone_Then_ItReadsTheProvidedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RepeatedComponentKeyReconcileTests.cs": "4833adfa280117d49019fa26959dfc01b46e7803505cdab3c21956c06d9368f2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RepeatedComponentKeyReconcileTests.Given_ARepeatedKeyUnderAComponentThatRepeatsItsSiblingsKey_When_EachLevelRendersAlone_Then_EachReadsItsNearestProvider",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RepeatedComponentKeyReconcileTests.cs": "4833adfa280117d49019fa26959dfc01b46e7803505cdab3c21956c06d9368f2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RepeatedComponentKeyReconcileTests.Given_TwoSiblingsWithTheSameKeyUnderAProvider_When_TheSecondRendersAlone_Then_ItReadsTheProvidedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RepeatedComponentKeyReconcileTests.cs": "4833adfa280117d49019fa26959dfc01b46e7803505cdab3c21956c06d9368f2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 34,
+  "line": 91,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberContextSpine.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

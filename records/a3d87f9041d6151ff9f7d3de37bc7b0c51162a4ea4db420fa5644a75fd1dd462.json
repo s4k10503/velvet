@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 127 case(s) that ran the site: Given_OnEnterCompleteThrows_When_AVariantMotionDeclaresNoInitialState_Then_TheChildStillMounts, Given_OnEnterCompleteThrows_When_ThePresenceSuppressesItsFirstMountEnter_Then_TheChildStillMounts",
+ "file": "f6c464737b6b3a36afceffc3d657ae966e4a40d706e80c205d83c16f7b0c10e6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_OnEnterCompleteThrows_When_AVariantMotionDeclaresNoInitialState_Then_TheChildStillMounts",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "c33e255748e42df3aa1fc91b7b61d00d0c14efcfc86f390b5dc91a10b1136943",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_OnEnterCompleteThrows_When_ThePresenceSuppressesItsFirstMountEnter_Then_TheChildStillMounts",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "c33e255748e42df3aa1fc91b7b61d00d0c14efcfc86f390b5dc91a10b1136943",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 22,
+  "line": 1563,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

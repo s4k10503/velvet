@@ -1,0 +1,51 @@
+{
+ "detail": "EditMode: 3 failed in Velvet.Tests.Reconciler.Editor: Given_ABoundarysOwnFallbackContentThrows_When_AnAncestorBoundaryExists_Then_TheAncestorShowsItsFallbackExactlyOnce, Given_ABoundarysOwnFallbackContentThrows_When_NoAncestorBoundaryExists_Then_OnlyTheFallbackContentsErrorIsReported, Given_ABoundarysOwnFallbackContentThrows_When_TheOriginalExceptionTriggersIt_Then_TheFallbackContentRendersExactlyOnce",
+ "file": "d687e6186267468897f6277e6c0e99546a16175ca7a53abb72e0798729477d3a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ErrorBoundaryTests.Given_ABoundarysOwnFallbackContentThrows_When_AnAncestorBoundaryExists_Then_TheAncestorShowsItsFallbackExactlyOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ErrorBoundaryTests.cs": "86cbcd02e30547c59b3c6ffa6d653d55373ce4127167b13c277d7f5e5fba301c",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ErrorBoundaryTests.Given_ABoundarysOwnFallbackContentThrows_When_NoAncestorBoundaryExists_Then_OnlyTheFallbackContentsErrorIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ErrorBoundaryTests.cs": "86cbcd02e30547c59b3c6ffa6d653d55373ce4127167b13c277d7f5e5fba301c",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ErrorBoundaryTests.Given_ABoundarysOwnFallbackContentThrows_When_TheOriginalExceptionTriggersIt_Then_TheFallbackContentRendersExactlyOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ErrorBoundaryTests.cs": "86cbcd02e30547c59b3c6ffa6d653d55373ce4127167b13c277d7f5e5fba301c",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 19,
+  "line": 280,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

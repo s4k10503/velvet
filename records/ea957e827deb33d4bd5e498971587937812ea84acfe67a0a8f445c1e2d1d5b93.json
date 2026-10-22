@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed: Given_AFollowerTurnedAsItsLeadIs_When_TheLeadLeaves_Then_ItIsDrawnAtItsOwnRotate",
+ "file": "3ce615f42abe3fff05bd08f69c93ea7e5062257f00d262623ee233fd168db99e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AFollowerTurnedAsItsLeadIs_When_TheLeadLeaves_Then_ItIsDrawnAtItsOwnRotate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "3a4a5e4de5346b483d4f7c9b35ab7fc8819359be8792a7be423be2f3eb07e6ab",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 34,
+  "line": 157,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/LayoutIdLook.cs",
+  "shadowed": [
+   "guard removed",
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

@@ -1,8 +1,16 @@
 {
- "detail": "EditMode: 2 failed in Velvet.Tests.Styling.Editor: Given_AnInsetShadowOffsetDown_When_Baked_Then_ItCoversTheTopEdge, Given_AnInsetShadowOffsetDown_When_Baked_Then_ItDoesNotCoverTheBottomEdge",
+ "detail": "EditMode: 1 failed among the 14 case(s) that ran the site: Given_RapidRekey_When_SettledOnKnownTab_Then_AllCardsPresent_NoneDisappeared",
  "file": "b9e11215a83bb7cea86d3f73a2f0666b88a209c6e9fbfcf62069ef5471ebd45a",
- "killers": [],
- "measured_by": "39656590683",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_RapidRekey_When_SettledOnKnownTab_Then_AllCardsPresent_NoneDisappeared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "c33e255748e42df3aa1fc91b7b61d00d0c14efcfc86f390b5dc91a10b1136943",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -16,6 +24,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
  "verdict": "killed"
 }

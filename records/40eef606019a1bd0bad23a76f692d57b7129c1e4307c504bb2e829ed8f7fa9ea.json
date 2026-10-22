@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "3ce615f42abe3fff05bd08f69c93ea7e5062257f00d262623ee233fd168db99e",
+ "killers": [],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": ";",
+  "before": "if (projection.WritesRadii) MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_radii);",
+  "column": 12,
+  "line": 143,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/LayoutIdLook.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "survived"
+}

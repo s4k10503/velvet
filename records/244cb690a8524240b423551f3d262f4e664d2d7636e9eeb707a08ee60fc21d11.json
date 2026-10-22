@@ -1,0 +1,90 @@
+{
+ "detail": "EditMode: 8 failed in Velvet.Tests.Reconciler.Editor: Given_AFallbackWhoseContentThrowsWithNoBoundaryAbove_When_ItsChildThrowsOnMount_Then_OnlyTheContentsErrorIsReported, Given_ABoundaryCatchingAChildsRender_When_MountedWithoutOptions_Then_TheCaughtExceptionIsLoggedAsItself, Given_TheBoundedRunOfThrowingDrainsEndingWithNothingQueued_When_TheLastOneThrows_Then_NoDropIsReported",
+ "file": "0ce808bc4e2572bd4985c119a967455b90dedd076168685ab6666ef48e1c2802",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_AFallbackWhoseContentThrowsWithNoBoundaryAbove_When_ItsChildThrowsOnMount_Then_OnlyTheContentsErrorIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "9655646b4601c1058b9cebe7644cfae999d41e3815fa93b3e44fb79a4d99c9de",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CaughtErrorLogTests.Given_ABoundaryCatchingAChildsRender_When_MountedWithoutOptions_Then_TheCaughtExceptionIsLoggedAsItself",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CaughtErrorLogTests.cs": "05d0a6aa0ca8d6643a4b8845d4a0b097b3cca0a708a6daa8dab5188864ad0891",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainExceptionRecoveryTests.Given_TheBoundedRunOfThrowingDrainsEndingWithNothingQueued_When_TheLastOneThrows_Then_NoDropIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainExceptionRecoveryTests.cs": "7e04536445c82ebf523db6b3119ee7b89838784274720918effb695cb6e42339",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ErrorBoundaryTests.Given_ABoundarysOwnFallbackContentThrows_When_NoAncestorBoundaryExists_Then_OnlyTheFallbackContentsErrorIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ErrorBoundaryTests.cs": "86cbcd02e30547c59b3c6ffa6d653d55373ce4127167b13c277d7f5e5fba301c",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RepeatedComponentKeyReconcileTests.Given_AFallbackUsingTheKeyItsFailedOutputUsed_When_TheBoundaryCatches_Then_NoRepeatIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RepeatedComponentKeyReconcileTests.cs": "4833adfa280117d49019fa26959dfc01b46e7803505cdab3c21956c06d9368f2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  },
+  {
+   "case": "Velvet.Tests.StickyBoundaryTests.Given_StrictModeAndABoundaryThatCaught_When_ItsParentRendersAgain_Then_NoImpureRenderIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/StickyBoundaryTests.cs": "e5f4ba89901274b09f9cad9633b9c137e29d30302cbbb5c1873f3312deca61ac",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UncaughtErrorRootTests.Given_NoHandler_When_AChildsUpdateRenderThrows_Then_AWarningNamesTheComponentThatThrew",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorRootTests.cs": "21256c6fb6bece7f046735e1c78f1a01aa9e491104e6d5b9ec5f8b4a14484b15",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UncaughtErrorRootTests.Given_NoHandler_When_TheRootRendersANodeTheReconcileRefuses_Then_TheWarningNamesNoComponent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorRootTests.cs": "21256c6fb6bece7f046735e1c78f1a01aa9e491104e6d5b9ec5f8b4a14484b15",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 30,
+  "line": 1064,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

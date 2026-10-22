@@ -1,8 +1,8 @@
 {
- "detail": "EditMode: 1 failed among the 10 case(s) that ran the site: Given_AShadowOnABoxRoundedAtOneCorner_When_Baked_Then_TheSquareCornerOfTheSpreadShapeCoversThePoint",
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_AShadowOnABoxRoundedAtOneCorner_When_Baked_Then_TheSquareCornerOfTheSpreadShapeCoversThePoint",
  "file": "b9e11215a83bb7cea86d3f73a2f0666b88a209c6e9fbfcf62069ef5471ebd45a",
  "killers": [],
- "measured_by": "39656590683",
+ "measured_by": "39723193086",
  "mutant": {
   "after": "-",
   "before": "+",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
  "verdict": "killed"
 }

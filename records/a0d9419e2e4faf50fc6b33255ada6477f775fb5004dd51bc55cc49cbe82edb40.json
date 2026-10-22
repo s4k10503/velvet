@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_ExitInProgress_When_ReconcilerDisposed_Then_OnExitCompleteRunsOnce",
+ "file": "f6c464737b6b3a36afceffc3d657ae966e4a40d706e80c205d83c16f7b0c10e6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_ExitInProgress_When_ReconcilerDisposed_Then_OnExitCompleteRunsOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "90f467fce2e9d5f2a31d474859cd39bf366ef9f3e59073602e104b531f5f71db",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": ";",
+  "before": "foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values)) SettleExitsOf(state);",
+  "column": 12,
+  "line": 2844,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}

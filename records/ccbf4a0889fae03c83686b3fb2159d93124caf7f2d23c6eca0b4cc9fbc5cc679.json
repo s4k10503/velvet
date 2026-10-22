@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 300 case(s) that ran the site: Given_AConsumerBesideAnErrorBoundary_When_TheHostsRenderIsCaughtAndTheConsumerThenReRendersAlone_Then_ItReadsTheProviderThatRenderCommitted",
+ "file": "d687e6186267468897f6277e6c0e99546a16175ca7a53abb72e0798729477d3a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ProviderErrorBoundaryNestedConsumerTests.Given_AConsumerBesideAnErrorBoundary_When_TheHostsRenderIsCaughtAndTheConsumerThenReRendersAlone_Then_ItReadsTheProviderThatRenderCommitted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ProviderErrorBoundaryNestedConsumerTests.cs": "594e759fe13189b5ce6f30179ae7a43202dcee2428a4e59a5774049c3f3effaa",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  }
+ ],
+ "measured_by": "39723193086",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 93,
+  "line": 25,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberErrorBoundary.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "verdict": "killed"
+}
