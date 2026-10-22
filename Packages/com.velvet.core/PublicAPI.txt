@@ -142,6 +142,7 @@
 [Velvet] ctor Velvet.VelvetFontWeightEntry.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetPreviewAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetPreviewHost.ctor(UnityEngine.UIElements.VisualElement): System.Void
+[Velvet] ctor Velvet.VelvetPreviewPanel.ctor(UnityEngine.UIElements.PanelSettings?, System.Int32, System.Int32): System.Void
 [Velvet] ctor Velvet.VelvetPreviewSetupAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetRuntimeAssets.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetTaskCompletionSource.ctor(): System.Void
@@ -664,6 +665,8 @@
 [Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory, System.Object): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.UpdateArgs(System.Object): System.Boolean
+[Velvet] method Velvet.VelvetPreviewPanel.Dispose(): System.Void
+[Velvet] method Velvet.VelvetPreviewPanel.Resize(System.Int32, System.Int32): System.Void
 [Velvet] method Velvet.VelvetPreviewRegistry.DiscoverStories(): System.Collections.Generic.List`1[Velvet.VelvetPreviewStory]
 [Velvet] method Velvet.VelvetPreviewRegistry.RunSetupFor(System.Reflection.Assembly?): Velvet.VelvetPreviewEnvironment?
 [Velvet] method Velvet.VelvetPreviewSmokeTest.Run(): System.Collections.Generic.IReadOnlyList`1[Velvet.VelvetPreviewSmokeResult]
@@ -1258,6 +1261,8 @@
 [Velvet] property Velvet.VelvetPreviewEnvironment.StyleSheets: System.Collections.Generic.IReadOnlyList`1[UnityEngine.UIElements.StyleSheet]
 [Velvet] property Velvet.VelvetPreviewHost.MountError: System.Exception?
 [Velvet] property Velvet.VelvetPreviewHost.Story: Velvet.VelvetPreviewStory?
+[Velvet] property Velvet.VelvetPreviewPanel.Root: UnityEngine.UIElements.VisualElement
+[Velvet] property Velvet.VelvetPreviewPanel.Texture: UnityEngine.RenderTexture
 [Velvet] property Velvet.VelvetPreviewSmokeResult.Failure: System.String?
 [Velvet] property Velvet.VelvetPreviewSmokeResult.Story: Velvet.VelvetPreviewStory
 [Velvet] property Velvet.VelvetPreviewStory.ArgsType: System.Type?
@@ -1501,6 +1506,7 @@
 [Velvet] type Velvet.VelvetPreviewAttribute
 [Velvet] type Velvet.VelvetPreviewEnvironment
 [Velvet] type Velvet.VelvetPreviewHost
+[Velvet] type Velvet.VelvetPreviewPanel
 [Velvet] type Velvet.VelvetPreviewRegistry
 [Velvet] type Velvet.VelvetPreviewSetupAttribute
 [Velvet] type Velvet.VelvetPreviewSmokeResult

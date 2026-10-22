@@ -166,6 +166,20 @@ namespace Velvet.Tests
         private object MountedTree() =>
             typeof(VelvetPreviewHost).GetField("_mounted", Private)?.GetValue(Field<VelvetPreviewHost>("_host"));
 
+        private Vector2 StageInWholePixels()
+        {
+            var stage = Field<VisualElement>("_stage");
+            return new Vector2(Mathf.Round(stage.resolvedStyle.width), Mathf.Round(stage.resolvedStyle.height));
+        }
+
+        // (0, 0) when the canvas shows no texture. Read from resolvedStyle: the inline style getter hands back
+        // no render texture, so reading it reports none whatever the canvas shows.
+        private (int Width, int Height) ShownTextureSize()
+        {
+            var texture = Field<VisualElement>("_canvas")?.resolvedStyle.backgroundImage.renderTexture;
+            return texture == null ? (0, 0) : (texture.width, texture.height);
+        }
+
         private void SetCustomViewport(int width, int height)
         {
             Field<IntegerField>("_viewportWidthField").SetValueWithoutNotify(width);
@@ -192,13 +206,14 @@ namespace Velvet.Tests
                 Is.EqualTo(((float?)1280f, (float?)2f, (bool?)true)));
         }
 
+        // GREEN_ON_BASE(characterization): the stage is the screen, which the base took at its laid-out size.
+        // Rounding it moves nothing where the stage lays out on whole pixels.
         [Test]
         public void Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheStageIsTheScreenTheyScaleFor()
         {
             // Arrange
             EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
-            var stage = Field<VisualElement>("_stage");
-            var screen = new Vector2(stage.resolvedStyle.width, stage.resolvedStyle.height);
+            var screen = StageInWholePixels();
             var unitsPerPixel = PreviewPanelScale.Resolve(_settings, screen, Screen.dpi);
 
             // Act
@@ -211,13 +226,30 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheCanvasIsTheResponsiveScope()
+        public void Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheCanvasShowsATextureTheStagesSize()
         {
+            // Arrange
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
+            var stage = StageInWholePixels();
+
             // Act
             Choose(_settings);
 
             // Assert
-            Assert.That(Field<VisualElement>("_canvas").ClassListContains(VelvetResponsive.ViewportClass), Is.True);
+            Assert.That(ShownTextureSize(), Is.EqualTo(((int)stage.x, (int)stage.y)));
+        }
+
+        [Test]
+        public void Given_AViewportTwiceThePanelsReference_When_ThePanelSettingsAreChosen_Then_TheCanvasShowsATextureTheViewportsSize()
+        {
+            // Arrange
+            SetCustomViewport(2560, 1440);
+
+            // Act
+            Choose(_settings);
+
+            // Assert
+            Assert.That(ShownTextureSize(), Is.EqualTo((2560, 1440)));
         }
 
         [Test]

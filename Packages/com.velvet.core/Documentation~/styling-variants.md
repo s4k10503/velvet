@@ -637,11 +637,11 @@ marker re-points the descendants already attached.
 
 ### Simulating a viewport: `velvet-viewport`
 
-Tooling that shows a story at a chosen device size has a marker of its own, `VelvetResponsive.ViewportClass`
-(`"velvet-viewport"`). An element carrying it stands in for the panel root: the `sm:`…`2xl:` variants of its
-descendants measure *its* width. It is how the preview window's Viewport addon works
-([preview-tooling.md](preview-tooling.md#viewport)); an application that wants a component to answer its own
-width marks it `@container` and writes container variants.
+Tooling that shows a story at a chosen device size inside a larger panel has a marker of its own,
+`VelvetResponsive.ViewportClass` (`"velvet-viewport"`). An element carrying it stands in for the panel root: the
+`sm:`…`2xl:` variants of its descendants measure *its* width. The preview window needs none, since it renders a
+story on a panel of its own, sized to the simulated screen or to the story's footprint
+([preview-tooling.md](preview-tooling.md#viewport)); an application that wants a component to answer its own width marks it `@container` and writes container variants.
 
 ### Migrating from `@container` re-pointing `sm:`…`2xl:`
 

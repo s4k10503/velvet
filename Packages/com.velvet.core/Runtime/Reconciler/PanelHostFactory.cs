@@ -39,7 +39,8 @@ namespace Velvet
     // Creates and destroys the framework-owned host panels behind V.Portal(layer:) and
     // V.WorldSpace. A host is an ordinary UIDocument-driven runtime panel whose base settings
     // (theme, scaling, text settings, target display) copy the panel the portal was DECLARED on, so
-    // layer and world-space UI resolves the same styles as the tree it logically belongs to.
+    // layer and world-space UI resolves the same styles as the tree it logically belongs to. A layer
+    // host also copies its target texture (CopyTargetTexture).
     internal static class PanelHostFactory
     {
         // Layer sorting relative to the resolved sorting base. The gaps leave room for user panels
@@ -57,14 +58,14 @@ namespace Velvet
         };
 #pragma warning restore CS8524
 
-        // One empty theme shared by every host whose declaring panel resolves none: panel creation
-        // warns loudly about a missing theme, and per-host instances would pile up one
-        // ScriptableObject per host for identical default styling. Never destroyed (records do not
-        // own it); HideAndDontSave keeps it out of scenes and saves, and a domain reload simply
-        // recreates it on demand.
+        // One empty theme shared by every host whose declaring panel resolves none, and by a
+        // VelvetPreviewPanel built without a theme: panel creation warns loudly about a
+        // missing theme, and per-panel instances would pile up one ScriptableObject per panel for
+        // identical default styling. Never destroyed (no panel owns it); HideAndDontSave keeps it out
+        // of scenes and saves, and a domain reload simply recreates it on demand.
         private static ThemeStyleSheet? s_sharedEmptyTheme;
 
-        private static ThemeStyleSheet SharedEmptyTheme
+        internal static ThemeStyleSheet SharedEmptyTheme
         {
             get
             {
@@ -86,6 +87,10 @@ namespace Velvet
             var offset = SortingOffset(layer);
             var (declaring, baseOrder) = ResolveDeclaring(declaringPanel, ctx);
             var (record, settings) = CreateHostParts($"VelvetLayer-{layer}", declaring);
+            if (declaring != null)
+            {
+                CopyTargetTexture(declaring, settings);
+            }
             record.BaseOrder = baseOrder;
             record.DeclaringResolved = declaring != null;
             settings.sortingOrder = baseOrder + offset;
@@ -183,6 +188,10 @@ namespace Velvet
             // Compare-and-assign inside the copy: one field list serves both drift detection and the
             // re-copy (twin lists would drift apart), and untouched fields never re-dirty the panel.
             var copied = CopyDeclaringSettings(declaring, settings);
+            if (layer != null)
+            {
+                copied |= CopyTargetTexture(declaring, settings);
+            }
             var rebased = !record.DeclaringResolved || record.BaseOrder != baseOrder;
             record.BaseOrder = baseOrder;
             record.DeclaringResolved = true;
@@ -280,6 +289,19 @@ namespace Velvet
                 changed = true;
             }
             return changed;
+        }
+
+        // A layer host draws where the panel its portal was declared on draws: into that panel's target
+        // texture when it has one, sorted around it there as it is on the screen. A world-space host
+        // draws in the scene instead, so it never takes this.
+        private static bool CopyTargetTexture(PanelSettings from, PanelSettings to)
+        {
+            if (to.targetTexture == from.targetTexture)
+            {
+                return false;
+            }
+            to.targetTexture = from.targetTexture;
+            return true;
         }
 
         // Resolves the declaring panel's own PanelSettings plus the sorting BASE that portals

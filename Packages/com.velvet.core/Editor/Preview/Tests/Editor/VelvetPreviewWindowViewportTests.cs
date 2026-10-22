@@ -9,10 +9,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// The preview window's Viewport addon: selecting a custom W/H pair (via the toolbar fields) sizes the mount
-    /// canvas to that reference size and marks it a viewport scope (<c>VelvetResponsive.ViewportClass</c>) so a mounted story's
-    /// <c>sm:</c>/<c>md:</c>… evaluate against the simulated width; <b>Full</b> (the menu's only preset — any other
-    /// reference size is entered via the free-form W/H fields) removes the marker and restores the fill behavior.
+    /// The preview window's Viewport addon: selecting a custom W/H pair (via the toolbar fields) sizes the
+    /// canvas, and the preview panel it shows, to that reference size; <b>Full</b> (the menu's only preset — any
+    /// other reference size is entered via the free-form W/H fields) restores the fill behavior.
     /// </summary>
     /// <remarks>
     /// The viewport selection handlers (<c>SetViewport</c>/<c>OnViewportFieldChanged</c>) and the mount canvas
@@ -156,31 +155,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Canvas().style.height.value.value, Is.EqualTo(CustomHeight));
-        }
-
-        [Test]
-        public void Given_ACustomViewport_When_Selected_Then_TheCanvasIsMarkedAsAResponsiveScope()
-        {
-            // Arrange / Act
-            SetCustomViewport((int)CustomWidth, (int)CustomHeight);
-
-            // Assert
-            Assert.That(Canvas().ClassListContains(VelvetResponsive.ViewportClass), Is.True);
-        }
-
-        [Test]
-        public void Given_ACustomViewport_When_SwitchedBackToFull_Then_TheScopeMarkerIsRemoved()
-        {
-            // Arrange — a custom viewport first marks the canvas.
-            SetCustomViewport((int)CustomWidth, (int)CustomHeight);
-            Assume.That(Canvas().ClassListContains(VelvetResponsive.ViewportClass), Is.True,
-                "Precondition: the custom viewport marked the canvas");
-
-            // Act
-            SetViewport(FullViewport);
-
-            // Assert
-            Assert.That(Canvas().ClassListContains(VelvetResponsive.ViewportClass), Is.False);
         }
 
         [Test]

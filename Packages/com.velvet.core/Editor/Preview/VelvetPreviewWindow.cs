@@ -8,15 +8,15 @@ using UnityEngine.UIElements;
 namespace Velvet.Editor.Preview
 {
     /// <summary>
-    /// Live UI preview for Velvet: mounts a <c>[VelvetPreview]</c> story onto this window's real UI Toolkit
-    /// panel and renders it without entering Play Mode. Because the panel is a genuine one, pointer / focus
-    /// events flow into the mounted tree's hooks and re-render in place; while the window is visible the editor
-    /// ticks its panel scheduler each editor frame, which drains Velvet's coalesced re-renders and fires
-    /// Motion / AnimatePresence timers, so animation runs live — an in-editor live preview with hot-reloading
-    /// of edits.
+    /// Live UI preview for Velvet: mounts a <c>[VelvetPreview]</c> story onto a runtime UI Toolkit panel that
+    /// renders into a texture, the kind of panel the game renders through, and shows that texture without
+    /// entering Play Mode. Pointer, wheel, keyboard and navigation events on the shown texture are sent on to
+    /// the panel, so the mounted tree's hooks respond and re-render in place; while the window is visible it
+    /// queues a player-loop update and repaints the texture each tick, so animation runs live — an in-editor
+    /// live preview with hot-reloading of edits.
     /// <para>
-    /// Choosing the game's <c>PanelSettings</c> in the toolbar sizes and scales the canvas the way a runtime panel
-    /// on those settings lays out for the viewport's screen size.
+    /// The panel is built from a copy of the game's <c>PanelSettings</c> chosen in the toolbar, so its theme,
+    /// text settings and scaling are the game's own; see <see cref="VelvetPreviewPanel"/>.
     /// </para>
     /// <para>Open via Window &gt; Velvet &gt; Preview.</para>
     /// <remarks>A standalone workshop for mounting and inspecting one <c>[VelvetPreview]</c> story at a time,
@@ -36,6 +36,8 @@ namespace Velvet.Editor.Preview
         private const string ViewportWidthKey = "Velvet.Preview.ViewportW";
         private const string ViewportHeightKey = "Velvet.Preview.ViewportH";
         private const string PanelSettingsKey = "Velvet.Preview.PanelSettings";
+
+        private const long PanelTickIntervalMs = 16;
 
         // Fixed pane sizes for the two TwoPaneSplitViews: the story list sidebar's width, and the addons
         // controls pane's min height in the stage/controls vertical split.
@@ -77,7 +79,7 @@ namespace Velvet.Editor.Preview
             (ZoomFit, 0f), ("50%", 0.5f), ("100%", 1f), ("200%", 2f),
         };
 
-        // Simulated viewports. "Full" lets the canvas fill the stage (no scope) and is the menu's only entry —
+        // Simulated viewports. "Full" lets the canvas fill the stage and is the menu's only entry —
         // any reference size is reachable by typing into the W/H fields below, so a fixed preset table would
         // only duplicate what free-form entry already covers. "Custom" is not in this list — it is entered via
         // those fields and stores its size under ViewportWidthKey/ViewportHeightKey instead of a table entry.
@@ -96,7 +98,9 @@ namespace Velvet.Editor.Preview
         private VisualElement _stage;     // fixed backdrop the scroll view / zoom box center within
         private ScrollView _stageScroll;  // pans/scrolls when the zoom box exceeds the stage viewport
         private VisualElement _zoomBox;   // layout-sized box (reference * panel scale * zoom) that makes zoom affect layout, not just paint
-        private VisualElement _canvas;    // the element the story actually mounts onto
+        private VisualElement _canvas;    // shows the preview panel's texture, laid out in the panel's units
+        private VelvetPreviewPanel _panel; // the runtime panel the story mounts onto
+        private PreviewPanelBridge _bridge;
         private CheckerboardBackground _checkerboard;
         private PreviewInspectOverlay _overlay;
         private PreviewControlsPanel _controls;
@@ -140,8 +144,7 @@ namespace Velvet.Editor.Preview
 
         private void OnDisable()
         {
-            _host?.Dispose();
-            _host = null;
+            DisposePanel();
             RestoreCapturedTheme();
         }
 
@@ -155,8 +158,8 @@ namespace Velvet.Editor.Preview
             split.Add(BuildSidebar());
             split.Add(BuildStageColumn());
 
-            // The host mounts onto the canvas, which carries the utility stylesheet so utility classes resolve.
-            _host = new VelvetPreviewHost(_canvas);
+            CreatePanel();
+            rootVisualElement.schedule.Execute(TickPanel).Every(PanelTickIntervalMs);
 
             ApplyBackground();
             ApplyTheme();
@@ -299,11 +302,12 @@ namespace Velvet.Editor.Preview
 
             BuildZoomBoxAndCanvas();
             _stageScroll.Add(_zoomBox);
+            _bridge = new PreviewPanelBridge(_canvas, () => _panel);
 
             // Inspection overlay (outline / measure) drawn above everything; non-interactive so it never steals
-            // the story's pointer events. It tracks the canvas subtree and re-draws when the stage resizes.
-            // The canvas must already exist here since PreviewInspectOverlay wraps it directly.
-            _overlay = new PreviewInspectOverlay(_canvas)
+            // the story's pointer events. It tracks the preview panel's subtree and re-draws when the stage
+            // resizes. The canvas and the bridge must already exist here since PreviewInspectOverlay wraps them.
+            _overlay = new PreviewInspectOverlay(_canvas, _bridge)
             {
                 OutlineEnabled = _outline,
                 MeasureEnabled = _measure,
@@ -381,9 +385,9 @@ namespace Velvet.Editor.Preview
                     // canvas's own paint transform must grow from the box's origin, not re-center over it — a
                     // center origin would double-count the zoom, offsetting the canvas from the box it sits in.
                     transformOrigin = new TransformOrigin(0f, 0f),
+                    backgroundSize = new BackgroundSize(Length.Percent(100f), Length.Percent(100f)),
                 },
             };
-            VelvetStyleUtilities.AttachTo(_canvas);
             _zoomBox.Add(_canvas);
         }
 
@@ -407,9 +411,9 @@ namespace Velvet.Editor.Preview
                 ApplyZoom();
                 _overlay?.Refresh();
             });
-            // The canvas's own geometry change (a story laying out after mount) does not affect sizing decisions
-            // here — the reference size is derived from the story metadata / viewport / stage, never from the
-            // canvas's own resolved size — but the overlay still needs to redraw to track it.
+            // The canvas's own geometry change does not affect sizing decisions here — the reference size is
+            // derived from the story metadata / viewport / stage, never from the canvas's own resolved size — but
+            // the overlay still needs to redraw to track it.
             _canvas.RegisterCallback<GeometryChangedEvent>(_ => _overlay?.Refresh());
         }
 
@@ -589,7 +593,7 @@ namespace Velvet.Editor.Preview
         {
             if (_canvas == null || _zoomBox == null) return;
             var factor = _zoom == ZoomFit ? ComputeFitFactor() : ZoomFactor(_zoom);
-            var (refW, refH, _) = ComputeReferenceSize(_selected);
+            var (refW, refH) = ComputeReferenceSize(_selected);
             var paint = factor * PanelScale();
 
             if (IsResolved(refW) && IsResolved(refH))
@@ -629,7 +633,7 @@ namespace Velvet.Editor.Preview
             var stageH = _stage.resolvedStyle.height;
             if (!IsResolved(stageW) || !IsResolved(stageH)) return 1f;
 
-            var (refW, refH, _) = ComputeReferenceSize(_selected);
+            var (refW, refH) = ComputeReferenceSize(_selected);
             if (!IsResolved(refW) || !IsResolved(refH)) return 1f;
 
             var panelScale = PanelScale();
@@ -687,9 +691,6 @@ namespace Velvet.Editor.Preview
             EditorPrefs.SetString(ViewportKey, viewport);
             if (_viewportMenu != null) _viewportMenu.text = ViewportLabel();
 
-            // Re-apply the canvas size (which toggles the viewport marker), then re-mount the story so its
-            // descendants resolve their responsive width source against the new scope — a manipulator binds its
-            // width source at attach, so the story must re-attach for the viewport to drive its breakpoints.
             ApplyCanvasSize(_selected);
             MountWithCurrentArgs(_selected);
         }
@@ -701,22 +702,79 @@ namespace Velvet.Editor.Preview
             EditorPrefs.SetString(
                 PanelSettingsKey, settings == null ? string.Empty : GlobalObjectId.GetGlobalObjectIdSlow(settings).ToString());
             _panelSettingsField?.SetValueWithoutNotify(settings);
-            // Remounted as a viewport change is, since the canvas's scope and units both move.
+            // The panel copies the settings when it is built, so a new choice needs a new panel.
+            DisposePanel();
+            CreatePanel();
             ApplyCanvasSize(_selected);
             MountWithCurrentArgs(_selected);
         }
 
-        // Screen pixels per layout unit on the chosen PanelSettings, for a screen the size of the Custom viewport
-        // or, without one, of the stage. 1 without PanelSettings, so the canvas keeps the editor panel's scale.
+        private void CreatePanel()
+        {
+            _panel = new VelvetPreviewPanel(_panelSettings, 1, 1);
+            _host = new VelvetPreviewHost(_panel.Root);
+            ShowPanelTexture();
+        }
+
+        private void DisposePanel()
+        {
+            _host?.Dispose();
+            _host = null;
+            _panel?.Dispose();
+            _panel = null;
+        }
+
+        private void ShowPanelTexture()
+        {
+            if (_canvas == null || _panel == null) return;
+            var texture = _panel.Texture;
+            // Each texel drawn whole, so the canvas shows the panel's own pixels at any zoom and offset.
+            texture.filterMode = FilterMode.Point;
+            // resolvedStyle: the inline style getter hands back no render texture.
+            if (_canvas.resolvedStyle.backgroundImage.renderTexture != texture)
+            {
+                _canvas.style.backgroundImage = Background.FromRenderTexture(texture);
+            }
+        }
+
+        // Queued outside Play Mode so the preview panel updates while the window is shown.
+        private void TickPanel()
+        {
+            if (_panel == null) return;
+            if (!_panel.IsAlive)
+            {
+                SetPanelSettings(_panelSettings);
+                return;
+            }
+
+            ShowPanelTexture();
+            if (!EditorApplication.isPlaying) EditorApplication.QueuePlayerLoopUpdate();
+            _canvas?.MarkDirtyRepaint();
+            if (_outline || _measure) _overlay?.Refresh();
+        }
+
+        // Screen pixels per layout unit on the chosen PanelSettings for ScreenSize(). 1 without PanelSettings,
+        // which is the scale of the panel VelvetPreviewPanel builds without them.
         private float PanelScale()
         {
             if (_panelSettings == null) return 1f;
-            var screen = ViewportSize();
-            if (screen.Width <= 0f) screen = StageSize();
-
+            var screen = ScreenSize();
             var unitsPerPixel = PreviewPanelScale.Resolve(
                 _panelSettings, new Vector2(screen.Width, screen.Height), Screen.dpi);
             return IsResolved(unitsPerPixel) ? 1f / unitsPerPixel : 1f;
+        }
+
+        // The screen the chosen settings lay out for: their own target texture when they have one, else the
+        // Custom viewport, else the stage. In whole pixels, since the panel's texture is the screen: a
+        // fractional stage would leave the canvas a fraction of a pixel off the texture it stretches over.
+        private (float Width, float Height) ScreenSize()
+        {
+            var target = _panelSettings != null ? _panelSettings.targetTexture : null;
+            if (target != null) return (target.width, target.height);
+            var viewport = ViewportSize();
+            if (viewport.Width > 0f) return viewport;
+            var (stageW, stageH) = StageSize();
+            return (Mathf.Round(stageW), Mathf.Round(stageH));
         }
 
         private (float Width, float Height) StageSize() =>
@@ -844,62 +902,51 @@ namespace Velvet.Editor.Preview
         // resize happens to overwrite it. Every read of a stage/reference size below must go through this guard.
         private static bool IsResolved(float v) => v > 0f && !float.IsNaN(v);
 
-        // Computes the canvas's reference size (pre-zoom, in px) purely from the story metadata / viewport /
-        // stage — no field is written here, so callers can probe "what would the reference size be" without
-        // mutating state:
+        // Computes the preview panel's size in its layout units (pre-zoom) purely from the story metadata /
+        // viewport / stage — no field is written here, so callers can probe "what would the reference size be"
+        // without mutating state:
         // <list type="bullet">
-        // <item>A story's explicit Width/Height ALWAYS wins: an authored card footprint is shown at its real size
-        // and is NOT treated as a viewport scope. If only one axis is authored, the OTHER axis falls back to
-        // the measured stage size (so e.g. a Width-only story still gets a sensible height instead of 0).</item>
-        // <item>Else a fixed viewport (preset or custom) sizes the canvas to that reference W x H and marks it a
-        // viewport scope so the mounted story's sm:/md:/... evaluate against the simulated size.</item>
-        // <item>Else ("Full", no explicit size): the canvas fills the stage — its reference size IS the measured
-        // stage size. It is a viewport scope only with PanelSettings chosen, standing in for the game panel's
-        // root; without them breakpoints match the editor panel root, as that panel is the one shown.</item>
+        // <item>A story's explicit Width/Height ALWAYS wins: an authored card footprint is shown at its real size.
+        // If only one axis is authored, the OTHER axis falls back to the screen (so e.g. a Width-only story still
+        // gets a sensible height instead of 0).</item>
+        // <item>Else the panel is the screen: ScreenSize() in the panel's units.</item>
         // </list>
-        private (float Width, float Height, bool IsResponsiveScope) ComputeReferenceSize(VelvetPreviewStory story)
+        private (float Width, float Height) ComputeReferenceSize(VelvetPreviewStory story)
         {
-            // The stage and the viewport measure screen pixels; the canvas is sized in the panel's layout units.
             var panelScale = PanelScale();
-            var (stageW, stageH) = StageSize();
-            stageW /= panelScale;
-            stageH /= panelScale;
+            var (screenW, screenH) = ScreenSize();
+            screenW /= panelScale;
+            screenH /= panelScale;
+            if (!HasExplicitSize(story)) return (screenW, screenH);
 
-            var hasExplicitSize = story != null && (story.Width > 0 || story.Height > 0);
-            if (hasExplicitSize)
-            {
-                var refW = story.Width > 0 ? story.Width : stageW;
-                var refH = story.Height > 0 ? story.Height : stageH;
-                return (refW, refH, false);
-            }
-
-            var (viewportW, viewportH) = ViewportSize();
-            viewportW /= panelScale;
-            viewportH /= panelScale;
-            if (viewportW > 0f && viewportH > 0f) return (viewportW, viewportH, true);
-
-            return (stageW, stageH, _panelSettings != null);
+            return (story.Width > 0 ? story.Width : screenW, story.Height > 0 ? story.Height : screenH);
         }
 
-        // Writes the canvas's reference size (pre-zoom, in px) as an EXPLICIT pixel size — never a percentage. A
-        // percentage reference would make the canvas's layout size a function of its unscaled parent, leaving no
-        // stable "100%" to multiply by a zoom factor. Also toggles the viewport-scope marker per
-        // ComputeReferenceSize's rule.
+        private static bool HasExplicitSize(VelvetPreviewStory story) =>
+            story != null && (story.Width > 0 || story.Height > 0);
+
+        // Sizes the preview panel's texture to the reference size in screen pixels and the canvas to it in the
+        // panel's units, as an EXPLICIT size — never a percentage. A percentage reference would make the canvas's
+        // layout size a function of its unscaled parent, leaving no stable "100%" to multiply by a zoom factor.
+        // A panel that is the screen keeps the settings' own scaling, which it resolves for its texture; an
+        // explicit footprint is not the screen, so its panel is pinned at the scale PanelScale() resolved for it.
         private void ApplyCanvasSize(VelvetPreviewStory story)
         {
             if (_canvas == null || _zoomBox == null) return;
 
-            var (refW, refH, isResponsiveScope) = ComputeReferenceSize(story);
-            // The scope marker never depends on whether the stage has actually resolved a size — it only depends
-            // on story metadata / viewport mode, both known regardless of layout — so it is always safe to apply,
-            // unlike the pixel size below. Toggling it unconditionally also keeps a Full selection able to clear
-            // the marker even before the first layout pass.
-            _canvas.EnableInClassList(VelvetResponsive.ViewportClass, isResponsiveScope);
-
+            var (refW, refH) = ComputeReferenceSize(story);
             // Unresolved (NaN pre-layout, or a collapsed stage with no explicit/viewport size to fall back to):
             // skip the size write rather than corrupt the canvas with a NaN or 0x0 size. The stage's
             // GeometryChangedEvent re-runs this once the stage actually has a resolved size.
             if (!IsResolved(refW) || !IsResolved(refH)) return;
+
+            var panelScale = PanelScale();
+            if (_panel != null)
+            {
+                _panel.PinScale(HasExplicitSize(story) ? panelScale : null);
+                _panel.Resize(Mathf.RoundToInt(refW * panelScale), Mathf.RoundToInt(refH * panelScale));
+                ShowPanelTexture();
+            }
 
             _canvas.style.width = refW;
             _canvas.style.height = refH;
@@ -950,7 +997,7 @@ namespace Velvet.Editor.Preview
             }
             else
             {
-                (refW, refH, _) = ComputeReferenceSize(_selected);
+                (refW, refH) = ComputeReferenceSize(_selected);
                 factor = _zoom == ZoomFit ? ComputeFitFactor() : ZoomFactor(_zoom);
             }
 
@@ -959,8 +1006,7 @@ namespace Velvet.Editor.Preview
             var pct = Mathf.RoundToInt(factor * 100f);
             var size = $"{Mathf.RoundToInt(refW)}×{Mathf.RoundToInt(refH)}";
 
-            var hasExplicitSize = _selected != null && (_selected.Width > 0 || _selected.Height > 0);
-            var mode = hasExplicitSize ? "Story" : _viewport;
+            var mode = HasExplicitSize(_selected) ? "Story" : _viewport;
             var panel = _panelSettings == null ? string.Empty : $" · panel ×{PanelScale():0.##}";
             return $"{mode}  {size} · {pct}%{panel}";
         }
