@@ -158,6 +158,22 @@ namespace Velvet.Tests
             Assert.That(Drawn(box), Is.EqualTo(expected));
         }
 
+        [TestCase("translate-y-[10]", "translate-y-4", "0,16 - 0")]
+        [TestCase("translate-x-4", "translate-y-[10]", "none - 0")]
+        public void Given_AnOwnClassAndAPoseOfOneComposedFamily_When_ThePoseApplies_Then_TheFamilyDrawsAsOneList(
+            string own, string pose, string expected)
+        {
+            // Arrange
+            var root = new VisualElement();
+            var poses = new Dictionary<string, MotionVariant> { ["open"] = pose };
+
+            // Act
+            using var mounted = V.Mount(root, V.Motion(name: "box", className: own, variants: poses, animate: "open"));
+
+            // Assert
+            Assert.That(Drawn(root.Q("box")), Is.EqualTo(expected));
+        }
+
         [Test]
         public void Given_AUniformScaleBelowAHoverAxisScale_When_Hovered_Then_TheOtherAxisKeepsTheUniformScale()
         {
