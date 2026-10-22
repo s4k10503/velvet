@@ -150,102 +150,85 @@ namespace Velvet
         // Whether the box-shadow Tailwind composes for these classes is one the browser discards, which takes the
         // ring and every shadow-* with it: a ring or inset ring whose colour or width the browser rejects, a ring
         // offset colour it rejects beside an offset width, or a shadow-* or inset-shadow-* layer it rejects or whose
-        // colour it rejects (StyleShadowClass.TryReadBoxShadowClass). Each value is the last class's, as Accumulate
-        // and StyleShadowClass.TryExtract read them.
+        // colour it rejects (StyleShadowClass.TryReadBoxShadowClass). Each value is the one of the class Tailwind
+        // emits last among those writing it (StyleShadowClass.BoxShadowSlot), as the browser reads it.
         internal static bool DiscardsBoxShadow(string[]? classNames)
         {
             if (classNames == null)
             {
                 return false;
             }
-            var ring = default(RingPart);
-            var insetRing = default(RingPart);
-            var offsetWidth = false;
-            var offsetColourRejected = false;
-            var shadow = default(StyleShadowClass.BoxShadowPart);
-            var insetShadow = default(StyleShadowClass.BoxShadowPart);
+            var ring = default(BandSlots);
+            var insetRing = default(BandSlots);
+            var offset = default(BandSlots);
+            var shadow = default(StyleShadowClass.BoxShadowSlot);
+            var shadowColour = default(StyleShadowClass.BoxShadowSlot);
+            var insetShadow = default(StyleShadowClass.BoxShadowSlot);
+            var insetShadowColour = default(StyleShadowClass.BoxShadowSlot);
             foreach (var cls in classNames)
             {
                 if (string.IsNullOrEmpty(cls))
                 {
                     continue;
                 }
-                if (cls == "ring")
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
+                if (core == "ring")
                 {
-                    ring.Width(false);
+                    ring.Width.Offer(core, important, false);
                 }
-                else if (cls == "inset-ring")
+                else if (core == "inset-ring")
                 {
-                    insetRing.Width(false);
+                    insetRing.Width.Offer(core, important, false);
                 }
-                else if (TryMatchPrefix(cls, "ring-offset-", out var offset))
+                else if (TryMatchPrefix(core, "ring-offset-", out var suffix))
                 {
-                    ReadBoxShadowPart(offset!, "ring-offset", ref offsetWidth, ref offsetColourRejected, out _);
+                    ReadBoxShadowPart(core, suffix!, "ring-offset", important, ref offset);
                 }
-                else if (cls != "ring-inset" && TryMatchPrefix(cls, "ring-", out var suffix))
+                else if (core != "ring-inset" && TryMatchPrefix(core, "ring-", out suffix))
                 {
-                    ring.Read(suffix!, "ring");
+                    ReadBoxShadowPart(core, suffix!, "ring", important, ref ring);
                 }
-                else if (TryMatchPrefix(cls, "inset-ring-", out suffix))
+                else if (TryMatchPrefix(core, "inset-ring-", out suffix))
                 {
-                    insetRing.Read(suffix!, "inset-ring");
+                    ReadBoxShadowPart(core, suffix!, "inset-ring", important, ref insetRing);
                 }
-                else if (!StyleShadowClass.TryReadBoxShadowClass(cls, "shadow", ref shadow))
+                else if (!StyleShadowClass.TryReadBoxShadowClass(core, "shadow", important, ref shadow, ref shadowColour))
                 {
-                    StyleShadowClass.TryReadBoxShadowClass(cls, "inset-shadow", ref insetShadow);
+                    StyleShadowClass.TryReadBoxShadowClass(core, "inset-shadow", important, ref insetShadow,
+                        ref insetShadowColour);
                 }
             }
-            var declared = ring.Declared || insetRing.Declared || shadow.Declared || insetShadow.Declared;
-            return declared && (ring.Discards || insetRing.Discards || (offsetWidth && offsetColourRejected)
-                || shadow.Discards || insetShadow.Discards);
+            var declared = ring.Width.Set || insetRing.Width.Set || shadow.Set || insetShadow.Set;
+            return declared && (ring.Discards || insetRing.Discards || (offset.Width.Set && offset.Colour.Rejected)
+                || StyleShadowClass.Discards(shadow, shadowColour) || StyleShadowClass.Discards(insetShadow, insetShadowColour));
         }
 
-        // What the classes of ring-* or inset-ring-* leave: whether one writes the band, and whether the width the
-        // last of those writes or the colour the last colour class writes is one the browser rejects.
-        private struct RingPart
+        // The width and colour slots of ring-*, inset-ring-* or ring-offset-*.
+        private struct BandSlots
         {
-            public bool Declared;
-            private bool _widthRejected;
-            private bool _colourRejected;
+            public StyleShadowClass.BoxShadowSlot Width;
+            public StyleShadowClass.BoxShadowSlot Colour;
 
-            public bool Discards => Declared && (_widthRejected || _colourRejected);
-
-            public void Width(bool rejected)
-            {
-                Declared = true;
-                _widthRejected = rejected;
-            }
-
-            public void Read(string suffix, string root)
-            {
-                var width = false;
-                ReadBoxShadowPart(suffix, root, ref width, ref _colourRejected, out var widthRejected);
-                if (width)
-                {
-                    Width(widthRejected);
-                }
-            }
+            public bool Discards => Width.Set && (Width.Rejected || Colour.Rejected);
         }
 
-        // One ring-, inset-ring- or ring-offset- suffix as Tailwind types it: a width or a colour, each rejected only
-        // where the browser rejects it, so a function or a unit Velvet does not read is not; a palette name it does
-        // not know sets neither. A ring's width is written into calc() beside the offset width, where a bare 0 or a
-        // percentage is rejected, and an inset ring's as it is, where a bare 0 is a length; RejectedValueTests pins
-        // both.
-        private static void ReadBoxShadowPart(string suffix, string root, ref bool width, ref bool colourRejected,
-            out bool widthRejected)
+        // Offers core, one ring-, inset-ring- or ring-offset- class, to the width or colour slot Tailwind types its
+        // suffix into, rejected only where the browser rejects it, so a function or a unit Velvet does not read is
+        // not; a palette name it does not know is offered to neither. A ring's width is written into calc() beside
+        // the offset width, where a bare 0 or a percentage is rejected, and an inset ring's as it is, where a bare 0
+        // is a length; RejectedValueTests pins both.
+        private static void ReadBoxShadowPart(string core, string suffix, string root, bool important, ref BandSlots slots)
         {
-            widthRejected = false;
-            if (WidthScale.ContainsKey(suffix) || (root != "ring" && int.TryParse(suffix, out var n) && n >= 0))
+            if (WidthScale.ContainsKey(suffix) || IsPositiveInteger(suffix))
             {
-                width = true;
+                slots.Width.Offer(core, important, false);
                 return;
             }
             if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
-                if (VelvetPalette.TryResolveColorToken(suffix, out _))
+                if (suffix is "current" or "inherit" or "transparent" || VelvetPalette.TryResolveColorToken(suffix, out _))
                 {
-                    colourRejected = false;
+                    slots.Colour.Offer(core, important, false);
                 }
                 return;
             }
@@ -256,12 +239,24 @@ namespace Velvet
             var value = inner.ToString();
             if (hint != null ? StyleColorValueParser.HintSelectsNonColour(root, hint) : TailwindDataTypes.IsLength(inner))
             {
-                width = true;
-                widthRejected = value.IndexOf('(') < 0 && !StyleCompositeRejection.IsLength(value)
-                    && !(root == "inset-ring" && StyleCompositeRejection.IsZero(value));
+                slots.Width.Offer(core, important, value.IndexOf('(') < 0 && !StyleCompositeRejection.IsLength(value)
+                    && !(root == "inset-ring" && StyleCompositeRejection.IsZero(value)));
                 return;
             }
-            colourRejected = StyleColorValueParser.RejectsAsColour(value);
+            slots.Colour.Offer(core, important, StyleColorValueParser.RejectsAsColour(value));
+        }
+
+        // Tailwind's isPositiveInteger: digits alone, which a width it holds no theme value for takes in px.
+        private static bool IsPositiveInteger(string suffix)
+        {
+            foreach (var c in suffix)
+            {
+                if (c < '0' || c > '9')
+                {
+                    return false;
+                }
+            }
+            return suffix.Length > 0;
         }
 
         private static void Accumulate(string cls, ref RingSlots slots)

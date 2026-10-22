@@ -24,7 +24,13 @@ namespace Velvet.Tests
         [TestCase("translate-x-4 hover:translate-y-[10]", "translate-x-4 hover:translate-x-0")]
         [TestCase("drop-shadow-lg hover:blur-[2]", "drop-shadow-lg hover:drop-shadow-none")]
         [TestCase("translate-y-[10] translate-x-4 hover:translate-y-2", "hover:translate-x-4 hover:translate-y-2")]
-        [TestCase("dark:translate-x-4 hover:translate-y-[10]", "dark:translate-x-4 dark:hover:translate-x-0")]
+        [TestCase("dark:translate-x-4 hover:translate-y-[10]", "dark:translate-x-4 hover:dark:translate-x-0")]
+        [TestCase("translate-x-4 hover:translate-y-[10] focus:translate-y-2",
+            "translate-x-4 hover:translate-x-0 hover:focus:translate-x-4 focus:translate-y-2")]
+        [TestCase("translate-x-4 dark:translate-y-[10] hover:translate-y-2",
+            "translate-x-4 dark:translate-x-0 dark:hover:translate-x-4 hover:translate-y-2")]
+        [TestCase("drop-shadow-lg drop-shadow-red-500 blur-[2] hover:blur-md",
+            "hover:drop-shadow-lg hover:drop-shadow-red-500 hover:blur-md")]
         public void Given_AFamilyHoldingARejectedValue_When_Normalized_Then_TheFamilyIsDropped(string classes, string kept)
         {
             // Act

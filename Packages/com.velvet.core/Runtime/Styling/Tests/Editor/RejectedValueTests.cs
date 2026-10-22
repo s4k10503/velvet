@@ -17,6 +17,8 @@ namespace Velvet.Tests
         [TestCase("ring shadow-[4px]")]
         [TestCase("ring-2 shadow-[0_4_8_#000] shadow-[#ff0000]")]
         [TestCase("ring-2 shadow-[0_4_8_#000] shadow-[color:red]")]
+        [TestCase("ring-[length:2] ring-4")]
+        [TestCase("ring shadow-[0_0_var(--a)_var(--b)] shadow-[#ggg]")]
         public void Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(string classes)
         {
             // Act
@@ -35,7 +37,12 @@ namespace Velvet.Tests
         [TestCase("ring shadow-[var(--shadow)]")]
         [TestCase("ring shadow-[var(--shadow)] shadow-[#ggg]")]
         [TestCase("ring inset-ring-[length:0]")]
-        public void Given_ARingValueVelvetDoesNotRead_When_Extracted_Then_TheRingIsDrawn(string classes)
+        [TestCase("ring shadow-md shadow-red-500 shadow-[#ggg]")]
+        [TestCase("ring-2 ring-[5PX] ring-current")]
+        [TestCase("ring ring-offset-2 ring-offset-[2] ring-offset-inherit")]
+        [TestCase("ring inset-ring inset-ring-[2] inset-ring-transparent")]
+        [TestCase("ring shadow-[calc(1px)_4px] shadow-[#ggg]")]
+        public void Given_ARingWhoseBoxShadowHoldsNoValueTheBrowserRejects_When_Extracted_Then_TheRingIsDrawn(string classes)
         {
             // Act
             var ok = StyleRingClass.TryExtract(classes.Split(' '), out _);
@@ -95,15 +102,18 @@ namespace Velvet.Tests
             Assert.That(ok, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base ignored a rejected ring colour, and a later colour still wins here.
+        // GREEN_ON_BASE(characterization): the base ignored the rejected colour, which Tailwind emits before ring-red-500.
         [Test]
-        public void Given_ARejectedRingColourOverriddenByALaterColour_When_Extracted_Then_TheRingIsDrawn()
+        public void Given_ARejectedRingColourTailwindEmitsBeforeAPaletteColour_When_Extracted_Then_TheRingTakesThePaletteColour()
         {
+            // Arrange
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+
             // Act
-            var ok = StyleRingClass.TryExtract(new[] { "ring", "ring-[5PX]", "ring-[#ff0000]" }, out var spec);
+            var ok = StyleRingClass.TryExtract(new[] { "ring-2", "ring-red-500", "ring-[5PX]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Color : Color.clear, Is.EqualTo(Color.red));
+            Assert.That(ok ? spec.Color : Color.clear, Is.EqualTo(red));
         }
 
         [Test]

@@ -44,6 +44,8 @@ namespace Velvet
             public List<string> Parts { get; init; } = new();
             public string Scope { get; init; } = string.Empty;
             public bool Child { get; init; }
+            // The rank Velvet layers the token's variants at.
+            public long Rank { get; init; }
             // The utility without its variants and important modifier.
             public string Leaf { get; init; } = string.Empty;
         }
@@ -98,21 +100,23 @@ namespace Velvet
                     scopes.Add(member);
                 }
             }
-            if (!scopes.Exists(scope => Holding(members, scope).Exists(holder => holder.Reading.Rejected)))
+            var own = scopes.FindAll(scope => Holding(members, scope).Exists(holder => holder.Reading.Rejected));
+            if (own.Count == 0)
             {
                 return;
             }
-            // A rejection under one variant set has to take out what another holds while both apply, so each union
-            // of the sets is judged too, under the stacked variants that apply only while all of its sets do.
+            // A rejection under one variant set has to take out what another holds while both apply, so the union of
+            // each set the family is rejected under with each other set is judged too, under the stacked variants
+            // that apply while both do: at most k * k unions for k sets. Where three or more apply, the tokens of
+            // every such union among them apply, ranked as their stacked variants are.
             var plain = scopes.FindAll(scope => !scope.Child && scope.Parts.Count > 0);
-            for (var i = 0; i < plain.Count; i++)
+            foreach (var rejectedScope in own)
             {
-                for (var j = 0; j < i; j++)
+                foreach (var other in plain)
                 {
-                    var union = Union(plain[j], plain[i]);
-                    if (!plain.Exists(scope => scope.Scope == union.Scope))
+                    var union = Union(rejectedScope, other);
+                    if (!rejectedScope.Child && !scopes.Exists(scope => scope.Scope == union.Scope))
                     {
-                        plain.Add(union);
                         scopes.Add(union);
                     }
                 }
@@ -125,26 +129,46 @@ namespace Velvet
                     removed[member.Index] = true;
                 }
             }
+            var neutralised = new Dictionary<Reading, int>();
+            foreach (var scope in rejected)
+            {
+                if (!scope.Child && scope.Parts.Count > 0)
+                {
+                    Write(written, scope.Index, Neutralising(members, scope, scopes, rejected, out var bits));
+                    neutralised[scope] = bits;
+                }
+            }
             foreach (var scope in scopes)
             {
-                if (scope.Child || scope.Parts.Count == 0)
+                if (scope.Child || scope.Parts.Count == 0 || rejected.Contains(scope))
                 {
                     continue;
                 }
-                var tokens = rejected.Contains(scope)
-                    ? Neutralising(members, scope, scopes, rejected)
-                    : Restoring(members, scope, removed);
-                if (tokens.Count > 0)
+                var undone = 0;
+                foreach (var (below, bits) in neutralised)
                 {
-                    if (written.TryGetValue(scope.Index, out var before))
+                    if (Contains(scope.Parts, below.Parts))
                     {
-                        before.AddRange(tokens);
-                    }
-                    else
-                    {
-                        written[scope.Index] = tokens;
+                        undone |= bits;
                     }
                 }
+                Write(written, scope.Index, Restoring(members, scope, removed, undone));
+            }
+        }
+
+        private static void Write(Dictionary<int, List<string>> written, int index, List<string> tokens)
+        {
+            if (tokens.Count == 0)
+            {
+                return;
+            }
+            if (written.TryGetValue(index, out var before))
+            {
+                before.AddRange(tokens);
+            }
+            else
+            {
+                written[index] = tokens;
             }
         }
 
@@ -166,10 +190,12 @@ namespace Velvet
         }
 
         // The tokens under scope's variants that write each property a set it contains, and the family is accepted
-        // under, holds back to a value that does nothing; important where what holds it there is.
+        // under, holds back to a value that does nothing; important where what holds it there is. neutralised has a
+        // bit for each property written.
         private static List<string> Neutralising(List<Reading> members, Reading scope, List<Reading> scopes,
-            List<Reading> rejected)
+            List<Reading> rejected, out int neutralised)
         {
+            neutralised = 0;
             var tokens = new List<string>();
             var neutrals = NeutralsOf(scope.Family);
             for (var bit = 0; bit < neutrals.Length; bit++)
@@ -195,19 +221,22 @@ namespace Velvet
                 if (held && neutral != null)
                 {
                     tokens.Add(scope.Variants + neutral + (important ? "!" : string.Empty));
+                    neutralised |= 1 << bit;
                 }
             }
             return tokens;
         }
 
-        // The holding tokens of an accepted scope that a rejection below it took out, written under its variants.
-        private static List<string> Restoring(List<Reading> members, Reading scope, bool[] removed)
+        // The holding tokens of an accepted scope that a rejection below it took out, or that a set it contains wrote
+        // a neutral over (undone), written again under its variants, which outrank that set's.
+        private static List<string> Restoring(List<Reading> members, Reading scope, bool[] removed, int undone)
         {
             var tokens = new List<string>();
-            foreach (var (_, holder) in Holding(members, scope))
+            foreach (var (property, holder) in Holding(members, scope))
             {
                 var token = scope.Variants + holder.Leaf + (holder.Important ? "!" : string.Empty);
-                if (removed[holder.Index] && !tokens.Contains(token))
+                var lost = removed[holder.Index] || ((undone & property) != 0 && holder.Scope != scope.Scope);
+                if (lost && !tokens.Contains(token))
                 {
                     tokens.Add(token);
                 }
@@ -238,18 +267,18 @@ namespace Velvet
             return holding;
         }
 
-        // Negative when z holds a property both write over a: an important one over any other, then the one under
-        // more variants, which Tailwind emits later where one variant set contains the other, then the one writing
-        // fewer of the family's properties, then the later by name.
+        // Negative when z holds a property both write over a: an important one over any other, then the one Velvet
+        // layers higher for its variants (StyleRuleOrder.RankOfVariants), then the one Tailwind emits later among
+        // rules of one rank: the one writing fewer of the family's properties, then the later by name.
         private static int Compare(Reading a, Reading z)
         {
             if (a.Important != z.Important)
             {
                 return a.Important ? 1 : -1;
             }
-            if (a.Parts.Count != z.Parts.Count)
+            if (a.Rank != z.Rank)
             {
-                return a.Parts.Count.CompareTo(z.Parts.Count);
+                return a.Rank.CompareTo(z.Rank);
             }
             var byCount = CountOf(z.Properties).CompareTo(CountOf(a.Properties));
             if (byCount != 0)
@@ -293,6 +322,10 @@ namespace Velvet
             {
                 return false;
             }
+            if (function == "drop-shadow" && WritesDropShadowColour(leaf))
+            {
+                properties = DropShadowColour;
+            }
             var rejected = false;
             var open = body.IndexOf('[');
             if (open > 0 && body[body.Length - 1] == ']')
@@ -314,6 +347,7 @@ namespace Velvet
                 Scope = (child ? "&" : string.Empty) + StyleSpacingPrecedence.VariantSetOf(variants),
                 Child = child,
                 Leaf = leaf,
+                Rank = StyleRuleOrder.RankOfVariants(variants + leaf),
             };
             return true;
         }
@@ -391,7 +425,9 @@ namespace Velvet
             Family.Translate => new[] { "translate-x-0", "translate-y-0", null },
             Family.Scale => new[] { "scale-x-100", "scale-y-100", null },
             Family.Transform => new[] { "skew-x-0", "skew-y-0", null, null, null },
-            _ => s_filterNeutrals,
+            Family.Filter => s_filterNeutrals,
+            Family.None => throw new ArgumentOutOfRangeException(nameof(family), family, "no family token is read as None"),
+            _ => throw new ArgumentOutOfRangeException(nameof(family), family, null),
         };
 
         private static readonly string[] s_filters =
@@ -399,11 +435,36 @@ namespace Velvet
             "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia", "drop-shadow",
         };
 
+        // drop-shadow-none writes the drop shadow off whatever its colour, which needs no token of its own.
         private static readonly string?[] s_filterNeutrals =
         {
             "blur-none", "brightness-100", "contrast-100", "grayscale-0", "hue-rotate-0", "invert-0", "saturate-100",
-            "sepia-0", "drop-shadow-none",
+            "sepia-0", "drop-shadow-none", null,
         };
+
+        // The bit of --tw-drop-shadow-color, which a drop-shadow colour writes apart from the size's --tw-drop-shadow.
+        private const int DropShadowColour = 1 << 9;
+
+        private static readonly string[] s_dropShadowSizes = { "none", "xs", "sm", "md", "lg", "xl", "2xl" };
+
+        // Whether Tailwind writes leaf, a drop-shadow utility, as its colour: a name it holds no size for, or a
+        // bracket typed as a colour.
+        private static bool WritesDropShadowColour(string leaf)
+        {
+            const string prefix = "drop-shadow-";
+            if (!leaf.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(leaf, prefix.Length);
+            var suffix = slash < 0 ? leaf.Substring(prefix.Length) : leaf.Substring(prefix.Length, slash - prefix.Length);
+            if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
+            {
+                return Array.IndexOf(s_dropShadowSizes, suffix) < 0;
+            }
+            return StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out var value)
+                && (hint != null ? hint == "color" : TailwindDataTypes.IsColor(value));
+        }
 
         // Whether the browser takes value where Tailwind writes it for function. A value only a math function or a
         // var() spells is taken, since nothing here reads one to the end.

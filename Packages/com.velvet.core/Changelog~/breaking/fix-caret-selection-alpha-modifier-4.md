@@ -5,7 +5,9 @@
   is no length (`ring-[length:2]`, `ring-[length:0]`, `ring-[length:50%]`), a `shadow-[…]` that is no box-shadow
   (`shadow-[0_4_8_#000]`, `shadow-[4px]`), a shadow colour that is no colour where a shadow reads it
   (`shadow-md shadow-[#ggg]`), and the same values written through `inset-ring-*` and `inset-shadow-*`, take the
-  ring and every `shadow-*` on the element with them, where the ring used to draw. A
+  ring and every `shadow-*` on the element with them, where the ring used to draw. Each value is the one Tailwind
+  emits last, whatever order the classes are written in, so `ring-[length:2] ring-4` discards while
+  `ring-2 ring-red-500 ring-[5PX]` draws a red ring. A
   `from-` / `via-` / `to-` colour that is no colour leaves its stop transparent, and a position that is no length
   or percentage returns the stop to its initial one. A function, `var()`, `currentColor`, a colour name or a unit
   Velvet does not read is not taken for a rejected value.
@@ -15,4 +17,6 @@
   along x, and `drop-shadow-lg blur-[2]` no longer draws its drop shadow. Only the value each property holds
   counts, so `blur-[2] blur-md` still blurs. Under a variant the family is off while the variant applies:
   `translate-x-4 hover:translate-y-[10]` stops translating while hovered, and
-  `dark:translate-x-4 hover:translate-y-[10]` while hovered in dark mode. `blur-[-2px]` is declined.
+  `dark:translate-x-4 hover:translate-y-[10]` while hovered in dark mode. A variant value holds over another by its
+  selector and then Tailwind's variant order, so `translate-x-4 hover:translate-y-[10] focus:translate-y-2`
+  translates while hovered and focused. `blur-[-2px]` is declined.
