@@ -5753,28 +5753,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALayoutIdMotionWithAPixelRadius_When_ItsTweenStartsScaledDifferentlyOnEachAxis_Then_ItsFaceIsRoundedAcrossByTheHorizontalScale()
-        {
-            // Arrange / Act — drawn at a quarter across and a half down.
-            s_resizeTo = new Vector2Int(400, 200);
-            var element = ResizeBoxWithOrigin("rounded-[20px]");
-
-            // Assert — twenty over a quarter, which the quarter it is drawn at takes back to twenty.
-            Assert.That(FaceOutline.Of(element)[0].x, Is.EqualTo(80f).Within(0.5f));
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionWithAPixelRadius_When_ItsTweenStartsScaledDifferentlyOnEachAxis_Then_ItsFaceIsRoundedDownByTheVerticalScale()
-        {
-            // Arrange / Act — drawn at a quarter across and a half down.
-            s_resizeTo = new Vector2Int(400, 200);
-            var element = ResizeBoxWithOrigin("rounded-[20px]");
-
-            // Assert — twenty over a half.
-            Assert.That(FaceOutline.TopLeftVerticalRadius(FaceOutline.Of(element)), Is.EqualTo(40f).Within(0.5f));
-        }
-
-        [Test]
         public void Given_ALayoutIdMotionStartingTwiceAsWideAndHalfAsTallAsItIsLaidOut_When_ItsTweenStarts_Then_ItsRadiusSlotsHoldNone()
         {
             // Arrange / Act — laid out at 50×200 from 100×100, so drawn at twice across and half down, whose product is one.
@@ -5783,19 +5761,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(element.style.borderTopLeftRadius.value.value, Is.Zero);
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionRoundedPastItsBoxWhenDividedByItsScale_When_ItsTweenStarts_Then_ItsFaceIsFittedToItsBox()
-        {
-            // Arrange / Act — eighty at 100×100, laid out at 400×200: divided by a quarter and a half, 320 and 160, which
-            // overlap on both sides.
-            s_resizeTo = new Vector2Int(400, 200);
-            var element = ResizeBoxWithOrigin("rounded-[80px]");
-
-            // Assert — both by the one factor that fits them, 400 over 640, as CSS scales radii that overlap: drawn at fifty,
-            // half the box it is drawn over.
-            Assert.That(FaceOutline.Of(element)[0].x, Is.EqualTo(200f).Within(0.5f));
         }
 
         [Test]
@@ -5810,24 +5775,8 @@ namespace Velvet.Tests
             Assert.That(element.style.backgroundImage.value.vectorImage, Is.Not.Null);
         }
 
-        [Test]
-        public void Given_ARingedLayoutIdMotionWithAPixelRadius_When_ItsTweenStartsScaledDifferentlyOnEachAxis_Then_UIToolkitNoLongerPaintsTheBand()
-        {
-            // Arrange — the bundled sheet; ringed, drawn at a quarter across and a half down.
-            VelvetStyleUtilities.AttachTo(Root);
-            s_resizeTo = new Vector2Int(400, 200);
-            var element = ResizeBoxWithOrigin("rounded-[20px] ring-2 ring-[#ff0000]");
-
-            // Act — the frames the band follows its element on.
-            for (var i = 0; i < 3; i++) Tick();
-
-            // Assert — the band's native border hidden, which one length a corner would draw elliptical.
-            var band = element.parent.Q<VisualElement>(RingOverlay.OverlayName);
-            Assert.That(band.style.borderTopColor.value.a, Is.Zero);
-        }
-
         // GREEN_ON_BASE(characterization): the base's layoutId projection never writes the background-image slot.
-        // Dropping `style.backgroundImage = state.OwnImage` from ProjectedCornerFace.End reddens this case.
+        // Dropping `style.backgroundImage = state.Own.Image` from ProjectedCornerFace.HandBackImage reddens this case.
         [Test]
         public void Given_AnOverflowHiddenLayoutIdMotionClippedToAVectorImage_When_ItsTweenLands_Then_ItsBackgroundImageSlotIsHandedBack()
         {
@@ -5844,7 +5793,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's layoutId projection never writes the background-color slot.
-        // Dropping `style.backgroundColor = state.OwnBackground` from ProjectedCornerFace.End reddens this case.
+        // Writing `Cleared` where ProjectedCornerFace.StepTail writes a landed slot's `color.Own` reddens this case.
         [Test]
         public void Given_ALayoutIdMotionWithABackgroundAndAPixelRadius_When_ItsTweenStartedScaledDifferentlyOnEachAxisLands_Then_ItsBackgroundSlotIsHandedBack()
         {

@@ -11,7 +11,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins, by real GPU pixel readback, that a face a silhouette layer repaints keeps each border side's own colour:
     /// a red border whose top side alone is blue, eight pixels wide, on a box the skew layer repaints and on one the
-    /// shadow layer repaints.
+    /// shadow layer repaints; and where the two sides meet in a rounded corner, divided by their widths.
     /// </summary>
     [Timeout(600000)]
     internal sealed class SilhouetteBorderSidesPlaybackTests
@@ -81,6 +81,20 @@ namespace Velvet.Tests
 
             // Assert — halfway along the top band and halfway into it.
             Assert.That(ColourAt(new Vector2(60f, 4f), 0f), Is.EqualTo("blue"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base strokes every side in the left one's colour, red here too.
+        // Returning 0.5 from BorderBandPainter's corner split, dividing the corner halfway, reddens this case.
+        [UnityTest]
+        public IEnumerator Given_AShadowedRoundedBoxWhoseLeftBorderIsFourTimesItsTop_When_ItsFaceIsRepainted_Then_TheLeftSideTakesFourFifthsOfTheCorner()
+        {
+            // Arrange / Act — a 24px corner between a sixteen-pixel red left side and a four-pixel blue top.
+            yield return Mount("ShadowCornerSplit", "w-[120px] h-[80px] mt-[60px] ml-[60px] bg-[#000000] rounded-[24px] "
+                + "border-[4px] border-l-[16px] border-[#ff0000] border-t-[#0000ff] shadow-[0px_0px_8px_#ffffff]");
+
+            // Assert — some two thirds of the way round the corner from the left side, midway across the band: in the half
+            // the top takes of a corner divided evenly, and outside the fifth it takes of one divided by width.
+            Assert.That(ColourAt(new Vector2(15.6f, 5.2f), 0f), Is.EqualTo("red"));
         }
     }
 }

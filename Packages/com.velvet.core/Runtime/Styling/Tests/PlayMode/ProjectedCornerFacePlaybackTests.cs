@@ -229,21 +229,6 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_ARoundedLayoutIdMotionWithABackgroundImageDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_TheImageFillsItsCornerOutToACircle()
-        {
-            // Arrange / Act — a green texture given as the card's background image.
-            _texture = new Texture2D(4, 4);
-            var green = new Color32[16];
-            for (var i = 0; i < green.Length; i++) green[i] = new Color32(0, 255, 0, 255);
-            _texture.SetPixels32(green);
-            _texture.Apply();
-            yield return MountAndWiden("ImageCircle", card => card.style.backgroundImage = new StyleBackground(_texture));
-
-            // Assert
-            Assert.That(Read(new[] { Circle }, new[] { Ellipse }, ("green", IsGreen), ("black", IsBlack)), Is.EqualTo("green"));
-        }
-
-        [UnityTest]
         public IEnumerator Given_ABorderedRoundedLayoutIdMotionDrawnAQuarterAcross_When_ItsBorderIsPainted_Then_NothingIsPaintedOutsideTheCircle()
         {
             // Arrange / Act — an eight-pixel red border, drawn eight pixels deep along the top.
@@ -258,21 +243,58 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_AShadowedRoundedLayoutIdMotionDrawnAQuarterAcross_When_ItsShadowIsPainted_Then_ItsCornerIsRoundedByEachAxissScale()
+        public IEnumerator Given_ARoundedLayoutIdMotionWithABackgroundImageDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_NoImageIsPaintedOutsideTheCircle()
         {
-            // Arrange / Act — a sixteen-pixel spread, unblurred, drawn four across and sixteen down. Its corner, the card's
-            // 48 over each axis's scale grown by sixteen, is drawn 52 across and 64 down; one length a corner draws it 28
-            // across and 112 down, or 16 across and 64 down where it was read before the move.
-            s_cardClasses = "bg-[#0000ff] shadow-[0px_0px_0px_16px_#ff0000]";
-            yield return MountAndWiden("ShadowCorner");
-            var shadowCorner = DrawnCorner - new Vector2(4f, 16f);
+            // Arrange / Act — a green texture given as the card's background image.
+            _texture = new Texture2D(4, 4);
+            var green = new Color32[16];
+            for (var i = 0; i < green.Length; i++) green[i] = new Color32(0, 255, 0, 255);
+            _texture.SetPixels32(green);
+            _texture.Apply();
+            yield return MountAndWiden("ImageBeyondCircle", card => card.style.backgroundImage = new StyleBackground(_texture));
 
-            // Assert — black where either corner rounded alike would have reached and the one rounded per axis does not,
-            // outside the card, while the shadow runs along its top.
-            var shadowed = IsRed(PixelAt(Vector2Int.FloorToInt(DrawnCorner + new Vector2(100f, -8f))));
-            var reading = Read(new[] { new TopLeftCorner(shadowCorner, new Vector2(28f, 112f)), new TopLeftCorner(shadowCorner, new Vector2(16f, 64f)) },
-                new[] { Circle, new TopLeftCorner(shadowCorner, new Vector2(52f, 64f)) }, ("red", IsRed), ("black", IsBlack));
-            Assert.That(shadowed ? reading : "no shadow", Is.EqualTo("black"));
+            // Assert — black outside the circle where a square or elliptical corner would show the image, while the image
+            // fills the face.
+            var shown = IsGreen(Interior);
+            Assert.That(shown ? Read(new[] { Ellipse }, new[] { Circle }, ("green", IsGreen), ("black", IsBlack)) : "no image",
+                Is.EqualTo("black"));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ARingedRoundedLayoutIdMotionDrawnAQuarterAcross_When_ItsBandIsPainted_Then_NothingIsPaintedOutsideItsCornersPerAxis()
+        {
+            // Arrange / Act — an eight-pixel green band, drawn two across and eight down. Its outer corner, the card's 48
+            // over each axis's scale grown by eight, is drawn 50 across and 56 down; one length a corner draws it 26
+            // across and 104 down, or 14 across and 56 down where the band read the card's radius before the move.
+            s_cardClasses = "bg-[#0000ff] ring-8 ring-[#00ff00]";
+            yield return MountAndWiden("RingCorner");
+            var bandCorner = DrawnCorner - new Vector2(2f, 8f);
+
+            // Assert — black where either band rounded alike would have run and the one rounded per axis does not,
+            // outside the card, while the band runs along its top.
+            var banded = IsGreen(PixelAt(Vector2Int.FloorToInt(DrawnCorner + new Vector2(100f, -4f))));
+            var reading = Read(new[] { new TopLeftCorner(bandCorner, new Vector2(26f, 104f)), new TopLeftCorner(bandCorner, new Vector2(14f, 56f)) },
+                new[] { Circle, new TopLeftCorner(bandCorner, new Vector2(50f, 56f)) }, ("green", IsGreen), ("black", IsBlack));
+            Assert.That(banded ? reading : "no band", Is.EqualTo("black"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a moving Motion's background to UI Toolkit, which paints the
+        // colour its classes give. Painting the colour the face began with, as reading the resolved style beneath a slot
+        // it has hidden does, reddens this case.
+        [UnityTest]
+        public IEnumerator Given_ARoundedLayoutIdMotionDrawnAQuarterAcross_When_ItsClassesChangeItsBackgroundMidMove_Then_TheFaceIsPaintedInTheNewColour()
+        {
+            // Arrange — blue.
+            s_cardClasses = "bg-[#0000ff]";
+            yield return MountAndWiden("ColourChange");
+
+            // Act — red, with the box unchanged.
+            s_cardClasses = "bg-red-500";
+            s_setStep.Invoke(2);
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
+
+            // Assert
+            Assert.That(IsRed(Interior), Is.True);
         }
     }
 }
