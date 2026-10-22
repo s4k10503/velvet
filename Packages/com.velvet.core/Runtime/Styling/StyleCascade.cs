@@ -60,9 +60,34 @@ namespace Velvet
         // cannot be read.
         public static bool ClipsOverflow(VisualElement element)
         {
+#if !ENABLE_IL2CPP
+            if (s_compiledOverflow != null) return s_compiledOverflow(element) != 0;
+#endif
             if (s_style == null || s_overflow == null) return element.style.overflow.value == Overflow.Hidden;
             return Convert.ToInt32(s_overflow.GetValue(s_style.GetValue(element))) != 0;
         }
+
+#if !ENABLE_IL2CPP
+        // Read by an accessor compiled once, as RulesHash is, since a projected face asks on every pass.
+        private static readonly Func<VisualElement, int>? s_compiledOverflow = CompileOverflow();
+
+        private static Func<VisualElement, int>? CompileOverflow()
+        {
+            if (s_style == null || s_overflow == null) return null;
+            try
+            {
+                var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
+                var overflow = System.Linq.Expressions.Expression.Property(
+                    System.Linq.Expressions.Expression.Field(element, s_style), s_overflow);
+                return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, int>>(
+                    System.Linq.Expressions.Expression.Convert(overflow, typeof(int)), element).Compile();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+#endif
 
         // The cached ComputedStyle boxed, or null where it cannot be read. Members of it are read off the result
         // by their PropertyInfo.

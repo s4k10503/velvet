@@ -16,19 +16,20 @@ namespace Velvet
     /// its radius slots hold none (<see cref="LayoutIdLook.WriteRadii"/>), and the native background colour, border
     /// colours and background image are hidden and painted here instead, in the element's own
     /// generateVisualContent. What is painted is the element's own: an inline value it holds, else what its rules give
-    /// beneath the slot written here, carried as UI Toolkit would carry the slot by the element's transition of it.
+    /// beneath the slot written here, each colour carried as one value on the element's transition of it
+    /// (<see cref="ColorCarry"/>).
     /// <para>
     /// An element that clips its content is given, in its background-image slot, a VectorImage of its border edge,
-    /// which UI Toolkit stencils the content to. It is the border edge rather than the padding edge UI Toolkit clips to
-    /// natively, since an element's own clip takes its own generated content (<see cref="RingOverlay"/>), and the
-    /// border is painted here; so such an element with a border clips its content at the border edge.
+    /// placed by the background-position, background-repeat and background-size slots, which UI Toolkit stencils the
+    /// content to. It is the border edge, so such an element with a border clips its content there rather than at the
+    /// padding edge UI Toolkit clips to natively.
     /// </para>
     /// <para>
     /// A background image is painted as a mesh over the part of its rect inside the border edge, drawn at the size
     /// its background-size gives where that is one of the three a <c>-unity-background-scale-mode</c> spells
     /// (stretched, cover or contain, centred, unrepeated); its edge along the rounded corners is not antialiased.
-    /// One drawn otherwise — repeated, positioned, sized in lengths, nine-sliced, a vector image, or a sprite sliced or
-    /// packed rotated — is not painted here, and the element's corners are left to UI Toolkit (<see cref="Draw"/>
+    /// One drawn otherwise — repeated, positioned, sized in lengths, nine-sliced, a vector image, or a sprite sliced,
+    /// packed rotated or packed tight — is not painted here, and the element's corners are left to UI Toolkit (<see cref="Draw"/>
     /// declines).
     /// </para>
     /// </remarks>
@@ -51,11 +52,11 @@ namespace Velvet
             public StyleColor Written;
             // A layer's suppression sentinel stands in the slot (SilhouetteFace.SuppressedColor), and that layer paints it.
             public bool Layer;
-            public readonly LayoutIdCarry[] Channels = { new(), new(), new(), new() };
+            public readonly ColorCarry Carry = new();
 
-            public Color Value => new(Channels[0].Value, Channels[1].Value, Channels[2].Value, Channels[3].Value);
+            public Color Value => Carry.Value;
 
-            public bool Landed => LayoutIdLook.Landed(Channels);
+            public bool Landed => Carry.Landed;
         }
 
         private sealed class State
@@ -66,6 +67,10 @@ namespace Velvet
 
             public FaceImage? Image;
             public bool Clips;
+            // Something else wrote an image or placement slot, or clipping began, since the clip's slots were written.
+            public bool RewriteClip;
+            // The callback list as this last left it, with the face first.
+            public System.Action<MeshGenerationContext>? Installed;
             // The image slot and, where the face clips, its placement slots: what each held of the element's own and what
             // was last written to it here.
             public readonly InlineSlots Own = new();
@@ -121,6 +126,16 @@ namespace Velvet
             return false;
         }
 
+        // The colour a slot of the element's (StyleCascade.FaceColor's order) is drawn with while this holds it; null where
+        // it does not.
+        public static Color? Drawn(VisualElement element, int slot)
+            => s_states.TryGetValue(element, out var state) && !state.Colors[slot].Layer ? state.Colors[slot].Value : null;
+
+        // What the element itself holds in a colour slot this writes: inline, the slot's own value from before this wrote
+        // it, else inline as it stands.
+        public static StyleColor InlineOf(VisualElement element, int slot, StyleColor inline)
+            => s_states.TryGetValue(element, out var state) ? state.Colors[slot].Own : inline;
+
         // Paints the element's face with the given radii, fitted to its box, until End, its colours carried over dtSec
         // more. Returns false, having ended any face it painted, where the element's background image is one this does
         // not paint.
@@ -134,6 +149,11 @@ namespace Velvet
             else if (state.Tail != null)
             {
                 Resume(element, state);
+            }
+            else if (!ReferenceEquals(element.generateVisualContent, state.Installed))
+            {
+                element.generateVisualContent -= state.OnGenerate;
+                InsertFirst(element, state);
             }
             if (!SyncImage(element, state))
             {
@@ -187,7 +207,7 @@ namespace Velvet
 
         private static State Begin(VisualElement element)
         {
-            var state = new State { Clips = StyleCascade.ClipsOverflow(element) };
+            var state = new State();
             var resolved = element.resolvedStyle;
             state.Begun = new BackgroundLayer(resolved.backgroundImage, resolved.backgroundPositionX, resolved.backgroundPositionY,
                 resolved.backgroundRepeat, resolved.backgroundSize);
@@ -200,7 +220,7 @@ namespace Velvet
                 color.Layer = IsLayerSentinel(color.Own);
                 // From where it is drawn, which a transition of it running now has carried part way.
                 var drawn = Resolved(resolved, slot);
-                for (var channel = 0; channel < 4; channel++) color.Channels[channel].Land(drawn[channel]);
+                color.Carry.Land(drawn);
             }
             var style = element.style;
             state.Own.Take(style);
@@ -210,7 +230,7 @@ namespace Velvet
             state.WrittenRepeat = style.backgroundRepeat;
             state.WrittenSize = style.backgroundSize;
             state.OnGenerate = mgc => Paint(mgc, element, state);
-            InsertFirst(element, state.OnGenerate);
+            InsertFirst(element, state);
             s_states.Add(element, state);
             return state;
         }
@@ -222,8 +242,8 @@ namespace Velvet
             state.Tail = null;
             var style = element.style;
             state.Own.Image = state.WrittenImage = style.backgroundImage;
-            state.BakedSize = new Vector2(float.NaN, float.NaN);
-            InsertFirst(element, state.OnGenerate);
+            state.RewriteClip = true;
+            InsertFirst(element, state);
         }
 
         // Steps the colours on to the element's own, writing each inline until it lands and then its own; true once
@@ -276,10 +296,7 @@ namespace Velvet
             }
             if (color.Layer) return;
             var target = OwnColor(element, color, slot);
-            for (var channel = 0; channel < 4; channel++)
-            {
-                color.Channels[channel].Step(target[channel], dtSec, element, s_properties[slot], s_shorthands[slot]);
-            }
+            color.Carry.Step(target, dtSec, element, s_properties[slot], s_shorthands[slot]);
         }
 
         // An inline value the element holds, else what its rules give beneath the slot, else where it is carried to now.
@@ -287,7 +304,7 @@ namespace Velvet
         {
             if (color.Own.keyword == StyleKeyword.Undefined) return color.Own.value;
             if (StyleCascade.FaceColor(element, slot) is { } cascaded) return cascaded;
-            return new Color(color.Channels[0].Target, color.Channels[1].Target, color.Channels[2].Target, color.Channels[3].Target);
+            return color.Carry.Target;
         }
 
         private static void WriteColor(VisualElement element, ColorSlot color, int slot, StyleColor value)
@@ -331,25 +348,38 @@ namespace Velvet
         private static bool IsLayerSentinel(StyleColor slot) =>
             slot.keyword == StyleKeyword.Undefined && SameColor(slot.value, SilhouetteFace.SuppressedColor);
 
-        // Takes back each image slot something else wrote since this did, reads the element's own image off its own
-        // slots and, beneath them, its rules, and writes the slots this holds: none in the image slot, or the clip with
-        // its placement. False where the element's own image is one this does not paint.
+        // Takes back each image slot something else wrote since this did, and reads whether the element clips its content
+        // now; reads the element's own image off its own slots and, beneath them, its rules. Where it clips, a slot
+        // something else wrote has the clip's written over it again (SyncClip); where it does not, the image slot holds
+        // none and the placement slots its own. False where the element's own image is one this does not paint.
         private static bool SyncImage(VisualElement element, State state)
         {
             var style = element.style;
             var own = state.Own;
-            if (style.backgroundImage != state.WrittenImage) own.Image = style.backgroundImage;
-            if (style.backgroundPositionX != state.WrittenPositionX) own.X = style.backgroundPositionX;
-            if (style.backgroundPositionY != state.WrittenPositionY) own.Y = style.backgroundPositionY;
-            if (style.backgroundRepeat != state.WrittenRepeat) own.Repeat = style.backgroundRepeat;
-            if (style.backgroundSize != state.WrittenSize) own.Size = style.backgroundSize;
+            var foreign = false;
+            if (style.backgroundImage != state.WrittenImage) (own.Image, foreign) = (style.backgroundImage, true);
+            if (style.backgroundPositionX != state.WrittenPositionX) (own.X, foreign) = (style.backgroundPositionX, true);
+            if (style.backgroundPositionY != state.WrittenPositionY) (own.Y, foreign) = (style.backgroundPositionY, true);
+            if (style.backgroundRepeat != state.WrittenRepeat) (own.Repeat, foreign) = (style.backgroundRepeat, true);
+            if (style.backgroundSize != state.WrittenSize) (own.Size, foreign) = (style.backgroundSize, true);
             if (!TryReadImage(OwnLayer(element, own, state.Begun), element.resolvedStyle, out var image)) return false;
             state.Image = image;
-            if (!state.Clips)
-            {
-                style.backgroundImage = state.WrittenImage = new StyleBackground(StyleKeyword.None);
-            }
+            var clips = StyleCascade.ClipsOverflow(element);
+            if (clips && (foreign || !state.Clips)) state.RewriteClip = true;
+            if (!clips && state.Clips) HandBackPlacement(element, state);
+            state.Clips = clips;
+            if (!clips) style.backgroundImage = state.WrittenImage = new StyleBackground(StyleKeyword.None);
             return true;
+        }
+
+        // The placement slots back to the element's own, which no longer place a clip.
+        private static void HandBackPlacement(VisualElement element, State state)
+        {
+            var style = element.style;
+            style.backgroundPositionX = state.WrittenPositionX = state.Own.X;
+            style.backgroundPositionY = state.WrittenPositionY = state.Own.Y;
+            style.backgroundRepeat = state.WrittenRepeat = state.Own.Repeat;
+            style.backgroundSize = state.WrittenSize = state.Own.Size;
         }
 
         // An element's own inline image slot and placement slots.
@@ -389,13 +419,7 @@ namespace Velvet
         {
             var style = element.style;
             style.backgroundImage = state.Own.Image;
-            if (state.Clips)
-            {
-                style.backgroundPositionX = state.Own.X;
-                style.backgroundPositionY = state.Own.Y;
-                style.backgroundRepeat = state.Own.Repeat;
-                style.backgroundSize = state.Own.Size;
-            }
+            if (state.Clips) HandBackPlacement(element, state);
             for (var i = 0; i < state.ClipImages.Length; i++)
             {
                 if (state.ClipImages[i] is { } image) ClipPathVectorImageBaker.DestroyImage(image);
@@ -425,7 +449,8 @@ namespace Velvet
             else if (background.sprite != null)
             {
                 var sprite = background.sprite;
-                if (sprite.texture == null || sprite.border != Vector4.zero || sprite.packed && sprite.packingRotation != SpritePackingRotation.None)
+                if (sprite.texture == null || sprite.border != Vector4.zero
+                    || sprite.packed && (sprite.packingRotation != SpritePackingRotation.None || sprite.packingMode == SpritePackingMode.Tight))
                 {
                     return false;
                 }
@@ -449,35 +474,42 @@ namespace Velvet
             return true;
         }
 
-        // First, so that the face lies beneath what the element paints in its own content already: its text or picture,
-        // and a dashed divider StyleDivideManipulator's painter draws on its edge
-        // (Given_ADividedLayoutIdMotionDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_ItsDashedDividerShowsOverIt).
-        private static void InsertFirst(VisualElement element, System.Action<MeshGenerationContext> paint)
-            => element.generateVisualContent = paint + element.generateVisualContent;
+        // First, so that the face lies beneath what the element paints in its own content: its text or picture, and a
+        // dashed divider StyleDivideManipulator's painter draws on its edge
+        // (Given_ADividedLayoutIdMotionDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_ItsDashedDividerShowsOverIt). Draw
+        // puts it first again on a pass that finds the list changed since.
+        private static void InsertFirst(VisualElement element, State state)
+        {
+            element.generateVisualContent = state.OnGenerate + element.generateVisualContent;
+            state.Installed = element.generateVisualContent;
+        }
 
-        // Bakes the border edge again where the box or a radius has moved since the last bake.
+        // Bakes the border edge again where the box or a radius has moved since the last bake, and writes the clip and its
+        // placement over the slots where it baked or something else wrote them (SyncImage).
         private static void SyncClip(VisualElement element, State state)
         {
             var size = element.layout.size;
             if (!(size.x > 0f && size.y > 0f)) return;
             var radii = BorderBandPainter.Fitted(state.Radii, size.x, size.y);
-            if (Near(size, state.BakedSize) && Near(radii, state.BakedRadii)) return;
-            var next = (state.ClipIndex + 1) % 2;
-            var image = state.ClipImages[next] ??= ScriptableObject.CreateInstance<VectorImage>();
-            image.name = "VelvetProjectedCornerClip";
-            using (var painter = new Painter2D())
+            if (!Near(size, state.BakedSize) || !Near(radii, state.BakedRadii))
             {
-                painter.fillColor = ClipPathVectorImageBaker.StencilFillColor;
-                painter.BeginPath();
-                SilhouetteFace.EmitRoundedRect(new SilhouetteFace.Painter2DSink(painter), new Rect(Vector2.zero, size), radii,
-                    SilhouetteFace.Shearing.None);
-                painter.ClosePath();
-                painter.Fill();
-                if (!painter.SaveToVectorImage(image)) return;
+                var next = (state.ClipIndex + 1) % 2;
+                var baked = state.ClipImages[next] ??= ScriptableObject.CreateInstance<VectorImage>();
+                baked.name = "VelvetProjectedCornerClip";
+                using (var painter = new Painter2D())
+                {
+                    painter.fillColor = ClipPathVectorImageBaker.StencilFillColor;
+                    painter.BeginPath();
+                    SilhouetteFace.EmitRoundedRect(new SilhouetteFace.Painter2DSink(painter), new Rect(Vector2.zero, size), radii,
+                        SilhouetteFace.Shearing.None);
+                    painter.ClosePath();
+                    painter.Fill();
+                    if (!painter.SaveToVectorImage(baked)) return;
+                }
+                (state.ClipIndex, state.BakedSize, state.BakedRadii, state.RewriteClip) = (next, size, radii, true);
             }
-            state.ClipIndex = next;
-            state.BakedSize = size;
-            state.BakedRadii = radii;
+            if (!state.RewriteClip || state.ClipImages[state.ClipIndex] is not { } image) return;
+            state.RewriteClip = false;
             var style = element.style;
             style.backgroundImage = state.WrittenImage = Background.FromVectorImage(image);
             style.backgroundPositionX = state.WrittenPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, 0f);
