@@ -10,9 +10,10 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what a presence keeps of a key it removed at once in a render an abort stopped before its removals:
-    /// the exit wait the key still held, which the next panel frame settles when a descendant's teardown has asked it
-    /// to, so that the key's exit still completes.
+    /// Specifies what a presence keeps of a key still exiting through a render an abort stopped before its removals:
+    /// the exit wait the key still held, which a descendant's teardown settles, so that the key's exit still
+    /// completes. A presence disposed with its tree while an exit plays completes
+    /// that exit once.
     /// </summary>
     [TestFixture]
     internal sealed class PresenceSkippedRemovalWaitTests
@@ -36,6 +37,8 @@ namespace Velvet.Tests
             _sim.ResetTimePerSimulatedFrameToDefault();
             s_setHostTick = null;
             s_setInnerShown = null;
+            s_setStep = null;
+            s_exitCompletions = 0;
         }
 
         [TearDown]
@@ -45,22 +48,64 @@ namespace Velvet.Tests
             _sim = null;
         }
 
+        // GREEN_ON_BASE(characterization): the merge base removed the key at once in the aborted render and put its wait
+        // back. The drop of the settled ghost that render skips now puts it back.
         [Test]
-        public void Given_AKeyWhoseOnlyExitWasATornDownDescendants_When_AnAbortedRenderRemovesItAtOnce_Then_ThePresenceKeepsItsExitWait()
+        public void Given_AKeyWhoseOnlyExitWasATornDownDescendants_When_AnAbortedRenderReEmitsItsGhost_Then_ThePresenceKeepsItsExitWait()
         {
-            // Arrange — the key's exit is under way, and its descendant is torn down with the settle left to the next frame
+            // Arrange — the key's exit is under way, and its descendant is torn down, which settles it
             using var mounted = V.Mount(_sim.rootVisualElement, V.Component(WaitHostRender, key: "host"), CaughtErrors.Unlogged);
             s_setHostTick.Invoke(1);
             mounted.FlushStateForTest();
             s_setInnerShown.Invoke(false);
             mounted.FlushStateForTest();
 
-            // Act — the render that finds nothing left to play removes the key at once, and aborts
+            // Act — the render dropping the key's ghost aborts
             s_setHostTick.Invoke(2);
             mounted.FlushStateForTest();
 
             // Assert
             Assert.That(mounted.Root.Reconciler.Context.PresenceStates.Values.Single().ExitWaits.ContainsKey("a"), Is.True);
+        }
+
+        // Framer lets the exit animation of a presence unmounted with its tree run out and then calls onExitComplete;
+        // the disposal cancels the animation, so it completes the exit itself, and the frames after it add nothing.
+        [Test]
+        public void Given_APresenceOnAPanelWithAnExitPlaying_When_TheTreeIsDisposed_Then_OnExitCompleteRunsOnce()
+        {
+            // Arrange — the exit is a second long, and no frame passes before the disposal
+            var mounted = V.Mount(_sim.rootVisualElement, V.Component(PlayingExitHostRender, key: "host"));
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.Dispose();
+            for (var i = 0; i < 3; i++) _sim.FrameUpdateMs(16);
+
+            // Assert
+            Assert.That(s_exitCompletions, Is.EqualTo(1));
+        }
+
+        private static Action<int> s_setStep;
+        private static int s_exitCompletions;
+
+        // The child at step 0 and its exit from step 1.
+        [Component(Compiler = false)]
+        private static VNode PlayingExitHostRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.AnimatePresence(key: "p", onExitComplete: () => s_exitCompletions++,
+                    children: step == 0
+                        ? new VNode[]
+                        {
+                            V.Motion(key: "a", variants: s_fade, animate: "visible", exit: "hidden",
+                                transition: new StyleTransitionConfig { DurationSec = 1f }),
+                        }
+                        : Array.Empty<VNode>()),
+            });
         }
 
         [Component(Compiler = false)]

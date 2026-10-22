@@ -75,16 +75,12 @@ namespace Velvet
         internal static bool HintSelectsNonColour(string root, string? hint)
             => hint != null && s_nonColourHints.TryGetValue(root, out var hints) && Array.IndexOf(hints, hint) >= 0;
 
-        private static readonly string[] s_borderHints = { "length", "line-width" };
-
         private static readonly Dictionary<string, string[]> s_nonColourHints = new()
         {
-            ["text"] = new[] { "length", "percentage", "absolute-size", "relative-size" },
-            ["border"] = s_borderHints, ["border-t"] = s_borderHints, ["border-r"] = s_borderHints,
-            ["border-b"] = s_borderHints, ["border-l"] = s_borderHints, ["border-x"] = s_borderHints,
-            ["border-y"] = s_borderHints, ["border-s"] = s_borderHints, ["border-e"] = s_borderHints,
+            ["text"] = new[] { "size", "length", "percentage", "absolute-size", "relative-size" },
+            ["border"] = new[] { "length", "line-width" },
             ["bg"] = new[] { "percentage", "position", "bg-size", "length", "size", "image", "url" },
-            ["ring"] = new[] { "length" }, ["ring-offset"] = new[] { "length" }, ["inset-ring"] = new[] { "length" },
+            ["ring"] = new[] { "length" }, ["ring-offset"] = new[] { "length" },
             ["outline"] = new[] { "length", "number", "percentage" },
             ["from"] = new[] { "length", "percentage" }, ["via"] = new[] { "length", "percentage" },
             ["to"] = new[] { "length", "percentage" },
@@ -113,7 +109,7 @@ namespace Velvet
         // Index of the color-opacity-modifier '/' — the first '/' at bracket depth 0 (i.e. not inside a
         // [...] arbitrary value), scanning from start. Returns -1 when there is no such separator, so an
         // in-bracket '/' (aspect-[4/3], bg-[rgb(1/2)]) is never mistaken for the modifier separator.
-        private static int ColorModifierSlashIndex(string s, int start)
+        internal static int ColorModifierSlashIndex(string s, int start)
         {
             var depth = 0;
             for (var i = start; i < s.Length; i++)
@@ -188,6 +184,13 @@ namespace Velvet
                 prefixLen = 7;
             }
             else
+            {
+                return false;
+            }
+
+            // bg-[addr:key]/N is Velvet's addressable image, not a colour behind a type hint.
+            if (property == ArbitraryProperty.BackgroundColor
+                && className.AsSpan(prefixLen).StartsWith("[addr:".AsSpan(), StringComparison.Ordinal))
             {
                 return false;
             }

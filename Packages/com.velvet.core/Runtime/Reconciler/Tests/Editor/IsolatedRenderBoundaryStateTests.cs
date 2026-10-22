@@ -160,7 +160,8 @@ namespace Velvet.Tests
             ["hidden"] = "opacity-0",
         };
 
-        // An exit that animates, so a child one presence does not name is held as a ghost rather than dropped.
+        // An exit that animates, so a child one presence does not name is held as a ghost for the whole exit rather
+        // than dropped on the render after its removal.
         private static VNode FadingChild(string name, string key)
             => V.Motion(name: name, key: key, variants: s_fade, animate: "visible", exit: "hidden",
                 transition: new StyleTransitionConfig { DurationSec = 0.3f });

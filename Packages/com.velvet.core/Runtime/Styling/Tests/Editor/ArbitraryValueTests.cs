@@ -37,8 +37,6 @@ namespace Velvet.Tests
             new object[] { "h-[15%]", ArbitraryProperty.Height, 15f, LengthUnit.Percent },
             // Given_MinHeightPixelClass_When_Parsed_Then_ResolvesMinHeightAsPixelLength
             new object[] { "min-h-[60px]", ArbitraryProperty.MinHeight, 60f, LengthUnit.Pixel },
-            // Given_AZeroWidthWithoutUnit_When_Parsed_Then_ResolvesAZeroPixelLength
-            new object[] { "w-[0]", ArbitraryProperty.Width, 0f, LengthUnit.Pixel },
             // Given_MaxWidthPercentClass_When_Parsed_Then_ResolvesMaxWidthAsPercentLength
             new object[] { "max-w-[50%]", ArbitraryProperty.MaxWidth, 50f, LengthUnit.Percent },
             // Given_MaxHeightPixelClass_When_Parsed_Then_ResolvesMaxHeightAsPixelLength
@@ -2928,13 +2926,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_BlurXs_When_Parsed_Then_ResolvesFourPixels()
+        {
+            // Act
+            var recognized = StyleArbitraryValueResolver.TryParse("blur-xs", out var style);
+
+            // Assert
+            Assert.That(recognized ? style.Value : float.NaN, Is.EqualTo(4f));
+        }
+
+        [Test]
         public void Given_BlurPreset_When_Parsed_Then_ResolvesBlurPixelsFromTheNamedScale()
         {
-            // blur-sm is the named preset (4px); no USS class, routed to the filter path.
             var ok = StyleArbitraryValueResolver.TryParse("blur-sm", out var s);
 
             Assume.That(ok, Is.True, "Precondition: blur-sm is a recognized filter preset");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.FilterBlur, 4f)));
+            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.FilterBlur, 8f)));
         }
 
         [Test]

@@ -8,7 +8,7 @@ Shader "Velvet/FilterBrightness"
     //
     // A live custom-filter pass runs inside UI Toolkit's own renderer, independent of the active render
     // pipeline, so it follows Unity's Built-in-style filter contract (CGPROGRAM + UnityCG.cginc +
-    // UnityUIEFilter.cginc) — NOT the URP Core.hlsl contract the DropShadow/GradientSilhouette shaders use,
+    // UnityUIEFilter.cginc) — NOT the URP Core.hlsl contract the BoxShadow/GradientSilhouette shaders use,
     // because those BAKE through Graphics.Blit and this does not.
     //
     // The multiply is done on the ENCODED (gamma) sample and the Linear-output conversion is applied LAST,

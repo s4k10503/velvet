@@ -102,5 +102,31 @@ namespace Velvet
             }
             return false;
         }
+
+        // As above for an element whose paint layers may sit on a field's input box. The box is not reconciled,
+        // so the array its re-sync hands over holds only the payloads applied right now; the payloads the
+        // control routes to it, applied or not, are read from the control's recorded array instead.
+        internal static bool CarriesFilter(ReconcilerContext ctx, VisualElement element, string[] classNames)
+        {
+            if (CarriesFilter(classNames))
+            {
+                return true;
+            }
+            if (!StyleInputBoxSurface.IsBox(element)
+                || !ctx.VariantGateClasses.TryGetValue(element.parent, out var control)
+                || control.Reconciled == null)
+            {
+                return false;
+            }
+            var routed = new List<string>();
+            foreach (var cls in control.Reconciled)
+            {
+                if (StyleChildVariantClass.TryParse(cls, out var payload, out var inputBoxOnly) && inputBoxOnly)
+                {
+                    routed.Add(payload);
+                }
+            }
+            return CarriesFilter(routed.ToArray());
+        }
     }
 }

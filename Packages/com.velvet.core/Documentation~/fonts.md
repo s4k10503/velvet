@@ -174,19 +174,21 @@ The stroke color tracks `resolvedStyle.color`, its thickness is
 `-unity-text-align`'s vertical component for where the FIRST line sits — top-aligned under an
 `upper-*` anchor, vertically centered under a `middle-*` anchor (the default for
 `text-left|center|right|start|end`, and UI Toolkit's own unstyled default), bottom-aligned under a
-`lower-*` anchor — then nudges down a small, documented fraction of the font size from that line's
-own top edge as an approximation of CSS's ascent-line placement (UI Toolkit exposes no public,
-synchronously-reachable ascent metric to place it exactly).
+`lower-*` anchor — then sits 15% of the font size below that line's top.
 
-`overline` joins the SAME decoration axis as `underline` / `line-through` / `no-underline`, so
-cascade, inheritance, and the `no-underline` reset all apply to it. The axis stays single-valued,
-which is a deviation: CSS lets `text-decoration-line` combine lines (`underline overline` shows
-both), while Velvet's decoration axis resolves exactly one value, the one Tailwind emits last, so
-`underline overline` and `overline underline` on one element render only the underline. **v1 scope:** one rule, positioned
-above the FIRST line only and sized to the text's natural single-line-equivalent width (clamped to
-the content width) — per-line metrics of wrapped text are not publicly reachable in a way usable
-synchronously from `generateVisualContent`, so a multi-line label shows the rule above its top line
-only; per-line placement is left as future work.
+`overline` joins the same decoration axis as `underline` / `line-through` / `no-underline`, so
+cascade, inheritance, and the `no-underline` reset all apply to it. The axis stays single-valued.
+`underline overline` and `overline underline` render the underline, and `line-through no-underline`
+and `no-underline line-through` clear the decoration: those candidates sort later in Tailwind's order.
+CSS lets `text-decoration-line` list several lines. `[text-decoration-line:underline_overline]`
+and `[text-decoration-line:underline_line-through]` are not parsed, so those tokens leave the
+decoration unset and the lines do not combine (`ArbitraryDecorationLineTests`).
+
+The painted rule is one, above the first line, as wide as the text's single-line width clamped to
+the content width. A wrapped label shows that rule above its top line. `MeasureTextSize` returns
+one size per call, and those calls are what place the rule. `TextLineBoxSurfaceTests` fails if
+the text handle, its line info, or a public `TextElement` member that names or returns them
+becomes reachable.
 
 **`white-space`** has four native USS values, and `whitespace-normal`, `whitespace-nowrap`,
 `whitespace-pre`, and `whitespace-pre-wrap` map directly onto them — no C# involved.

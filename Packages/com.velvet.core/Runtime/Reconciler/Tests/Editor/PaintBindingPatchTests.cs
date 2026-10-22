@@ -14,7 +14,7 @@ namespace Velvet.Tests
     /// <para>
     /// UI Toolkit (6000.3) has no <c>box-shadow</c>; CSS <c>box-shadow</c> is a NON-structural paint (it does not
     /// change layout and it follows a transform on the element), so a <c>shadow-*</c> class attaches a
-    /// wrapper-less paint binding (<see cref="DropShadowSilhouette"/>) that draws the baked shadow texture
+    /// wrapper-less paint binding (<see cref="BoxShadowSilhouette"/>) that draws the baked shadow texture
     /// behind the element's own content — no structural wrapper, keyed in <c>ShadowBindings</c> by the element
     /// itself. The shadow's preset (blur/color/spread) comes from the utility scale and its corner radius
     /// follows the element's <c>rounded-*</c>. Removing the class (or unmounting) must detach the paint with no
@@ -24,7 +24,7 @@ namespace Velvet.Tests
     /// Skew is likewise wrapper-less: the element's own <c>generateVisualContent</c> paints the sheared face, so
     /// a skewed element keeps its DOM slot (no structural wrapper), gets a tracked <see cref="SkewBinding"/>,
     /// composes with the wrapper-less shadow paint (the shadow follows the shear:
-    /// <see cref="DropShadowBinding.SkewXDeg"/>), and detaches with no residue when the class is removed or the
+    /// <see cref="BoxShadowBinding.SkewXDeg"/>), and detaches with no residue when the class is removed or the
     /// tree unmounts. For <c>TextElement</c> types (Button/Label) the silhouette callback is prepended so the
     /// sheared background renders BEFORE the text rather than on top of it. It also composes with
     /// <c>bg-gradient-*</c>: a skewed element cannot show a gradient through the rectangular background-image
@@ -42,7 +42,7 @@ namespace Velvet.Tests
         private const string Skew = "-skew-x-6";
         private const string Gradient = "bg-gradient-to-b from-[#FF0000] to-[#0000FF]";
 
-        private static DropShadowBinding Binding(ReconcilerScope scope, VisualElement element)
+        private static BoxShadowBinding Binding(ReconcilerScope scope, VisualElement element)
             => scope.Reconciler.Context.ShadowBindings.TryGetValue(element, out var b) ? b : null;
 
         private static void Mount(ReconcilerScope scope, VNode[] tree)
@@ -122,7 +122,7 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg", name: "card") });
 
             // Assert: the binding is reachable via the element's own side-channel (no queryable shadow child).
-            Assert.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Not.Null);
+            Assert.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Not.Null);
         }
 
         [Test]
@@ -138,7 +138,7 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Motion("shadow-2xl", key: "m") });
 
             // Assert — the Motion element carries no shadow paint binding.
-            Assert.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
+            Assert.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
         }
 
         [Test]
@@ -149,13 +149,13 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Motion("", key: "m") };
             Mount(scope, before);
-            Assume.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
+            Assume.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Motion("shadow-lg", key: "m") });
 
             // Assert — still no paint binding on the Motion element.
-            Assert.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
+            Assert.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
         }
 
         [Test]
@@ -167,8 +167,8 @@ namespace Velvet.Tests
             // Act
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg") });
 
-            // Assert: lg preset blur.
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Blur, Is.EqualTo(34f));
+            // Assert: the lg preset's front layer blur.
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Blur, Is.EqualTo(15f));
         }
 
         [Test]
@@ -180,8 +180,8 @@ namespace Velvet.Tests
             // Act
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg") });
 
-            // Assert: lg preset alpha (--color-shadow base, stepped per preset).
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Color.a, Is.EqualTo(0.28f).Within(0.001f));
+            // Assert: the lg preset's front layer alpha.
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Color.a, Is.EqualTo(0.1f).Within(0.001f));
         }
 
         [Test]
@@ -194,7 +194,7 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg") });
 
             // Assert
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Spread, Is.EqualTo(0f));
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Spread, Is.EqualTo(-3f));
         }
 
         [Test]
@@ -207,7 +207,7 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg rounded-2xl") });
 
             // Assert: --radius-2xl == 16px (the rounded-2xl scale value).
-            Assert.That(Binding(scope, scope.Root[0]).CornerRadius, Is.EqualTo(16f));
+            Assert.That(Binding(scope, scope.Root[0]).CornerRadii.x, Is.EqualTo(16f));
         }
 
         [Test]
@@ -220,7 +220,7 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Div(className: "rounded-2xl", name: "plain") });
 
             // Assert
-            Assert.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
+            Assert.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
         }
 
         [Test]
@@ -233,7 +233,7 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Div(className: "shadow-none", name: "plain") });
 
             // Assert
-            Assert.That(DropShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
+            Assert.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
         }
 
         // Parity win: a shadow is non-structural — it must not shift a sibling's layout.
@@ -283,13 +283,13 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: "shadow-lg", name: "card") };
             Mount(scope, before);
-            Assume.That(Binding(scope, scope.Root[0]).Spec.Blur, Is.EqualTo(34f));
+            Assume.That(Binding(scope, scope.Root[0]).Layers[0].Blur, Is.EqualTo(15f));
 
             // Act: lg → md on the same element (linear patch, no key change).
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Div(className: "shadow-md", name: "card") });
 
             // Assert
-            Assert.That(Binding(scope, scope.Root[0]).Spec.Blur, Is.EqualTo(22f));
+            Assert.That(Binding(scope, scope.Root[0]).Layers[0].Blur, Is.EqualTo(6f));
         }
 
         // Patch: class removal (detach)
@@ -302,13 +302,13 @@ namespace Velvet.Tests
             var before = new VNode[] { V.Div(className: "shadow-lg", name: "card") };
             Mount(scope, before);
             var element = scope.Root[0];
-            Assume.That(DropShadowSilhouette.TryGet(element), Is.Not.Null);
+            Assume.That(BoxShadowSilhouette.TryGet(element), Is.Not.Null);
 
             // Act: the shadow class is removed.
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Div(className: "", name: "card") });
 
             // Assert: the paint is gone from the element's side-channel.
-            Assert.That(DropShadowSilhouette.TryGet(element), Is.Null);
+            Assert.That(BoxShadowSilhouette.TryGet(element), Is.Null);
         }
 
         [Test]
@@ -437,6 +437,35 @@ namespace Velvet.Tests
             // Assert — the shadow paint is keyed by the element itself and carries the caster's skew angle.
             var element = scope.Root[0];
             Assert.That(scope.Reconciler.Context.ShadowBindings[element].SkewXDeg, Is.EqualTo(-6f));
+        }
+
+        [Test]
+        public void Given_AShadowedElementSkewedOnY_When_Reconciled_Then_TheShadowCarriesTheYAngle()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "skew-y-3 shadow-md", name: "card") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].SkewYDeg, Is.EqualTo(3f));
+        }
+
+        [Test]
+        public void Given_AShadowedElementSkewedOnY_When_PatchedToAnotherYAngle_Then_TheShadowCarriesTheNewAngle()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var before = new VNode[] { V.Div(className: "skew-y-3 shadow-md", name: "card") };
+            Mount(scope, before);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before,
+                new VNode[] { V.Div(className: "skew-y-6 shadow-md", name: "card") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].SkewYDeg, Is.EqualTo(6f));
         }
 
         [Test]

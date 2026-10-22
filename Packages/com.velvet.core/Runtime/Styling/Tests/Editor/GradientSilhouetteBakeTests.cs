@@ -129,6 +129,17 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASkewOnBothAxes_When_SizingTheBake_Then_TheQuadWidthFollowsTheSkewXSkewYProduct()
+        {
+            // Arrange / Act — skewX() skewY() spans 100·(1 + 0.5·0.25) + 0.5·50 = 137.5px horizontally, and the
+            // bake adds a 2px antialiasing margin per side, so 141.5 rounds up to 142.
+            GradientSilhouetteBaker.QuadSize(100f, 50f, 0.5f, 0.25f, out var quadW, out _);
+
+            // Assert
+            Assert.That(quadW, Is.EqualTo(142));
+        }
+
+        [Test]
         public void Given_ASkewXAngle_When_SizingTheBake_Then_TheQuadWidensToHoldTheSlant()
         {
             // Arrange / Act — a skew-x shear shifts the top/bottom edges, widening the bounding box by

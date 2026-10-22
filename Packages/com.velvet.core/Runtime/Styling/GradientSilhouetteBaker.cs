@@ -12,7 +12,7 @@ namespace Velvet
     // SDF smoothstep): a vertex-only triangle fan has no per-pixel distance field to antialias its edges
     // against, so only a rasterized SDF bake can produce a soft edge here.
     //
-    // Bake-then-draw (not a live material) for the same reason DropShadow bakes: UITK freezes a custom
+    // Bake-then-draw (not a live material) for the same reason BoxShadow bakes: UITK freezes a custom
     // material's draw order under an animating ancestor transform.
     internal static class GradientSilhouetteBaker
     {
@@ -28,7 +28,7 @@ namespace Velvet
         // Leak guard: every baked texture is HideAndDontSave and survives a play-mode exit without a Domain
         // Reload. The owning binding releases its texture on teardown (Release), but if a play session exits
         // without the reconciler disposing, this registry lets the editor reset destroy the survivors —
-        // mirroring GradientBackground / DropShadowBaker, whose textures live in a static cache.
+        // mirroring GradientBackground / BoxShadowBaker, whose textures live in a static cache.
         private static readonly HashSet<Texture2D> s_baked = new();
 
         private static readonly int StopColorsId = Shader.PropertyToID("_StopColors");
@@ -79,12 +79,12 @@ namespace Velvet
         }
 #endif
 
-        // The sheared bounding-box pixel size for an element of (w,h) skewed by (tanX,tanY): a skew-x shifts
-        // the top/bottom edges by ±tanX·h/2, widening x by |tanX|·h (and symmetrically for y). The AA margin
-        // keeps the soft edge inside the texture. Public so the caller can size the draw quad to match.
+        // The sheared bounding-box pixel size for an element of (w,h) skewed by (tanX,tanY), under the shear
+        // SilhouetteFace.Shear documents: x spans w·|1 + tanX·tanY| + h·|tanX| and y spans h + w·|tanY|. The AA
+        // margin keeps the soft edge inside the texture. Public so the caller can size the draw quad to match.
         internal static void QuadSize(float w, float h, float tanX, float tanY, out int quadW, out int quadH)
         {
-            quadW = Mathf.Clamp(Mathf.CeilToInt(w + (Mathf.Abs(tanX) * h) + (2f * Margin)), 8, 2048);
+            quadW = Mathf.Clamp(Mathf.CeilToInt((w * Mathf.Abs(1f + (tanX * tanY))) + (Mathf.Abs(tanX) * h) + (2f * Margin)), 8, 2048);
             quadH = Mathf.Clamp(Mathf.CeilToInt(h + (Mathf.Abs(tanY) * w) + (2f * Margin)), 8, 2048);
         }
 

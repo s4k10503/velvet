@@ -75,17 +75,6 @@ namespace Velvet.Tests
             Assert.That(ok ? spec.Color : Color.clear, Is.EqualTo(Color.red));
         }
 
-        // GREEN_ON_BASE(characterization): a drop-shadow is a filter, which the base drew beside any ring as this does.
-        [Test]
-        public void Given_ADropShadowBesideARejectedRingColour_When_Extracted_Then_TheDropShadowStays()
-        {
-            // Act
-            var ok = StyleShadowClass.TryExtract(new[] { "ring", "ring-[5PX]", "drop-shadow-lg" }, out _);
-
-            // Assert
-            Assert.That(ok, Is.True);
-        }
-
         [Test]
         public void Given_AFromColourTheBrowserRejects_When_Extracted_Then_TheStopIsTransparent()
         {

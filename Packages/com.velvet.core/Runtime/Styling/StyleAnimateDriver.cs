@@ -69,10 +69,11 @@ namespace Velvet
         public CascadeSnapshot Cascade;
         public VisualElement? Element;
         // The loop's share of the slots it writes, kept current whether or not the loop writes them: the offset in the
-        // element's pixels a bounce lifts it by, and the factor a ping scales it by. A layoutId projection that holds
-        // the slots adds these to its own frame.
+        // element's pixels a bounce lifts it by, the factor a ping scales it by and the degrees a spin has turned. A
+        // layoutId projection that holds the slots adds these to its own frame.
         public Vector2 LiftPx;
         public float PingFactor = 1f;
+        public float SpinDeg;
         // A pan mode's sizing, position on its axis and no-repeat stand over the element's own inline values (a
         // StyleOverrides.BackgroundRepeat, the gradient's stretch-to-fill, anything a refCallback wrote, or none,
         // leaving the slot to its classes); these are those values, written back when the loop lets go.
@@ -180,7 +181,7 @@ namespace Velvet
         /// <summary>
         /// Records the slots a layoutId projection writes on the element until it is called again with
         /// <see cref="MotionTransitionSlots.None"/>. The loop leaves them unwritten and keeps its share current
-        /// (<see cref="CurrentLiftPx"/>, <see cref="CurrentPingFactor"/>) for the projection to add to its own frame,
+        /// (<see cref="CurrentLiftPx"/>, <see cref="CurrentPingFactor"/>, <see cref="CurrentSpinDeg"/>) for the projection to add to its own frame,
         /// so that neither takes the other's frame for the element's own.
         /// </summary>
         public static void YieldSlots(VisualElement element, object owner, MotionTransitionSlots slots)
@@ -198,6 +199,12 @@ namespace Velvet
             => s_running.TryGetValue(element, out var binding) && binding.Spec.Mode == AnimateMode.Bounce
                 ? binding.LiftPx
                 : Vector2.zero;
+
+        // The degrees a running spin has turned the element by, or zero.
+        internal static float CurrentSpinDeg(VisualElement element)
+            => s_running.TryGetValue(element, out var binding) && binding.Spec.Mode == AnimateMode.Spin
+                ? binding.SpinDeg
+                : 0f;
 
         // The factor a running ping scales the element by, or one.
         internal static float CurrentPingFactor(VisualElement element)
@@ -282,6 +289,21 @@ namespace Velvet
             }
             ownInline = binding.Scale.OwnValue;
             own = ReadScale(element, binding, ownInline);
+            return true;
+        }
+
+        // As TryReadBounceOwn, for the rotate a running spin writes, in degrees.
+        internal static bool TryReadSpinOwn(VisualElement element, StyleRotate inline, out StyleRotate ownInline, out float ownDeg)
+        {
+            ownInline = default;
+            ownDeg = 0f;
+            if (!s_running.TryGetValue(element, out var binding) || binding.Spec.Mode != AnimateMode.Spin
+                || !binding.Rotation.HoldsWrittenFrame(inline))
+            {
+                return false;
+            }
+            ownInline = binding.Rotation.OwnValue;
+            ownDeg = ReadRotationDeg(element, binding, ownInline);
             return true;
         }
 
@@ -611,8 +633,9 @@ namespace Velvet
                     WriteOpacity(element, binding, PulseOpacityOver(OwnOpacity(element, binding, driven), t));
                     break;
                 case AnimateMode.Spin:
+                    binding.SpinDeg = SpinAngleDeg(t);
                     // Geometry-free, and a value-compared struct like opacity rather than a list like filter.
-                    WriteRotation(element, binding, driven, t);
+                    if ((yielded & MotionTransitionSlots.Rotate) == MotionTransitionSlots.None) WriteRotation(element, binding, driven, t);
                     break;
                 case AnimateMode.Ping:
                     ApplyPing(element, binding, t, free, driven, yielded);

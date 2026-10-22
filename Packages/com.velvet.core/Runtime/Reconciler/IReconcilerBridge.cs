@@ -21,6 +21,10 @@ namespace Velvet
         void HoldRowLayoutEffects();
         void CommitHeldRowLayoutEffects();
 
+        // A range render outside a pass is a render of its own: react-window's scroll and resize renders are state
+        // updates, and React flushes pending passive effects before it renders one.
+        void FlushPendingPassiveEffectsForController();
+
         // A range rendered outside a reconcile pass has no enclosing entry to end with
         // FiberEffects.CommitStrandedLayoutWork, so the controller calls this where a range render returns.
         void CommitStrandedLayoutWorkForController();

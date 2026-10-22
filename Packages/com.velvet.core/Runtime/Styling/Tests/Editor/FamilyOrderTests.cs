@@ -70,7 +70,6 @@ namespace Velvet.Tests
         [TestCase("bg-conic via-green-500", "via-green-500 bg-conic")]
         [TestCase("bg-conic to-red-500", "to-red-500 bg-conic")]
         [TestCase("bg-linear-to-r -bg-linear-45", "-bg-linear-45 bg-linear-to-r")]
-        [TestCase("drop-shadow-sm shadow-lg", "shadow-lg drop-shadow-sm")]
         [TestCase("outline-2 ring-0", "ring-0 outline-2")]
         [TestCase("!outline-2 !ring-0", "!ring-0 !outline-2")]
         [TestCase("bg-[addr:b] bg-[addr:a]", "bg-[addr:a] bg-[addr:b]")]
@@ -123,6 +122,16 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", tokens), Is.EqualTo(className));
+        }
+
+        [Test]
+        public void Given_ADropShadowWrittenBeforeABoxShadow_When_ClassNamesAreParsed_Then_TheyAreAsWritten()
+        {
+            // Act
+            var tokens = V.ParseClassNames("drop-shadow-sm shadow-lg");
+
+            // Assert
+            Assert.That(string.Join(" ", tokens), Is.EqualTo("drop-shadow-sm shadow-lg"));
         }
 
         // One row for each reader that folds the live class list: the clip shape, and the layout gates LiveClasses
@@ -263,6 +272,28 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(effect.Decoration, Is.EqualTo(TextDecorationKind.Underline));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lets the class written last hold the decoration, which here is no-underline.
+        [Test]
+        public void Given_NoUnderlineWrittenAfterLineThrough_When_TheTextEffectIsParsed_Then_NoUnderlineHolds()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(V.ParseClassNames("line-through no-underline"));
+
+            // Assert
+            Assert.That(effect.Decoration, Is.EqualTo(TextDecorationKind.None));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already sorts no-underline after line-through, so the reset holds when line-through is written last.
+        [Test]
+        public void Given_LineThroughWrittenAfterNoUnderline_When_TheTextEffectIsParsed_Then_NoUnderlineHolds()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(V.ParseClassNames("no-underline line-through"));
+
+            // Assert
+            Assert.That(effect.Decoration, Is.EqualTo(TextDecorationKind.None));
         }
 
         [Test]

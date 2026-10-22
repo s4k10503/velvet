@@ -85,6 +85,42 @@ namespace Velvet.Tests
                 Is.EqualTo((true, (ArbitraryProperty)property, value, unit)));
         }
 
+        [Test]
+        public void Given_RoundedSSm_When_Parsed_Then_TheStartRadiusIs4()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("rounded-s-sm", out var style);
+
+            // Assert
+            Assert.That(
+                (ok && style.Property == ArbitraryProperty.BorderLeftRadius) ? style.Value : float.NaN,
+                Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_RoundedSsXs_When_Parsed_Then_TheStartStartRadiusIs2()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("rounded-ss-xs", out var style);
+
+            // Assert
+            Assert.That(
+                (ok && style.Property == ArbitraryProperty.BorderTopLeftRadius) ? style.Value : float.NaN,
+                Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_RoundedE4xl_When_Parsed_Then_TheEndRadiusIs32()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("rounded-e-4xl", out var style);
+
+            // Assert
+            Assert.That(
+                (ok && style.Property == ArbitraryProperty.BorderRightRadius) ? style.Value : float.NaN,
+                Is.EqualTo(32f));
+        }
+
         private static readonly object[] AutoCases =
         {
             new object[] { "ms-auto", ArbitraryProperty.MarginLeft },

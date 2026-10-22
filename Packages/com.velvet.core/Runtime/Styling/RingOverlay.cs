@@ -37,7 +37,7 @@ namespace Velvet
     /// </para>
     /// <para>
     /// Painting the band in the element's OWN <c>generateVisualContent</c> (the wrapper-less model
-    /// <see cref="DropShadowSilhouette"/> uses) costs no layout at all, but was measured to lose the band
+    /// <see cref="BoxShadowSilhouette"/> uses) costs no layout at all, but was measured to lose the band
     /// entirely on an element that also carries <c>overflow: hidden</c>: an element's own overflow clip applies
     /// to its own generated content, not merely to its children. <c>overflow-hidden rounded-full ring-2</c> is
     /// the avatar pattern, so that is not an edge case. CSS clips neither an outline nor a box-shadow by the
@@ -62,7 +62,7 @@ namespace Velvet
         // SIBLING of that element, so UI Toolkit's opacity compositing — which reaches every overlay
         // belonging to a descendant — does not reach this one, and only an explicit co-fade can fade it with
         // its element. Auto-drops entries when an element is GC'd; Detach removes eagerly so a pooled element
-        // cannot ghost a prior consumer's band. Mirrors DropShadowSilhouette's per-element side-channel.
+        // cannot ghost a prior consumer's band. Mirrors BoxShadowSilhouette's per-element side-channel.
         private static readonly ConditionalWeakTable<VisualElement, RingBinding> s_byElement = new();
 
         public static RingBinding? TryGet(VisualElement element)

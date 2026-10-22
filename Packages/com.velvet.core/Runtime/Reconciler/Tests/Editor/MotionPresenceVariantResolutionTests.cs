@@ -48,8 +48,9 @@ namespace Velvet.Tests
             ["visible"] = "opacity-100",
         };
         // Classes no utility defines, on purpose: a spring finds no channel in them to drive, so a spring
-        // exit over this pair completes SYNCHRONOUSLY (the swap lands, no tick) — the only EditMode-reachable
-        // way to park a presence key in its completed-exit window. A color pair no longer does: springs drive
+        // exit over this pair completes with no tick (the swap lands, and the completion settles in the passive
+        // flush after the removing render) — the only EditMode-reachable way to park a presence key in its
+        // completed-exit window. A color pair no longer does: springs drive
         // colors, so such an exit is still playing when the key returns. Each completed-exit case reads
         // IsExiting beside the parked pose, so a pair that starts playing again fails there.
         private static readonly Dictionary<string, MotionVariant> s_recolor = new()
@@ -79,6 +80,7 @@ namespace Velvet.Tests
             s_store = null;
             s_withInitial = false;
             s_boxed = false;
+            s_exitCompletions = 0;
         }
 
         [TearDown]
@@ -183,8 +185,44 @@ namespace Velvet.Tests
             }
             return V.Div(name: "host", children: new VNode[]
             {
-                V.AnimatePresence(key: "presence", children: children.ToArray()),
+                V.AnimatePresence(key: "presence", onExitComplete: () => s_exitCompletions++, children: children.ToArray()),
             });
+        }
+
+        private static int s_exitCompletions;
+
+        [Test]
+        public void Given_ASpringExitWithNoChannelToDrive_When_TheKeyIsRemoved_Then_OnExitCompleteHasNotRunInThatRender()
+        {
+            // Arrange — the spring's exit plays nothing, so it completes after the commit that removed its child.
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
+
+            // Act
+            store.Set("");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_exitCompletions, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base ran the completion once in the removing render, so it has run once after the flush as well.
+        [Test]
+        public void Given_ASpringExitWithNoChannelToDrive_When_TheRemovingRendersEffectsFlush_Then_OnExitCompleteRunsOnce()
+        {
+            // Arrange
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
+            store.Set("");
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_exitCompletions, Is.EqualTo(1));
         }
 
         // A variant Motion with no exit label: its removal plays the classic exit of this spring, whose class
@@ -517,17 +555,19 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): an anchor's completed variant exit was already undone on re-entry.
+        // The passive flush added is the one the completion now settles in.
         [Test]
         public void Given_ACompletedVariantExit_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheRestingVariantIsRestored()
         {
-            // Arrange — remove the key with ONE flush (not a drain): the spring exit completes
-            // synchronously (the swap lands the element at variants[exit]) and schedules the ghost-drop
-            // re-render, which this single flush deliberately leaves pending.
+            // Arrange — remove the key with one state flush and the passive flush (not a drain): the spring exit's
+            // swap lands the element at variants[exit], and its completion, settled in the passive flush, schedules
+            // the ghost-drop re-render, which nothing here runs.
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
             store.Set("");
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var parked = Parked(mounted, _root.Q<VisualElement>("item-a"));
 
             // Act — re-add the key inside the completed-exit window; the re-entry reproduces the SAME
@@ -543,6 +583,8 @@ namespace Velvet.Tests
                 "A re-entry after a completed exit restores the resting variant");
         }
 
+        // GREEN_ON_BASE(characterization): the base already restored a key re-added inside the completed-exit window.
+        // The passive flush added is the one the completion now settles in.
         [Test]
         public void Given_ACompletedExitOnAMotionBehindAComponent_When_TheKeyIsReAddedBeforeTheDropRender_Then_ItsRestingVariantIsRestored()
         {
@@ -553,6 +595,7 @@ namespace Velvet.Tests
             var before = _root.Q<VisualElement>("item");
             store.Set("");
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var parked = Parked(mounted, _root.Q<VisualElement>("item"));
 
             // Act
@@ -567,6 +610,8 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, false, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already restored a key re-added inside the completed-exit window.
+        // The passive flush added is the one the completion now settles in.
         [Test]
         public void Given_ACompletedClassicExitOnAVariantMotion_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheExitClassIsRemoved()
         {
@@ -576,6 +621,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(CompletedClassicExitHost, key: "host"));
             store.Set("");
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var item0 = _root.Q<VisualElement>("item-a");
             var parked = item0?.ClassListContains("anim-fade-exit-to") == true
                 && !mounted.Root.Reconciler.Context.StyleAnimationScheduler.IsExiting(item0);
@@ -590,6 +636,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the re-entry already took an anchor's exit pose off first.
+        // The passive flush added is the one the completion now settles in.
         [Test]
         public void Given_ACompletedVariantExitWithInitial_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheExitPoseIsFullyReplaced()
         {
@@ -601,6 +648,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(CompletedExitWithInitialHost, key: "host"));
             store.Set("");
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var parked = Parked(mounted, _root.Q<VisualElement>("item-a"));
 
             // Act
@@ -616,6 +664,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base skipped the PopLayout restore for an element it never pinned.
+        // The passive flush added is the one the completion now settles in.
         [Test]
         public void Given_ACompletedPopLayoutExit_When_TheKeyReturnsOnANewElement_Then_ItsArbitrarySizeIsKept()
         {
@@ -625,6 +674,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(CompletedPopLayoutProviderHost, key: "host"));
             store.Set("");
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var parked = Parked(mounted, _root.Q<VisualElement>("item-a"));
 
             // Act — the key returns inside the completed-exit window on a new element type.
@@ -638,6 +688,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base replays the enter on the element a completed exit left attached.
+        // The passive flush added is the one the completion now settles in.
         [Test]
         public void Given_ACompletedVariantExit_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheSameElementReplaysItsEnter()
         {
@@ -647,6 +698,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(CompletedExitThenTweenEnterHost, key: "host"));
             store.Set("");
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var before = _root.Q<VisualElement>("item-a");
             var parked = Parked(mounted, before);
 
