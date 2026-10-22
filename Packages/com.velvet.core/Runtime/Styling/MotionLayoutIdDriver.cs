@@ -224,9 +224,9 @@ namespace Velvet
         {
             var translate = element.style.translate;
             var scale = element.style.scale;
-            var resolved = element.resolvedStyle;
-            var startTranslate = translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : resolved.translate;
-            var startScale = scale.keyword == StyleKeyword.Undefined ? scale.value.value : resolved.scale.value;
+            // Where the element is drawn, which an inline value it was just given is not until a style pass has run.
+            var startTranslate = element.resolvedStyle.translate;
+            var startScale = element.resolvedStyle.scale.value;
             // A running bounce or ping has its frame in the slot, and the frame is the loop's rather than the element's.
             if (StyleAnimateDriver.TryReadBounceOwn(element, translate, out var bounceInline, out var bounceOwn))
             {
@@ -303,6 +303,8 @@ namespace Velvet
             var drawn = projection.Leader != null ? Followed(element, projection.Leader, ctx) : Drawn(projection, layout, projection.ParentScale);
             var delta = ComputeDelta(drawn, layout, TransformOrigin(element));
             projection.Scale = delta.Scale;
+            LayoutIdLook.Adopt(element, projection);
+            LayoutIdLook.Narrow(element, projection);
             Write(element, projection, delta.Translate);
             WriteOpacity(element, projection, Fade(element, projection, ctx), ctx);
             if (projection.Leader != null) LayoutIdPicking.Ignore(element, projection);
@@ -361,8 +363,6 @@ namespace Velvet
         // a crossfading lead at the lead's, as Framer draws every node of a shared animation with the lead's values.
         private static void WriteLook(VisualElement element, LayoutIdProjection projection, ReconcilerContext ctx)
         {
-            LayoutIdLook.Adopt(element, projection);
-            LayoutIdLook.Narrow(element, projection);
             var rotate = float.NaN;
             Length[]? radii = null;
             if (projection.Leader != null)
@@ -451,10 +451,12 @@ namespace Velvet
                 if (!projection.WritesTranslate)
                 {
                     projection.WritesTranslate = true;
+                    Land(projection.TranslateCarries, projection.StartTranslate);
+                    RunningStyleTransition.TakeOverTranslate(element, projection.TranslateCarries);
                     MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Translate);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
-                var own = OwnTranslate(element, projection);
+                var own = Carried(element, projection.TranslateCarries, OwnTranslate(element, projection), "translate");
                 // A running bounce's lift is in the element's own frame, so the projection's scale carries it too.
                 var lift = StyleAnimateDriver.CurrentLiftPx(element) * projection.Scale.y;
                 element.style.translate = new Translate(
@@ -466,10 +468,12 @@ namespace Velvet
                 if (!projection.WritesScale)
                 {
                     projection.WritesScale = true;
+                    Land(projection.ScaleCarries, projection.StartScale);
+                    RunningStyleTransition.TakeOverScale(element, projection.ScaleCarries);
                     MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Scale);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
-                var own = OwnScale(element, projection);
+                var own = Carried(element, projection.ScaleCarries, OwnScale(element, projection), "scale");
                 var ping = StyleAnimateDriver.CurrentPingFactor(element);
                 element.style.scale = new Scale(
                     new Vector3(own.x * projection.Scale.x * ping, own.y * projection.Scale.y * ping, own.z));
@@ -494,10 +498,25 @@ namespace Velvet
             if (projection.WritesScale && scale != projection.WrittenScale) projection.OwnInlineScale = scale;
         }
 
-        // The element's own translate as it is now: the inline value the projection took over, else what its rules
-        // declare, else the one it had as the projection began. The rules are read again whenever the slot is written
-        // rather than once as the projection begins, since its classes can change during the move and a projection can be
-        // created before the style pass has resolved a change
+        // Each axis's carry starts at the value the projection read as it began, and runs on from a transition UI Toolkit
+        // is running of it, as LayoutIdLook.WriteRotate starts the rotate's
+        // (Given_AMotionScalingOnATransition_When_ItTakesAHeldId_Then_ItsOwnScaleRunsAsTheEngineRunsIt).
+        private static void Land(LayoutIdCarry[] axes, Vector3 start)
+        {
+            for (var axis = 0; axis < 2; axis++) axes[axis].Land(start[axis]);
+        }
+
+        // The element's own value carried towards target on each axis as LayoutIdLook.OwnRotate carries the rotate, over
+        // this pass's step
+        // (Given_ALeadMovingOnATransitionOfItsOwn_When_ItsTranslateChanges_Then_ItRunsAsTheEngineRunsIt).
+        private static Vector3 Carried(VisualElement element, LayoutIdCarry[] axes, Vector3 target, string property) =>
+            new(axes[0].Step(target.x, s_passDt, element, property, null), axes[1].Step(target.y, s_passDt, element, property, null),
+                target.z);
+
+        // The translate the element is given now, which its carry runs towards: the inline value the projection took
+        // over, else what its rules declare, else the one it had as the projection began. The rules are read again whenever
+        // the slot is written rather than once as the projection begins, since its classes can change during the move and
+        // a projection can be created before the style pass has resolved a change
         // (Given_AHolderScaledByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatRescalesIt_Then_ItsMoveIsDrawnAtTheNewScale).
         private static Vector3 OwnTranslate(VisualElement element, LayoutIdProjection projection)
         {
@@ -1047,6 +1066,10 @@ namespace Velvet
         public bool WritesScale;
         public StyleTranslate WrittenTranslate;
         public StyleScale WrittenScale;
+        // How the own translate, in pixels, and the own scale are carried on the x and y axes while the projection writes
+        // them (Carried).
+        public readonly LayoutIdCarry[] TranslateCarries = { new(), new() };
+        public readonly LayoutIdCarry[] ScaleCarries = { new(), new() };
 
         // The lead this member is drawn over while the lead crossfades, or null for a projection of its own.
         public VisualElement? Leader;

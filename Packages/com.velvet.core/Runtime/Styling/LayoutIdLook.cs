@@ -113,9 +113,9 @@ namespace Velvet
             .Union(StyleLonghandSet.Of(StyleLonghand.BorderTopRightRadius))
             .Union(StyleLonghandSet.Of(StyleLonghand.BorderBottomRightRadius))
             .Union(StyleLonghandSet.Of(StyleLonghand.BorderBottomLeftRadius));
-        // Each pass, before anything is read: takes the timing a list a variant swap holds inline gives rotate and each
-        // corner, then takes what the projection writes out of that list, as MotionOpacity does for opacity on every
-        // draw, so that a swap started mid-move carries none of the writes here.
+        // Each pass, before anything is read: takes the timing a list a variant swap holds inline gives rotate, each
+        // corner, translate and scale, then takes the rotate and radii the projection writes out of that list, as
+        // MotionOpacity does for opacity on every draw, so that a swap started mid-move carries none of the writes here.
         public static void Narrow(VisualElement element, LayoutIdProjection projection)
         {
             var style = element.style;
@@ -126,6 +126,11 @@ namespace Velvet
             for (var corner = 0; corner < 4; corner++)
             {
                 projection.RadiusCarries[corner].Hold(lists, listed, s_cornerNames[corner], "border-radius");
+            }
+            for (var axis = 0; axis < 2; axis++)
+            {
+                projection.TranslateCarries[axis].Hold(lists, listed, "translate", null);
+                projection.ScaleCarries[axis].Hold(lists, listed, "scale", null);
             }
             if (projection.WritesRotate) MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_rotate);
             if (projection.WritesRadii) MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_radii);

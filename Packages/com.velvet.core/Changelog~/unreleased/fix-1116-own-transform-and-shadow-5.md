@@ -1,6 +1,7 @@
 ### Fixed
 
-- A `V.Motion` moving under a `layoutId` composes its move with the translate and scale its classes give it now,
-  rather than as they were when the move began: a class change during the move is drawn from the frame after the
-  styles take it, and a holder that takes the lead in the render that changes its classes moves at its new
-  translate and scale rather than its old.
+- A `V.Motion` moving under a `layoutId` composes its move with its own translate and scale as they are now,
+  rather than as they were when the move began. A change of either during the move, by a class or an inline value,
+  runs on the transition the element declares for it, as UI Toolkit would run it, and one already running as the
+  move starts runs on from where it had got rather than jumping to its end. A holder that takes the lead in the
+  render that changes its classes moves at its new translate and scale from its second frame on.

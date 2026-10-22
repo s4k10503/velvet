@@ -4984,6 +4984,88 @@ namespace Velvet.Tests
         }
 
 
+        [Test]
+        public void Given_AMotionScalingOnATransition_When_ItTakesAHeldId_Then_ItsOwnScaleRunsAsTheEngineRunsIt()
+        {
+            // Arrange / Act — "b" twice the side of "a", so that the move draws "a" scaled and writes the slot; the scale
+            // comes from the bundled sheet's rules.
+            s_bSize = 200;
+            var (own, control) = TakeOverAsItTurns("scale-150", e => e.resolvedStyle.scale.value.x,
+                (projection, a) => a.style.scale.value.value.x / projection.Scale.x);
+
+            // Assert — within a frame of the control, which is about half way from one to one and a half.
+            Assert.That(own, Is.EqualTo(control > 1.15f && control < 1.35f ? control : float.NaN).Within(0.015f));
+        }
+
+
+        [Test]
+        public void Given_AMotionTranslatingOnATransition_When_ItTakesAHeldId_Then_ItsOwnTranslateRunsAsTheEngineRunsIt()
+        {
+            // Arrange / Act — "a" and "b" one size and one top, so that the move writes "a"'s translate across alone and
+            // its own down is what the slot holds down.
+            var (own, control) = TakeOverAsItTurns("translate-y-[40px]", e => e.resolvedStyle.translate.y,
+                (_, a) => a.style.translate.value.y.value);
+
+            // Assert — within a frame of the control, which is about half way down.
+            Assert.That(own, Is.EqualTo(control > 12f && control < 28f ? control : float.NaN).Within(1f));
+        }
+
+
+        [Test]
+        public void Given_ALeadMovingOnATransitionOfItsOwn_When_ItsTranslateChanges_Then_ItRunsAsTheEngineRunsIt()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second; "b" takes the id from "a", its size and top, on a one-second tween; some 0.1 s on.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Act — both translated 40px down by a class; some 0.3 s on.
+            (s_bClasses, s_controlClasses) = (s_bClasses + " translate-y-[40px]", s_controlClasses + " translate-y-[40px]");
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Assert — the slot holds "b"'s own down where the control stands, part way down: the move writes nothing down.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.translate.y;
+            var b = Root.Q<VisualElement>("b").style.translate.value.y.value;
+            Assert.That(b, Is.EqualTo(control > 4f && control < 20f ? control : float.NaN).Within(1f));
+        }
+
+
+        [TestCase("scale-150", "scale-125", 200, true, 1.3f, 1.47f, 0.015f)]
+        [TestCase("translate-y-[40px]", "translate-y-[0px]", 100, false, 8f, 32f, 1f)]
+        public void Given_AHolderOnATransition_When_ItTakesTheLeadBackInTheRenderThatChangesItsTransform_Then_ItRunsAsTheEngineRunsIt(
+            string from, string to, int bSize, bool scale, float low, float high, float within)
+        {
+            // Arrange — the bundled sheet; "a", and a control holding no id, both transitioning everything linearly over a
+            // second, carrying the class from; "b", bSize square, has taken the id from "a" and landed, and what that
+            // landing handed back to the engine has run out. "b" twice the side of "a" has the move draw "a" scaled; one
+            // size and one top have it write "a"'s translate across alone.
+            const string transitioning = "transition-all duration-1000 ease-linear";
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bSize = bSize;
+            (s_aClasses, s_controlClasses) = ($"{transitioning} {from}", $"{transitioning} {from}");
+            using var mounted = MountBOverA();
+            AdvancePast(2.5f);
+
+            // Act — one render takes "b" away, which hands "a" the lead before the style pass, and gives both the class to;
+            // some 0.4 s on.
+            (s_bMounted, s_aClasses, s_controlClasses) = (false, $"{transitioning} {to}", $"{transitioning} {to}");
+            RenderShared(mounted);
+            for (var i = 0; i < 24; i++) Tick();
+
+            // Assert — "a"'s own scale or own translate down within a frame of the control's, part way from one to the
+            // other.
+            var a = Root.Q<VisualElement>("a");
+            var control = Root.Q<VisualElement>("control").resolvedStyle;
+            var expected = scale ? control.scale.value.x : control.translate.y;
+            var own = !mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection) ? float.NaN
+                : scale ? a.style.scale.value.value.x / projection.Scale.x : a.style.translate.value.y.value;
+            Assert.That(own, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(within));
+        }
+
+
         // GREEN_ON_BASE(characterization): the base's driver writes no rotate, so the engine runs the element's own rotate
         // transition there as it runs the control's. A rotate the projection mixes must run on as the engine runs it.
         [Test]

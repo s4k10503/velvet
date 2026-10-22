@@ -18,6 +18,8 @@ namespace Velvet
         private static readonly FieldInfo? s_floats = EngineMember.AnimationSystemFloats.ResolveField();
         private static readonly FieldInfo? s_rotates = EngineMember.AnimationSystemRotates.ResolveField();
         private static readonly FieldInfo? s_lengths = EngineMember.AnimationSystemLengths.ResolveField();
+        private static readonly FieldInfo? s_translates = EngineMember.AnimationSystemTranslates.ResolveField();
+        private static readonly FieldInfo? s_scales = EngineMember.AnimationSystemScales.ResolveField();
         // Declared on the generic definitions; read through the members of the constructed type a value is (Close).
         private static readonly FieldInfo? s_running = EngineMember.AnimationValuesRunning.ResolveField();
         private static readonly MethodInfo? s_indexOf = EngineMember.AnimationDataSetIndexOf.ResolveMethod();
@@ -34,6 +36,8 @@ namespace Velvet
         private static readonly FieldInfo? s_current = EngineMember.AnimationCurrentValue.ResolveField();
         private static readonly object? s_opacityId = EngineMember.OpacityPropertyId.ResolveField()?.GetValue(null);
         private static readonly object? s_rotateId = EngineMember.RotatePropertyId.ResolveField()?.GetValue(null);
+        private static readonly object? s_translateId = EngineMember.TranslatePropertyId.ResolveField()?.GetValue(null);
+        private static readonly object? s_scaleId = EngineMember.ScalePropertyId.ResolveField()?.GetValue(null);
         // In LayoutIdLook's corner order.
         private static readonly object?[] s_cornerIds =
         {
@@ -58,6 +62,23 @@ namespace Velvet
 
         public static void TakeOverRotate(VisualElement element, LayoutIdCarry carry) =>
             TakeOver(element, carry, s_rotates, s_rotateId, value => ((Rotate)value).angle.ToDegrees());
+
+        // The x and y axes, a translate's in pixels; an axis of a translate running in percent is not taken over.
+        public static void TakeOverTranslate(VisualElement element, LayoutIdCarry[] axes)
+        {
+            for (var axis = 0; axis < 2; axis++) TakeOver(element, axes[axis], s_translates, s_translateId, value => Pixels((Translate)value, axis));
+        }
+
+        public static void TakeOverScale(VisualElement element, LayoutIdCarry[] axes)
+        {
+            for (var axis = 0; axis < 2; axis++) TakeOver(element, axes[axis], s_scales, s_scaleId, value => ((Scale)value).value[axis]);
+        }
+
+        private static float Pixels(Translate translate, int axis)
+        {
+            var length = axis == 0 ? translate.x : translate.y;
+            return length.unit == LengthUnit.Pixel ? length.value : float.NaN;
+        }
 
         // A corner, in LayoutIdLook's corner order, carried in the given unit; one running in another is not taken over.
         public static void TakeOverRadius(VisualElement element, int corner, LayoutIdCarry carry, LengthUnit unit) =>
