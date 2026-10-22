@@ -10,5 +10,5 @@
   that takes the lead back as its leader leaves starts from its own translate, scale and rotate rather than from where
   it was drawn over the leader. A holder that takes the lead in the render that changes its classes moves at its new
   translate and scale from its second frame on. A corner radius of its own already running from pixels into a
-  percent, or back, as the move starts runs on from where it had got, and a rotate of 0deg after one of none starts
-  over on its transition rather than running back, as UI Toolkit runs both.
+  percent, or back, as the move starts runs on from where it had got, and a rotate of 0deg after one of none, or of
+  45deg after an eighth of a turn, starts over on its transition rather than running back, as UI Toolkit runs both.

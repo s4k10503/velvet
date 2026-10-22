@@ -5073,14 +5073,16 @@ namespace Velvet.Tests
 
         [TestCase("translate-y-1/2", "translate-y-[40px]", "translate-y-1/2", "translate", 85f, 92f)]
         [TestCase("", "rotate-45", "rotate-0", "rotate", 10.5f, 14f)]
+        [TestCase("layout-id-test-eighth-turn", "rotate-90", "rotate-45", "rotate", 55.5f, 59f)]
         public void Given_AMotionTransitioningItsTransformAsItTakesAHeldId_When_ItsClassesSendItBack_Then_ItRunsAsTheEngineRunsIt(
             string from, string to, string back, string slot, float low, float high)
         {
-            // Arrange — the bundled sheet; "a" 200px square at from, and a control holding no id as large and as given,
+            // Arrange — the bundled sheet and the test's own; "a" 200px square at from, and a control holding no id as large and as given,
             // both transitioning everything linearly over a second; both take to; some 0.2 s on, "a" moves under "card"
             // from "b", as large and 300px right, on a three-second tween, taking over its own transition; some 0.1 s on.
             const string transitioning = "transition-all duration-1000 ease-linear";
             VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
             (s_aId, s_aLeft, s_aMounted, s_bMounted, s_aSize, s_bSize) = ("solo", 20, true, true, 200, 200);
             (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
             s_aTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
@@ -5094,7 +5096,8 @@ namespace Velvet.Tests
             for (var i = 0; i < 6; i++) Tick();
 
             // Act — both take back: the half of the box the translate ran from, which UI Toolkit reads as a reversal, or a
-            // rotate of 0deg where it ran from none, which it does not; some 0.1 s on.
+            // rotate of 0deg where it ran from none, or of 45deg where it ran from an eighth of a turn, neither of which it
+            // does; some 0.1 s on.
             (s_aClasses, s_controlClasses) = ($"{transitioning} {back}", $"min-w-[200px] min-h-[200px] {transitioning} {back}");
             RenderShared(mounted);
             for (var i = 0; i < 6; i++) Tick();
