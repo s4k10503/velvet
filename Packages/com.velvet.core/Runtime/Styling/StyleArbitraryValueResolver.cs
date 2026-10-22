@@ -2050,6 +2050,7 @@ namespace Velvet
             {
                 RewriteDriven(element, map, StyleLonghandSet.Of(HeldSlotGroups.LonghandOf(slot)));
             }
+            FitHeldWidth(element, map);
         }
 
         // A per-frame driver's write, which owns what it writes until ReleaseDriven: inline, so every hold and every
@@ -2064,8 +2065,14 @@ namespace Velvet
             var driven = map.Driven ??= new Dictionary<ArbitraryProperty, DrivenWrite>();
             if (!driven.TryGetValue(style.Property, out var write))
             {
-                write = new DrivenWrite(map, StyleArbitraryLonghands.Of(style.Property));
+                write = new DrivenWrite(StyleArbitraryLonghands.Of(style.Property));
+                write.Capture(map);
                 driven.Add(style.Property, write);
+            }
+            else if (write.Reversing)
+            {
+                write.Capture(map);
+                write.Reversing = false;
             }
             write.Style = style;
             var slots = HeldSlotGroups.SlotsOf(style.Property);
@@ -2089,6 +2096,24 @@ namespace Velvet
             ClearInline(element, property);
         }
 
+        // A reversal hand-off: the play now heads back to the pose it left, so that pose's important declarations
+        // are its own. The reconciler writes the pose's inline tokens back only after the scheduler hands the play
+        // over (RestoreInlineAfterExit follows CancelExit), so every write re-reads them until the play's own next
+        // frame (ApplyDriven).
+        internal static void Redrive(VisualElement element)
+        {
+            s_layers.TryGetValue(element, out var map);
+            if (map?.Driven == null)
+            {
+                return;
+            }
+            foreach (var write in map.Driven.Values)
+            {
+                write.Reversing = true;
+                WriteDriven(element, map, write);
+            }
+        }
+
         // Writes what a driver last wrote back over any of longhands a layer or a hold has just written.
         private static void RewriteDriven(VisualElement element, LayerMap map, StyleLonghandSet longhands)
         {
@@ -2107,23 +2132,38 @@ namespace Velvet
 
         private static void WriteDriven(VisualElement element, LayerMap map, DrivenWrite write)
         {
+            if (write.Reversing)
+            {
+                write.Capture(map);
+            }
             ApplyInline(element, write.Style);
             YieldToImportant(element, map, write);
             WriteOverHolds(element, map, write);
         }
 
         // A driver's write, and the important layers and class claims of the element's own it found on its
-        // longhands when its play first wrote, which YieldToImportant does not give way to: a play's own important
-        // pose is among them, since StyleAnimationScheduler adds the pose's classes before the play's first write,
-        // and giving way to it would hold the element at the pose's end value for the whole play.
+        // longhands when its play first wrote, or at a reversal's hand-off (Redrive), which YieldToImportant does
+        // not give way to: a play's own important pose is among them, since StyleAnimationScheduler adds the pose's
+        // classes before the play's first write, and giving way to it would hold the element at the pose's end
+        // value for the whole play.
         private sealed class DrivenWrite
         {
             public ArbitraryStyle Style;
+
+            // Set by Redrive until the play's next frame.
+            public bool Reversing;
+
+            private readonly StyleLonghandSet _longhands;
             private readonly List<(ArbitraryProperty Property, long Key)> _layers = new();
             private readonly Dictionary<StyleLonghand, long> _claims = new();
 
-            public DrivenWrite(LayerMap map, StyleLonghandSet longhands)
+            public DrivenWrite(StyleLonghandSet longhands) => _longhands = longhands;
+
+            public void Capture(LayerMap map)
             {
+                var longhands = _longhands;
+                _layers.Clear();
+                _claims.Clear();
                 foreach (var pair in map)
                 {
                     if (!StyleArbitraryLonghands.Of(pair.Key).Overlaps(longhands))
@@ -2214,14 +2254,37 @@ namespace Velvet
             }
         }
 
-        // Whether an important declaration of the element's own outranking write wins slot.
-        private static bool ImportantWins(LayerMap map, HeldSlot slot, DrivenWrite write)
-            => TryLayeredWinner(map, slot, out var winner, out var rank) && write.Outranks(winner.Property, rank)
-                || map.Projection != null && write.Outranks(HeldSlotGroups.LonghandOf(slot),
-                    map.Projection.ClaimOf(HeldSlotGroups.LonghandOf(slot)));
+        // What the element shows on slot under write before a gap adds to it: the value of an important
+        // declaration of the element's own outranking write (DrivenWrite.Outranks), the higher keyed of a layer
+        // and a class claim, else the driven value. NaN where it cannot be measured.
+        private static float OwnPixels(VisualElement element, LayerMap map, HeldSlot slot, DrivenWrite write)
+        {
+            var longhand = HeldSlotGroups.LonghandOf(slot);
+            var found = TryLayeredWinner(map, slot, out var winner, out var rank);
+            var layered = found && write.Outranks(winner.Property, rank);
+            var projection = map.Projection;
+            var claim = projection?.ClaimOf(longhand) ?? long.MinValue;
+            if (projection != null && write.Outranks(longhand, claim) && (!layered || claim > rank))
+            {
+                return ClaimedPixels(element, projection, longhand);
+            }
+            return Pixels(element, layered ? winner : write.Style);
+        }
 
-        // Puts back the important holds a driver's write covered, and adds a gap to a driven margin
-        // (Hold's gap form) where the driven value shows.
+        // The pixels the class claiming longhand writes, where the class names a number to read.
+        private static float ClaimedPixels(VisualElement element, StyleClassProjection.Model projection,
+            StyleLonghand longhand)
+        {
+            var claimant = projection.ClaimantOf(longhand);
+            if (claimant == null)
+            {
+                return float.NaN;
+            }
+            return MotionPropertyClassParser.TryParse(claimant, out var style) ? Pixels(element, style) : float.NaN;
+        }
+
+        // Puts back the important holds a driver's write covered, adds a gap to the value a driven margin shows
+        // (Hold's gap form), and fits a held width around it (FitHeldWidth).
         private static void WriteOverHolds(VisualElement element, LayerMap map, DrivenWrite write)
         {
             var holds = map.Holds;
@@ -2229,34 +2292,78 @@ namespace Velvet
             {
                 return;
             }
-            var driven = write.Style;
-            var slots = HeldSlotGroups.SlotsOf(driven.Property);
+            var slots = HeldSlotGroups.SlotsOf(write.Style.Property);
             ReassertHolds(element, map, slots);
-            var pixels = DrivenPixels(element, driven);
             foreach (var slot in HeldSlotGroups.EverySlot)
             {
                 var gap = (slots & StyleHeldSlots.Bit(slot)) != 0 ? holds.DrivenGap(slot) : 0f;
-                if (gap != 0f && !float.IsNaN(pixels) && !ImportantWins(map, slot, write))
+                var own = gap != 0f ? OwnPixels(element, map, slot, write) : float.NaN;
+                if (!float.IsNaN(own))
                 {
-                    WriteLayered(element, slot, new ArbitraryStyle(driven.Property, pixels + gap, LengthUnit.Pixel));
+                    WriteLayered(element, slot, new ArbitraryStyle(write.Style.Property, own + gap, LengthUnit.Pixel));
                 }
             }
+            FitHeldWidth(element, map);
+        }
+
+        private static readonly HeldSlot[] s_rowMargins = { HeldSlot.MarginLeft, HeldSlot.MarginRight };
+
+        // A held width is a grid column's, which already gives up the part of the child's held margins a space
+        // rule writes (StyleHeldSlots.OwnPart): a driven margin replaces that part, so the width gives up what the
+        // driven margin shows there instead and the child moves inside its column rather than wrapping out of it.
+        private static void FitHeldWidth(VisualElement element, LayerMap map)
+        {
+            var holds = map.Holds;
+            if (holds == null || map.Driven == null || !holds.IsHeld(HeldSlot.Width) || holds.IsDriven(HeldSlot.Width))
+            {
+                return;
+            }
+            var width = holds.Length(HeldSlot.Width);
+            var fitted = false;
+            foreach (var slot in s_rowMargins)
+            {
+                var write = holds.IsHeld(slot) ? DrivenWriteOn(map, slot) : null;
+                var own = write != null ? OwnPixels(element, map, slot, write) : float.NaN;
+                if (!float.IsNaN(own))
+                {
+                    width -= own - holds.OwnPart(slot);
+                    fitted = true;
+                }
+            }
+            if (fitted)
+            {
+                element.style.width = width;
+            }
+        }
+
+        private static DrivenWrite? DrivenWriteOn(LayerMap map, HeldSlot slot)
+        {
+            foreach (var write in map.Driven!.Values)
+            {
+                if ((HeldSlotGroups.SlotsOf(write.Style.Property) & StyleHeldSlots.Bit(slot)) != 0)
+                {
+                    return write;
+                }
+            }
+            return null;
         }
 
         // A percentage is taken of the parent's content width, which CompositeWidgetSpacingDirectionPanelTests
-        // pins against the engine's own reading of a margin percentage. NaN until the parent is laid out.
-        private static float DrivenPixels(VisualElement element, in ArbitraryStyle driven)
+        // pins against the engine's own reading of a margin percentage. NaN until the parent is laid out, and for a
+        // keyword or an expression, which name no number here.
+        private static float Pixels(VisualElement element, in ArbitraryStyle length)
         {
-            if (driven.Unit == LengthUnit.Pixel)
+            if (length.Auto || length.Expression != null)
             {
-                return driven.Value;
+                return float.NaN;
+            }
+            if (length.Unit == LengthUnit.Pixel)
+            {
+                return length.Value;
             }
             var parent = element.hierarchy.parent;
-            return parent == null ? float.NaN : driven.Value / 100f * parent.contentRect.width;
+            return parent == null ? float.NaN : length.Value / 100f * parent.contentRect.width;
         }
-
-        internal static bool IsDriven(VisualElement element, HeldSlot slot)
-            => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.IsDriven(slot);
 
         // Makes the hold just taken on slot give way to a layer of the element's own: while one writes the slot,
         // that layer's value stands, and the held one returns once the last such layer goes. That is how a
@@ -2296,6 +2403,7 @@ namespace Velvet
                 yielded |= StyleHeldSlots.Bit(slot);
             }
             holds.Reassert(element.style, slots & ~yielded);
+            FitHeldWidth(element, map);
         }
 
         private static LayerMap MapOf(VisualElement element) => s_layers.GetValue(element, static _ => new LayerMap());

@@ -353,17 +353,32 @@ namespace Velvet
             // when none does: what an inline writer of it has to outrank.
             public long ClaimOf(StyleLonghand longhand)
             {
+                var index = ClaimIndex(longhand);
+                return index < 0 ? long.MinValue : _entries[index].Priority;
+            }
+
+            // The class whose key ClaimOf answers, or null where no class claims longhand.
+            public string? ClaimantOf(StyleLonghand longhand)
+            {
+                var index = ClaimIndex(longhand);
+                return index < 0 ? null : _entries[index].Class;
+            }
+
+            private int ClaimIndex(StyleLonghand longhand)
+            {
+                var index = -1;
                 var claim = long.MinValue;
-                foreach (var entry in _entries)
+                for (var i = 0; i < _entries.Count; i++)
                 {
-                    // MUTANT_SURVIVES(equivalent): accepting an equal priority assigns the claim its existing value.
+                    var entry = _entries[i];
                     if (!entry.Dead && entry.Gate == (int)StyleUtilityGate.None && entry.Priority > claim
                         && entry.Properties.Contains(longhand))
                     {
                         claim = entry.Priority;
+                        index = i;
                     }
                 }
-                return claim;
+                return index;
             }
 
             public bool HasImportantClass(string cls)

@@ -186,6 +186,35 @@ namespace Velvet.Tests
             Assert.That(child.style.marginLeft.value.value, Is.EqualTo(Space4));
         }
 
+        [TestCase("layer", 5f, TestName = "Given_APlayOnAGappedChildsMargin_When_AnImportantMarginLayerOfItsOwnArrives_Then_TheGapAddsToIt")]
+        [TestCase("class", Space2, TestName = "Given_APlayOnAGappedChildsMargin_When_AnImportantMarginClassOfItsOwnArrives_Then_TheGapAddsToIt")]
+        public void Given_APlayOnAGappedChildsMargin_When_AnImportantMarginOfItsOwnArrives_Then_TheGapAddsToIt(
+            string spelling, float own)
+        {
+            // Arrange — the important margin outranks the play, and CSS adds a margin of any origin to the gap.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { Row("flex flex-row gap-x-4", 3) });
+            var child = scope.Root[0][1];
+            var plan = MotionSpringClassParser.Resolve(new[] { "ml-[3px]" }, new[] { "ml-[9px]" });
+            var state = BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, durationSec: 1f)!;
+            BezierTweenDriver.ApplyCurrentValues(child, state);
+            var hover = StyleLayerPriority.ImportantOf(StyleLayerPriority.Hover);
+            if (spelling == "layer")
+            {
+                StyleArbitraryValueResolver.Apply(child, new ArbitraryStyle(ArbitraryProperty.MarginLeft, 5f, LengthUnit.Pixel), hover);
+            }
+            else
+            {
+                StyleClassProjection.Add(child, "ml-2", hover);
+            }
+
+            // Act — the play's next frame.
+            BezierTweenDriver.Step(child, state, 0f);
+
+            // Assert
+            Assert.That(child.style.marginLeft.value.value, Is.EqualTo(Space4 + own));
+        }
+
         [Test]
         public void Given_APlayOnAChildsMarginBeforeItsRowHasAGap_When_TheGapApplies_Then_ItAddsToTheDrivenMargin()
         {

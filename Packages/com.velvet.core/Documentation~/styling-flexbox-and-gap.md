@@ -316,8 +316,9 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   tell base from gap. Only native UITK `gap` composes the two. Workaround: use padding, an inner
   wrapper, or a different axis when a child needs its own margin on the gap edge. A `V.Motion` animating
   that margin is the exception: while it drives the margin, the gap is added to the driven value, as CSS
-  adds an item's margin to the gap; a grid adds its column and row gaps to a child's driven margin the same
-  way. Margins on a
+  adds an item's margin to the gap, and so is an important margin of the child's own that outranks the
+  animation. A grid adds its column and row gaps to a child's driven margin the same way, and takes the
+  driven margin out of the child's column width, so the child moves inside its column. Margins on a
   **different** edge than the gap are preserved, so `mt-2` on a child under a non-wrap `gap-x-4` row
   is untouched. (Under the wrap half-margin path every side a gap spaces belongs to it, so an explicit child
   margin there is overwritten.)

@@ -402,8 +402,10 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   width a grid gives a child, as an animation's declarations outrank them in CSS, and the element's own
   value comes back when the play releases the slot. An important declaration of the element's own
   (`!w-[80px]`, an important `divide-*`) keeps what it wins, as `!important` outranks an animation; one the
-  play's own pose carries does not, since that pose's end value is what the play drives toward. A gap, a
-  grid's included, adds to a driven margin ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)).
+  play's own pose carries does not, since that pose's end value is what the play drives toward, and neither does
+  one of the pose an interrupted exit reverses to. A gap, a grid's included, adds to a driven margin, and to an
+  important margin of the element's own that outranks the play
+  ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)).
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing

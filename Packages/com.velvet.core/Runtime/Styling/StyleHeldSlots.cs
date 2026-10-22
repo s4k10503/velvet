@@ -95,6 +95,11 @@ namespace Velvet
 
         public bool IsDriven(HeldSlot slot) => (_driven & Bit(slot)) != 0;
 
+        // The pixels a held length carries, and the part of them a gap does not contribute: a space rule's.
+        public float Length(HeldSlot slot) => _lengths?[(int)slot].value.value ?? 0f;
+
+        public float OwnPart(HeldSlot slot) => Length(slot) - (_gaps?[(int)slot] ?? 0f);
+
         // The gap part of a held, driven slot, which a driver's value adds to.
         public float DrivenGap(HeldSlot slot)
             => (_mask & _driven & Bit(slot)) != 0 && _gaps != null ? _gaps[(int)slot] : 0f;

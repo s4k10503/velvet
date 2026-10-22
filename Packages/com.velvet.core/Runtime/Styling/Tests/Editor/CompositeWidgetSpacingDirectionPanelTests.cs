@@ -100,6 +100,30 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AGridWithAColumnGap_When_APlayDrivesTheSecondColumnsMargin_Then_ItMovesInsideItsColumn()
+        {
+            // Arrange — a grid item's margin sits inside its area, past the column gap, and its neighbours stay put.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "grid", className: "grid grid-cols-2 gap-4 w-[300px]",
+                children: new VNode[] { V.Div(className: "h-[20px]"), V.Div(className: "h-[20px]") }));
+            var container = _window.rootVisualElement.Q("grid");
+            ForcePanelUpdate(container.panel);
+            using (var evt = EventBase<GeometryChangedEvent>.GetPooled())
+            {
+                container.SimulateEvent(evt);
+            }
+            var plan = MotionSpringClassParser.Resolve(new[] { "ml-[8px]" }, new[] { "ml-[16px]" });
+            var state = BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, durationSec: 1f)!;
+
+            // Act
+            BezierTweenDriver.ApplyCurrentValues(container[1], state);
+            ForcePanelUpdate(container.panel);
+
+            // Assert — a pixel either way separates this from the gap replaced (16px short) and from a wrap onto a
+            // second row, which starts the child back at the row's left edge.
+            Assert.That(container[1].layout.x, Is.EqualTo(container[0].layout.xMax + Space4 + 8f).Within(1f));
+        }
+
+        [Test]
         public void Given_AScrollView_When_ADivideSeparatesItsContent_Then_TheBorderLandsOnTheContentChildren()
         {
             // Arrange / Act
