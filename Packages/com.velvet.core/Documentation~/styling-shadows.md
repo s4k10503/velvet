@@ -33,8 +33,12 @@ follows a transform on the element, as a CSS box-shadow does. `drop-shadow-*` is
 |---|---|
 | `shadow-<color>`, `inset-shadow-<color>`, `inset-ring-<color>` | a palette name, `transparent`, `current` (the element's text colour) or a bracketed colour (`shadow-[#f00]`), taking the place of the colour of every layer of its own family; `/N` scales its alpha (`shadow-red-500/40`) |
 | `shadow-<size>/N`, `inset-shadow-<size>/N` | sets the alpha of every layer of the size to N%, or, beside a colour class, scales that colour's alpha by it (`shadow-lg/50`) |
+| `shadow-inherit`, `inset-shadow-inherit`, `inset-ring-inherit` | the colour its family's classes declare on the parent element, with the parent's size `/N` folded in, or the grandparent's where the parent's is itself `-inherit`; each layer keeps its own colour where that element declares none. It takes no `/N` |
 
 An `inset-ring-*` with no colour class is drawn in the element's text colour, as CSS's `currentColor`.
+The parent `-inherit` reads is the element's parent in the UI Toolkit hierarchy, which for a child of a
+`V.ScrollView` is the scroll view's content container rather than the scroll view, and declares no colour. The
+inherited colour is read when the element's shadow is drawn.
 
 The presets are Tailwind v4's `--shadow-*` and `--inset-shadow-*` theme values. An `inset-shadow-*`, an
 `inset-ring-*` and a `shadow-*` on one element are all drawn, listed in that order, and each `-none` (or
@@ -66,10 +70,3 @@ Each corner keeps its own radius. A padding-box corner is the border-box radius 
 meeting there. Corner radii are circular: a corner has one radius, where CSS's `border-radius` takes a horizontal
 and a vertical one. Where the two borders at a corner differ, the wider is taken off both axes, where CSS takes
 each border off its own axis and leaves an elliptical corner.
-
-## Not supported
-
-These classes read as no shadow, so they are inert and an earlier `shadow-*` stays in force:
-
-- `shadow-inherit`, `inset-shadow-inherit` and `inset-ring-inherit`: a colour is not inherited from the parent's
-  shadow colour.

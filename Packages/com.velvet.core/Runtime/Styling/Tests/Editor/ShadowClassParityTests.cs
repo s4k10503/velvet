@@ -387,6 +387,76 @@ namespace Velvet.Tests
             Assert.That(found ? Describe(spec) : "none", Is.EqualTo("0 2 4 0 0.05, 0 0 0 2 1, 0 25 50 -12 0.25"));
         }
 
+        // Each layer's family it takes its colour from the parent for, and the colour it keeps where the parent has none.
+        private static string Inherited(ShadowSpec[] layers)
+            => string.Join(", ", System.Array.ConvertAll(layers, l => l.InheritFrom + " " + (float.IsNaN(l.Color.r)
+                ? "current"
+                : UnityEngine.ColorUtility.ToHtmlStringRGBA(l.Color))));
+
+        // -inherit takes the parent's colour and keeps each layer's own for where the parent declares none; a later
+        // colour class replaces it, and it takes no modifier.
+        [TestCase("shadow-md shadow-inherit", "Shadow 0000001A, Shadow 0000001A")]
+        [TestCase("inset-shadow-2xs inset-shadow-inherit", "InsetShadow 0000000D")]
+        [TestCase("inset-ring inset-ring-inherit", "InsetRing current")]
+        [TestCase("shadow-2xs shadow-inherit shadow-red-500", "None FB2C36FF")]
+        [TestCase("shadow-2xs shadow-red-500 shadow-inherit/50", "None FB2C36FF")]
+        public void Given_AnInheritColourClass_When_Extracted_Then_TheLayersTakeTheParentsColour(string classes, string expected)
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(classes.Split(' '), out var spec);
+
+            // Assert
+            Assert.That(found ? Inherited(spec) : "none", Is.EqualTo(expected));
+        }
+
+        // What a parent declares is its colour with its own size's /N folded in, as the browser substitutes the alpha
+        // variable on the parent.
+        [TestCase("shadow-red-500/40 shadow-lg/50", "FB2C3633")]
+        [TestCase("shadow-inherit", "inherit")]
+        [TestCase("shadow-lg", "none")]
+        public void Given_AParentsShadowClasses_When_ItsDeclaredColourIsRead_Then_ItIsWhatAChildInherits(
+            string classes, string expected)
+        {
+            // Act
+            var declared = StyleShadowClass.DeclaredColours(classes.Split(' ')).Shadow;
+
+            // Assert
+            Assert.That(
+                declared.Inherit ? "inherit" : declared.Colour is { } c ? UnityEngine.ColorUtility.ToHtmlStringRGBA(c) : "none",
+                Is.EqualTo(expected));
+        }
+
+        // The colour a child inherits for the shadow family, through BoxShadowSilhouette's private resolution.
+        private static string InheritedThrough(UnityEngine.UIElements.VisualElement child)
+        {
+            var method = typeof(BoxShadowSilhouette).GetMethod("InheritedColour",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var colour = (UnityEngine.Color?)method!.Invoke(null, new object[] { child, ShadowColourFamily.Shadow });
+            return colour is { } c ? UnityEngine.ColorUtility.ToHtmlStringRGBA(c) : "none";
+        }
+
+        [TestCase("shadow-red-500", "", "FB2C36FF")]
+        [TestCase("shadow-inherit", "shadow-red-500", "FB2C36FF")]
+        [TestCase("inset-shadow-red-500", "", "none")]
+        public void Given_AnElementUnderDeclaringAncestors_When_ItsShadowColourIsInherited_Then_ItIsTheNearestDeclared(
+            string parentClasses, string grandparentClasses, string expected)
+        {
+            // Arrange
+            var grandparent = new UnityEngine.UIElements.VisualElement();
+            var parent = new UnityEngine.UIElements.VisualElement();
+            var child = new UnityEngine.UIElements.VisualElement();
+            grandparent.Add(parent);
+            parent.Add(child);
+            BoxShadowSilhouette.RecordDeclaredColours(grandparent, grandparentClasses.Split(' '));
+            BoxShadowSilhouette.RecordDeclaredColours(parent, parentClasses.Split(' '));
+
+            // Act
+            var inherited = InheritedThrough(child);
+
+            // Assert
+            Assert.That(inherited, Is.EqualTo(expected));
+        }
+
         [Test]
         public void Given_ADropShadowClass_When_Gated_Then_HasShadowClassPassesItBy()
         {

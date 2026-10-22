@@ -12,6 +12,8 @@
 - `shadow-<color>`, `inset-shadow-<color>` and their `/N` colour the layers of their own family, and a size's `/N`
   (`shadow-lg/50`) sets its layers' alpha, as Tailwind v4 does. They drew nothing, and `shadow-[#f00]` now colours the
   shadow rather than reading as no shadow.
+- `shadow-inherit`, `inset-shadow-inherit` and `inset-ring-inherit` take their family's colour from the parent
+  element, as Tailwind v4's `inherit` does for the colour variable. They were ignored.
 - `inset-ring`, `inset-ring-<n>`, `inset-ring-[…]` and `inset-ring-<color>` draw an inset band, in the element's text
   colour where no colour class names one. They drew nothing.
 - `-outline-offset-<n>`, `-outline-offset-[…]` and a negative `outline-offset-[…]` draw the outline inside the

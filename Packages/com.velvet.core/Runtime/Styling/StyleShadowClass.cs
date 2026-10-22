@@ -20,6 +20,9 @@ namespace Velvet
         public readonly float OffsetX;
         // An inner shadow (CSS's `inset`), drawn inside the padding box rather than outside the border box.
         public readonly bool Inset;
+        // The family whose colour the layer takes from its parent (shadow-inherit, inset-shadow-inherit,
+        // inset-ring-inherit); Color is what it is drawn in where the parent declares none.
+        public readonly ShadowColourFamily InheritFrom;
 
         // The colour of a layer drawn in the element's text colour, currentcolor; its alpha scales that colour's.
         public static readonly Color CurrentColor = new(float.NaN, 0f, 0f, 1f);
@@ -29,7 +32,8 @@ namespace Velvet
         {
         }
 
-        public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX, bool inset = false)
+        public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX, bool inset = false,
+            ShadowColourFamily inheritFrom = ShadowColourFamily.None)
         {
             Color = color;
             Blur = blur;
@@ -37,7 +41,58 @@ namespace Velvet
             Spread = spread;
             OffsetX = offsetX;
             Inset = inset;
+            InheritFrom = inheritFrom;
         }
+    }
+
+    // The box-shadow families with a colour of their own: --tw-shadow-color, --tw-inset-shadow-color and
+    // --tw-inset-ring-color.
+    internal enum ShadowColourFamily : byte
+    {
+        None,
+        Shadow,
+        InsetShadow,
+        InsetRing,
+    }
+
+    // The colour one family's classes declare on an element: inherit, a colour, or neither.
+    internal readonly struct DeclaredShadowColour
+    {
+        public DeclaredShadowColour(bool inherit, Color? colour)
+        {
+            Inherit = inherit;
+            Colour = colour;
+        }
+
+        public bool Inherit { get; }
+
+        public Color? Colour { get; }
+    }
+
+    // The colours an element's classes declare for each family, which a child's -inherit class takes.
+    internal sealed class DeclaredShadowColours
+    {
+        public DeclaredShadowColours(DeclaredShadowColour shadow, DeclaredShadowColour insetShadow,
+            DeclaredShadowColour insetRing)
+        {
+            Shadow = shadow;
+            InsetShadow = insetShadow;
+            InsetRing = insetRing;
+        }
+
+        public DeclaredShadowColour Shadow { get; }
+
+        public DeclaredShadowColour InsetShadow { get; }
+
+        public DeclaredShadowColour InsetRing { get; }
+
+        public DeclaredShadowColour Of(ShadowColourFamily family) => family switch
+        {
+            ShadowColourFamily.Shadow => Shadow,
+            ShadowColourFamily.InsetShadow => InsetShadow,
+            ShadowColourFamily.InsetRing => InsetRing,
+            _ => default,
+        };
     }
 
     // Parses Velvet's shadow-* utility classes into the layers of a box-shadow list, and resolves the companion
@@ -139,10 +194,12 @@ namespace Velvet
             public ShadowSpec[] Layers;
             public float? SizeAlpha;
             public Color? Colour;
+            // -inherit, which takes the parent's colour for this family and keeps each layer's own where it has none.
+            public bool Inherit;
 
-            public ShadowSpec[] Resolved()
+            public ShadowSpec[] Resolved(ShadowColourFamily family)
             {
-                if (Layers == null || Layers.Length == 0 || (SizeAlpha == null && Colour == null))
+                if (Layers == null || Layers.Length == 0 || (SizeAlpha == null && Colour == null && !Inherit))
                 {
                     return Layers ?? Array.Empty<ShadowSpec>();
                 }
@@ -152,9 +209,23 @@ namespace Velvet
                     var layer = Layers[i];
                     var colour = Colour ?? layer.Color;
                     colour.a = Colour != null ? colour.a * (SizeAlpha ?? 1f) : SizeAlpha ?? colour.a;
-                    resolved[i] = new ShadowSpec(colour, layer.Blur, layer.OffsetY, layer.Spread, layer.OffsetX, layer.Inset);
+                    resolved[i] = new ShadowSpec(colour, layer.Blur, layer.OffsetY, layer.Spread, layer.OffsetX, layer.Inset,
+                        Inherit ? family : ShadowColourFamily.None);
                 }
                 return resolved;
+            }
+
+            // The colour a child's -inherit takes: this one, its alpha scaled by the size's /N, as the browser
+            // substitutes --tw-shadow-alpha on this element.
+            public DeclaredShadowColour Declared()
+            {
+                if (Inherit || Colour == null)
+                {
+                    return new DeclaredShadowColour(Inherit, null);
+                }
+                var colour = Colour.Value;
+                colour.a *= SizeAlpha ?? 1f;
+                return new DeclaredShadowColour(false, colour);
             }
         }
 
@@ -163,10 +234,15 @@ namespace Velvet
         {
             public float Width;
             public Color? Colour;
+            public bool Inherit;
 
             public ShadowSpec[] Resolved()
                 => Width > 0f
-                    ? new[] { new ShadowSpec(Colour ?? ShadowSpec.CurrentColor, 0f, 0f, Width, 0f, inset: true) }
+                    ? new[]
+                    {
+                        new ShadowSpec(Colour ?? ShadowSpec.CurrentColor, 0f, 0f, Width, 0f, inset: true,
+                            Inherit ? ShadowColourFamily.InsetRing : ShadowColourFamily.None),
+                    }
                     : Array.Empty<ShadowSpec>();
         }
 
@@ -182,9 +258,28 @@ namespace Velvet
                 return false;
             }
 
-            var outer = new ShadowFamily();
-            var inset = new ShadowFamily();
-            var ring = new InsetRing();
+            Read(classNames, out var outer, out var inset, out var ring);
+            var layers = new List<ShadowSpec>(inset.Resolved(ShadowColourFamily.InsetShadow));
+            layers.AddRange(ring.Resolved());
+            layers.AddRange(outer.Resolved(ShadowColourFamily.Shadow));
+            spec = layers.ToArray();
+            return spec.Length > 0;
+        }
+
+        // The colours classNames declares for each family, which a discarded box-shadow keeps: they are declarations
+        // of their own.
+        internal static DeclaredShadowColours DeclaredColours(string[] classNames)
+        {
+            Read(classNames, out var outer, out var inset, out var ring);
+            return new DeclaredShadowColours(outer.Declared(), inset.Declared(),
+                new DeclaredShadowColour(ring.Inherit, ring.Inherit ? null : ring.Colour));
+        }
+
+        private static void Read(string[] classNames, out ShadowFamily outer, out ShadowFamily inset, out InsetRing ring)
+        {
+            outer = new ShadowFamily();
+            inset = new ShadowFamily();
+            ring = new InsetRing();
             foreach (var cls in classNames)
             {
                 if (!TryRead(cls!, "shadow", Presets, ref outer) && !TryRead(cls!, "inset-shadow", InsetPresets, ref inset))
@@ -192,11 +287,6 @@ namespace Velvet
                     TryReadInsetRing(cls!, ref ring);
                 }
             }
-            var layers = new List<ShadowSpec>(inset.Resolved());
-            layers.AddRange(ring.Resolved());
-            layers.AddRange(outer.Resolved());
-            spec = layers.ToArray();
-            return spec.Length > 0;
         }
 
         // Reads cls into the family root names when it is one of its utilities: a size (the bare root is the empty
@@ -211,10 +301,22 @@ namespace Velvet
             {
                 return false;
             }
+            if (suffix == "inherit")
+            {
+                // inherit takes no modifier.
+                if (alpha != null)
+                {
+                    return false;
+                }
+                family.Inherit = true;
+                family.Colour = null;
+                return true;
+            }
             if (TryReadColour(suffix, out var colour))
             {
                 colour.a *= alpha ?? 1f;
                 family.Colour = colour;
+                family.Inherit = false;
                 return true;
             }
             if (!TryReadSize(suffix, presets, alpha, out var layers))
@@ -267,10 +369,19 @@ namespace Velvet
             {
                 ring.Width = width.Value;
             }
+            else if (suffix == "inherit")
+            {
+                if (alpha == null)
+                {
+                    ring.Inherit = true;
+                    ring.Colour = null;
+                }
+            }
             else if (TryReadColour(suffix, out var colour))
             {
                 colour.a *= alpha ?? 1f;
                 ring.Colour = colour;
+                ring.Inherit = false;
             }
         }
 
