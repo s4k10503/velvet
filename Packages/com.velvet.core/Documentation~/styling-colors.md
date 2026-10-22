@@ -61,7 +61,7 @@ The functions follow CSS Color 4:
   plus or minus that value: 0deg in degrees or turns, 216deg in gradians and 240deg in radians, and 144deg and
   120deg for the negative gradians and radians.
 - **Function names, `none` and angle units** are read in any case.
-- **The opacity modifier** (`bg-[…]/50`, `bg-red-500/50`, `text-…/[0.3]`) multiplies the colour's alpha, as
+- **The opacity modifier** (`bg-[…]/50`, `bg-red-500/50`, `text-…/[0.3]`, `text-…/[30%]`) multiplies the colour's alpha, as
   Tailwind v4's `color-mix(in oklab, <colour> 50%, transparent)` does: `bg-[#ff000080]/50` has an alpha of a
   quarter.
 

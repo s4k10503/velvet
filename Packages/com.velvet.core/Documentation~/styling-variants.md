@@ -318,7 +318,8 @@ an opaque full-bleed child, where CSS paints an inset box-shadow under the eleme
 A band is drawn by a class that names one, as in Tailwind v4: `ring` (1px), `ring-<n>`, `ring-[…]`, `outline`
 (1px), `outline-<n>` and `outline-[…]`. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
 colours only its own family's band, so `outline ring-red-500` is an outline in the text colour. A band whose
-family names no colour is drawn in the element's text colour and follows it as it changes. Velvet still
+family names no colour, or names `ring-current` / `outline-current`, is drawn in the element's text colour and
+follows it as it changes. Velvet still
 draws one band where CSS draws a ring and an outline together.
 
 What the ringed element's own subtree would carry reaches the band as well. Its transform —
