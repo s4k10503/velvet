@@ -280,7 +280,10 @@ namespace Velvet
                     MotionVariantResolver.InitialLabel(motionNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
                     out variantClasses, out _)
                 : MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out variantClasses, out _);
-            var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
+            var writtenClasses = StyleInputBoxSurface.IsControlType(motionNode.ElementType)
+                ? StyleInputBoxSurface.Route(appliedClasses)
+                : appliedClasses;
+            var element = _ctx.FiberElementFactory.CreateMotion(motionNode, writtenClasses);
             _ctx.MotionNodes[element] = motionNode;
             // The presence expansion dispatches this anchor Motion's variant enter/exit against the
             // Motion's OWN element (the resting variant classes live here, not on a wrapper) — record
@@ -348,22 +351,22 @@ namespace Velvet
             _ctx.SyncRefCallback(element, motionNode.RefCallback);
             _patcher.Appliers.ApplyGestureManipulator(element, motionNode.WhileHoverClass, motionNode.WhileTapClass, motionNode.WhileFocusClass);
             _patcher.Appliers.ExpectDragGates(element, motionNode.Props);
-            _patcher.ApplyVariantManipulators(element, appliedClasses);
+            _patcher.ApplyVariantManipulators(element, writtenClasses);
             _patcher.ApplyAttributes(element, motionNode.Props);
-            ApplyOptionalCreateBindings(element, motionNode.Props, appliedClasses);
-            _patcher.ApplyFontLayerOnCreate(element, appliedClasses);
-            _patcher.ApplyChildVariantManipulator(element, appliedClasses);
-            _patcher.ApplyLayoutManipulators(element, appliedClasses);
+            ApplyOptionalCreateBindings(element, motionNode.Props, writtenClasses);
+            _patcher.ApplyFontLayerOnCreate(element, writtenClasses);
+            _patcher.ApplyChildVariantManipulator(element, writtenClasses);
+            _patcher.ApplyLayoutManipulators(element, writtenClasses);
             _patcher.ApplyStructuralVariants(element);
             _patcher.ApplyHasClassVariants(element);
             _patcher.ApplyHasVariantManipulators(element);
-            _patcher.ApplyTextEffects(element, appliedClasses);
+            _patcher.ApplyTextEffects(element, writtenClasses);
             // The element path's sequence, from the same composed source. The shadow and the ring take their
             // patch-time entries rather than ApplyShadowOnCreate / ApplyRingOnCreate, whose clip-path gates would
             // suppress them for a clip-path this Motion ignores (WarnIgnoredMotionUtilities); a Motion's patch
             // passes no active clip either.
             _ctx.ExpectPlayGates(element, motionNode);
-            var motionPaintClasses = _patcher.ResolveVariantClassesOnCreate(element, appliedClasses);
+            var motionPaintClasses = _patcher.ResolveVariantClassesOnCreate(element, writtenClasses);
             _patcher.Appliers.ApplySkewOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyGradientOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyAnimateOnCreate(element, motionPaintClasses);

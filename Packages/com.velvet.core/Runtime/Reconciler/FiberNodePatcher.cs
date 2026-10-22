@@ -220,6 +220,7 @@ namespace Velvet
         // .ResolveApplied always concatenates a fresh array) hits this path on every patch.
         internal void SyncClassDrivenStyling(VisualElement element, string[] oldClasses, string[] newClasses)
         {
+            (oldClasses, newClasses) = (AsWritten(element, oldClasses), AsWritten(element, newClasses));
             var changed = DiffClassList(element, oldClasses, newClasses);
             if (changed)
             {
@@ -238,6 +239,12 @@ namespace Velvet
                 ApplyFontLayer(element, oldClasses, newClasses);
             }
         }
+
+        // A field control's class list as written onto it: a field Motion's pose classes are merged in unrouted, and
+        // routed here rather than in the merged set, whose callers look its classes up by name
+        // (RemoveStaleInlineTokens). A list a field factory already routed comes back as it is.
+        internal static string[] AsWritten(VisualElement element, string[] classes)
+            => classes != null && StyleInputBoxSurface.IsControl(element) ? StyleInputBoxSurface.Route(classes) : classes!;
 
         // The condition under which ResolveGateClasses hands back something other than the reconciled
         // array, which is what the class diff cannot answer for.
@@ -371,6 +378,7 @@ namespace Velvet
         private void ApplyPostChildrenClassPasses(VisualElement element, string[] oldClassNames,
             string[] newClassNames, bool clipActive)
         {
+            (oldClassNames, newClassNames) = (AsWritten(element, oldClassNames), AsWritten(element, newClassNames));
             // Before gap / divide / grid: on a SHARED style property ([&>*]:ml-[2px] alongside gap-x-4) those
             // three own the edge and must win, exactly as they already win over a child's own explicit margin
             // — running [&>*]: first makes it behave as if the child itself carried the wrapped class.

@@ -841,6 +841,21 @@ namespace Velvet.Tests
             Assert.That(Box(scope.Root[0]).Q<TextElement>().ClassListContains("truncate"), Is.True);
         }
 
+        [Test]
+        public void Given_AFieldMotionRestingAtAPoseWithABackgroundClass_When_Reconciled_Then_ItsInputBoxTakesIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var variants = new Dictionary<string, MotionVariant> { ["on"] = new MotionVariant("bg-red-500", null) };
+            var tree = new VNode[] { V.Motion(elementType: typeof(TextField), variants: variants, animate: "on") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Box(scope.Root[0]).ClassListContains("bg-red-500"), Is.True);
+        }
+
         [TestCase("text-ellipsis")]
         [TestCase("text-clip")]
         public void Given_ATextOverflowUtilityOnATextField_When_Reconciled_Then_TheInputBoxClips(string token)
