@@ -452,6 +452,56 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_RoundedXsClass_When_Resolved_Then_BorderRadiusIs2()
+        {
+            // Arrange/Act — rounded-xs == 0.125rem == 2px.
+            var leaf = MountAndResolve("rounded-xs");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.borderTopLeftRadius, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_RoundedSmClass_When_Resolved_Then_BorderRadiusIs4()
+        {
+            // Arrange/Act — rounded-sm == 0.25rem == 4px.
+            var leaf = MountAndResolve("rounded-sm");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.borderTopLeftRadius, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_Rounded4xlClass_When_Resolved_Then_BorderRadiusIs32()
+        {
+            // Arrange/Act — rounded-4xl == 2rem == 32px.
+            var leaf = MountAndResolve("rounded-4xl");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.borderTopLeftRadius, Is.EqualTo(32f));
+        }
+
+        [Test]
+        public void Given_RoundedTlXsClass_When_Resolved_Then_TopLeftRadiusIs2()
+        {
+            // Arrange/Act — rounded-tl-xs == 0.125rem == 2px.
+            var leaf = MountAndResolve("rounded-tl-xs");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.borderTopLeftRadius, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_RoundedBr4xlClass_When_Resolved_Then_BottomRightRadiusIs32()
+        {
+            // Arrange/Act — rounded-br-4xl == 2rem == 32px.
+            var leaf = MountAndResolve("rounded-br-4xl");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.borderBottomRightRadius, Is.EqualTo(32f));
+        }
+
+        [Test]
         public void Given_P11Class_When_Resolved_Then_PaddingIs44()
         {
             // p-11 == 2.75rem == 44px.

@@ -15,7 +15,8 @@ namespace Velvet
         // from wherever the forward tween had reached.
         public float From;
         public float To;
-        public readonly float RestingTarget;
+        // Not readonly: a play continuing from one it interrupts (BezierTweenDriver.ContinueFrom) starts elsewhere.
+        public float RestingTarget;
         // Set on a driven Tween's channel whose property a PropertyOverrides entry names (DrivenTweenTiming), and on
         // each of its channels once it reverses (BezierTweenDriver.Retarget).
         public TweenChannelTiming? Timing;
@@ -396,6 +397,87 @@ namespace Velvet
         }
 
         /// <summary>
+        /// What each channel of <paramref name="state"/> shows and how fast it is moving, the curve's slope at the
+        /// play's time times <paramref name="timeScale"/>, the play's seconds per second on screen; a color carries
+        /// no velocity, as Framer Motion tracks none for one, and a finished play none at all.
+        /// </summary>
+        public static MotionDrawnValues Drawn(BezierTweenState state, float timeScale)
+        {
+            (float, float)? Of(BezierTweenChannel? channel, ArbitraryProperty? length = null)
+                => channel == null ? null
+                    : (ValueAt(state, channel, state.ElapsedSec, length), VelocityOf(state, channel, length) * timeScale);
+
+            return MotionDrawnValues.Of(
+                new MotionDrawnValues.Channels(
+                    Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate)),
+                state.Colors,
+                c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, ValueAt(state, c.Progress, state.ElapsedSec, null))),
+                state.Lengths,
+                l =>
+                {
+                    var (value, velocity) = Of(l.Value, l.Property)!.Value;
+                    return (l.Property, l.Unit, value, velocity);
+                });
+        }
+
+        // The channel's value at timeSec, the play's elapsed time put back after: a length through its property's
+        // interpolation, any other channel through Value.
+        private static float ValueAt(BezierTweenState state, BezierTweenChannel channel, float timeSec, ArbitraryProperty? length)
+        {
+            var now = state.ElapsedSec;
+            try
+            {
+                state.ElapsedSec = timeSec;
+                var shared = SharedEased(state);
+                return length is { } property
+                    ? MotionPropertyInterpolation.LerpLength(property, channel.From, channel.To, Eased(state, channel, shared))
+                    : Value(state, channel, shared);
+            }
+            finally
+            {
+                state.ElapsedSec = now;
+            }
+        }
+
+        /// <summary>
+        /// Starts each channel of <paramref name="next"/> that <paramref name="interrupted"/> draws from the value
+        /// drawn, the bezier sibling of <see cref="MotionSpringDriver.ContinueFrom"/> less the velocity a tween does
+        /// not carry. A length in another unit keeps its own start.
+        /// </summary>
+        public static void ContinueFrom(BezierTweenState next, MotionDrawnValues interrupted)
+        {
+            Continue(next.Opacity, interrupted.Opacity);
+            Continue(next.TranslateX, interrupted.TranslateX);
+            Continue(next.TranslateY, interrupted.TranslateY);
+            Continue(next.Scale, interrupted.Scale);
+            Continue(next.Rotate, interrupted.Rotate);
+            if (next.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    if (interrupted.LengthOf(length.Property, length.Unit) is { } drawn && drawn.SameUnit)
+                    {
+                        length.Value.From = length.Value.RestingTarget = drawn.Value;
+                    }
+                }
+            }
+            interrupted.ContinueColors(next.Colors, color => color.Property, (color, drawn) =>
+            {
+                var continued = new BezierColorChannel(color.Property, drawn, color.To);
+                continued.Progress.Timing = color.Progress.Timing;
+                return continued;
+            });
+        }
+
+        private static void Continue(BezierTweenChannel? next, (float Value, float Velocity)? interrupted)
+        {
+            if (next != null && interrupted is { } drawn)
+            {
+                next.From = next.RestingTarget = drawn.Value;
+            }
+        }
+
+        /// <summary>
         /// Freezes each active channel's CURRENT sampled value as its new <see cref="BezierTweenChannel.From"/>,
         /// points its <see cref="BezierTweenChannel.To"/> back at <see cref="BezierTweenChannel.RestingTarget"/>,
         /// and resets <see cref="BezierTweenState.ElapsedSec"/> to zero — a fresh reversal from wherever the forward
@@ -468,6 +550,29 @@ namespace Velvet
         // visible — clamping would silently flatten it.
         private static float Value(BezierTweenState state, BezierTweenChannel channel, float shared)
             => Mathf.LerpUnclamped(channel.From, channel.To, Eased(state, channel, shared));
+
+        private const double VelocitySlopeStepSec = 1.0 / 1000.0;
+
+        /// <summary>
+        /// The channel's rate of change per second at the play's current elapsed time, which a spring that interrupts
+        /// the play starts with, as Framer Motion starts a value's next animation with the motion value's velocity.
+        /// A finished play has stopped.
+        /// </summary>
+        internal static float VelocityOf(BezierTweenState state, BezierTweenChannel? channel, ArbitraryProperty? length = null)
+        {
+            if (channel == null || state.ElapsedSec >= state.EndSec)
+            {
+                return 0f;
+            }
+            var now = state.ElapsedSec;
+            // MUTANT_SURVIVES(equivalent, boundary): now is a float, which never equals 1/1000 held as a double.
+            var from = now >= VelocitySlopeStepSec ? now - VelocitySlopeStepSec : now;
+            // MUTANT_SURVIVES(equivalent, boundary): the same comparison as the line above.
+            var to = now >= VelocitySlopeStepSec ? now : now + VelocitySlopeStepSec;
+            var before = ValueAt(state, channel, (float)from, length);
+            var after = ValueAt(state, channel, (float)to, length);
+            return (after - before) / (float)(to - from);
+        }
 
         // The eased output for the channel at the current elapsed time: its own Timing where it has one, else
         // shared, the state's curve at the state's delay and duration (SharedEased), evaluated once a frame for

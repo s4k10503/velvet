@@ -142,13 +142,13 @@ namespace Velvet
             return spec.Active;
         }
 
-        // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<float>deg] (+ y variants).
+        // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<angle>] (+ y variants).
         // Returns false for anything else (the cascade ignores unrecognized tokens).
         internal static bool TryParse(string? cls, out bool isX, out float deg)
         {
             isX = false;
             deg = 0f;
-            if (string.IsNullOrEmpty(cls))
+            if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }
@@ -175,18 +175,13 @@ namespace Velvet
                 return false;
             }
 
-            // Arbitrary form: [<float>deg] (the unit is required in the bracket). A malformed or unit-less
-            // bracket (or one TryStripBrackets rejects as empty) falls through to int.TryParse below, which
-            // rejects it just the same (a bracket character is never a valid digit).
+            // Arbitrary form: an angle as skewX() takes one, a bare number only as 0. A malformed bracket (or
+            // one TryStripBrackets rejects as empty) falls through to int.TryParse below, which rejects it just
+            // the same (a bracket character is never a valid digit).
             if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
-                if (!inner.EndsWith("deg", StringComparison.Ordinal) || inner.Length < 4)
-                {
-                    return false;
-                }
-                var number = inner.Slice(0, inner.Length - 3);
-                if (!float.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
-                    || float.IsNaN(value) || float.IsInfinity(value))
+                if (!StyleArbitraryValueResolver.TryParseAngleDegrees(inner, out var value)
+                    || (value != 0f && StyleArbitraryValueResolver.IsUnitlessAngle(inner)))
                 {
                     return false;
                 }

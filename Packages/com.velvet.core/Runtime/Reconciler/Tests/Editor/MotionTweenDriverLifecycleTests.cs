@@ -13,7 +13,7 @@ namespace Velvet.Tests
     /// Pins the bezier and spring drivers' lifecycles against a live (simulated) panel — the coverage
     /// the panel-free driver units cannot give. Both drivers must: start once their element is
     /// attached (both production call sites play the enter BEFORE insertion); play a presence exit
-    /// (a spring's exit is not gated on <c>DurationSec</c>, documented as ignored for springs); leave
+    /// (a spring's exit is not gated on its <c>DurationSec</c> being positive); leave
     /// a resolver-backed resting value (e.g. <c>translate-x-4</c>, inline-only, no USS rule) intact
     /// after settling; release a cancel that lands before or during their delayed tick without
     /// waiting on a tick that would never start; scrub their inline pose when the subtree is torn
@@ -262,6 +262,8 @@ namespace Velvet.Tests
             Assert.That(item.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base completed a channel-less exit once and dropped its ghost.
+        // The passive flush added to each drain is the one the completion now settles in.
         [Test]
         public void Given_ABezierExitWithNoAnimatableChannel_When_TheKeyIsRemoved_Then_TheGhostDropsAndExitCompleteFiresOnce()
         {
@@ -278,11 +280,13 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             Tick();
 
-            // Act — remove the key and drain several times (the completion re-render included).
+            // Act — remove the key and drain several times, each with the passive flush the completion settles in (the
+            // completion re-render included).
             store.Set("");
             for (var i = 0; i < 6; i++)
             {
                 scheduler.DrainImmediateForTest();
+                mounted.FlushEffectsForTest();
             }
 
             // Assert — the ghost is gone and onExitComplete fired exactly once (no re-render loop).
@@ -397,7 +401,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ASpringConfigWithDefaultDuration_When_APresenceChildExits_Then_TheGhostStaysWhileTheSpringPlays()
         {
-            // Arrange — DurationSec is left at its default (documented as ignored for springs).
+            // Arrange — DurationSec is left unset, so the spring's physics alone decide when it settles.
             s_hostVariants = s_fade;
             s_hostTransition = Spring();
             using var store = new SetStore("a");
@@ -485,6 +489,8 @@ namespace Velvet.Tests
             Assert.That(item.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base completed a channel-less exit once and dropped its ghost.
+        // The passive flush added to each drain is the one the completion now settles in.
         [Test]
         public void Given_ASpringExitWithNoAnimatableChannel_When_TheKeyIsRemoved_Then_TheGhostDropsAndExitCompleteFiresOnce()
         {
@@ -501,11 +507,13 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             Tick();
 
-            // Act — remove the key and drain several times (the completion re-render included).
+            // Act — remove the key and drain several times, each with the passive flush the completion settles in (the
+            // completion re-render included).
             store.Set("");
             for (var i = 0; i < 6; i++)
             {
                 scheduler.DrainImmediateForTest();
+                mounted.FlushEffectsForTest();
             }
 
             // Assert — the ghost is gone and onExitComplete fired exactly once (no re-render loop).

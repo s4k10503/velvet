@@ -119,6 +119,7 @@ namespace Velvet
                 // tenancy's record declares, which that tenancy's own registration writes as well; the line
                 // keeps one from staying on a pooled element.
                 textField.UnregisterCallback(s_reassertTouchKeyboard, TrickleDown.TrickleDown);
+                FiberTextFieldLength.Forget(textField);
                 s_textFieldDefaults.Remove(textField);
                 ForgetShownText(textField);
             }
@@ -391,7 +392,7 @@ namespace Velvet
         // without them it can equal the value's single-line display. A write leaving the flag as it was holds
         // nothing, so a render that only repeats the declaration does not hold typing Velvet never carried.
         // With no edit pending, what the write left on screen becomes the record; left unrecorded, the text
-        // multiline coming off leaves reads as typed to the next multiline or limit write, which then holds it
+        // multiline coming off leaves reads as typed to the next multiline write, which then holds it
         // on screen for a blur to commit. TextFieldMultilineKeyboardPropTests pins each of these.
         private static void WriteMultiline(TextField field, bool value)
         {
@@ -529,71 +530,47 @@ namespace Velvet
             }
         }
 
+        // A finite limit is not assigned. TextFieldMaxLengthInputTests pins that assigning the field's own
+        // maxLength keeps a prefix of a longer value and of a pending edit. Below zero is unlimited and is
+        // assigned, so a field built with a limit of its own is not left under it; dropping the prop writes
+        // the recorded value back, as the other members do.
         private static void ApplyMaxLength(TextField field, int? declared, TextFieldDefaults built)
         {
             if (declared is { } value)
             {
                 built.MaxLength ??= new Recorded<int>(field.maxLength);
-                WriteMaxLength(field, value);
+                if (value < 0)
+                {
+                    field.maxLength = value;
+                    FiberTextFieldLength.Sync(field, null);
+                }
+                else
+                {
+                    FiberTextFieldLength.Sync(field, value);
+                }
             }
             else if (built.MaxLength != null)
             {
-                WriteMaxLength(field, built.MaxLength.Value);
+                field.maxLength = built.MaxLength.Value;
+                FiberTextFieldLength.Sync(field, null);
             }
-        }
-
-        // Ordering: the edit is cut to the new limit and written silently BEFORE the limit, then written
-        // silently again after it. Narrowing the limit culls the shown text through a notifying setter, so
-        // an edit still longer than the limit would be reported to onValueChanged; cut beforehand, the cull
-        // finds nothing to change. The limit write then re-shows the committed value over the edit, which
-        // is what the second write undoes. The value is not touched, so the commit stays with Enter or
-        // blur, and the record keeps the text Velvet last wrote so the restored edit still reads as one.
-        // Both writes are skipped on an unchanged limit, which the setter ignores. With no edit, the
-        // limit write's own result is what Velvet left on screen and becomes the record.
-        // DelayedMaxLengthEditReportTests pins that nothing is reported; TextFieldInputPropTests pins that
-        // the edit survives and the no-edit cases.
-        private static void WriteMaxLength(TextField field, int limit)
-        {
-            if (field.maxLength == limit)
-            {
-                return;
-            }
-
-            TextElement? held = null;
-            string? edit = null;
-            if (HasUncommittedEdit(field) && field.textEdition is TextElement shown)
-            {
-                held = shown;
-                edit = CutToLimit(field.text, limit);
-                ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit);
-            }
-
-            field.maxLength = limit;
-            if (held == null)
-            {
-                RecordShownText(field);
-                return;
-            }
-
-            ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit!);
-            HoldEdit(field);
         }
 
         // A delayed field holds the user's typing in the shown text while the value lags. Shown text is an
         // edit when it differs from the record — the text Velvet's own writes and the engine's commits last
         // left on screen — and, unless ShownText holds it, both from that record as multiline coming off
         // since would leave it and from the field's display of its own value.
-        // The record is taken by each write of Velvet's own text — ApplyFieldValue, WriteMaxLength and
-        // WriteMultiline when no edit is pending, and the baseline FiberElementFactory.ApplyProps takes as
-        // the element is created — and by a commit through ShownText's callback, since an edit that was
-        // committed and then changed again is an edit against the committed text. ForgetRecordedDefaults
-        // forgets the record and its callback on every removal, so a recycled field carries neither.
+        // The record is taken by each write of Velvet's own text — ApplyFieldValue and WriteMultiline when
+        // no edit is pending, and the baseline FiberElementFactory.ApplyProps takes as the element is
+        // created — and by a commit through ShownText's callback, since an edit that was committed and then
+        // changed again is an edit against the committed text. ForgetRecordedDefaults forgets the record
+        // and its callback on every removal, so a recycled field carries neither.
         // The display is asked because code outside Velvet can write the value silently, which moves the
         // shown text and not the record, where typing moves the text and not the value. It is not asked
-        // alone: where the limit cuts the value after a line break, the text multiline coming off leaves
-        // matches no form of it. Nor is it asked while ShownText holds an edit: a limit change or a turn of
-        // multiline over a pending edit holds it, since the cut to a narrower limit, or the line breaks
-        // multiline coming off drops, can leave it equal to the value's display.
+        // alone: where a limit someone else set cuts the value after a line break, the text multiline
+        // coming off leaves matches no form of it. Nor is it asked while ShownText holds an edit: a turn of
+        // multiline over a pending edit holds it, since the line breaks multiline coming off drops can leave
+        // it equal to the value's display.
         internal static bool HasUncommittedEdit(TextField field)
         {
             if (!field.isDelayed || !s_shownText.TryGetValue(field, out var left))

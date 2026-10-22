@@ -117,6 +117,12 @@ namespace Velvet.Tests
         private static VNode OpacityHost() => Field("caret-red-500/50");
 
         [Component]
+        private static VNode TranslucentOpacityHost() => Field("caret-[#ff000080]/50");
+
+        [Component]
+        private static VNode SaturatedHslHost() => Field("caret-[hsl(0_150%_80%)]");
+
+        [Component]
         private static VNode CurrentHost()
         {
             var (declared, setDeclared) = Hooks.UseState(true);
@@ -328,6 +334,27 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Caret(field), Is.EqualTo(Palette("red-500", 0.5f)));
+        }
+
+        [Test]
+        public void Given_ATranslucentCaretColorWithAnOpacityModifier_When_ItMounts_Then_TheModifierScalesItsAlpha()
+        {
+            // Arrange / Act
+            var field = Mount(TranslucentOpacityHost);
+
+            // Assert
+            Assert.That(Caret(field), Is.EqualTo((Color32)new Color(1f, 0f, 0f, 128f / 255f * 0.5f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base clamps this caret colour too, through the suffix parser this change removes.
+        [Test]
+        public void Given_AnHslCaretColorWithSaturationAbove100_When_ItMounts_Then_ItClamps()
+        {
+            // Arrange / Act
+            var field = Mount(SaturatedHslHost);
+
+            // Assert
+            Assert.That(Caret(field), Is.EqualTo((Color32)new Color(1f, 0.6f, 0.6f, 1f)));
         }
 
         [Test]

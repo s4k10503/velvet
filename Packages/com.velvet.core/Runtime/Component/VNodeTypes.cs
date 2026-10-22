@@ -129,7 +129,7 @@ namespace Velvet
         /// <summary>
         /// Function that wraps the element with a wrapper container.
         /// The Reconciler places the wrapper in the DOM and tracks the inner real element in a dictionary for patching.
-        /// Primary use case: wrapping a button with a DropShadow container.
+        /// Primary use case: wrapping a button with a shadow container.
         /// </summary>
         public Func<VisualElement, VisualElement>? WrapElement { get; init; }
     }
@@ -427,9 +427,10 @@ namespace Velvet
         Sync,
 
         /// <summary>
-        /// The current children finish exiting before any brand-new child is mounted / entered. Intended for
-        /// single-child swaps such as route / screen transitions. While an exit
-        /// is in flight, a brand-new key is withheld; the exit-completion re-render then mounts and enters it.
+        /// The current children finish exiting before any present child is rendered, as Framer Motion's
+        /// <c>mode="wait"</c> renders the exiting children alone. Intended for single-child swaps such as route /
+        /// screen transitions. While an exit is in flight every present key is withheld, one already mounted
+        /// included, which unmounts; the exit-completion re-render then mounts and enters them.
         /// </summary>
         Wait,
 
@@ -495,16 +496,16 @@ namespace Velvet
 
         /// <summary>
         /// Exit / enter sequencing. Defaults to <see cref="AnimatePresenceMode.Sync"/> (exit and enter overlap).
-        /// <see cref="AnimatePresenceMode.Wait"/> holds a brand-new child back until in-flight exits finish.
+        /// <see cref="AnimatePresenceMode.Wait"/> renders only the exiting children until in-flight exits finish.
         /// <see cref="AnimatePresenceMode.PopLayout"/> pulls an exiting child out of flow so siblings reflow
         /// around it immediately.
         /// </summary>
         public AnimatePresenceMode Mode { get; init; } = AnimatePresenceMode.Sync;
 
         /// <summary>
-        /// Invoked once when every in-flight exit animation has finished (the exiting set empties).
-        /// Not fired when an exit is cancelled by the key re-entering,
-        /// nor for children removed without an exit animation.
+        /// Invoked once when every in-flight exit has completed (the exiting set empties), an exit with nothing to
+        /// animate after the commit that removed its child. Not fired when an exit is cancelled by the key
+        /// re-entering.
         /// </summary>
         public Action? OnExitComplete { get; init; }
 

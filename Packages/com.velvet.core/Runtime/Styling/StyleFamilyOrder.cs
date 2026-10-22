@@ -14,7 +14,7 @@ namespace Velvet
     //
     // Tailwind orders two utilities by the first property they differ on, then the one declaring more properties,
     // then the candidate name. The first two ranks are a family's lane where its tokens declare different
-    // properties (drop-shadow-* after shadow-*, outline-* after ring-*) or a different number of declarations (a
+    // properties (outline-* after ring-*) or a different number of declarations (a
     // gradient shape), and the candidate name ranks the rest. A utility Tailwind has no counterpart for (the
     // nine-slice insets, bold-italic, clip-path-*, bg-[addr:...], animate-hue, animate-gradient and animate-shimmer)
     // takes the same rule, so its order is deterministic rather than the order it was written in.
@@ -37,7 +37,7 @@ namespace Velvet
             (StyleGapClass.IsGapToken, s_noLane),
             (StyleGridClass.IsGridToken, s_noLane),
             (StyleDivideClass.IsDivideToken, s_noLane),
-            (StyleShadowClass.IsShadowClass, ShadowLane),
+            (StyleShadowClass.IsShadowClass, s_noLane),
             (StyleRingClass.IsRingClass, RingLane),
             (token => StyleClipPathClass.IsClipPathClass(token), s_noLane),
             (token => StyleSkewClass.IsSkewClass(token), s_noLane),
@@ -186,10 +186,6 @@ namespace Velvet
         }
 
         private static string Core(string token) => StyleArbitraryValueResolver.StripImportant(token, out _);
-
-        // Tailwind v4's property-order.ts lists box-shadow before the outline properties and those before filter.
-        private static int ShadowLane(string core)
-            => core == "drop-shadow" || core.StartsWith("drop-shadow-", StringComparison.Ordinal) ? 1 : 0;
 
         // Same list: the ring's box-shadow properties come before the outline ones.
         private static int RingLane(string core)

@@ -18,14 +18,12 @@ namespace Velvet.Tests
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
 
-        private static StateUpdater<bool> s_setShowTransient;
         private static bool s_survivorEffectRan;
 
         [SetUp]
         public void SetUp()
         {
             _host = new HeadlessEditorPanelHost();
-            s_setShowTransient = default;
             s_survivorEffectRan = false;
         }
 
@@ -39,7 +37,7 @@ namespace Velvet.Tests
         }
 
         // Rendered ahead of the surviving branch so this fiber stages the mount's first passive effect and
-        // is therefore the one that registers the drain; its mount point is the wrapper removed with it.
+        // is therefore the one that registers the drain; its mount point is the wrapper the case detaches.
         [Component]
         private static VNode Transient()
         {
@@ -58,47 +56,30 @@ namespace Velvet.Tests
             return V.Label(name: "survivor-label");
         }
 
-        // Both branches carry a key so dropping the transient one detaches the wrapper this case holds a
-        // reference to; the positional path would instead patch that wrapper into the surviving branch and
-        // detach the trailing element, leaving the reference on-panel and the case asserting nothing.
+        // The case detaches the transient wrapper itself: a render dropping it would run the mount's pending passive
+        // effects before it rendered (FiberBatchScheduler.Drain), ahead of the tick this case reads.
         [Component]
         private static VNode Host()
-        {
-            var (showTransient, setShowTransient) = Hooks.UseState(true);
-            s_setShowTransient = setShowTransient;
-            return V.Div(name: "host", children: new VNode?[]
+            => V.Div(name: "host", children: new VNode?[]
             {
-                showTransient
-                    ? V.Div(
-                        key: "transient",
-                        name: "transient-wrapper",
-                        children: new VNode?[] { V.Component(Transient, key: "t") })
-                    : null,
-                V.Div(
-                    key: "survivor",
-                    name: "survivor-wrapper",
-                    children: new VNode?[] { V.Component(Survivor, key: "s") }),
+                V.Div(name: "transient-wrapper", children: new VNode?[] { V.Component(Transient, key: "t") }),
+                V.Div(name: "survivor-wrapper", children: new VNode?[] { V.Component(Survivor, key: "s") }),
             });
-        }
 
+        // GREEN_ON_BASE(characterization): the base hosts the drain on the scheduler's anchor as well.
         [Test]
         public void Given_TheFirstStagingFibersSubtreeDetachesBeforeTheTick_When_ThePanelSchedulerTicks_Then_ASurvivingFibersPassiveEffectRuns()
         {
-            // Arrange — mount on a real panel, then drop the transient branch synchronously, before any
-            // tick has had the chance to run a passive effect.
+            // Arrange — mount on a real panel, then take the transient branch off it before any tick has had the
+            // chance to run a passive effect.
             _mounted = V.Mount(_host.Root, V.Component(Host, key: "host"));
-            var transientWrapper = _host.Root.Q<VisualElement>("transient-wrapper");
-            s_setShowTransient.Invoke(false);
-            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            _host.Root.Q<VisualElement>("transient-wrapper").RemoveFromHierarchy();
 
             // Act
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 
-            // Assert — the detach is asserted with the effect rather than assumed: a reconcile that left the
-            // wrapper attached would not have exercised the detach, and the effect would run either way.
-            Assert.That(
-                (transientWrapperAttached: transientWrapper.panel != null, survivorEffectRan: s_survivorEffectRan),
-                Is.EqualTo((transientWrapperAttached: false, survivorEffectRan: true)));
+            // Assert
+            Assert.That(s_survivorEffectRan, Is.True);
         }
     }
 }

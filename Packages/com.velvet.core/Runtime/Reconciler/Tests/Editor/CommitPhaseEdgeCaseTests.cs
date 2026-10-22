@@ -267,6 +267,9 @@ namespace Velvet.Tests
             return V.Div(name: "etr");
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the effect across the throwing render as well. The render
+        // goes through FlushStateForTest rather than a drain, since a drain now runs pending passive effects before
+        // it renders and would run this one before the render throws, leaving nothing for the handler to discard.
         [Test]
         public void Given_ACommittedMountEffectNotYetFlushed_When_ALaterRenderThrows_Then_TheEffectStillRuns()
         {
@@ -275,10 +278,9 @@ namespace Velvet.Tests
             using var store = new ThrowStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(EffectThenThrow, key: "etr"));
-            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex("boom"));
             store.Set(true);
-            scheduler.DrainImmediateForTest();
+            mounted.FlushStateForTest();
 
             // Act — the deferred passive-effect flush finally runs.
             mounted.FlushEffectsForTest();

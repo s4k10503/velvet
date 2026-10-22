@@ -123,8 +123,8 @@ namespace Velvet.Tests
             // Act
             var leaf = MountAndResolve(className);
 
-            // Assert — --radius-sm is 2px.
-            Assert.That(leaf.resolvedStyle.borderTopLeftRadius, Is.EqualTo(2f));
+            // Assert — --radius-sm is 4px.
+            Assert.That(leaf.resolvedStyle.borderTopLeftRadius, Is.EqualTo(4f));
         }
 
         [TestCase("truncate whitespace-normal")]

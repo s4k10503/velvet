@@ -439,12 +439,12 @@ namespace Velvet.Tests
         }
 
         // A render repeating the multiline declaration over typing turns nothing, so it holds nothing: the
-        // typing later reaches the value's single-line display and a limit change then reads it as the
-        // engine's. The field goes through the on and off renders of
-        // Given_ADelayedFieldWithNoEditWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValueUpToTheLimit,
+        // typing later reaches the value's single-line display and a limit change leaves that typing.
+        // The field goes through the on and off renders of
+        // Given_ADelayedFieldWithNoEditWhoseValueHasALineBreak_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValue,
         // after which the record is no form of that display.
         [Test]
-        public void Given_TypingOnAFieldAfterMultilineCameOff_When_ARenderRepeatsTheDeclarationAndTheTypingReachesTheValuesDisplay_Then_ALimitChangeShowsWhatTheEngineAloneWould()
+        public void Given_TypingOnAFieldAfterMultilineCameOff_When_ARenderRepeatsTheDeclarationAndTheTypingReachesTheValuesDisplay_Then_TheTypingStays()
         {
             // Arrange
             const string value = "a\nbcdef";
@@ -470,18 +470,12 @@ namespace Velvet.Tests
             ((TextElement)element.textEdition).text = "x";
             Reconciler.Reconcile(Root, singleLineTree, repeatedTree);
             ((TextElement)element.textEdition).text = "abc";
-            // The control is the engine taking the value, the wider limit and the repeated declaration, the
-            // last two in the order the last render writes them.
-            var control = new TextField();
-            control.SetValueWithoutNotify(value);
-            control.maxLength = 5;
-            control.multiline = false;
 
             // Act
             Reconciler.Reconcile(Root, repeatedTree, widenedTree);
 
             // Assert
-            Assert.That(((TextElement)element.textEdition).text, Is.EqualTo(control.text));
+            Assert.That(((TextElement)element.textEdition).text, Is.EqualTo("abc"));
         }
 
         // The deletion of the value's line break survives multiline coming off unchanged, and is then what
@@ -506,10 +500,11 @@ namespace Velvet.Tests
                 Is.EqualTo(("a\nb", "ab")));
         }
 
-        // Code outside Velvet turns multiline off directly, which drops the break the limit left after it,
-        // so the field shows neither form of the value's display.
+        // Code outside Velvet turns multiline off directly, which drops the line break and leaves the rest
+        // of the value. The later render declares multiline again, so the value comes back, and widening
+        // the limit cuts none of it.
         [Test]
-        public void Given_ADelayedFieldWhoseMultilineCodeOutsideVelvetTurnedOff_When_ALaterRenderWidensTheLimit_Then_TheFieldShowsTheValueUpToIt()
+        public void Given_ADelayedFieldWhoseMultilineCodeOutsideVelvetTurnedOff_When_ALaterRenderWidensTheLimit_Then_TheFieldShowsTheValue()
         {
             // Arrange
             var oldTree = new VNode[]
@@ -531,7 +526,7 @@ namespace Velvet.Tests
             // Assert — the reading while off is folded in because the case is about what that write left.
             Assert.That(
                 (whileOff, ((TextElement)element.textEdition).text),
-                Is.EqualTo(("ab", "a\nbcd")));
+                Is.EqualTo(("abcdef", "a\nbcdef")));
         }
 
         // GREEN_ON_BASE(characterization): the base reads any shown text other than its record as an edit.
@@ -575,10 +570,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADelayedFieldWithNoEditWhoseValueArrivedAfterItsLimit_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheValueUpToTheLimit()
+        public void Given_ADelayedFieldWithNoEditWhoseValueArrivedAfterItsLimit_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheValue()
         {
-            // Arrange — the value arrives in a render of its own because a mount writes the value ahead of the
-            // limit, and that order shows the form TextFieldMultilineEngineTests pins for a limit written last.
+            // Arrange — the value arrives in a render of its own. A single-line field shows it with the
+            // break removed, and turning multiline on shows the value.
             var mountTree = new VNode[] { V.TextField(value: "x", maxLength: 3, isDelayed: true) };
             var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true) };
             var newTree = new VNode[]
@@ -596,14 +591,14 @@ namespace Velvet.Tests
             // Assert — the single-line reading is folded in because the case is about what that display showed.
             Assert.That(
                 (whileSingleLine, ((TextElement)element.textEdition).text),
-                Is.EqualTo(("abc", "a\nb")));
+                Is.EqualTo(("abcdef", "a\nbcdef")));
         }
 
         [Test]
-        public void Given_AFieldThatIsNotDelayedWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValueUpToTheLimit()
+        public void Given_AFieldThatIsNotDelayedWhoseValueHasALineBreak_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValue()
         {
-            // Arrange — turning multiline off drops the break from the multi-line display, which leaves the
-            // shown text in neither form a value write or a limit write produces on a single-line field.
+            // Arrange — turning multiline off drops the break from the multi-line display and leaves the
+            // rest of the value. Turning it back on shows the value.
             var multilineTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: true) };
             var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: false) };
             var newTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: true) };
@@ -618,13 +613,13 @@ namespace Velvet.Tests
             // Assert — the single-line reading is folded in because the case is about what that display showed.
             Assert.That(
                 (whileSingleLine, ((TextElement)element.textEdition).text),
-                Is.EqualTo(("ab", "a\nb")));
+                Is.EqualTo(("abcdef", "a\nbcdef")));
         }
 
         // The delayed counterpart of the case above, where the text multiline coming off leaves is what the
         // next write has to tell from an edit: held on screen, a blur would commit it.
         [Test]
-        public void Given_ADelayedFieldWithNoEditWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValueUpToTheLimit()
+        public void Given_ADelayedFieldWithNoEditWhoseValueHasALineBreak_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValue()
         {
             // Arrange
             var multilineTree = new VNode[]
@@ -650,14 +645,13 @@ namespace Velvet.Tests
             // Assert — same single-line term as the case above, and for the same reason.
             Assert.That(
                 (whileSingleLine, ((TextElement)element.textEdition).text),
-                Is.EqualTo(("ab", "a\nb")));
+                Is.EqualTo(("abcdef", "a\nbcdef")));
         }
 
-        // The other write that tells the shown text from an edit is the limit's. The control is the engine
-        // driven with no edit through the writes each render makes, in the order ApplyTextField makes them,
-        // as TextFieldInputPropTests' line-break limit case does.
+        // Widening the limit after multiline has come off leaves the single-line display, which is the
+        // value with its break removed.
         [Test]
-        public void Given_ADelayedFieldWithNoEditWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndALaterRenderWidensTheLimit_Then_TheFieldShowsWhatTheEngineAloneWould()
+        public void Given_ADelayedFieldWithNoEditWhoseValueHasALineBreak_When_MultilineComesOffAndALaterRenderWidensTheLimit_Then_TheFieldShowsTheValueWithoutItsBreak()
         {
             // Arrange
             const string value = "a\nbcdef";
@@ -676,32 +670,22 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), multilineTree);
             Reconciler.Reconcile(Root, multilineTree, oldTree);
             var element = (TextField)Root!.ElementAt(0);
-            var control = new TextField();
-            control.SetValueWithoutNotify(value);
-            control.maxLength = 3;
-            control.isDelayed = true;
-            control.multiline = true;
-            control.multiline = false;
-            control.maxLength = 5;
-            control.multiline = false;
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
-            Assert.That(element.text, Is.EqualTo(control.text));
+            Assert.That(element.text, Is.EqualTo("abcdef"));
         }
 
-        // GREEN_ON_BASE(characterization): turning multiline on, the base carries shown text that differs from
-        // its single-line form of the value, and "ab" differs from "abc". It pins that the branch's record
-        // carries an edit equal to the value cut to its limit with the break removed, which a comparison
-        // against that form would read as no edit.
+        // GREEN_ON_BASE(characterization): turning multiline on, the base carries shown text that differs from the value.
+        // The typing is "ab", which is not the value, so the edit stays when multiline comes on.
         [Test]
         public void Given_AnEditEqualToTheValueCutWithItsBreakRemoved_When_ALaterRenderTurnsMultilineOn_Then_TheEditStaysUncommitted()
         {
             // Arrange — the value arrives after the limit, as in
-            // Given_ADelayedFieldWithNoEditWhoseValueArrivedAfterItsLimit_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheValueUpToTheLimit,
-            // so the field shows "abc" and the typing deletes its last character.
+            // Given_ADelayedFieldWithNoEditWhoseValueArrivedAfterItsLimit_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheValue,
+            // and the typing replaces that display with "ab".
             var mountTree = new VNode[] { V.TextField(value: "x", maxLength: 3, isDelayed: true) };
             var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true) };
             var newTree = new VNode[]

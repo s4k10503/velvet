@@ -2,12 +2,13 @@ namespace Velvet
 {
     /// <summary>
     /// Lane priority for a scheduled re-render. The lane is chosen from the scheduling context, not passed
-    /// as an argument. A <c>UseDeferredValue</c> derivation asks for the Transition lane directly; a
-    /// hook-driven state update is classified from its context, tested in this order: the Transition lane
-    /// while a <c>StartTransition</c> callback is running and has not yet suspended; failing that, the
-    /// Urgent lane while a discrete event handler runs; failing that, the Normal lane. A starved Transition
-    /// lane is promoted to Normal. Lower numeric values indicate higher priority; a fiber's lane queue
-    /// drains lowest-value-first.
+    /// as an argument. A <c>UseDeferredValue</c> derivation asks for the Transition lane directly, and a
+    /// <c>StartTransition</c> call asks for the Urgent lane directly for the render that shows its
+    /// <c>isPending</c>. A hook-driven state update is classified from its context, tested in this order:
+    /// the Transition lane while a <c>StartTransition</c> callback is running and has not yet suspended;
+    /// failing that, the Urgent lane while a discrete event handler runs; failing that, the Normal lane.
+    /// A starved Transition lane is promoted to Normal. Lower numeric values indicate higher priority; a
+    /// fiber's lane queue drains lowest-value-first.
     /// </summary>
     public enum FiberUpdatePriority
     {
