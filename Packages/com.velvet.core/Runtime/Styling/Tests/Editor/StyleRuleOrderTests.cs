@@ -495,7 +495,7 @@ namespace Velvet.Tests
             var method = typeof(StyleArbitraryValueResolver).GetMethod("ResolveSharedLonghands", BindingFlags.Static | BindingFlags.NonPublic)!;
 
             // Act
-            method.Invoke(null, new object[] { element, ArbitraryProperty.BorderTopRightRadius, map, null });
+            method.Invoke(null, new object[] { element, ArbitraryProperty.BorderTopRightRadius, map, null }[..method.GetParameters().Length]);
 
             // Assert
             Assert.That(element.style.borderBottomLeftRadius.value.value, Is.EqualTo(30f));
@@ -519,7 +519,7 @@ namespace Velvet.Tests
             var method = typeof(StyleArbitraryValueResolver).GetMethod("ResolveSharedLonghands", BindingFlags.Static | BindingFlags.NonPublic)!;
 
             // Act
-            method.Invoke(null, new object[] { element, ArbitraryProperty.BorderTopRadius, map, null });
+            method.Invoke(null, new object[] { element, ArbitraryProperty.BorderTopRadius, map, null }[..method.GetParameters().Length]);
 
             // Assert
             Assert.That(new[] { before[0], before[1], before[2], element.style.borderTopLeftRadius.value.value,
