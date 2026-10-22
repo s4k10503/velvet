@@ -349,6 +349,62 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASplitPaddingReaderAndALaterAxisAdded_When_Rendered_Then_TheAxisTakesItsSides()
+        {
+            // Arrange
+            MountSwitchable("[--p:1px_2px] p-(--p)", "");
+            var outer = _window.rootVisualElement.Q<VisualElement>("outer");
+
+            // Act
+            s_setOuter.Invoke("[--p:1px_2px] p-(--p) px-[8px]");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That((outer.style.paddingLeft.value.value, outer.style.paddingTop.value.value), Is.EqualTo((8f, 1f)));
+        }
+
+        [Test]
+        public void Given_ASplitPaddingReaderAndALaterAxisRemoved_When_Rendered_Then_TheSidesComeBack()
+        {
+            // Arrange
+            MountSwitchable("[--p:1px_2px] p-(--p) px-[8px]", "");
+            var outer = _window.rootVisualElement.Q<VisualElement>("outer");
+
+            // Act
+            s_setOuter.Invoke("[--p:1px_2px] p-(--p)");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That((outer.style.paddingLeft.value.value, outer.style.paddingTop.value.value), Is.EqualTo((2f, 1f)));
+        }
+
+        [Test]
+        public void Given_ASplitPaddingReaderWithOneSideNotOutranked_When_Mounted_Then_ThatSideIsWritten()
+        {
+            // Arrange / Act — px- takes left and right, pt- the top, so only the bottom is the reader's.
+            var child = Mount("[--pad:1px_2px]", "p-(--pad) px-[8px] pt-[3px]");
+
+            // Assert
+            Assert.That((child.style.paddingBottom.value.value, child.style.paddingLeft.value.value, child.style.paddingTop.value.value),
+                Is.EqualTo((1f, 8f, 3f)));
+        }
+
+        [Test]
+        public void Given_APaintedReaderBesideALiteralTailwindEmitsLater_When_Mounted_Then_TheLiteralWins()
+        {
+            // Arrange / Act — gap-2 sorts after gap-(--g), whatever order the class list writes them in.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "[--g:20px] flex-row gap-2 gap-(--g)", children: new VNode?[]
+                {
+                    V.Div(name: "first"),
+                    V.Div(name: "second"),
+                }));
+
+            // Assert
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("second").style.marginLeft.value.value, Is.EqualTo(8f));
+        }
+
+        [Test]
         public void Given_TwoReadersOfOneWidth_When_Mounted_Then_TheOneTailwindEmitsLaterWins()
         {
             // Arrange / Act — w-[var(--b)] sorts after w-[var(--a)], though the class list writes it first.

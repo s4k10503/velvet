@@ -3395,7 +3395,7 @@ namespace Velvet
             var previous = state?.Resolved;
             var resolved = reconciled == null ? LiveClasses(element)
                 : state == null ? reconciled
-                : ComposeVariantClasses(reconciled, state, state.Resolved);
+                : ComposeVariantClasses(element, reconciled, state, state.Resolved);
             var classesChanged = !ReferenceEquals(previous, resolved);
             if (state != null)
             {
@@ -3542,7 +3542,7 @@ namespace Velvet
             // the composition only while it is actually hovered, and a dictionary probe the rest of the time.
             var resolved = !state.Composes
                 ? newClassNames
-                : ComposeVariantClasses(newClassNames, state, state.Resolved);
+                : ComposeVariantClasses(element, newClassNames, state, state.Resolved);
             changed = !ReferenceEquals(oldClassNames, newClassNames)
                 || !ReferenceEquals(state.Resolved, resolved);
             state.Reconciled = newClassNames;
@@ -3569,7 +3569,7 @@ namespace Velvet
                 || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
                 || !state.Composes
                     ? classNames
-                    : ComposeVariantClasses(classNames, state, state.Resolved);
+                    : ComposeVariantClasses(element, classNames, state, state.Resolved);
 
         // Builds classNames plus every variant-applied gate token, handing back reuse unchanged when the
         // result would match it token for token, and classNames itself when no payload is lit.
@@ -3593,13 +3593,18 @@ namespace Velvet
         // token applied to.
         //
         // A token a play withheld (VariantGateState.Withheld) is left out of the head.
-        private static string[] ComposeVariantClasses(string[] classNames, VariantGateState state, string[]? reuse)
+        private static string[] ComposeVariantClasses(VisualElement element, string[] classNames, VariantGateState state,
+            string[]? reuse)
         {
             var tokens = state.Tokens;
             var withheld = state.Withheld;
             if (tokens.Count == 0 && withheld.Count == 0)
             {
                 return classNames;
+            }
+            if (StyleCustomProperties.AnyPlaced(element))
+            {
+                return ComposePlacedClasses(element, classNames, tokens, withheld, reuse);
             }
             var head = withheld.Count == 0 ? classNames.Length : CountKept(classNames, withheld);
             var total = head + tokens.Count;
@@ -3640,6 +3645,69 @@ namespace Velvet
                 }
             }
             return kept;
+        }
+
+        private static readonly List<string> s_placedScratch = new();
+        private static readonly List<int> s_placedAt = new();
+
+        // ComposeVariantClasses for an element whose custom-property readers apply payloads at the base layer: a
+        // reader's payload sits before the first reconciled token Tailwind orders after the reader (the reader
+        // ties after an equal one), so a family reading the last token of the composed array ranks it against the
+        // element's literal utilities as Tailwind does. A payload no reader owns follows them all, as it does
+        // without readers, and a token a play withheld is left out as ComposeVariantClasses leaves it.
+        private static string[] ComposePlacedClasses(VisualElement element, string[] classNames, List<string> tokens,
+            List<string> withheld, string[]? reuse)
+        {
+            s_placedScratch.Clear();
+            s_placedAt.Clear();
+            foreach (var token in tokens)
+            {
+                s_placedAt.Add(StyleCustomProperties.PlaceOf(element, token));
+            }
+            for (var j = 0; j < classNames.Length; j++)
+            {
+                if (!Kept(classNames[j], withheld))
+                {
+                    continue;
+                }
+                var ordinal = StyleRuleOrder.OrdinalOf(classNames, j);
+                for (var i = 0; i < tokens.Count; i++)
+                {
+                    if (s_placedAt[i] >= 0 && s_placedAt[i] < ordinal)
+                    {
+                        s_placedScratch.Add(tokens[i]);
+                        s_placedAt[i] = -2;
+                    }
+                }
+                s_placedScratch.Add(classNames[j]);
+            }
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (s_placedAt[i] >= 0)
+                {
+                    s_placedScratch.Add(tokens[i]);
+                }
+            }
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (s_placedAt[i] == -1)
+                {
+                    s_placedScratch.Add(tokens[i]);
+                }
+            }
+            if (reuse != null && reuse.Length == s_placedScratch.Count)
+            {
+                var same = true;
+                for (var i = 0; i < reuse.Length && same; i++)
+                {
+                    same = reuse[i] == s_placedScratch[i];
+                }
+                if (same)
+                {
+                    return reuse;
+                }
+            }
+            return s_placedScratch.ToArray();
         }
 
         // Whether array carries exactly tokens from start on.
