@@ -135,7 +135,7 @@ namespace Velvet
                 && StyleArbitraryValueResolver.TryGetAxisScale(cls.Substring("scale-".Length), out scale);
         }
 
-        // rotate-N and rotate-nN, in degrees.
+        // rotate-nN is the negative one.
         internal static bool TryRotateOf(string cls, out float degrees)
         {
             degrees = 0f;
@@ -191,14 +191,20 @@ namespace Velvet
                 public readonly System.Collections.Generic.List<string> Names = new();
                 public readonly System.Collections.Generic.List<string> Types = new();
 
-                public bool CouldMatch(VisualElement element) =>
-                    Classes.TrueForAll(element.ClassListContains) && Names.TrueForAll(name => name == element.name)
-                    && Types.TrueForAll(type => type == element.typeName);
+                public bool CouldMatch(VisualElement element)
+                {
+                    foreach (var cls in Classes) if (!element.ClassListContains(cls)) return false;
+                    foreach (var name in Names) if (name != element.name) return false;
+                    foreach (var type in Types) if (type != element.typeName) return false;
+                    return true;
+                }
             }
 
             private sealed class Scan
             {
                 public int ContentHash;
+                // Whether the sheet was reached through the bundled sheet's imports, the key the scan is cached under.
+                public bool ReachedBundled;
                 public bool Bundled;
                 // Null where the sheet's rules could not be read.
                 public System.Collections.Generic.List<Entry>? Entries;
@@ -241,9 +247,15 @@ namespace Velvet
 
             private static Scan ScanOf(StyleSheet sheet, bool bundled)
             {
-                if (s_scans.TryGetValue(sheet, out var scan) && scan.ContentHash == sheet.contentHash && scan.Bundled == bundled) return scan;
+                if (s_scans.TryGetValue(sheet, out var scan) && scan.ContentHash == sheet.contentHash && scan.ReachedBundled == bundled)
+                {
+                    return scan;
+                }
                 s_scans.Remove(sheet);
-                scan = new Scan { ContentHash = sheet.contentHash, Bundled = bundled || VelvetStyleUtilities.IsUtilities(sheet) };
+                scan = new Scan
+                {
+                    ContentHash = sheet.contentHash, ReachedBundled = bundled, Bundled = bundled || VelvetStyleUtilities.IsUtilities(sheet),
+                };
                 scan.Entries = ReadEntries(sheet, scan.Bundled);
                 s_scans.Add(sheet, scan);
                 return scan;

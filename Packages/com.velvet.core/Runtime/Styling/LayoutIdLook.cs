@@ -161,13 +161,13 @@ namespace Velvet
             return projection.RotateCarry.Step(declared.angle.ToDegrees(), Tag(declared), dtSec, element, "rotate", null);
         }
 
-        // The rotate a mix runs to: the element's own, which before the projection writes the slot is the rotate a class change
-        // the style pass has yet to take gives it rather than the one it is drawn at
+        // Before the projection writes the slot, the element's own is what a class change the style pass has yet to take
+        // gives it rather than the rotate it is drawn at
         // (Given_AnUnturnedHolderTakingTheLeadBackInTheRenderThatTurnsIt_When_ThatFrameIsDrawn_Then_ItIsMixedFromThePreviousHoldersRotate).
         public static float MixTarget(VisualElement element, LayoutIdProjection projection, float dtSec) =>
             !projection.WritesRotate && Unstyled(element) is { } unstyled ? unstyled : OwnRotate(element, projection, dtSec);
 
-        // The rotate a class change the style pass has yet to take gives the element, where no inline rotate outranks it.
+        // Null where an inline rotate outranks the classes.
         private static float? Unstyled(VisualElement element) =>
             element.style.rotate.keyword == StyleKeyword.Null ? BundledClassTransform.DeclaredRotate(element)?.angle.ToDegrees() : null;
 
@@ -239,28 +239,22 @@ namespace Velvet
                 var own = OwnRotate(element, projection, 0f);
                 // Left alone, the slot shows a class change once the style pass takes it.
                 if (float.IsNaN(rotate) || Mathf.Approximately(rotate, Unstyled(element) ?? own)) return;
-                TakeRotate(element, projection, own);
+                // A running spin's frame in the slot is the spin's; what it turns from is the element's own.
+                projection.OwnInlineRotate = StyleAnimateDriver.TryReadSpinOwn(element, element.style.rotate, out var spinOwn, out _)
+                    ? spinOwn
+                    : element.style.rotate;
+                projection.WritesRotate = true;
+                projection.StartRotate = own;
+                projection.RotateCarry.Land(own, Tag(DeclaredRotate(element, projection)));
+                RunningStyleTransition.TakeOverRotate(element, projection.RotateCarry);
+                MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Rotate);
+                StyleAnimateDriver.YieldSlots(element, projection, MotionLayoutIdDriver.WrittenSlots(projection));
             }
             projection.DrawnRotate = float.IsNaN(rotate) ? OwnRotate(element, projection, dtSec) : rotate;
             // A running spin leaves the slot to the projection and its turn is added here, as the projection adds a
             // bounce's lift or a ping's growth.
             element.style.rotate = new Rotate(new Angle(projection.DrawnRotate + StyleAnimateDriver.CurrentSpinDeg(element), AngleUnit.Degree));
             projection.WrittenRotate = element.style.rotate;
-        }
-
-        // Takes the rotate slot over from the rotate the element is drawn at, own, which its carry starts from.
-        public static void TakeRotate(VisualElement element, LayoutIdProjection projection, float own)
-        {
-            // A running spin's frame in the slot is the spin's; what it turns from is the element's own.
-            projection.OwnInlineRotate = StyleAnimateDriver.TryReadSpinOwn(element, element.style.rotate, out var spinOwn, out _)
-                ? spinOwn
-                : element.style.rotate;
-            projection.WritesRotate = true;
-            projection.StartRotate = own;
-            projection.RotateCarry.Land(own, Tag(DeclaredRotate(element, projection)));
-            RunningStyleTransition.TakeOverRotate(element, projection.RotateCarry);
-            MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Rotate);
-            StyleAnimateDriver.YieldSlots(element, projection, MotionLayoutIdDriver.WrittenSlots(projection));
         }
 
         // Draws the element with the given radii, or its own for null, so that the scale it is drawn at leaves them as

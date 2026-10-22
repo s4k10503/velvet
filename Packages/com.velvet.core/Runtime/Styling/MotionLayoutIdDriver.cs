@@ -220,7 +220,7 @@ namespace Velvet
         {
             var parent = element.hierarchy.parent!;
             if (ReferenceEquals(fromBox.Parent, parent)) return fromBox.Local;
-            var world = Flat(parent.worldTransform);
+            var world = parent.worldTransform;
             Vector2 centre = world.inverse.MultiplyPoint3x4(fromBox.PanelCentre);
             var size = fromBox.PanelSize / AxisLengths(world);
             return new Rect(centre - size / 2f, size);
@@ -319,7 +319,6 @@ namespace Velvet
             WriteOpacity(element, projection, Fade(element, projection, ctx), ctx);
             if (projection.Leader != null) LayoutIdPicking.Ignore(element, projection);
             WriteLook(element, projection, ctx);
-            LayoutIdTilt.Correct(element, projection);
             return projection.Scale;
         }
 
@@ -771,21 +770,13 @@ namespace Velvet
             translate.y.unit == LengthUnit.Percent ? translate.y.value / 100f * layout.height : translate.y.value,
             translate.z);
 
-        // The matrix a screen panel draws with, depth dropped: a frame a tilt (LayoutIdTilt) holds out of the panel's plane
-        // is read where it is drawn.
-        private static Matrix4x4 Flat(Matrix4x4 world)
-        {
-            (world.m02, world.m12, world.m20, world.m21, world.m22, world.m23) = (0f, 0f, 0f, 0f, 1f, 0f);
-            return world;
-        }
-
         // How long a unit step along each local axis is in panel space.
         private static Vector2 AxisLengths(Matrix4x4 world) =>
             new(world.MultiplyVector(Vector3.right).magnitude, world.MultiplyVector(Vector3.up).magnitude);
 
         // An inline origin outranks the classes.
         private static Vector2 TransformOrigin(VisualElement element) =>
-            element.style.transformOrigin.keyword != StyleKeyword.Undefined
+            element.style.transformOrigin.keyword == StyleKeyword.Null
             && BundledClassTransform.DeclaredOrigin(element) is { } fraction
                 ? Vector2.Scale(fraction, element.layout.size)
                 : (Vector2)element.resolvedStyle.transformOrigin;
@@ -805,7 +796,7 @@ namespace Velvet
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return false;
             var parentScale = AncestorScale(parent, ctx);
             var drawn = ctx.LayoutIdProjections.TryGetValue(element, out var projection) ? Drawn(projection, layout, parentScale) : layout;
-            var world = Flat(parent.worldTransform);
+            var world = parent.worldTransform;
             box = new LayoutIdBox(parent, drawn, world.MultiplyPoint3x4(drawn.center), drawn.size * AxisLengths(world), parentScale,
                 readLook ? LayoutIdLook.Read(element, projection, RestoredRotate(element, ctx)) : null);
             return true;
