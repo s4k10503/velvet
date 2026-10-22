@@ -1738,6 +1738,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): no state slot holds this write, so the base's deferred value asked for the lane again as well.
+        // The reader now subscribes in the mount's passive effects, which the arrangement runs first.
         [Test]
         public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassRendersTheReaderWhoseDeferredValueHoldsTheLane_Then_TheLaneStaysQueued()
         {
@@ -1745,6 +1746,7 @@ namespace Velvet.Tests
             using var store = new TransitionCountStore();
             s_deferredStore = store;
             using var mounted = V.Mount(_root, V.Component(DeferredStoreParentRender, key: "deferred-store-parent"));
+            mounted.FlushEffectsForTest();
             s_deferredChildStart.Invoke(() => store.Set(1));
             s_deferredParentSetQuery.Invoke("beta");
 

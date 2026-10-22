@@ -190,6 +190,9 @@ namespace Velvet.Tests
             // Assert — LogAssert.Expect takes the one exception the contained unsubscribe reports
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_TwoReadersOfOneStore_When_StoreChanges_Then_BothRenderTheNewSnapshot()
         {
@@ -200,6 +203,7 @@ namespace Velvet.Tests
                 V.Component(ReaderRender, key: "first"),
                 V.Component(SecondReaderRender, key: "second"),
             }));
+            mounted.FlushEffectsForTest();
 
             // Act
             s_counter.Set(3);

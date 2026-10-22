@@ -440,6 +440,8 @@ namespace Velvet.Tests
             Assert.That(PendingCount(slot), Is.EqualTo(0), "A setter of an unmounted component queues nothing");
         }
 
+        // GREEN_ON_BASE(characterization): the base's reader subscribed at render, so the write enrolled it already.
+        // The reader now subscribes in the mount's passive effects, which the arrangement runs first.
         [Test]
         public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassFoldsTheChildsNormalWrite_Then_IsPendingClears()
         {
@@ -448,6 +450,7 @@ namespace Velvet.Tests
             using var store = new TransitionCountStore();
             s_noteStore = store;
             using var mounted = V.Mount(_root, V.Component(NoteParentRender, key: "note-parent"));
+            mounted.FlushEffectsForTest();
             s_noteChildStart.Invoke(() => store.Set(1));
             s_noteSetNote.Invoke(1);
             s_noteSetQuery.Invoke("beta");

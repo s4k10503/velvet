@@ -66,6 +66,9 @@ namespace Velvet.Tests
             Assert.AreEqual(100, s_storeReadLastValue);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_MountedComponent_When_SelectedValueChanges_Then_NewValueIsObserved()
         {
@@ -73,6 +76,7 @@ namespace Velvet.Tests
             using var store = new TestCounterStore(initial: 0);
             s_storeReadStore = store;
             using var mounted = V.Mount(_root, V.Component(StoreReadRender, key: "store"));
+            mounted.FlushEffectsForTest();
 
             // Act
             store.SetValue(5);
@@ -82,6 +86,9 @@ namespace Velvet.Tests
             Assert.AreEqual(5, s_storeReadLastValue);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_MountedComponent_When_SelectedValueChanges_Then_ComponentReRendersExactlyOnce()
         {
@@ -89,6 +96,7 @@ namespace Velvet.Tests
             using var store = new TestCounterStore(initial: 0);
             s_storeReadStore = store;
             using var mounted = V.Mount(_root, V.Component(StoreReadRender, key: "store"));
+            mounted.FlushEffectsForTest();
             var renderCountBefore = s_storeReadRenderCount;
 
             // Act
@@ -99,6 +107,9 @@ namespace Velvet.Tests
             Assert.AreEqual(renderCountBefore + 1, s_storeReadRenderCount);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_MountedComponent_When_StoreChangesButSelectedValueIsEqual_Then_NoRerender()
         {
@@ -106,6 +117,7 @@ namespace Velvet.Tests
             using var store = new TestPairStore(new PairState(1, "a"));
             s_selectorPartialStore = store;
             using var mounted = V.Mount(_root, V.Component(SelectorPartialRender, key: "partial"));
+            mounted.FlushEffectsForTest();
             var renderCountBefore = s_selectorPartialRenderCount;
 
             // Act — only Text changes; the .Number selector output is unchanged
@@ -117,6 +129,9 @@ namespace Velvet.Tests
                 "A store change that leaves the selected value equal schedules no re-render");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_CustomComparer_When_ValuesEqualByComparer_Then_NoRerender()
         {
@@ -125,6 +140,7 @@ namespace Velvet.Tests
             s_customComparerStore = store;
             s_customComparerComparer = new NumberEqualityOnly();
             using var mounted = V.Mount(_root, V.Component(CustomComparerRender, key: "custom"));
+            mounted.FlushEffectsForTest();
             var renderCountBefore = s_customComparerRenderCount;
 
             // Act — Number is unchanged, so the comparer treats the value as equal
@@ -136,6 +152,9 @@ namespace Velvet.Tests
                 "Values equal under the supplied comparer skip the re-render");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_CustomComparer_When_ValuesDifferByComparer_Then_ComponentReRenders()
         {
@@ -144,6 +163,7 @@ namespace Velvet.Tests
             s_customComparerStore = store;
             s_customComparerComparer = new NumberEqualityOnly();
             using var mounted = V.Mount(_root, V.Component(CustomComparerRender, key: "custom"));
+            mounted.FlushEffectsForTest();
             var renderCountBefore = s_customComparerRenderCount;
 
             // Act — Number changes, so the comparer treats the value as different
@@ -195,6 +215,9 @@ namespace Velvet.Tests
             Assert.AreEqual(renderCountBefore + 1, s_selectorPartialRenderCount);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_RemountedComponent_When_StoreChanges_Then_FreshSubscriptionObservesChange()
         {
@@ -204,6 +227,7 @@ namespace Velvet.Tests
             var first = V.Mount(_root, V.Component(StoreReadRender, key: "store"));
             first.Dispose();
             using var second = V.Mount(_root, V.Component(StoreReadRender, key: "store"));
+            second.FlushEffectsForTest();
 
             // Act
             store.SetValue(42);
@@ -213,6 +237,9 @@ namespace Velvet.Tests
             Assert.AreEqual(42, s_storeReadLastValue, "Re-mounting establishes a fresh subscription that observes changes");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_SelectorThatThrowsOnEmit_When_StoreChanges_Then_ExceptionReachesErrorBoundary()
         {
@@ -220,6 +247,7 @@ namespace Velvet.Tests
             using var store = new TestIndexedStore(new IndexedState(0, new[] { 10, 20 }));
             s_throwingSelectorStore = store;
             using var mounted = V.Mount(_root, V.Component(ThrowingSelectorBoundaryRender, key: "boundary"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
             Assume.That(s_throwingSelectorFallbackShown, Is.False, "Precondition: the boundary is healthy before the bad emit");
 
             // Act — move Index out of range so the selector throws on the subscription callback
