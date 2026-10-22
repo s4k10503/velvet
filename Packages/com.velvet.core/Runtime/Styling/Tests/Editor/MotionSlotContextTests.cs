@@ -291,11 +291,11 @@ namespace Velvet.Tests
 
         // Each focus holder outranks the swap's plain tokens, so the element keeps drawing it: a class the projection
         // holds at the focus rank, or an inline layer.
-        [TestCase("opacity-50", "opacity-0", "opacity-100")]
-        [TestCase("bg-red-500", "bg-[#000000]", "bg-[#ffffff]")]
-        [TestCase("w-[60px]", "w-[40px]", "w-[100px]")]
+        [TestCase("opacity-50", "opacity-0", "opacity-100", ArbitraryProperty.Opacity)]
+        [TestCase("bg-red-500", "bg-[#000000]", "bg-[#ffffff]", ArbitraryProperty.BackgroundColor)]
+        [TestCase("w-[60px]", "w-[40px]", "w-[100px]", ArbitraryProperty.Width)]
         public void Given_AFocusHolderInForceBesideASwappedPlainToken_When_Resolved_Then_ItsSlotPlansNoChannel(
-            string resting, string from, string to)
+            string resting, string from, string to, ArbitraryProperty slot)
         {
             // Arrange
             var element = MountInFixedParent();
@@ -313,8 +313,7 @@ namespace Velvet.Tests
             var plan = MotionSpringClassParser.Resolve(new[] { from }, new[] { to }, 0f, 0f, context);
 
             // Assert
-            Assert.That($"{plan.Opacity.HasValue} {plan.Colors?.Count ?? 0} {plan.Lengths?.Count ?? 0}",
-                Is.EqualTo("False 0 0"));
+            Assert.That(PlansChannel(plan, slot), Is.False);
         }
 
         [Test]
@@ -1009,6 +1008,12 @@ namespace Velvet.Tests
                     retainedHold, swapPending, element.style.translate.value.x.value),
                 Is.EqualTo((true, true, true, true, 1, true, true, 0f, true, true, 0f)));
         }
+
+        private static bool PlansChannel(MotionSpringClassParser.SpringPlan plan, ArbitraryProperty slot)
+            => slot == ArbitraryProperty.Opacity
+                ? plan.Opacity.HasValue
+                : (plan.Colors?.Exists(channel => channel.Property == slot) ?? false)
+                    || (plan.Lengths?.Exists(channel => channel.Property == slot) ?? false);
 
         private static string ProbeChannelClass(ArbitraryProperty slot, bool? initial = null)
         {
