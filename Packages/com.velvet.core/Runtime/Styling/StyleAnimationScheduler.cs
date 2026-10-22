@@ -1399,8 +1399,8 @@ namespace Velvet
             => ReadSlotContext(element, fromClasses, toClasses)
                 ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses);
 
-        // Null off a panel, which the spring and bezier starts read as no current value to continue from or inherit a
-        // velocity off; SlotContext stands ReadImportant's in for it in the plan alone.
+        // Null off a panel, which the spring and bezier starts read as a play to continue from the values drawn and
+        // inherit no native velocity; SlotContext stands ReadImportant's in for it in the plan alone.
         private MotionSlotContext? ReadSlotContext(VisualElement element, string[]? fromClasses, string[]? toClasses)
             => MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot),
                 slot => DrivenByLivePlay(element, slot));

@@ -90,9 +90,9 @@ namespace Velvet
 
         // A class its own writer (StyleAnimationClassUtils) puts on and takes off the live list, rather than a
         // payload. The model ranks it at priority while it is on, so a payload above still outranks it and a
-        // play's class outranks the element's own, and keeps it on only against a payload's removal: the
-        // writer's removal takes it off whatever else wants it but a variant payload in force (RawReleased). The
-        // base priority takes the model-free path, as Add's does.
+        // play's class outranks the element's own, and a payload's removal leaves it on. The writer's removal
+        // takes it off whatever else wants it, a variant payload in force aside (RawReleased). The base priority
+        // takes the model-free path, as Add's does.
         public static void RawAdded(VisualElement element, string cls, long priority)
         {
             var model = StyleArbitraryValueResolver.TryGetProjection(element);

@@ -830,7 +830,7 @@ namespace Velvet.Tests
         }
 
         // The classes a suppressed face's probe carries once the stash takes the face, on a real panel since the
-        // probe resolves only there.
+        // stash builds a probe only on one (SilhouetteFaceStash.SyncProbe).
         private static string ProbeClassesOf(HeadlessEditorPanelHost host, params string[] classNames)
         {
             var element = Carrying(classNames);

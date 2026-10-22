@@ -101,8 +101,8 @@ namespace Velvet
         // (StyleArbitraryValueResolver.ClearAll).
         internal static void ForgetShownLayers(VisualElement element) => s_inlineShown.Remove(element);
 
-        // A class the projection took off the element stays off unless the rank RawAdded gives it outranks what
-        // took it, when the projection puts it back itself; otherwise it does so once the variant above turns off.
+        // A class the projection took off the element is not put back here: the projection puts it back itself,
+        // once the rank RawAdded gives it outranks what took it, or once that goes.
         private static void Add(VisualElement element, string cls, long priority)
         {
             if (!StyleClassProjection.Suppresses(element, cls))

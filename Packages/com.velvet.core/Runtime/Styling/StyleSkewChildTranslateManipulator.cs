@@ -15,9 +15,10 @@ namespace Velvet
     //
     // The seat composes with the child's own translate as CSS composes the parent's transform with the child's:
     // the child shows its own translate plus the shear's displacement at its translated centroid
-    // (SeatedTranslate). Velvet's translate writers go through SeatedTranslate, so a static translate-x-*, a
-    // Motion driver's frame or a drag keeps moving the child while it is seated, and the child's own value is
-    // what is left when the seat goes.
+    // (SeatedTranslate). The writers of an element's own translate — the arbitrary-value resolver, the Motion
+    // drivers, the layoutId projection, the animate driver and a drag — go through SeatedTranslate, so a static
+    // translate-x-*, a Motion driver's frame or a drag keeps moving the child while it is seated, and the
+    // child's own value is what is left when the seat goes.
     //
     // Owned by the caster's SkewBinding rather than a ReconcilerContext dictionary, so every
     // SkewSilhouette.Detach path (pool reset, root disposal) tears it down for free. Lifecycle mirrors
