@@ -226,7 +226,7 @@ namespace Velvet
             var scale = element.style.scale;
             // Where the element is drawn, which an inline value it was just given is not until a style pass has run: what a
             // projection that ended earlier in this render handed back, else the resolved style
-            // (Given_AFollowerDrawnOverAGrowingLead_When_TheLeadLeaves_Then_ItMovesFromItsOwnScale).
+            // (Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform).
             ctx.LayoutIdRestored.Remove(element, out var restored);
             var startTranslate = restored.Translate ?? element.resolvedStyle.translate;
             var startScale = restored.Scale ?? element.resolvedStyle.scale.value;
@@ -242,6 +242,7 @@ namespace Velvet
             var projection = new LayoutIdProjection(host, translate, scale, startTranslate, startScale)
             {
                 From = element.layout,
+                RestoredRotate = restored.Rotate ?? float.NaN,
             };
             LayoutIdLook.Settle(element, projection);
             ctx.LayoutIdProjections[element] = projection;
@@ -703,7 +704,7 @@ namespace Velvet
             AdoptForeignWrites(element, projection);
             LayoutIdLook.Adopt(element, projection);
             // A translate or scale still carried is handed back as it lands, as the rotate is (LayoutIdLook.End).
-            (Vector3? Translate, Vector3? Scale) restored = default;
+            (Vector3? Translate, Vector3? Scale, float? Rotate) restored = default;
             if (projection.WritesTranslate && LayoutIdLook.Landed(projection.TranslateCarries))
             {
                 restored.Translate = OwnCarriedTranslate(element, projection);
@@ -716,7 +717,12 @@ namespace Velvet
                 element.style.scale = projection.OwnInlineScale;
                 projection.WritesScale = false;
             }
-            if (ctx.CurrentPass != null && (restored.Translate != null || restored.Scale != null)) ctx.LayoutIdRestored[element] = restored;
+            // The rotate is handed back by LayoutIdLook.End, at once unless something the projection carries runs on.
+            if (projection.WritesRotate && !LayoutIdLook.RunsOn(projection)) restored.Rotate = LayoutIdLook.DeclaredRotate(element, projection);
+            if (ctx.CurrentPass != null && (restored.Translate != null || restored.Scale != null || restored.Rotate != null))
+            {
+                ctx.LayoutIdRestored[element] = restored;
+            }
             // A slot that runs on past the move keeps it from a loop until it lands (LayoutIdLook.Hand).
             var held = WrittenSlots(projection);
             StyleAnimateDriver.YieldSlots(element, projection, LayoutIdLook.RunsOn(projection) ? held : MotionTransitionSlots.None);
@@ -1008,6 +1014,10 @@ namespace Velvet
             // left over here is removed at a later boundary exactly when it would have been listed again.
             ctx.LayoutIdSnapshots.Clear();
             ctx.LayoutIdRestored.Clear();
+            foreach (var projection in ctx.LayoutIdProjections.Values)
+            {
+                projection.RestoredRotate = float.NaN;
+            }
         }
 
         // A power of two, so a rect off by exactly this much is representable and the boundary testable.
@@ -1182,6 +1192,9 @@ namespace Velvet
 
         public bool WritesRotate;
         public StyleRotate OwnInlineRotate;
+        // What a projection that ended earlier in the render this one was created in handed back to the rotate slot, until
+        // that render ends; NaN otherwise (LayoutIdLook.OwnRotate).
+        public float RestoredRotate = float.NaN;
         // The rotate the element had as the projection first wrote it.
         public float StartRotate;
         public float DrawnRotate;

@@ -138,17 +138,28 @@ namespace Velvet
 
         // The element's own rotate as it is now. While the projection writes the slot it is the inline rotate the
         // projection took over, else what the element's rules declare, else the one it had as the projection began,
-        // carried as OwnRadii carries a corner, over dtSec more.
+        // carried as OwnRadii carries a corner, over dtSec more. Before that it is where the element is drawn, which is the
+        // rotate a projection ended earlier in this render handed back rather than its resolved style until a style pass
+        // has run (Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform).
         public static float OwnRotate(VisualElement element, LayoutIdProjection projection, float dtSec)
         {
             var inline = projection.WritesRotate ? projection.OwnInlineRotate : element.style.rotate;
             if (!projection.WritesRotate)
             {
                 if (StyleAnimateDriver.TryReadSpinOwn(element, inline, out _, out var unspun)) return unspun;
-                return inline.keyword == StyleKeyword.Undefined ? inline.value.angle.ToDegrees() : element.resolvedStyle.rotate.angle.ToDegrees();
+                if (inline.keyword == StyleKeyword.Undefined) return inline.value.angle.ToDegrees();
+                return float.IsNaN(projection.RestoredRotate) ? element.resolvedStyle.rotate.angle.ToDegrees() : projection.RestoredRotate;
             }
+            return projection.RotateCarry.Step(DeclaredRotate(element, projection), dtSec, element, "rotate", null);
+        }
+
+        // The rotate the element is given while the projection writes the slot, in degrees, which the slot holds once it
+        // is handed back.
+        public static float DeclaredRotate(VisualElement element, LayoutIdProjection projection)
+        {
+            var inline = projection.OwnInlineRotate;
             var declared = inline.keyword != StyleKeyword.Null ? inline.value.angle.ToDegrees() : StyleCascade.Rotate(element);
-            return projection.RotateCarry.Step(float.IsNaN(declared) ? projection.StartRotate : declared, dtSec, element, "rotate", null);
+            return float.IsNaN(declared) ? projection.StartRotate : declared;
         }
 
         // The element's own radii as they are now. While the projection writes the slots a corner's own is an inline

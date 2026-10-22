@@ -5107,6 +5107,7 @@ namespace Velvet.Tests
 
         [TestCase("translate-y-[40px]", null, false, 4f, 20f)]
         [TestCase("scale-[1.5]", "scale-[1.5] scale-x-[2]", true, 1.28f, 1.37f)]
+        [TestCase("scale-[1.5]", "scale-x-[1] scale-y-[2]", true, 1.4f, 1.55f)]
         public void Given_ALeadMovingOnATransitionOfItsOwn_When_ItsTransformChanges_Then_ItRunsAsTheEngineRunsIt(string change, string then,
             bool scale, float low, float high)
         {
@@ -5122,7 +5123,8 @@ namespace Velvet.Tests
             for (var i = 0; i < 6; i++) Tick();
 
             // Act — both take the class change; where then is given, both take it in its place some 0.5 s on, which changes
-            // one axis of the value alone; some 0.3 s on.
+            // one axis of the value alone, or sends one axis back where it started and the other on, which UI Toolkit does
+            // not read as a reversal of the value; some 0.3 s on.
             (s_bClasses, s_controlClasses) = ($"{transitioning} {change}", $"{transitioning} {change}");
             RenderShared(mounted);
             if (then != null)
@@ -5145,25 +5147,69 @@ namespace Velvet.Tests
         }
 
 
-        [Test]
-        public void Given_AFollowerDrawnOverAGrowingLead_When_TheLeadLeaves_Then_ItMovesFromItsOwnScale()
+        [TestCase(200, "", "scale")]
+        [TestCase(100, "", "translate")]
+        [TestCase(100, "rotate-45", "rotate")]
+        public void Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform(int bSize, string bClasses, string slot)
         {
-            // Arrange — the bundled sheet; "a", transitioning everything linearly over a second, drawn over "b", twice its
-            // side, as "b" grows from a's box on a one-second tween; some 0.2 s in.
+            // Arrange — the bundled sheet; "a", transitioning everything linearly over a second and of no translate, scale or
+            // rotate of its own, drawn over "b", bSize square and carrying bClasses, as "b" moves from a's box 300px right on
+            // a one-second tween, mixing in its rotate from a's; some 0.2 s in.
             VelvetStyleUtilities.AttachTo(Root);
-            (s_bSize, s_aClasses) = (200, "transition-all duration-1000 ease-linear");
+            (s_bSize, s_bClasses, s_aClasses) = (bSize, bClasses, "transition-all duration-1000 ease-linear");
             using var mounted = MountBOverA();
             for (var i = 0; i < 12; i++) Tick();
 
-            // Act — "b" leaves, handing "a" the lead back from b's box; the frame after.
+            // Act — "b" leaves, handing "a" the lead back from b's box; some three frames on.
             s_bMounted = false;
             RenderShared(mounted);
+            Tick();
+            Tick();
 
-            // Assert — the slot holds "a"'s own scale of one times what its move draws it at, rather than the scale it was
-            // drawn over "b" at.
+            // Assert — "a"'s own scale of one, translate across of none or rotate of none, rather than what it was drawn at
+            // over "b": the slot divided by the scale its move draws it at, less the translate its move adds, or the rotate it
+            // carries as its own. 0.015 of a scale, half a pixel or half a degree.
             var a = Root.Q<VisualElement>("a");
             var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection);
-            Assert.That(moving ? a.style.scale.value.value.x / projection.Scale.x : float.NaN, Is.EqualTo(1f).Within(0.015f));
+            var own = !moving ? float.NaN
+                : slot == "scale" ? a.style.scale.value.value.x / projection.Scale.x
+                : slot == "translate" ? a.style.translate.value.x.value - (projection.From.x - a.layout.x) * projection.Progress.Value
+                : projection.WritesRotate ? projection.RotateCarry.Value : float.NaN;
+            Assert.That(own, Is.EqualTo(slot == "scale" ? 1f : 0f).Within(slot == "scale" ? 0.015f : 0.5f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base reads a Motion's own translate afresh as each move starts. What a
+        // projection ended inside one render handed back must not stand for it in a later render.
+        [Test]
+        public void Given_AMotionWhoseIdWasTakenAwayMidMove_When_ItMovesUnderItAgainLater_Then_ItStartsFromWhereItIsDrawn()
+        {
+            // Arrange — the bundled sheet; "a" alone under "card", transitioning everything linearly over a second, moving
+            // 100px right; some frames on a render takes its id away, ending the move, and once it settles it takes a
+            // translate down, settles again, and takes the id back.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aClasses = "transition-all duration-1000 ease-linear";
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            s_aId = null;
+            RenderShared(mounted);
+            AdvancePast(1.2f);
+            s_aClasses += " translate-y-[40px]";
+            RenderShared(mounted);
+            AdvancePast(1.2f);
+            s_aId = "card";
+            RenderShared(mounted);
+
+            // Act — a move 100px further right; the frame after and the next.
+            s_aLeft = 200;
+            RenderShared(mounted);
+            Tick();
+
+            // Assert — its own 40px down, to which the move adds nothing.
+            Assert.That(Root.Q<VisualElement>("a").style.translate.value.y.value, Is.EqualTo(40f).Within(0.5f));
         }
 
 
