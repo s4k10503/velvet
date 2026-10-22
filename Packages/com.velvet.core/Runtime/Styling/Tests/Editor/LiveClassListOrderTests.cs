@@ -86,6 +86,10 @@ namespace Velvet.Tests
         private const string OwnBorderStyleReader =
             "System.Nullable`1<Velvet.BorderLineStyle> Velvet.StyleBorderStyleClass.StyleOf("
             + "UnityEngine.UIElements.VisualElement)";
+        private const string ClassTransformSignatureReader =
+            "System.Int32 Velvet.BundledClassTransform.Signature(UnityEngine.UIElements.VisualElement)";
+        private const string ClassTransformReader =
+            "Velvet.BundledClassTransform/Declared Velvet.BundledClassTransform.Read(UnityEngine.UIElements.VisualElement)";
         private const string DeclaredKindReader =
             "Velvet.StyleRelativeLengths/Declared Velvet.StyleRelativeLengths.DeclaredKind("
             + "UnityEngine.UIElements.VisualElement, Velvet.StyleLonghand, UnityEngine.UIElements.StyleLength)";
@@ -120,6 +124,12 @@ namespace Velvet.Tests
         // answer no case expects rather than throw.
         private static readonly MethodInfo CollectHostClasses = typeof(VelvetStyleUtilities)
             .GetMethod("AddDocumentClasses", BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static readonly MethodInfo SignClassTransforms = typeof(BundledClassTransform)
+            .GetMethod("Signature", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        private static readonly MethodInfo ReadClassTransforms = typeof(BundledClassTransform)
+            .GetMethod("Read", BindingFlags.NonPublic | BindingFlags.Static)!;
 
         private static readonly MethodInfo KeyOfClasses = typeof(CascadeSnapshot)
             .GetMethod("ClassKey", BindingFlags.NonPublic | BindingFlags.Static)!;
@@ -966,6 +976,49 @@ namespace Velvet.Tests
             // Assert
             Assert.That((fromAdded == fromReversed, fromAdded == fromOther), Is.EqualTo((true, false)),
                 "a loop re-reads the cascade when the set of classes changes, and a reorder alone changes nothing it reads");
+        }
+
+        [Test]
+        [ReaderVerdict(ClassTransformSignatureReader)]
+        public void Given_TwoClassesOnAMotion_When_TheOrderTheyWereAddedInIsReversed_Then_TheClassTransformSignatureIsTheSameBothWaysAndMovesWithTheSet()
+        {
+            // Arrange — a different set beside the two orders, so that a signature which ignored the classes would not agree.
+            var added = Carrying("scale-150", "rotate-45");
+            var reversed = Carrying("rotate-45", "scale-150");
+            var other = Carrying("scale-150", "rotate-90");
+
+            // Act
+            var fromAdded = (int)SignClassTransforms.Invoke(null, new object[] { added })!;
+            var fromReversed = (int)SignClassTransforms.Invoke(null, new object[] { reversed })!;
+            var fromOther = (int)SignClassTransforms.Invoke(null, new object[] { other })!;
+
+            // Assert
+            Assert.That((fromAdded == fromReversed, fromAdded == fromOther), Is.EqualTo((true, false)),
+                "a layoutId Motion's class transforms are read again when the set of its classes changes, and a reorder "
+                + "alone changes nothing they read");
+        }
+
+        [Test]
+        [ReaderVerdict(ClassTransformReader)]
+        public void Given_TwoScaleClassesOnAMotion_When_TheOrderTheyWereAddedInIsReversed_Then_TheOneLaterInTheCascadeGivesTheScaleBothWays()
+        {
+            // Arrange — the sheet declares scale-150 after scale-125.
+            var added = Carrying("scale-150", "scale-125");
+            var reversed = Carrying("scale-125", "scale-150");
+
+            // Act
+            var fromAdded = ReadScale(added);
+            var fromReversed = ReadScale(reversed);
+
+            // Assert
+            Assert.That((fromAdded, fromReversed), Is.EqualTo((1.5f, 1.5f)));
+        }
+
+        // The x of the scale BundledClassTransform.Read gives the element.
+        private static float ReadScale(VisualElement element)
+        {
+            var declared = ReadClassTransforms.Invoke(null, new object[] { element })!;
+            return ((Vector3)declared.GetType().GetField("Scale")!.GetValue(declared)).x;
         }
 
         [Test]
