@@ -81,7 +81,7 @@ namespace Velvet.Tests
             StyleShadowClass.TryExtract(new[] { "shadow-[1in_4px_8px_#101820]" }, out var spec);
 
             // Assert
-            Assert.That(spec.OffsetX, Is.EqualTo(96f).Within(1e-3f));
+            Assert.That(spec[0].OffsetX, Is.EqualTo(96f).Within(1e-3f));
         }
 
         // GREEN_ON_BASE(refactor): the same reading, now failing by assertion where the class is declined.

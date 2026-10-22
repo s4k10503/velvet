@@ -23,7 +23,7 @@ namespace Velvet
             "margin-inline", "margin-block", "margin-inline-start", "margin-inline-end",
             "margin-block-start", "margin-block-end", "margin-top", "margin-right",
             "margin-bottom", "margin-left", "display", "aspect-ratio", "height", "max-height", "min-height", "width",
-            "max-width", "min-width", "flex-shrink", "flex-grow", "flex-basis", "transform-origin", "translate",
+            "max-width", "min-width", "flex", "flex-shrink", "flex-grow", "flex-basis", "transform-origin", "translate",
             "scale", "rotate", "cursor", "flex-direction", "flex-wrap", "align-content", "align-items",
             "justify-content", "align-self", "overflow", "border-radius", "border-start-start-radius", "border-start-end-radius",
             "border-end-end-radius", "border-end-start-radius", "border-top-left-radius", "border-top-right-radius",
@@ -64,6 +64,7 @@ namespace Velvet
                 (new[] { StyleLonghand.BorderLeftWidth, StyleLonghand.BorderRightWidth }, "border-inline-width"),
                 (new[] { StyleLonghand.BorderTopWidth, StyleLonghand.BorderBottomWidth }, "border-block-width"),
                 (new[] { StyleLonghand.BorderTopColor, StyleLonghand.BorderRightColor, StyleLonghand.BorderBottomColor, StyleLonghand.BorderLeftColor }, "border-color"),
+                (new[] { StyleLonghand.FlexGrow, StyleLonghand.FlexShrink, StyleLonghand.FlexBasis }, "flex"),
             };
             var indexes = new (StyleLonghandSet, int)[sets.Length];
             for (var i = 0; i < sets.Length; i++)
@@ -365,6 +366,12 @@ namespace Velvet
         // Two utilities written without a variant, ordered as Tailwind emits them: negative when a is emitted
         // first, which leaves a property they share to z.
         internal static int CompareUtilities(string a, string z) => SortKey.Of(a).CompareTo(SortKey.Of(z));
+
+        // Two utilities written without a variant ordered by candidate name, where Tailwind's sort ends for two that
+        // declare the same properties. StyleFamilyOrder asks it of the families a C# resolver reads, whose tokens
+        // carry no longhand the sort key could count.
+        internal static int CompareCandidates(string a, string z)
+            => StyleCandidateOrder.Compare(TailwindSpellingOf(a), TailwindSpellingOf(z));
 
         private static int? ShorthandIndexOf(StyleLonghandSet set)
         {

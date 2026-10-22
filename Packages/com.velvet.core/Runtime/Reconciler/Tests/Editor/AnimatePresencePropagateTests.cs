@@ -60,6 +60,7 @@ namespace Velvet.Tests
         private static int s_outerCompleted;
         private static int s_innerCompleted;
         private static float s_innerDurationSec;
+        private static float s_innerStaggerSec;
         private static readonly List<string> s_order = new();
 
         private EditorPanelSimulator _sim;
@@ -86,6 +87,7 @@ namespace Velvet.Tests
             s_outerCompleted = 0;
             s_innerCompleted = 0;
             s_innerDurationSec = 0.3f;
+            s_innerStaggerSec = 0f;
             s_order.Clear();
         }
 
@@ -121,11 +123,41 @@ namespace Velvet.Tests
             transition: new StyleTransitionConfig { DurationSec = s_innerDurationSec });
 
         // The inner presence's child for a key: the Motion itself, or a Motion one element below the keyed child.
-        private static VNode InnerChild(string key) => s_innerChild switch
+        private static VNode InnerChild(string key) => key switch
+        {
+            // Plays nothing when it leaves.
+            "q" => V.Motion(name: "inner-q", key: key, transition: StyleTransitionConfig.None),
+            // Rests at a pose of its own when mounted leaving, so the swap to its exit pose is readable.
+            "s" => V.Motion(name: "inner-s", key: key, variants: s_staged, initial: "start", animate: "visible",
+                exit: "hidden", transition: new StyleTransitionConfig { DurationSec = s_innerDurationSec }),
+            // Places nothing, and counts its effect's mounts.
+            "n" => V.Component(EffectOnlyRender, key: key),
+            _ => InnerChildOfKind(key),
+        };
+
+        [Component]
+        private static VNode EffectOnlyRender()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_mounts++;
+                return (System.Action)(() => s_cleanups++);
+            }, System.Array.Empty<object>());
+            return null;
+        }
+
+        private static readonly Dictionary<string, MotionVariant> s_staged = new()
+        {
+            ["start"] = "pose-start",
+            ["visible"] = "pose-rest",
+            ["hidden"] = "pose-exit",
+        };
+
+        private static VNode InnerChildOfKind(string key) => s_innerChild switch
         {
             "motion" => TimedMotion("inner-" + key, key),
             "nested" => V.Div(key: key, children: new[] { TimedMotion("inner-" + key, null) }),
-            // Plays no exit, so its removal is immediate.
+            // Plays no exit, so it settles after the commit that removes it.
             "plain" => V.Div(name: "inner-" + key, key: key),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_innerChild), s_innerChild, null),
         };
@@ -137,7 +169,7 @@ namespace Velvet.Tests
             {
                 children.Add(InnerChild(key.ToString()));
             }
-            return V.AnimatePresence(key: "inner", propagate: propagate, onExitComplete: () =>
+            return V.AnimatePresence(key: "inner", propagate: propagate, staggerSec: s_innerStaggerSec, onExitComplete: () =>
                 {
                     s_innerCompleted++;
                     s_order.Add("inner");
@@ -565,6 +597,69 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
+        [Test]
+        public void Given_AKeyMountedLeavingWithNothingToPlay_When_AnotherMountsLeavingAfterIt_Then_TheOtherTakesTheFirstStaggerSlot()
+        {
+            // Arrange — a half-second stagger between the inner presence's exits.
+            s_innerStaggerSec = 0.5f;
+            using var mounted = MountSettled("wrapper");
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            Frames(2);
+
+            // Act — "q" and then "s" mount leaving; three frames are well inside the half-second second slot.
+            s_innerKeys.Set("xqs");
+            Drain(mounted);
+            Frames(3);
+
+            // Assert — "s" has swapped to its exit pose, which it would not yet have in the second slot.
+            var staged = Root.Q<VisualElement>("inner-s");
+            Assert.That(staged != null && staged.ClassListContains("pose-exit"), Is.True);
+        }
+
+        // Framer's AnimatePresence renders a child added while it propagates a leaving parent as a PresenceChild with
+        // isPresent false, which mounts it whatever it renders.
+        [Test]
+        public void Given_AKeyPlacingNothingAddedWhileTheOuterChildLeaves_When_ItMountsLeaving_Then_ItsEffectRuns()
+        {
+            // Arrange
+            using var mounted = MountSettled("wrapper");
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            Frames(2);
+
+            // Act
+            s_innerKeys.Set("xn");
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_mounts, Is.GreaterThan(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never mounted the key, so nothing of it held the outer child.
+        [Test]
+        public void Given_AKeyPlacingNothingAddedWhileTheOuterChildLeaves_When_TheOtherExitEnds_Then_TheOuterChildLeaves()
+        {
+            // Arrange
+            using var mounted = MountSettled("wrapper");
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            Frames(2);
+            s_innerKeys.Set("xn");
+            Drain(mounted);
+
+            // Act — the passive flush the added key settles in, then well past the inner Motion's 300ms exit
+            mounted.FlushEffectsForTest();
+            Frames(40);
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
+            Drain(mounted);
+
+            // Assert
+            Assert.That(HostChildCount, Is.EqualTo(0));
+        }
+
         [TestCase("wrapper")]
         [TestCase("top")]
         public void Given_AnInnerKeyAddedWhileTheOuterChildLeaves_When_ItsExitOutlastsTheOthers_Then_TheOuterChildWaitsForItAndEachCallbackRunsOnce(
@@ -657,6 +752,8 @@ namespace Velvet.Tests
             Assert.That(HostChildCount, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base dropped the outer child once the inner presence stopped propagating.
+        // The passive flush and drain added are the ones its settled exit now waits for.
         [Test]
         public void Given_AnInnerPresenceWaitedOn_When_ItStopsPropagatingMidExit_Then_TheOuterChildLeaves()
         {
@@ -666,8 +763,11 @@ namespace Velvet.Tests
             Drain(mounted);
             Frames(3);
 
-            // Act — the inner presence re-renders alone with propagate off, well short of its exit's end.
+            // Act — the inner presence re-renders alone with propagate off, well short of its exit's end; then the
+            // passive flush the outer child's exit settles in, and the render that settle asks for.
             s_propagate.Set(false);
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
             Drain(mounted);
 
             // Assert
@@ -676,7 +776,7 @@ namespace Velvet.Tests
 
         [TestCase("wrapper")]
         [TestCase("top")]
-        public void Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesAtOnce(
+        public void Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildStaysForThatRender(
             string shape)
         {
             // Arrange
@@ -689,12 +789,33 @@ namespace Velvet.Tests
             Drain(mounted);
 
             // Assert
+            Assert.That(HostChildCount, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base dropped the outer child in the removing render, so it is gone on the next render as well.
+        [TestCase("wrapper")]
+        [TestCase("top")]
+        public void Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesOnTheNextRender(
+            string shape)
+        {
+            // Arrange
+            using var mounted = MountSettled(shape);
+            s_propagate.Set(false);
+            Drain(mounted);
+
+            // Act — the removing render, the flush its exit settles in, and the render that settle asks for.
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
+            Drain(mounted);
+
+            // Assert — no frame has passed, so the inner presence's 300ms exit did not hold it.
             Assert.That(HostChildCount, Is.EqualTo(0));
         }
 
         [TestCase("middle")]
         [TestCase("middle-top")]
-        public void Given_APresenceBetweenThatDoesNotPropagate_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesAtOnce(
+        public void Given_APresenceBetweenThatDoesNotPropagate_When_TheOuterKeyIsRemoved_Then_TheOuterChildStaysForThatRender(
             string shape)
         {
             // Arrange — the inner presence propagates, but the nearest presence above it does not.
@@ -705,6 +826,25 @@ namespace Velvet.Tests
             Drain(mounted);
 
             // Assert
+            Assert.That(HostChildCount, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base dropped the outer child in the removing render, so it is gone on the next render as well.
+        [TestCase("middle")]
+        [TestCase("middle-top")]
+        public void Given_APresenceBetweenThatDoesNotPropagate_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesOnTheNextRender(
+            string shape)
+        {
+            // Arrange — the inner presence propagates, but the nearest presence above it does not.
+            using var mounted = MountSettled(shape);
+
+            // Act — the removing render, the flush its exit settles in, and the render that settle asks for.
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
+            Drain(mounted);
+
+            // Assert — no frame has passed, so the inner presence's 300ms exit did not hold it.
             Assert.That(HostChildCount, Is.EqualTo(0));
         }
 
@@ -772,11 +912,12 @@ namespace Velvet.Tests
             Assert.That((heldWhileExiting, HostChildCount), Is.EqualTo((1, 0)));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base runs both callbacks as the outer child leaves. The flush
-        // added to the case is the passive-effect flush these completions now wait for.
+        // GREEN_ON_BASE(characterization): the merge base runs both callbacks and drops the outer child in the removing
+        // render. The flush and the drain after it are the passive-effect flush these completions wait for and the
+        // render the settled exits ask for.
         [TestCase("wrapper")]
         [TestCase("top")]
-        public void Given_AnInnerPresenceWhoseChildrenPlayNoExit_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesAtOnceAndBothCallbacksRun(
+        public void Given_AnInnerPresenceWhoseChildrenPlayNoExit_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesOnTheNextRenderAndBothCallbacksRun(
             string shape)
         {
             // Arrange
@@ -787,6 +928,7 @@ namespace Velvet.Tests
             s_outerKeys.Set(string.Empty);
             Drain(mounted);
             mounted.FlushEffectsForTest();
+            Drain(mounted);
 
             // Assert
             Assert.That((HostChildCount, s_outerCompleted, s_innerCompleted), Is.EqualTo((0, 1, 1)));
@@ -876,6 +1018,8 @@ namespace Velvet.Tests
             Assert.That((heldWhileExiting, InnerItem == null), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base cleaned the effect up in the removing render.
+        // The flush and drain added are the passive flush the exit settles in and the render that drops the child.
         [Test]
         public void Given_AChildWhoseOnlyOutputIsAPresenceOfChildrenWithNoExit_When_TheKeyIsRemovedAndAddedAgain_Then_ItsEffectCleansUpOnceAndMountsAgain()
         {
@@ -883,6 +1027,8 @@ namespace Velvet.Tests
             s_innerChild = "plain";
             using var mounted = MountSettled("effectful");
             s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
             Drain(mounted);
             var cleanupsAfterRemoval = s_cleanups;
 

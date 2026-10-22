@@ -23,7 +23,7 @@ namespace Velvet
             var tapClasses = V.ParseClassNames(whileTapClass);
             var focusClasses = V.ParseClassNames(whileFocusClass);
             // A field's surface classes follow its hover, press and focus on the box, as hover: and focus: do
-            // (StyleInputBoxSurface); the rest stay on the control.
+            // (StyleInputBoxSurface); the rest stay on the control, and the transition classes go to both.
             if (StyleInputBoxSurface.IsControl(element) && StyleInputBoxSurface.TryGetBox(element, out var box))
             {
                 Configure(box, StyleInputBoxSurface.Surface(hoverClasses), StyleInputBoxSurface.Surface(tapClasses),

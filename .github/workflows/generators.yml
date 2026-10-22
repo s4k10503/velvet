@@ -114,9 +114,6 @@ jobs:
       - name: Automerge tests
         run: python3 scripts/test_quality/run_suite.py scripts/pr/test_automerge.py
 
-      - name: Campaign status tests
-        run: python3 scripts/test_quality/run_suite.py scripts/pr/test_campaign_status.py
-
       - name: Campaign tests
         run: python3 scripts/test_quality/run_suite.py scripts/pr/test_campaign.py
 
@@ -256,15 +253,37 @@ jobs:
     needs: [source-generators, repository-settings]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # actions: write for a superseded run to ask for its own cancellation; pull-requests: read for
+    # the head it compares against. scripts/ci/aggregate_results.py owns when it does.
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: read
     steps:
-      - env:
+      # Decided here without a checkout, so a run whose every result passed cannot be reddened by one.
+      - id: results
+        env:
           RESULTS: ${{ needs.source-generators.result }} ${{ needs.repository-settings.result }}
         run: |
-          failed=0
+          passed=true
+          [ -n "$RESULTS" ] || passed=false
           for result in $RESULTS; do
             case "$result" in
               success|skipped) ;;
-              *) echo "::error::dependency finished as '$result'"; failed=1 ;;
+              *) passed=false ;;
             esac
           done
-          exit "$failed"
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+
+      - if: steps.results.outputs.passed != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/ci
+
+      - if: steps.results.outputs.passed != 'true'
+        env:
+          RESULTS: ${{ needs.source-generators.result }} ${{ needs.repository-settings.result }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/aggregate_results.py

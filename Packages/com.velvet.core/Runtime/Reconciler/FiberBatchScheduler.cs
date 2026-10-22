@@ -103,9 +103,19 @@ namespace Velvet
         // whole-tree flush) read the live store snapshot.
         private Action? _onDrainBegin;
         private Action? _onDrainEnd;
-        // Flushes any pending passive effects from a prior commit, wired by the owning Reconciler. Run before a
-        // synchronous discrete-event drain so those effects commit before the new update's render.
+        // Flushes any pending passive effects from a prior commit, wired by the owning Reconciler. Run before
+        // each drain's render (see Drain).
         private Action? _flushPassiveEffects;
+
+        // Set by intake React would give the sync lane — an update a discrete event's handler makes, a write made
+        // while a layout commit runs, a UseSyncExternalStore change — and taken by the pass that renders it, which
+        // then flushes the passive effects of its commits as it ends (DrainImmediatePasses). Intake from anywhere
+        // else, a passive effect's included, leaves it as it is.
+        private bool _syncLaneQueued;
+
+        // Counts every ScheduleImmediate call, for a caller asking whether a flush it ran queued anything; a count
+        // of the queue would miss intake that dedups onto a fiber already queued.
+        private int _immediateIntake;
 
         // Set by ScheduleImmediate whenever intake happens while a drain is live; the delayed drain
         // resets it before draining and reads it after, to decide whether its commits spawned
@@ -155,7 +165,6 @@ namespace Velvet
             _onDrainEnd = onDrainEnd;
         }
 
-        // Registers the pending-passive-effect flush run before a synchronous discrete-event drain.
         // Called once by the owning Reconciler.
         internal void SetPassiveEffectFlush(Action flush) => _flushPassiveEffects = flush;
 
@@ -168,6 +177,10 @@ namespace Velvet
             // comparison would be masked when the drain's own commits also REMOVED entries (an
             // unmount, a subsume) or when the write dedups onto a fiber already queued.
             if (_draining) _immediateWorkArrivedMidDrain = true;
+            // An empty tier holds no sync-lane work, whatever left it empty: a drain, a Remove, a drop or a Clear.
+            if (_immediateOrder.Count == 0) _syncLaneQueued = false;
+            if (FiberWorkLoop.IsInDiscreteEvent || fiber.Reconciler?.Context.InLayoutCommit == true) _syncLaneQueued = true;
+            _immediateIntake++;
             if (_immediateSet.Add(fiber)) _immediateOrder.Add(fiber);
             ArmImmediateDrain();
         }
@@ -179,6 +192,7 @@ namespace Velvet
         // frame-boundary callback ScheduleImmediate registered still commits it when neither has.
         internal void OweExternalStoreFlush()
         {
+            _syncLaneQueued = true;
             if (_externalStoreRenderQueued) return;
             VelvetMainThread.Post(static scheduler => ((FiberBatchScheduler)scheduler!).FlushOwedExternalStoreRenders(), this);
             _externalStoreRenderQueued = true;
@@ -339,6 +353,7 @@ namespace Velvet
 
         private void DrainImmediatePasses()
         {
+            var renderedSyncLane = false;
             // Commit-phase state writes (a callback ref invoked during the patch, an event
             // dispatched from a detach) re-enqueue their fiber mid-drain. Keep draining until the
             // queue is quiet so the follow-up render commits before this frame callback yields —
@@ -362,10 +377,11 @@ namespace Velvet
                     // lane still pending (the runaway's commits may write bystanders each pass), and
                     // wiping that lane would strand its delayed-tier work (a StartTransition left
                     // isPending forever). A Transition lane that starvation-promoted to Normal DURING
-                    // the runaway (the cap exceeds the starvation threshold) is dropped with it —
-                    // acceptable: state slots are written eagerly, so the last committed render already
-                    // showed the transition's values, and the pending-flag sweep below spares an async
-                    // action still in flight.
+                    // the runaway (the cap exceeds the starvation threshold) is dropped with it, but its writes stay
+                    // queued in their slots: the flush that promoted it either drained them or rendered an Urgent
+                    // lane that skipped them and asked for the Transition lane again, so that lane survives the drop,
+                    // and the pending-flag sweep below spares an async action still in flight. The runaway update
+                    // itself stays queued in its slot too, and the next render of that component folds it in.
                     FiberLogger.LogError("Scheduler",
                         "Maximum update depth exceeded. A component repeatedly schedules state"
                         + " updates from its commit phase (a callback ref or an effect writing a"
@@ -374,8 +390,16 @@ namespace Velvet
                     break;
                 }
                 totalPasses++;
+                renderedSyncLane |= _syncLaneQueued;
+                _syncLaneQueued = false;
                 Drain(_immediateOrder, _immediateSet, immediateTier: true);
             }
+            // Ahead of the flush below: an update an effect there schedules is an ordinary one, and a flag left
+            // standing would keep OweExternalStoreFlush from posting the next store change.
+            if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
+            // React flushes the passive effects of a sync-lane commit as that commit ends. An update one of those
+            // effects schedules waits for the tier's next drain, as a default-lane update waits for React's next task.
+            if (renderedSyncLane) FlushPendingPassiveEffects();
         }
 
         // Which lanes go, and why only these, is the nested-update cap's comment in DrainImmediatePasses.
@@ -395,14 +419,11 @@ namespace Velvet
                 dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Normal);
                 // The promoted marker retires with the dropped Normal it rode, or it would keep
                 // skipping the settle sweep for as long as any surviving lane stays queued.
-                // MUTANT_SURVIVES(unreachable): no fiber a fixture drops declares UseTransition, so no lane of a dropped fiber was ever promoted.
                 dropped.HasPromotedTransition = false;
                 // MUTANT_SURVIVES(unreachable, equality): a fiber left dirty with an empty queue is re-enrolled by a Normal update; see IsDirty below.
                 if (dropped.LaneQueue.Count == 0)
                 {
-                    // MUTANT_SURVIVES(unreachable): a Normal update re-enrols a dirty fiber whose queue is empty, and only a Transition one, which no fiber a fixture drops issues, would be stranded.
                     dropped.IsDirty = false;
-                    // MUTANT_SURVIVES(unreachable): no fiber a fixture drops declares UseTransition, so this call finds no slot and no enrolment to settle.
                     dropped.SettleTransitionPending();
                 }
                 // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on
@@ -434,7 +455,7 @@ namespace Velvet
             // only a drain of every admission picks it up below.
             try
             {
-                DrainImmediate();
+                DrainImmediateAheadOfTheTransition();
             }
             catch
             {
@@ -473,8 +494,29 @@ namespace Velvet
             }
         }
 
+        // React's task for a transition flushes pending passive effects before it picks its lanes, and an update
+        // one of them schedules outranks the transition, so it renders first and the transition waits for a later
+        // task. Each round renders what the round before it scheduled. Bounded like the immediate drain's passes,
+        // since an effect that sets state on every commit would otherwise hold the transition in this callback
+        // forever; past the bound the transition renders, and what is still queued waits for the tier's callback.
+        private void DrainImmediateAheadOfTheTransition()
+        {
+            for (var rounds = 0; ; rounds++)
+            {
+                DrainImmediate();
+                if (rounds == NestedUpdateLimit) return;
+                FlushPendingPassiveEffects();
+                if (_immediateOrder.Count == 0) return;
+            }
+        }
+
         private void Drain(List<ComponentFiber> order, HashSet<ComponentFiber>? set, bool immediateTier)
         {
+            if (order.Count == 0) return;
+            // React flushes pending passive effects before it starts a render, so an earlier commit's effects and
+            // presence completions run before this pass renders. Ahead of the copy below, so on the immediate tier
+            // an update one of them schedules joins this pass.
+            FlushPendingPassiveEffects();
             if (order.Count == 0) return;
             // Activate UseStore snapshot pinning for the span of this drain. Bracketed only on the outer drain
             // (a re-entrant call is blocked by _draining before reaching here) so a nested entry cannot reset
@@ -484,11 +526,6 @@ namespace Velvet
             _draining = true;
             try
             {
-                // React flushes the pending passive effects of earlier commits before it renders again
-                // (ReactFiberRootScheduler's performSyncWorkOnRoot and its scheduler task), so an effect whose
-                // component this drain's render removes has run, and is cleaned up, rather than dropped. Ahead of
-                // the copy below, so the updates those effects request render in this drain.
-                if (openedWave && !(_reconcileActiveProbe?.Invoke() ?? false)) _flushPassiveEffects?.Invoke();
                 _drainBuffer.Clear();
                 _drainBuffer.AddRange(order);
                 order.Clear();
@@ -608,9 +645,16 @@ namespace Velvet
             DrainImmediate();
         }
 
-        // Flushes a prior commit's pending passive effects, driven by the discrete-event boundary so an
-        // effect runs at the event even where the event renders nothing. Gated like FlushImmediate so it never
-        // re-enters a live drain / reconcile.
+        // React's task flushes pending passive effects and then renders the highest-priority lanes pending, so an
+        // update one of those effects schedules renders ahead of the transition the task was resuming.
+        internal void FlushPendingPassiveEffectsAheadOfAResume()
+        {
+            var intake = _immediateIntake;
+            FlushPendingPassiveEffects();
+            if (_immediateIntake != intake) FlushImmediate();
+        }
+
+        // Gated like FlushImmediate so it never re-enters a live drain / reconcile.
         internal void FlushPendingPassiveEffects()
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;

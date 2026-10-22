@@ -49,6 +49,30 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASkewOnBothAxes_When_AabbComputed_Then_ItsWidthFollowsTheSkewXSkewYProduct()
+        {
+            // Arrange — skewX() skewY() maps x to x + u·tanX·tanY + v·tanX, so a 100x40 box at tanX = 0.5 and
+            // tanY = 0.25 spans 100·(1 + 0.125) + 40·0.5 = 132.5 horizontally.
+            // Act
+            var aabb = SilhouetteBoundsSpacer.ShearedAabb(100f, 40f, 0.5f, 0.25f);
+
+            // Assert
+            Assert.That(aabb.width, Is.EqualTo(132.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ABoxSkewedOnBothAxes_When_ItsTopRightCornerIsSheared_Then_XFollowsTheSkewXSkewYProduct()
+        {
+            // Arrange — the corner (200, 0) of a 200x60 box is u = 100, v = -30 from its centre; at tanX = 0.5
+            // and tanY = 0.25 it lands at x = 200 + 100·0.125 − 30·0.5 = 197.5.
+            // Act
+            var corner = SilhouetteFace.Shear(new Vector2(200f, 0f), 200f, 60f, 0.5f, 0.25f);
+
+            // Assert
+            Assert.That(corner.x, Is.EqualTo(197.5f).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_NoSkew_When_AabbComputed_Then_ItIsExactlyTheBox()
         {
             // Act
@@ -83,6 +107,21 @@ namespace Velvet.Tests
 
             // Assert — grows width by height*|tanX| = 20.
             Assert.That(e.width, Is.EqualTo(120f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ARectShearedOnBothAxes_When_ExpandedForShear_Then_ItCoversTheSkewXSkewYProduct()
+        {
+            // Arrange — skewX(θx) skewY(θy) carries a corner (±50, ±20) about the centre to
+            // ((1 + tanX·tanY)·dx + tanX·dy, tanY·dx + dy): half-extents 1.125·50 + 0.5·20 and 0.25·50 + 20.
+            var r = new Rect(0f, 0f, 100f, 40f);
+
+            // Act
+            var e = SilhouetteBoundsSpacer.ExpandForShear(r, 0.5f, 0.25f);
+
+            // Assert
+            Assert.That(new[] { e.xMin, e.yMin, e.width, e.height },
+                Is.EqualTo(new[] { -16.25f, -12.5f, 132.5f, 65f }).Within(1e-4f));
         }
 
         [Test]
@@ -308,7 +347,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADefaultStash_When_Stashed_Then_BothBackgroundAndBorderAreSuppressed()
         {
-            // Arrange — the default (includeBackground:true) stash pins SkewBinding / DropShadowBinding's
+            // Arrange — the default (includeBackground:true) stash pins SkewBinding / BoxShadowBinding's
             // existing behavior: it owns the whole face.
             var element = ColoredElement();
             var stash = new SilhouetteFaceStash();

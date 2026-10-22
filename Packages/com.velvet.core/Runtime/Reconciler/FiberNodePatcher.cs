@@ -375,6 +375,13 @@ namespace Velvet
             // three own the edge and must win, exactly as they already win over a child's own explicit margin
             // — running [&>*]: first makes it behave as if the child itself carried the wrapped class.
             ApplyChildVariantManipulator(element, newClassNames);
+            // A field's input box decides its bounds-spacers from the payloads routed to it, applied or not
+            // (WrapperInfrastructure.CarriesFilter), and a routed payload that is not applied re-syncs nothing.
+            if (!ReferenceEquals(oldClassNames, newClassNames) && StyleInputBoxSurface.IsControl(element)
+                && StyleInputBoxSurface.TryGetBox(element, out var box) && _ctx.VariantGateClasses.ContainsKey(box))
+            {
+                ReSyncVariantGatedPasses(box);
+            }
             ApplyLayoutManipulators(element, newClassNames);
             ApplyStructuralVariants(element);
             ApplyHasClassVariants(element);
@@ -433,8 +440,8 @@ namespace Velvet
             _appliers.ApplyParticlesSpacer(element, classNames);
             if (paintTail)
             {
-                var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
-                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
+                var skew = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
+                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skew, canReleaseFace);
                 _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
             }
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
@@ -548,33 +555,6 @@ namespace Velvet
             // merged array's tail by position (see ResolveApplied's own doc for why that would be fragile).
             var previous = RestingClassSet(element, oldNode.ClassNames);
             var variantApplied = newVariantClasses.Length > 0;
-            // Decided before the class-driven sync rather than beside the play below, because a tween swap
-            // changes what that sync may write (ResolveInlineHold), and a zero-duration one what the element's
-            // running play still animates as the sync writes (LandNamedProperties).
-            var playedTransition = ResolvePlayedSwap(element, swapTransition, previous.VariantClasses,
-                newVariantClasses);
-            var old = OldSet(previous, newVariantClasses);
-            var appliedOld = old.Merged;
-            var oldVariantClasses = old.VariantClasses;
-            if (playedTransition != null)
-            {
-                _ctx.StyleAnimationScheduler.LandNamedProperties(element, newVariantClasses, playedTransition);
-            }
-            var (syncOld, syncNew, onSwap) = ResolveInlineHold(element, newNode.ClassNames,
-                new MotionAppliedClassSet(appliedOld, oldVariantClasses),
-                new MotionAppliedClassSet(appliedNew, newVariantClasses), playedTransition);
-            // Keep an entry only while a variant is applied; drop it when a variant→no-variant transition happens
-            // (the diff above still uses the stored old classes to REMOVE the now-stale variant utilities).
-            if (variantApplied)
-            {
-                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedNew, newVariantClasses,
-                    old.Carried);
-            }
-            else
-            {
-                _ctx.MotionAppliedClasses.Remove(element);
-            }
-
             // staggerChildren/delayChildren propagation (plain variant-tree orchestration — no AnimatePresence
             // required): this node FOLLOWS the ambient label (no own Animate opting it out) and an ancestor
             // Motion is currently orchestrating THIS render (its own active label just changed and its
@@ -586,10 +566,39 @@ namespace Velvet
             // node establishes below for its OWN children (see ResolveChildOrchestration): this node's own swap
             // does not start until extraDelaySec has elapsed, so a child frame it establishes must measure its
             // claims from that same origin, not from render-commit time as if this node's swap were immediate.
+            // Claimed before the class-driven sync, since whether an instant spring swap lands at once depends on
+            // it (StyleTransitionConfig.SpringLandsAtOnceAfter).
             var extraDelaySec = 0f;
             if (MotionVariantResolver.IsVariantChild(newNode) && ambientOrchestration != null)
             {
                 extraDelaySec = ambientOrchestration.ClaimNextChildDelaySec();
+            }
+            // Decided before the class-driven sync rather than beside the play below, because a tween swap
+            // changes what that sync may write (ResolveInlineHold), and a zero-duration one what the element's
+            // running play still animates as the sync writes (LandNamedProperties).
+            var playedTransition = ResolvePlayedSwap(element, swapTransition, previous.VariantClasses,
+                newVariantClasses);
+            var old = OldSet(previous, newVariantClasses);
+            var appliedOld = old.Merged;
+            var oldVariantClasses = old.VariantClasses;
+            if (playedTransition != null)
+            {
+                _ctx.StyleAnimationScheduler.LandNamedProperties(element, newVariantClasses, playedTransition,
+                    extraDelaySec);
+            }
+            var (syncOld, syncNew, onSwap) = ResolveInlineHold(element, newNode.ClassNames,
+                new MotionAppliedClassSet(appliedOld, oldVariantClasses),
+                new MotionAppliedClassSet(appliedNew, newVariantClasses), playedTransition, extraDelaySec);
+            // Keep an entry only while a variant is applied; drop it when a variant→no-variant transition happens
+            // (the diff above still uses the stored old classes to REMOVE the now-stale variant utilities).
+            if (variantApplied)
+            {
+                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedNew, newVariantClasses,
+                    old.Carried);
+            }
+            else
+            {
+                _ctx.MotionAppliedClasses.Remove(element);
             }
 
             var childLabel = MotionVariantResolver.LabelForChildren(newNode, motionAmbient);
@@ -641,10 +650,11 @@ namespace Velvet
             // Runtime variant swap: PatchBaseElement above already synced the class list to the final resting
             // state (appliedNew) via a plain, instant diff, less the inline-resolved tokens ResolveInlineHold
             // holds for the swap to write. When the effective label actually changed WHICH
-            // variant classes are applied AND a transition resolved for the destination pose, replay that same
-            // swap as a VISUAL tween on the scheduler instead — a transition should apply to every animate
-            // update, not just the first. No resolved transition keeps the plain, instant diff (Velvet applies
-            // no implicit default transition).
+            // variant classes are applied, replay that same swap on the scheduler on the destination pose's
+            // transition (ResolvePlayedSwap) — a transition should apply to every animate update, not just the
+            // first. V.Motion gives a Motion that declares none StyleTransition.Fade; a swap whose transition
+            // lands at once (StyleAnimationScheduler.LandsAtOnce), StyleTransitionConfig.None among them, plays
+            // nothing.
             // Gated off an element the scheduler already treats as EXITING (not off PresenceAnchorMotion
             // identity — that field is set for every current AnimatePresence child, including a plain
             // PERSISTING one this swap must still drive when its ambient label changes, e.g. a coordinator
@@ -663,7 +673,7 @@ namespace Velvet
                     playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap,
                     appliedClasses: appliedNew, playback: playback);
             }
-            RemoveStaleInlineTokens(element, playedTransition, oldVariantClasses,
+            RemoveStaleInlineTokens(element, playedTransition, extraDelaySec, oldVariantClasses,
                 new MotionAppliedClassSet(appliedNew, newVariantClasses));
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
@@ -694,9 +704,9 @@ namespace Velvet
         // ends the property at the play's target (MotionZeroDurationLandingTests). It is carried instead, so the
         // next label change diffs it and its layer away as the old pose's (MotionAppliedClassSet.Carried).
         private void RemoveStaleInlineTokens(VisualElement element, StyleTransitionConfig? playedTransition,
-            string[] oldVariantClasses, MotionAppliedClassSet next)
+            float extraDelaySec, string[] oldVariantClasses, MotionAppliedClassSet next)
         {
-            if (playedTransition != null && !StyleAnimationScheduler.LandsAtOnce(playedTransition))
+            if (playedTransition != null && !StyleAnimationScheduler.LandsAtOnce(playedTransition, extraDelaySec))
             {
                 return;
             }
@@ -747,7 +757,7 @@ namespace Velvet
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
                 ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Value4}|{style.PercentEdges}|{style.Color}|{style.Auto}"
-                    + $"|{(style.Custom == null && style.Expression == null ? string.Empty : rawCls)}"
+                    + $"|{(style.Custom == null && style.Expression == null && style.DropShadow == null ? string.Empty : rawCls)}"
                 : rawCls;
 
         private StyleTransitionConfig? ResolvePlayedSwap(VisualElement element, StyleTransitionConfig? swapTransition,
@@ -766,10 +776,10 @@ namespace Velvet
         // rather than moved behind a transition written ahead of them, so they land at the swap itself: with
         // the pose's USS classes, and in the stagger slot, which delays the swap and not the transition. The
         // enters hold the same way (HoldInlineForEnter) and the exit writes at its swap too (PlanInlineExit).
-        // swapTransition is null when no swap plays this render.
+        // swapTransition is null when no swap plays this render; extraDelaySec is the stagger the swap is played with.
         private (string[] syncOld, string[] syncNew, Action? onSwap) ResolveInlineHold(VisualElement element,
             string[]? baseClasses, MotionAppliedClassSet previous, MotionAppliedClassSet next,
-            StyleTransitionConfig? swapTransition)
+            StyleTransitionConfig? swapTransition, float extraDelaySec)
         {
             var oldVariantClasses = previous.VariantClasses;
             var newVariantClasses = next.VariantClasses;
@@ -787,7 +797,7 @@ namespace Velvet
                 }
             }
 
-            if (swapTransition != null && StyleAnimationScheduler.RunsOnSwap(swapTransition))
+            if (swapTransition != null && StyleAnimationScheduler.RunsOnSwap(swapTransition, extraDelaySec))
             {
                 // The pose this swap starts from, not a hold's HeldTokens: where this swap interrupts one that
                 // had not swapped, that pose was never written, and this sync writes it so the new swap starts
@@ -1424,6 +1434,9 @@ namespace Velvet
             {
                 ReapplyOrderedInlineValues(element, oldClasses, newClasses);
             }
+            // Last: the readers of the live list (StyleClipPathClass.TryExtractLive, LiveClasses) end on the last
+            // token of a family, and a token added by this diff sits behind the ones already there.
+            StyleFamilyOrder.RestoreLiveOrder(element, newClasses);
             return true;
         }
 
@@ -1630,7 +1643,7 @@ namespace Velvet
                         removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                     }
 
-                    RemoveClass(element, cls);
+                    RemoveOutgoingClass(element, cls, newClasses);
                 }
             }
             foreach (var cls in newClasses)
@@ -1679,7 +1692,7 @@ namespace Velvet
                             removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                         }
 
-                        RemoveClass(element, cls);
+                        RemoveOutgoingClass(element, cls, newClasses);
                     }
                 }
                 foreach (var cls in newClasses)
@@ -1696,6 +1709,56 @@ namespace Velvet
                 _ctx.BufferPool.ReturnClassSet(oldSet);
                 _ctx.BufferPool.ReturnClassSet(newSet);
             }
+        }
+
+        // An inline-resolved class leaving while another class in the incoming list writes the same property
+        // (w-[300px] to w-[10px]) gives up its layer without the property being resolved. DiffClassList's
+        // reapply applies every incoming inline class afterwards, which resolves it. Pinned by
+        // ArbitraryWidthSwapTransitionTests.
+        private static void RemoveOutgoingClass(VisualElement element, string cls, string[] newClasses)
+        {
+            if (InlineWriteOf(cls) is { } outgoing)
+            {
+                if (WritesInlineProperty(newClasses, outgoing.Property))
+                {
+                    StyleArbitraryValueResolver.Withdraw(element, outgoing.Property, outgoing.Priority);
+                    return;
+                }
+            }
+            RemoveClass(element, cls);
+        }
+
+        private static bool WritesInlineProperty(string[] classes, ArbitraryProperty property)
+        {
+            foreach (var cls in classes)
+            {
+                if (InlineWriteOf(cls)?.Property == property)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The property and layer an inline-resolved class writes, or null for one that writes none or whose
+        // layers are not keyed by property (filter-[name:...]).
+        private static (ArbitraryProperty Property, long Priority)? InlineWriteOf(string raw)
+        {
+            if (!TryGetInlineResolvedCore(raw, out var core, out var important))
+            {
+                return null;
+            }
+            if (!StyleArbitraryValueResolver.TryParse(core, out var style))
+            {
+                return null;
+            }
+            if (style.Property == ArbitraryProperty.FilterCustom)
+            {
+                return null;
+            }
+            return (style.Property, important
+                ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                : StyleLayerPriority.Base);
         }
 
         // Token families a manipulator (or a side-table config pass) owns outright: none of them ever

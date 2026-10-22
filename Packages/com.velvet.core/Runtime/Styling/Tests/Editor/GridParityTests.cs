@@ -293,13 +293,25 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnArbitraryBracketColumnCount_When_Parsed_Then_TheCountIsExtracted()
+        public void Given_ABareBracketColumnCount_When_Parsed_Then_ItIsRejected()
         {
-            // Act
-            var ok = StyleGridClass.TryParse("grid-cols-[7]", out var columns);
+            // Act — Tailwind writes grid-template-columns: 7, which the browser rejects.
+            var ok = StyleGridClass.TryParse("grid-cols-[7]", out _);
 
             // Assert
-            Assert.That((ok, columns), Is.EqualTo((true, 7)));
+            Assert.That(ok, Is.False);
+        }
+
+        [TestCase("grid-cols-[repeat(7,minmax(0,1fr))]")]
+        [TestCase("grid-cols-[repeat(7,_minmax(0,_1fr))]")]
+        [TestCase("grid-cols-[REPEAT(7,MINMAX(0,1FR))]")]
+        public void Given_TheTrackListGridColsSevenWrites_When_Parsed_Then_ItIsSevenColumns(string utility)
+        {
+            // Act
+            var ok = StyleGridClass.TryParse(utility, out var columns);
+
+            // Assert
+            Assert.That(ok ? columns : -1, Is.EqualTo(7));
         }
 
         [Test]

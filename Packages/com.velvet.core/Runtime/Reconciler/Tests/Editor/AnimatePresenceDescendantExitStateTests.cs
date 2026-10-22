@@ -11,7 +11,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins what an AnimatePresence keeps per key for the exits a removal plays, and that it lets go of it:
-    /// once the key's leaves are dropped, whether its exit completed or it was removed at once, and once a
+    /// once the key's leaves are dropped, whether its exit played or had nothing to animate, and once a
     /// re-entry takes back an exit that was still playing or had already completed. Each case reads the
     /// entries while the key holds them and again after, in one comparison.
     /// </summary>
@@ -77,7 +77,7 @@ namespace Velvet.Tests
         {
             // An anchor that plays no exit, around a Motion that does.
             "nested" => V.Motion(key: key, variants: s_fade, animate: "visible", children: new[] { TimedMotion() }),
-            // An anchor with nothing to play, so its removal is immediate.
+            // An anchor with nothing to play, so its exit settles in the passive flush after the removing render.
             "instant" => V.Motion(key: key, name: "item", transition: StyleTransitionConfig.None),
             "timed-row" => V.Component(TimedRow, key: key),
             "spring-row" => V.Component(SpringRow, key: key),
@@ -141,16 +141,20 @@ namespace Velvet.Tests
             Assert.That(whileExiting + "|" + Entries(mounted), Is.EqualTo("1,1,1,1|0,0,0,0"));
         }
 
+        // GREEN_ON_BASE(characterization): the base let go of the key's entries in the removing render.
+        // The flush and drain added are what the drop waits for now.
         [Test]
-        public void Given_AKeyWithNothingToPlay_When_ItIsRemoved_Then_NothingIsKeptForIt()
+        public void Given_AKeyWithNothingToPlay_When_ItsLeavesAreDropped_Then_NothingIsKeptForIt()
         {
             // Arrange
             using var keys = new KeySetStore("a");
             using var mounted = MountSettled("instant", keys);
             var whileMounted = Entries(mounted);
 
-            // Act
+            // Act — the removing render, the flush its exit settles in, and the render that drops the leaves.
             keys.Set(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert

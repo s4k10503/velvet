@@ -306,6 +306,8 @@ namespace Velvet.Tests
             Assert.AreEqual(1, s_simpleRenderCount, "A Transition update does not render before the flush");
         }
 
+        // GREEN_ON_BASE(refactor): the second flush finds the fiber clean on the base, where the first drained
+        // the transition's lane.
         [Test]
         public void Given_TransitionUpdate_When_Flushed_Then_RendersTheNewValue()
         {
@@ -314,12 +316,48 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
             s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
 
-            // Act
+            // Act — the pending render drains first, then the transition's lane
+            mounted.FlushStateForTest();
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.AreEqual((3, "transition-update"), (s_simpleRenderCount, s_simpleLastValue),
-                "The transition content render is followed by the render that observes isPending cleared");
+            Assert.AreEqual("transition-update", s_simpleLastValue);
+        }
+
+        [Test]
+        public void Given_TransitionUpdate_When_Flushed_Then_RendersThePendingStateTheContentAndTheClear()
+        {
+            // Arrange
+            s_simpleInitial = "initial";
+            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
+            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
+
+            // Act
+            mounted.FlushStateForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.AreEqual(4, s_simpleRenderCount,
+                "The transition content render follows the pending render and is followed by the render that observes isPending cleared");
+        }
+
+        // GREEN_ON_BASE(refactor): the second flush finds the fiber clean on the base, where the first drained
+        // the transition's lane.
+        [Test]
+        public void Given_TransitionUpdate_When_StartedTwiceAndFlushed_Then_CommitsTheLastValue()
+        {
+            // Arrange
+            s_simpleInitial = "initial";
+            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
+            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-1"));
+            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-2"));
+
+            // Act — the pending render both calls asked for drains first, then the transition's lane
+            mounted.FlushStateForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.AreEqual("transition-2", s_simpleLastValue);
         }
 
         [Test]
@@ -331,12 +369,13 @@ namespace Velvet.Tests
             s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-1"));
             s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-2"));
 
-            // Act
+            // Act — the pending render both calls asked for drains first, then the transition's lane
+            mounted.FlushStateForTest();
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.AreEqual((3, "transition-2"), (s_simpleRenderCount, s_simpleLastValue),
-                "Multiple Transition updates share one content render before the pending-clear render");
+            Assert.AreEqual(4, s_simpleRenderCount,
+                "Multiple Transition updates share one content render between the pending render and the pending-clear render");
         }
 
         [Test]
@@ -367,6 +406,8 @@ namespace Velvet.Tests
                 + "render leaves no lane queued");
         }
 
+        // GREEN_ON_BASE(refactor): only the first pass calls the starter, whose Urgent pending render the base has
+        // not got; the later passes re-add the lane directly, which is the coalesced re-add the case is about.
         [Test]
         public void Given_SustainedTransitionRescheduling_When_NormalPreemptionReachesThreshold_Then_TransitionLaneIsPromoted()
         {
@@ -383,7 +424,14 @@ namespace Velvet.Tests
             // threshold flush must still promote and drain the starved lane.
             for (var i = 0; i < threshold; i++)
             {
-                s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke($"transition-{i}"));
+                if (i == 0)
+                {
+                    s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-0"));
+                }
+                else
+                {
+                    s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+                }
                 s_simpleSetValue.Invoke($"normal-{i}");
                 mounted.FlushStateForTest();
             }

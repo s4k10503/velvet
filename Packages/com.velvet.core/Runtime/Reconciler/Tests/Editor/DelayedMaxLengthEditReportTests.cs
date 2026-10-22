@@ -58,13 +58,11 @@ namespace Velvet.Tests
 
             // Assert — the shown text is folded in: silence alone is also what a restore that never
             // happened produces.
-            Assert.That((whileHeld, string.Join("|", reported), element.text), Is.EqualTo((0, string.Empty, "abc")));
+            Assert.That((whileHeld, string.Join("|", reported), element.text), Is.EqualTo((0, string.Empty, "abcd")));
         }
 
-        // GREEN_ON_BASE(characterization): the base never restores a held edit, so a zero limit reports
-        // nothing there either. It pins that the branch's restore treats zero as a bound.
-        // Zero is a bound: the cut leaves nothing, and a cut skipped for it would leave the engine's own
-        // cull to report the edit.
+        // Zero is a bound a later key may not pass. It does not clear the edit already on screen, and the
+        // change reports nothing.
         [Test]
         public void Given_AnEditADelayedFieldIsHolding_When_ALaterRenderSetsMaxLengthToZero_Then_OnValueChangedHearsNothing()
         {
@@ -81,7 +79,7 @@ namespace Velvet.Tests
             _reconciler.Reconcile(_root, oldTree, newTree);
 
             // Assert
-            Assert.That((whileHeld, string.Join("|", reported), element.text), Is.EqualTo((0, string.Empty, string.Empty)));
+            Assert.That((whileHeld, string.Join("|", reported), element.text), Is.EqualTo((0, string.Empty, "ab")));
         }
     }
 }

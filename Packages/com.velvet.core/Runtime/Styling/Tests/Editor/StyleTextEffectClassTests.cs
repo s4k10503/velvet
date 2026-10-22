@@ -557,18 +557,18 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_LeadingBracketWithTrailingSpace_When_Parsed_Then_LeadingIsUnsetNull()
+        public void Given_LeadingBracketWithTrailingSpace_When_ParsedAndApplied_Then_ProducesThePxTag()
         {
-            // Arrange — a trailing space before the closing bracket breaks the "px"-suffix match itself
-            // (the last two characters become "x ", not "px"), so this is rejected before the numeric
-            // parse even runs.
+            // Arrange — a space at either end of a length is trimmed, as the browser trims it from the declaration
+            // Tailwind writes (leading-[24px_] reaches it as `line-height: 24px `).
             var classNames = new[] { "leading-[24px ]" };
 
             // Act
             var effect = StyleTextEffectClass.Parse(classNames);
+            var result = StyleTextEffectClass.Apply("hi", null, null, null, effect.Leading);
 
             // Assert
-            Assert.That(effect.Leading, Is.Null);
+            Assert.That(result, Is.EqualTo("<line-height=24px>hi</line-height>"));
         }
 
         [Test]

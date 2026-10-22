@@ -112,9 +112,44 @@ namespace Velvet
             RefreshDeclared(element, state);
         }
 
+        // Elements a layoutId projection writes the radius slots of (LayoutIdLook.WriteRadii), whose values would
+        // otherwise read as foreign and end the fit for good. Kept apart from the states so that a state attached
+        // while the projection writes, by a radius the element takes mid-move, is held from the start.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> s_holds = new();
+
+        // Stops refitting while a layoutId projection writes the element's radius slots.
+        public static void Hold(VisualElement element) => s_holds.AddOrUpdate(element, s_holds);
+
+        // Resumes once the projection has written back what the slots held before it, which the fit reads as its own.
+        public static void Unhold(VisualElement element)
+        {
+            s_holds.Remove(element);
+            if (s_states.TryGetValue(element, out var state)) RefreshDeclared(element, state);
+        }
+
+        // The radius a corner is declared by what the fit tracks, scaled as the fit would scale it now; null for a
+        // corner it tracks no declaration of.
+        internal static Length? Fitted(VisualElement element, int corner)
+        {
+            if (!s_states.TryGetValue(element, out var state)) return null;
+            var declared = Declared(state, corner);
+            return declared == null ? null : new Length(declared.Value.value * FactorFor(element, state), declared.Value.unit);
+        }
+
+        // Whether the slot holds what the fit last wrote to the corner.
+        internal static bool Wrote(VisualElement element, int corner, StyleLength slot)
+        {
+            if (!s_states.TryGetValue(element, out var state)) return false;
+            return slot.keyword == StyleKeyword.Undefined && slot.value == state.Written[corner];
+        }
+
         // Drops what the fit tracks, for an element on its way to the pool; its callbacks find nothing after
         // this. The inline slots themselves are the caller's to clear.
-        public static void Release(VisualElement element) => s_states.Remove(element);
+        public static void Release(VisualElement element)
+        {
+            s_states.Remove(element);
+            s_holds.Remove(element);
+        }
 
         /// <summary>
         /// The factor CSS scales every radius by so that no two adjacent radii overlap on a side — 1 where none
@@ -217,14 +252,16 @@ namespace Velvet
                 var foreign = slot.keyword != StyleKeyword.Null
                     && (slot.keyword != StyleKeyword.Undefined || slot.value != state.Written[i]);
                 state.Foreign[i] = foreign;
-                if (foreign)
+                // A slot found empty no longer holds what this wrote, as when a layoutId projection hands back the slot it
+                // held over it (Given_AnArbitrarilyRoundedLayoutIdMotionMidTween_When_ARadiusWrittenOverItIsClearedAgain_Then_ItLandsAtItsOwnRadius).
+                if (foreign || slot.keyword == StyleKeyword.Null)
                 {
                     state.Written[i] = null;
                 }
             }
         }
 
-        private static StyleLength InlineCorner(IStyle style, int corner) => corner switch
+        internal static StyleLength InlineCorner(IStyle style, int corner) => corner switch
         {
             0 => style.borderTopLeftRadius,
             1 => style.borderTopRightRadius,
@@ -234,6 +271,7 @@ namespace Velvet
 
         private static void Refresh(VisualElement element, State state, bool suspendTransitions)
         {
+            if (s_holds.TryGetValue(element, out _)) return;
             FindForeignValues(element, state);
             // A corner nothing tracked declares any longer gives back what this wrote first, so the value read
             // for it below is the cascade's own rather than ours.
@@ -323,7 +361,7 @@ namespace Velvet
             return float.IsNaN(resolved) ? Vector2.zero : new Vector2(Mathf.Max(0f, resolved), Mathf.Max(0f, resolved));
         }
 
-        private static float ResolvedCorner(IResolvedStyle style, int corner) => corner switch
+        internal static float ResolvedCorner(IResolvedStyle style, int corner) => corner switch
         {
             0 => style.borderTopLeftRadius,
             1 => style.borderTopRightRadius,

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using Velvet;
 using UnityEngine.UIElements;
@@ -22,11 +23,12 @@ namespace Velvet.Tests
     /// directly into the parent with no intermediate wrapper element; a multi-element resolved range occupies
     /// several slots and every one is removed when its key exits.</item>
     /// <item>Patching adds, updates, removes, and reorders keyed children so DOM order matches VNode order;
-    /// duplicate keys collapse to the last entry; a null-keyed child receives a position-based auto key that
-    /// coexists with explicit keys.</item>
+    /// duplicate keys both render, and a later render keeping their relative order keeps both; a null-keyed child
+    /// receives a position-based auto key that coexists with explicit keys.</item>
     /// <item>On exit, a child with a real transition stays in the DOM until the transition completes (and is
     /// retained if re-added meanwhile), whereas a child with no transition or
-    /// <see cref="StyleTransitionConfig.None"/> is removed immediately.</item>
+    /// <see cref="StyleTransitionConfig.None"/> stays for the reconcile that removed it and leaves on the next; under
+    /// mode="wait" it holds the new child back until then. A reconciler disposed during an exit completes it once.</item>
     /// <item><c>initial: false</c> suppresses the enter animation on the very first mount only — later additions
     /// still animate; the resolved Motion's <c>OnEnterComplete</c> fires immediately when the enter animation is
     /// skipped.</item>
@@ -208,16 +210,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_DefaultMotion_When_MotionBuilt_Then_ElementTypeIsVisualElement()
-        {
-            // Act
-            var node = V.Motion();
-
-            // Assert
-            Assert.That(node.ElementType, Is.EqualTo(typeof(VisualElement)));
-        }
-
-        [Test]
         public void Given_OnEnterCompleteCallback_When_MotionBuilt_Then_CallbackIsCarried()
         {
             // Arrange
@@ -382,6 +374,8 @@ namespace Velvet.Tests
                 "The Memo-then-Suspense content renders wrapper-less into the presence container");
         }
 
+        // GREEN_ON_BASE(characterization): the base removed every element of the range in the removing reconcile.
+        // The added reconcile is the one that drops it now.
         [Test]
         public void Given_MultiElementSuspenseChild_When_KeyExits_Then_EveryElementOfTheRangeIsRemoved()
         {
@@ -393,8 +387,9 @@ namespace Velvet.Tests
             var container = Root;
             Assume.That(container.childCount, Is.EqualTo(2), "Precondition: both Suspense content elements are present");
 
-            // Act
+            // Act — the second reconcile is the one that drops the exited child.
             Reconciler.Reconcile(Root, Tree(true), Tree(false));
+            Reconciler.Reconcile(Root, Tree(false), Tree(false));
 
             // Assert
             Assert.That(container.childCount, Is.EqualTo(0),
@@ -481,19 +476,90 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_DuplicateKeys_When_InitialRender_Then_LastEntryWins()
+        public void Given_DuplicateKeys_When_InitialRender_Then_BothChildrenCommit()
         {
-            // Arrange
+            // Arrange — the repeat is reported (LogAssert also fails if no warning fires).
+            UnityEngine.TestTools.LogAssert.Expect(
+                UnityEngine.LogType.Warning, new System.Text.RegularExpressions.Regex("Both children render"));
             var tree = Presence(
-                V.Motion(key: "dup", transition: StyleTransition.Fade, children: Label("First")),
-                V.Motion(key: "dup", transition: StyleTransition.Fade, children: Label("Second")));
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First")),
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("Second")));
 
             // Act
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
 
             // Assert
-            var label = Root.ElementAt(0).ElementAt(0) as Label;
-            Assert.That(label?.text, Is.EqualTo("Second"), "Duplicate keys collapse to a single element holding the last entry");
+            Assert.That(LabelTexts(), Is.EqualTo("First,Second"));
+        }
+
+        [Test]
+        public void Given_ARepeatAndALaterKeySpelledLikeTheRepeatsKey_When_InitialRender_Then_AllThreeCommit()
+        {
+            // Arrange — the third key is the one the second child's map key is spelled as.
+            var tree = Presence(
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First")),
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("Second")),
+                V.Motion(key: "__ap_auto_dup1_dup", transition: StyleTransitionConfig.None, children: Label("Third")));
+
+            // Act
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("First,Second,Third"));
+        }
+
+        [Test]
+        public void Given_AKeySpelledLikeARepeatsKeyAheadOfTheRepeat_When_InitialRender_Then_AllThreeCommit()
+        {
+            // Arrange — the first key is the one the repeat's map key would otherwise be spelled as.
+            var tree = Presence(
+                V.Motion(key: "__ap_auto_dup1_dup", transition: StyleTransitionConfig.None, children: Label("Zero")),
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First")),
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("Second")));
+
+            // Act
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("Zero,First,Second"));
+        }
+
+        [Test]
+        public void Given_DuplicateKeys_When_UpdatedInTheSameOrder_Then_BothChildrenShowTheNewText()
+        {
+            // Arrange
+            var initial = Presence(
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First")),
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("Second")));
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), initial);
+            var updated = Presence(
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First-2")),
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("Second-2")));
+
+            // Act
+            Reconciler.Reconcile(Root, initial, updated);
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("First-2,Second-2"));
+        }
+
+        [Test]
+        public void Given_DuplicateKeys_When_TheRepeatIsRemoved_Then_ItLeavesAtOnceWithoutAnExit()
+        {
+            // Arrange
+            var both = Presence(
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First")),
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("Second")));
+            var firstOnly = Presence(
+                V.Motion(key: "dup", transition: StyleTransitionConfig.None, children: Label("First")));
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), both);
+            var before = LabelTexts();
+
+            // Act
+            Reconciler.Reconcile(Root, both, firstOnly);
+
+            // Assert — both rendered, then a child still holding the key means the repeat is not leaving: it is gone this reconcile.
+            Assert.That($"{before}->{LabelTexts()}", Is.EqualTo("First,Second->First"));
         }
 
         #endregion
@@ -626,7 +692,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ChildWithoutTransition_When_Removed_Then_ElementIsRemovedImmediately()
+        public void Given_ChildWithoutTransition_When_Removed_Then_ElementStaysForThatReconcile()
         {
             // Arrange — a MotionNode with Transition=null has no exit animation to wait for.
             var initial = Presence(new MotionNode
@@ -637,29 +703,66 @@ namespace Velvet.Tests
                 Children = Label("A"),
             });
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), initial);
-            var container = Root;
 
             // Act
             Reconciler.Reconcile(Root, initial, Presence((VNode)null));
 
             // Assert
-            Assert.That(container.childCount, Is.EqualTo(0), "Without a transition the element is removed immediately on exit");
+            Assert.That(Root.childCount, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base removed the child in the removing reconcile, so the one after it finds it gone as well.
+        [Test]
+        public void Given_ChildWithoutTransition_When_RemovedAndReconciledAgain_Then_ElementLeaves()
+        {
+            // Arrange
+            var initial = Presence(new MotionNode
+            {
+                Key = "a",
+                ElementType = typeof(VisualElement),
+                Transition = null,
+                Children = Label("A"),
+            });
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), initial);
+            var removed = Presence((VNode)null);
+            Reconciler.Reconcile(Root, initial, removed);
+
+            // Act
+            Reconciler.Reconcile(Root, removed, Presence((VNode)null));
+
+            // Assert
+            Assert.That(Root.childCount, Is.EqualTo(0));
         }
 
         [Test]
-        public void Given_TransitionConfigNone_When_Removed_Then_ElementIsRemovedImmediately()
+        public void Given_TransitionConfigNone_When_Removed_Then_ElementStaysForThatReconcile()
         {
-            // Arrange — StyleTransitionConfig.None (DurationSec 0) completes instantly, so exit is immediate.
+            // Arrange
             var initial = Presence(V.Motion(key: "a", transition: StyleTransitionConfig.None, children: Label("A")));
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), initial);
-            var container = Root;
 
             // Act
             Reconciler.Reconcile(Root, initial, Presence((VNode)null));
 
             // Assert
-            Assert.That(container.childCount, Is.EqualTo(0),
-                "StyleTransitionConfig.None completes immediately, so the element is removed at once");
+            Assert.That(Root.childCount, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base removed the child in the removing reconcile, so the one after it finds it gone as well.
+        [Test]
+        public void Given_TransitionConfigNone_When_RemovedAndReconciledAgain_Then_ElementLeaves()
+        {
+            // Arrange
+            var initial = Presence(V.Motion(key: "a", transition: StyleTransitionConfig.None, children: Label("A")));
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), initial);
+            var removed = Presence((VNode)null);
+            Reconciler.Reconcile(Root, initial, removed);
+
+            // Act
+            Reconciler.Reconcile(Root, removed, Presence((VNode)null));
+
+            // Assert
+            Assert.That(Root.childCount, Is.EqualTo(0));
         }
 
         [Test]
@@ -695,6 +798,78 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_WaitModeAndAnExitWithNothingToAnimate_When_KeySwaps_Then_OnlyTheExitingChildRenders()
+        {
+            // Arrange
+            VNode[] Show(string key) => PresenceWait(V.Motion(key: key, transition: StyleTransitionConfig.None,
+                children: Label(key)));
+            var showA = Show("a");
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), showA);
+
+            // Act
+            Reconciler.Reconcile(Root, showA, Show("b"));
+
+            // Assert — mode=wait renders only the exiting child until the render its settled exit asks for
+            Assert.That(LabelTexts(), Is.EqualTo("a"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base dropped the old child and mounted the new one in the swapping reconcile, so the one after it shows the new child as well.
+        [Test]
+        public void Given_WaitModeAndAnExitWithNothingToAnimate_When_KeySwapsAndReconcilesAgain_Then_TheNewChildMountsOnTheReconcileThatDropsTheOld()
+        {
+            // Arrange
+            VNode[] Show(string key) => PresenceWait(V.Motion(key: key, transition: StyleTransitionConfig.None,
+                children: Label(key)));
+            var showA = Show("a");
+            var showB = Show("b");
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), showA);
+            Reconciler.Reconcile(Root, showA, showB);
+
+            // Act
+            Reconciler.Reconcile(Root, showB, Show("b"));
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("b"));
+        }
+
+        [Test]
+        public void Given_WaitModeWithAChildThatStays_When_AnotherChildIsRemoved_Then_OnlyTheExitingChildRenders()
+        {
+            // Arrange
+            VNode[] Show(params string[] keys) => PresenceWait(keys
+                .Select(key => (VNode)V.Motion(key: key, transition: StyleTransitionConfig.None, children: Label(key)))
+                .ToArray());
+            var both = Show("x", "a");
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), both);
+
+            // Act
+            Reconciler.Reconcile(Root, both, Show("x"));
+
+            // Assert — Framer Motion's mode="wait" renders the exiting children alone until their exits complete
+            Assert.That(LabelTexts(), Is.EqualTo("a"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base removed the child in the removing reconcile, so the one after it renders only the staying child as well.
+        [Test]
+        public void Given_WaitModeWithAChildThatStays_When_AnotherChildIsRemovedAndReconciledAgain_Then_OnlyTheStayingChildRenders()
+        {
+            // Arrange
+            VNode[] Show(params string[] keys) => PresenceWait(keys
+                .Select(key => (VNode)V.Motion(key: key, transition: StyleTransitionConfig.None, children: Label(key)))
+                .ToArray());
+            var both = Show("x", "a");
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), both);
+            var onlyX = Show("x");
+            Reconciler.Reconcile(Root, both, onlyX);
+
+            // Act
+            Reconciler.Reconcile(Root, onlyX, Show("x"));
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("x"));
+        }
+
+        [Test]
         public void Given_ExitInProgress_When_ReconcilerDisposed_Then_DoesNotThrow()
         {
             // Arrange — a deferred exit callback could fire after Dispose.
@@ -704,6 +879,30 @@ namespace Velvet.Tests
 
             // Act + Assert
             Assert.DoesNotThrow(() => Reconciler.Dispose());
+        }
+
+        // Framer lets an unmounted presence's exit animation run out and then calls onExitComplete; the disposal
+        // cancels the animation, so it completes the exit itself, and nothing completes it after.
+        [Test]
+        public void Given_ExitInProgress_When_ReconcilerDisposed_Then_OnExitCompleteRunsOnce()
+        {
+            // Arrange — the root is on no panel, so the exit never plays out
+            var completions = 0;
+            VNode[] Tree(bool shown) => new VNode[]
+            {
+                V.AnimatePresence(onExitComplete: () => completions++, children: shown
+                    ? new VNode[] { V.Motion(key: "a", transition: StyleTransition.Fade, children: Label("A")) }
+                    : Array.Empty<VNode>()),
+            };
+            var shownTree = Tree(true);
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), shownTree);
+            Reconciler.Reconcile(Root, shownTree, Tree(false));
+
+            // Act
+            Reconciler.Dispose();
+
+            // Assert
+            Assert.That(completions, Is.EqualTo(1));
         }
 
         #endregion
@@ -1109,6 +1308,8 @@ namespace Velvet.Tests
             new VNode[] { V.AnimatePresence(children: children, mode: AnimatePresenceMode.Wait) };
 
         private static VNode[] Label(string text) => new VNode[] { V.Label(text: text) };
+
+        private string LabelTexts() => string.Join(",", Root.Query<UnityEngine.UIElements.Label>().ToList().Select(label => label.text));
 
         private static bool HasAnyClass(VisualElement element, string[] classes)
         {

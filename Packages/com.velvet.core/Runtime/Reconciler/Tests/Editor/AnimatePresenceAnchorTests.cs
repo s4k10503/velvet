@@ -32,9 +32,8 @@ namespace Velvet.Tests
             ["hidden"] = new MotionVariant("", new StyleTransitionConfig { StaggerChildrenSec = 0.1f }),
         };
 
-        // A coordinator whose exit pose springs its opacity 1 → 0, which Framer's default spring ends at 1.05 s on
-        // the browser, and holds its inheriting children until then. DurationSec, which a spring does not read,
-        // declares 0.05 s.
+        // A coordinator whose exit pose springs its opacity 1 → 0 on the spring a 0.05 s duration describes, which
+        // ends at 0.05 s, and holds its inheriting children until then; Framer's default spring would end at 1.05 s.
         private static readonly Dictionary<string, MotionVariant> s_springCoordinator = new()
         {
             ["visible"] = "opacity-100",
@@ -548,21 +547,41 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", swapped), Is.EqualTo("True,False,False"));
         }
 
-        [Test]
-        public void Given_ACoordinatorWhoseExitSpringsBeforeChildren_When_TheKeyIsRemoved_Then_ItsChildWaitsForTheSpringToRest()
+        [TestCase(1, false)]
+        [TestCase(5, true)]
+        public void Given_ACoordinatorWhoseExitSpringsBeforeChildrenOnADuration_When_TheKeyIsRemoved_Then_ItsChildHasStartedOnlyOnceThatDurationHasRun(
+            int frames, bool expected)
         {
             // Arrange
             using var mounted = MountSettled("coordinator-spring", "a");
             using var keys = s_keyStore;
 
-            // Act — past the 0.05 s the pose declares, well short of the spring's 1.05 s.
+            // Act — one frame is inside the spring's 0.05 s, and five past it, short of the 1.05 s the default
+            // physics would take. Five also fall short of the end of the child's own 0.05 s exit, after which the
+            // presence removes the child and nothing is left to read a class off.
             keys.Set(string.Empty);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-            Frames(20);
+            Frames(frames);
 
-            // Assert — the coordinator's own exit has swapped and its inheriting child has not started its own.
-            Assert.That((HasClass("spring-coordinator", "opacity-0"), HasClass("child0", "opacity-0")),
-                Is.EqualTo((true, false)));
+            // Assert
+            Assert.That(HasClass("child0", "opacity-0"), Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's coordinator swaps its own exit within these frames too.
+        [Test]
+        public void Given_ACoordinatorWhoseExitSpringsBeforeChildrenOnADuration_When_TheKeyIsRemoved_Then_ItsOwnExitHasSwapped()
+        {
+            // Arrange
+            using var mounted = MountSettled("coordinator-spring", "a");
+            using var keys = s_keyStore;
+
+            // Act — the frames the case above reads its child at.
+            keys.Set(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Frames(5);
+
+            // Assert
+            Assert.That(HasClass("spring-coordinator", "opacity-0"), Is.True);
         }
 
         [Test]
@@ -772,7 +791,8 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
-        // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal.
+        // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal, which the base made
+        // in the removing render and the flush and drain added leave in place.
         [Test]
         public void Given_AnInnerAnimatePresence_When_TheOuterKeyIsRemoved_Then_TheInnerChildDoesNotHoldIt()
         {
@@ -780,11 +800,13 @@ namespace Velvet.Tests
             using var mounted = MountSettled("inner-presence", "a");
             using var keys = s_keyStore;
 
-            // Act
+            // Act — the removing render, the flush its exit settles in, and the render that settle asks for.
             keys.Set(string.Empty);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+            Drain(mounted);
 
-            // Assert — the outer child leaves at once.
+            // Assert — the outer child has left with no frame passed, so the inner child's exit did not hold it.
             Assert.That(HostChildCount, Is.EqualTo(0));
         }
 
@@ -916,9 +938,10 @@ namespace Velvet.Tests
             Assert.That((HasClass("item", "opacity-0"), HasClass("other", "opacity-0")), Is.EqualTo((true, false)));
         }
 
-        // GREEN_ON_BASE(characterization): no onExitComplete follows the whole presence leaving the tree.
+        // Framer lets the exit animation of a presence its parent stops rendering run out and then calls
+        // onExitComplete; the presence's removal ends the animation, so it completes the exit itself, once.
         [Test]
-        public void Given_AComponentChildExiting_When_TheWholePresenceUnmounts_Then_NoExitCompletionFollows()
+        public void Given_AComponentChildExiting_When_TheWholePresenceUnmounts_Then_OnExitCompleteRunsOnce()
         {
             // Arrange
             s_wrapper = "component";
@@ -939,7 +962,7 @@ namespace Velvet.Tests
             Drain(mounted);
 
             // Assert
-            Assert.That(s_exitsCompleted, Is.EqualTo(completedBefore));
+            Assert.That(s_exitsCompleted, Is.EqualTo(completedBefore + 1));
         }
 
         [Test]
@@ -965,9 +988,10 @@ namespace Velvet.Tests
             Assert.That((HostChildCount, s_exitsCompleted), Is.EqualTo((1, 0)));
         }
 
-        // GREEN_ON_BASE(characterization): a child left with no Motion to exit was removed at once on the base too.
+        // GREEN_ON_BASE(characterization): a child left with no Motion to exit was removed on the base too.
+        // The base removed it in the removing render.
         [Test]
-        public void Given_AChildsOnlyMotionReplacedInTheRenderRemovingIt_When_ThatRenderDrains_Then_TheChildIsRemoved()
+        public void Given_AChildsOnlyMotionReplacedInTheRenderRemovingIt_When_ItsExitSettles_Then_TheChildIsRemoved()
         {
             // Arrange
             using var flag = new FlagStore();
@@ -975,10 +999,13 @@ namespace Velvet.Tests
             using var mounted = MountSettled("toggled", "a");
             using var keys = s_keyStore;
 
-            // Act — the removal and the Motion's replacement land in one drain.
+            // Act — the removal and the Motion's replacement land in one drain, then the flush the exit settles in and
+            // the render that settle asks for.
             keys.Set(string.Empty);
             flag.Set(false);
             Drain(mounted);
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
             Drain(mounted);
 
             // Assert — nothing plays, so the removal completes.
@@ -1036,7 +1063,8 @@ namespace Velvet.Tests
             Assert.That(ItemDurationMs(), Is.EqualTo(300f));
         }
 
-        // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal.
+        // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal, which the base made
+        // in the removing render and the flush and drain added leave in place.
         [Test]
         public void Given_AKeyedChildWhoseTopIsAnInnerAnimatePresence_When_TheOuterKeyIsRemoved_Then_TheInnerChildDoesNotHoldIt()
         {
@@ -1044,11 +1072,13 @@ namespace Velvet.Tests
             using var mounted = MountSettled("inner-presence-top", "a");
             using var keys = s_keyStore;
 
-            // Act
+            // Act — the removing render, the flush its exit settles in, and the render that settle asks for.
             keys.Set(string.Empty);
             Drain(mounted);
+            mounted.FlushEffectsForTest();
+            Drain(mounted);
 
-            // Assert — the outer child leaves at once.
+            // Assert — the outer child has left with no frame passed, so the inner child's exit did not hold it.
             Assert.That(HostChildCount, Is.EqualTo(0));
         }
     }

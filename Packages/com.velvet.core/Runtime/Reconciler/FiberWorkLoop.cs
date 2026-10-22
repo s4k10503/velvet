@@ -68,6 +68,25 @@ namespace Velvet
         // (HookTransitionSlot.SettlesWithCommitOf). Saved and restored beside the flag.
         internal static ComponentFiber? TransitionDrainFiber;
 
+        // The lane the render in progress renders: a hook folds in the queued updates that lane renders
+        // (FiberLane.Renders) and leaves the rest queued. Transition exactly where IsRenderingTransitionLane is
+        // true, so a render outside a flush, such as the retry of a resolved resource, is not a transition's.
+        // Ambient for the reason IsRenderingTransitionLane is, and saved and restored beside it.
+        internal static FiberUpdatePriority RenderLane = FiberUpdatePriority.Normal;
+
+        // A starvation-promoted drain carries Transition updates under the Normal label (HasPromotedTransition), so
+        // it renders the Transition lane.
+        private static FiberUpdatePriority RenderLaneOf(FiberUpdatePriority flushingLane, bool drainsTransitionWork)
+            => drainsTransitionWork ? FiberUpdatePriority.Transition : flushingLane;
+
+        // The lane a state update written now is queued on: the one RequestRenderFromHook schedules its render on,
+        // except during its own component's render, where the rerun that write asks for renders the lane in progress.
+        internal static FiberUpdatePriority HookUpdateLane(ComponentFiber fiber)
+            => fiber.IsInRenderPhase ? RenderLane
+                : OpenTransitionScopes.Count > 0 ? FiberUpdatePriority.Transition
+                : IsInDiscreteEvent ? FiberUpdatePriority.Urgent
+                : FiberUpdatePriority.Normal;
+
         // Internal API that requests a render via a Hook (UseState / UseReducer setter, UseStore subscription).
         // Takes the Transition lane while a StartTransition callback is running synchronously; otherwise the
         // Urgent lane while a discrete event handler is running (IsInDiscreteEvent), and the Normal lane elsewhere.
@@ -167,7 +186,7 @@ namespace Velvet
             // fiber's BODY is on the stack. Such updates are processed synchronously (discard the
             // in-progress output and re-run Render() before committing) instead of scheduling a
             // next-frame re-render. Flag the fiber and let the render loop in RenderAndReconcile
-            // re-run; the state slot already holds the new value by the time this is called. The
+            // re-run; the update is already queued on the render's own lane by the time this is called. The
             // gate is the render-phase window, NOT IsRendering: a write landing later in the same
             // flush (a callback ref invoked during the patch, an event dispatched from a detach) is
             // a commit-phase update that falls through to the regular schedule below (a state update
@@ -468,6 +487,7 @@ namespace Velvet
             // lane (e.g. a context-driven flush) the reconcile runs synchronously.
             var flushBudget = FiberLane.FrameBudgetMs;
             var drainsTransitionWork = false;
+            var renderLane = FiberUpdatePriority.Normal;
 
             if (fiber.LaneQueue.Count > 0)
             {
@@ -478,6 +498,7 @@ namespace Velvet
                 // value from the promoted drain would put it back behind the traffic promotion exists to escape.
                 drainsTransitionWork = flushingLane == FiberUpdatePriority.Transition
                     || (flushingLane == FiberUpdatePriority.Normal && fiber.HasPromotedTransition);
+                renderLane = RenderLaneOf(flushingLane, drainsTransitionWork);
                 // A non-empty read above means Lanes was already allocated (Queue is only ever populated
                 // through EnsureLanes()), so the backing field is safe to mutate directly here — the
                 // fiber.LaneQueue accessor itself only ever hands back a read-only copy of the mask.
@@ -519,8 +540,10 @@ namespace Velvet
             fiber.PendingReconcileDrainsTransitionWork = drainsTransitionWork;
             var wasRenderingTransitionLane = IsRenderingTransitionLane;
             var wasTransitionDrainFiber = TransitionDrainFiber;
+            var wasRenderLane = RenderLane;
             IsRenderingTransitionLane = drainsTransitionWork;
             TransitionDrainFiber = drainsTransitionWork ? fiber : null;
+            RenderLane = renderLane;
             var suspended = false;
             try
             {
@@ -536,6 +559,7 @@ namespace Velvet
             {
                 IsRenderingTransitionLane = wasRenderingTransitionLane;
                 TransitionDrainFiber = wasTransitionDrainFiber;
+                RenderLane = wasRenderLane;
             }
             // Defer layout / passive effects while a time-sliced reconcile is still paused: a parked commit has
             // only partially mutated the DOM, so a UseLayoutEffect reading a UseRef to a not-yet-attached node
@@ -618,6 +642,9 @@ namespace Velvet
         // advance in EditMode) so a parked slice can be driven to completion manually.
         internal static void ContinueReconcile(ComponentFiber fiber)
         {
+            // A resumed slice renders, so pending passive effects run before it as they do before a drain
+            // (FiberBatchScheduler.Drain), and ahead of the guards below, which read what those effects leave.
+            fiber.Reconciler?.Context.BatchScheduler.FlushPendingPassiveEffectsAheadOfAResume();
             // Ahead of the guards below, since the flush can unmount the fiber or finish its pass.
             fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRenders();
             if (!fiber.IsMounted) return;
@@ -639,8 +666,10 @@ namespace Velvet
                 // the same way the pass that parked it did — see PendingReconcileDrainsTransitionWork.
                 var wasRenderingTransitionLane = IsRenderingTransitionLane;
                 var wasTransitionDrainFiber = TransitionDrainFiber;
+                var wasRenderLane = RenderLane;
                 IsRenderingTransitionLane = fiber.PendingReconcileDrainsTransitionWork;
                 TransitionDrainFiber = fiber.PendingReconcileDrainsTransitionWork ? fiber : null;
+                RenderLane = RenderLaneOf(FiberUpdatePriority.Normal, fiber.PendingReconcileDrainsTransitionWork);
                 // A resume continues the pass whose output is already this fiber's PreviousTree, so the
                 // children it reaches are stamped against that array exactly as the slice that parked
                 // stamped the ones it reached. Without it they are stamped against nothing, and
@@ -672,6 +701,7 @@ namespace Velvet
                     resumeContext.CurrentFiberTree = enclosingFiberTree;
                     IsRenderingTransitionLane = wasRenderingTransitionLane;
                     TransitionDrainFiber = wasTransitionDrainFiber;
+                    RenderLane = wasRenderLane;
                 }
 
                 if (fiber.Reconciler.HasPendingWork)
@@ -799,7 +829,8 @@ namespace Velvet
                 return;
             }
 
-            if (!slot.HasActiveOwner)
+            var opensTransition = !slot.HasActiveOwner;
+            if (opensTransition)
             {
                 slot.IsPending = true;
                 slot.OwnerGeneration++;
@@ -837,9 +868,22 @@ namespace Velvet
                             ComponentFiber.RequestRenderForClearedPending(slot);
                         }
                     }
+                    if (opensTransition && slot.IsPending)
+                    {
+                        RequestPendingRender(fiber);
+                    }
                 }
             }
         }
+
+        // React renders isPending = true on the sync lane before the transition's own render, through the
+        // optimistic update startTransition dispatches ahead of the callback (ReactFiberHooks.js:
+        // startTransition, dispatchOptimisticSetState). Asked as the call that opened the transition hands control
+        // back, and only for a flag still lit there: a callback that queued nothing and left no joined call open
+        // has settled by then, and a render of it would only show the flag false. Both callers have checked that
+        // the call still owns the slot, which an unmount takes away, so the fiber is mounted here.
+        private static void RequestPendingRender(ComponentFiber fiber)
+            => ScheduleRerender(fiber, FiberUpdatePriority.Urgent);
 
         // React's startTransition catches the callback's error and dispatches it as the isPending update, so the
         // declaring component throws it from its Transition-lane render to the boundary above it, and the caller
@@ -950,7 +994,8 @@ namespace Velvet
                 return;
             }
 
-            if (!slot.HasActiveOwner)
+            var opensTransition = !slot.HasActiveOwner;
+            if (opensTransition)
             {
                 slot.IsPending = true;
                 slot.OwnerGeneration++;
@@ -982,6 +1027,11 @@ namespace Velvet
                 // the scope closes exactly where it hands the task back. Pinned by the completion case for an
                 // action that never suspended, which fails if that stops answering.
                 suspended = action.Status == VelvetTaskStatus.Pending;
+                if (opensTransition && slot.OwnerGeneration == ownerGeneration
+                    && (suspended || slot.HasQueuedWork || slot.OwnerDepth > 1))
+                {
+                    RequestPendingRender(fiber);
+                }
                 await action;
             }
             catch (Exception ex)

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -222,6 +223,8 @@ namespace Velvet.Tests
                 "The flush parks mid-commit and the resume drains the remaining work, committing the full new list");
         }
 
+        // GREEN_ON_BASE(refactor): the immediate drain renders the pending state the head asks for on the call, and
+        // finds the tier empty on the base, where the transition lane stays queued for the flush that parks.
         [Test]
         public void Given_UseTransitionWorkParksMidCommit_When_TheTerminalSliceCompletes_Then_IsPendingSpansTheWholeCommit()
         {
@@ -229,6 +232,7 @@ namespace Velvet.Tests
             s_transitionListCount = 3;
             using var mounted = V.Mount(_root, V.Component(TransitionListRender, key: "transition-list"));
             s_transitionListStart.Invoke(() => s_transitionListSetCount.Invoke(40));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Act
             s_transitionListFiber.FlushStateWithTinyBudgetForTest();
@@ -419,6 +423,216 @@ namespace Velvet.Tests
             Assert.That(
                 $"{parkedAfterTheDrain} | {string.Join(", ", s_slowRowLog)}",
                 Is.EqualTo("True | ref attached"));
+        }
+
+        // The probe starts at a lane no flush here renders, so a resumed slice that does not render it fails the assertion.
+        [Test]
+        public void Given_AParkedTransitionPass_When_ItsResumedSliceRendersAComponent_Then_ItRendersTheTransitionLane()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            s_slowRowsShown = true;
+            s_slowRowsProbed = true;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_slowRowProbeLane = FiberUpdatePriority.Urgent;
+
+            // Act
+            s_slowRowListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(s_slowRowProbeLane, Is.EqualTo(FiberUpdatePriority.Transition),
+                "A resumed slice renders the lane the pass that parked it was draining");
+        }
+
+        [Test]
+        public void Given_AParkedTransitionPass_When_ItIsResumedToCompletion_Then_TheRenderLaneIsTheOneOutsideEveryFlush()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            s_slowRowsShown = true;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Act
+            s_slowRowListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(FiberWorkLoop.RenderLane, Is.EqualTo(FiberUpdatePriority.Normal),
+                "A resume hands the render lane back as it found it");
+        }
+
+        #endregion
+
+        #region Passive effects across a paused commit
+
+        [Test]
+        public void Given_AParkedTransitionPassThatMountedAComponentRow_When_PassiveEffectsFlushBeforeItCompletes_Then_TheRowsPassiveEffectHasNotRun()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            s_slowRowsShown = true;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_slowRowPassiveRuns, Is.EqualTo(0),
+                "A component a parked pass rendered runs no passive effect before the pass commits");
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs the effect between the slices instead, so it has run by
+        // the time the pass completes. What this pins is that the hold above lets go at the commit.
+        [Test]
+        public void Given_AParkedTransitionPassThatMountedAComponentRow_When_ThePassCompletesAndPassiveEffectsFlush_Then_TheRowsPassiveEffectHasRun()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            s_slowRowsShown = true;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_slowRowListFiber.DrainTimeSlicedReconcileForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_slowRowPassiveRuns, Is.GreaterThan(0),
+                "The commit that completes the pass lets the effects it held run");
+        }
+
+        [Test]
+        public void Given_AParkedTransitionPassThatReRenderedAComponentRow_When_PassiveEffectsFlushBeforeItCompletes_Then_TheRowsEffectHasNotRunAgain()
+        {
+            // Arrange — the row mounts with the list, so its first effect is not what this measures
+            s_slowRowsShown = true;
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            mounted.FlushEffectsForTest();
+            var runsAtMount = s_slowRowPassiveRuns;
+            s_slowRowTick = 1;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_slowRowPassiveRuns - runsAtMount, Is.EqualTo(0),
+                "An effect whose deps changed in a parked pass's render does not run before the pass commits");
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs the effect between the slices instead, so it has run by
+        // the time the pass completes. What this pins is that the hold above lets go at the commit.
+        [Test]
+        public void Given_AParkedTransitionPassThatReRenderedAComponentRow_When_ThePassCompletesAndPassiveEffectsFlush_Then_TheRowsEffectHasRunAgain()
+        {
+            // Arrange
+            s_slowRowsShown = true;
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            mounted.FlushEffectsForTest();
+            var runsAtMount = s_slowRowPassiveRuns;
+            s_slowRowTick = 1;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_slowRowListFiber.DrainTimeSlicedReconcileForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_slowRowPassiveRuns - runsAtMount, Is.GreaterThan(0),
+                "The commit that completes the pass lets the effect it held run");
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs the effect at the earlier flush, so the click's own
+        // commit finds it run already. Drop the `IsHeld(entry.Pass) && roots.Exists(...)` line from TakeBatch and
+        // this reddens.
+        [Test]
+        public void Given_AParkedTransitionPassThatReRenderedAComponentRow_When_ThatRowCommitsAloneBeforeItCompletes_Then_ItsPassiveEffectRunsWithoutWaitingForThePass()
+        {
+            // Arrange — the row is in the committed tree from the mount, since a row the parked pass created is not
+            // placed until the pass completes, and a flush of a component in an unplaced host is deferred
+            s_slowRowsShown = true;
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            mounted.FlushEffectsForTest();
+            s_slowRowTick = 1;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            mounted.FlushEffectsForTest();
+            s_slowRowSetOwn.Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_slowRowOwnRuns, Is.GreaterThan(0),
+                "A discrete commit of the row's own render runs its passive effect while the pass is still parked");
+        }
+
+        [Test]
+        public void Given_AParkedTransitionPassThatMountedAComponentRow_When_ThePassCompletes_Then_ThePassiveDrainIsArmedForTheRowsEffect()
+        {
+            // Arrange — the flush while the pass is parked leaves the drain unarmed, with the row's effect held
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            s_slowRowsShown = true;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_slowRowListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler.Context.PassiveEffectDrainScheduled, Is.True,
+                "The commit that releases the held effect arms the drain that runs it, as staging it does");
+        }
+
+        // GREEN_ON_BASE(characterization): the base ran the effect at the flush in between, so it has run by the
+        // end. Drop `held[kept++] = fiber;` from StageReleasedPassiveEffects and this reddens.
+        [Test]
+        public void Given_AParkedTransitionPassThatMountedAComponentRow_When_AnUnrelatedComponentCommitsBeforeItCompletes_Then_TheRowsPassiveEffectRunsOnceItHas()
+        {
+            // Arrange — the commit in between finds the row's layout effects still waiting and leaves it held
+            using var mounted = V.Mount(_root, V.Component(SlowRowAndProbeHostRender, key: "host"));
+            s_slowRowsShown = true;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            mounted.FlushEffectsForTest();
+            s_probeSetValue.Invoke();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_slowRowListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_slowRowPassiveRuns, Is.GreaterThan(0),
+                "The row's passive effect runs once the pass has completed, after a commit in between");
+        }
+
+        // GREEN_ON_BASE(characterization): the base holds nothing, so the effect runs in the one drain. Drop
+        // `|| !IsHeld(entry.Pass)` from HoldWhileParked and this reddens.
+        [Test]
+        public void Given_AComponentWhoseEntryWaitsUnderAPassThatIsNotParked_When_APassiveDrainRuns_Then_ItsPassiveEffectRuns()
+        {
+            // Arrange — the mount's effect is staged and not yet flushed
+            using var mounted = V.Mount(_root, V.Component(PassiveCountingRender, key: "passive"));
+            var context = mounted.Root.Reconciler.Context;
+            using var settledPass = new Velvet.Reconciler(context);
+            context.DeferredInlineLayoutEffectFibers.Push((s_passiveCountingFiber, false, settledPass));
+
+            // Act — one drain, since the flush that loops would run a held effect in its second
+            typeof(FiberEffects).GetMethod("DrainPassiveEffects", BindingFlags.NonPublic | BindingFlags.Static)
+                .Invoke(null, new object[] { context });
+
+            // Assert
+            Assert.That(s_passiveCountingRuns, Is.GreaterThan(0),
+                "Only a pass that is parked holds the passive effects of what it rendered");
         }
 
         #endregion
@@ -1003,7 +1217,8 @@ namespace Velvet.Tests
         // is off in this window because the row's recorded array is the one the host has moved off, so what is
         // left is the key, which answers at every container holding this position, so a row reads whichever
         // container the committed tree reaches first — reached through a park rather than through two
-        // sibling containers.
+        // sibling containers. The immediate drain after the call renders the pending state on the head and
+        // finds the tier empty on the base.
         [Test]
         public void Given_AParkedKeyedListWhoseRowsCarryProviders_When_ARowPastTheParkPointReRendersAlone_Then_ItReadsTheFirstRowsProvider()
         {
@@ -1016,6 +1231,7 @@ namespace Velvet.Tests
             // Act — a transition-lane flush under a budget too small for one node parks after the first row,
             // then the last row re-renders on its own before the resume.
             s_parkStart.Invoke(() => s_parkSetGen.Invoke(1));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_parkListFiber.FlushStateWithTinyBudgetForTest();
             var parked = s_parkListFiber.HasPendingReconcileWorkForTest();
             var beforeBump = s_parkSeen[target];
@@ -1034,6 +1250,8 @@ namespace Velvet.Tests
         // committed tree reaches first. The host declares the transition here, so the settle after the
         // terminal chunk schedules the host itself and every row is recorded again by that render — which
         // is why this case does not isolate the resume. The sibling-declared case below does.
+        // GREEN_ON_BASE(refactor): the immediate drain after the call renders the pending state on the head and
+        // finds the tier empty on the base, where the transition lane stays queued for the flush that parks.
         [Test]
         public void Given_AParkedKeyedListDrainedToCompletion_When_ARowReRendersAlone_Then_ItReadsItsOwnRowsProvider()
         {
@@ -1042,6 +1260,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(ParkListHost, key: "park-list"));
             const int target = ParkRowCount - 1;
             s_parkStart.Invoke(() => s_parkSetGen.Invoke(1));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_parkListFiber.FlushStateWithTinyBudgetForTest();
             s_parkListFiber.DrainTimeSlicedReconcileForTest();
             var afterDrain = s_parkSeen[target];
@@ -1125,12 +1344,15 @@ namespace Velvet.Tests
 
         #region A suspend in a resumed slice
 
+        // GREEN_ON_BASE(refactor): the immediate drain after the call renders the pending state on the head and
+        // finds the tier empty on the base, where the transition lane stays queued for the flush that parks.
         [Test]
         public void Given_AParkedPassUnderABoundary_When_ItsResumedSliceMountsAComponentThatSuspends_Then_TheBoundaryIsAskedToRenderAndTheTransitionStaysPending()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(SlicedBoundaryHost, key: "sliced-boundary"));
             s_slicedSuspendStart.Invoke(() => s_slicedSuspendSetCount.Invoke(2));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_slicedSuspendFiber.FlushStateWithTinyBudgetForTest();
             var parked = s_slicedSuspendFiber.HasPendingReconcileWorkForTest();
 
@@ -1144,12 +1366,15 @@ namespace Velvet.Tests
                 "A suspend in a resumed slice goes to the boundary above, and the transition it belonged to has not committed");
         }
 
+        // GREEN_ON_BASE(refactor): the immediate drain after the call renders the pending state on the head and
+        // finds the tier empty on the base, where the transition lane stays queued for the flush that parks.
         [Test]
         public void Given_AParkedPassThatMountedAComponentRow_When_ItsResumedSliceSuspends_Then_ThatRowsLayoutEffectRunsBeforeTheResumeReturns()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(SlicedBoundaryHost, key: "sliced-boundary"));
             s_slicedSuspendStart.Invoke(() => s_slicedSuspendSetCount.Invoke(2));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_slicedSuspendFiber.FlushStateWithTinyBudgetForTest();
             var ranWhileParked = s_slicedRowLayoutEffects;
 
@@ -1161,12 +1386,15 @@ namespace Velvet.Tests
                 "The parked pass no longer holds the first row back once its resume suspends, and the resume commits it");
         }
 
+        // GREEN_ON_BASE(refactor): the immediate drain after the call renders the pending state on the head and
+        // finds the tier empty on the base, where the transition lane stays queued for the flush that parks.
         [Test]
         public void Given_AResumedSliceThatSuspendedWithNoBoundary_When_TheResourceResolves_Then_EveryRowRenders()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(SlicedRetryRender, key: "sliced-retry"));
             s_slicedRetryStart.Invoke(() => s_slicedRetrySetCount.Invoke(3));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_slicedRetryFiber.FlushStateWithTinyBudgetForTest();
             FiberWorkLoop.ContinueReconcile(s_slicedRetryFiber);
 
@@ -1326,6 +1554,12 @@ namespace Velvet.Tests
         private const int SlowRowRenderMs = 25;
 
         private static bool s_slowRowsShown;
+        private static bool s_slowRowsProbed;
+        private static int s_slowRowTick;
+        private static int s_slowRowPassiveRuns;
+        private static int s_slowRowOwnRuns;
+        private static StateUpdater<int> s_slowRowSetOwn;
+        private static FiberUpdatePriority s_slowRowProbeLane;
         private static ComponentFiber s_slowRowListFiber;
         private static readonly System.Collections.Generic.List<string> s_slowRowLog = new();
         private static readonly Ref<Label> s_slowRowRef = new();
@@ -1333,6 +1567,13 @@ namespace Velvet.Tests
         private static void ResetSlowRowList()
         {
             s_slowRowsShown = false;
+            s_slowRowsProbed = false;
+            s_slowRowTick = 0;
+            s_slowRowPassiveRuns = 0;
+            s_slowRowOwnRuns = 0;
+            s_slowRowSetOwn = default;
+            s_passiveCountingRuns = 0;
+            s_passiveCountingFiber = null;
             s_slowRowListFiber = null;
             s_slowRowLog.Clear();
             s_slowRowRef.Set(null);
@@ -1346,23 +1587,65 @@ namespace Velvet.Tests
             s_slowRowListFiber = FiberAmbientStack.Current;
             if (!s_slowRowsShown) return V.Fragment(children: new VNode[] { V.Label(text: "empty", key: "empty") });
             var rows = new VNode[4];
-            rows[0] = V.Div(key: "slow", children: new VNode[] { V.Component(SlowRowRender, key: "row") });
+            rows[0] = V.Div(key: "slow", children: new VNode[] { V.Component(SlowRowRender, s_slowRowTick, key: "row") });
             for (var i = 1; i < rows.Length; i++)
             {
                 rows[i] = V.Div(key: "row" + i, children: new VNode[] { V.Label(text: "row-" + i) });
             }
+            if (s_slowRowsProbed)
+            {
+                rows[3] = V.Div(key: "row3", children: new VNode[] { V.Component(LaneProbeRender, key: "probe") });
+            }
             return V.Fragment(children: rows);
         }
 
+        [Component(Compiler = false)]
+        private static VNode SlowRowAndProbeHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(SlowRowListRender, key: "slow-list"),
+                V.Component(ProbeRender, key: "probe"),
+            });
+
+        private static int s_passiveCountingRuns;
+        private static ComponentFiber s_passiveCountingFiber;
+
+        [Component(Compiler = false)]
+        private static VNode PassiveCountingRender()
+        {
+            s_passiveCountingFiber = FiberAmbientStack.Current;
+            Hooks.UseEffect(() =>
+            {
+                s_passiveCountingRuns++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "passive");
+        }
+
         [Component]
-        private static VNode SlowRowRender()
+        private static VNode LaneProbeRender()
+        {
+            s_slowRowProbeLane = FiberWorkLoop.RenderLane;
+            return V.Label(text: "probe");
+        }
+
+        [Component]
+        private static VNode SlowRowRender(int tick)
         {
             System.Threading.Thread.Sleep(SlowRowRenderMs);
+            var (own, setOwn) = Hooks.UseState(0);
+            s_slowRowSetOwn = setOwn;
             Hooks.UseLayoutEffect(() =>
             {
                 s_slowRowLog.Add(s_slowRowRef.Current != null ? "ref attached" : "ref null");
                 return (Action)null;
             }, Array.Empty<object>());
+            Hooks.UseEffect(() =>
+            {
+                s_slowRowPassiveRuns++;
+                if (own > 0) s_slowRowOwnRuns++;
+                return (Action)null;
+            }, new object[] { tick, own });
             return V.Label(text: "slow", refCallback: s_slowRowRef.SetElement);
         }
 
