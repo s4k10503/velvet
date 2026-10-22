@@ -364,6 +364,26 @@ namespace Velvet
             // another frame callback for one would only fire an empty drain next frame (dead
             // scheduler churn that also skews the coalescing counter).
             var totalPasses = 0;
+            while (true)
+            {
+                var capped = DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane);
+                // Ahead of the flush below: an update an effect there schedules is an ordinary one, and a flag left
+                // standing would keep OweExternalStoreFlush from posting the next store change.
+                if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
+                if (!renderedSyncLane) return;
+                renderedSyncLane = false;
+                // React flushes the passive effects of a sync-lane commit as that commit ends. A sync-lane update
+                // one of those effects schedules, a UseSyncExternalStore re-render, renders in this drain and counts
+                // toward its cap, as React renders it before yielding. A flush that schedules none leaves what it
+                // did schedule for the tier's next drain, as a default-lane update waits for React's next task.
+                FlushPendingPassiveEffects();
+                if (capped || !_syncLaneQueued) return;
+            }
+        }
+
+        // Returns whether the nested-update cap ended the passes.
+        private bool DrainImmediatePassesUpTo(ref int totalPasses, ref bool renderedSyncLane)
+        {
             while (_immediateOrder.Count > 0)
             {
                 if (totalPasses > NestedUpdateLimit)
@@ -387,22 +407,17 @@ namespace Velvet
                         + " updates from its commit phase (a callback ref or an effect writing a"
                         + " new value on every pass). The runaway update was dropped.");
                     DropImmediateIntake();
-                    break;
+                    return true;
                 }
                 totalPasses++;
                 renderedSyncLane |= _syncLaneQueued;
                 _syncLaneQueued = false;
                 Drain(_immediateOrder, _immediateSet, immediateTier: true);
             }
-            // Ahead of the flush below: an update an effect there schedules is an ordinary one, and a flag left
-            // standing would keep OweExternalStoreFlush from posting the next store change.
-            if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
-            // React flushes the passive effects of a sync-lane commit as that commit ends. An update one of those
-            // effects schedules waits for the tier's next drain, as a default-lane update waits for React's next task.
-            if (renderedSyncLane) FlushPendingPassiveEffects();
+            return false;
         }
 
-        // Which lanes go, and why only these, is the nested-update cap's comment in DrainImmediatePasses.
+        // Which lanes go, and why only these, is the nested-update cap's comment in DrainImmediatePassesUpTo.
         // Copied out rather than walked in place: a settle below can request a render, which enqueues it again.
         private void DropImmediateIntake()
         {

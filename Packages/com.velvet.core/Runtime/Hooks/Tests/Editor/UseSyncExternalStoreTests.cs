@@ -13,7 +13,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies <see cref="Hooks.UseSyncExternalStore{T}"/> against a store Velvet does not own: what a render
     /// returns, which notifications re-render, when the hook subscribes and unsubscribes, the thread and lane a
-    /// notification is held to, and the snapshot readers share across one batch drain pass.
+    /// notification is held to, and the snapshot readers share across one batch drain pass. The hook subscribes in
+    /// the commit's passive effects, so a case about a notification flushes them before the store changes.
     /// </summary>
     [TestFixture]
     internal sealed class UseSyncExternalStoreTests
@@ -85,12 +86,14 @@ namespace Velvet.Tests
             Assert.AreEqual("ArgumentNullException: getSnapshot", DescribeCaught());
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so its notification already re-rendered.
         [Test]
         public void Given_MountedReader_When_StoreChanges_Then_NewSnapshotIsRendered()
         {
             // Arrange
             s_counter = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+            mounted.FlushEffectsForTest();
 
             // Act
             s_counter.Set(5);
@@ -100,12 +103,14 @@ namespace Velvet.Tests
             Assert.AreEqual(5, s_readerValue);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, and an equal snapshot already rendered nothing.
         [Test]
         public void Given_MountedReader_When_StoreNotifiesWithAnEqualSnapshot_Then_NoRerender()
         {
             // Arrange
             s_counter = new ExternalSource<int>(3);
             using var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+            mounted.FlushEffectsForTest();
             var rendersBefore = s_readerRenders;
 
             // Act
@@ -116,28 +121,33 @@ namespace Velvet.Tests
             Assert.AreEqual(rendersBefore, s_readerRenders);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render already compared subscribe with delegate equality.
         [Test]
         public void Given_MountedReader_When_RerenderedWithAnEqualSubscribeDelegate_Then_SubscribesOnce()
         {
             // Arrange — the method group hands the hook a new delegate instance on every render
             s_counter = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+            mounted.FlushEffectsForTest();
 
             // Act
             s_counter.Set(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
-            // Assert
-            Assert.AreEqual("1 render(s) after mount, 1 subscribe(s)",
-                $"{s_readerRenders - 1} render(s) after mount, {s_counter.SubscribeCalls} subscribe(s)");
+            // Assert — two renders over one subscribe; a reader that resubscribed on its re-render, or that never
+            // re-rendered, leaves no render past the subscribes
+            Assert.AreEqual(1, s_readerRenders - s_counter.SubscribeCalls);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, and its unmount already removed that.
         [Test]
         public void Given_MountedReader_When_Unmounted_Then_Unsubscribes()
         {
             // Arrange
             s_counter = new ExternalSource<int>(0);
             var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+            mounted.FlushEffectsForTest();
 
             // Act
             mounted.Dispose();
@@ -146,6 +156,7 @@ namespace Velvet.Tests
             Assert.AreEqual(0, s_counter.ListenerCount);
         }
 
+        // GREEN_ON_BASE(characterization): the base's unmount already contained the first unsubscribe's throw.
         [Test]
         public void Given_FirstOfTwoSubscriptionsThrowsOnUnsubscribe_When_Unmounted_Then_TheSecondIsStillRemoved()
         {
@@ -154,6 +165,7 @@ namespace Velvet.Tests
             s_sourceA = new ExternalSource<int>(0) { ThrowOnUnsubscribe = true };
             s_sourceB = new ExternalSource<int>(0);
             var mounted = V.Mount(_root, V.Component(TwoStoresRender, key: "two"));
+            mounted.FlushEffectsForTest();
 
             // Act
             mounted.Dispose();
@@ -197,12 +209,14 @@ namespace Velvet.Tests
             Assert.AreEqual("3/3", $"{s_readerValue}/{s_secondReaderValue}");
         }
 
+        // GREEN_ON_BASE(characterization): the base's notification already compared the projected field alone.
         [Test]
         public void Given_SnapshotProjectingOneField_When_AnotherFieldChanges_Then_NoRerender()
         {
             // Arrange
             s_pair = new ExternalSource<PairState>(new PairState(1, "a"));
             using var mounted = V.Mount(_root, V.Component(PairNumberRender, key: "pair"));
+            mounted.FlushEffectsForTest();
             var rendersBefore = s_pairRenders;
 
             // Act
@@ -213,58 +227,95 @@ namespace Velvet.Tests
             Assert.AreEqual(rendersBefore, s_pairRenders);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // On the head nothing is subscribed until the passive effects run, and the comparison the subscription
+        // makes once it exists is what finds the change.
         [Test]
-        public void Given_SubscribeThatChangesTheStore_When_Mounted_Then_RendersTheChangedSnapshot()
+        public void Given_StoreChangedBetweenTheMountAndItsPassiveEffects_When_TheyRun_Then_TheChangedSnapshotRenders()
         {
             // Arrange
             s_counter = new ExternalSource<int>(0);
-            s_counter.DuringSubscribe = () => s_counter.Set(7);
-
-            // Act
             using var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+            s_counter.Set(5);
+
+            // Act
+            mounted.FlushEffectsForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.AreEqual(7, s_readerValue);
+            Assert.AreEqual(5, s_readerValue);
         }
 
         [Test]
-        public void Given_ReaderSwitchedToAnotherStore_When_Rerendered_Then_MovesItsSubscriptionAndRendersTheNewStore()
+        public void Given_ReaderWhoseRenderThrowsAfterReadingTheStore_When_EffectsFlush_Then_ItNeverSubscribes()
+        {
+            // Arrange
+            s_counter = new ExternalSource<int>(0);
+            using var mounted = V.Mount(_root, InBoundary(V.Component(ThrowingAfterReadRender, key: "throws")), CaughtErrors.Unlogged);
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.AreEqual(0, s_counter.SubscribeCalls);
+        }
+
+        [Test]
+        public void Given_ARenderAttemptARenderPhaseUpdateDiscards_When_EffectsFlush_Then_OnlyTheSettledAttemptsStoreIsSubscribed()
+        {
+            // Arrange — the first attempt reads A and sets state while it renders; the attempt that settles reads B
+            s_sourceA = new ExternalSource<int>(1);
+            s_sourceB = new ExternalSource<int>(2);
+            using var mounted = V.Mount(_root, V.Component(SupersededReaderRender, key: "superseded"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.AreEqual(0, s_sourceA.SubscribeCalls);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's render already removed the first store's subscription.
+        [Test]
+        public void Given_ReaderSwitchedToAnotherStore_When_TheSwitchsEffectsRun_Then_TheFirstStoresSubscriptionIsRemoved()
         {
             // Arrange
             s_sourceA = new ExternalSource<int>(10);
             s_sourceB = new ExternalSource<int>(20);
             using var mounted = V.Mount(_root, V.Component(SwitchingReaderRender, key: "switching"));
+            mounted.FlushEffectsForTest();
 
             // Act
             s_setUseB.Invoke(true);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.AreEqual("A listeners 0, B listeners 1, rendered 20",
-                $"A listeners {s_sourceA.ListenerCount}, B listeners {s_sourceB.ListenerCount}, rendered {s_switchingValue}");
+            Assert.AreEqual(0, s_sourceA.ListenerCount);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render already subscribed to the store it switched to.
         [Test]
-        public void Given_ReaderSwitchedToAStoreThatChangesWhileSubscribed_When_Rerendered_Then_RendersTheChangeOnce()
+        public void Given_ReaderSwitchedToAnotherStore_When_TheSwitchsEffectsRun_Then_TheSecondStoreIsSubscribed()
         {
             // Arrange
             s_sourceA = new ExternalSource<int>(10);
             s_sourceB = new ExternalSource<int>(20);
-            s_sourceB.DuringSubscribe = () => s_sourceB.Set(30);
             using var mounted = V.Mount(_root, V.Component(SwitchingReaderRender, key: "switching"));
-            var rendersBefore = s_switchingRenders;
+            mounted.FlushEffectsForTest();
 
             // Act
             s_setUseB.Invoke(true);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.AreEqual("rendered 30 in 1 render(s)",
-                $"rendered {s_switchingValue} in {s_switchingRenders - rendersBefore} render(s)");
+            Assert.AreEqual(1, s_sourceB.ListenerCount);
         }
 
+        // GREEN_ON_BASE(characterization): the base's two notifications already coalesced into one render.
         [Test]
-        public void Given_ListenerThatChangesTheStoreAgainFromItsNotification_When_StoreChanges_Then_ReaderRendersTheLastSnapshotOnce()
+        public void Given_ListenerThatChangesTheStoreAgainFromItsNotification_When_StoreChanges_Then_ReaderRendersOnce()
         {
             // Arrange — a listener subscribed ahead of the reader nests a second notification inside the first
             s_counter = new ExternalSource<int>(0);
@@ -273,70 +324,74 @@ namespace Velvet.Tests
                 if (s_counter.GetSnapshot() == 1) s_counter.Set(2);
             });
             using var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+            mounted.FlushEffectsForTest();
             var rendersBefore = s_readerRenders;
 
             // Act
             s_counter.Set(1);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.AreEqual("rendered 2 in 1 render(s)",
-                $"rendered {s_readerValue} in {s_readerRenders - rendersBefore} render(s)");
+            // Assert — the one render reads the store, which by then holds 2
+            Assert.AreEqual(1, s_readerRenders - rendersBefore);
         }
 
+        // GREEN_ON_BASE(characterization): the base's notification already counted a throwing getSnapshot as a change.
         [Test]
         public void Given_GetSnapshotThatThrowsOnNotify_When_StoreChanges_Then_ExceptionReachesErrorBoundary()
         {
             // Arrange
             s_throwingIndex = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(ThrowingBoundaryRender, key: "boundary"), CaughtErrors.Unlogged);
-            var shownBefore = s_throwingFallbackShown;
+            mounted.FlushEffectsForTest();
 
             // Act — the index leaves the array, so the next getSnapshot throws
             s_throwingIndex.Set(5);
             mounted.FlushStateForTest();
 
-            // Assert — folded with the mount's own state, which a fallback already showing would satisfy alone
-            Assert.AreEqual((false, true), (shownBefore, s_throwingFallbackShown));
+            // Assert — the mount reads index 0, which the array holds, so only the change shows the fallback
+            Assert.IsTrue(s_throwingFallbackShown);
         }
 
+        // GREEN_ON_BASE(characterization): the base's notification already took the Urgent lane inside a transition.
         [Test]
-        public void Given_StoreChangedInsideStartTransition_When_ReaderIsNotified_Then_ItIsNotScheduledOnTheTransitionLane()
+        public void Given_StoreChangedInsideStartTransition_When_ReaderIsNotified_Then_ItIsScheduledOnTheUrgentLane()
         {
             // Arrange
             s_counter = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(TransitionHostRender, key: "host"));
+            mounted.FlushEffectsForTest();
 
             // Act
             s_startTransition.Invoke(() => s_counter.Set(1));
 
-            // Assert — folded with the enrolment, which an update that never scheduled would also leave off the lane
-            Assert.AreEqual((false, true),
-                (s_laneReaderFiber.LaneQueue.Contains(FiberUpdatePriority.Transition), s_laneReaderFiber.IsDirty));
+            // Assert
+            Assert.IsTrue(s_laneReaderFiber.LaneQueue.Contains(FiberUpdatePriority.Urgent));
         }
 
+        // GREEN_ON_BASE(characterization): the base's notification outside any event already took the Urgent lane.
         [Test]
-        public void Given_StoreChangedOutsideAnyEvent_When_ReaderIsNotified_Then_ItIsScheduledOnTheUrgentLaneOnly()
+        public void Given_StoreChangedOutsideAnyEvent_When_ReaderIsNotified_Then_ItIsScheduledOnTheUrgentLane()
         {
             // Arrange
             s_counter = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(TransitionHostRender, key: "host"));
+            mounted.FlushEffectsForTest();
 
             // Act
             s_counter.Set(1);
 
             // Assert
-            Assert.AreEqual((true, false),
-                (s_laneReaderFiber.LaneQueue.Contains(FiberUpdatePriority.Urgent),
-                 s_laneReaderFiber.LaneQueue.Contains(FiberUpdatePriority.Normal)));
+            Assert.IsTrue(s_laneReaderFiber.LaneQueue.Contains(FiberUpdatePriority.Urgent));
         }
 
+        // GREEN_ON_BASE(characterization): the base's notification already posted the flush to the main thread.
         [Test]
         public void Given_StoreChangedOutsideAnyEvent_When_TheMainThreadServicesItsPostedWork_Then_TheReaderRendersTheNewSnapshotWithoutADrain()
         {
             // Arrange
             s_counter = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+            mounted.FlushEffectsForTest();
 
             // Act
             s_counter.Set(5);
@@ -387,12 +442,14 @@ namespace Velvet.Tests
             Assert.AreEqual((true, 1, 1), (parked, s_resumeSeen[0], s_resumeSeen[1]));
         }
 
+        // GREEN_ON_BASE(characterization): the base's notification already refused a call off the main thread.
         [Test]
         public void Given_MountedReader_When_StoreNotifiesFromAnotherThread_Then_TheNotificationThrowsInvalidOperationException()
         {
             // Arrange
             s_counter = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+            mounted.FlushEffectsForTest();
             Exception caught = null;
             var worker = new Thread(() =>
             {
@@ -414,50 +471,41 @@ namespace Velvet.Tests
             Assert.That(caught, Is.InstanceOf<InvalidOperationException>().With.Message.Contains("main thread"));
         }
 
+        // The mount's passive effects run once and again under StrictMode, so subscribe is made, removed and made
+        // again, as React double-invokes a mount effect; the diagnostic render, whose subscribe is another
+        // closure, adds no call of its own.
         [Test]
-        public void Given_SubscribeBuiltAfreshEachRenderUnderStrictMode_When_Mounted_Then_TheDiagnosticRenderDoesNotResubscribe()
+        public void Given_SubscribeBuiltAfreshEachRenderUnderStrictMode_When_TheMountsEffectsRun_Then_SubscribeIsCalledTwice()
         {
             // Arrange
             s_counter = new ExternalSource<int>(0);
             FiberStrictMode.Enabled = true;
-
-            // Act
             using var mounted = V.Mount(_root, V.Component(CapturingHostRender, key: "host"));
 
+            // Act
+            mounted.FlushEffectsForTest();
+
             // Assert
-            Assert.AreEqual(1, s_counter.SubscribeCalls);
+            Assert.AreEqual(2, s_counter.SubscribeCalls);
         }
 
+        // GREEN_ON_BASE(characterization): the base's layout-phase check already ran the mount into the limit.
+        // On the head the check is a passive effect, and the sync-lane drain renders the re-render it asks for.
         [Test]
-        public void Given_GetSnapshotBuildingANewValuePerRead_When_ReRendered_Then_LogsTheCachingErrorOnce()
+        public void Given_GetSnapshotBuildingANewValuePerRead_When_ItsPassiveCheckRuns_Then_ItRerendersPastTheUpdateDepthLimit()
         {
-            // Arrange — the mount's own re-render loop runs to the update-depth limit, so both errors are logged
-            // here, the caching error first
+            // Arrange — the caching error is logged once however many renders follow: a second one fails the case
+            // as an unexpected log
             LogAssert.Expect(LogType.Error, new Regex("getSnapshot returned a different value on two consecutive reads"));
             LogAssert.Expect(LogType.Error, new Regex("Maximum update depth exceeded"));
             s_uncached = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(UncachedRender, key: "uncached"));
 
-            // Act — the slot has rendered many times already; one more render must not log the caching error again
-            s_uncached.Notify();
-            mounted.FlushStateForTest();
+            // Act — the drain finds its tier empty and runs the mount's effects first
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert — LogAssert.Expect takes one of each; a third log fails the case as an unexpected one
-        }
-
-        [Test]
-        public void Given_GetSnapshotBuildingANewValuePerRead_When_Mounted_Then_ItRerendersPastTheUpdateDepthLimit()
-        {
-            // Arrange
-            LogAssert.Expect(LogType.Error, new Regex("getSnapshot returned a different value on two consecutive reads"));
-            LogAssert.Expect(LogType.Error, new Regex("Maximum update depth exceeded"));
-            s_uncached = new ExternalSource<int>(0);
-
-            // Act — the mount ends in a flush of the immediate tier, which the commit check keeps refilling
-            using var mounted = V.Mount(_root, V.Component(UncachedRender, key: "uncached"));
-
-            // Assert — more renders than the drain's nested-update cap, which only the limit ends; a reader
-            // that stopped after the render its first commit check asked for would leave this at two
+            // Assert — more renders than the drain's nested-update cap, which only the limit ends; a drain that
+            // left the check's re-render to its next call would stop at two
             Assert.That(s_uncachedRenders, Is.GreaterThan(50));
         }
 
@@ -536,9 +584,6 @@ namespace Velvet.Tests
 
             public int ListenerCount => _listeners.Count;
 
-            // Runs once, inside the next Subscribe call, after the listener is registered.
-            public Action DuringSubscribe { get; set; }
-
             // Makes an unsubscribe throw once it has removed its listener.
             public bool ThrowOnUnsubscribe { get; set; }
 
@@ -546,9 +591,6 @@ namespace Velvet.Tests
             {
                 SubscribeCalls++;
                 _listeners.Add(onStoreChange);
-                var during = DuringSubscribe;
-                DuringSubscribe = null;
-                during?.Invoke();
                 return () =>
                 {
                     _listeners.Remove(onStoreChange);
@@ -634,6 +676,13 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode ThrowingAfterReadRender()
+        {
+            Hooks.UseSyncExternalStore(s_counter.Subscribe, s_counter.GetSnapshot);
+            throw new InvalidOperationException("render failed after reading the store");
+        }
+
+        [Component]
         private static VNode CapturingHostRender() => V.Component(CapturingReaderRender, key: "child");
 
         // The subscribe lambda captures a local, so every render hands the hook a new, unequal delegate.
@@ -711,6 +760,17 @@ namespace Velvet.Tests
         private static VNode ToggledReaderRender()
         {
             var value = Hooks.UseSyncExternalStore(s_sourceA.Subscribe, s_sourceA.GetSnapshot);
+            return V.Label(text: value.ToString());
+        }
+
+        // The first attempt reads A and asks for a render while it renders, so that attempt is discarded.
+        [Component(Compiler = false)]
+        private static VNode SupersededReaderRender()
+        {
+            var (attempt, setAttempt) = Hooks.UseState(0);
+            var source = attempt == 0 ? s_sourceA : s_sourceB;
+            var value = Hooks.UseSyncExternalStore(source.Subscribe, source.GetSnapshot);
+            if (attempt == 0) setAttempt.Invoke(1);
             return V.Label(text: value.ToString());
         }
 

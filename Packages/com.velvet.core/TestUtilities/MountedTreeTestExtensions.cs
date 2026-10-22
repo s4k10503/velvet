@@ -16,13 +16,15 @@ namespace Velvet.TestUtilities
 
         /// <summary>
         /// Immediately flushes the dirty state after a hook setter fires and triggers a re-render.
-        /// Iteratively walks the entire tree produced by V.Mount along the fiber tree and calls
-        /// FiberWorkLoop.FlushState on each fiber.
+        /// First runs the passive effects earlier commits left pending, as a drain does before it renders and as
+        /// React's <c>act()</c> does, so an update one of them schedules is flushed here too. Then iteratively walks
+        /// the entire tree produced by V.Mount along the fiber tree and calls FiberWorkLoop.FlushState on each fiber.
         /// Test-only. Must not be used from production code.
         /// </summary>
         // Bypasses: the batch scheduler's tier and drain buffer: production calls FiberWorkLoop.FlushState from inside DrainImmediate, over the buffer that pass built.
         public static void FlushStateForTest(this MountedTree mounted)
         {
+            mounted.FlushEffectsForTest();
             FiberTreeTraversal.Visit(mounted.Root, FiberWorkLoop.FlushState);
         }
 

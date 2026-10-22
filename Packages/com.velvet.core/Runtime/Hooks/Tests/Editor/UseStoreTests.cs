@@ -13,6 +13,8 @@ namespace Velvet.Tests
     /// <item>When the selected value changes, the component re-renders once and observes the new value.</item>
     /// <item>When a store change leaves the selected value unchanged, no re-render is scheduled.</item>
     /// <item>Change detection uses the supplied <see cref="IEqualityComparer{T}"/> (default Object.is): values equal by the comparer skip the re-render, values that differ trigger it.</item>
+    /// <item>The subscription is made in the commit's passive effects; a change made before they run re-renders
+    /// the component once they do.</item>
     /// <item>Unmount disposes the store subscription, so later store changes no longer reach the component.</item>
     /// <item>Re-mounting establishes a fresh subscription.</item>
     /// <item>A selector that throws on a store emit is not swallowed: it re-renders so the render-phase throw reaches the ErrorBoundary.</item>
@@ -153,6 +155,8 @@ namespace Velvet.Tests
                 "Values that differ under the supplied comparer trigger a re-render");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, and its unmount already disposed that.
+        // The passive flush below is what makes the subscription this case disposes exist on the head.
         [Test]
         public void Given_MountedComponent_When_Unmounted_Then_StoreSubscriptionIsDisposed()
         {
@@ -160,6 +164,7 @@ namespace Velvet.Tests
             using var store = new TestCounterStore(initial: 0);
             s_storeReadStore = store;
             var mounted = V.Mount(_root, V.Component(StoreReadRender, key: "store"));
+            mounted.FlushEffectsForTest();
 
             // Act
             mounted.Dispose();
@@ -167,6 +172,27 @@ namespace Velvet.Tests
 
             // Assert — the disposed subscription does not advance the component's observed value
             Assert.AreEqual(0, s_storeReadLastValue, "A store change after unmount does not reach the component");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // On the head nothing is subscribed until the passive effects run, and the comparison the subscription
+        // makes once it exists is what finds the change.
+        [Test]
+        public void Given_TheSelectedFieldChangedBeforeTheMountsEffectsRun_When_TheyRun_Then_TheComponentReRenders()
+        {
+            // Arrange
+            using var store = new TestPairStore(new PairState(1, "a"));
+            s_selectorPartialStore = store;
+            using var mounted = V.Mount(_root, V.Component(SelectorPartialRender, key: "partial"));
+            var renderCountBefore = s_selectorPartialRenderCount;
+            store.SetPair(new PairState(2, "a"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.AreEqual(renderCountBefore + 1, s_selectorPartialRenderCount);
         }
 
         [Test]

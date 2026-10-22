@@ -724,16 +724,39 @@ namespace Velvet
     internal abstract class HookStoreSlot : IDisposable
     {
         public abstract void Dispose();
+
+        // Adopts what the settled render staged, from FiberBeginWork.CommitSettledEffects. A render whose body throws
+        // or suspends, an attempt a render-phase update re-runs, and a render a Suspense gives up never reach it, so
+        // nothing they read reaches a notification or the passive effects an earlier commit left pending.
+        public abstract void Commit();
     }
 
     internal sealed class HookStoreSlot<TStore, TSel> : HookStoreSlot
     {
         public Store<TStore> Store = null!;
+        // What the last commit rendered, which a notification compares against.
         public Func<TStore, TSel> Selector = null!;
         public IEqualityComparer<TSel> Comparer = null!;
         public TSel LastValue = default!;
+        public Func<TStore, TSel> RenderedSelector = null!;
+        public IEqualityComparer<TSel> RenderedComparer = null!;
+        public TSel RenderedValue = default!;
         public IDisposable? Subscription;
         public HookEffectSlot SubscribeEffect = null!;
+
+        public void Render(Func<TStore, TSel> selector, IEqualityComparer<TSel> comparer, TSel value)
+        {
+            RenderedSelector = selector;
+            RenderedComparer = comparer;
+            RenderedValue = value;
+        }
+
+        public override void Commit()
+        {
+            Selector = RenderedSelector;
+            Comparer = RenderedComparer;
+            LastValue = RenderedValue;
+        }
 
         public override void Dispose()
         {
@@ -742,9 +765,10 @@ namespace Velvet
         }
     }
 
-    // Value and GetSnapshot are what the last commit left, as the store instance of React's
-    // useSyncExternalStore holds them: a notification compares them, never what a render that did not commit
-    // read. The Rendered* fields are the latest render's, promoted by the passive effects below.
+    // Value and GetSnapshot are what the passive effects of the last commit promoted, as the store instance of
+    // React's useSyncExternalStore holds them: a notification compares them, never what a render that did not
+    // commit read. The Rendered* fields are the latest render's, which Commit hands to the Committed* fields the
+    // passive effects promote from.
     internal sealed class HookExternalStoreSlot<T> : HookStoreSlot
     {
         public ComponentFiber Fiber = null!;
@@ -756,6 +780,9 @@ namespace Velvet
         public Func<T> RenderedGetSnapshot = null!;
         public T RenderedValue = default!;
         public Func<Action, Action> RenderedSubscribe = null!;
+        public Func<T> CommittedGetSnapshot = null!;
+        public T CommittedValue = default!;
+        public Func<Action, Action> CommittedSubscribe = null!;
 #if UNITY_EDITOR
         public bool ReportedUncachedSnapshot;
 #endif
@@ -763,12 +790,11 @@ namespace Velvet
         private HookEffectSlot? _checkEffect;
         private Action? _unsubscribe;
         private Action? _release;
-        private bool _subscribing;
         private bool _promoted;
 
         // Queued on the fiber's pending passive effects, which a render that fails or is discarded truncates,
-        // so such a render subscribes nothing. Both effects promote the Rendered* fields before they read them,
-        // so the order they sit in the list does not matter.
+        // so such a render subscribes nothing. A commit that subscribes queues no check: the subscription
+        // compares the snapshot itself once it is made, which a check an earlier commit queued can run ahead of.
         public void Render(
             List<HookEffectSlot> pendingEffects, Func<Action, Action> subscribe, Func<T> getSnapshot, T value)
         {
@@ -776,46 +802,43 @@ namespace Velvet
             RenderedGetSnapshot = getSnapshot;
             RenderedValue = value;
 
-            var subscribeChanged = Subscribe == null || !Subscribe.Equals(subscribe);
-            var snapshotChanged = !_promoted
-                || !ObjectIs.AreEqual(Value, value)
-                || !GetSnapshot.Equals(getSnapshot);
-            if (subscribeChanged)
+            if (Subscribe == null || !Subscribe.Equals(subscribe))
             {
                 _subscribeEffect ??= new HookEffectSlot { EffectFactory = RunSubscribe };
                 if (!pendingEffects.Contains(_subscribeEffect)) pendingEffects.Add(_subscribeEffect);
             }
-            if (subscribeChanged || snapshotChanged)
+            else if (!_promoted || !ObjectIs.AreEqual(Value, value) || !GetSnapshot.Equals(getSnapshot))
             {
                 _checkEffect ??= new HookEffectSlot { EffectFactory = RunCheck };
                 if (!pendingEffects.Contains(_checkEffect)) pendingEffects.Add(_checkEffect);
             }
         }
 
+        // An effect a commit left pending can run after a later render of the fiber that did not commit, so
+        // the effects read only what a settle handed over.
+        public override void Commit()
+        {
+            CommittedSubscribe = RenderedSubscribe;
+            CommittedGetSnapshot = RenderedGetSnapshot;
+            CommittedValue = RenderedValue;
+        }
+
         private void Promote()
         {
-            Value = RenderedValue;
-            GetSnapshot = RenderedGetSnapshot;
+            Value = CommittedValue;
+            GetSnapshot = CommittedGetSnapshot;
             _promoted = true;
         }
 
-        // OnStoreChange drops a notification raised while subscribe runs; the comparison after it returns finds
-        // that change, as it finds one made between the render and this effect.
+        // The store notified no one between the render and this effect, so the comparison after subscribing is
+        // what finds a change made then.
         private Action? RunSubscribe()
         {
             Promote();
-            var subscribe = RenderedSubscribe;
-            _subscribing = true;
-            try
-            {
-                _unsubscribe = subscribe(OnStoreChange);
-            }
-            finally
-            {
-                _subscribing = false;
-            }
+            var subscribe = CommittedSubscribe;
+            _unsubscribe = subscribe(OnStoreChange);
             Subscribe = subscribe;
-            if (SnapshotChanged()) FiberWorkLoop.RequestExternalStoreRender(Fiber);
+            RunCheck();
             return _release ??= Release;
         }
 
@@ -838,8 +861,7 @@ namespace Velvet
                     "UseSyncExternalStore: the store-change callback passed to subscribe was invoked off the Unity" +
                     " main thread. Marshal the notification to the main thread before invoking it.");
             }
-            if (_subscribing || !SnapshotChanged()) return;
-            FiberWorkLoop.RequestExternalStoreRender(Fiber);
+            if (SnapshotChanged()) FiberWorkLoop.RequestExternalStoreRender(Fiber);
         }
 
         // A throwing GetSnapshot counts as a change, so the render repeats the call and its exception reaches

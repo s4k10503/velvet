@@ -125,7 +125,7 @@ namespace Velvet
         /// <summary>
         /// Subscribes to an external Store via a selector. Must be used inside Render() only. The subscription is
         /// made in the passive effects of the commit, as <see cref="UseSyncExternalStore{T}"/> makes its own, so a
-        /// render that fails or is discarded subscribes nothing; a change the store makes between the render and the
+        /// render that throws or suspends subscribes nothing; a change the store makes between the render and the
         /// subscription re-renders the component once it is made.
         /// </summary>
         /// <typeparam name="TStore">Store snapshot type.</typeparam>
@@ -162,19 +162,15 @@ namespace Velvet
 
             if (index >= fiber.StoreSlots.Count)
             {
-                var slot = new HookStoreSlot<TStore, TSel>
-                {
-                    Store = store,
-                    Selector = selector,
-                    Comparer = cmp,
-                    LastValue = selector(snapshot),
-                };
+                var slot = new HookStoreSlot<TStore, TSel> { Store = store };
                 slot.SubscribeEffect = new HookEffectSlot { EffectFactory = () => SubscribeStore(fiber, slot) };
+                var selected = selector(snapshot);
+                slot.Render(selector, cmp, selected);
 
                 fiber.StoreSlots.Add(slot);
                 QueueStoreSubscription(fiber, slot);
-                CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, slot.LastValue);
-                return slot.LastValue;
+                CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, selected);
+                return selected;
             }
 
             if (fiber.StoreSlots[index] is not HookStoreSlot<TStore, TSel> typed)
@@ -190,16 +186,15 @@ namespace Velvet
                     " This violates the Rules of Hooks.");
             }
 
-            typed.Selector = selector;
-            typed.Comparer = cmp;
-            typed.LastValue = selector(snapshot);
+            var value = selector(snapshot);
+            typed.Render(selector, cmp, value);
             QueueStoreSubscription(fiber, typed);
-            CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, typed.LastValue);
-            return typed.LastValue;
+            CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, value);
+            return value;
         }
 
-        // A render that fails or is discarded has its pending passive effects truncated, so it subscribes
-        // nothing; the next render that commits finds no subscription and queues it again.
+        // A render that throws or suspends has its pending passive effects truncated, so it subscribes nothing;
+        // the next render that commits finds no subscription and queues it again.
         private static void QueueStoreSubscription<TStore, TSel>(ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot)
         {
             if (slot.Subscription != null || IsStrictDiagnosticPass(fiber)) return;
@@ -284,8 +279,8 @@ namespace Velvet
         /// that unsubscribes it. It is called in the passive effects of the first commit, and again, after the previous
         /// subscription is removed, in those of a commit whose render passed a <paramref name="subscribe"/> that is
         /// not <see cref="Delegate.Equals(object)"/> to the previous one, or that follows a call that threw. A render
-        /// that fails or is discarded subscribes nothing and unsubscribes nothing, and the StrictMode diagnostic render
-        /// never calls it. A method group on the same instance compares equal across renders; a lambda capturing a
+        /// whose body throws or suspends, and an attempt a render-phase update re-runs, subscribe and unsubscribe
+        /// nothing, and the StrictMode diagnostic render never calls it. A method group on the same instance compares equal across renders; a lambda capturing a
         /// local is a new closure each render and re-subscribes on each later commit, as an inline subscribe function
         /// does in React. Unmounting removes the subscription. A change the store makes between the render and the
         /// subscription, or while <paramref name="subscribe"/> runs, re-renders the component once the subscription
