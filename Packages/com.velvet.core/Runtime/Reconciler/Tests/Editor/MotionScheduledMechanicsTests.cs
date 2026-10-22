@@ -2064,10 +2064,12 @@ namespace Velvet.Tests
         [Test]
         public void Given_ALayoutIdMotionTranslatedByAFractionOfItsSizeMidMove_When_ItGrowsAgain_Then_TheFractionFollowsAtOnce()
         {
-            // Arrange — the bundled sheet; the box translated down by half its height and transitioning everything linearly
-            // over a second, grown from 100px to 200px square about its top centre, a few frames into the move.
+            // Arrange — the bundled sheet; the box translated down by half its height and transitioning its transform
+            // linearly over a second, its size on no transition, so that the box is laid out at once at each size; grown
+            // from 100px to 200px square about its top centre, a few frames into the move.
             VelvetStyleUtilities.AttachTo(Root);
-            (s_resizeOrigin, s_resizeTo) = ("origin-[50%_0%] translate-y-1/2 transition-all duration-1000 ease-linear", new Vector2Int(200, 200));
+            (s_resizeOrigin, s_resizeTo) = ("origin-[50%_0%] translate-y-1/2 transition-transform duration-1000 ease-linear",
+                new Vector2Int(200, 200));
             using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
             Tick();
             s_setStep.Invoke(1);
