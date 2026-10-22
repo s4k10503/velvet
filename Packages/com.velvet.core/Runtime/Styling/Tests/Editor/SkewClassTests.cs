@@ -186,8 +186,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reads no skew-<n>, so the per-axis class holds x there as well.
-        // Swap StyleRuleOrder's SkewClassDeclarations and SkewAxisDeclarations and every row reddens; the candidate
-        // name alone, without either count, reddens the negative one.
+        // Have StyleRuleOrder's `s_skewDeclarations` hold transform alone and every row reddens; drop only its
+        // --tw-skew-y and the negative row alone does.
         [TestCase("skew-x-12 skew-6", 12f)]
         [TestCase("skew-6 skew-x-12", 12f)]
         [TestCase("-skew-x-12 skew-6", -12f)]
@@ -218,8 +218,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reads no skew-<n>, so the per-axis class holds y there as well.
-        // Swap StyleRuleOrder's SkewClassDeclarations and SkewAxisDeclarations and every row reddens; the candidate
-        // name alone, without either count, reddens the negative one.
+        // Have StyleRuleOrder's `s_skewDeclarations` hold transform alone and every row reddens.
         [TestCase("skew-y-3 skew-6", 3f)]
         [TestCase("skew-6 skew-y-3", 3f)]
         [TestCase("-skew-y-3 skew-6", -3f)]

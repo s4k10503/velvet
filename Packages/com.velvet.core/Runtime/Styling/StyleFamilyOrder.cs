@@ -26,8 +26,8 @@ namespace Velvet
 
         // A token belongs to the first family that claims it. The families on s_byKey carry declarations the sort key counts
         // and are ordered by StyleRuleOrder.CompareUtilities: a slash size declares a line height beside its font size,
-        // a nine-slice inset writes as many longhands as the edges it names, and a skew-<n> one more variable than a
-        // skew-x-* or skew-y-*. The others are ordered by their
+        // a nine-slice inset writes as many longhands as the edges it names, and a skew-<n> declares --tw-skew-y, which
+        // property-order.ts lists ahead of the transform a skew-x-* declares next. The others are ordered by their
         // lane, then by candidate name, where Tailwind's sort ends for two utilities that declare the same properties.
         private static readonly (Func<string, bool> Claims, Func<string, int> Lane)[] s_families =
         {

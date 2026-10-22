@@ -176,12 +176,13 @@ namespace Velvet
             return rejected;
         }
 
-        // Whether core, a skew utility without its important modifier, writes one axis rather than both.
-        internal static bool IsAxisClass(string core)
+        // The axes core, a skew utility without its important modifier, writes.
+        internal static SkewAxis AxisOf(string core)
         {
             var at = core.StartsWith("-", StringComparison.Ordinal) ? 1 : 0;
-            return string.CompareOrdinal(core, at, XPrefix, 0, XPrefix.Length) == 0
-                || string.CompareOrdinal(core, at, YPrefix, 0, YPrefix.Length) == 0;
+            return string.CompareOrdinal(core, at, XPrefix, 0, XPrefix.Length) == 0 ? SkewAxis.X
+                : string.CompareOrdinal(core, at, YPrefix, 0, YPrefix.Length) == 0 ? SkewAxis.Y
+                : SkewAxis.Both;
         }
 
         // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<angle>] (+ the y and both-axes forms), with or
