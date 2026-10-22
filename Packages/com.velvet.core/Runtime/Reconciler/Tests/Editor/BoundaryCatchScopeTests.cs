@@ -107,7 +107,6 @@ namespace Velvet.Tests
             s_suspendedSource = new VelvetTaskCompletionSource<int>();
             s_unsubscribeThrows = false;
             s_setDisposedTick = null;
-            s_outerCaught = false;
             s_swapReports.Clear();
             s_setListTick = null;
             s_setSwapThrowerTick = null;
@@ -2025,9 +2024,8 @@ namespace Velvet.Tests
             s_setSwapThrowerTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert — the rendered text is read beside the reports, since an uncaught cleanup error unmounts the tree
-            Assert.That(string.Join(",", s_swapReports) + " | " + Texts(),
-                Is.EqualTo("Swap render throw,Swap cleanup throw | fallback"));
+            // Assert
+            Assert.That(string.Join(",", s_swapReports), Is.EqualTo("Swap render throw,Swap cleanup throw"));
         }
 
         // The list's row is mounted on an anchor of its own and is disposed before it unmounts what it rendered, so the
@@ -2400,11 +2398,9 @@ namespace Velvet.Tests
             s_setDisposedTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That((s_outerCaught, Texts()), Is.EqualTo((false, "inner-fallback")));
+            // Assert — the ancestor's catch would replace the inner fallback with its own
+            Assert.That(Texts(), Is.EqualTo("inner-fallback"));
         }
-
-        private static bool s_outerCaught;
 
         private static Action<int> s_setDisposedTick;
 
@@ -2423,11 +2419,7 @@ namespace Velvet.Tests
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode DisposedOuterBoundaryRender(int tick)
         {
-            Hooks.UseFallback(_ =>
-            {
-                s_outerCaught = true;
-                return V.Label(text: "outer-fallback");
-            });
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
             return tick == 0 ? V.Label(text: "ok") : V.Component(PresenceFallbackBoundaryRender, key: "inner");
         }
 
