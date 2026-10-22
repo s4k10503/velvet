@@ -457,7 +457,8 @@ namespace Velvet
         {
             leading = default;
             const string prefix = "leading-[";
-            if (!cls.StartsWith(prefix, StringComparison.Ordinal) || cls[cls.Length - 1] != ']')
+            if (!StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls)
+                || !cls.StartsWith(prefix, StringComparison.Ordinal) || cls[cls.Length - 1] != ']')
             {
                 return false;
             }

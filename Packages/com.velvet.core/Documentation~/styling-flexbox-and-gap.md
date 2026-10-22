@@ -292,6 +292,11 @@ child margins it wrote before the arriving one writes its own. A `space-*` on a 
 rule rather than a column gap: the grid writes it on its children beside the gap, and a horizontal one
 comes out of the child's column width, as a CSS grid item stretched to its cell gives up its margins.
 
+`grid-cols-<n>` takes any positive `n`. Tailwind writes a bracket as the track list itself, so
+`grid-cols-[repeat(5,minmax(0,1fr))]`, the list `grid-cols-5` writes, is five columns, while `grid-cols-[5]` is
+a declaration the browser rejects and leaves the class inert. Any other track list is inert as well: the grid
+here lays out equal columns only.
+
 ```csharp
 // Wrapping grid: gap-4 now spaces BOTH the row direction and between wrapped rows.
 V.Div(className: "flex flex-row flex-wrap gap-4", children: ...);

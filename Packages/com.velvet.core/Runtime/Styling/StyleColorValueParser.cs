@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
 
@@ -15,13 +16,22 @@ namespace Velvet
         // outright (bg- with a non-color value, so the caller falls through to the background image
         // resolver); null when not a color match and the caller should fall through to the length-based
         // path (text-/border- with a non-color value, or the negated form — '-' never applies to a color).
-        internal static bool? TryParseColorPrefix(string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        // A type hint picks the branch Tailwind's tests would have: one HintSelectsNonColour names skips the colour,
+        // and any other makes the value a colour or nothing.
+        internal static bool? TryParseColorPrefix(
+            string prefix, ReadOnlySpan<char> valueSpan, bool negate, string? hint, out ArbitraryStyle result)
         {
             result = default;
             if (negate)
             {
                 return null;
             }
+            var root = prefix.Substring(0, prefix.Length - 1);
+            if (HintSelectsNonColour(root, hint))
+            {
+                return prefix == "bg-" ? false : null;
+            }
+            var colourOnly = hint != null;
 
             // text-[...] is overloaded: a color value wins, otherwise it falls through to font-size.
             if (prefix == "text-")
@@ -31,7 +41,7 @@ namespace Velvet
                     result = new ArbitraryStyle(ArbitraryProperty.TextColor, textColor);
                     return true;
                 }
-                return null;
+                return colourOnly ? false : null;
             }
 
             // bg-[...] is color-only here; a non-color value (e.g. bg-[addr:...]) rejects.
@@ -54,11 +64,27 @@ namespace Velvet
                     result = new ArbitraryStyle(ArbitraryProperty.BorderColor, borderColor);
                     return true;
                 }
-                return null;
+                return colourOnly ? false : null;
             }
 
             return null;
         }
+
+        // Whether a type hint picks a branch other than the colour for a utility Tailwind types, named by its root:
+        // the hints its switch handles before the colour default.
+        internal static bool HintSelectsNonColour(string root, string? hint)
+            => hint != null && s_nonColourHints.TryGetValue(root, out var hints) && Array.IndexOf(hints, hint) >= 0;
+
+        private static readonly Dictionary<string, string[]> s_nonColourHints = new()
+        {
+            ["text"] = new[] { "size", "length", "percentage", "absolute-size", "relative-size" },
+            ["border"] = new[] { "length", "line-width" },
+            ["bg"] = new[] { "percentage", "position", "bg-size", "length", "size", "image", "url" },
+            ["ring"] = new[] { "length" }, ["ring-offset"] = new[] { "length" },
+            ["outline"] = new[] { "length", "number", "percentage" },
+            ["from"] = new[] { "length", "percentage" }, ["via"] = new[] { "length", "percentage" },
+            ["to"] = new[] { "length", "percentage" },
+        };
 
         // Internal so the shadow, ring, divide, gradient and filter grammars share the one colour grammar, which
         // TryParseCssColor owns.
@@ -162,7 +188,15 @@ namespace Velvet
                 return false;
             }
 
-            if (ColorModifierSlashIndex(className, prefixLen) == -1)
+            // bg-[addr:key]/N is Velvet's addressable image, not a colour behind a type hint.
+            if (property == ArbitraryProperty.BackgroundColor
+                && className.AsSpan(prefixLen).StartsWith("[addr:".AsSpan(), StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (ColorModifierSlashIndex(className, prefixLen) == -1
+                || HintSelectsNonColour(className.Substring(0, prefixLen - 1), StyleArbitraryValueResolver.TypeHintOf(className)))
             {
                 return false;
             }
