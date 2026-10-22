@@ -930,8 +930,7 @@ namespace Velvet
             return denominator != 0;
         }
 
-        // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero. Shared by
-        // the flex factors, the flex shorthand and z-<n>.
+        // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero.
         internal static bool TryParseWhole(ReadOnlySpan<char> digits, out int whole)
         {
             whole = 0;

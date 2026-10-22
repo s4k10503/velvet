@@ -334,7 +334,8 @@ the class Tailwind emits last: a per-axis class over `skew-<n>` whichever is wri
 signs (`skew-6 skew-x-12` and `skew-x-12 skew-6` both give 12° on x and 6° on y, `-skew-x-12 skew-6` gives −12°
 on x), a class behind a variant over the base ones (`skew-x-12 hover:skew-6` gives 6° on both axes while
 hovered), and an important one (`!skew-6`, `skew-6!`, `hover:!skew-6`) over every plain one (`!skew-6 skew-x-12`
-gives 6° on both).
+gives 6° on both). A bare value is a whole number of degrees written without a leading zero, so
+`skew-x-07` is declined, as Tailwind declines it.
 
 **Where `skew-*` deviates from CSS.** UI Toolkit's transform carries rotation, scale and translation and
 no shear, so a skew here is not a transform: the caster's own face is repainted sheared in its generated

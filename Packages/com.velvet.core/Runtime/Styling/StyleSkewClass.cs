@@ -1,6 +1,5 @@
 #nullable enable
 using System;
-using System.Globalization;
 
 namespace Velvet
 {
@@ -239,7 +238,7 @@ namespace Velvet
             }
 
             // Numeric form: an integer number of degrees (the preset scale is a subset).
-            if (!int.TryParse(suffix, NumberStyles.None, CultureInfo.InvariantCulture, out var whole))
+            if (!StyleArbitraryValueResolver.TryParseWhole(suffix.AsSpan(), out var whole))
             {
                 return false;
             }

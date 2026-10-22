@@ -174,6 +174,7 @@ namespace Velvet.Tests
         [TestCase("!-skew-x-6 skew-x-12", -6f)]
         [TestCase("!skew-x-6 skew-x-[8]", 6f)]
         [TestCase("skew-x-[8] !skew-x-6", 6f)]
+        [TestCase("skew-x-6 skew-x-07", 6f)]
         public void Given_AClassListOfSkews_When_Resolved_Then_TheXAngleIsThatOfTheClassTailwindEmitsLast(
             string classes, float expected)
         {
@@ -205,6 +206,7 @@ namespace Velvet.Tests
         [TestCase("skew-x-12 skew-6", 6f)]
         [TestCase("!skew-6 skew-y-3", 6f)]
         [TestCase("!skew-6 !skew-y-3", 3f)]
+        [TestCase("skew-y-3 skew-y-07", 3f)]
         public void Given_AClassListOfSkews_When_Resolved_Then_TheYAngleIsThatOfTheClassTailwindEmitsLast(
             string classes, float expected)
         {
@@ -268,15 +270,18 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reads no skew-<n>, and declines each of these with it.
-        // Parse the bare value with `float.TryParse`, or take the bracket without its unit, and its row reddens.
+        // Parse the bare value with `float.TryParse` and both bare rows redden, with `int.TryParse` the skew-07 row
+        // alone; take the bracket without its unit and the skew-[8] row does.
         [TestCase("skew-1.5")]
+        [TestCase("skew-07")]
         [TestCase("skew-[8]")]
         public void Given_APlainSkewThatIsNoWholeNumberOfDegrees_When_Extracted_Then_ItIsDeclined(string utility)
         {
             // Act
             var want = StyleSkewClass.TryExtract(new[] { utility }, out _);
 
-            // Assert — Tailwind takes a bare skew value only as a whole number, and a bracket only as an angle or 0.
+            // Assert — Tailwind takes a bare skew value only as a whole number without a leading zero, and a bracket
+            // only as an angle or 0.
             Assert.That(want, Is.False);
         }
 
