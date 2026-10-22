@@ -374,10 +374,12 @@ namespace Velvet
                 var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
                 rotate = LayoutIdLook.RotateOf(projection.Leader, leading, float.NaN);
                 radii = LayoutIdLook.RadiiOf(projection.Leader, leading, projection.LeadRadii);
+                RunOwnLook(element, projection);
             }
             else if (projection is { Shared: true, Moving: true, Held: { } held })
             {
                 (rotate, radii) = (held.Rotate, held.Radii);
+                RunOwnLook(element, projection);
             }
             else if (projection is { Shared: true, Moving: true, FromLook: { } from })
             {
@@ -388,6 +390,16 @@ namespace Velvet
             }
             LayoutIdLook.WriteRotate(element, projection, rotate, s_passDt);
             LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale, s_passDt);
+        }
+
+        // The element's own rotate and radii run on over the pass while values not their own are drawn in their place, so
+        // that they stand where UI Toolkit's transitions of them would once they are drawn again; the other branches of
+        // WriteLook run them through the mix or the write
+        // (Given_AMotionTransitioningItsTransformAsItTakesAHeldId_When_ItsClassesSendItBack_Then_ItRunsAsTheEngineRunsIt).
+        private static void RunOwnLook(VisualElement element, LayoutIdProjection projection)
+        {
+            LayoutIdLook.OwnRotate(element, projection, s_passDt);
+            LayoutIdLook.OwnRadii(element, projection, s_passDt, projection.OwnRadiiBuffer);
         }
 
         // Read before the projection takes its new tween. A move of the lead's own that interrupts its shared move

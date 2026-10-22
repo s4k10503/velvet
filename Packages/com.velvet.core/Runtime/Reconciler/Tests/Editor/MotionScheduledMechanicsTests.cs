@@ -5074,6 +5074,7 @@ namespace Velvet.Tests
         [TestCase("translate-y-1/2", "translate-y-[40px]", "translate-y-1/2", "translate", 85f, 92f)]
         [TestCase("", "rotate-45", "rotate-0", "rotate", 10.5f, 14f)]
         [TestCase("layout-id-test-eighth-turn", "rotate-90", "rotate-45", "rotate", 55.5f, 59f)]
+        [TestCase("", "rounded-[40px]", "rounded-[0px]", "radius", 7.5f, 10.5f)]
         public void Given_AMotionTransitioningItsTransformAsItTakesAHeldId_When_ItsClassesSendItBack_Then_ItRunsAsTheEngineRunsIt(
             string from, string to, string back, string slot, float low, float high)
         {
@@ -5097,17 +5098,20 @@ namespace Velvet.Tests
 
             // Act — both take back: the half of the box the translate ran from, which UI Toolkit reads as a reversal, or a
             // rotate of 0deg where it ran from none, or of 45deg where it ran from an eighth of a turn, neither of which it
-            // does; some 0.1 s on.
+            // does, or the square corner the radius ran from, which it does; some 0.1 s on.
             (s_aClasses, s_controlClasses) = ($"{transitioning} {back}", $"min-w-[200px] min-h-[200px] {transitioning} {back}");
             RenderShared(mounted);
             for (var i = 0; i < 6; i++) Tick();
 
-            // Assert — "a"'s own translate down, or own rotate, where the control stands, within a frame of it.
+            // Assert — "a"'s own translate down, own rotate or own corner, where the control stands, within a frame of it.
             var a = Root.Q<VisualElement>("a");
             var control = Root.Q<VisualElement>("control").resolvedStyle;
-            var expected = slot == "rotate" ? control.rotate.angle.ToDegrees() : control.translate.y;
+            var expected = slot == "rotate" ? control.rotate.angle.ToDegrees()
+                : slot == "radius" ? control.borderTopLeftRadius
+                : control.translate.y;
             var own = !mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection) ? float.NaN
-                : slot != "rotate" ? a.style.translate.value.y.value
+                : slot == "translate" ? a.style.translate.value.y.value
+                : slot == "radius" ? projection.WritesRadii ? projection.RadiusCarries[0].Value : float.NaN
                 : projection.WritesRotate ? projection.RotateCarry.Value : float.NaN;
             Assert.That(own, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(1f));
         }
@@ -5254,6 +5258,38 @@ namespace Velvet.Tests
                 : slot == "translate" ? a.style.translate.value.x.value - (projection.From.x - a.layout.x) * projection.Progress.Value
                 : projection.WritesRotate ? projection.RotateCarry.Value : float.NaN;
             Assert.That(carried, Is.EqualTo(own).Within(slot == "scale" ? 0.015f : 0.5f));
+        }
+
+
+        [Test]
+        public void Given_AFollowerWhoseOwnRotateTurnsOnATransition_When_TheLeadLeaves_Then_ItsOwnRunsAsTheEngineRunsIt()
+        {
+            // Arrange — the bundled sheet; "a", and a control holding no id, both transitioning everything linearly over a
+            // second; "a" drawn over "b", turned a quarter round, as "b" moves from a's box 300px right on a one-second
+            // tween, mixing in its rotate from a's none; some 0.1 s on, both take rotate-45 and turn on their own
+            // transitions for some 0.2 s while "a" is drawn at b's rotate.
+            const string transitioning = "transition-all duration-1000 ease-linear";
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aClasses, s_bClasses, s_controlClasses) = (transitioning, "rotate-90", transitioning);
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 6; i++) Tick();
+            (s_aClasses, s_controlClasses) = ($"{transitioning} rotate-45", $"{transitioning} rotate-45");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Act — "b" leaves, handing "a" the lead back; some three frames on.
+            s_bMounted = false;
+            RenderShared(mounted);
+            Tick();
+            Tick();
+
+            // Assert — "a"'s own rotate where the control stands, within a degree of it, a quarter of the way round.
+            var a = Root.Q<VisualElement>("a");
+            var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
+            var own = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection) && projection.WritesRotate
+                ? projection.RotateCarry.Value
+                : float.NaN;
+            Assert.That(own, Is.EqualTo(control > 9f && control < 13.5f ? control : float.NaN).Within(1f));
         }
 
 
