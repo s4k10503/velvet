@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -40,6 +41,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Area(points, counts[0]), Is.EqualTo(10f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ABoxWhoseSideWidthsAddUpToMoreThanItsWidth_When_ItsRightSidesPiecesAreComputed_Then_TheyStopAtTheLeftWidth()
+        {
+            // Arrange — 15 wide on the left and on the right of a box 20 across: the right side's one run covers x 5
+            // to 20, and the left side owns everything left of x 15.
+            var box = new BorderBox { Size = new Vector2(20f, 20f), Left = 15f, Top = 2f, Right = 15f, Bottom = 2f };
+            var points = new List<Vector2>();
+            var counts = new List<int>();
+
+            // Act
+            DashedBorderPainter.ComputeSidePieces(DivideEdge.Right, box, BorderLineStyle.Dashed, points, counts);
+
+            // Assert
+            Assert.That(points.Min(p => p.x), Is.EqualTo(15f).Within(1e-3f));
         }
 
         // The area of the polygon whose count vertices open points.
