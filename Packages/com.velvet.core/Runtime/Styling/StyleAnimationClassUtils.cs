@@ -7,18 +7,24 @@ namespace Velvet
     // of each call site null-checking independently.
     internal static class StyleAnimationClassUtils
     {
+        // A class the projection took off the element stays off: a variant above it holds what it writes, and the
+        // projection puts it back itself once that variant turns off.
         internal static void AddClasses(VisualElement element, string[] classes)
         {
             foreach (var cls in classes)
             {
                 CornerRadiusFit.TrackClass(element, cls);
-                element.AddToClassList(cls);
+                if (!StyleClassProjection.Suppresses(element, cls))
+                {
+                    element.AddToClassList(cls);
+                }
             }
             ClipPathLayoutBox.SyncClasses(element);
         }
 
         // Removes each class, except one kept names, which is added instead: a play may have removed it
-        // before the caller that keeps it recorded it as present.
+        // before the caller that keeps it recorded it as present. A class a variant payload in force still holds
+        // stays too, as its variant rule still applies once the plain one is gone.
         internal static void RemoveClasses(VisualElement element, string[]? classes, string[]? kept = null)
         {
             if (classes == null) return;
@@ -26,9 +32,12 @@ namespace Velvet
             {
                 if (kept != null && System.Array.IndexOf(kept, cls) >= 0)
                 {
-                    element.AddToClassList(cls);
+                    if (!StyleClassProjection.Suppresses(element, cls))
+                    {
+                        element.AddToClassList(cls);
+                    }
                 }
-                else
+                else if (!StyleClassProjection.HoldsUnderVariant(element, cls))
                 {
                     element.RemoveFromClassList(cls);
                 }

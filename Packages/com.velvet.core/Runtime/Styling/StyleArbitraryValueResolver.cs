@@ -64,7 +64,7 @@ namespace Velvet
         // resolves to. Every other token is as TryParse leaves it.
         internal static bool TryParseLayer(string className, out ArbitraryStyle result)
         {
-            if (!TryParse(className, out result))
+            if (!TryParseComposed(className, out result))
             {
                 return false;
             }
@@ -86,6 +86,19 @@ namespace Velvet
             {
                 StyleFilterValueParser.QuietUnregistered = was;
             }
+        }
+
+        // TryParse, where a value the browser rejects in a family Tailwind composes through one declaration is a
+        // layer of its own (ArbitraryStyle.Rejected) rather than no layer: it has to hold the property at its rank,
+        // as the rejected value does in the browser, for the family's composer to see it.
+        internal static bool TryParseComposed(string className, out ArbitraryStyle result)
+        {
+            if (StyleCompositeRejection.TryReadRejected(className, out var property))
+            {
+                result = ArbitraryStyle.RejectedIn(property);
+                return true;
+            }
+            return TryParse(className, out result);
         }
 
         // Parses using IndexOf + string operations rather than regex — a per-class hot path.
@@ -371,8 +384,8 @@ namespace Velvet
                 or ArbitraryProperty.BorderRightWidth or ArbitraryProperty.BorderBottomWidth
                 or ArbitraryProperty.BorderLeftWidth;
 
-        // A <line-width> keyword (thin, medium, thick) or a font-size keyword, at the sizes Chromium computes,
-        // where Tailwind's type tests hand one to border-width or font-size.
+        // A <line-width> keyword (thin, medium, thick) or a font-size keyword, where Tailwind's type tests hand one
+        // to border-width or font-size. The sizes are a browser's, measured; BareNumberBracketTests pins them.
         private static bool TryParseKeywordLength(
             ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
@@ -812,6 +825,13 @@ namespace Velvet
                 var suffix = cls.AsSpan("translate-x-".Length); // the x and y prefixes share a length
                 return suffix.SequenceEqual("full".AsSpan()) || TryGetSpacingPx(suffix, out _);
             }
+            // The presets writing both axes (translate-4, translate-1/2, translate-full, translate-px) have no USS
+            // class either, and merge with the axis layers the same way.
+            if (cls.StartsWith("translate-", StringComparison.Ordinal))
+            {
+                var suffix = cls.AsSpan("translate-".Length);
+                return cls.IndexOf('/') >= 0 || suffix.SequenceEqual("full".AsSpan()) || TryGetSpacingPx(suffix, out _);
+            }
             // Per-axis scale presets (scale-x-50 / scale-y-110) have no USS class; route them to the merge path.
             // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here. Span-based to
             // keep this per-class hot gate allocation-free (matching the AsSpan style above).
@@ -1013,13 +1033,14 @@ namespace Velvet
             result = default;
             var isX = body.StartsWith("translate-x-", StringComparison.Ordinal);
             var isY = !isX && body.StartsWith("translate-y-", StringComparison.Ordinal);
-            if (!isX && !isY)
+            if (!isX && !isY && !body.StartsWith("translate-", StringComparison.Ordinal))
             {
                 return false;
             }
 
-            var suffix = body.Substring("translate-x-".Length); // the x and y prefixes share a length
-            var property = isX ? ArbitraryProperty.TranslateX : ArbitraryProperty.TranslateY;
+            // the x and y prefixes share a length
+            var suffix = body.Substring(isX || isY ? "translate-x-".Length : "translate-".Length);
+            var property = isX ? ArbitraryProperty.TranslateX : isY ? ArbitraryProperty.TranslateY : ArbitraryProperty.Translate;
             // The slash form (percent of the element's own size), translate-x-full (100%) and the spacing-scale
             // presets route to the same TranslateX/Y merge so an x and a y preset compose instead of clobbering
             // via the `translate` shorthand.
@@ -1574,16 +1595,17 @@ namespace Velvet
         internal static StyleClassProjection.Model? TryGetProjection(VisualElement element)
             => element != null && s_layers.TryGetValue(element, out var map) ? map.Projection : null;
 
-        internal static bool HasImportantInlineOutside(VisualElement element, StyleLonghandSet written,
+        internal static bool HasImportantInlineOutside(VisualElement element, ArbitraryProperty slot,
             HashSet<ArbitraryProperty> swapped)
         {
             if (!s_layers.TryGetValue(element, out var map))
             {
                 return false;
             }
+            var written = StyleArbitraryLonghands.Of(slot);
             foreach (var pair in map)
             {
-                if (!StyleArbitraryLonghands.Of(pair.Key).Overlaps(written))
+                if (!HoldsMotionSlot(pair.Key, slot, written))
                 {
                     continue;
                 }
@@ -1593,6 +1615,60 @@ namespace Velvet
                         && priority <= StyleLayerPriority.WithRule(
                             StyleLayerPriority.ImportantOf(StyleLayerPriority.Base), int.MaxValue);
                     if ((priority & StyleLayerPriority.Important) != 0 && !swappedBase)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // A translate axis is held by its own layers and the both-axis ones, which share its longhand with the other
+        // axis's layers; every other slot by the layers writing its longhands.
+        private static bool HoldsMotionSlot(ArbitraryProperty property, ArbitraryProperty slot, StyleLonghandSet written)
+        {
+            if (slot != ArbitraryProperty.TranslateX && slot != ArbitraryProperty.TranslateY)
+            {
+                return StyleArbitraryLonghands.Of(property).Overlaps(written);
+            }
+            return property == slot || property == ArbitraryProperty.Translate;
+        }
+
+        // The top layer of property on element that a swap does not write: a layer of a property the swap writes
+        // counts only under a variant, which the swap's own classes never carry.
+        internal static bool TryRestingLayer(VisualElement element, ArbitraryProperty property,
+            HashSet<ArbitraryProperty> swapped, out ArbitraryStyle style, out long key)
+        {
+            style = default;
+            key = 0;
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return false;
+            }
+            if (!TryWinningKey(map, property, out style, out key))
+            {
+                return false;
+            }
+            return !swapped.Contains(property) || StyleLayerPriority.UnderVariant(key);
+        }
+
+        // Whether a layer holding slot, as HoldsMotionSlot reads it, is in force under a variant.
+        internal static bool HoldsVariantLayer(VisualElement element, ArbitraryProperty slot)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return false;
+            }
+            var written = StyleArbitraryLonghands.Of(slot);
+            foreach (var pair in map)
+            {
+                if (!HoldsMotionSlot(pair.Key, slot, written))
+                {
+                    continue;
+                }
+                foreach (var key in pair.Value.Keys)
+                {
+                    if (StyleLayerPriority.UnderVariant(key))
                     {
                         return true;
                     }
@@ -1719,8 +1795,13 @@ namespace Velvet
         // highest priority a class beat, and layers die from the bottom up, so the top layer sitting at or
         // below the floor means every layer does.
         private static bool TryWinningLayer(LayerMap map, ArbitraryProperty property, out ArbitraryStyle style)
+            => TryWinningKey(map, property, out style, out _);
+
+        // TryWinningLayer, with the winning layer's key.
+        private static bool TryWinningKey(LayerMap map, ArbitraryProperty property, out ArbitraryStyle style, out long key)
         {
             style = default;
+            key = 0;
             if (!map.TryGetValue(property, out var layers) || layers.Count == 0)
             {
                 return false;
@@ -1731,6 +1812,7 @@ namespace Velvet
                 return false;
             }
             style = layers.Values[top];
+            key = layers.Keys[top];
             return true;
         }
 
@@ -2973,7 +3055,8 @@ namespace Velvet
         // one inline `translate` / `scale`, so their winners must be composed before that write.
         private static void ResolveAndApply(VisualElement element, ArbitraryProperty property, LayerMap map)
         {
-            if (property == ArbitraryProperty.TranslateX || property == ArbitraryProperty.TranslateY)
+            if (property == ArbitraryProperty.TranslateX || property == ArbitraryProperty.TranslateY
+                || property == ArbitraryProperty.Translate)
             {
                 ApplyCombinedTranslate(element, map);
                 return;
@@ -3217,11 +3300,18 @@ namespace Velvet
 
         private static void ApplyCombinedTranslate(VisualElement element, LayerMap map)
         {
-            var hasX = TryWinningLayer(map, ArbitraryProperty.TranslateX, out var xw);
-            var hasY = TryWinningLayer(map, ArbitraryProperty.TranslateY, out var yw);
+            var hasX = TryWinningAxis(map, ArbitraryProperty.TranslateX, out var xw);
+            var hasY = TryWinningAxis(map, ArbitraryProperty.TranslateY, out var yw);
             if (!hasX && !hasY)
             {
                 element.style.translate = StyleKeyword.Null;
+                return;
+            }
+            // Both axes are written by one translate declaration, which a rejected value holding either one makes
+            // invalid, leaving no translation.
+            if ((hasX && xw.Rejected) || (hasY && yw.Rejected))
+            {
+                element.style.translate = new StyleTranslate(StyleKeyword.None);
                 return;
             }
             var x = hasX ? new Length(xw.Value, xw.Unit) : new Length(0f);
@@ -3229,25 +3319,60 @@ namespace Velvet
             element.style.translate = new Translate(x, y);
         }
 
+        // The layer holding one translate axis: the winning layer of the axis or of Translate, which writes both,
+        // whichever has the higher key, the axis on a tie (see ArbitraryProperty.Translate).
+        private static bool TryWinningAxis(LayerMap map, ArbitraryProperty axis, out ArbitraryStyle style)
+        {
+            var hasAxis = TryWinningKey(map, axis, out style, out var axisKey);
+            if (TryWinningKey(map, ArbitraryProperty.Translate, out var both, out var bothKey) && (!hasAxis || bothKey > axisKey))
+            {
+                style = both;
+                return true;
+            }
+            return hasAxis;
+        }
+
         private static void ApplyCombinedScale(VisualElement element, LayerMap map)
         {
             var hasX = TryWinningLayer(map, ArbitraryProperty.ScaleX, out var xw);
             var hasY = TryWinningLayer(map, ArbitraryProperty.ScaleY, out var yw);
-            var hasUniform = TryWinningLayer(map, ArbitraryProperty.Scale, out var uw);
-            if (!hasX && !hasY && !hasUniform)
+            if (!hasX && !hasY && !TryWinningLayer(map, ArbitraryProperty.Scale, out _))
             {
                 element.style.scale = StyleKeyword.Null;
                 return;
             }
-            var uniform = hasUniform ? uw.Value : UniformScaleFromClasses(element);
+            if (TryDrawnScaleBracket(map, out var uw))
+            {
+                element.style.scale = new Scale(new Vector2(uw.Value, uw.Value));
+                return;
+            }
+            // As for translate, over the scale declaration the axes share; a uniform scale-<n> writes that same
+            // declaration, so none of it is drawn.
+            if ((hasX && xw.Rejected) || (hasY && yw.Rejected))
+            {
+                element.style.scale = new StyleScale(StyleKeyword.None);
+                return;
+            }
+            var uniform = UniformScaleFromClasses(element);
             var x = hasX ? xw.Value : uniform;
             var y = hasY ? yw.Value : uniform;
             element.style.scale = new Scale(new Vector2(x, y));
         }
 
+        // scale-[…] declares scale itself rather than the axis variables, and Tailwind emits it after an axis utility
+        // of the same rank, so at or above every axis layer it is drawn alone; below one, the axis utility's
+        // declaration replaces it and it supplies neither axis.
+        private static bool TryDrawnScaleBracket(LayerMap map, out ArbitraryStyle bracket)
+        {
+            var hasX = TryWinningKey(map, ArbitraryProperty.ScaleX, out _, out var xKey);
+            var hasY = TryWinningKey(map, ArbitraryProperty.ScaleY, out _, out var yKey);
+            return TryWinningKey(map, ArbitraryProperty.Scale, out bracket, out var bracketKey)
+                && (!hasX || bracketKey >= xKey) && (!hasY || bracketKey >= yKey);
+        }
+
         private static void RefreshScaleClassFallback(VisualElement element, LayerMap map, float? previousUniform)
         {
-            if (previousUniform.HasValue && !TryWinningLayer(map, ArbitraryProperty.Scale, out _)
+            if (previousUniform.HasValue && !TryDrawnScaleBracket(map, out _)
                 && TryWinningLayer(map, ArbitraryProperty.ScaleX, out _) != TryWinningLayer(map, ArbitraryProperty.ScaleY, out _)
                 && previousUniform.Value != UniformScaleFromClasses(element))
             {
@@ -3255,8 +3380,17 @@ namespace Velvet
             }
         }
 
+        // A uniform scale-<n> writes both axes' variables; a scale-x-* or scale-y-* layer above it takes one axis, and
+        // the projection then takes the class off the element, so the other axis is read from the class the
+        // projection holds highest rather than from the live list. Two held at one key settle by the stylesheet's
+        // order, as the live list does below.
         private static float UniformScaleFromClasses(VisualElement element)
         {
+            if (TryGetProjection(element)?.Strongest(UniformScalePlace) is { } held)
+            {
+                TryGetUniformScalePreset(held, out var strongest);
+                return strongest;
+            }
             var uniform = 1f;
             var position = -1;
             foreach (var cls in element.GetClasses())
@@ -3270,6 +3404,15 @@ namespace Velvet
                 }
             }
             return uniform;
+        }
+
+        private static int UniformScalePlace(string cls)
+        {
+            if (!TryGetUniformScalePreset(cls, out _))
+            {
+                return -1;
+            }
+            return StyleUtilityProperties.TryGet(cls, out var rule) ? rule.CascadePosition : -1;
         }
 
         private static bool TryGetUniformScalePreset(string cls, out float scale)
@@ -3364,22 +3507,66 @@ namespace Velvet
             }
         }
 
+        private static bool HoldsRejectedFilter(LayerMap map)
+        {
+            foreach (var prop in s_filterOrder)
+            {
+                if (HoldsRejected(map, prop))
+                {
+                    return true;
+                }
+            }
+            return HoldsRejected(map, ArbitraryProperty.FilterDropShadow)
+                || (HoldsRejected(map, ArbitraryProperty.FilterDropShadowColor) && ReadsDropShadowColour(map));
+        }
+
+        // Whether the drop shadow drawn reads --tw-drop-shadow-color, as AppendDropShadows decides it.
+        private static bool ReadsDropShadowColour(LayerMap map)
+        {
+            if (!map.TryGetValue(ArbitraryProperty.FilterDropShadow, out var sizes) || sizes.Count == 0)
+            {
+                return false;
+            }
+            if (!map.TryGetValue(ArbitraryProperty.FilterDropShadowColor, out var colors) || colors.Count == 0)
+            {
+                return false;
+            }
+            var top = sizes.Values[sizes.Count - 1].DropShadow;
+            if (top == null)
+            {
+                return false;
+            }
+            return (!top.Literal || ColourWrites(sizes, colors)) && SizeVariable(sizes) != null;
+        }
+
+        // A colour at or above the size's rank replaces the colours a literal size writes.
+        private static bool ColourWrites(SortedList<long, ArbitraryStyle> sizes, SortedList<long, ArbitraryStyle> colors)
+            => StyleLayerPriority.RankOf(colors.Keys[colors.Count - 1]) >= StyleLayerPriority.RankOf(sizes.Keys[sizes.Count - 1]);
+
+        private static bool HoldsRejected(LayerMap map, ArbitraryProperty property)
+            => map.TryGetValue(property, out var layers) && layers.Count > 0 && layers.Values[layers.Count - 1].Rejected;
+
         private static List<FilterFunction>? ComposeFilter(VisualElement element, LayerMap map, out bool dropped)
         {
             dropped = false;
             List<FilterFunction>? functions = null;
-            foreach (var prop in s_filterOrder)
+            // The built-in functions and the drop shadow are one filter declaration, which a rejected value
+            // holding any of them makes invalid; a filter-[name:…] custom is a declaration of its own.
+            if (!HoldsRejectedFilter(map))
             {
-                if (!map.TryGetValue(prop, out var layers) || layers.Count == 0)
+                foreach (var prop in s_filterOrder)
                 {
-                    continue;
+                    if (!map.TryGetValue(prop, out var layers) || layers.Count == 0)
+                    {
+                        continue;
+                    }
+                    if (BuildFilter(prop, layers.Values[layers.Count - 1].Value) is { } fn)
+                    {
+                        (functions ??= new List<FilterFunction>()).Add(fn);
+                    }
                 }
-                if (BuildFilter(prop, layers.Values[layers.Count - 1].Value) is { } fn)
-                {
-                    (functions ??= new List<FilterFunction>()).Add(fn);
-                }
+                AppendDropShadows(element, map, ref functions);
             }
-            AppendDropShadows(element, map, ref functions);
             // Customs compose AFTER every built-in, in first-application order — each entry contributing
             // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
             // SortedList wins" rule the built-ins use above, just keyed by name instead of by
@@ -3446,8 +3633,7 @@ namespace Velvet
                 var color = colors.Values[colors.Count - 1].Color;
                 color.a *= AlphaVariable(sizes) ?? 1f;
                 variable = color;
-                colorWrites = StyleLayerPriority.RankOf(colors.Keys[colors.Count - 1])
-                    >= StyleLayerPriority.RankOf(sizes.Keys[sizes.Count - 1]);
+                colorWrites = ColourWrites(sizes, colors);
             }
             var literal = top.Literal && !colorWrites;
             var size = literal ? top : SizeVariable(sizes);
@@ -3816,6 +4002,7 @@ namespace Velvet
                 // single combined translate/scale when that matters.
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
+                case ArbitraryProperty.Translate:
                     element.style.translate = StyleKeyword.Null;
                     return true;
                 case ArbitraryProperty.Scale:

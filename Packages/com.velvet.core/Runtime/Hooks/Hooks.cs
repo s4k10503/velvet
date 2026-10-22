@@ -123,7 +123,11 @@ namespace Velvet
         #region UseStore
 
         /// <summary>
-        /// Subscribes to an external Store via a selector. Must be used inside Render() only.
+        /// Subscribes to an external Store via a selector. Must be used inside Render() only. The subscription is
+        /// made in the passive effects of the commit, as <see cref="UseSyncExternalStore{T}"/> makes its own, so a
+        /// render that throws or suspends subscribes nothing; a change the store makes between the render and the
+        /// subscription re-renders the component once it is made. A change re-renders it as a
+        /// <see cref="UseSyncExternalStore{T}"/> notification does: on the Urgent lane, inside a transition as well.
         /// </summary>
         /// <typeparam name="TStore">Store snapshot type.</typeparam>
         /// <typeparam name="TSel">Selected projection type returned to the component.</typeparam>
@@ -159,39 +163,15 @@ namespace Velvet
 
             if (index >= fiber.StoreSlots.Count)
             {
-                var slot = new HookStoreSlot<TStore, TSel>
-                {
-                    Store = store,
-                    Selector = selector,
-                    Comparer = cmp,
-                    LastValue = selector(snapshot),
-                };
-
-                slot.Subscription = store.Subscribe(snapshot =>
-                {
-                    if (fiber.IsDisposed) return;
-                    TSel next;
-                    try
-                    {
-                        next = slot.Selector(snapshot);
-                    }
-                    catch
-                    {
-                        // A throwing selector is not swallowed in
-                        // the subscription path. Re-render so the render-phase selector re-throws and the
-                        // exception reaches the ErrorBoundary, symmetric with the unguarded render path.
-                        RequestRender(fiber);
-                        return;
-                    }
-
-                    if (slot.Comparer.Equals(slot.LastValue, next)) return;
-                    slot.LastValue = next;
-                    RequestRender(fiber);
-                });
+                var slot = new HookStoreSlot<TStore, TSel> { Store = store };
+                slot.SubscribeEffect = new HookEffectSlot { EffectFactory = () => SubscribeStore(fiber, slot) };
+                var selected = selector(snapshot);
+                slot.Render(selector, cmp, selected);
 
                 fiber.StoreSlots.Add(slot);
-                CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, slot.LastValue);
-                return slot.LastValue;
+                QueueStoreSubscription(fiber, slot);
+                QueueCatchUpIfPinnedBehind(fiber, slot, snapshot);
+                return selected;
             }
 
             if (fiber.StoreSlots[index] is not HookStoreSlot<TStore, TSel> typed)
@@ -207,23 +187,78 @@ namespace Velvet
                     " This violates the Rules of Hooks.");
             }
 
-            typed.Selector = selector;
-            typed.Comparer = cmp;
-            typed.LastValue = selector(snapshot);
-            CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, typed.LastValue);
-            return typed.LastValue;
+            var value = selector(snapshot);
+            typed.Render(selector, cmp, value);
+            QueueStoreSubscription(fiber, typed);
+            QueueCatchUpIfPinnedBehind(fiber, typed, snapshot);
+            return value;
+        }
+
+        // A render that throws or suspends has its pending passive effects truncated, so it subscribes nothing;
+        // the next render that commits finds no subscription and queues it again.
+        private static void QueueStoreSubscription<TStore, TSel>(ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot)
+        {
+            if (slot.Subscription != null || IsStrictDiagnosticPass(fiber)) return;
+            var pending = fiber.PendingEffects ??= new List<HookEffectSlot>();
+            if (!pending.Contains(slot.SubscribeEffect)) pending.Add(slot.SubscribeEffect);
+        }
+
+        // A change re-renders as UseSyncExternalStore's does: on the sync lane, inside a transition as well, and
+        // flushed from the main thread's posted work. The notification between the render and this effect reached
+        // no subscriber, so the selection is compared once more against the live snapshot after subscribing.
+        private static Action SubscribeStore<TStore, TSel>(ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot)
+        {
+            slot.Subscription = slot.Store.Subscribe(snapshot =>
+            {
+                if (SelectionChanged(fiber, slot, snapshot)) FiberWorkLoop.RequestExternalStoreRender(fiber);
+            });
+            if (SelectionChanged(fiber, slot, slot.Store.Current)) FiberWorkLoop.RequestExternalStoreRender(fiber);
+            return slot.Dispose;
+        }
+
+        // Whether snapshot asks the component for a render, recording the selection it compared against. A
+        // throwing selector is not swallowed: the render it asks for repeats the call, so the exception reaches the
+        // ErrorBoundary, symmetric with the unguarded render path.
+        private static bool SelectionChanged<TStore, TSel>(
+            ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot, TStore snapshot)
+        {
+            if (fiber.IsDisposed) return false;
+            TSel next;
+            try
+            {
+                next = slot.Selector(snapshot);
+            }
+            catch
+            {
+                return true;
+            }
+
+            if (slot.Comparer.Equals(slot.LastValue, next)) return false;
+            slot.LastValue = next;
+            return true;
         }
 
         // A pin older than the store leaves a reader whose selection the mutation changed behind it with no
-        // notification still to come: the mutation notified before this render overwrote LastValue, or before
-        // this reader subscribed. The render this asks for reads the store in a later pass, which pins afresh.
-        private static void CatchUpIfPinnedBehind<TStore, TSel>(
-            ComponentFiber fiber, Store<TStore> store, TStore snapshot, Func<TStore, TSel> selector,
-            IEqualityComparer<TSel> comparer, TSel selected)
+        // notification still to come: the mutation notified before this render read the pin, or before this reader
+        // subscribed. As UseSyncExternalStore's check does, the passive effects of the commit compare the committed
+        // selection with the live store and force a sync-lane re-render, which reads the store in a later pass that
+        // pins afresh; a render that never commits queues nothing.
+        private static void QueueCatchUpIfPinnedBehind<TStore, TSel>(
+            ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot, TStore snapshot)
         {
-            var live = store.Current;
-            if (ObjectIs.AreEqual(snapshot, live) || comparer.Equals(selected, selector(live))) return;
-            FiberWorkLoop.ScheduleRerender(fiber, FiberUpdatePriority.Normal);
+            var live = slot.Store.Current;
+            if (ObjectIs.AreEqual(snapshot, live) || IsStrictDiagnosticPass(fiber)) return;
+            if (slot.RenderedComparer.Equals(slot.RenderedValue, slot.RenderedSelector(live))) return;
+            slot.CatchUpEffect ??= new HookEffectSlot
+            {
+                EffectFactory = () =>
+                {
+                    if (SelectionChanged(fiber, slot, slot.Store.Current)) FiberWorkLoop.RequestExternalStoreRender(fiber);
+                    return null;
+                },
+            };
+            var pending = fiber.PendingEffects ??= new List<HookEffectSlot>();
+            if (!pending.Contains(slot.CatchUpEffect)) pending.Add(slot.CatchUpEffect);
         }
 
         // Returns the store snapshot pinned for the current batch drain wave (see
@@ -248,21 +283,23 @@ namespace Velvet
         /// <paramref name="getSnapshot"/> must return the same value, compared with <c>Object.is</c>, on every call
         /// while the store has not changed: cache the snapshot instead of building a new one per read. A store-change
         /// notification re-renders the component when <paramref name="getSnapshot"/> then returns a value that is not
-        /// <c>Object.is</c>-equal to the one it last rendered, or throws. A render that returns another snapshot than
-        /// the previous one, or that subscribes, checks the snapshot again once it commits, so a snapshot built afresh
-        /// per read re-renders the component after every render until the scheduler's update-depth limit drops the
-        /// update and logs an error. In the Editor, a hook whose two consecutive reads in one render differ logs an
+        /// <c>Object.is</c>-equal to the one it last committed, or throws. A render that returns another snapshot than
+        /// the previous one, or that subscribes, checks the snapshot again in its passive effects, so a snapshot built
+        /// afresh per read re-renders the component after every render until the scheduler's update-depth limit drops
+        /// the update and logs an error. In the Editor, a hook whose two consecutive reads in one render differ logs an
         /// error once.
         /// </para>
         /// <para>
         /// <paramref name="subscribe"/> receives the callback to invoke when the store changes and returns the action
-        /// that unsubscribes it. It is called on the first render, and again, after the previous subscription is
-        /// removed, by a render passing a <paramref name="subscribe"/> that is not <see cref="Delegate.Equals(object)"/>
-        /// to the previous one, or by the render after one whose call threw; the StrictMode diagnostic render never
-        /// calls it. A method group on the same instance compares equal across renders; a lambda capturing a local is
-        /// a new closure each render and re-subscribes on each later render, as an inline subscribe function does in
-        /// React. Unmounting removes the subscription. A change the store raises while <paramref name="subscribe"/>
-        /// runs is returned by the render that subscribed.
+        /// that unsubscribes it. It is called in the passive effects of the first commit, and again, after the previous
+        /// subscription is removed, in those of a commit whose render passed a <paramref name="subscribe"/> that is
+        /// not <see cref="Delegate.Equals(object)"/> to the previous one, or that follows a call that threw. A render
+        /// whose body throws or suspends, and an attempt a render-phase update re-runs, subscribe and unsubscribe
+        /// nothing, and the StrictMode diagnostic render never calls it. A method group on the same instance compares equal across renders; a lambda capturing a
+        /// local is a new closure each render and re-subscribes on each later commit, as an inline subscribe function
+        /// does in React. Unmounting removes the subscription. A change the store makes between the render and the
+        /// subscription, or while <paramref name="subscribe"/> runs, re-renders the component once the subscription
+        /// is made.
         /// </para>
         /// <para>
         /// The callback must be invoked on the Unity main thread: invoked from another thread, it throws
@@ -277,9 +314,8 @@ namespace Velvet
         /// Within one batch drain pass, readers passing equal <paramref name="getSnapshot"/> delegates observe the
         /// snapshot the pass's first read pinned, as readers of one store do through
         /// <see cref="UseStore{TStore,TSel}"/>; the next pass, the delayed tier's included, pins afresh. A render
-        /// outside a drain reads the live snapshot, and so does a render whose <paramref name="subscribe"/> raises a
-        /// change while it runs. A render that subscribes and returns a pin the store has moved past asks for a
-        /// re-render once it commits.
+        /// outside a drain reads the live snapshot. A render that returns a pin the store has moved past asks for a
+        /// re-render in its passive effects.
         /// </para>
         /// </remarks>
         /// <typeparam name="T">Snapshot type.</typeparam>
@@ -324,23 +360,15 @@ namespace Velvet
             // The wave pin is keyed by getSnapshot itself: equal delegates read the same value, whichever
             // component holds them.
             var ctx = fiber.Reconciler?.Context;
-            slot.Record(getSnapshot, ctx != null ? ctx.PinStoreSnapshot(getSnapshot, live) : live);
+            var rendered = ctx != null ? ctx.PinStoreSnapshot(getSnapshot, live) : live;
 
-            // The StrictMode diagnostic render subscribes nothing: a subscription is externally visible.
-            if (!IsStrictDiagnosticPass(fiber) && (slot.Subscribe == null || !slot.Subscribe.Equals(subscribe)))
+            // The StrictMode diagnostic render queues nothing: its closures are the discarded pass's.
+            if (!IsStrictDiagnosticPass(fiber))
             {
-                slot.Resubscribe(subscribe);
-                var latest = getSnapshot();
-                if (!ObjectIs.AreEqual(live, latest)) slot.Value = latest;
+                slot.Render(fiber.PendingEffects ??= new List<HookEffectSlot>(), subscribe, getSnapshot, rendered);
             }
 
-            // MUTANT_SURVIVES(equivalent, clause removed): the diagnostic render finds the flag cleared by a commit check that already ran, or queues a second one beside it in the same commit, whose request coalesces with the first.
-            if (slot.AwaitsCommitCheck && !IsStrictDiagnosticPass(fiber))
-            {
-                (fiber.PendingLayoutEffects ??= new List<HookEffectSlot>()).Add(slot.CommitCheck);
-            }
-
-            return slot.Value;
+            return rendered;
         }
 
         #endregion

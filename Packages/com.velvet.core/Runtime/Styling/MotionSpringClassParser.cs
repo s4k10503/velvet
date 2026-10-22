@@ -183,6 +183,15 @@ namespace Velvet
             return false;
         }
 
+        private static bool TryParseBothTranslateAxes(string className, out float value)
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(className, out _);
+            var parsed = StyleArbitraryValueResolver.TryParse(core, out var arbitrary)
+                && arbitrary.Property == ArbitraryProperty.Translate && arbitrary.Unit == LengthUnit.Pixel;
+            value = parsed ? arbitrary.Value : 0f;
+            return parsed;
+        }
+
         /// <summary>
         /// Builds the spring plan for a from/to class-array swap — see <see cref="PairAxis"/> for the five fixed
         /// axes and <see cref="PairProperties"/> for the property channels. <paramref name="context"/>, when the
@@ -314,6 +323,9 @@ namespace Velvet
             };
 
             public bool HeldUnread(ArbitraryProperty axis) => (UnreadAxes & (1 << s_slotIndex[(int)axis])) != 0;
+
+            // A rejected value holding either translate axis, which leaves the element no translation at all.
+            public bool RejectedTranslate { get; init; }
         }
 
         // Translate x/y are independent springs but always compose onto ONE inline `translate` (UI Toolkit has
@@ -324,6 +336,13 @@ namespace Velvet
         private static void PairTranslate(in SideScan from, in SideScan to,
             float restingTranslateX, float restingTranslateY, MotionSlotContext? context, ref SpringPlan plan)
         {
+            // The resolver draws no translation where the to-side holds a rejected value on either axis, so neither
+            // axis gets a channel and the swap lands at once. A rejected scale-x-/scale-y- needs no such rule: it
+            // holds the one scale channel unread.
+            if (to.RejectedTranslate)
+            {
+                return;
+            }
             var x = PairAxis(in from, in to, ArbitraryProperty.TranslateX, 0f, context);
             var y = PairAxis(in from, in to, ArbitraryProperty.TranslateY, 0f, context);
             if (x == null && y == null)
@@ -397,6 +416,8 @@ namespace Velvet
         // MotionSlotCascadeTests pins the ordering between inline, stylesheet and per-axis scale holders.
         private const long InlineRank = 1L << 40;
         private const long ImportantRank = 1L << 45;
+        // scale-[…] shares the per-axis band, so it and the axis utilities order by importance and then Tailwind's
+        // order, as the resolver's TryDrawnScaleBracket decides which scale is drawn.
         private const long AxisScaleRank = 1L << 50;
 
         // The token holding one slot on one side: its precedence, and what it reads as when a magnitude can be
@@ -407,6 +428,7 @@ namespace Velvet
             public long Precedence;
             public bool Readable;
             public bool Swapped;
+            public bool Rejected;
             public ArbitraryStyle Value;
         }
 
@@ -515,6 +537,8 @@ namespace Velvet
                     (properties ??= new Dictionary<ArbitraryProperty, ArbitraryStyle>())[s_slots[i]] = claims[i].Value;
                 }
             }
+            var rejectedTranslate = (claims[s_slotIndex[(int)ArbitraryProperty.TranslateX]].Rejected
+                || claims[s_slotIndex[(int)ArbitraryProperty.TranslateY]].Rejected);
             var unreadAxes = 0;
             // MUTANT_SURVIVES(equivalent, boundary): <= adds only bit 5, while HeldUnread reads axis bits 0..4.
             // The nonempty drivable map has a minimal property after those axes, so claims[5] exists.
@@ -536,6 +560,7 @@ namespace Velvet
                 SwappedAxes = swappedAxes,
                 SwappedProperties = swappedProperties,
                 UnreadAxes = unreadAxes,
+                RejectedTranslate = rejectedTranslate,
             };
         }
 
@@ -561,10 +586,67 @@ namespace Velvet
                 {
                     claims[i] = new SlotClaim { Claimed = true, Precedence = RestingInlineRank };
                 }
+                if (claims[i].Precedence < RestingAxisTranslateRank
+                    && !IsSubset(StyleArbitraryLonghands.Of(s_slots[i]), importantClasses)
+                    && context.HoldsRestingAxisTranslate(s_slots[i]))
+                {
+                    claims[i] = new SlotClaim { Claimed = true, Precedence = RestingAxisTranslateRank };
+                }
+                var variantRank = RestingVariantRank(s_slots[i]);
+                if (claims[i].Precedence < variantRank
+                    && !IsSubset(StyleArbitraryLonghands.Of(s_slots[i]), importantClasses)
+                    && context.HoldsRestingVariant(s_slots[i]))
+                {
+                    claims[i] = new SlotClaim { Claimed = true, Precedence = variantRank };
+                }
+                ClaimRestingRejected(context, claims, i, variantRank);
+            }
+        }
+
+        // A resting holder of a value the browser rejects, claimed at the rank the claims above give its kind of holder,
+        // so a token of the swap that outranks it still takes the slot.
+        private static void ClaimRestingRejected(MotionSlotContext context, SlotClaim[] claims, int i, long variantRank)
+        {
+            var slot = s_slots[i];
+            long key;
+            long rank;
+            if (slot == ArbitraryProperty.TranslateX || slot == ArbitraryProperty.TranslateY)
+            {
+                if (!context.TryRestingTranslateHolder(slot, out var holder, out key, out var axisLayer) || !holder.Rejected)
+                {
+                    return;
+                }
+                rank = axisLayer ? RestingAxisTranslateRank : RestingInlineRank;
+            }
+            else if (slot == ArbitraryProperty.Scale)
+            {
+                if (!context.TryRestingRejectedScaleAxis(out key))
+                {
+                    return;
+                }
+                rank = RestingInlineRank;
+            }
+            else
+            {
+                return;
+            }
+            rank = StyleLayerPriority.UnderVariant(key) ? variantRank : rank;
+            if (claims[i].Precedence <= rank)
+            {
+                claims[i] = new SlotClaim { Claimed = true, Precedence = rank, Rejected = true };
             }
         }
 
         private const long RestingInlineRank = InlineRank - 1;
+
+        // A resting translate-x-* or translate-y-* holds its axis over a both-axis translate the swap writes at the
+        // same importance, as the resolver's TryWinningAxis gives the axis a tie; it still yields to an important one.
+        private const long RestingAxisTranslateRank = InlineRank + (1L << 30);
+
+        // A resting holder under a variant outranks every plain token of the swap, which sit in the scale band or
+        // below the inline band's spacing and place offsets by slot, and yields to an important one.
+        private static long RestingVariantRank(ArbitraryProperty slot)
+            => (slot == ArbitraryProperty.Scale ? AxisScaleRank : InlineRank) + (1L << 31);
 
         // The five axes lead s_slots.
         private const int AxisSlotCount = 5;
@@ -613,6 +695,8 @@ namespace Velvet
                 return;
             }
             var hasAxisValue = TryParseAxisValue(className, out var readAxis, out var axisValue);
+            // TryRank leaves a both-axis translate's TranslateAxis unset, so the token writes exactly the two translate slots.
+            var bothTranslateAxes = TryParseBothTranslateAxes(className, out var bothAxesValue);
             var property = default(ArbitraryStyle);
             var hasProperty = !hasAxisValue && MotionPropertyClassParser.TryParse(className, out property);
             for (var i = 0; i < claims.Length; i++)
@@ -624,13 +708,16 @@ namespace Velvet
                 {
                     continue;
                 }
-                claims[i] = new SlotClaim { Claimed = true, Precedence = token.Precedence, Swapped = swapped };
+                claims[i] = new SlotClaim
+                {
+                    Claimed = true, Precedence = token.Precedence, Swapped = swapped, Rejected = token.Rejected,
+                };
                 // MUTANT_SURVIVES(equivalent, clause removed): deleting the slot comparison changes no admitted write.
-                // Axis-readable opacity/scale/rotate tokens write one axis; translates set TranslateAxis.
-                if (hasAxisValue && slot == AxisSlot(readAxis))
+                // Axis-readable opacity/scale/rotate tokens write one axis; per-axis translates set TranslateAxis.
+                if ((hasAxisValue && slot == AxisSlot(readAxis)) || bothTranslateAxes)
                 {
                     claims[i].Readable = true;
-                    claims[i].Value = new ArbitraryStyle(slot, axisValue, LengthUnit.Pixel);
+                    claims[i].Value = new ArbitraryStyle(slot, bothTranslateAxes ? bothAxesValue : axisValue, LengthUnit.Pixel);
                 }
                 else if (hasProperty && i >= AxisSlotCount
                     && IsSubset(slotLonghands, StyleArbitraryLonghands.Of(property.Property)))
@@ -650,6 +737,7 @@ namespace Velvet
             public ArbitraryProperty? TranslateAxis { get; init; }
             public bool Important { get; init; }
             public bool Inline { get; init; }
+            public bool Rejected { get; init; }
         }
 
         // Two inline spacing utilities tie as the resolver orders them, shorthand before longhand, whichever is
@@ -662,16 +750,18 @@ namespace Velvet
             var core = StyleArbitraryValueResolver.StripImportant(className, out var important);
             if (StyleArbitraryValueResolver.IsInlineResolved(core) && StyleArbitraryValueResolver.TryParseLayer(core, out var inline))
             {
-                var perAxisScale = inline.Property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
+                var declaresScale = inline.Property
+                    is ArbitraryProperty.Scale or ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
                 token = new RankedToken
                 {
-                    Precedence = (perAxisScale ? AxisScaleRank : InlineRank) + (important ? ImportantRank : 0)
+                    Precedence = (declaresScale ? AxisScaleRank : InlineRank) + (important ? ImportantRank : 0)
                         + SpacingOrder(inline.Property) + index,
                     Written = StyleArbitraryLonghands.Of(inline.Property),
                     TranslateAxis = inline.Property is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY
                         ? inline.Property : null,
                     Important = important,
                     Inline = true,
+                    Rejected = inline.Rejected,
                 };
                 return true;
             }

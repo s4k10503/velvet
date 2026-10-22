@@ -144,24 +144,38 @@ namespace Velvet.Tests
         }
 
         private static StrStore s_store;
+        private static string s_selectorRead;
         private static string s_lastRendered;
+        private static ComponentFiber s_readerFiber;
 
         [SetUp]
         public void SetUp()
         {
             _root = new VisualElement();
             s_store = null;
+            s_selectorRead = null;
             s_lastRendered = null;
+            s_readerFiber = null;
         }
 
-        [Component]
+        // Selects the length, which every "vN" snapshot shares, so a store change asks this reader for no render and
+        // only the renders a case schedules read the store; the selector records the snapshot each of them read.
+        [Component(Compiler = false)]
         private static VNode Reader()
         {
-            var v = Hooks.UseStore(s_store, s => s);
-            s_lastRendered = v;
-            return V.Label(name: "reader", text: v);
+            s_readerFiber = FiberAmbientStack.Current;
+            var length = Hooks.UseStore(s_store, s =>
+            {
+                s_selectorRead = s;
+                return s.Length;
+            });
+            s_lastRendered = s_selectorRead;
+            return V.Label(name: "reader", text: length.ToString());
         }
 
+        // GREEN_ON_BASE(characterization): the base's solo delayed drain already opened a fresh wave.
+        // A store change now forces a sync-lane render wherever it is made, so the reader selects a length the change
+        // leaves equal and the delayed render is scheduled directly.
         [Test]
         public void Given_AStalePinFromAPriorImmediateWave_When_ASoloDelayedDrainRuns_Then_TheReaderReadsTheCurrentSnapshot()
         {
@@ -169,19 +183,21 @@ namespace Velvet.Tests
             using var store = new StrStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
+            mounted.FlushEffectsForTest();
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
-            var readerFiber = mounted.Root.Child;
+            var readerFiber = s_readerFiber;
             Assume.That(s_lastRendered, Is.EqualTo("v0"), "Precondition: mounted at v0");
 
             // Establish a pin: an immediate drain renders the reader, which pins the now-current snapshot (v1).
             store.Set("v1");
+            readerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             scheduler.DrainImmediateForTest();
             var renderedByImmediateWave = s_lastRendered;
 
-            // The store mutation happens inside a startTransition callback, so its re-render routes to the
-            // delayed (Transition) tier and the next drain is a SOLO delayed drain with no immediate drain to
-            // open a fresh wave.
-            FiberWorkLoop.StartTransition(readerFiber, new HookTransitionSlot(), () => store.Set("v2"));
+            // The store moves on with no render asked for, and the reader's next render is a Transition one, so the
+            // next drain is a SOLO delayed drain with no immediate drain to open a fresh wave.
+            store.Set("v2");
+            readerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             scheduler.DrainDelayedForTest();
 
             // Assert — the solo delayed drain must open a fresh wave: the reader reads the current snapshot (v2),
@@ -237,12 +253,15 @@ namespace Velvet.Tests
             return V.Button(name: "btn", onClick: () => setTick.Invoke(t => t + 1));
         }
 
+        // GREEN_ON_BASE(characterization): the base's state flush left the mount effect pending and the log clean.
+        // FlushStateForTest now runs it first, so the arrangement runs the mount's effects before clearing the log.
         [Test]
         public void Given_APendingPassiveEffect_When_ADiscreteClickReRenders_Then_TheEffectRunsBeforeTheClicksRender()
         {
             // Arrange — mounted (its mount effect already ran), then a dep change re-renders and SCHEDULES a
             // fresh passive effect (effect:d1) that the EditMode scheduler never drains, so it stays pending.
             _mounted = V.Mount(_root, V.Component(Widget, key: "w"));
+            _mounted.FlushEffectsForTest();
             s_log.Clear();
             s_setDep.Invoke(1);
             _mounted.FlushStateForTest();

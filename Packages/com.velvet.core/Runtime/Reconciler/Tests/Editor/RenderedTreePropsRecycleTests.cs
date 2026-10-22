@@ -436,6 +436,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base wrote the parent's state at the call, so its slot already held the node.
+        // The child now subscribes in the mount's passive effects, which the arrangement runs first, so the store
+        // write is what makes the child's own flush drop the node.
         [Test]
         public void Given_AParentWriteCarryingTheNodeNotYetFolded_When_TheChildRendersAloneAndDropsIt_Then_TheNodeStaysOutOfThePool()
         {
@@ -445,6 +447,7 @@ namespace Velvet.Tests
             s_heldNode = V.Button(text: "held");
             var heldBag = ((ElementNode)s_heldNode).Props;
             using var mounted = V.Mount(_root, V.Component(HeldNodeParent, key: "held-parent"));
+            mounted.FlushEffectsForTest();
             s_setHeldNode.Invoke(s_heldNode);
             store.Increment();
 

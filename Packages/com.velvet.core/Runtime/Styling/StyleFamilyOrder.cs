@@ -38,6 +38,7 @@ namespace Velvet
             (StyleGridClass.IsGridToken, s_noLane),
             (StyleDivideClass.IsDivideToken, s_noLane),
             (StyleShadowClass.IsShadowClass, s_noLane),
+            (StyleShadowClass.IsInsetBoxShadowClass, s_noLane),
             (StyleRingClass.IsRingClass, RingLane),
             (token => StyleClipPathClass.IsClipPathClass(token), s_noLane),
             (token => StyleSkewClass.IsSkewClass(token), s_noLane),

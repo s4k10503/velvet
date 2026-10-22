@@ -101,6 +101,9 @@ namespace Velvet
         // The rank a layer's key carries, without the rule's place.
         public static long RankOf(long key) => key & ~RuleMask;
 
+        // Whether key's rank carries a variant, its important flag aside.
+        public static bool UnderVariant(long key) => (RankOf(key) & ~Important) != Base;
+
         #region Important
         // The important band (!utility / utility!) sits above every ordinary rank while important-versus-
         // important keeps the ordinary order: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats
@@ -254,6 +257,9 @@ namespace Velvet
         ScaleY,       // scale-y-[1.5]    -> scale y axis        (Value = unitless factor, merges with x)
         TranslateX,   // translate-x-[Np] -> translate x axis    (Value + Unit, merges with y)
         TranslateY,   // translate-y-[Np] -> translate y axis    (Value + Unit, merges with x)
+        // translate-4 / translate-[Np] writes both axes, each holding against that axis's layers at its own rank;
+        // at one rank the axis utility holds, Tailwind emitting it after the one writing both.
+        Translate,    // translate-[Np]   -> translate x and y   (Value + Unit)
         Rotate,       // rotate-[45deg]   -> rotate: <deg>       (Value = degrees)
         // origin-[33%_75%] -> transform-origin: <x> <y> <z>. One class carries every component, so unlike the
         // axis pairs above it is one property with a pair payload (Value/Unit + Value2/Unit2, z in Value3).
@@ -379,6 +385,10 @@ namespace Velvet
         // the one edge an edge property writes), bit 1 Value2, bit 2 Value3, bit 3 Value4, in the order Slice
         // carries them. 0 for every other property.
         public int PercentEdges { get; }
+        // A value the browser rejects in a family Tailwind composes through one declaration
+        // (StyleCompositeRejection): the layer ranks as the value would, and its composer writes the family's
+        // none value while it holds. False for every other result.
+        public bool Rejected { get; }
 
         // A keyword value for property.
         public ArbitraryStyle(ArbitraryProperty property, StyleKeyword keyword)
@@ -390,6 +400,15 @@ namespace Velvet
         // The `auto` keyword for a length property.
         public static ArbitraryStyle AutoLength(ArbitraryProperty property) => new ArbitraryStyle(property, true);
 
+        // A layer holding property with a value the browser rejects (see Rejected).
+        public static ArbitraryStyle RejectedIn(ArbitraryProperty property) => new ArbitraryStyle(property, rejected: true, auto: false);
+
+        private ArbitraryStyle(ArbitraryProperty property, bool rejected, bool auto)
+            : this(property, auto)
+        {
+            Rejected = rejected;
+        }
+
         // The inline length this result writes.
         public StyleLength ToStyleLength()
             => Auto ? new StyleLength(StyleKeyword.Auto) : new StyleLength(new Length(Value, Unit));
@@ -397,6 +416,7 @@ namespace Velvet
         private ArbitraryStyle(ArbitraryProperty property, bool auto)
         {
             Property = property;
+            Rejected = false;
             Auto = auto;
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
@@ -416,6 +436,7 @@ namespace Velvet
         public ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit)
         {
             Property = property;
+            Rejected = false;
             Auto = false;
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
@@ -450,6 +471,7 @@ namespace Velvet
             float value2, LengthUnit unit2, float value3 = 0f)
         {
             Property = property;
+            Rejected = false;
             Auto = false;
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
@@ -481,6 +503,7 @@ namespace Velvet
         public ArbitraryStyle(ArbitraryProperty property, Color color)
         {
             Property = property;
+            Rejected = false;
             Auto = false;
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
@@ -500,6 +523,7 @@ namespace Velvet
         public ArbitraryStyle(ArbitraryProperty property, CustomFilterValue custom)
         {
             Property = property;
+            Rejected = false;
             Auto = false;
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;

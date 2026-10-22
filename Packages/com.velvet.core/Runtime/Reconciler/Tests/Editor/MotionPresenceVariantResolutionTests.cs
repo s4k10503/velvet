@@ -191,6 +191,9 @@ namespace Velvet.Tests
 
         private static int s_exitCompletions;
 
+        // GREEN_ON_BASE(characterization): the base's removing render left the completion for the passive flush.
+        // The store is subscribed before its write, so the state flush renders the removal its notification asks for
+        // and runs no passive flush, where a subscription finding the write would have rendered it inside one.
         [Test]
         public void Given_ASpringExitWithNoChannelToDrive_When_TheKeyIsRemoved_Then_OnExitCompleteHasNotRunInThatRender()
         {
@@ -198,6 +201,7 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
+            mounted.FlushEffectsForTest();
 
             // Act
             store.Set("");
@@ -555,7 +559,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): an anchor's completed variant exit was already undone on re-entry.
-        // The passive flush added is the one the completion now settles in.
+        // The removal is the drain a store notification asks for, which consumes its sync-lane request and leaves the
+        // drop render its completion asks for waiting, as a default-lane update waits; a state flush would leave the
+        // request queued for the next passive flush to drain together with the drop.
         [Test]
         public void Given_ACompletedVariantExit_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheRestingVariantIsRestored()
         {
@@ -565,8 +571,9 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
+            mounted.FlushEffectsForTest();
             store.Set("");
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             mounted.FlushEffectsForTest();
             var parked = Parked(mounted, _root.Q<VisualElement>("item-a"));
 
@@ -584,7 +591,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already restored a key re-added inside the completed-exit window.
-        // The passive flush added is the one the completion now settles in.
+        // The removal is the drain a store notification asks for, which consumes its sync-lane request and leaves the
+        // drop render its completion asks for waiting, as a default-lane update waits; a state flush would leave the
+        // request queued for the next passive flush to drain together with the drop.
         [Test]
         public void Given_ACompletedExitOnAMotionBehindAComponent_When_TheKeyIsReAddedBeforeTheDropRender_Then_ItsRestingVariantIsRestored()
         {
@@ -592,9 +601,10 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedDescendantExitHost, key: "host"));
+            mounted.FlushEffectsForTest();
             var before = _root.Q<VisualElement>("item");
             store.Set("");
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             mounted.FlushEffectsForTest();
             var parked = Parked(mounted, _root.Q<VisualElement>("item"));
 
@@ -611,7 +621,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already restored a key re-added inside the completed-exit window.
-        // The passive flush added is the one the completion now settles in.
+        // The removal is the drain a store notification asks for, which consumes its sync-lane request and leaves the
+        // drop render its completion asks for waiting, as a default-lane update waits; a state flush would leave the
+        // request queued for the next passive flush to drain together with the drop.
         [Test]
         public void Given_ACompletedClassicExitOnAVariantMotion_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheExitClassIsRemoved()
         {
@@ -619,8 +631,9 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedClassicExitHost, key: "host"));
+            mounted.FlushEffectsForTest();
             store.Set("");
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             mounted.FlushEffectsForTest();
             var item0 = _root.Q<VisualElement>("item-a");
             var parked = item0?.ClassListContains("anim-fade-exit-to") == true
@@ -636,7 +649,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the re-entry already took an anchor's exit pose off first.
-        // The passive flush added is the one the completion now settles in.
+        // The removal is the drain a store notification asks for, which consumes its sync-lane request and leaves the
+        // drop render its completion asks for waiting, as a default-lane update waits; a state flush would leave the
+        // request queued for the next passive flush to drain together with the drop.
         [Test]
         public void Given_ACompletedVariantExitWithInitial_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheExitPoseIsFullyReplaced()
         {
@@ -646,8 +661,9 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitWithInitialHost, key: "host"));
+            mounted.FlushEffectsForTest();
             store.Set("");
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             mounted.FlushEffectsForTest();
             var parked = Parked(mounted, _root.Q<VisualElement>("item-a"));
 
@@ -664,7 +680,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base skipped the PopLayout restore for an element it never pinned.
-        // The passive flush added is the one the completion now settles in.
+        // The removal is the drain a store notification asks for, which consumes its sync-lane request and leaves the
+        // drop render its completion asks for waiting, as a default-lane update waits; a state flush would leave the
+        // request queued for the next passive flush to drain together with the drop.
         [Test]
         public void Given_ACompletedPopLayoutExit_When_TheKeyReturnsOnANewElement_Then_ItsArbitrarySizeIsKept()
         {
@@ -672,8 +690,9 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedPopLayoutProviderHost, key: "host"));
+            mounted.FlushEffectsForTest();
             store.Set("");
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             mounted.FlushEffectsForTest();
             var parked = Parked(mounted, _root.Q<VisualElement>("item-a"));
 
@@ -688,7 +707,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base replays the enter on the element a completed exit left attached.
-        // The passive flush added is the one the completion now settles in.
+        // The removal is the drain a store notification asks for, which consumes its sync-lane request and leaves the
+        // drop render its completion asks for waiting, as a default-lane update waits; a state flush would leave the
+        // request queued for the next passive flush to drain together with the drop.
         [Test]
         public void Given_ACompletedVariantExit_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheSameElementReplaysItsEnter()
         {
@@ -696,8 +717,9 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitThenTweenEnterHost, key: "host"));
+            mounted.FlushEffectsForTest();
             store.Set("");
-            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             mounted.FlushEffectsForTest();
             var before = _root.Q<VisualElement>("item-a");
             var parked = Parked(mounted, before);

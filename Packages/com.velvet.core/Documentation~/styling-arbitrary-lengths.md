@@ -20,7 +20,7 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 A unit is read in any case, as CSS reads it: `w-[10PX]` is `w-[10px]`. Where Tailwind reads a bracket as
 either a length or a colour — `border-*`, `text-*`, `ring-*`, `outline-*`, `ring-offset-*` and `from-*`,
 `via-*` and `to-*` — its type tests decide, and what they do not take for a length is written as a colour,
-which leaves the class inert as it does in a browser:
+which the browser rejects unless it is one ([a rejected value](#a-rejected-value)):
 
 - its length test takes a number with a unit in its own case, `Q` upper and the rest lower, or a math function
   named in lower case whatever case its units are in, so `border-[2PX]`, `text-[16PX]` and
@@ -78,6 +78,64 @@ it supports.
 
 So `top-[calc(1rem+4px)]`, `gap-[min(2rem,24px)]`, `blur-[calc(2px*3)]`,
 `shadow-[calc(1rem+4px)_4px_8px_#101820]` and `w-[calc(100%/3)]` resolve as the plain length would.
+
+### A rejected value
+
+A value Tailwind writes and the browser rejects does what it does in the browser. A plain declaration is dropped,
+so the class is inert: `border-[2PX]`, `text-[16]`, `w-[120]`. One Tailwind composes into the element's box-shadow
+discards the whole box-shadow, the ring and every `shadow-*` with it, while a `drop-shadow-*`, a filter, stays
+(`ring ring-[5PX] drop-shadow-lg` keeps its drop shadow): a ring or inset ring colour that is no colour
+(`ring ring-[5PX]`, `ring-2 ring-[2]`, `inset-ring inset-ring-[2]`), a ring width that is no length
+(`ring-[length:2]`, and `ring-[length:0]` and `ring-[length:50%]`, which Tailwind adds to the offset width in
+`calc()`), an inset ring width that is no length (`inset-ring-[length:2]`; `inset-ring-[length:0]` is one), a ring
+offset colour that is no colour beside an offset width (`ring-offset-2 ring-offset-[2]`), a `shadow-[…]` or
+`inset-shadow-[…]` that is no box-shadow (`shadow-[0_4_8_#000]`, `shadow-[4px]`,
+`inset-shadow-[inset_0_2px_4px_red]`, which Tailwind writes behind a second `inset`), and a shadow colour that is
+no colour where the shadow reads it (`shadow-md shadow-[#ggg]`, `inset-shadow-sm inset-shadow-[#ggg]`; beside
+`shadow-none`, or no shadow, it discards nothing). Velvet draws no `inset-shadow-*` or `inset-ring-*`
+([shadows](styling-shadows.md)), but their values count. A `shadow-[…]` Tailwind types as a colour
+(`shadow-[#f00]`, `shadow-[color:red]`) writes the shadow colour alone, so it does not stand in for a rejected
+`shadow-[…]` before it. Each of these is the value of the class Tailwind emits last among those writing it, in
+whatever order they are written, and a variant's value holds while its variant applies
+(`ring ring-red-500 hover:ring-[5PX]` draws no ring while hovered): `ring-2 ring-red-500 ring-[5PX]` draws a red
+ring, Tailwind emitting `ring-[5PX]` first, while `ring-[length:2] ring-4` discards, Tailwind emitting
+`ring-[length:2]` last. A colour keyword (`ring-current`, `ring-inherit`, `ring-transparent`) is a colour. A
+`from-` / `via-` / `to-` colour that is no colour (`from-[1IN]`) leaves its stop transparent, and a position that
+is no length or percentage (`from-[length:red]`) returns the stop to its initial position: 0%, 50% or 100%.
+
+Only what the browser rejects counts. A function, `var()`, `currentColor` or a colour name Velvet does not read
+(`ring-[oklch(62.3%_0.214_259.815)]`, `ring-[var(--brand)]`, `from-[var(--x)]`, `ring-[rebeccapurple]`), and a
+length in a unit a stop cannot place (`via-[length:2em]`), discard nothing, and Velvet leaves such a class
+unread.
+
+Tailwind composes four more families through one declaration each: `translate-*`, `translate-x-*` and
+`translate-y-*`; `scale-x-*`, `scale-y-*` and the uniform `scale-<n>` (a bracketed `scale-[…]` is written as
+`scale` alone); `skew-x-*` and `skew-y-*`; and the filters, `blur-*` to `sepia-*`, `hue-rotate-*` and
+`drop-shadow-*`. Each utility writes custom properties of the element, and whenever the value holding one of them
+is one the browser rejects, the family's declaration is dropped and the family draws nothing:
+`translate-x-4 translate-y-[10]` translates nowhere, and `blur-sm brightness-[abc]`, `drop-shadow-lg blur-[2]` and
+`blur-sm drop-shadow-[foo]` filter nothing. Velvet answers which value holds as it does for any value of the
+property, in the state the element is in: an important one first
+(`!translate-y-[10] hover:translate-y-2 translate-x-4` translates nowhere, hovered or not), then the one whose
+variants rank higher, by the selector they add and then by the order Tailwind registers them, with every
+breakpoint at or below the viewport's applying, then the one Tailwind emits last, in whatever order they are
+written. So `blur-[2] blur-md` blurs as `blur-md`, while `translate-y-[10] translate-y-2 translate-x-4` translates
+nowhere, Tailwind emitting `translate-y-[10]` after `translate-y-2`; `translate-x-4 hover:translate-y-[10]`
+translates along x until hovered and not at all while hovered; and
+`translate-x-4 hover:translate-y-[10] focus:translate-y-2` translates along both axes while hovered and focused,
+the `focus:` value holding. A `drop-shadow-*` colour and size are separate values, as Tailwind writes them, and a colour the browser
+rejects (`drop-shadow-[#ggg]`, `drop-shadow-[#ggg]/50`) counts only where the drawn shadow reads it: `blur-sm drop-shadow-lg drop-shadow-[#ggg]`
+filters nothing, while `blur-sm drop-shadow-[#ggg]` blurs. A
+utility writing both axes (`translate-4`, `translate-[10px]`, `translate-full`, `translate-px`, `translate-1/2`,
+and their negations) holds each axis as an axis utility does, and an axis utility of the same rank holds over it,
+Tailwind emitting it later: `translate-x-4 translate-[10]` translates nowhere, its y holding the rejected value. A
+uniform `scale-<n>` writes both scale axes the same way and ranks against `scale-x-*` and `scale-y-*` by its
+variants: `scale-50 hover:scale-x-[2]` keeps its y at 0.5 while hovered. A variant's value of one axis leaves the
+other axis to the value holding it: `translate-8 hover:translate-x-2` translates by 8 and 32 while hovered. A
+`scale-[…]` declares `scale` itself rather than either axis, so where its rank is at or above every axis utility's
+it is drawn alone, whatever the axes hold (`scale-x-[2px] scale-[1.5]` scales by 1.5, Tailwind emitting
+`scale-[1.5]` later), and below one it supplies neither axis (`scale-[1.5] hover:scale-x-[2]` scales by 2 and 1
+while hovered). A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with them.
 
 ## Lengths only an element can measure
 
@@ -154,7 +212,7 @@ A spacing utility takes a bare number as Tailwind v4 does: any non-negative mult
 canonical decimal form is that many 4px steps, so `p-13` is 52px, `gap-4.5` 18px and `w-0.25` 1px. `.5`,
 `4.50`, `05` and `4.1` are not steps and leave the class unresolved. The utilities are padding, margin
 (`m-*`, `mx-*`, `ps-*`, …), `gap-*`, `space-x-*` / `space-y-*`, `w-*`, `h-*`, `size-*`, `min-*` / `max-*`
-width and height, `basis-*`, `top-*` … `inset-*` and the logical insets, `translate-x-*` / `translate-y-*`,
+width and height, `basis-*`, `top-*` … `inset-*` and the logical insets, `translate-*` / `translate-x-*` / `translate-y-*`,
 and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). `auto` is not a step: it is
 read as the table above says. A minus sign negates the margin, inset, translate and `space-*` utilities (`-mt-13`, `-top-4.5`), as in Tailwind;
 padding, sizing, `basis-*` and `gap-*` take none.

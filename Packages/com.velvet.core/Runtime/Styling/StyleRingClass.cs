@@ -118,9 +118,14 @@ namespace Velvet
             }
 
             var slots = default(RingSlots);
+            var discarded = DiscardsBoxShadow(classNames);
             foreach (var cls in classNames)
             {
-                Accumulate(cls, ref slots);
+                if (discarded && cls != null && cls.StartsWith("ring", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                Accumulate(cls!, ref slots);
             }
 
             if (!slots.HasIntent)
@@ -140,6 +145,125 @@ namespace Velvet
             var color = slots.IsOutline ? slots.OutlineColor : slots.RingColor;
             spec = new RingSpec(effectiveWidth, color, Mathf.Max(0f, slots.Offset), slots.Inset, currentColor: !colorSet);
             return true;
+        }
+
+        // Whether the box-shadow Tailwind composes for these classes is one the browser discards, which takes the
+        // ring and every shadow-* with it: a ring or inset ring whose colour or width the browser rejects, a ring
+        // offset colour it rejects beside an offset width, or a shadow-* or inset-shadow-* layer it rejects or whose
+        // colour it rejects (StyleShadowClass.TryReadBoxShadowClass). Each value is the one of the class that holds
+        // its property (StyleShadowClass.BoxShadowSlot), which the composed class source puts last.
+        internal static bool DiscardsBoxShadow(string[]? classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            var ring = default(BandSlots);
+            var insetRing = default(BandSlots);
+            var offset = default(BandSlots);
+            var shadow = default(StyleShadowClass.BoxShadowSlot);
+            var shadowColour = default(StyleShadowClass.BoxShadowSlot);
+            var insetShadow = default(StyleShadowClass.BoxShadowSlot);
+            var insetShadowColour = default(StyleShadowClass.BoxShadowSlot);
+            foreach (var cls in classNames)
+            {
+                if (string.IsNullOrEmpty(cls))
+                {
+                    continue;
+                }
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
+                if (core == "ring")
+                {
+                    ring.Width.Offer(important, false);
+                }
+                else if (core == "inset-ring")
+                {
+                    insetRing.Width.Offer(important, false);
+                }
+                else if (TryMatchPrefix(core, "ring-offset-", out var suffix))
+                {
+                    ReadBoxShadowPart(suffix!, "ring-offset", important, ref offset);
+                }
+                else if (core != "ring-inset" && TryMatchPrefix(core, "ring-", out suffix))
+                {
+                    ReadBoxShadowPart(suffix!, "ring", important, ref ring);
+                }
+                else if (TryMatchPrefix(core, "inset-ring-", out suffix))
+                {
+                    ReadBoxShadowPart(suffix!, "inset-ring", important, ref insetRing);
+                }
+                else if (!StyleShadowClass.TryReadBoxShadowClass(core, "shadow", important, ref shadow, ref shadowColour))
+                {
+                    StyleShadowClass.TryReadBoxShadowClass(core, "inset-shadow", important, ref insetShadow,
+                        ref insetShadowColour);
+                }
+            }
+            var declared = ring.Width.Set || insetRing.Width.Set || shadow.Set || insetShadow.Set;
+            return declared && (ring.Discards || insetRing.Discards || (offset.Width.Set && offset.Colour.Rejected)
+                || StyleShadowClass.Discards(shadow, shadowColour) || StyleShadowClass.Discards(insetShadow, insetShadowColour));
+        }
+
+        // The width and colour slots of ring-*, inset-ring-* or ring-offset-*.
+        private struct BandSlots
+        {
+            public StyleShadowClass.BoxShadowSlot Width;
+            public StyleShadowClass.BoxShadowSlot Colour;
+
+            public bool Discards => Width.Set && (Width.Rejected || Colour.Rejected);
+        }
+
+        // Offers the suffix of one ring-, inset-ring- or ring-offset- class to the width or colour slot Tailwind types
+        // it into, rejected only where the browser rejects it, so a function or a unit Velvet does not read is
+        // not; a palette name it does not know is offered to neither. A ring's width is written into calc() beside
+        // the offset width, where a bare 0 or a percentage is rejected, and an inset ring's as it is, where a bare 0
+        // is a length; RejectedValueTests pins both.
+        private static void ReadBoxShadowPart(string suffix, string root, bool important, ref BandSlots slots)
+        {
+            if (WidthScale.ContainsKey(suffix) || IsPositiveInteger(suffix))
+            {
+                slots.Width.Offer(important, false);
+                return;
+            }
+            if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
+            {
+                if (suffix is "current" or "inherit" or "transparent" || VelvetPalette.TryResolveColorToken(suffix, out _))
+                {
+                    slots.Colour.Offer(important, false);
+                }
+                return;
+            }
+            if (!StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner))
+            {
+                return;
+            }
+            var value = inner.ToString();
+            if (hint != null ? StyleColorValueParser.HintSelectsNonColour(root, hint) : TailwindDataTypes.IsLength(inner))
+            {
+                slots.Width.Offer(important, value.IndexOf('(') < 0 && !StyleCompositeRejection.IsLength(value)
+                    && !(root == "inset-ring" && StyleCompositeRejection.IsZero(value)));
+                return;
+            }
+            slots.Colour.Offer(important, StyleColorValueParser.RejectsAsColour(value));
+        }
+
+        // Tailwind's isPositiveInteger: String(Number(suffix)) === suffix, so digits without a leading zero, naming
+        // an integer a double holds exactly and prints without an exponent.
+        private static bool IsPositiveInteger(string suffix)
+        {
+            if (suffix.Length == 0 || (suffix.Length > 1 && suffix[0] == '0'))
+            {
+                return false;
+            }
+            foreach (var c in suffix)
+            {
+                if (c < '0' || c > '9')
+                {
+                    return false;
+                }
+            }
+            var integer = System.Numerics.BigInteger.Parse(suffix, System.Globalization.CultureInfo.InvariantCulture);
+            var number = (double)integer;
+            return number < 1e21 && new System.Numerics.BigInteger(number) == integer;
         }
 
         private static void Accumulate(string cls, ref RingSlots slots)

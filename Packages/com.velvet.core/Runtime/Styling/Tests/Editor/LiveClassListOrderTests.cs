@@ -41,6 +41,8 @@ namespace Velvet.Tests
         // declaring type, method name with its generic arity, and full parameter type names.
         private const string MotionRestingReader =
             "System.Collections.Generic.IEnumerable`1<System.String> Velvet.MotionSlotContext.RestingClasses()";
+        private const string MotionRestingVariantReader =
+            "System.Boolean Velvet.MotionSlotContext.HoldsRestingVariant(Velvet.ArbitraryProperty)";
         private const string LiveClassesReader =
             "System.String[] Velvet.FiberNodePatcher.LiveClasses(UnityEngine.UIElements.VisualElement)";
         private const string TransitionSlotsReader =
@@ -507,6 +509,28 @@ namespace Velvet.Tests
                 Is.EqualTo(((float?)320f, (float?)320f, (float?)0.5f, (float?)0.5f)));
         }
 
+        [Test]
+        [ReaderVerdict(MotionRestingVariantReader)]
+        public void Given_AFocusScaleClassBesideAPlainClass_When_TheirClassOrderIsReversed_Then_BothHoldTheScaleSlot()
+        {
+            // Arrange — any class held under a variant answers, wherever it sits in the list.
+            var added = Carrying("p-2");
+            StyleClassProjection.Add(added, "scale-50", StyleLayerPriority.Focus);
+            var reversed = Carrying();
+            StyleClassProjection.Add(reversed, "scale-50", StyleLayerPriority.Focus);
+            StyleClassProjection.Add(reversed, "p-2", StyleLayerPriority.Base);
+            var constructor = typeof(MotionSlotContext).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic).Single();
+            var fromAdded = (MotionSlotContext)constructor.Invoke(new object[] { added, (Func<ArbitraryProperty, bool>)(_ => false) });
+            var fromReversed = (MotionSlotContext)constructor.Invoke(new object[] { reversed, (Func<ArbitraryProperty, bool>)(_ => false) });
+
+            // Act
+            var holdsBothWays = fromAdded.HoldsRestingVariant(ArbitraryProperty.Scale)
+                && fromReversed.HoldsRestingVariant(ArbitraryProperty.Scale);
+
+            // Assert
+            Assert.That(holdsBothWays, Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): the base already resolves the last clip token on the list.
         // What shows the case can fail is a `break` after the first match in TryExtractLive: measured,
         // each arrangement then resolves the shape it was handed first and the pair inverts.
@@ -918,7 +942,7 @@ namespace Velvet.Tests
             Assert.That(new[] { fromAdded.x, fromAdded.y, fromReversed.x, fromReversed.y,
                     higherFromAdded.x, higherFromAdded.y, higherFromReversed.x, higherFromReversed.y }
                     .Concat(classChangeReadings).ToArray(),
-                Is.EqualTo(new[] { 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 1f, 0.75f, 1f,
+                Is.EqualTo(new[] { 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 0.9f,
                     1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f,
                     1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f }).Within(0.0001f));
         }

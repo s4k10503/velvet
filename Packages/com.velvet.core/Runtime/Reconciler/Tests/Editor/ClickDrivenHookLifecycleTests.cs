@@ -268,6 +268,8 @@ namespace Velvet.Tests
             return V.Label(name: "store-child", text: n.ToString());
         }
 
+        // GREEN_ON_BASE(characterization): the base's render already subscribed, which the precondition reads.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first.
         [Test]
         public void Given_AChildSubscribedToAStore_When_AClickUnmountsIt_Then_TheStoreSubscriptionIsReleased()
         {
@@ -276,6 +278,7 @@ namespace Velvet.Tests
             s_store = store;
             var baseline = StoreSubscriberCount(store);
             using var mounted = V.Mount(_root, V.Component(StoreParent, key: "store-parent"));
+            mounted.FlushEffectsForTest();
             Assume.That(StoreSubscriberCount(store), Is.EqualTo(baseline + 1),
                 "Precondition: mounting the child adds exactly one subscriber");
 
