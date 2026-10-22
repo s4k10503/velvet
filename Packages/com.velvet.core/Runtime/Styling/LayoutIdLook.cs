@@ -315,12 +315,14 @@ namespace Velvet
             public readonly IVisualElementScheduledItem Item;
         }
 
-        // A projection that ended with its own rotate or radii still carried, stepped until they land.
+        // A projection that ended with its own rotate, radii, translate or scale still carried, stepped until they land.
         private static readonly ConditionalWeakTable<VisualElement, Tail> s_tails = new();
 
-        // Called as the projection ends: hands back the slots it wrote here and its narrowing once the rotate
-        // and radii it carries have landed, running them on until then, as MotionOpacity runs an opacity that outlasts a
-        // crossfade (Given_ALeadWhoseOwnRotateChangesLateInItsMove_When_TheMoveLands_Then_ItsRotateRunsOnAsTheEngineRunsIt).
+        // Called as the projection ends: hands back the slots it wrote here and its narrowing once the rotate, radii,
+        // translate and scale it carries have landed, running them on until then, as MotionOpacity runs an opacity that
+        // outlasts a crossfade (Given_ALeadWhoseOwnRotateChangesLateInItsMove_When_TheMoveLands_Then_ItsRotateRunsOnAsTheEngineRunsIt,
+        // Given_ALeadWhoseTransformChangesLateInItsMove_When_TheMoveLands_Then_ItRunsOnAsTheEngineRunsIt). The translate
+        // and scale that have landed MotionLayoutIdDriver has handed back already.
         // clock: the mount's, on which the tail steps.
         public static void End(VisualElement element, LayoutIdProjection projection, MotionClock clock)
         {
@@ -329,10 +331,10 @@ namespace Velvet
                 Hand(element, projection);
                 return;
             }
-            // The tail writes the rotate and radii alone, so the translate and scale the projection wrote transition again
+            // The tail writes the rotate and radii, and the translate and scale it still carries, so a translate or scale the
+            // projection wrote that has landed transitions again
             // (Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsTranslateChanges_Then_TheTranslateTransitions).
-            MotionNativeTransitionGuard.NarrowTo(element, projection,
-                (projection.WritesRotate ? MotionTransitionSlots.Rotate : MotionTransitionSlots.None)
+            MotionNativeTransitionGuard.NarrowTo(element, projection, MotionLayoutIdDriver.WrittenSlots(projection)
                 | (projection.WritesRadii ? MotionTransitionSlots.Radius : MotionTransitionSlots.None));
             var lastSec = clock.NowSec;
             var item = element.schedule.Execute(state => StepTail(element, projection, clock.StepSince(ref lastSec, state)))
@@ -340,11 +342,11 @@ namespace Velvet
             s_tails.AddOrUpdate(element, new Tail(projection, item));
         }
 
-        // Whether an ending projection's rotate or radii run on past it (End).
+        // Whether anything an ending projection carries runs on past it (End).
         public static bool RunsOn(LayoutIdProjection projection) => !Landed(projection);
 
-        // Hands an ended projection's carried rotate and radii, with the slots and the narrowing it holds for them, to a
-        // projection starting on the element, which runs them on
+        // Hands an ended projection's carried rotate, radii, translate and scale, with the slots and the narrowing it holds
+        // for them, to a projection starting on the element, which runs them on
         // (Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItMovesAgain_Then_ItsRotateRunsOnAsTheEngineRunsIt).
         public static void Settle(VisualElement element, LayoutIdProjection next)
         {
@@ -356,6 +358,17 @@ namespace Velvet
             (next.WritesRadii, next.OwnInlineRadii, next.InlineRadii, next.StartRadii, next.DrawnRadii, next.WrittenRadii, next.RadiusCarries,
                 next.RadiusUnits) = (held.WritesRadii, held.OwnInlineRadii, held.InlineRadii, held.StartRadii, held.DrawnRadii, held.WrittenRadii,
                 held.RadiusCarries, held.RadiusUnits);
+            // A translate or scale that landed as the projection ended was handed back then, and the slot is the element's.
+            if (held.WritesTranslate)
+            {
+                (next.WritesTranslate, next.OwnInlineTranslate, next.WrittenTranslate, next.TranslateCarries, next.TranslateUnits) =
+                    (true, held.OwnInlineTranslate, held.WrittenTranslate, held.TranslateCarries, held.TranslateUnits);
+            }
+            if (held.WritesScale)
+            {
+                (next.WritesScale, next.OwnInlineScale, next.WrittenScale, next.ScaleCarries) =
+                    (true, held.OwnInlineScale, held.WrittenScale, held.ScaleCarries);
+            }
             MotionNativeTransitionGuard.Transfer(element, held, next);
             StyleAnimateDriver.YieldSlots(element, held, MotionTransitionSlots.None);
             StyleAnimateDriver.YieldSlots(element, next, MotionLayoutIdDriver.WrittenSlots(next));
@@ -376,13 +389,17 @@ namespace Velvet
             Narrow(element, projection);
             if (projection.WritesRotate) WriteRotate(element, projection, float.NaN, dtSec);
             if (projection.WritesRadii) WriteRadii(element, projection, null, Vector2.one, dtSec);
+            MotionLayoutIdDriver.RunOn(element, projection, dtSec);
             if (!Landed(projection)) return;
             Forget(element);
             Hand(element, projection);
         }
 
         private static bool Landed(LayoutIdProjection projection) =>
-            projection.RotateCarry.Landed && Array.TrueForAll(projection.RadiusCarries, carry => carry.Landed);
+            projection.RotateCarry.Landed && Landed(projection.RadiusCarries) && Landed(projection.TranslateCarries)
+            && Landed(projection.ScaleCarries);
+
+        internal static bool Landed(LayoutIdCarry[] carries) => Array.TrueForAll(carries, carry => carry.Landed);
 
         private static void Hand(VisualElement element, LayoutIdProjection projection)
         {
@@ -398,6 +415,8 @@ namespace Velvet
         private static void Restore(VisualElement element, LayoutIdProjection projection)
         {
             if (projection.WritesRotate) element.style.rotate = projection.OwnInlineRotate;
+            if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
+            if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
             if (!projection.WritesRadii) return;
             for (var corner = 0; corner < 4; corner++)
             {

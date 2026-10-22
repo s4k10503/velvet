@@ -63,10 +63,13 @@ namespace Velvet
         public static void TakeOverRotate(VisualElement element, LayoutIdCarry carry) =>
             TakeOver(element, carry, s_rotates, s_rotateId, value => ((Rotate)value).angle.ToDegrees());
 
-        // The x and y axes, a translate's in pixels; an axis of a translate running in percent is not taken over.
-        public static void TakeOverTranslate(VisualElement element, LayoutIdCarry[] axes)
+        // The x and y axes, each carried in the given unit; an axis running in another is not taken over.
+        public static void TakeOverTranslate(VisualElement element, LayoutIdCarry[] axes, LengthUnit[] units)
         {
-            for (var axis = 0; axis < 2; axis++) TakeOver(element, axes[axis], s_translates, s_translateId, value => Pixels((Translate)value, axis));
+            for (var axis = 0; axis < 2; axis++)
+            {
+                TakeOver(element, axes[axis], s_translates, s_translateId, value => InUnit((Translate)value, axis, units[axis]));
+            }
         }
 
         public static void TakeOverScale(VisualElement element, LayoutIdCarry[] axes)
@@ -74,10 +77,10 @@ namespace Velvet
             for (var axis = 0; axis < 2; axis++) TakeOver(element, axes[axis], s_scales, s_scaleId, value => ((Scale)value).value[axis]);
         }
 
-        private static float Pixels(Translate translate, int axis)
+        private static float InUnit(Translate translate, int axis, LengthUnit unit)
         {
             var length = axis == 0 ? translate.x : translate.y;
-            return length.unit == LengthUnit.Pixel ? length.value : float.NaN;
+            return length.unit == unit ? length.value : float.NaN;
         }
 
         // A corner, in LayoutIdLook's corner order, carried in the given unit; one running in another is not taken over.

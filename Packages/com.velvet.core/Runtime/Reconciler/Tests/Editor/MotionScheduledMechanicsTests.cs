@@ -2061,6 +2061,32 @@ namespace Velvet.Tests
             Assert.That(element.style.translate.value.y.value, Is.EqualTo(20f).Within(0.01f));
         }
 
+        [Test]
+        public void Given_ALayoutIdMotionTranslatedByAFractionOfItsSizeMidMove_When_ItGrowsAgain_Then_TheFractionFollowsAtOnce()
+        {
+            // Arrange — the bundled sheet; the box translated down by half its height and transitioning everything linearly
+            // over a second, grown from 100px to 200px square about its top centre, a few frames into the move.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_resizeOrigin, s_resizeTo) = ("origin-[50%_0%] translate-y-1/2 transition-all duration-1000 ease-linear", new Vector2Int(200, 200));
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 4; i++) Tick();
+
+            // Act — grown to 300px square; the frame it is laid out on, and the next.
+            s_resizeTo = new Vector2Int(300, 300);
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+            Tick();
+
+            // Assert — half its new height down at once, as UI Toolkit transitions nothing for a change of the box alone; the
+            // move adds nothing down about a top edge it keeps where it was.
+            var element = Root.Q<VisualElement>("shared");
+            Assert.That(element.style.translate.value.y.value, Is.EqualTo(150f).Within(0.01f));
+        }
+
         private static string s_ownClasses;
 
         // Step 1 moves the box 200px right; s_ownClasses are its own transform classes.
@@ -5008,6 +5034,46 @@ namespace Velvet.Tests
 
             // Assert — within a frame of the control, which is about half way down.
             Assert.That(own, Is.EqualTo(control > 12f && control < 28f ? control : float.NaN).Within(1f));
+        }
+
+
+        [TestCase("scale-150", true, false, 1.3f, 1.48f)]
+        [TestCase("translate-y-[40px]", false, false, 24f, 38f)]
+        [TestCase("scale-150", true, true, 1.2f, 1.45f)]
+        [TestCase("translate-y-[40px]", false, true, 16f, 36f)]
+        public void Given_ALeadWhoseTransformChangesLateInItsMove_When_TheMoveLands_Then_ItRunsOnAsTheEngineRunsIt(string to, bool scale,
+            bool movesAgain, float low, float high)
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second; "b" takes the id from "a" on a one-second tween, from "a" twice its side for a scale, so that the move
+            // draws "b" scaled, and from "a" its size and top for a translate, so that the move writes "b"'s translate
+            // across alone. Some 0.6 s in, both take the class to.
+            const string transitioning = "transition-all duration-1000 ease-linear";
+            VelvetStyleUtilities.AttachTo(Root);
+            s_aSize = scale ? 200 : 100;
+            (s_bClasses, s_controlClasses) = (transitioning, transitioning);
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = ($"{transitioning} {to}", $"{transitioning} {to}");
+            RenderShared(mounted);
+
+            // Act — the move lands some 0.4 s on; some 0.4 s past it, or, where it moves again, 100px further right just
+            // past its landing and some 0.2 s into that move.
+            for (var i = 0; i < (movesAgain ? 30 : 50); i++) Tick();
+            if (movesAgain)
+            {
+                s_bLeft = 400;
+                RenderShared(mounted);
+                for (var i = 0; i < 12; i++) Tick();
+            }
+
+            // Assert — "b" drawn within a frame of the control, which is some way along its transition still: 0.015 of a
+            // scale, 1px of a translate.
+            var control = Root.Q<VisualElement>("control").resolvedStyle;
+            var b = Root.Q<VisualElement>("b").resolvedStyle;
+            var expected = scale ? control.scale.value.x : control.translate.y;
+            var drawn = scale ? b.scale.value.x : b.translate.y;
+            Assert.That(drawn, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(scale ? 0.015f : 1f));
         }
 
 
