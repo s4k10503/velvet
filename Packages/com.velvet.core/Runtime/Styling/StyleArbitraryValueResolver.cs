@@ -56,10 +56,12 @@ namespace Velvet
             }
 
             // Tailwind's spelling behind variants (hover:!w-4), whose bang opens the utility after the last variant.
+            // An empty last variant (:!w-4) names no variant, so Tailwind generates no rule for the token either.
             if (className.IndexOf(":!", StringComparison.Ordinal) >= 0)
             {
                 var variants = StyleSpacingPrecedence.VariantsLength(className);
-                if (variants > 0 && variants < className.Length && className[variants] == '!')
+                if (variants > 1 && variants < className.Length && className[variants] == '!'
+                    && className[variants - 2] != ':')
                 {
                     important = true;
                     return className.Remove(variants, 1);

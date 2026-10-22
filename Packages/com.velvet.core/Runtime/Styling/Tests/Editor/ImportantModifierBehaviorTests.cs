@@ -56,6 +56,22 @@ namespace Velvet.Tests
             Assert.That(leaf.style.width.value.value, Is.EqualTo(50f));
         }
 
+        [Test]
+        public void Given_AnImportantSideBesideAnImportantShorthandBehindTheirVariant_When_TheVariantHolds_Then_TheSideWins()
+        {
+            // Arrange
+            var leaf = MountLeaf("hover:!p-[52px] hover:!pt-2");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                leaf.SimulateEvent(over);
+            }
+
+            // Assert — pt-2 is 8px.
+            Assert.That(leaf.style.paddingTop.value.value, Is.EqualTo(8f));
+        }
+
         [TestCase("hover:!w-[50px]", "hover:w-[50px]")]
         [TestCase("[&:hover]:!w-[50px]", "[&:hover]:w-[50px]")]
         [TestCase("hover:focus:!p-4", "hover:focus:p-4")]
@@ -100,6 +116,20 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(important, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base read a bang at either end of a token only. An empty variant
+        // names none, and an empty last segment no utility, so Tailwind generates no rule for these.
+        [TestCase(":!w-[50px]")]
+        [TestCase("hover::!w-[50px]")]
+        [TestCase("hover:!w-[50px]:")]
+        public void Given_ABangInATokenTailwindParsesNoUtilityFrom_When_Stripped_Then_TheTokenIsLeftWhole(string token)
+        {
+            // Act
+            var core = StyleArbitraryValueResolver.StripImportant(token, out _);
+
+            // Assert
+            Assert.That(core, Is.EqualTo(token));
         }
 
         // GREEN_ON_BASE(characterization): a bang inside a bracket is the value's, and the base left it there too.

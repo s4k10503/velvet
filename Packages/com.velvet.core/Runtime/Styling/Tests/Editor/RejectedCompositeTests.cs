@@ -160,7 +160,7 @@ namespace Velvet.Tests
 
         [TestCase("translate-y-[10]", "translate-y-4", "0,16 - 0")]
         [TestCase("translate-x-4", "translate-y-[10]", "none - 0")]
-        public void Given_AnOwnClassAndAPoseOfOneComposedFamily_When_ThePoseApplies_Then_TheFamilyDrawsAsOneList(
+        public void Given_AnOwnClassAndAPoseOfOneComposedFamily_When_ThePoseApplies_Then_ThePoseHoldsTheAxisItNamesOverTheOwnClass(
             string own, string pose, string expected)
         {
             // Arrange
@@ -172,6 +172,34 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Drawn(root.Q("box")), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AChannelUniformScaleBesideARejectedAxis_When_AProjectionChangeMovesTheUniformScale_Then_NothingIsScaled()
+        {
+            // Arrange — the gesture, presence and drag channels add their classes through AddClasses, which leaves
+            // the projection alone; the control's taken axis is what makes a later projection change re-draw the
+            // other one from the uniform scale.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(children: new VNode[]
+            {
+                V.Div(name: "box", className: "scale-x-[abc]"),
+                V.Div(name: "control", className: "scale-x-[2]"),
+            }));
+            var box = root.Q("box");
+            var control = root.Q("control");
+            StyleAnimationClassUtils.AddClasses(box, new[] { "scale-150" });
+            StyleAnimationClassUtils.AddClasses(control, new[] { "scale-150" });
+
+            // Act
+            StyleClassProjection.Add(box, "scale-90", StyleLayerPriority.Hover);
+            StyleClassProjection.Add(control, "scale-90", StyleLayerPriority.Hover);
+
+            // Assert — Undefined where the control's y did not follow scale-90, so the change re-drew nothing.
+            Assert.That(Mathf.Approximately(control.style.scale.value.value.y, 0.9f)
+                    ? box.style.scale.keyword
+                    : StyleKeyword.Undefined,
+                Is.EqualTo(StyleKeyword.None));
         }
 
         [Test]

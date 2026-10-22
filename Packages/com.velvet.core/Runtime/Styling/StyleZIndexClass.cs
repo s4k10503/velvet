@@ -84,8 +84,7 @@ namespace Velvet
         private static bool TryParse(string cls, out int? z, out bool important)
         {
             z = null;
-            // A dash embedded AFTER a leading "-" (e.g. "-!z-10") is not a shape StripImportant recognizes (it
-            // strips a bang at the first or last character, or right after the variants), so that stays rejected.
+            // StripImportant leaves the bang of "-!z-10" in place, so that stays rejected.
             cls = StyleArbitraryValueResolver.StripImportant(cls, out important);
             cls = StyleArbitraryValueResolver.WithoutTypeHint(cls ?? string.Empty) ?? string.Empty;
             if (string.IsNullOrEmpty(cls))
