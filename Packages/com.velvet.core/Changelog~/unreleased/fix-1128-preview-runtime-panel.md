@@ -16,3 +16,10 @@
   `sm:`…`2xl:` breakpoints read the panel, which is the simulated screen, or a story's explicit footprint
   when it has one; the window no longer marks the canvas with `VelvetResponsive.ViewportClass`. Zoom scales
   the rendered texture rather than re-rendering at the zoomed size, and Measure reports the panel's units.
+
+### Fixed
+
+- A `V.Portal(layer:)` declared on a panel that renders into a target texture draws into that texture, sorted
+  around the panel by its layer. Its host panel used to draw on the screen, so the portal was missing from
+  the texture, and from the preview window. A `VelvetPreviewPanel` clears its texture below every layer, so
+  a Background portal is not erased by the panel above it.

@@ -155,9 +155,10 @@ root. The panel's theme, text settings and scaling are therefore the game's own,
 shows the texture the panel renders. With no `PanelSettings` chosen
 the panel is a constant-pixel-size panel at a scale of one with an empty theme.
 
-The copy renders into its own texture whatever target the chosen settings name, clears its color
-to transparent, and maps every screen position off the panel; the window sends it the events its
-canvas receives. A world-space `PanelSettings` is copied as a screen panel at a scale of
+The copy renders into its own texture whatever target the chosen settings name, and maps every
+screen position off the panel; the window sends it the events its canvas receives. The texture is
+cleared to transparent below everything drawn into it, and a `V.Portal(layer:)` in the story draws
+into it too, at its layer's place around the panel. A world-space `PanelSettings` is copied as a screen panel at a scale of
 one. The stage backdrop ([Backgrounds](#backgrounds)) is drawn behind the canvas and is not part of
 the texture.
 
@@ -251,7 +252,8 @@ panel rendered and does not re-render it, each texel drawn whole.
 The toolbar's **PanelSettings** field takes the game's `PanelSettings` asset, and the choice is remembered
 per object, so a `PanelSettings` stored as a sub-asset stays the one chosen. The window builds its panel
 from a copy of the chosen settings, rebuilding it and remounting the story when the choice changes. It
-treats the viewport as a screen of that many pixels (the stage itself under **Full**), or the settings'
+treats the viewport as a screen of that many pixels (the stage itself, rounded to whole pixels, under
+**Full**), or the settings'
 target texture as the screen when they have one, and renders a story without an explicit size into a
 texture that size, where the copy resolves its own scale — `ConstantPixelSize`, `ConstantPhysicalSize`
 at `Screen.dpi`, or `ScaleWithScreenSize` with its reference resolution and screen match mode. A story

@@ -13,8 +13,8 @@ namespace Velvet
     /// screen size reads the pixels the window renders for it.
     /// </summary>
     /// <remarks>
-    /// The copy targets <see cref="Texture"/>, clears its color to transparent, and maps every screen
-    /// position off the panel; input is sent to it as events to <see cref="Root"/>'s panel. A world-space
+    /// The copy targets <see cref="Texture"/>, which is cleared to transparent below everything drawn into it,
+    /// a portal's layers included, and maps every screen position off the panel; input is sent to it as events to <see cref="Root"/>'s panel. A world-space
     /// settings asset is copied as a screen panel at a scale of one.
     /// </remarks>
     public sealed class VelvetPreviewPanel : IDisposable
@@ -23,6 +23,8 @@ namespace Velvet
 
         private readonly GameObject _host;
         private readonly PanelSettings _settings;
+        private readonly GameObject _clearHost;
+        private readonly PanelSettings _clearSettings;
         private readonly PanelScaleMode _ownScaleMode;
         private readonly float _ownScale;
         private bool _disposed;
@@ -48,27 +50,46 @@ namespace Velvet
 
             _ownScaleMode = _settings.scaleMode;
             _ownScale = _settings.scale;
-            _settings.clearColor = true;
-            _settings.colorClearValue = Color.clear;
             _settings.SetScreenToPanelSpaceFunction(OffPanel);
             Texture = CreateTexture(width, height);
             _settings.targetTexture = Texture;
 
-            _host = new GameObject(nameof(VelvetPreviewPanel)) { hideFlags = HideFlags.HideAndDontSave };
-            var document = _host.AddComponent<UIDocument>();
-            document.panelSettings = _settings;
+            // The clear is a panel of its own, sorted below everything else drawing into the texture: a
+            // portal's Background layer host draws there before this panel does, so a clear on this
+            // panel would erase it.
+            _clearSettings = ScriptableObject.CreateInstance<PanelSettings>();
+            _clearSettings.hideFlags = HideFlags.HideAndDontSave;
+            _clearSettings.themeStyleSheet = PanelHostFactory.SharedEmptyTheme;
+            _clearSettings.scaleMode = PanelScaleMode.ConstantPixelSize;
+            _clearSettings.sortingOrder = float.MinValue;
+            _clearSettings.clearColor = true;
+            _clearSettings.colorClearValue = Color.clear;
+            _clearSettings.SetScreenToPanelSpaceFunction(OffPanel);
+            _clearSettings.targetTexture = Texture;
+            _clearHost = CreateDocument(_clearSettings).gameObject;
+
+            var document = CreateDocument(_settings);
+            _host = document.gameObject;
             Root = document.rootVisualElement;
             VelvetStyleUtilities.AttachTo(Root);
+        }
+
+        private static UIDocument CreateDocument(PanelSettings settings)
+        {
+            var host = new GameObject(nameof(VelvetPreviewPanel)) { hideFlags = HideFlags.HideAndDontSave };
+            var document = host.AddComponent<UIDocument>();
+            document.panelSettings = settings;
+            return document;
         }
 
         /// <summary>The panel's root, to mount a story onto.</summary>
         public VisualElement Root { get; }
 
-        /// <summary>The texture the panel renders into. <see cref="Resize"/> replaces it.</summary>
-        public RenderTexture Texture { get; private set; }
+        /// <summary>The texture the panel renders into. <see cref="Resize"/> resizes it in place.</summary>
+        public RenderTexture Texture { get; }
 
         /// <summary>
-        /// Renders into a new <paramref name="width"/> by <paramref name="height"/> texture, keeping the
+        /// Resizes <see cref="Texture"/> to <paramref name="width"/> by <paramref name="height"/>, keeping the
         /// panel and whatever is mounted on it. Each size is clamped to at least one pixel.
         /// </summary>
         public void Resize(int width, int height)
@@ -78,11 +99,12 @@ namespace Velvet
             height = Mathf.Max(1, height);
             if (Texture.width == width && Texture.height == height) return;
 
-            var previous = Texture;
-            Texture = CreateTexture(width, height);
-            _settings.targetTexture = Texture;
-            previous.Release();
-            VelvetObjectUtil.Destroy(previous);
+            // In place rather than replaced: a portal's layer host copied this texture as its target, and
+            // keeps drawing into it.
+            Texture.Release();
+            Texture.width = width;
+            Texture.height = height;
+            Texture.Create();
         }
 
         // A scale the preview window resolved for a screen other than this texture, held at that value
@@ -101,6 +123,8 @@ namespace Velvet
             _disposed = true;
             VelvetObjectUtil.Destroy(_host);
             VelvetObjectUtil.Destroy(_settings);
+            VelvetObjectUtil.Destroy(_clearHost);
+            VelvetObjectUtil.Destroy(_clearSettings);
             Texture.Release();
             VelvetObjectUtil.Destroy(Texture);
         }

@@ -205,13 +205,14 @@ namespace Velvet.Tests
                 Is.EqualTo(((float?)1280f, (float?)2f, (bool?)true)));
         }
 
+        // GREEN_ON_BASE(characterization): the stage is the screen, which the base took at its laid-out size.
+        // Rounding it moves nothing where the stage lays out on whole pixels.
         [Test]
         public void Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheStageIsTheScreenTheyScaleFor()
         {
             // Arrange
             EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
-            var stage = Field<VisualElement>("_stage");
-            var screen = new Vector2(stage.resolvedStyle.width, stage.resolvedStyle.height);
+            var screen = StageInWholePixels();
             var unitsPerPixel = PreviewPanelScale.Resolve(_settings, screen, Screen.dpi);
 
             // Act

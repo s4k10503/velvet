@@ -757,13 +757,16 @@ namespace Velvet.Editor.Preview
         }
 
         // The screen the chosen settings lay out for: their own target texture when they have one, else the
-        // Custom viewport, else the stage.
+        // Custom viewport, else the stage. In whole pixels, since the panel's texture is the screen: a
+        // fractional stage would leave the canvas a fraction of a pixel off the texture it stretches over.
         private (float Width, float Height) ScreenSize()
         {
             var target = _panelSettings != null ? _panelSettings.targetTexture : null;
             if (target != null) return (target.width, target.height);
             var viewport = ViewportSize();
-            return viewport.Width > 0f ? viewport : StageSize();
+            if (viewport.Width > 0f) return viewport;
+            var (stageW, stageH) = StageSize();
+            return (Mathf.Round(stageW), Mathf.Round(stageH));
         }
 
         private (float Width, float Height) StageSize() =>

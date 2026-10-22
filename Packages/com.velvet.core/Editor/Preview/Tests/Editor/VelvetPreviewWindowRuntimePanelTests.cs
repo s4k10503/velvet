@@ -42,6 +42,10 @@ namespace Velvet.Tests
         // Half of a 640x360 footprint's width.
         private static VNode HalfFootprintRed() => V.Div("w-[320px] h-[360px] bg-[#ff0000]");
 
+        // The left half of the screen, drawn by a host panel sorted below the story's own.
+        private static VNode BackgroundPortal() =>
+            V.Div("w-[100px] h-[60px]", V.Portal(UILayer.Background, new VNode[] { V.Div("w-[50px] h-[60px] bg-[#ff0000]") }));
+
         private static VNode ClickTarget() => V.Button("w-[100px] h-[60px]", onClick: () => s_clicks++);
 
         // Off the canvas's origin, so a pointer read at the wrong offset misses it.
@@ -113,6 +117,23 @@ namespace Velvet.Tests
             Assert.That(
                 (shown.Length, IsRedAt(shown, 24, 18, 64), IsRedAt(shown, 48, 18, 64)),
                 Is.EqualTo((64 * 36, true, false)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AStoryWithABackgroundPortal_When_ItIsShown_Then_TheCanvasShowsThePortal()
+        {
+            // Arrange
+            SetCustomViewport(100, 60);
+
+            // Act
+            Select(Story(nameof(BackgroundPortal)));
+            for (var frame = 0; frame < FramesBeforeReadback; frame++) yield return null;
+            var shown = ReadShown();
+
+            // Assert
+            Assert.That(
+                (shown.Length, IsRedAt(shown, 25, 30, 100), IsRedAt(shown, 75, 30, 100)),
+                Is.EqualTo((100 * 60, true, false)));
         }
 
         // GREEN_ON_BASE(characterization): a click on the canvas over a story's button ran its handler on the base.
