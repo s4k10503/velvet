@@ -224,21 +224,25 @@ namespace Velvet
         {
             var translate = element.style.translate;
             var scale = element.style.scale;
-            var resolved = element.resolvedStyle;
-            var ownTranslate = translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : resolved.translate;
-            var ownScale = scale.keyword == StyleKeyword.Undefined ? scale.value.value : resolved.scale.value;
+            // Where the element is drawn, which an inline value it was just given is not until a style pass has run: what a
+            // projection that ended earlier in this render handed back, else the resolved style
+            // (Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform).
+            ctx.LayoutIdRestored.Remove(element, out var restored);
+            var startTranslate = restored.Translate ?? element.resolvedStyle.translate;
+            var startScale = restored.Scale ?? element.resolvedStyle.scale.value;
             // A running bounce or ping has its frame in the slot, and the frame is the loop's rather than the element's.
             if (StyleAnimateDriver.TryReadBounceOwn(element, translate, out var bounceInline, out var bounceOwn))
             {
-                (translate, ownTranslate) = (bounceInline, Pixels(bounceOwn, element.layout));
+                (translate, startTranslate) = (bounceInline, Pixels(bounceOwn, element.layout));
             }
             if (StyleAnimateDriver.TryReadPingOwn(element, scale, out var pingInline, out var pingOwn))
             {
-                (scale, ownScale) = (pingInline, pingOwn);
+                (scale, startScale) = (pingInline, pingOwn);
             }
-            var projection = new LayoutIdProjection(host, translate, scale, ownTranslate, ownScale)
+            var projection = new LayoutIdProjection(host, translate, scale, startTranslate, startScale)
             {
                 From = element.layout,
+                RestoredRotate = restored.Rotate ?? float.NaN,
             };
             LayoutIdLook.Settle(element, projection);
             ctx.LayoutIdProjections[element] = projection;
@@ -303,6 +307,8 @@ namespace Velvet
             var drawn = projection.Leader != null ? Followed(element, projection.Leader, ctx) : Drawn(projection, layout, projection.ParentScale);
             var delta = ComputeDelta(drawn, layout, TransformOrigin(element));
             projection.Scale = delta.Scale;
+            LayoutIdLook.Adopt(element, projection);
+            LayoutIdLook.Narrow(element, projection);
             Write(element, projection, delta.Translate);
             WriteOpacity(element, projection, Fade(element, projection, ctx), ctx);
             if (projection.Leader != null) LayoutIdPicking.Ignore(element, projection);
@@ -361,19 +367,19 @@ namespace Velvet
         // a crossfading lead at the lead's, as Framer draws every node of a shared animation with the lead's values.
         private static void WriteLook(VisualElement element, LayoutIdProjection projection, ReconcilerContext ctx)
         {
-            LayoutIdLook.Adopt(element, projection);
-            LayoutIdLook.Narrow(element, projection);
             var rotate = float.NaN;
             Length[]? radii = null;
             if (projection.Leader != null)
             {
                 var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
-                rotate = LayoutIdLook.RotateOf(projection.Leader, leading);
+                rotate = LayoutIdLook.RotateOf(projection.Leader, leading, float.NaN);
                 radii = LayoutIdLook.RadiiOf(projection.Leader, leading, projection.LeadRadii);
+                RunOwnLook(element, projection);
             }
             else if (projection is { Shared: true, Moving: true, Held: { } held })
             {
                 (rotate, radii) = (held.Rotate, held.Radii);
+                RunOwnLook(element, projection);
             }
             else if (projection is { Shared: true, Moving: true, FromLook: { } from })
             {
@@ -384,6 +390,16 @@ namespace Velvet
             }
             LayoutIdLook.WriteRotate(element, projection, rotate, s_passDt);
             LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale, s_passDt);
+        }
+
+        // The element's own rotate and radii run on over the pass while values not their own are drawn in their place, so
+        // that they stand where UI Toolkit's transitions of them would once they are drawn again; the other branches of
+        // WriteLook run them through the mix or the write
+        // (Given_AMotionTransitioningItsTransformAsItTakesAHeldId_When_ItsClassesSendItBack_Then_ItRunsAsTheEngineRunsIt).
+        private static void RunOwnLook(VisualElement element, LayoutIdProjection projection)
+        {
+            LayoutIdLook.OwnRotate(element, projection, s_passDt);
+            LayoutIdLook.OwnRadii(element, projection, s_passDt, projection.OwnRadiiBuffer);
         }
 
         // Read before the projection takes its new tween. A move of the lead's own that interrupts its shared move
@@ -409,7 +425,7 @@ namespace Velvet
         // meanwhile (Given_ALeadMixingFromAHalfOpaqueHolder_When_ItsOwnOpacityChangesDuringAMoveThatInterruptedTheMix_Then_ItIsDrawnAtWhatTheMixHadReached).
         private static void Hold(VisualElement element, LayoutIdProjection projection, string layoutId, ReconcilerContext ctx)
         {
-            projection.Held = float.IsNaN(projection.FadeAt) ? null : LayoutIdLook.Read(element, projection);
+            projection.Held = float.IsNaN(projection.FadeAt) ? null : LayoutIdLook.Read(element, projection, float.NaN);
             if (projection is { Held: not null, FromLook: { } look }) projection.FromLook = look.Holding(PreviousOpacity(look, layoutId, ctx));
         }
 
@@ -451,30 +467,54 @@ namespace Velvet
                 if (!projection.WritesTranslate)
                 {
                     projection.WritesTranslate = true;
+                    LandTranslate(element, projection);
                     MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Translate);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
-                var own = projection.OwnTranslate;
-                // A running bounce's lift is in the element's own frame, so the projection's scale carries it too.
-                var lift = StyleAnimateDriver.CurrentLiftPx(element) * projection.Scale.y;
-                element.style.translate = new Translate(
-                    new Length(own.x + translate.x + lift.x), new Length(own.y + translate.y + lift.y), own.z);
-                projection.WrittenTranslate = element.style.translate;
+                WriteTranslate(element, projection, translate, projection.Scale.y, s_passDt);
             }
             if (projection.WritesScale || !IsUnit(projection.Scale))
             {
                 if (!projection.WritesScale)
                 {
                     projection.WritesScale = true;
+                    for (var axis = 0; axis < 2; axis++) projection.ScaleCarries[axis].Land(projection.StartScale[axis]);
+                    RunningStyleTransition.TakeOverScale(element, projection.ScaleCarries);
                     MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Scale);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
-                var own = projection.OwnScale;
-                var ping = StyleAnimateDriver.CurrentPingFactor(element);
-                element.style.scale = new Scale(
-                    new Vector3(own.x * projection.Scale.x * ping, own.y * projection.Scale.y * ping, own.z));
-                projection.WrittenScale = element.style.scale;
+                WriteScale(element, projection, projection.Scale, s_passDt);
             }
+        }
+
+        private static void WriteTranslate(VisualElement element, LayoutIdProjection projection, Vector2 translate, float scaleY,
+            float dtSec)
+        {
+            var own = CarriedTranslate(element, projection, dtSec);
+            // A running bounce's lift is in the element's own frame, so the projection's scale carries it too.
+            var lift = StyleAnimateDriver.CurrentLiftPx(element) * scaleY;
+            element.style.translate = new Translate(
+                new Length(own.x + translate.x + lift.x), new Length(own.y + translate.y + lift.y), own.z);
+            projection.WrittenTranslate = element.style.translate;
+        }
+
+        private static void WriteScale(VisualElement element, LayoutIdProjection projection, Vector2 scale, float dtSec)
+        {
+            var target = OwnScale(element, projection);
+            var own = Carried(element, projection.ScaleCarries, target, Vector2Int.zero, dtSec, "scale");
+            var ping = StyleAnimateDriver.CurrentPingFactor(element);
+            element.style.scale = new Scale(new Vector3(own.x * scale.x * ping, own.y * scale.y * ping, target.z));
+            projection.WrittenScale = element.style.scale;
+        }
+
+        // Called by LayoutIdLook's tail on each step after the projection has ended, over dtSec more: draws the translate
+        // and scale it still carries as the element's own, with nothing of the move's
+        // (Given_ALeadWhoseTransformChangesLateInItsMove_When_TheMoveLands_Then_ItRunsOnAsTheEngineRunsIt).
+        internal static void RunOn(VisualElement element, LayoutIdProjection projection, float dtSec)
+        {
+            AdoptForeignWrites(element, projection);
+            if (projection.WritesTranslate) WriteTranslate(element, projection, Vector2.zero, 1f, dtSec);
+            if (projection.WritesScale) WriteScale(element, projection, Vector2.one, dtSec);
         }
 
         // The slots a running animate-* loop leaves to the projection, which adds the loop's share to its own frame.
@@ -489,17 +529,108 @@ namespace Velvet
         private static void AdoptForeignWrites(VisualElement element, LayoutIdProjection projection)
         {
             var translate = element.style.translate;
-            if (projection.WritesTranslate && translate != projection.WrittenTranslate)
-            {
-                projection.OwnInlineTranslate = translate;
-                projection.OwnTranslate = translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : Vector3.zero;
-            }
+            if (projection.WritesTranslate && translate != projection.WrittenTranslate) projection.OwnInlineTranslate = translate;
             var scale = element.style.scale;
-            if (projection.WritesScale && scale != projection.WrittenScale)
+            if (projection.WritesScale && scale != projection.WrittenScale) projection.OwnInlineScale = scale;
+        }
+
+        // Each axis's carry starts at the value the projection read as it began, taken into the unit the element gives the
+        // axis in, and runs on from a transition UI Toolkit is running of it in that unit, as LayoutIdLook.WriteRotate
+        // starts the rotate's (Given_AMotionTranslatingOnATransition_When_ItTakesAHeldId_Then_ItsOwnTranslateRunsAsTheEngineRunsIt).
+        private static void LandTranslate(VisualElement element, LayoutIdProjection projection)
+        {
+            var target = OwnTranslate(element, projection);
+            for (var axis = 0; axis < 2; axis++)
             {
-                projection.OwnInlineScale = scale;
-                projection.OwnScale = scale.keyword == StyleKeyword.Undefined ? scale.value.value : Vector3.one;
+                projection.TranslateCarries[axis].Land(projection.StartTranslate[axis], Tag(target, axis));
+                TakeUnit(element, projection, axis, axis == 0 ? target.x : target.y);
             }
+            RunningStyleTransition.TakeOverTranslate(element, projection.TranslateCarries, projection.TranslateUnits);
+        }
+
+        // The element's own translate carried towards what gives it now, in pixels of the box as it is. Each axis is
+        // carried in the unit it is given in, as UI Toolkit runs a transition in the unit of the value it runs to, so that a
+        // percent one follows the box as its size changes rather than transitioning towards a new pixel value
+        // (Given_ALayoutIdMotionTranslatedByAFractionOfItsSizeMidMove_When_ItGrowsAgain_Then_TheFractionFollowsAtOnce).
+        private static Vector3 CarriedTranslate(VisualElement element, LayoutIdProjection projection, float dtSec)
+        {
+            var target = OwnTranslate(element, projection);
+            TakeUnit(element, projection, 0, target.x);
+            TakeUnit(element, projection, 1, target.y);
+            var carried = Carried(element, projection.TranslateCarries, new Vector2(target.x.value, target.y.value),
+                new Vector2Int(Tag(target, 0), Tag(target, 1)), dtSec, "translate");
+            var size = element.layout.size;
+            return new Vector3(target.x.unit == LengthUnit.Percent ? carried.x / 100f * size.x : carried.x,
+                target.y.unit == LengthUnit.Percent ? carried.y / 100f * size.y : carried.y, target.z);
+        }
+
+        // Where the carries have the element's own translate, in pixels.
+        private static Vector3 OwnCarriedTranslate(VisualElement element, LayoutIdProjection projection)
+        {
+            float Axis(int axis)
+            {
+                var value = projection.TranslateCarries[axis].Value;
+                return projection.TranslateUnits[axis] == LengthUnit.Percent ? value / 100f * element.layout.size[axis] : value;
+            }
+            return new Vector3(Axis(0), Axis(1), OwnTranslate(element, projection).z);
+        }
+
+        // An axis of a translate tagged as LayoutIdCarry.TargetTag reads it.
+        internal static int Tag(Translate translate, int axis) =>
+            translate == Translate.None() ? LayoutIdCarry.NoneTag : (int)(axis == 0 ? translate.x : translate.y).unit;
+
+        // Takes an axis's carry into the unit it is given in, as UI Toolkit takes a transition's start into the unit of the
+        // value it runs to.
+        private static void TakeUnit(VisualElement element, LayoutIdProjection projection, int axis, Length given)
+        {
+            if (given.unit == projection.TranslateUnits[axis]) return;
+            projection.TranslateUnits[axis] = given.unit;
+            var size = element.layout.size[axis];
+            var carry = projection.TranslateCarries[axis];
+            // A pixel value of a box with no extent has no percent, and UI Toolkit runs no transition from it
+            // (Given_AMotionTranslatedByAFractionOfNoHeight_When_ItMoves_Then_ItIsTranslatedByNone).
+            if (given.unit != LengthUnit.Percent) carry.Convert(size / 100f);
+            else if (size > 0f) carry.Convert(100f / size);
+            else carry.Land(given.value, carry.TargetTag);
+        }
+
+        // The element's own value carried towards target, tagged tags, on both axes as LayoutIdLook.OwnRotate carries the
+        // rotate. UI Toolkit runs a translate or a scale as one value, so a change of either axis starts both over, and
+        // reverses only where both run back
+        // (Given_ALeadMovingOnATransitionOfItsOwn_When_ItsTransformChanges_Then_ItRunsAsTheEngineRunsIt).
+        private static Vector2 Carried(VisualElement element, LayoutIdCarry[] axes, Vector2 target, Vector2Int tags, float dtSec,
+            string property)
+        {
+            if (target.x != axes[0].Target || target.y != axes[1].Target || tags.x != axes[0].TargetTag || tags.y != axes[1].TargetTag)
+            {
+                var reverses = axes[0].Reverses(target.x, tags.x) && axes[1].Reverses(target.y, tags.y);
+                axes[0].Retarget(target.x, tags.x, reverses, element, property, null);
+                axes[1].Retarget(target.y, tags.y, reverses, element, property, null);
+            }
+            return new Vector2(axes[0].Advance(dtSec), axes[1].Advance(dtSec));
+        }
+
+        // The translate the element is given now, which its carry runs towards: the inline value the projection took
+        // over, else what its rules declare, else the one it had as the projection began. The rules are read again whenever
+        // the slot is written rather than once as the projection begins, since its classes can change during the move and
+        // a projection can be created before the style pass has resolved a change
+        // (Given_AHolderScaledByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatRescalesIt_Then_ItsMoveIsDrawnAtTheNewScale).
+        private static Translate OwnTranslate(VisualElement element, LayoutIdProjection projection)
+        {
+            var inline = projection.OwnInlineTranslate;
+            if (inline.keyword == StyleKeyword.Undefined) return inline.value;
+            if (inline.keyword != StyleKeyword.Null) return Translate.None();
+            var start = projection.StartTranslate;
+            return StyleCascade.Translate(element) ?? new Translate(new Length(start.x), new Length(start.y), start.z);
+        }
+
+        // As OwnTranslate, for the scale.
+        private static Vector3 OwnScale(VisualElement element, LayoutIdProjection projection)
+        {
+            var inline = projection.OwnInlineScale;
+            if (inline.keyword == StyleKeyword.Undefined) return inline.value.value;
+            if (inline.keyword != StyleKeyword.Null) return Vector3.one;
+            return StyleCascade.Scale(element) is { } declared ? declared.value : projection.StartScale;
         }
 
         private static void EnsureFrame(VisualElement host, ReconcilerContext ctx)
@@ -590,17 +721,40 @@ namespace Velvet
             if (!ctx.LayoutIdProjections.Remove(element, out var projection)) return;
             AdoptForeignWrites(element, projection);
             LayoutIdLook.Adopt(element, projection);
-            if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
-            if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
-            // A rotate that runs on past the move keeps the slot from a spin until it lands (LayoutIdLook.Hand).
-            var rotate = projection.WritesRotate ? MotionTransitionSlots.Rotate : MotionTransitionSlots.None;
-            StyleAnimateDriver.YieldSlots(element, projection, LayoutIdLook.RunsOn(projection) ? rotate : MotionTransitionSlots.None);
+            // A translate or scale still carried is handed back as it lands, as the rotate is (LayoutIdLook.End).
+            (Vector3? Translate, Vector3? Scale, float? Rotate) restored = default;
+            if (projection.WritesTranslate && LayoutIdLook.Landed(projection.TranslateCarries))
+            {
+                restored.Translate = OwnCarriedTranslate(element, projection);
+                element.style.translate = projection.OwnInlineTranslate;
+                projection.WritesTranslate = false;
+            }
+            if (projection.WritesScale && LayoutIdLook.Landed(projection.ScaleCarries))
+            {
+                restored.Scale = new Vector3(projection.ScaleCarries[0].Value, projection.ScaleCarries[1].Value, OwnScale(element, projection).z);
+                element.style.scale = projection.OwnInlineScale;
+                projection.WritesScale = false;
+            }
+            // A slot that runs on past the move keeps it from a loop until it lands (LayoutIdLook.Hand).
+            var held = WrittenSlots(projection);
+            StyleAnimateDriver.YieldSlots(element, projection, LayoutIdLook.RunsOn(projection) ? held : MotionTransitionSlots.None);
             // The loop's frame follows at once, rather than the element standing at its own value until its next tick.
-            // The rotate slot still holds the projection's frame, handed back by LayoutIdLook.End.
-            StyleAnimateDriver.ReassertLoop(element, rotate);
+            // The slots still written hold the projection's frame, handed back by LayoutIdLook.End.
+            StyleAnimateDriver.ReassertLoop(element, held);
             WriteOpacity(element, projection, null, ctx);
             LayoutIdPicking.Restore(projection);
-            LayoutIdLook.End(element, projection, ctx.StyleAnimationScheduler.Clock);
+            // The rotate is handed back by LayoutIdLook.End at once, or else drawn by its tail from the carry, which only takes
+            // the slot after this render
+            // (Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate).
+            var handed = LayoutIdLook.End(element, projection, ctx.StyleAnimationScheduler.Clock);
+            if (projection.WritesRotate)
+            {
+                restored.Rotate = handed ? LayoutIdLook.DeclaredRotate(element, projection).angle.ToDegrees() : projection.RotateCarry.Value;
+            }
+            if (ctx.CurrentPass != null && (restored.Translate != null || restored.Scale != null || restored.Rotate != null))
+            {
+                ctx.LayoutIdRestored[element] = restored;
+            }
         }
 
         private static Vector3 Pixels(Translate translate, Rect layout) => new(
@@ -631,9 +785,12 @@ namespace Velvet
             var drawn = ctx.LayoutIdProjections.TryGetValue(element, out var projection) ? Drawn(projection, layout, parentScale) : layout;
             var world = parent.worldTransform;
             box = new LayoutIdBox(parent, drawn, world.MultiplyPoint3x4(drawn.center), drawn.size * AxisLengths(world), parentScale,
-                readLook ? LayoutIdLook.Read(element, projection) : null);
+                readLook ? LayoutIdLook.Read(element, projection, RestoredRotate(element, ctx)) : null);
             return true;
         }
+
+        private static float RestoredRotate(VisualElement element, ReconcilerContext ctx) =>
+            ctx.LayoutIdRestored.TryGetValue(element, out var restored) && restored.Rotate is { } rotate ? rotate : float.NaN;
 
         private static void CancelPendingSettle(VisualElement element, ReconcilerContext ctx)
         {
@@ -882,6 +1039,11 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent): CancelForTeardown lists every id it gives a null element, so an id
             // left over here is removed at a later boundary exactly when it would have been listed again.
             ctx.LayoutIdSnapshots.Clear();
+            ctx.LayoutIdRestored.Clear();
+            foreach (var projection in ctx.LayoutIdProjections.Values)
+            {
+                projection.RestoredRotate = float.NaN;
+            }
         }
 
         // A power of two, so a rect off by exactly this much is representable and the boundary testable.
@@ -1000,13 +1162,13 @@ namespace Velvet
     internal sealed class LayoutIdProjection
     {
         public LayoutIdProjection(VisualElement host, StyleTranslate ownInlineTranslate, StyleScale ownInlineScale,
-            Vector3 ownTranslate, Vector3 ownScale)
+            Vector3 startTranslate, Vector3 startScale)
         {
             Host = host;
             OwnInlineTranslate = ownInlineTranslate;
             OwnInlineScale = ownInlineScale;
-            OwnTranslate = ownTranslate;
-            OwnScale = ownScale;
+            StartTranslate = startTranslate;
+            StartScale = startScale;
         }
 
         // The panel whose frame steps and ends this projection.
@@ -1025,13 +1187,20 @@ namespace Velvet
 
         public StyleTranslate OwnInlineTranslate;
         public StyleScale OwnInlineScale;
-        public Vector3 OwnTranslate;
-        public Vector3 OwnScale;
+        // The translate, in pixels, and the scale the element had as the projection began.
+        public readonly Vector3 StartTranslate;
+        public readonly Vector3 StartScale;
 
         public bool WritesTranslate;
         public bool WritesScale;
         public StyleTranslate WrittenTranslate;
         public StyleScale WrittenScale;
+        // How the own translate and the own scale are carried on the x and y axes while the projection writes them
+        // (CarriedTranslate, WriteScale).
+        public LayoutIdCarry[] TranslateCarries = { new(), new() };
+        public LayoutIdCarry[] ScaleCarries = { new(), new() };
+        // The unit each axis of the own translate is carried in.
+        public LengthUnit[] TranslateUnits = { LengthUnit.Pixel, LengthUnit.Pixel };
 
         // The lead this member is drawn over while the lead crossfades, or null for a projection of its own.
         public VisualElement? Leader;
@@ -1049,6 +1218,9 @@ namespace Velvet
 
         public bool WritesRotate;
         public StyleRotate OwnInlineRotate;
+        // What a projection that ended earlier in the render this one was created in handed back to the rotate slot, until
+        // that render ends; NaN otherwise (LayoutIdLook.OwnRotate).
+        public float RestoredRotate = float.NaN;
         // The rotate the element had as the projection first wrote it.
         public float StartRotate;
         public float DrawnRotate;
@@ -1191,6 +1363,7 @@ namespace Velvet
         // Where a change back runs to, and how far the transition running now was shortened, which UI Toolkit keeps per
         // transition to shorten one that reverses the transition it interrupts.
         private float _reversingStart;
+        private int _reversingTag;
         private float _shortening = 1f;
         // The timing the list a variant swap holds inline gave the property; NaN duration while it holds none.
         private float _heldDurationSec = float.NaN;
@@ -1199,23 +1372,40 @@ namespace Velvet
         // The held list has named the property since it was written.
         private bool _named;
 
+        // What UI Toolkit tells values of the property apart by beyond their number, a unit or a none, so that a change of
+        // it alone is a change of the value, and a change back is a reversal only onto the same: NoneTag, else the
+        // LengthUnit of a translate or a radius, or the AngleUnit of a rotate; 0 where no tag is kept, as for the scale,
+        // whose none UI Toolkit compares as its value
+        // (Given_ALeadWhoseTransformChangesLateInItsMove_When_TheMoveLands_Then_ItRunsOnAsTheEngineRunsIt,
+        // Given_AMotionTransitioningItsTransformAsItTakesAHeldId_When_ItsClassesSendItBack_Then_ItRunsAsTheEngineRunsIt).
+        public const int NoneTag = -1;
+
         public float Value { get; private set; }
         public float Target { get; private set; }
+        public int TargetTag { get; private set; }
         public bool Landed => _elapsedSec >= _delaySec + _durationSec;
 
-        public void Land(float value)
+        // Re-expresses what is carried in a unit factor times as fine, as UI Toolkit takes a transition's start into the
+        // unit of the value it runs to.
+        public void Convert(float factor) =>
+            (Value, _from, Target, _reversingStart) = (Value * factor, _from * factor, Target * factor, _reversingStart * factor);
+
+        public void Land(float value, int tag = 0)
         {
             Value = _from = Target = value;
+            TargetTag = _reversingTag = tag;
             _elapsedSec = _delaySec = _durationSec = 0f;
         }
 
         // Runs on from where UI Toolkit's transition of the property had got: its start and end, its curve, its eased
         // progress and its shortening, with elapsedSec counted from the end of its delay, below zero while still inside it.
+        // tags: the TargetTag of its end and of what a reversal of it runs back to.
         public void TakeOver((float From, float Target, float DurationSec, float ElapsedSec) run, System.Func<float, float> curve,
-            (float Start, float Shortening, float Eased) reversing)
+            (float Start, float Shortening, float Eased) reversing, (int Target, int Reversing) tags = default)
         {
             (_from, Target, _durationSec, _elapsedSec, _delaySec, _curve) = (run.From, run.Target, run.DurationSec, run.ElapsedSec, 0f, curve);
             (_reversingStart, _shortening, _eased) = reversing;
+            (TargetTag, _reversingTag) = tags;
         }
 
         // Read as the swap writes the list, before the projection takes the property out of it: listed is whether the
@@ -1244,24 +1434,43 @@ namespace Velvet
         // reversal reversed — is shortened by how far the running one had got, as UI Toolkit shortens a reversing
         // transition
         // (Given_ALeadCrossfadingIn_When_ItsClassesFadeItOutAndBackMidway_Then_TheWayBackIsShortened).
-        public float Step(float target, float dtSec, VisualElement element, string property, string? shorthand)
+        public float Step(float target, float dtSec, VisualElement element, string property, string? shorthand) =>
+            Step(target, TargetTag, dtSec, element, property, shorthand);
+
+        public float Step(float target, int tag, float dtSec, VisualElement element, string property, string? shorthand)
         {
-            if (target != Target)
-            {
-                var reverses = !Landed && Mathf.Approximately(target, _reversingStart);
-                _shortening = reverses ? Mathf.Clamp01(Mathf.Abs(1f - (1f - _eased) * _shortening)) : 1f;
-                _reversingStart = reverses ? Target : Value;
-                (_from, Target, _elapsedSec, _curve) = (Value, target, 0f, null);
-                // Before the held list, since a driver takes the property out of it, and one that started after the list
-                // was read here leaves it holding the timing it had
-                // (Given_ALeadMixingRotateUnderAPoseTweenThatASpinStartedOn_When_ItsRulesTurnIt_Then_TheTurnIsTakenAtOnce).
-                (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
-                    : float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
-                    : (_heldDurationSec, _heldDelaySec, _heldEasing);
-                _durationSec *= _shortening;
-                // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
-                if (_delaySec < 0f) _delaySec *= _shortening;
-            }
+            if (target != Target || tag != TargetTag) Retarget(target, tag, Reverses(target, tag), element, property, shorthand);
+            return Advance(dtSec);
+        }
+
+        // Whether target, tagged tag, is where UI Toolkit would reverse a running transition of the value to.
+        public bool Reverses(float target, int tag) => !Landed && Mathf.Approximately(target, _reversingStart) && tag == _reversingTag;
+
+        // Starts over from where the value stands towards target, tagged tag, shortened where reverses, on the timing the
+        // property takes now. A reversal runs back to the end of the transition it reverses, and a transition from rest to
+        // the value at rest, as UI Toolkit keeps them with their tags; one from part way runs back to where it stood, which
+        // UI Toolkit holds in the unit of the end it ran to, and so as no none.
+        public void Retarget(float target, int tag, bool reverses, VisualElement element, string property, string? shorthand)
+        {
+            _reversingTag = reverses || Landed ? TargetTag : System.Math.Max(TargetTag, 0);
+            TargetTag = tag;
+            _shortening = reverses ? Mathf.Clamp01(Mathf.Abs(1f - (1f - _eased) * _shortening)) : 1f;
+            _reversingStart = reverses ? Target : Value;
+            (_from, Target, _elapsedSec, _curve) = (Value, target, 0f, null);
+            // Before the held list, since a driver takes the property out of it, and one that started after the list
+            // was read here leaves it holding the timing it had
+            // (Given_ALeadMixingRotateUnderAPoseTweenThatASpinStartedOn_When_ItsRulesTurnIt_Then_TheTurnIsTakenAtOnce).
+            (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
+                : float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
+                : (_heldDurationSec, _heldDelaySec, _heldEasing);
+            _durationSec *= _shortening;
+            // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
+            if (_delaySec < 0f) _delaySec *= _shortening;
+        }
+
+        // Carries the value on over dtSec more.
+        public float Advance(float dtSec)
+        {
             _elapsedSec += dtSec;
             var t = Mathf.Clamp01((_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec));
             _eased = _curve?.Invoke(t) ?? UssEasing.Evaluate(_easing, t);

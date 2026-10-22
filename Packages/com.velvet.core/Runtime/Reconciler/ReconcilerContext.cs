@@ -935,6 +935,10 @@ namespace Velvet
         public Dictionary<VisualElement, VisualElement> LayoutIdExiting { get; } = new();
         // The relegated presence children waiting for a lead to land (MotionLayoutIdDriver.Relegate).
         public List<LayoutIdLanding> LayoutIdLandings { get; } = new();
+        // The translate, in pixels, the scale and the rotate, in degrees, a projection ended inside this render handed back
+        // to its element, which the element's resolved style shows only after the next style pass
+        // (MotionLayoutIdDriver.CreateProjection).
+        public Dictionary<VisualElement, (UnityEngine.Vector3? Translate, UnityEngine.Vector3? Scale, float? Rotate)> LayoutIdRestored { get; } = new();
 
         // The GeometryChangedEvent callback a layoutId patch waits on for its new rect, with the box it
         // tweens from. A registered callback, so it is removed explicitly at teardown like
@@ -2886,6 +2890,7 @@ namespace Velvet
                 LayoutIdTimings,
                 LayoutIdFollows,
                 LayoutIdExiting,
+                LayoutIdRestored,
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,

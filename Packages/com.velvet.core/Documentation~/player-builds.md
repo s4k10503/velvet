@@ -103,9 +103,9 @@ flag, UI Toolkit's internal property-change event, a text input's record of an o
 is running and which longhands a shorthand covers, used by
 [layoutId moves](motion.md#shared-element-layout-animation-layoutid), native transition activity, and the timing and
 values of a running one, used by [current-value starts](motion.md#driven-channels-spring-and-bezier), a spring's
-inherited velocity and the opacity and rotate a crossfade carries on (`RunningStyleTransition.TakeOverRotate` reads
-the running rotate), the border colors an element's matching style rules give it, which a
-[dashed divider](styling-flexbox-and-gap.md) paints in,
+inherited velocity and the opacity, rotate, translate and scale a layoutId move carries on
+(`RunningStyleTransition.TakeOverRotate` reads the running rotate), the border colors an element's matching style
+rules give it, which a [dashed divider](styling-flexbox-and-gap.md) paints in,
 and a panel's version, layout-phase flag, style updater and that updater's traversal flag, an element's layout
 node, last layout and version increment, and the node's layout computation, dirty flag and new-layout flag, which
 a commit uses to lay the panel out before its layout effects and callback refs read it

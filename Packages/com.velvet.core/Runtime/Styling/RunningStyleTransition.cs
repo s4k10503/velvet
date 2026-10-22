@@ -18,6 +18,8 @@ namespace Velvet
         private static readonly FieldInfo? s_floats = EngineMember.AnimationSystemFloats.ResolveField();
         private static readonly FieldInfo? s_rotates = EngineMember.AnimationSystemRotates.ResolveField();
         private static readonly FieldInfo? s_lengths = EngineMember.AnimationSystemLengths.ResolveField();
+        private static readonly FieldInfo? s_translates = EngineMember.AnimationSystemTranslates.ResolveField();
+        private static readonly FieldInfo? s_scales = EngineMember.AnimationSystemScales.ResolveField();
         // Declared on the generic definitions; read through the members of the constructed type a value is (Close).
         private static readonly FieldInfo? s_running = EngineMember.AnimationValuesRunning.ResolveField();
         private static readonly MethodInfo? s_indexOf = EngineMember.AnimationDataSetIndexOf.ResolveMethod();
@@ -34,6 +36,8 @@ namespace Velvet
         private static readonly FieldInfo? s_current = EngineMember.AnimationCurrentValue.ResolveField();
         private static readonly object? s_opacityId = EngineMember.OpacityPropertyId.ResolveField()?.GetValue(null);
         private static readonly object? s_rotateId = EngineMember.RotatePropertyId.ResolveField()?.GetValue(null);
+        private static readonly object? s_translateId = EngineMember.TranslatePropertyId.ResolveField()?.GetValue(null);
+        private static readonly object? s_scaleId = EngineMember.ScalePropertyId.ResolveField()?.GetValue(null);
         // In LayoutIdLook's corner order.
         private static readonly object?[] s_cornerIds =
         {
@@ -54,15 +58,47 @@ namespace Velvet
 
         // Has the carry run on from the element's running opacity transition, if it has one.
         public static void TakeOverOpacity(VisualElement element, LayoutIdCarry carry) =>
-            TakeOver(element, carry, s_floats, s_opacityId, value => (float)value);
+            TakeOver(element, carry, s_floats, s_opacityId, value => ((float)value, 0));
 
         public static void TakeOverRotate(VisualElement element, LayoutIdCarry carry) =>
-            TakeOver(element, carry, s_rotates, s_rotateId, value => ((Rotate)value).angle.ToDegrees());
+            TakeOver(element, carry, s_rotates, s_rotateId, value => (((Rotate)value).angle.ToDegrees(), LayoutIdLook.Tag((Rotate)value)));
 
-        // A corner, in LayoutIdLook's corner order, carried in the given unit; one running in another is not taken over.
+        // The x and y axes, each carried in the given unit. UI Toolkit runs a transition in the unit of its end and keeps
+        // what a reversal runs back to as it was given, in its own unit or as none
+        // (Given_AMotionTranslatingOnATransition_When_ItTakesAHeldId_Then_ItsOwnTranslateRunsAsTheEngineRunsIt), so each
+        // value is taken into the carry's unit through the element's box.
+        public static void TakeOverTranslate(VisualElement element, LayoutIdCarry[] axes, LengthUnit[] units)
+        {
+            for (var axis = 0; axis < 2; axis++)
+            {
+                TakeOver(element, axes[axis], s_translates, s_translateId,
+                    value => (InUnit(axis == 0 ? ((Translate)value).x : ((Translate)value).y, units[axis], element.layout.size[axis]),
+                        MotionLayoutIdDriver.Tag((Translate)value, axis)));
+            }
+        }
+
+        public static void TakeOverScale(VisualElement element, LayoutIdCarry[] axes)
+        {
+            for (var axis = 0; axis < 2; axis++)
+            {
+                TakeOver(element, axes[axis], s_scales, s_scaleId, value => (((Scale)value).value[axis], 0));
+            }
+        }
+
+        // A length in the given unit, a percent being of size. On a box with no extent a percent is NaN, which AllNumbers
+        // refuses, or infinite, which no reversal matches; UI Toolkit runs no transition into a percent there.
+        private static float InUnit(Length length, LengthUnit unit, float size) =>
+            length.unit == unit ? length.value
+            : unit == LengthUnit.Percent ? length.value * 100f / size
+            : length.value / 100f * size;
+
+        // A corner, in LayoutIdLook's corner order, carried in the given unit, each value taken into it as a percent of the
+        // element's width, which UI Toolkit takes a radius's percent of; it keeps what a reversal runs back to as it was
+        // given, as TakeOverTranslate reads
+        // (Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt).
         public static void TakeOverRadius(VisualElement element, int corner, LayoutIdCarry carry, LengthUnit unit) =>
             TakeOver(element, carry, s_lengths, s_cornerIds[corner],
-                value => ((Length)value).unit == unit ? ((Length)value).value : float.NaN);
+                value => (InUnit((Length)value, unit, element.resolvedStyle.width), (int)((Length)value).unit));
 
         // A corner, in LayoutIdLook's corner order, as UI Toolkit draws it now: where a transition of it runs in the given
         // radius's unit, its current value, else that radius.
@@ -116,7 +152,9 @@ namespace Velvet
         }
 #endif
 
-        private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property, Func<object, float> read)
+        // read: a value of the transition as the carry holds it, and its LayoutIdCarry.TargetTag.
+        private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property,
+            Func<object, (float Value, int Tag)> read)
         {
             if (Find(element, set, property) is not { } found) return;
             // A member whose type or shape has changed under the read fails it as one gone does.
@@ -124,10 +162,10 @@ namespace Velvet
             {
                 var (system, timing, style) = found;
                 var (from, to, reversingStart) = (read(Read(s_from!, style)), read(Read(s_to!, style)), read(Read(s_reversingStart!, style)));
-                if (!AllNumbers(from, to, reversingStart)) return;
+                if (!AllNumbers(from.Value, to.Value, reversingStart.Value)) return;
                 var elapsedSec = (double)s_now!.GetValue(system) - (double)Read(s_startTime!, timing);
-                carry.TakeOver((from, to, (float)Read(s_duration!, timing), (float)elapsedSec), (Func<float, float>)Read(s_curve!, timing),
-                    (reversingStart, (float)Read(s_shortening!, timing), (float)Read(s_eased!, timing)));
+                carry.TakeOver((from.Value, to.Value, (float)Read(s_duration!, timing), (float)elapsedSec), (Func<float, float>)Read(s_curve!, timing),
+                    (reversingStart.Value, (float)Read(s_shortening!, timing), (float)Read(s_eased!, timing)), (to.Tag, reversingStart.Tag));
             }
             catch (Exception)
             {
