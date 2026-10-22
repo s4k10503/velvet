@@ -277,6 +277,7 @@ namespace Velvet
                 || StylePointerEventsClass.IsPointerEventsToken(core)
                 || StyleSkewClass.IsSkewClass(core)
                 || StyleShadowClass.IsShadowClass(core)
+                || StyleShadowClass.IsInsetBoxShadowClass(core)
                 || StyleGradientClass.IsGradientClass(core)
                 || StyleAnimateClass.IsAnimateClass(core)
                 || StyleBorderStyleClass.IsBorderStyleClass(core)

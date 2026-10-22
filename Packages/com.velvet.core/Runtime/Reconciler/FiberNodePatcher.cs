@@ -1521,7 +1521,7 @@ namespace Velvet
 
         private static StyleLonghandSet InlineLonghandsOf(string core)
         {
-            if (StyleArbitraryValueResolver.TryParse(core, out var style))
+            if (StyleArbitraryValueResolver.TryParseComposed(core, out var style))
             {
                 return StyleArbitraryLonghands.Of(style.Property);
             }
@@ -1572,7 +1572,7 @@ namespace Velvet
             {
                 if (TryGetInlineResolvedCore(rawCls, out var core, out _))
                 {
-                    if (StyleArbitraryValueResolver.TryParse(core, out var style))
+                    if (StyleArbitraryValueResolver.TryParseComposed(core, out var style))
                     {
                         longhands = longhands.Union(StyleArbitraryLonghands.Of(style.Property));
                     }
@@ -1748,7 +1748,7 @@ namespace Velvet
             {
                 return null;
             }
-            if (!StyleArbitraryValueResolver.TryParse(core, out var style))
+            if (!StyleArbitraryValueResolver.TryParseComposed(core, out var style))
             {
                 return null;
             }

@@ -127,9 +127,15 @@ namespace Velvet
             }
 
             var found = false;
+            // A box-shadow the browser discards takes every shadow-* with it.
+            var discarded = StyleRingClass.DiscardsBoxShadow(classNames);
             foreach (var cls in classNames)
             {
-                if (TryParse(cls, out var parsed, out var wantShadow))
+                if (discarded && IsShadowClass(cls))
+                {
+                    continue;
+                }
+                if (TryParse(cls!, out var parsed, out var wantShadow))
                 {
                     // A recognized utility overrides earlier ones; shadow-none flips found back to false.
                     found = wantShadow;
@@ -186,6 +192,193 @@ namespace Velvet
             }
             // Unrecognized shadow-* utility: not a known value.
             return false;
+        }
+
+        // One custom property of the element's box-shadow and the class holding it: the last of those writing it in
+        // the order the class passes read them, which is Tailwind's for the reconciled classes (StyleFamilyOrder) with
+        // the variant payloads that apply after them, weakest first (VariantGateState); an important one holds over
+        // any other. Rejected and ReadsColour describe the value it holds.
+        internal struct BoxShadowSlot
+        {
+            private bool _important;
+
+            public bool Set { get; private set; }
+
+            public bool Rejected { get; private set; }
+
+            public bool ReadsColour { get; private set; }
+
+            // Takes the slot for a class read after the one holding it, unless that one is important and this is not.
+            public void Offer(bool important, bool rejected, bool readsColour = false)
+            {
+                if (Set && _important && !important)
+                {
+                    return;
+                }
+                Set = true;
+                _important = important;
+                Rejected = rejected;
+                ReadsColour = readsColour;
+            }
+        }
+
+        // Whether cls is an inset-shadow-* or inset-ring-* class, which Velvet draws nothing for but whose values
+        // take part in the box-shadow the others share (StyleRingClass.DiscardsBoxShadow).
+        internal static bool IsInsetBoxShadowClass(string cls)
+            => cls.StartsWith("inset-shadow", StringComparison.Ordinal) || cls.StartsWith("inset-ring", StringComparison.Ordinal);
+
+        // Whether a family's layer and colour discard the box-shadow: a layer the browser rejects, or one reading
+        // the family's colour variable where the colour is one the browser rejects.
+        internal static bool Discards(in BoxShadowSlot layer, in BoxShadowSlot colour)
+            => layer.Set && (layer.Rejected || (layer.ReadsColour && colour.Rejected));
+
+        // The theme sizes Tailwind gives inset-shadow-*, which, unlike shadow-*, has no bare utility.
+        private static readonly string[] s_insetPresets = { "2xs", "xs", "sm" };
+
+        // Offers core, a class without its important modifier, to the slot of root's family it writes, root being
+        // "shadow" or "inset-shadow", as Tailwind writes it: a size, none or a bracket it does not type as a colour
+        // writes the layer, and a palette name, a keyword or a bracket it types as a colour writes the colour
+        // variable alone. False for any other class.
+        internal static bool TryReadBoxShadowClass(string core, string root, bool important, ref BoxShadowSlot layer,
+            ref BoxShadowSlot colour)
+        {
+            var inset = root == "inset-shadow";
+            if (core == root && !inset)
+            {
+                layer.Offer(important, false, readsColour: true);
+                return true;
+            }
+            if (!core.StartsWith(root + "-", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var suffix = core.Substring(root.Length + 1);
+            if (suffix == "none" || (inset ? Array.IndexOf(s_insetPresets, suffix) >= 0 : Presets.ContainsKey(suffix)))
+            {
+                layer.Offer(important, false, readsColour: suffix != "none");
+                return true;
+            }
+            if (TryReadBracket(core, root, out var hint, out var value))
+            {
+                if (hint != null ? hint == "color" : TailwindDataTypes.IsColor(value.AsSpan()))
+                {
+                    colour.Offer(important, StyleColorValueParser.RejectsAsColour(value));
+                }
+                else
+                {
+                    layer.Offer(important, RejectsAsBoxShadow(value, inset), ReadsShadowColour(value));
+                }
+                return true;
+            }
+            if (suffix is "inherit" or "initial" or "current" or "transparent" || VelvetPalette.TryResolveColorToken(suffix, out _))
+            {
+                colour.Offer(important, false);
+                return true;
+            }
+            return false;
+        }
+
+        // Whether the browser rejects value as a box-shadow, each layer behind an inset where inset says Tailwind
+        // writes one there. Each layer is two to four lengths in a row, the third not negative, with at most one
+        // colour and one inset around them; a layer holding a var() is not judged, nor is a function or a word as a
+        // colour (StyleColorValueParser.RejectsAsColour).
+        private static bool RejectsAsBoxShadow(string value, bool inset)
+        {
+            foreach (var layer in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))
+            {
+                if (layer.IndexOf("var(", StringComparison.OrdinalIgnoreCase) < 0
+                    && RejectsAsLayer(inset ? "inset " + layer : layer))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Whether Tailwind writes the family's colour variable into a bracket's layers (replace-shadow-colors.ts): a
+        // layer does where two of its space-separated parts open as a length does, a sign then a digit or a point and
+        // a digit, whatever follows; it then takes the first other part for the colour, or appends one.
+        private static bool ReadsShadowColour(string value)
+        {
+            foreach (var layer in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))
+            {
+                var offsets = 0;
+                foreach (var part in StyleGradientClass.SplitTopLevel(layer.Trim(), ' '))
+                {
+                    if (OpensAsLength(part))
+                    {
+                        offsets++;
+                    }
+                }
+                if (offsets >= 2)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Tailwind's /^-?(\d+|\.\d+)/.
+        private static bool OpensAsLength(string part)
+        {
+            var at = part.StartsWith("-", StringComparison.Ordinal) ? 1 : 0;
+            var digit = at < part.Length && part[at] >= '0' && part[at] <= '9';
+            return digit || (at + 1 < part.Length && part[at] == '.' && part[at + 1] >= '0' && part[at + 1] <= '9');
+        }
+
+        private static bool RejectsAsLayer(string layer)
+        {
+            var lengths = 0;
+            var lengthsEnded = false;
+            var colours = 0;
+            var insets = 0;
+            foreach (var token in StyleGradientClass.SplitTopLevel(layer, ' '))
+            {
+                if (token.Length == 0)
+                {
+                    continue;
+                }
+                if (!TailwindDataTypes.IsColor(token.AsSpan()) && (token == "0" || StyleCompositeRejection.IsLength(token)
+                    || TailwindMathSpacing.HasMathFunction(token)))
+                {
+                    if (lengthsEnded || (lengths == 2 && token[0] == '-'))
+                    {
+                        return true;
+                    }
+                    lengths++;
+                    continue;
+                }
+                lengthsEnded = lengths > 0;
+                if (string.Equals(token, "inset", StringComparison.OrdinalIgnoreCase))
+                {
+                    insets++;
+                }
+                else if (StyleColorValueParser.RejectsAsColour(token))
+                {
+                    return true;
+                }
+                else
+                {
+                    colours++;
+                }
+            }
+            return lengths < 2 || lengths > 4 || colours > 1 || insets > 1;
+        }
+
+        // The bracket of a root-[…] class with its type hint split off, whatever /modifier follows it.
+        private static bool TryReadBracket(string cls, string root, out string? hint, out string value)
+        {
+            hint = null;
+            value = string.Empty;
+            var open = root.Length + 2;
+            var close = cls.LastIndexOf(']');
+            if (!cls.StartsWith(root + "-[", StringComparison.Ordinal) || close <= open
+                || !StyleArbitraryValueResolver.TrySplitTypeHint(cls.AsSpan(open, close - open), out hint, out var span))
+            {
+                return false;
+            }
+            value = span.ToString();
+            return true;
         }
 
         // Parses the inner body of a shadow-[…] arbitrary value: comma-separated layers, first on top. One

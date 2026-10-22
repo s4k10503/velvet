@@ -1,14 +1,16 @@
 using System;
+using System.Collections.Generic;
 
 namespace Velvet
 {
-    // Tailwind v4's data-type tests (utils/infer-data-type.ts), which decide whether a bracket that a utility
-    // reads as either a length or a colour is the length. Each takes the bracket's text with `_` still standing
-    // for a space, and decodes it as Tailwind does first. A value these call no length goes to the colour branch,
-    // where a browser discards it unless it is a colour.
+    // Tailwind v4's data-type tests (utils/infer-data-type.ts and utils/is-color.ts), which decide which branch a
+    // utility that reads a bracket more than one way writes it into. Each takes the bracket's text with `_` still
+    // standing for a space, and decodes it as Tailwind does first. Where a utility reads a bracket as either a
+    // length or a colour, a value these call no length goes to the colour branch, where a browser discards it
+    // unless it is a colour.
     internal static class TailwindDataTypes
     {
-        private static readonly string[] s_lengthUnits =
+        internal static readonly string[] s_lengthUnits =
         {
             "cm", "mm", "Q", "in", "pc", "pt", "px", "em", "ex", "ch", "cap", "ic", "rem", "rex", "rch", "rcap",
             "ric", "lh", "rlh", "vw", "vh", "vmin", "vmax", "vb", "vi", "svw", "svh", "svi", "svb", "svmin",
@@ -57,6 +59,58 @@ namespace Velvet
                 || NumberEnd(number, withExponent: false) == number.Length;
         }
 
+        // Tailwind's colour test (utils/is-color.ts): a leading '#', a colour function, or a named colour.
+        public static bool IsColor(ReadOnlySpan<char> bracket)
+        {
+            var value = Decode(bracket);
+            if (value.Length > 0 && value[0] == '#')
+            {
+                return true;
+            }
+            foreach (var function in s_colorFunctions)
+            {
+                if (value.StartsWith(function, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            return IsNamedColor(value);
+        }
+
+        public static bool IsNamedColor(string value) => s_namedColors.Contains(value);
+
+        private static readonly string[] s_colorFunctions =
+        {
+            "rgb(", "rgba(", "hsl(", "hsla(", "hwb(", "color(", "lab(", "lch(", "oklab(", "oklch(", "light-dark(",
+            "color-mix(", "--alpha(",
+        };
+
+        private static readonly HashSet<string> s_namedColors = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "black", "silver", "gray", "white", "maroon", "red", "purple", "fuchsia", "green", "lime", "olive",
+            "yellow", "navy", "blue", "teal", "aqua", "aliceblue", "antiquewhite", "aquamarine", "azure", "beige",
+            "bisque", "blanchedalmond", "blueviolet", "brown", "burlywood", "cadetblue", "chartreuse", "chocolate",
+            "coral", "cornflowerblue", "cornsilk", "crimson", "cyan", "darkblue", "darkcyan", "darkgoldenrod",
+            "darkgray", "darkgreen", "darkgrey", "darkkhaki", "darkmagenta", "darkolivegreen", "darkorange",
+            "darkorchid", "darkred", "darksalmon", "darkseagreen", "darkslateblue", "darkslategray", "darkslategrey",
+            "darkturquoise", "darkviolet", "deeppink", "deepskyblue", "dimgray", "dimgrey", "dodgerblue",
+            "firebrick", "floralwhite", "forestgreen", "gainsboro", "ghostwhite", "gold", "goldenrod", "greenyellow",
+            "grey", "honeydew", "hotpink", "indianred", "indigo", "ivory", "khaki", "lavender", "lavenderblush",
+            "lawngreen", "lemonchiffon", "lightblue", "lightcoral", "lightcyan", "lightgoldenrodyellow", "lightgray",
+            "lightgreen", "lightgrey", "lightpink", "lightsalmon", "lightseagreen", "lightskyblue", "lightslategray",
+            "lightslategrey", "lightsteelblue", "lightyellow", "limegreen", "linen", "magenta", "mediumaquamarine",
+            "mediumblue", "mediumorchid", "mediumpurple", "mediumseagreen", "mediumslateblue", "mediumspringgreen",
+            "mediumturquoise", "mediumvioletred", "midnightblue", "mintcream", "mistyrose", "moccasin",
+            "navajowhite", "oldlace", "olivedrab", "orange", "orangered", "orchid", "palegoldenrod", "palegreen",
+            "paleturquoise", "palevioletred", "papayawhip", "peachpuff", "peru", "pink", "plum", "powderblue",
+            "rebeccapurple", "rosybrown", "royalblue", "saddlebrown", "salmon", "sandybrown", "seagreen", "seashell",
+            "sienna", "skyblue", "slateblue", "slategray", "slategrey", "snow", "springgreen", "steelblue", "tan",
+            "thistle", "tomato", "turquoise", "violet", "wheat", "whitesmoke", "yellowgreen", "transparent",
+            "currentcolor", "canvas", "canvastext", "linktext", "visitedtext", "activetext", "buttonface",
+            "buttontext", "buttonborder", "field", "fieldtext", "highlight", "highlighttext", "selecteditem",
+            "selecteditemtext", "mark", "marktext", "graytext", "accentcolor", "accentcolortext",
+        };
+
         // A single <line-width> as Tailwind's line-width test takes one: a length, a number, or a keyword.
         public static bool IsLineWidthKeyword(ReadOnlySpan<char> bracket)
         {
@@ -80,7 +134,7 @@ namespace Velvet
         }
 
         // Where HAS_NUMBER, [+-]?\d*\.?\d+(?:[eE][+-]?\d+)?, ends when it matches from the start, or -1.
-        private static int NumberEnd(string value, bool withExponent)
+        internal static int NumberEnd(string value, bool withExponent)
         {
             var at = 0;
             if (at < value.Length && (value[at] == '+' || value[at] == '-'))

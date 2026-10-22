@@ -76,11 +76,11 @@ namespace Velvet
             return false;
         }
 
-        // Allocation-free cascade probe: the LAST PARSEABLE skew token per axis (mirroring the token
-        // TryExtract stores in SkewSpec.SourceX / SourceY), or false when neither axis has one. The patch
-        // path compares these against the live binding's SourceX / SourceY to skip the parse in the steady
-        // state — gating on the same TryParse predicate keeps the two probes from diverging on a trailing
-        // unparseable token (e.g. ["skew-x-6", "skew-x-junk"]), which otherwise defeats the fast path.
+        // Cascade probe: the last skew token per axis that TryRead takes (mirroring the token TryExtract stores in
+        // SkewSpec.SourceX / SourceY), or false when neither axis has one. The patch path compares these against
+        // the live binding's SourceX / SourceY to skip the parse in the steady state — gating on the same TryRead
+        // predicate keeps the two probes from diverging on a trailing unparseable token (e.g. ["skew-x-6",
+        // "skew-x-junk"]), which otherwise defeats the fast path.
         public static bool TryGetWinningSkewClasses(string[]? classNames, out string? winnerX, out string? winnerY)
         {
             winnerX = null;
@@ -91,7 +91,7 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                if (!TryParse(cls, out var isX, out _))
+                if (!TryRead(cls, out var isX, out _, out _))
                 {
                     continue;
                 }
@@ -120,9 +120,10 @@ namespace Velvet
 
             float x = 0f, y = 0f;
             string? sourceX = null, sourceY = null;
+            bool rejectedX = false, rejectedY = false;
             foreach (var cls in classNames)
             {
-                if (!TryParse(cls, out var isX, out var deg))
+                if (!TryRead(cls, out var isX, out var deg, out var rejected))
                 {
                     continue;
                 }
@@ -130,16 +131,33 @@ namespace Velvet
                 {
                     x = deg;
                     sourceX = cls;
+                    rejectedX = rejected;
                 }
                 else
                 {
                     y = deg;
                     sourceY = cls;
+                    rejectedY = rejected;
                 }
             }
 
-            spec = new SkewSpec(x, y, sourceX, sourceY);
+            // Both axes are written by one transform declaration, which a rejected angle holding either one makes
+            // invalid (StyleCompositeRejection), leaving no skew.
+            spec = rejectedX || rejectedY ? new SkewSpec(0f, 0f, sourceX, sourceY) : new SkewSpec(x, y, sourceX, sourceY);
             return spec.Active;
+        }
+
+        // TryParse, or a skew-x-[…] / skew-y-[…] whose angle the browser rejects, which holds its axis as any
+        // other skew class does.
+        private static bool TryRead(string? cls, out bool isX, out float deg, out bool rejected)
+        {
+            rejected = false;
+            if (TryParse(cls, out isX, out deg))
+            {
+                return true;
+            }
+            rejected = cls != null && StyleCompositeRejection.RejectsSkew(cls, out isX);
+            return rejected;
         }
 
         // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<angle>] (+ y variants).

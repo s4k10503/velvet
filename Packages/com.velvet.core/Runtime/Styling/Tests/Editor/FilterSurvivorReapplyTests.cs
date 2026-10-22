@@ -58,6 +58,20 @@ namespace Velvet.Tests
             Assert.That(filter, Is.EqualTo("Blur:2"));
         }
 
+        // GREEN_ON_BASE(characterization): the base kept only the blur Tailwind emits last, written first here.
+        [Test]
+        public void Given_TwoBlursWrittenAgainstTailwindsOrder_When_AFilterBesideThemIsRemoved_Then_TheLaterEmittedBlurHolds()
+        {
+            // Arrange — Tailwind emits blur-sm after blur-md, so blur-sm's 8px holds whatever order they are written in.
+            const string initial = "blur-sm blur-md sepia";
+
+            // Act
+            var filter = FilterAfter(initial, "blur-sm blur-md");
+
+            // Assert
+            Assert.That(filter, Is.EqualTo("Blur:8"));
+        }
+
         [Test]
         public void Given_ADropShadowBracketBesideDropShadowNone_When_NoneIsRemoved_Then_TheBracketedShadowReturns()
         {

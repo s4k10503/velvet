@@ -272,7 +272,7 @@ namespace Velvet.Tests
 
         [TestCase("scale-50", "scale-90 scale-50", "scale-x-75", new[] { 0.75f, 0.5f }, new[] { 0.75f, 0.9f }, new[] { 0.75f, 1f })]
         [TestCase("scale-50", "scale-90 scale-50", "scale-y-75", new[] { 0.5f, 0.75f }, new[] { 0.9f, 0.75f }, new[] { 1f, 0.75f })]
-        [TestCase("scale-[.5]", "scale-[.9] scale-50", "scale-x-75", new[] { 0.75f, 0.5f }, new[] { 0.75f, 0.9f }, new[] { 0.75f, 1f })]
+        [TestCase("scale-[.5]", "scale-[.9] scale-50", "scale-x-75", new[] { 0.5f, 0.5f }, new[] { 0.9f, 0.9f }, new[] { 0.75f, 1f })]
         [TestCase("!scale-50", "!scale-90 !scale-50", "scale-x-75", new[] { 0.5f, 0.5f }, new[] { 0.9f, 0.9f }, new[] { 0.75f, 1f })]
         public void Given_AUniformScaleAndAnAxis_When_TheUniformPayloadsChange_Then_TheOtherAxisFollowsTheCascade(
             string uniform, string changedUniform, string axis, float[] initialScale,

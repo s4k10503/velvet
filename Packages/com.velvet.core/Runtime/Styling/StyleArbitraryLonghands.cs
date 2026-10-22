@@ -114,13 +114,14 @@ namespace Velvet
             Set(sets, ArbitraryProperty.TextColor, StyleLonghand.Color);
             Set(sets, ArbitraryProperty.BackgroundColor, StyleLonghand.BackgroundColor);
 
-            // The three scale layers and the two translate axes each compose into one inline slot, so they
+            // The three scale layers and the three translate layers each compose into one inline slot, so they
             // share the slot's longhand and are masked or kept together.
             Set(sets, ArbitraryProperty.Scale, StyleLonghand.Scale);
             Set(sets, ArbitraryProperty.ScaleX, StyleLonghand.Scale);
             Set(sets, ArbitraryProperty.ScaleY, StyleLonghand.Scale);
             Set(sets, ArbitraryProperty.TranslateX, StyleLonghand.Translate);
             Set(sets, ArbitraryProperty.TranslateY, StyleLonghand.Translate);
+            Set(sets, ArbitraryProperty.Translate, StyleLonghand.Translate);
             Set(sets, ArbitraryProperty.Rotate, StyleLonghand.Rotate);
             Set(sets, ArbitraryProperty.TransformOrigin, StyleLonghand.TransformOrigin);
 
