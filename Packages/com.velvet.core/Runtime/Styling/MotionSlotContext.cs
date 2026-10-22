@@ -97,10 +97,10 @@ namespace Velvet
             var owner = Owner(slot);
             var style = owner.style;
             var hasInline = slot == ArbitraryProperty.BorderColor
-                ? HoldsBorderEdge(owner, StyleLonghand.BorderTopColor, style.borderTopColor)
-                    || HoldsBorderEdge(owner, StyleLonghand.BorderRightColor, style.borderRightColor)
-                    || HoldsBorderEdge(owner, StyleLonghand.BorderBottomColor, style.borderBottomColor)
-                    || HoldsBorderEdge(owner, StyleLonghand.BorderLeftColor, style.borderLeftColor)
+                ? HoldsBorderEdge(owner, DivideEdge.Top, style.borderTopColor)
+                    || HoldsBorderEdge(owner, DivideEdge.Right, style.borderRightColor)
+                    || HoldsBorderEdge(owner, DivideEdge.Bottom, style.borderBottomColor)
+                    || HoldsBorderEdge(owner, DivideEdge.Left, style.borderLeftColor)
                 : TryReadInline(slot, out _) && !HasRunningNativeTransition(slot) && OwnsInline(owner, longhands);
             if (!hasInline) return false;
             foreach (var property in _inlineBySwap)
@@ -113,9 +113,15 @@ namespace Velvet
             return true;
         }
 
-        private static bool HoldsBorderEdge(VisualElement owner, StyleLonghand longhand, StyleColor inline)
-            => inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(owner, longhand)
-                && OwnsInline(owner, StyleLonghandSet.Of(longhand));
+        // A face's sentinel holds the edge only where the face took it from an inline value of the element's own.
+        private static bool HoldsBorderEdge(VisualElement owner, DivideEdge edge, StyleColor inline)
+        {
+            var longhand = StyleLonghandOf(edge);
+            return (SilhouetteFaceStash.TryReadFace(owner, edge, out _, out var faceInline)
+                    ? faceInline
+                    : inline.keyword == StyleKeyword.Undefined)
+                && !HasRunningNativeTransition(owner, longhand) && OwnsInline(owner, StyleLonghandSet.Of(longhand));
+        }
 
         // An inline value a container holds for the element (StyleArbitraryValueResolver.HoldsForContainer) is not
         // one of the element's own, so it holds no slot against the element's own classes, which it gives way to;
@@ -369,15 +375,15 @@ namespace Velvet
                 case ArbitraryProperty.TextColor:
                     return Color(slot, style.color, out value);
                 case ArbitraryProperty.BackgroundColor:
-                    return Color(slot, style.backgroundColor, out value);
+                    return FaceColor(slot, null, style.backgroundColor, out value);
                 case ArbitraryProperty.BorderTopColor:
-                    return EdgeColor(slot, StyleLonghand.BorderTopColor, style.borderTopColor, out value);
+                    return EdgeColor(slot, DivideEdge.Top, style.borderTopColor, out value);
                 case ArbitraryProperty.BorderRightColor:
-                    return EdgeColor(slot, StyleLonghand.BorderRightColor, style.borderRightColor, out value);
+                    return EdgeColor(slot, DivideEdge.Right, style.borderRightColor, out value);
                 case ArbitraryProperty.BorderBottomColor:
-                    return EdgeColor(slot, StyleLonghand.BorderBottomColor, style.borderBottomColor, out value);
+                    return EdgeColor(slot, DivideEdge.Bottom, style.borderBottomColor, out value);
                 case ArbitraryProperty.BorderLeftColor:
-                    return EdgeColor(slot, StyleLonghand.BorderLeftColor, style.borderLeftColor, out value);
+                    return EdgeColor(slot, DivideEdge.Left, style.borderLeftColor, out value);
                 case ArbitraryProperty.BorderTopWidth:
                     return Float(slot, style.borderTopWidth, out value);
                 case ArbitraryProperty.BorderRightWidth:
@@ -414,19 +420,19 @@ namespace Velvet
                     value = new ArbitraryStyle(slot, resolved.color);
                     return true;
                 case ArbitraryProperty.BackgroundColor:
-                    value = new ArbitraryStyle(slot, resolved.backgroundColor);
+                    value = new ArbitraryStyle(slot, Shown(Owner(slot), null, resolved.backgroundColor));
                     return true;
                 case ArbitraryProperty.BorderTopColor:
-                    value = new ArbitraryStyle(slot, resolved.borderTopColor);
+                    value = new ArbitraryStyle(slot, Shown(Owner(slot), DivideEdge.Top, resolved.borderTopColor));
                     return true;
                 case ArbitraryProperty.BorderRightColor:
-                    value = new ArbitraryStyle(slot, resolved.borderRightColor);
+                    value = new ArbitraryStyle(slot, Shown(Owner(slot), DivideEdge.Right, resolved.borderRightColor));
                     return true;
                 case ArbitraryProperty.BorderBottomColor:
-                    value = new ArbitraryStyle(slot, resolved.borderBottomColor);
+                    value = new ArbitraryStyle(slot, Shown(Owner(slot), DivideEdge.Bottom, resolved.borderBottomColor));
                     return true;
                 case ArbitraryProperty.BorderLeftColor:
-                    value = new ArbitraryStyle(slot, resolved.borderLeftColor);
+                    value = new ArbitraryStyle(slot, Shown(Owner(slot), DivideEdge.Left, resolved.borderLeftColor));
                     return true;
                 default:
                     return s_resolvedLengths.TryGetValue(slot, out var read) && Pixels(slot, read(resolved), out value);
@@ -439,18 +445,28 @@ namespace Velvet
             var style = owner.style;
             var resolved = owner.resolvedStyle;
             var native = !_drivenByRunningPlay(ArbitraryProperty.BorderColor);
-            var top = ReadBorderEdge(owner, native, StyleLonghand.BorderTopColor, style.borderTopColor, resolved.borderTopColor);
-            var right = ReadBorderEdge(owner, native, StyleLonghand.BorderRightColor, style.borderRightColor, resolved.borderRightColor);
-            var bottom = ReadBorderEdge(owner, native, StyleLonghand.BorderBottomColor, style.borderBottomColor, resolved.borderBottomColor);
-            var left = ReadBorderEdge(owner, native, StyleLonghand.BorderLeftColor, style.borderLeftColor, resolved.borderLeftColor);
+            var top = ReadBorderEdge(owner, native, DivideEdge.Top, style.borderTopColor, resolved.borderTopColor);
+            var right = ReadBorderEdge(owner, native, DivideEdge.Right, style.borderRightColor, resolved.borderRightColor);
+            var bottom = ReadBorderEdge(owner, native, DivideEdge.Bottom, style.borderBottomColor, resolved.borderBottomColor);
+            var left = ReadBorderEdge(owner, native, DivideEdge.Left, style.borderLeftColor, resolved.borderLeftColor);
             value = new ArbitraryStyle(ArbitraryProperty.BorderColor, top);
             return top.Equals(right) && top.Equals(bottom) && top.Equals(left);
         }
 
-        private Color ReadBorderEdge(VisualElement owner, bool native, StyleLonghand longhand, StyleColor inline, Color resolved)
-            => DivideDashPainter.IsMask(inline) && DivideDashPainter.TryReadPainted(_element, longhand, out var painted) ? painted
-                : native && HasRunningNativeTransition(owner, longhand) || inline.keyword != StyleKeyword.Undefined
-                    ? resolved : inline.value;
+        private Color ReadBorderEdge(VisualElement owner, bool native, DivideEdge edge, StyleColor inline, Color resolved)
+        {
+            var longhand = StyleLonghandOf(edge);
+            if (DivideDashPainter.IsMask(inline) && DivideDashPainter.TryReadPainted(_element, longhand, out var painted))
+            {
+                return painted;
+            }
+            if (SilhouetteFaceStash.TryReadFace(owner, edge, out var shown, out _))
+            {
+                return shown;
+            }
+            return native && HasRunningNativeTransition(owner, longhand) || inline.keyword != StyleKeyword.Undefined
+                ? resolved : inline.value;
+        }
 
         private bool TryConvert(ArbitraryProperty slot, ref ArbitraryStyle value, LengthUnit unit)
         {
@@ -512,15 +528,42 @@ namespace Velvet
         }
 
         // A masked edge reads as the color its dash takes.
-        private bool EdgeColor(ArbitraryProperty slot, StyleLonghand longhand, StyleColor style, out ArbitraryStyle value)
+        private bool EdgeColor(ArbitraryProperty slot, DivideEdge edge, StyleColor style, out ArbitraryStyle value)
         {
-            if (DivideDashPainter.IsMask(style) && DivideDashPainter.TryReadPainted(_element, longhand, out var painted))
+            if (DivideDashPainter.IsMask(style)
+                && DivideDashPainter.TryReadPainted(_element, StyleLonghandOf(edge), out var painted))
             {
                 value = new ArbitraryStyle(slot, painted);
                 return true;
             }
+            return FaceColor(slot, edge, style, out value);
+        }
+
+        // A slot a silhouette face suppresses reads as the colour the face shows, which is an inline value of the
+        // element's own only where the face took it from one (SilhouetteFaceStash.TryReadFace).
+        private bool FaceColor(ArbitraryProperty slot, DivideEdge? side, StyleColor style, out ArbitraryStyle value)
+        {
+            if (SilhouetteFaceStash.TryReadFace(Owner(slot), side, out var shown, out var inline))
+            {
+                value = new ArbitraryStyle(slot, shown);
+                return inline;
+            }
             return Color(slot, style, out value);
         }
+
+        // read, or the colour a silhouette face shows in its place where one suppresses the slot.
+        private static Color Shown(VisualElement owner, DivideEdge? side, Color read)
+            => SilhouetteFaceStash.TryReadFace(owner, side, out var shown, out _) ? shown : read;
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to name its longhand
+        private static StyleLonghand StyleLonghandOf(DivideEdge edge) => edge switch
+        {
+            DivideEdge.Top => StyleLonghand.BorderTopColor,
+            DivideEdge.Right => StyleLonghand.BorderRightColor,
+            DivideEdge.Bottom => StyleLonghand.BorderBottomColor,
+            DivideEdge.Left => StyleLonghand.BorderLeftColor,
+        };
+#pragma warning restore CS8524
 
         private static bool Color(ArbitraryProperty slot, StyleColor style, out ArbitraryStyle value)
         {

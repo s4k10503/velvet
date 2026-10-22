@@ -1483,6 +1483,7 @@ namespace Velvet
             {
                 FiberNodePatcher.ReapplyArbitraryValues(element, classes.ToArray());
             }
+            SilhouetteFaceStash.Retake(element);
         }
 
         // Writes the element's held play's values back over whatever wrote the same inline slots since: another

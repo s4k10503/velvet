@@ -2194,6 +2194,8 @@ namespace Velvet
             }
             WriteDriven(element, map, write);
             DivideDashPainter.Drive(element, slots, style.Color);
+            // A face a silhouette layer repaints takes the driven colour, its sentinel staying in the slot.
+            SilhouetteFaceStash.Retake(element);
         }
 
         // Ends a driver's ownership of property and nulls what it wrote. The caller re-asserts the element's own
@@ -2208,6 +2210,7 @@ namespace Velvet
                 map.Driven?.Remove(property);
             }
             ClearInline(element, property);
+            SilhouetteFaceStash.Retake(element);
         }
 
         // A reversal hand-off: the play now heads back to the pose it left, so that pose's important declarations

@@ -302,6 +302,8 @@ namespace Velvet
         // Whether this stash owns (suppresses / repaints) the background face. False for a border-only layer.
         private readonly bool _includeBackground;
 
+        private const int RepaintFramesAfterSync = 2;
+
         private VisualElement? _probe;
         private int _probeTransitions;
         private int _repaintFrames;
@@ -312,8 +314,8 @@ namespace Velvet
             _includeBackground = includeBackground;
         }
 
-        // The colors to paint: the probe's for a face a stylesheet rule colours once the probe has resolved, the
-        // captured one otherwise. The probe's inline visibility reads back only after a style pass has run on it.
+        // The colors to paint: the probe's for a face a stylesheet rule colours once its resolved style reads back the
+        // hidden visibility it is created with (ProbeResolved), the captured one otherwise.
         public Color CurrentBg => !BgFromInline && ProbeResolved ? _probe!.resolvedStyle.backgroundColor : BgColor;
 
         public Color CurrentBorder => CurrentBorderOf(DivideEdge.Left);
@@ -324,8 +326,10 @@ namespace Velvet
                 ? SilhouetteFace.ResolvedBorderColor(_probe!.resolvedStyle, side)
                 : BorderColors[(int)side];
 
-        // Indexed like BorderColors: the sides the probe does not stand in for.
+        // Indexed like BorderColors: the sides the probe does not stand in for, and of those the ones taken from an
+        // inline value.
         private readonly bool[] _sideKept = new bool[4];
+        private readonly bool[] _sideInline = new bool[4];
 
         private bool ProbeResolved
             => _probe?.panel != null && _probe.resolvedStyle.visibility == Visibility.Hidden;
@@ -335,6 +339,50 @@ namespace Velvet
 
         // A class on element changed outside a reconcile pass — a variant payload, a gesture or drag class, a
         // play — so the face its suppression hides may have moved.
+        // A per-frame driver wrote or released a slot this suppresses (StyleArbitraryValueResolver.ApplyDriven,
+        // ReleaseDriven), or the element's own inline values were written back over it as a play ended: the face
+        // takes what the slots hold and the sentinel goes back, as SyncOnPatch does for a resolver write, without
+        // re-pointing the probe, whose classes a drive leaves as they were.
+        internal static void Retake(VisualElement element)
+        {
+            if (s_owners.TryGetValue(element, out var stash) && stash.SuppressionApplied && stash.HasStash
+                && stash.Reclaimed(element))
+            {
+                stash.Capture(element);
+                stash.WriteSentinels(element);
+                element.MarkDirtyRepaint();
+            }
+        }
+
+        // The colour the face shows in place of side, or of the background where side is null, while its sentinel
+        // stands in that slot, and whether the face took it from an inline value; false where no face suppresses it.
+        internal static bool TryReadFace(VisualElement element, DivideEdge? side, out Color color, out bool fromInline)
+        {
+            color = default;
+            fromInline = false;
+            if (!s_owners.TryGetValue(element, out var stash) || !stash.SuppressionApplied || !stash.HasStash)
+            {
+                return false;
+            }
+            if (side is not { } edge)
+            {
+                if (!stash._includeBackground || !SilhouetteFace.IsSentinel(element.style.backgroundColor.value))
+                {
+                    return false;
+                }
+                color = stash.CurrentBg;
+                fromInline = stash.BgFromInline;
+                return true;
+            }
+            if (!SilhouetteFace.IsSentinel(SilhouetteFace.InlineBorderColor(element, edge).value))
+            {
+                return false;
+            }
+            color = stash.CurrentBorderOf(edge);
+            fromInline = stash._sideInline[(int)edge];
+            return true;
+        }
+
         internal static void NotifyClassesChanged(VisualElement element)
         {
             if (s_owners.TryGetValue(element, out var stash))
@@ -374,13 +422,7 @@ namespace Velvet
                 return;
             }
 
-            var borderReclaimed = false;
-            foreach (var side in s_sides)
-            {
-                borderReclaimed |= !SilhouetteFace.IsSentinel(SilhouetteFace.InlineBorderColor(element, side).value);
-            }
-            var bgReclaimed = _includeBackground && !SilhouetteFace.IsSentinel(element.style.backgroundColor.value);
-            if (borderReclaimed || bgReclaimed)
+            if (Reclaimed(element))
             {
                 Capture(element);
                 ApplySuppression(element);
@@ -391,6 +433,19 @@ namespace Velvet
             {
                 SyncProbe(element);
             }
+        }
+
+        // Whether something other than this stash's sentinel stands in a slot it suppresses.
+        private bool Reclaimed(VisualElement element)
+        {
+            foreach (var side in s_sides)
+            {
+                if (!SilhouetteFace.IsSentinel(SilhouetteFace.InlineBorderColor(element, side).value))
+                {
+                    return true;
+                }
+            }
+            return _includeBackground && !SilhouetteFace.IsSentinel(element.style.backgroundColor.value);
         }
 
         public void Capture(VisualElement element)
@@ -420,6 +475,7 @@ namespace Velvet
                         ref BorderColors[(int)side], ref fromInline);
                 }
                 _sideKept[(int)side] = fromInline || underDash;
+                _sideInline[(int)side] = fromInline;
                 anyInline |= fromInline;
             }
             BorderFromInline = anyInline;
@@ -456,6 +512,15 @@ namespace Velvet
 
         public void ApplySuppression(VisualElement element)
         {
+            WriteSentinels(element);
+            SuppressionApplied = true;
+            s_owners.AddOrUpdate(element, this);
+            SyncProbe(element);
+            element.MarkDirtyRepaint();
+        }
+
+        private void WriteSentinels(VisualElement element)
+        {
             if (_includeBackground)
             {
                 element.style.backgroundColor = SilhouetteFace.SuppressedColor;
@@ -464,10 +529,6 @@ namespace Velvet
             element.style.borderRightColor = SilhouetteFace.SuppressedColor;
             element.style.borderTopColor = SilhouetteFace.SuppressedColor;
             element.style.borderBottomColor = SilhouetteFace.SuppressedColor;
-            SuppressionApplied = true;
-            s_owners.AddOrUpdate(element, this);
-            SyncProbe(element);
-            element.MarkDirtyRepaint();
         }
 
         // Releases the suppression (nulls the shared inline slots so the native chrome resolves again) and
@@ -520,6 +581,7 @@ namespace Velvet
             }
             source.BorderColors.CopyTo(BorderColors, 0);
             source._sideKept.CopyTo(_sideKept, 0);
+            source._sideInline.CopyTo(_sideInline, 0);
             BorderFromInline = source.BorderFromInline;
             HasStash = true;
         }
@@ -547,8 +609,7 @@ namespace Velvet
             probe.style.transitionDuration = element.style.transitionDuration;
             probe.style.transitionTimingFunction = element.style.transitionTimingFunction;
             probe.style.transitionDelay = element.style.transitionDelay;
-            // Two frames: the style pass that resolves the probe can come after the next scheduler tick.
-            _repaintFrames = 2;
+            _repaintFrames = RepaintFramesAfterSync;
             KeepRepainting(element);
         }
 
