@@ -187,8 +187,8 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                // Strip !important before peeling variants (a bang sits at the class edge, e.g. border-8! /
-                // !border-8) so the border is still recognized under the important modifier.
+                // Strip !important before peeling variants so the border is still recognized under the
+                // important modifier.
                 var leaf = StyleArbitraryValueResolver.StripImportant(cls, out _);
                 while (StyleVariantClass.TryParse(leaf, out _, out var payload))
                 {

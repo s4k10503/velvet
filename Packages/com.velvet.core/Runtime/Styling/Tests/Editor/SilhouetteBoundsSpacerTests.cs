@@ -282,6 +282,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantVariantBorderWithItsBangBehindTheVariant_When_InsetParsed_Then_ItIsReserved()
+        {
+            // Act
+            SilhouetteBoundsSpacer.BorderInset(new[] { "hover:!border-8" }, out var left, out _);
+
+            // Assert
+            Assert.That(left, Is.EqualTo(8f));
+        }
+
+        [Test]
         public void Given_AnArbitraryRemBorder_When_InsetParsed_Then_ItConvertsAtSixteenPxPerRem()
         {
             SilhouetteBoundsSpacer.BorderInset(new[] { "border-[2rem]" }, out var left, out _);

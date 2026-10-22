@@ -114,6 +114,9 @@ namespace Velvet.Tests
         private static VNode ArbitraryHost() => Field("caret-[#00ff00]");
 
         [Component]
+        private static VNode ImportantSelectionHost() => Field("selection:!bg-red-500");
+
+        [Component]
         private static VNode OpacityHost() => Field("caret-red-500/50");
 
         [Component]
@@ -504,6 +507,16 @@ namespace Velvet.Tests
         {
             // Arrange / Act
             var field = Mount(SelectionAncestorHost);
+
+            // Assert
+            Assert.That(Selection(field), Is.EqualTo(Palette("red-500")));
+        }
+
+        [Test]
+        public void Given_AnImportantSelectionBackgroundWithItsBangBehindTheVariant_When_ItMounts_Then_TheSelectionTakesIt()
+        {
+            // Arrange / Act
+            var field = Mount(ImportantSelectionHost);
 
             // Assert
             Assert.That(Selection(field), Is.EqualTo(Palette("red-500")));

@@ -16,9 +16,10 @@ namespace Velvet
     // form is handled by StyleBackgroundImageResolver).
     internal static class StyleArbitraryValueResolver
     {
-        // Strips the important modifier and reports whether it was present: a leading '!' (!bg-red-500)
-        // or a trailing '!' (bg-red-500!). The bare core is returned so the caller routes
-        // it normally; when important, the caller elevates the (inline-resolvable) utility to the Important
+        // Strips the important modifier and reports whether it was present: a leading '!' on a utility without a
+        // variant (!bg-red-500), one after the variants (hover:!bg-red-500) or a trailing '!' (bg-red-500!). The
+        // bare core is returned so the caller routes it normally; when important, the caller elevates the
+        // (inline-resolvable) utility to the Important
         // layer so it wins conflicts. A class-only utility (no inline form) cannot be elevated in UI Toolkit,
         // so its '!' is accepted but inert. Returns the input unchanged when no modifier is present.
         //
@@ -38,6 +39,12 @@ namespace Velvet
 
             if (className[0] == '!')
             {
+                // Ahead of variants (!hover:w-4) the bang makes a candidate Tailwind generates no rule for, so the
+                // token is left whole and not important.
+                if (StyleSpacingPrecedence.VariantsLength(className) > 0)
+                {
+                    return className;
+                }
                 important = true;
                 return className.Substring(1);
             }
@@ -46,6 +53,19 @@ namespace Velvet
             {
                 important = true;
                 return className.Substring(0, className.Length - 1);
+            }
+
+            // Tailwind's spelling behind variants (hover:!w-4), whose bang opens the utility after the last variant.
+            // An empty last variant (:!w-4) names no variant, so Tailwind generates no rule for the token either.
+            if (className.IndexOf(":!", StringComparison.Ordinal) >= 0)
+            {
+                var variants = StyleSpacingPrecedence.VariantsLength(className);
+                if (variants > 1 && variants < className.Length && className[variants] == '!'
+                    && className[variants - 2] != ':')
+                {
+                    important = true;
+                    return className.Remove(variants, 1);
+                }
             }
 
             return className;

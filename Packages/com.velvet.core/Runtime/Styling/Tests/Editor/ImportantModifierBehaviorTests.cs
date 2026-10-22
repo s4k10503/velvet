@@ -57,6 +57,107 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantSideBesideAnImportantShorthandBehindTheirVariant_When_TheVariantHolds_Then_TheSideWins()
+        {
+            // Arrange
+            var leaf = MountLeaf("hover:!p-[52px] hover:!pt-2");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                leaf.SimulateEvent(over);
+            }
+
+            // Assert — pt-2 is 8px.
+            Assert.That(leaf.style.paddingTop.value.value, Is.EqualTo(8f));
+        }
+
+        [TestCase("hover:!w-[50px]", "hover:w-[50px]")]
+        [TestCase("[&:hover]:!w-[50px]", "[&:hover]:w-[50px]")]
+        [TestCase("hover:focus:!p-4", "hover:focus:p-4")]
+        public void Given_TheBangBehindTheVariants_When_Stripped_Then_TheUtilityLosesIt(string token, string expected)
+        {
+            // Act
+            var core = StyleArbitraryValueResolver.StripImportant(token, out _);
+
+            // Assert
+            Assert.That(core, Is.EqualTo(expected));
+        }
+
+        [TestCase("hover:!w-[50px]")]
+        [TestCase("[&:hover]:!w-[50px]")]
+        [TestCase("hover:focus:!p-4")]
+        public void Given_TheBangBehindTheVariants_When_Stripped_Then_TheUtilityIsImportant(string token)
+        {
+            // Act
+            StyleArbitraryValueResolver.StripImportant(token, out var important);
+
+            // Assert
+            Assert.That(important, Is.True);
+        }
+
+        [TestCase("!hover:w-[50px]")]
+        [TestCase("![&:hover]:w-[50px]")]
+        public void Given_ABangAheadOfTheVariants_When_Stripped_Then_TheTokenIsLeftWhole(string token)
+        {
+            // Act
+            var core = StyleArbitraryValueResolver.StripImportant(token, out _);
+
+            // Assert
+            Assert.That(core, Is.EqualTo(token));
+        }
+
+        [TestCase("!hover:w-[50px]")]
+        [TestCase("![&:hover]:w-[50px]")]
+        public void Given_ABangAheadOfTheVariants_When_Stripped_Then_TheTokenIsPlain(string token)
+        {
+            // Act
+            StyleArbitraryValueResolver.StripImportant(token, out var important);
+
+            // Assert
+            Assert.That(important, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base read a bang at either end of a token only. An empty variant
+        // names none, and an empty last segment no utility, so Tailwind generates no rule for these.
+        [TestCase(":!w-[50px]")]
+        [TestCase("hover::!w-[50px]")]
+        [TestCase("hover:!w-[50px]:")]
+        public void Given_ABangInATokenTailwindParsesNoUtilityFrom_When_Stripped_Then_TheTokenIsLeftWhole(string token)
+        {
+            // Act
+            var core = StyleArbitraryValueResolver.StripImportant(token, out _);
+
+            // Assert
+            Assert.That(core, Is.EqualTo(token));
+        }
+
+        // GREEN_ON_BASE(characterization): a bang inside a bracket is the value's, and the base left it there too.
+        [Test]
+        public void Given_ABangInsideABracket_When_Stripped_Then_TheTokenIsLeftWhole()
+        {
+            // Arrange
+            const string token = "hover:bg-[url(a:!b)]";
+
+            // Act
+            var core = StyleArbitraryValueResolver.StripImportant(token, out _);
+
+            // Assert
+            Assert.That(core, Is.EqualTo(token));
+        }
+
+        // GREEN_ON_BASE(characterization): see the case above.
+        [Test]
+        public void Given_ABangInsideABracket_When_Stripped_Then_TheTokenIsPlain()
+        {
+            // Act
+            StyleArbitraryValueResolver.StripImportant("hover:bg-[url(a:!b)]", out var important);
+
+            // Assert
+            Assert.That(important, Is.False);
+        }
+
+        [Test]
         public void Given_ImportantClassOnlyUtility_When_Mounted_Then_BangStrippedAndClassApplied()
         {
             // Arrange/Act — !flex has no inline form to elevate, so the bang is simply stripped and the
