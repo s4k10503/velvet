@@ -10,8 +10,9 @@ namespace Velvet
     // gives way to a class of the element's own (a divider, a space margin) re-applies after each add or
     // remove.
     //
-    // A class lands where a payload of it would (StyleVariantPayload.DestinationOf): a field control's surface
-    // utility on its input box. With the element's reconciler context, a gate token is told to the composed
+    // A class lands where a payload of it would (StyleVariantPayload.Apply): a field control's surface utility on
+    // its input box, a utility both take on each, and a text-overflow utility on the box's text as well, with the
+    // clip it implies. With the element's reconciler context, a gate token is told to the composed
     // class source as a variant payload is (ReconcilerContext.TrackPlayGate) and the class-driven passes re-run,
     // so a play's gap-*, shadow-* or skew-* applies while the play shows it. A bracket value a preset play shows
     // (realiseInline) is applied as an inline layer at the play's priority beside its list entry. A Motion's own
@@ -31,7 +32,7 @@ namespace Velvet
             var changes = new Changes(element);
             foreach (var cls in classes)
             {
-                var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
                 var dest = StyleVariantPayload.DestinationOf(ctx, element, core, on: true);
                 CornerRadiusFit.TrackClass(dest, cls);
                 Add(dest, cls, priority);
@@ -40,6 +41,26 @@ namespace Velvet
                     ShowInline(dest, core, priority);
                 }
                 changes.Note(dest, ctx != null && ctx.TrackPlayGate(dest, core, priority, on: true), core);
+                var also = Companions.Of(element, dest, core, important);
+                if (also.Shared != null)
+                {
+                    Add(also.Shared, cls, priority);
+                    if (realiseInline && priority != StyleLayerPriority.Base)
+                    {
+                        ShowInline(also.Shared, core, priority);
+                    }
+                    changes.Note(also.Shared, ctx != null && ctx.TrackPlayGate(also.Shared, core, priority, on: true),
+                        core);
+                }
+                if (also.Text != null)
+                {
+                    Add(also.Text, cls, priority);
+                    if (also.Clip != null)
+                    {
+                        Add(also.Text, also.Clip, priority);
+                        Add(dest, also.Clip, priority);
+                    }
+                }
             }
             changes.Settle(ctx);
         }
@@ -51,10 +72,25 @@ namespace Velvet
             var changes = new Changes(element);
             foreach (var cls in classes)
             {
-                var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
                 var dest = StyleVariantPayload.DestinationOf(ctx, element, core, on: true);
                 StyleClassProjection.RawRested(dest, cls);
                 changes.Note(dest, ctx != null && ctx.RestPlayGate(dest, core), core);
+                var also = Companions.Of(element, dest, core, important);
+                if (also.Shared != null)
+                {
+                    StyleClassProjection.RawRested(also.Shared, cls);
+                    changes.Note(also.Shared, ctx != null && ctx.RestPlayGate(also.Shared, core), core);
+                }
+                if (also.Text != null)
+                {
+                    StyleClassProjection.RawRested(also.Text, cls);
+                    if (also.Clip != null)
+                    {
+                        StyleClassProjection.RawRested(also.Text, also.Clip);
+                        StyleClassProjection.RawRested(dest, also.Clip);
+                    }
+                }
             }
             changes.ReSync(ctx);
         }
@@ -69,32 +105,55 @@ namespace Velvet
             var changes = new Changes(element);
             foreach (var cls in classes)
             {
-                var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
                 var keep = kept != null && System.Array.IndexOf(kept, cls) >= 0;
                 var dest = StyleVariantPayload.DestinationOf(ctx, element, core, on: keep);
-                if (keep)
+                var also = Companions.Of(element, dest, core, important);
+                Settle(dest, cls, core, keep, ctx, ref changes);
+                if (also.Shared != null)
                 {
-                    Add(dest, cls, StyleLayerPriority.Base);
-                    changes.Note(dest, ctx != null && ctx.TrackPlayGate(dest, core, StyleLayerPriority.Base, on: true),
-                        core);
+                    Settle(also.Shared, cls, core, keep, ctx, ref changes);
                 }
-                else
+                if (also.Text != null)
                 {
-                    if (StyleClassProjection.HoldsUnderVariant(dest, cls))
+                    Settle(also.Text, cls, keep);
+                    // A clip the element's own classes still name stays, as the class it came with would.
+                    if (also.Clip != null)
                     {
-                        StyleClassProjection.RawReleased(dest, cls);
+                        var keepClip = keep || (kept != null && System.Array.IndexOf(kept, also.Clip) >= 0);
+                        Settle(also.Text, also.Clip, keepClip);
+                        Settle(dest, also.Clip, keepClip);
                     }
-                    else
-                    {
-                        dest.RemoveFromClassList(cls);
-                        StyleClassProjection.RawRemoved(dest, cls);
-                    }
-                    changes.Note(dest,
-                        ctx != null && ctx.TrackPlayGate(dest, core, StyleLayerPriority.Animation, on: false), core);
                 }
-                HideInline(dest, core);
             }
             changes.Settle(ctx);
+        }
+
+        private static void Settle(VisualElement dest, string cls, string core, bool keep, ReconcilerContext? ctx,
+            ref Changes changes)
+        {
+            Settle(dest, cls, keep);
+            var priority = keep ? StyleLayerPriority.Base : StyleLayerPriority.Animation;
+            changes.Note(dest, ctx != null && ctx.TrackPlayGate(dest, core, priority, on: keep), core);
+            HideInline(dest, core);
+        }
+
+        // Puts a kept class back at the base priority, else takes it off as the writer that put it on.
+        private static void Settle(VisualElement dest, string cls, bool keep)
+        {
+            if (keep)
+            {
+                Add(dest, cls, StyleLayerPriority.Base);
+            }
+            else if (StyleClassProjection.HoldsUnderVariant(dest, cls))
+            {
+                StyleClassProjection.RawReleased(dest, cls);
+            }
+            else
+            {
+                dest.RemoveFromClassList(cls);
+                StyleClassProjection.RawRemoved(dest, cls);
+            }
         }
 
         // Drops the record of the play layers an element shows, which go with the element's layers
@@ -132,6 +191,36 @@ namespace Velvet
                 return;
             }
             StyleArbitraryValueResolver.Clear(element, in style, StyleLayerPriority.Animation);
+        }
+
+        // Where else a class lands beside its destination, as a payload of it does (StyleVariantPayload.Apply).
+        private readonly struct Companions
+        {
+            public readonly VisualElement? Shared;
+            public readonly VisualElement? Text;
+            public readonly string? Clip;
+
+            private Companions(VisualElement? shared, VisualElement? text, string? clip)
+            {
+                Shared = shared;
+                Text = text;
+                Clip = clip;
+            }
+
+            private static readonly string s_importantClip = "!" + StyleInputBoxSurface.BoxClipCore;
+
+            public static Companions Of(VisualElement control, VisualElement dest, string core, bool important)
+            {
+                var shared = ReferenceEquals(dest, control) ? SharedBoxOf(control, core) : null;
+                var text = StyleInputBoxSurface.TryGetBoxText(dest, core, out var found) ? found : null;
+                var clip = text != null && StyleInputBoxSurface.ImpliesBoxClip(core)
+                    ? important ? s_importantClip : StyleInputBoxSurface.BoxClipCore
+                    : null;
+                return new Companions(shared, text, clip);
+            }
+
+            private static VisualElement? SharedBoxOf(VisualElement control, string core)
+                => StyleInputBoxSurface.TryGetSharedBox(control, core, out var box) ? box : null;
         }
 
         // The element a call wrote to and, at most, its input box, each with whether a gate token moved there.

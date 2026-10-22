@@ -169,6 +169,10 @@ namespace Velvet
         {
             public readonly System.Collections.Generic.List<DivideDashChildBinding> Bindings = new();
             public IVisualElementScheduledItem Item = null!;
+            // The panel scheduler's time at the check's last run, which a dash transition is timed by: it stands in
+            // for a transition the child's own classes declare, which motion.md's Clocks section leaves on the panel's
+            // time on any MotionClock.
+            public long NowMs;
         }
 
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPanel, PanelCheck> s_checks = new();
@@ -181,7 +185,11 @@ namespace Velvet
             if (!s_checks.TryGetValue(panel, out var check))
             {
                 var created = new PanelCheck();
-                created.Item = panel.visualTree.schedule.Execute(() => Check(panel, created)).Every(0);
+                created.Item = panel.visualTree.schedule.Execute((TimerState ts) =>
+                {
+                    created.NowMs = ts.now;
+                    Check(panel, created);
+                }).Every(0);
                 s_checks.Add(panel, created);
                 check = created;
             }
@@ -379,7 +387,8 @@ namespace Velvet
         {
             EnsureCheck(binding, child.panel);
             TakeOver(binding);
-            binding.Color = Advance(binding, PaintColor(binding), Time.realtimeSinceStartupAsDouble);
+            var now = s_checks.TryGetValue(child.panel, out var check) ? check.NowMs / 1000.0 : 0.0;
+            binding.Color = Advance(binding, PaintColor(binding), now);
             if (binding.Width <= 0.01f || binding.Color.a <= 0.004f)
             {
                 return;

@@ -62,8 +62,11 @@ namespace Velvet.Tests
             // Arrange / Act
             var element = MountOnFakeClock(ClassicEnter("opacity-[0.7]", "opacity-0", "opacity-100"));
 
-            // Assert
-            Assert.That(element.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — read as null unless the bracket's layer stands and the enter's class is on, so an element
+            // that never carried the bracket, or an enter that never showed its class, cannot pass.
+            var arranged = StyleArbitraryValueResolver.HasLayer(element, ArbitraryProperty.Opacity)
+                && element.ClassListContains("opacity-0");
+            Assert.That(arranged ? element.style.opacity.keyword : (StyleKeyword?)null, Is.EqualTo(StyleKeyword.Null));
         }
 
         [Test]
@@ -98,8 +101,9 @@ namespace Velvet.Tests
             // Arrange / Act — opacity-50 sits after opacity-0 in the bundled stylesheet.
             var element = MountOnFakeClock(ClassicEnter("!opacity-0", "opacity-50", "opacity-100"));
 
-            // Assert
-            Assert.That(element.ClassListContains("opacity-50"), Is.False);
+            // Assert — the enter's class is the element's own and held off its list, which an enter that never
+            // showed it leaves false.
+            Assert.That(StyleClassProjection.SuppressesOwnClass(element, "opacity-50"), Is.True);
         }
 
         [Test]
@@ -289,7 +293,9 @@ namespace Velvet.Tests
             Assert.That(read, Is.EqualTo(StyleKeyword.Null));
         }
 
-        // A Motion that swaps from opacity-100 to opacity-0 on a 0.2 s tween when s_setLit says so, at half opacity
+        private static StyleTransitionConfig s_swapTransition = new() { DurationSec = 0.2f };
+
+        // A Motion that swaps from opacity-100 to opacity-0 on s_swapTransition when s_setLit says so, at half opacity
         // while hovered.
         [Component]
         private static VNode HoveredSwap()
@@ -298,12 +304,13 @@ namespace Velvet.Tests
             s_setLit = setLit;
             var poses = new Dictionary<string, MotionVariant> { ["a"] = "opacity-100", ["b"] = "opacity-0" };
             return V.Motion(name: "b", className: "w-[20px] h-[20px]", variants: poses, animate: lit ? "b" : "a",
-                transition: Tween(), whileHoverClass: "opacity-50");
+                transition: s_swapTransition, whileHoverClass: "opacity-50");
         }
 
-        // A hovered HoveredSwap whose variant swap has just landed its class.
-        private VisualElement MountHoveredSwapAfterTheSwap()
+        // A hovered HoveredSwap on transition one step into its variant swap.
+        private VisualElement MountHoveredSwapAfterTheSwap(StyleTransitionConfig transition)
         {
+            s_swapTransition = transition;
             var element = MountOnFakeClock(V.Component(HoveredSwap));
             using (var over = PointerOverEvent.GetPooled())
             {
@@ -315,30 +322,22 @@ namespace Velvet.Tests
             return element;
         }
 
-        [Test]
-        public void Given_AHoveredMotion_When_AVariantSwapShowsAnOpacityClass_Then_ThePlaysClassWinsWhileItShows()
+        // Framer Motion protects a value a gesture state sets from the element's animate and variants, so the hover
+        // class keeps the opacity the swap would move, on a tween, whose swap lands its class beneath the hover
+        // class, and on a spring or a bezier, whose plan leaves the value out.
+        [TestCase(TransitionType.Tween)]
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_AHoveredMotion_When_AVariantSwapPlaysAnOpacityTheHoverClassSets_Then_TheHoverClassKeepsIt(
+            TransitionType type)
         {
-            // Arrange — opacity-50 sits after opacity-0 in the bundled stylesheet.
-            // Act
-            var element = MountHoveredSwapAfterTheSwap();
+            // Arrange / Act
+            var element = MountHoveredSwapAfterTheSwap(new StyleTransitionConfig { Type = type, DurationSec = 0.2f });
 
-            // Assert — the hover class is taken off while the play's class shows.
-            Assert.That(element.ClassListContains("opacity-50"), Is.False);
-        }
-
-        [Test]
-        public void Given_AHoveredMotion_When_AVariantSwapEnds_Then_TheHoverClassComesBack()
-        {
-            // Arrange
-            var element = MountHoveredSwapAfterTheSwap();
-            // Whether the hover class is off while the play's class shows.
-            var shown = !element.ClassListContains("opacity-50");
-
-            // Act
-            Step(element);
-
-            // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
-            Assert.That(shown ? element.ClassListContains("opacity-50") : (bool?)null, Is.True);
+            // Assert — read as NaN unless the swap's class is the element's own and held off its list, which a swap
+            // that never ran, or a hover that never came on, leaves false.
+            Assert.That(StyleClassProjection.SuppressesOwnClass(element, "opacity-0") ? element.resolvedStyle.opacity
+                : float.NaN, Is.EqualTo(0.5f).Within(1e-4f));
         }
 
         private ReconcilerContext Context => _mounted.Root.Reconciler.Context;
@@ -606,6 +605,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(box.style.backgroundColor.value, Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_AMotionTextField_When_AnEnterShowsTruncate_Then_TheTextItsInputBoxDrawsTakesIt()
+        {
+            // Arrange / Act — as a reconciled class does
+            // (Given_TruncateOnATextField_When_Reconciled_Then_TheTextTheInputBoxDrawsTakesIt).
+            var element = MountOnFakeClock(EnterBeside("", "truncate", "", typeof(TextField)));
+            var box = element.Q<VisualElement>(className: StyleChildVariantClass.InputBoxClass);
+
+            // Assert
+            Assert.That(box.Q<TextElement>().ClassListContains("truncate"), Is.True);
+        }
+
+        [Test]
+        public void Given_AMotionTextField_When_AnEnterShowsATextOverflowUtility_Then_ItsInputBoxClips()
+        {
+            // Arrange / Act
+            var element = MountOnFakeClock(EnterBeside("", "text-ellipsis", "", typeof(TextField)));
+            var box = element.Q<VisualElement>(className: StyleChildVariantClass.InputBoxClass);
+
+            // Assert
+            Assert.That(box.ClassListContains("overflow-hidden"), Is.True);
         }
     }
 }

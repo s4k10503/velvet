@@ -1575,6 +1575,39 @@ namespace Velvet
             return resting.ToArray();
         }
 
+        // A gesture state turning on takes the values its classes set from the spring or bezier play this scheduler
+        // drives on element, which then show the gesture's class, as Framer Motion protects a value a gesture state sets from
+        // the element's animate and variants (StyleLayerPriority.Gesture). A play starting while the state is on
+        // leaves them out of its plan (MotionSlotContext.HoldsGesture).
+        internal void YieldToGesture(VisualElement element, string[] classes)
+        {
+            var named = FiberNodePatcher.LonghandsOf(classes);
+            if (named.IsEmpty)
+            {
+                return;
+            }
+            YieldToGesture(element, _pendingEnters, named);
+            YieldToGesture(element, _pendingExits, named);
+            YieldToGesture(element, _held, named);
+        }
+
+        private static void YieldToGesture(VisualElement element, Dictionary<VisualElement, PendingAnimation> map,
+            StyleLonghandSet named)
+        {
+            if (!map.TryGetValue(element, out var pending))
+            {
+                return;
+            }
+            if (pending.Spring != null)
+            {
+                MotionSpringDriver.ReleaseChannels(element, pending.Spring, named);
+            }
+            else if (pending.Bezier != null)
+            {
+                BezierTweenDriver.ReleaseChannels(element, pending.Bezier, named);
+            }
+        }
+
         // Whether a spring or bezier enter is still running on the element, whose settle re-applies the inline
         // values its class list names (FiberNodePatcher.RemoveStaleInlineTokens). A bezier or spring enter
         // holding its from-values after its last pass counts, and its cancel is what re-applies them. One

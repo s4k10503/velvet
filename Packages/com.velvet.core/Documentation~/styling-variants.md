@@ -433,18 +433,18 @@ element has to be handed both every frame, the way the band is. A band was worth
 outset one is wholly outside the padding box and a clip takes all of it; `ring-inset` sits over the box
 and would have survived, but one hosting has to serve both.
 
-**Class channels that are not variants.** `whileHoverClass`, `whileTapClass` and `whileFocusClass` apply
-their utilities the way `hover:`, `active:` and `focus:` apply a payload, ranked after every rule the
-className declares with that variant alone, and the drag-and-drop channels (`whileDraggingClass`,
-`whileOverClass`, `whileDragActiveClass`) apply theirs the same way at `data-[…]:`'s rank. So while the
-state is on, a gesture class outranks the element's utilities that carry no variant or `!` for the same
-property — a rule the stylesheet declares later, a bracket value such as `bg-[#00f]`, a divider's color —
-and its own variant's rule in the className, such as `hover:` against `whileHoverClass`. It loses to what
-Tailwind ranks above that: `focus:` or `active:` against `whileHoverClass`, `disabled:` or `data-[…]:`
-against any of the three, a stacked rule such as `dark:hover:`, and an important utility. Framer Motion
-ranks `whileHover` above `whileFocus`, where `whileFocusClass` outranks `whileHoverClass` here, being ranked
-as the `focus:` variant it stands for. The element's
-own value comes back when the state goes off. Bracket values apply through them, and so do `shadow-*`,
+**Class channels that are not variants.** `whileHoverClass`, `whileTapClass`, `whileFocusClass` and a
+draggable's `whileDraggingClass` are Framer Motion's gesture states, and apply their utilities as a payload
+does, ranked above every rule of the element's own short of an important one — a utility the stylesheet
+declares later, a bracket value such as `bg-[#00f]`, a divider's color, `StyleOverrides`, and a className
+variant such as `hover:`, `focus:`, `disabled:` or `dark:hover:` — and above a play's classes: Framer
+protects a value a gesture state sets from the element's `animate` and variants while the state is on, so a
+play leaves that property where the gesture puts it, whatever its driver, and a play starting during the
+state leaves it out. Among themselves they rank as `hover:`, `focus:`, `active:` and `data-[…]:` rank in
+Tailwind, so a tap or focus class outranks a hover one; Framer Motion ranks `whileHover` above `whileFocus`.
+A droppable's `whileOverClass` and `whileDragActiveClass` apply theirs at `data-[…]:`'s rank, after every rule
+the className declares with that variant alone, and a play outranks them. An important utility outranks every
+one of these channels. The element's own value comes back when the state goes off. Bracket values apply through them, and so do `shadow-*`,
 `ring-*`, `skew-*`, gradients, `animate-*`, `border-dashed`, `gap-*` and `uppercase`:
 `whileHoverClass: "shadow-lg"` paints a shadow while hovered. The classes a play shows for the duration of
 an animation — a `V.Motion` pose's, an `AnimatePresence` enter or exit class — apply the same set, and a

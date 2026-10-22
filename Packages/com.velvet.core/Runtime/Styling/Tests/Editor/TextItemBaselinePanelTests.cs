@@ -292,6 +292,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AShadowedButtonInARow_When_Resolved_Then_ItsMinWidthIsItsWidestWordPlusItsOwnFrame()
+        {
+            // Arrange / Act
+            var button = Mount<Button>("flex flex-row w-[20px]", V.Button(text: Sentence, className: "shadow-md"));
+
+            // Assert
+            Assert.That(button.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(button, LongWord)));
+        }
+
+        [Test]
         public void Given_ALabelWithCjkText_When_ResolvedInARow_Then_ItsMinWidthIsOneCharacter()
         {
             // Arrange / Act

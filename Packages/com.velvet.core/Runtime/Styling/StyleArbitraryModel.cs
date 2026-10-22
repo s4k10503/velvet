@@ -117,9 +117,18 @@ namespace Velvet
         public static long ImportantOf(long priority) => Important | priority;
         #endregion
 
+        // A gesture or drag channel's class (whileHoverClass, whileTapClass, whileFocusClass, whileDraggingClass),
+        // ranked as its variant within a band above every play: Framer Motion protects a value a gesture state
+        // sets from the element's animate and variants while the state is on.
+        public const long Gesture = 1L << 61;
+
+        public static long GestureOf(long priority) => Gesture | priority;
+
+        public static bool IsGesture(long key) => (key & Gesture) != 0;
+
         // A class a running play shows. CSS ranks an animation's declarations above every normal one, the style
-        // attribute's included, and below every important one, so this is the top of the ordinary band.
-        public const long Animation = Important - 1;
+        // attribute's included, and below every important one; a gesture channel ranks above it (Gesture).
+        public const long Animation = Gesture - 1;
 
         // StyleOverrides, Velvet's style attribute. CSS ranks a declaration there above every rule that is not
         // important, below every important one and below an animation's.

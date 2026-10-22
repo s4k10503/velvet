@@ -312,6 +312,23 @@ namespace Velvet
             }
         }
 
+        // resolved, a translate element is drawn with, less the displacement its seat composes into it, so what is
+        // left is the element's own.
+        internal static Vector3 Unseated(VisualElement element, Vector3 resolved)
+        {
+            if (!s_seated.TryGetValue(element, out var seated))
+            {
+                return resolved;
+            }
+            var own = seated.Own;
+            var shown = Compose(own, seated.Frame).value;
+            var x = own.keyword == StyleKeyword.Undefined ? own.value.x : new Length(0f);
+            var y = own.keyword == StyleKeyword.Undefined ? own.value.y : new Length(0f);
+            var dx = x.unit == LengthUnit.Pixel ? shown.x.value - x.value : 0f;
+            var dy = y.unit == LengthUnit.Pixel ? shown.y.value - y.value : 0f;
+            return new Vector3(resolved.x - dx, resolved.y - dy, resolved.z);
+        }
+
         // Drops a seat without writing, for an element whose style is being scrubbed anyway.
         internal static void Forget(VisualElement element) => s_seated.Remove(element);
 

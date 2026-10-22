@@ -226,9 +226,10 @@ namespace Velvet
             var scale = element.style.scale;
             // Where the element is drawn, which an inline value it was just given is not until a style pass has run: what a
             // projection that ended earlier in this render handed back, else the resolved style
-            // (Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform).
+            // (Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform), less a skewed
+            // parent's seat, which the projection's own writes compose again (SeatedTranslate).
             ctx.LayoutIdRestored.Remove(element, out var restored);
-            var startTranslate = restored.Translate ?? element.resolvedStyle.translate;
+            var startTranslate = restored.Translate ?? SeatedTranslate.Unseated(element, element.resolvedStyle.translate);
             var startScale = restored.Scale ?? element.resolvedStyle.scale.value;
             // A running bounce or ping has its frame in the slot, and the frame is the loop's rather than the element's.
             if (StyleAnimateDriver.TryReadBounceOwn(element, translate, out var bounceInline, out var bounceOwn))

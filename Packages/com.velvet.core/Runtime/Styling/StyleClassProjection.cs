@@ -566,6 +566,20 @@ namespace Velvet
                 return false;
             }
 
+            // Whether a gesture channel's class (StyleLayerPriority.Gesture) is on, writing any of longhands.
+            public bool HoldsGesture(StyleLonghandSet longhands)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (!entry.Dead && !entry.RankOnly && StyleLayerPriority.IsGesture(entry.Priority)
+                        && entry.Properties.Overlaps(longhands))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             public bool HoldsUnderVariant(string cls)
             {
                 foreach (var entry in _entries)

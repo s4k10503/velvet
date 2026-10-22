@@ -3482,38 +3482,58 @@ namespace Velvet
         // ranks it below every appended token, so `shadow-lg dark:shadow-sm hover:shadow-lg` would paint the
         // dark preset even though the hover layer outranks it.
         //
-        // The reuse compare runs before anything is built, so the steady state allocates NOTHING. This runs
-        // on every patch of every element a variant has a gate token applied to.
+        // The reuse compare runs before anything is built, withheld tokens included, so a patch whose composition
+        // matches the cached one builds no array. This runs on every patch of every element a variant has a gate
+        // token applied to.
         //
         // A token a play withheld (VariantGateState.Withheld) is left out of the head.
         private static string[] ComposeVariantClasses(string[] classNames, VariantGateState state, string[]? reuse)
         {
             var tokens = state.Tokens;
-            if (state.Withheld.Count != 0)
+            var withheld = state.Withheld;
+            if (tokens.Count == 0 && withheld.Count == 0)
             {
-                classNames = Array.FindAll(classNames, cls => string.IsNullOrEmpty(cls)
-                    || !state.Withheld.Contains(StyleArbitraryValueResolver.StripImportant(cls, out _)));
+                return classNames;
             }
-            if (tokens.Count == 0)
-            {
-                return reuse != null && state.Withheld.Count != 0 && SequenceEqual(reuse, classNames)
-                    ? reuse
-                    : classNames;
-            }
-            var total = classNames.Length + tokens.Count;
-            if (reuse != null && reuse.Length == total && TailEquals(reuse, classNames.Length, tokens)
-                && HeadEquals(reuse, classNames))
+            var head = withheld.Count == 0 ? classNames.Length : CountKept(classNames, withheld);
+            var total = head + tokens.Count;
+            if (reuse != null && reuse.Length == total && TailEquals(reuse, head, tokens)
+                && HeadEquals(reuse, classNames, withheld))
             {
                 return reuse;
             }
 
             var composed = new string[total];
-            Array.Copy(classNames, composed, classNames.Length);
+            var at = 0;
+            foreach (var cls in classNames)
+            {
+                if (Kept(cls, withheld))
+                {
+                    composed[at++] = cls;
+                }
+            }
             for (var i = 0; i < tokens.Count; i++)
             {
-                composed[classNames.Length + i] = tokens[i];
+                composed[head + i] = tokens[i];
             }
             return composed;
+        }
+
+        private static bool Kept(string cls, List<string> withheld)
+            => withheld.Count == 0 || string.IsNullOrEmpty(cls)
+                || !withheld.Contains(StyleArbitraryValueResolver.StripImportant(cls, out _));
+
+        private static int CountKept(string[] classNames, List<string> withheld)
+        {
+            var kept = classNames.Length;
+            foreach (var cls in classNames)
+            {
+                if (!Kept(cls, withheld))
+                {
+                    kept--;
+                }
+            }
+            return kept;
         }
 
         // Whether array carries exactly tokens from start on.
@@ -3529,14 +3549,15 @@ namespace Velvet
             return true;
         }
 
-        // Whether array opens with exactly head's tokens. The reconciled array can be a fresh instance
-        // carrying the same tokens on every render, so the cached composition is still reusable then — but
+        // Whether array opens with exactly head's tokens, less those withheld. The reconciled array can be a fresh
+        // instance carrying the same tokens on every render, so the cached composition is still reusable then — but
         // only once its head is confirmed.
-        private static bool HeadEquals(string[] array, string[] head)
+        private static bool HeadEquals(string[] array, string[] head, List<string> withheld)
         {
-            for (var i = 0; i < head.Length; i++)
+            var at = 0;
+            foreach (var cls in head)
             {
-                if (array[i] != head[i])
+                if (Kept(cls, withheld) && array[at++] != cls)
                 {
                     return false;
                 }

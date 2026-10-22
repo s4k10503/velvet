@@ -408,18 +408,30 @@ namespace Velvet
             }
         }
 
-        // A class a drag puts on an element ranks as a data-[…]: payload does, after every rule the className
-        // declares at that rank, so it outranks the element's own utilities while the drag shows it.
+        // A droppable's class a drag puts on an element ranks as a data-[…]: payload does, after every rule the
+        // className declares at that rank, so it outranks the element's own utilities while the drag shows it. The
+        // source's whileDraggingClass is Framer's whileDrag, a gesture state, so it ranks in the gesture band
+        // (StyleLayerPriority.Gesture).
         private void Toggle(VisualElement element, string[] classes, bool on)
             => StyleVariantPayload.Apply(element, classes, on, ChannelPriority, _ctx, this);
 
+        private void ToggleDragging(bool on)
+        {
+            StyleVariantPayload.Apply(_source, _activeDraggingClasses, on, DraggingPriority, _ctx, this);
+            if (on)
+            {
+                _ctx.StyleAnimationScheduler.YieldToGesture(_source, _activeDraggingClasses);
+            }
+        }
+
         private static readonly long ChannelPriority = StyleLayerPriority.AfterEveryRule(StyleLayerPriority.Data);
+        private static readonly long DraggingPriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Data);
 
         private void ApplyActiveStyling()
         {
             if (_activeDraggingClasses.Length > 0)
             {
-                Toggle(_source, _activeDraggingClasses, true);
+                ToggleDragging(true);
             }
             ApplyDragActiveClasses();
         }
@@ -761,7 +773,7 @@ namespace Velvet
         {
             if (ReferenceEquals(element, _source) && _activeDraggingClasses.Length > 0)
             {
-                Toggle(_source, _activeDraggingClasses, false);
+                ToggleDragging(false);
             }
             OnDroppableInvalidated(element);
         }
@@ -929,7 +941,7 @@ namespace Velvet
         {
             if (_activeDraggingClasses.Length > 0)
             {
-                Toggle(_source, _activeDraggingClasses, false);
+                ToggleDragging(false);
             }
             foreach (var (element, classes) in _appliedActiveClasses)
             {

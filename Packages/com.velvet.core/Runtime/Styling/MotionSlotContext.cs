@@ -231,6 +231,15 @@ namespace Velvet
             return false;
         }
 
+        // A gesture channel holds slot: its value is protected from the swap, as Framer Motion keeps a value a gesture
+        // state sets out of the element's animate and variants while the state is on.
+        public bool HoldsGesture(ArbitraryProperty slot)
+        {
+            var owner = Owner(slot);
+            return StyleArbitraryValueResolver.HoldsGestureLayer(owner, slot)
+                || StyleArbitraryValueResolver.TryGetProjection(owner)?.HoldsGesture(StyleArbitraryLonghands.Of(slot)) == true;
+        }
+
         // Unlike the running-play predicate, a held play does not count: it rests at its start and the next play
         // takes that from StartFromHeld, in the held play's own unit.
         public bool DrivenByLivePlay(ArbitraryProperty slot) => _drivenByLivePlay(slot);

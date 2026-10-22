@@ -12,16 +12,14 @@ namespace Velvet
     // whileFocus uses the element's own Focus signal (backed by FocusEvent / BlurEvent — only focusable
     // elements — buttons, fields — ever trigger it). whileTap maps to the Active signal (pointer-down /
     // pointer-up / pointer-cancel / release-outside-bounds).
-    // Each class array is applied as a variant payload at its state's priority — whileHoverClass as hover:,
-    // whileTapClass as active:, whileFocusClass as focus: — so it outranks the element's base utilities as
-    // Tailwind's variant rule outranks the base one, and the base takes the property back on release.
+    // Each class array is applied as a variant payload in the gesture band (StyleLayerPriority.Gesture), ordered
+    // among the three as hover:, focus: and active: order, so it outranks every rule of the element's own short
+    // of an important one, and a play's classes, and the element's own value comes back on release.
     internal sealed class StyleGestureClassManipulator : Manipulator, IVariantSettleTarget
     {
-        // After every rule the className declares at the state's rank, so a gesture class wins a tie with the
-        // element's own hover: / active: / focus: rule, as Framer's whileHover overrides the element's own style.
-        private static readonly long HoverPriority = StyleLayerPriority.AfterEveryRule(StyleLayerPriority.Hover);
-        private static readonly long ActivePriority = StyleLayerPriority.AfterEveryRule(StyleLayerPriority.Active);
-        private static readonly long FocusPriority = StyleLayerPriority.AfterEveryRule(StyleLayerPriority.Focus);
+        private static readonly long HoverPriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Hover);
+        private static readonly long ActivePriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Active);
+        private static readonly long FocusPriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Focus);
 
         private readonly ReconcilerContext? _ctx;
         private string[] _hoverClasses;
@@ -154,6 +152,12 @@ namespace Velvet
         }
 
         private void Toggle(string[] classes, bool on, long priority)
-            => StyleVariantPayload.Apply(target, classes, on, priority, _ctx, this);
+        {
+            StyleVariantPayload.Apply(target, classes, on, priority, _ctx, this);
+            if (on)
+            {
+                _ctx?.StyleAnimationScheduler.YieldToGesture(target, classes);
+            }
+        }
     }
 }

@@ -1017,14 +1017,15 @@ namespace Velvet.Tests
         // A card carrying className and the hover class, beside a reference carrying reference alone, whose
         // resolved background is the one the card should show. A geometry event is delivered as a live host's
         // layout delivers it, since that is where a skew layer on a panel takes its first stash.
-        private (VisualElement Card, Color Expected) Mount(string className, string reference, string? hover = null)
+        private (VisualElement Card, Color Expected) Mount(string className, string reference, string? hover = null,
+            string name = "card")
         {
             _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[]
             {
-                V.Div(name: "card", className: "w-[40px] h-[40px] " + className, whileHoverClass: hover),
+                V.Div(name: name, className: "w-[40px] h-[40px] " + className, whileHoverClass: hover),
                 V.Div(name: "ref", className: "w-[40px] h-[40px] " + reference),
             }));
-            var card = _window.rootVisualElement.Q("card");
+            var card = _window.rootVisualElement.Q(name);
             ForcePanelUpdate(card.panel);
             using (var evt = EventBase<GeometryChangedEvent>.GetPooled())
             {
@@ -1046,6 +1047,23 @@ namespace Velvet.Tests
 
         private Color ShadowFace(VisualElement card)
             => _mounted.Root.Reconciler.Context.ShadowBindings[card].Face.CurrentBg;
+
+        private const string IdRuleSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowFaceIdRule.uss";
+
+        [Test]
+        public void Given_AShadowedElementAnIdRuleColors_When_ThePanelResolves_Then_ItsFaceTakesTheRulesColor()
+        {
+            // Arrange
+            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(IdRuleSheet);
+            Assume.That(sheet, Is.Not.Null, "Precondition: the test's id rule sheet loads");
+            _window.rootVisualElement.styleSheets.Add(sheet);
+
+            // Act
+            var (card, _) = Mount("shadow-md", "", name: "buy");
+
+            // Assert
+            Assert.That(ShadowFace(card), Is.EqualTo(new Color(0f, 128f / 255f, 0f)));
+        }
 
         [Test]
         public void Given_AShadowedCardWithAHoverBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()

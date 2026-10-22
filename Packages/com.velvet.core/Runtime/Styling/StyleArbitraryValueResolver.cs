@@ -1673,6 +1673,31 @@ namespace Velvet
         }
 
         // Whether a layer holding slot, as HoldsMotionSlot reads it, is in force under a variant.
+        // Whether a gesture channel's layer (StyleLayerPriority.Gesture) holds a motion slot on element.
+        internal static bool HoldsGestureLayer(VisualElement element, ArbitraryProperty slot)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return false;
+            }
+            var written = StyleArbitraryLonghands.Of(slot);
+            foreach (var pair in map)
+            {
+                if (!HoldsMotionSlot(pair.Key, slot, written))
+                {
+                    continue;
+                }
+                foreach (var key in pair.Value.Keys)
+                {
+                    if (StyleLayerPriority.IsGesture(key))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         internal static bool HoldsVariantLayer(VisualElement element, ArbitraryProperty slot)
         {
             if (!s_layers.TryGetValue(element, out var map))
@@ -2309,13 +2334,17 @@ namespace Velvet
                 }
             }
 
+            // A gesture channel's layer or class outranks every drive, whenever it arrived: a play leaves a value a
+            // gesture state sets alone, as Framer Motion protects it from the element's animate and variants.
             public bool Outranks(ArbitraryProperty property, long key)
-                => (key & StyleLayerPriority.Important) != 0 && !_layers.Contains((property, key));
+                => StyleLayerPriority.IsGesture(key)
+                    || ((key & StyleLayerPriority.Important) != 0 && !_layers.Contains((property, key)));
 
             public bool Outranks(StyleLonghand longhand, long claim)
             {
                 var known = _claims.TryGetValue(longhand, out var found);
-                return (claim & StyleLayerPriority.Important) != 0 && (!known || claim > found);
+                return StyleLayerPriority.IsGesture(claim)
+                    || ((claim & StyleLayerPriority.Important) != 0 && (!known || claim > found));
             }
         }
 

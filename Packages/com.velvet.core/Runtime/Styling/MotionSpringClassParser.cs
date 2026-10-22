@@ -578,7 +578,7 @@ namespace Velvet
             }
             for (var i = 0; i < claims.Length; i++)
             {
-                if (context.HasImportantInlineOutsideSwap(s_slots[i]))
+                if (context.HasImportantInlineOutsideSwap(s_slots[i]) || context.HoldsGesture(s_slots[i]))
                 {
                     claims[i] = new SlotClaim { Claimed = true, Precedence = long.MaxValue };
                     continue;

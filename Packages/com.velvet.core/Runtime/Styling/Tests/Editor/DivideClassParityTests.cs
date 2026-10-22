@@ -2611,6 +2611,35 @@ namespace Velvet.Tests
             Assert.That(binding.DelaySec, Is.EqualTo(-0.09f).Within(1e-4f));
         }
 
+        [Test]
+        public void Given_ADashTransitionOnTheChildsPanel_When_HalfItsDurationPassesOnThePanelClock_Then_TheDashIsHalfway()
+        {
+            // Arrange — a linear second from border-default to border-accent, started at 100 s on the panel's clock.
+            var now = 100.0;
+            var (child, references) = MountColoredDashRow("border-default", "border-default", "border-accent");
+            child.style.transitionProperty = new List<StylePropertyName> { new("border-color") };
+            child.style.transitionDuration = new List<TimeValue> { new(1f, TimeUnit.Second) };
+            child.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+            EditorPanelTestHelpers.SetPanelTimeFunction(child.panel, () => now);
+            ForcePanelUpdate(child.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            var oldColor = references[0].resolvedStyle.borderRightColor;
+            var newColor = references[1].resolvedStyle.borderRightColor;
+            StyleClassProjection.Remove(child, "border-default", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-accent", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+
+            // Act
+            now = 100.5;
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+
+            // Assert — read as NaN where the two classes give one color, which a dash at either end would match.
+            var halfway = Color.LerpUnclamped(oldColor, newColor, 0.5f);
+            Assert.That(oldColor != newColor ? Vector4.Distance(DashColorOf(child), halfway) : float.NaN,
+                Is.LessThan(1e-3f));
+        }
+
         // A dash on a child carrying border-default transition-colors, just after its class changed to
         // border-accent, and the two colors the classes resolve to.
         private (VisualElement Child, DivideDashChildBinding Binding, Color Old, Color New) MountChangedColorClassDash()
