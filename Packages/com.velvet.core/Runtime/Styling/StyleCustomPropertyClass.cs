@@ -154,12 +154,14 @@ namespace Velvet
             return rewritten == null ? core : rewritten.Append(core, copied, core.Length - copied).ToString();
         }
 
-        // The parenthesised group opening at open: `(--x)` or `(hint:--x)`, after a `-` or a `/`.
+        // The parenthesised group opening at open: `(--x)` or `(hint:--x)` after a `-`, and `(--x)` after a
+        // modifier's `/`, which Tailwind reads without a hint. A fallback may hold parentheses of its own
+        // (`(--x,calc(1px*2))`), so the group closes at the parenthesis matching open.
         private static bool TryShorthandGroup(string core, int open, out int close, out string? hint, out string reference)
         {
             hint = null;
             reference = string.Empty;
-            close = core.IndexOf(')', open);
+            close = StyleCustomProperties.MatchingClose(core, open, core.Length);
             if (open < 2 || (core[open - 1] != '-' && core[open - 1] != '/') || close < 0)
             {
                 return false;
@@ -172,7 +174,8 @@ namespace Velvet
             }
             hint = hintEnd > 0 && hintEnd < inner.Length && inner[hintEnd] == ':' ? inner.Substring(0, hintEnd) : null;
             reference = hint == null ? inner : inner.Substring(hintEnd + 1);
-            return reference.StartsWith("--", StringComparison.Ordinal) && reference.Length > 2;
+            return (hint == null || core[open - 1] == '-') && reference.StartsWith("--", StringComparison.Ordinal)
+                && reference.Length > 2;
         }
 
         // The side utilities a shorthand utility splits into, or null for any other utility.

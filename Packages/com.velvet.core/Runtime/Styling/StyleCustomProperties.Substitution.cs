@@ -145,7 +145,7 @@ namespace Velvet
         }
 
         // The index of the parenthesis closing the one at open, or -1 when none does before end.
-        private static int MatchingClose(string text, int open, int end)
+        internal static int MatchingClose(string text, int open, int end)
         {
             var depth = 0;
             var at = open;

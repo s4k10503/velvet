@@ -3744,7 +3744,9 @@ namespace Velvet
             }
             Color? variable = null;
             var colorWrites = false;
-            if (map.TryGetValue(ArbitraryProperty.FilterDropShadowColor, out var colors) && colors.Count > 0)
+            // A keyword colour is --tw-drop-shadow-color left without a value, so each shadow takes its fallback.
+            if (map.TryGetValue(ArbitraryProperty.FilterDropShadowColor, out var colors) && colors.Count > 0
+                && colors.Values[colors.Count - 1].Keyword == StyleKeyword.Undefined)
             {
                 var color = colors.Values[colors.Count - 1].Color;
                 color.a *= AlphaVariable(sizes) ?? 1f;
@@ -3923,14 +3925,8 @@ namespace Velvet
                     WriteSliceType(element, style);
                     return;
                 case ArbitraryProperty.Flex:
-                {
-                    var flex = ClipPathLayoutBox.StyleFor(element, style.Property);
-                    flex.flexGrow = style.Value;
-                    flex.flexShrink = style.Value3;
-                    // The basis is written as basis-[…] writes its own, a measured length included.
-                    WriteLength(element, flex, FlexBasisOf(style), PropertySetters[ArbitraryProperty.FlexBasis]);
+                    WriteFlex(element, style);
                     return;
-                }
                 case ArbitraryProperty.AspectRatio:
                     ClipPathLayoutBox.StyleFor(element, style.Property).aspectRatio = style.Keyword == StyleKeyword.Undefined
                         ? new StyleRatio(style.Value)
@@ -3987,6 +3983,23 @@ namespace Velvet
             }
 
             WriteLength(element, ClipPathLayoutBox.BoxFor(element, style.Property).style, style, setters);
+        }
+
+        // A keyword is written to each of the three longhands the shorthand sets.
+        private static void WriteFlex(VisualElement element, in ArbitraryStyle style)
+        {
+            var flex = ClipPathLayoutBox.StyleFor(element, style.Property);
+            if (style.Keyword != StyleKeyword.Undefined)
+            {
+                flex.flexGrow = style.Keyword;
+                flex.flexShrink = style.Keyword;
+                flex.flexBasis = style.Keyword;
+                return;
+            }
+            flex.flexGrow = style.Value;
+            flex.flexShrink = style.Value3;
+            // The basis is written as basis-[…] writes its own, a measured length included.
+            WriteLength(element, flex, FlexBasisOf(style), PropertySetters[ArbitraryProperty.FlexBasis]);
         }
 
         // A Flex result's basis as the FlexBasis result basis-[…] parses to.
@@ -4237,13 +4250,14 @@ namespace Velvet
         }
 
         // Whether a keyword layer (ArbitraryStyle.Keyword) for property writes what that keyword computes to: the
-        // keyword itself, or for a corner radius, a scale or translate axis, opacity and a built-in filter
-        // function the initial value it stands for.
+        // keyword itself, or what it computes to in a value Velvet composes — a corner radius of 0, a scale of 1, a
+        // translate of 0, an opacity of 1, and a filter without that function or that drop-shadow colour.
         internal static bool WritesKeyword(ArbitraryProperty property)
             => property is ArbitraryProperty.Opacity or ArbitraryProperty.Rotate or ArbitraryProperty.TransformOrigin
                     or ArbitraryProperty.AspectRatio or ArbitraryProperty.TransitionDuration
-                    or ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY or ArbitraryProperty.Scale
-                    or ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY
+                    or ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY or ArbitraryProperty.Translate
+                    or ArbitraryProperty.Scale or ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY
+                    or ArbitraryProperty.Flex
                 || IsFilter(property)
                 || ColorSetters.ContainsKey(property) || FloatSetters.ContainsKey(property)
                 || PropertySetters.ContainsKey(property) || RadiusCornersOf.ContainsKey(property);

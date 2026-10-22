@@ -12,7 +12,9 @@ namespace Velvet
         // properties Tailwind registers with an initial value: transparent; 0%, 50% and 100%; one that draws none;
         // the same; 0px. A ring's colour is one it registers without one, which its shadow reads with a
         // currentcolor fallback; an outline colour's initial value is currentcolor and its width's is medium (3px).
-        // Gap's initial value is no gap. A font's weight and family and a line height inherit.
+        // Gap's initial value is no gap. A font's weight and family and a line height inherit. A skew axis is a
+        // custom property Tailwind registers without one, which the transform reads with an empty fallback: no
+        // shear on that axis, as a skew of 0 draws.
         private static string? PaintedUnset(string prefix, string? hint)
         {
             if (!s_paintedUnset.TryGetValue(prefix, out var unset))
@@ -42,6 +44,9 @@ namespace Velvet
                 ["gap-y-"] = ("gap-y-0", "gap-y-0", "gap-y-0", "gap-y-0"),
                 ["font-"] = ("font-[weight:inherit]", "font-[weight:inherit]", "font-[family-name:inherit]", "font-[weight:inherit]"),
                 ["leading-"] = ("leading-[inherit]", "leading-[inherit]", "leading-[inherit]", "leading-[inherit]"),
+                ["skew-x-"] = ("skew-x-0", "skew-x-0", "skew-x-0", "skew-x-0"),
+                ["skew-y-"] = ("skew-y-0", "skew-y-0", "skew-y-0", "skew-y-0"),
+                ["skew-"] = ("skew-0", "skew-0", "skew-0", "skew-0"),
             };
 
         private static bool Inherits(ArbitraryProperty property)
@@ -93,10 +98,10 @@ namespace Velvet
         private static bool Matches(StringBuilder built, string applied) => built.Equals(applied.AsSpan());
 
         // The property an inline utility writes, read by parsing it with a value of the type Tailwind gives it in
-        // place of its own: a colour where DefaultHint adds one, else the bracket with each var() read as 0, else
-        // a length, a number or an angle; a var() in a modifier is read as 50%. Null when none parses to a layer
-        // the unset value can be written to, or where keywordOnly is false, to any layer at all. probe is the
-        // utility that parsed.
+        // place of its own: a colour where DefaultHint adds one or the bracket's hint names one, else the bracket
+        // with each var() read as 0, else a length, a number or an angle; a var() in a modifier is read as 50%.
+        // Null when none parses to a layer the unset value can be written to, or where keywordOnly is false, to any
+        // layer at all. probe is the utility that parsed.
         private static ArbitraryProperty? WrittenProperty(string utility, UtilityShape shape, string? addedHint,
             out string? probe, bool keywordOnly = true)
         {
@@ -112,8 +117,10 @@ namespace Velvet
                 var hint = shape.Hint == null ? string.Empty : shape.Hint + ":";
                 var tail = "]" + WithVarsAs(utility.Substring(shape.MainClose + 1), "50%");
                 var body = utility.Substring(shape.BodyStart, shape.MainClose - shape.BodyStart);
-                candidates = addedHint != null
-                    ? new[] { head + addedHint + ":" + (addedHint == "color" ? "#000" : "400") + tail }
+                // A 0 or a length under a colour hint is no colour, so a written colour hint is probed with one too.
+                var typed = addedHint ?? (shape.Hint == "color" ? shape.Hint : null);
+                candidates = typed != null
+                    ? new[] { head + typed + ":" + (typed == "color" ? "#000" : "400") + tail }
                     : new[]
                     {
                         head + hint + WithVarsAs(body, "0") + tail, head + hint + "0px" + tail, head + hint + "0" + tail,

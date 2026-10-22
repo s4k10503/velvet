@@ -415,6 +415,99 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AStylesheetRuleRedeclaringAProperty_When_ItsClassIsRemoved_Then_TheReaderTakesTheOuterValue()
+        {
+            // Arrange
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            var child = MountSwitchable("css-var-host css-var-alt", "w-[var(--w)]");
+            ForcePanelUpdate(child.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            var redeclared = Width(child);
+
+            // Act — a theme class turning off: the rule redeclaring --w stops matching the declaring element.
+            s_setOuter.Invoke("css-var-host");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            ForcePanelUpdate(child.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+
+            // Assert
+            Assert.That((redeclared, Width(child)),
+                Is.EqualTo(((StyleKeyword.Undefined, 40f), (StyleKeyword.Undefined, 25f))));
+        }
+
+        [Test]
+        public void Given_AShorthandWhoseFallbackHoldsAFunction_When_Mounted_Then_TheFallbackIsTaken()
+        {
+            // Arrange / Act — the group closes at the parenthesis matching its own, not at calc()'s.
+            var child = Mount("", "w-(--w,calc(6px*2))");
+
+            // Assert
+            Assert.That(Width(child), Is.EqualTo((StyleKeyword.Undefined, 12f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no parenthesised modifier, so a hinted one is inert there too.
+        [Test]
+        public void Given_AModifierShorthandWithATypeHint_When_Mounted_Then_TheClassIsInert()
+        {
+            // Arrange / Act — Tailwind reads a parenthesised modifier as a bare var(), and declines one with a hint.
+            var child = Mount("[--a:50%]", "bg-[#ff0000]/(number:--a)");
+
+            // Assert
+            Assert.That(child.style.backgroundColor.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ABorderSideReadingAnUndeclaredProperty_When_Mounted_Then_ItsColourIsUnset()
+        {
+            // Arrange / Act — Tailwind writes an untyped var() on a border side as the side's colour.
+            var child = Mount("", "border-t-[var(--c)]");
+
+            // Assert
+            Assert.That(child.style.borderTopColor.keyword, Is.EqualTo(StyleKeyword.Initial));
+        }
+
+        [Test]
+        public void Given_AColourHintedReaderOfAnUndeclaredProperty_When_Mounted_Then_TheBackgroundIsUnset()
+        {
+            // Arrange / Act
+            var child = Mount("", "bg-[color:var(--m)]");
+
+            // Assert
+            Assert.That(child.style.backgroundColor.keyword, Is.EqualTo(StyleKeyword.Initial));
+        }
+
+        [Test]
+        public void Given_ATranslateReadingAnUndeclaredProperty_When_Important_Then_ItTranslatesByNothing()
+        {
+            // Arrange / Act — each axis variable is registered with an initial value of 0.
+            var child = Mount("", "translate-x-[7px] translate-[var(--m)]!");
+
+            // Assert
+            Assert.That(child.style.translate.value.x.value, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_AFlexReadingAnUndeclaredProperty_When_Important_Then_TheLiteralGrowIsReplaced()
+        {
+            // Arrange / Act
+            var child = Mount("", "flex-[2] flex-[var(--m)]!");
+
+            // Assert
+            Assert.That(child.style.flexGrow.value, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_ASkewAxisReadingAnUndeclaredProperty_When_Important_Then_ThatAxisIsNotSheared()
+        {
+            // Arrange / Act — the transform reads the axis variable with an empty fallback.
+            var child = Mount("", "skew-x-[12deg] skew-x-[var(--m)]!");
+            var skews = _mounted.Root.Reconciler.Context.SkewBindings;
+
+            // Assert
+            Assert.That(skews.TryGetValue(child, out var binding) ? binding.Spec.XDeg : 0f, Is.EqualTo(0f));
+        }
+
+        [Test]
         public void Given_AStylesheetDeclaringAProperty_When_AChildReadsIt_Then_TheChildTakesItsValue()
         {
             // Arrange

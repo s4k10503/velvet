@@ -1,6 +1,10 @@
-/* Rules CustomPropertyTests reads: a custom property a stylesheet declares, and a colour a rule matching the reader sets. */
+/* Rules CustomPropertyTests reads: a custom property a stylesheet declares, a rule redeclaring it under a second class, and a colour a rule matching the reader sets. */
 .css-var-host {
     --w: 25px;
+}
+
+.css-var-host.css-var-alt {
+    --w: 40px;
 }
 
 .css-var-themed {

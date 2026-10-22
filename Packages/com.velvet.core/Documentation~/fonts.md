@@ -20,7 +20,7 @@ registry that maps family names to Font Assets.
 |---|---|
 | `font-sans`, `font-serif`, `font-mono`, `font-<name>` | Selects the family named `<name>` from the registry |
 | `font-[Inter]` / `font-[family-name:Inter]` / `font-[generic-name:serif]` | Arbitrary family by registered name; `_` is a space and `\_` an underscore, as Tailwind reads a bracket |
-| `font-[addr:<key>]` | Arbitrary family loaded from Addressables (mirrors `bg-[addr:<key>]`), the key read as written |
+| `font-[addr:<key>]` | Arbitrary family loaded from Addressables (mirrors `bg-[addr:<key>]`), the key read as written, `\_` an underscore as `_` is |
 | `font-thin` … `font-black` | Weight scale (100…900) |
 | `font-[550]` / `font-[weight:550]` / `font-[number:550]` | Arbitrary weight |
 | `font-[weight:inherit]` / `font-[family-name:inherit]` | The parent's weight or family, over the element's own classes |

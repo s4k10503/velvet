@@ -104,10 +104,10 @@ ring, Tailwind emitting `ring-[5PX]` first, while `ring-[length:2] ring-4` disca
 `from-` / `via-` / `to-` colour that is no colour (`from-[1IN]`) leaves its stop transparent, and a position that
 is no length or percentage (`from-[length:red]`) returns the stop to its initial position: 0%, 50% or 100%.
 
-Only what the browser rejects counts. A function, `var()`, `currentColor` or a colour name Velvet does not read
-(`ring-[oklch(62.3%_0.214_259.815)]`, `ring-[var(--brand)]`, `from-[var(--x)]`, `ring-[rebeccapurple]`), and a
-length in a unit a stop cannot place (`via-[length:2em]`), discard nothing, and Velvet leaves such a class
-unread.
+Only what the browser rejects counts. A function other than `var()`, `currentColor` or a colour name Velvet does
+not read (`ring-[oklch(62.3%_0.214_259.815)]`, `ring-[rebeccapurple]`), and a length in a unit a stop cannot place
+(`via-[length:2em]`), discard nothing, and Velvet leaves such a class unread. A `var()` is resolved first, and the
+value it resolves to is the one judged ([styling-custom-properties.md](styling-custom-properties.md)).
 
 Tailwind composes four more families through one declaration each: `translate-*`, `translate-x-*` and
 `translate-y-*`; `scale-x-*`, `scale-y-*` and the uniform `scale-<n>` (a bracketed `scale-[…]` is written as
