@@ -191,6 +191,9 @@ namespace Velvet.Tests
 
         private static int s_exitCompletions;
 
+        // GREEN_ON_BASE(characterization): the base's removing render left the completion for the passive flush.
+        // The store is subscribed before its write, so the removal is a notification's ordinary render rather
+        // than the sync-lane render a subscription forces when it finds the store already changed.
         [Test]
         public void Given_ASpringExitWithNoChannelToDrive_When_TheKeyIsRemoved_Then_OnExitCompleteHasNotRunInThatRender()
         {
@@ -198,6 +201,7 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
+            mounted.FlushEffectsForTest();
 
             // Act
             store.Set("");
@@ -555,7 +559,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): an anchor's completed variant exit was already undone on re-entry.
-        // The passive flush added is the one the completion now settles in.
+        // The store is subscribed before its first write, so the removal is a notification's ordinary render and its
+        // completion waits for the passive flush the arrangement runs, which leaves the drop render pending.
         [Test]
         public void Given_ACompletedVariantExit_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheRestingVariantIsRestored()
         {
@@ -565,6 +570,7 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
+            mounted.FlushEffectsForTest();
             store.Set("");
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
@@ -584,7 +590,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already restored a key re-added inside the completed-exit window.
-        // The passive flush added is the one the completion now settles in.
+        // The store is subscribed before its first write, so the removal is a notification's ordinary render and its
+        // completion waits for the passive flush the arrangement runs, which leaves the drop render pending.
         [Test]
         public void Given_ACompletedExitOnAMotionBehindAComponent_When_TheKeyIsReAddedBeforeTheDropRender_Then_ItsRestingVariantIsRestored()
         {
@@ -592,6 +599,7 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedDescendantExitHost, key: "host"));
+            mounted.FlushEffectsForTest();
             var before = _root.Q<VisualElement>("item");
             store.Set("");
             mounted.FlushStateForTest();
@@ -611,7 +619,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already restored a key re-added inside the completed-exit window.
-        // The passive flush added is the one the completion now settles in.
+        // The store is subscribed before its first write, so the removal is a notification's ordinary render and its
+        // completion waits for the passive flush the arrangement runs, which leaves the drop render pending.
         [Test]
         public void Given_ACompletedClassicExitOnAVariantMotion_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheExitClassIsRemoved()
         {
@@ -619,6 +628,7 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedClassicExitHost, key: "host"));
+            mounted.FlushEffectsForTest();
             store.Set("");
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
@@ -636,7 +646,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the re-entry already took an anchor's exit pose off first.
-        // The passive flush added is the one the completion now settles in.
+        // The store is subscribed before its first write, so the removal is a notification's ordinary render and its
+        // completion waits for the passive flush the arrangement runs, which leaves the drop render pending.
         [Test]
         public void Given_ACompletedVariantExitWithInitial_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheExitPoseIsFullyReplaced()
         {
@@ -646,6 +657,7 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitWithInitialHost, key: "host"));
+            mounted.FlushEffectsForTest();
             store.Set("");
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
@@ -664,7 +676,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base skipped the PopLayout restore for an element it never pinned.
-        // The passive flush added is the one the completion now settles in.
+        // The store is subscribed before its first write, so the removal is a notification's ordinary render and its
+        // completion waits for the passive flush the arrangement runs, which leaves the drop render pending.
         [Test]
         public void Given_ACompletedPopLayoutExit_When_TheKeyReturnsOnANewElement_Then_ItsArbitrarySizeIsKept()
         {
@@ -672,6 +685,7 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedPopLayoutProviderHost, key: "host"));
+            mounted.FlushEffectsForTest();
             store.Set("");
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
@@ -688,7 +702,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base replays the enter on the element a completed exit left attached.
-        // The passive flush added is the one the completion now settles in.
+        // The store is subscribed before its first write, so the removal is a notification's ordinary render and its
+        // completion waits for the passive flush the arrangement runs, which leaves the drop render pending.
         [Test]
         public void Given_ACompletedVariantExit_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheSameElementReplaysItsEnter()
         {
@@ -696,6 +711,7 @@ namespace Velvet.Tests
             using var store = new SetStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(CompletedExitThenTweenEnterHost, key: "host"));
+            mounted.FlushEffectsForTest();
             store.Set("");
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
