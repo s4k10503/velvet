@@ -2127,7 +2127,43 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", s_swapReports), Is.EqualTo("BoundaryCatchScopeTests.DeletedPanelOuterRender"));
         }
 
+        // The element holding the boundary leaves with it, so the deletion disposes the fibers mounted under that
+        // element together rather than through the orphan sweep of a component's rows.
+        [Test]
+        public void Given_ABoundaryRemovedWithTheElementHoldingIt_When_ItsChildsCleanupThrows_Then_TheBoundaryAboveTheRemovalCatches()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DeletedPanelInElementOuterRender, key: "outer"),
+                new MountOptions { OnCaughtError = (_, info) => s_swapReports.Add(info.ErrorBoundary) });
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setDeletedPanelTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(",", s_swapReports),
+                Is.EqualTo("BoundaryCatchScopeTests.DeletedPanelInElementOuterRender"));
+        }
+
         private static Action<int> s_setDeletedPanelTick;
+
+        [Component(Compiler = false)]
+        private static VNode DeletedPanelInElementHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setDeletedPanelTick = setTick;
+            return tick == 0
+                ? V.Div(name: "panel-holder", children: new VNode[] { V.Component(DeletedPanelRender, key: "panel") })
+                : V.Label(text: "removed");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode DeletedPanelInElementOuterRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return V.Component(DeletedPanelInElementHostRender, key: "host");
+        }
 
         [Component(Compiler = false)]
         private static VNode DeletedPanelWidgetRender()

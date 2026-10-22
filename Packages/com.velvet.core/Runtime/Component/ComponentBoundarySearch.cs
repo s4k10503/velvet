@@ -75,7 +75,7 @@ namespace Velvet
                 // (FiberErrorBoundary.TryCatch).
                 if ((current.IsDisposed || current.IsBeingDeleted) && !current.IsMountRoot)
                 {
-                    current = next;
+                    current = current.IsBeingDeleted ? current.NearestAncestorOutsideTheDeletion : next;
                     continue;
                 }
                 if (current.CatchesErrors && FiberErrorBoundary.TryCatch(current, throwingFiber, exception, isRenderError))

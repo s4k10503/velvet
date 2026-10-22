@@ -848,8 +848,32 @@ namespace Velvet
         internal bool CatchesErrors => IsErrorBoundary || IsMountRoot;
 
         // Set on every fiber of a deletion before the first of their cleanups runs, so an error one of them throws
-        // passes over the rest of the deletion in the boundary search (ComponentBoundarySearch.PropagateFrom).
-        internal bool IsBeingDeleted { get; set; }
+        // passes over the rest of the deletion in the boundary search (ComponentBoundarySearch.PropagateFrom), to
+        // NearestAncestorOutsideTheDeletion. That is recorded for every fiber of the deletion once all of them are
+        // marked and before any is disposed: disposing one detaches it from its parent, so a search reaching it
+        // through the parent chain afterwards would stop there.
+        internal bool IsBeingDeleted { get; private set; }
+
+        internal ComponentFiber? NearestAncestorOutsideTheDeletion { get; private set; }
+
+        internal void MarkBeingDeleted() => IsBeingDeleted = true;
+
+        internal void RecordTheNearestAncestorOutsideTheDeletion()
+        {
+            var ancestor = Parent;
+            while (ancestor is { IsMountRoot: false } && (ancestor.IsBeingDeleted || ancestor.IsDisposed))
+            {
+                ancestor = ancestor.Parent;
+            }
+            NearestAncestorOutsideTheDeletion = ancestor;
+        }
+
+        // Every fiber of one deletion, marked and then given its nearest ancestor outside it.
+        internal static void BeginDeletion(List<ComponentFiber> fibers)
+        {
+            foreach (var fiber in fibers) fiber.MarkBeingDeleted();
+            foreach (var fiber in fibers) fiber.RecordTheNearestAncestorOutsideTheDeletion();
+        }
 
         private ErrorBoundaryReset? _errorBoundaryReset;
 
