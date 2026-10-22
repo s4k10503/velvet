@@ -15,20 +15,16 @@ namespace Velvet
 
     // Arc-length dash/dot marcher on top of Painter2D. A dashed or dotted outline is walked here: the outline
     // is a flat polyline (SilhouetteFace.BuildShearedRoundedRectPolyline for a full border, a 2-point segment
-    // for a divide edge), and this walks it by arc length
-    // emitting alternating painted runs. Dashed: butt-capped straight runs, dash ≈ 3× the line width, gap ≈ 2×.
-    // Dotted: zero-length round-capped strokes spaced ≈ 2× the line width — a zero-length round-capped stroke
-    // renders a filled dot of the line's diameter (the standard canvas dotted-line trick). `closed` wraps the
-    // last point back to point 0 (a full border); an open polyline leaves the raw ends (a divide edge).
+    // for a divide edge), and this walks it by arc length emitting the painted runs, in the pattern
+    // styling-flexbox-and-gap.md describes and DashedBorderPainterTests pins. A round dot is a zero-length
+    // round-capped stroke. `closed` wraps the last point back to point 0 (a full border); an open polyline
+    // leaves the raw ends (a divide edge).
     internal static class DashedBorderPainter
     {
-        private const float DashLengthFactor = 3f;
-        private const float DashGapFactor = 2f;
-        private const float DotSpacingFactor = 2f;
-
         // Reused across draws so a steady-state repaint allocates nothing. UI Toolkit generateVisualContent
         // callbacks run sequentially on the main thread, so a single shared buffer is safe (no re-entrancy).
         private static readonly List<(Vector2 From, Vector2 To)> s_segments = new();
+        private static readonly List<(float Start, float End)> s_intervals = new();
 
         // A no-op for Solid (the native border already draws that), a near-transparent color, or a
         // hairline width — callers do not pre-filter for the latter two.
@@ -48,10 +44,11 @@ namespace Velvet
             painter.strokeColor = color;
             painter.lineWidth = lineWidth;
             painter.lineJoin = LineJoin.Miter;
-            // A dot is a zero-length stroke: only a round cap gives it a visible (circular) footprint. A dash
-            // uses butt caps so a run's length is exactly the dash length (a round cap would bleed half a width
-            // past each end and close the gaps).
-            painter.lineCap = style == BorderLineStyle.Dotted ? LineCap.Round : LineCap.Butt;
+            // A round dot is a zero-length run, which only a round cap gives a footprint. Every other run is
+            // butt-capped so it is exactly as long as computed: a round cap would bleed half a width past each
+            // end and close the gaps.
+            var first = s_segments[0];
+            painter.lineCap = first.From == first.To ? LineCap.Round : LineCap.Butt;
 
             foreach (var (from, to) in s_segments)
             {
@@ -62,10 +59,10 @@ namespace Velvet
             }
         }
 
-        // Pure arc-length marcher: fills `output` with the individual stroke runs for the style. A Dashed run
-        // is a (from, to) pair; a Dotted run is a zero-length dot (from == to). Painter-free so it is unit-
-        // testable headless — a Painter2D cannot be read back. Runs are broken at polyline vertices, so a dash
-        // that crosses a corner becomes two runs meeting at the corner.
+        // Pure arc-length marcher: fills `output` with the individual stroke runs for the style, a (from, to)
+        // pair each, and a round dot as a zero-length one (from == to). Painter-free so it is unit-testable
+        // headless — a Painter2D cannot be read back. Runs are broken at polyline vertices, so a dash that
+        // crosses a corner becomes two runs meeting at the corner.
         public static void ComputeSegments(IReadOnlyList<Vector2> polyline, bool closed, float lineWidth,
             BorderLineStyle style, List<(Vector2 From, Vector2 To)> output)
         {
@@ -74,99 +71,150 @@ namespace Velvet
             {
                 return;
             }
-            if (style == BorderLineStyle.Dotted)
-            {
-                ComputeDots(polyline, closed, lineWidth, output);
-            }
-            else
-            {
-                ComputeDashes(polyline, closed, lineWidth, output);
-            }
-        }
-
-        private static void ComputeDashes(IReadOnlyList<Vector2> polyline, bool closed, float lineWidth,
-            List<(Vector2 From, Vector2 To)> output)
-        {
-            var dashLen = lineWidth * DashLengthFactor;
-            var gapLen = lineWidth * DashGapFactor;
-            var period = dashLen + gapLen;
-            if (period <= 0f)
+            var length = PathLength(polyline, closed);
+            if (length < 1e-6f)
             {
                 return;
             }
+            Intervals(length, closed, lineWidth, style, s_intervals);
+            Emit(polyline, closed, s_intervals, output);
+        }
 
-            // Position within the current [0, period) dash cycle: [0, dashLen) paints, the rest is the gap.
-            var phase = 0f;
-            var count = polyline.Count;
-            var segCount = closed ? count : count - 1;
-            for (var s = 0; s < segCount; s++)
+        // The painted stretches along an outline of the given length, by arc length, in order. The pattern is
+        // sized by the width rounded to a whole pixel, and stroked at the width itself.
+        private static void Intervals(float length, bool closed, float lineWidth, BorderLineStyle style,
+            List<(float Start, float End)> intervals)
+        {
+            intervals.Clear();
+            var width = Mathf.Max(1f, Mathf.Floor(lineWidth + 0.5f));
+            if (style == BorderLineStyle.Dotted && width > 3f)
             {
-                var a = polyline[s];
-                var b = polyline[(s + 1) % count];
-                var segVec = b - a;
-                var segLen = segVec.magnitude;
-                if (segLen < 1e-6f)
-                {
-                    continue;
-                }
-                var dir = segVec / segLen;
-
-                var walked = 0f;
-                while (walked < segLen - 1e-6f)
-                {
-                    var inDash = phase < dashLen;
-                    var remainingInState = inDash ? dashLen - phase : period - phase;
-                    var step = Mathf.Min(remainingInState, segLen - walked);
-                    if (inDash)
-                    {
-                        var from = a + (dir * walked);
-                        var to = a + (dir * (walked + step));
-                        output.Add((from, to));
-                    }
-                    walked += step;
-                    phase += step;
-                    if (phase >= period)
-                    {
-                        phase -= period;
-                    }
-                }
+                RoundDots(length, closed, width, intervals);
+                return;
+            }
+            var dash = width;
+            var gap = width;
+            if (style == BorderLineStyle.Dashed)
+            {
+                dash *= width >= 3f ? 2f : 3f;
+                gap *= width >= 3f ? 1f : 2f;
+            }
+            if (length <= dash * 2f)
+            {
+                // No room for two dashes: the line is drawn solid.
+                intervals.Add((0f, length));
+                return;
+            }
+            var twoDashes = 2f * dash + gap + (closed ? gap : 0f);
+            if (length <= twoDashes)
+            {
+                var scale = length / twoDashes;
+                dash *= scale;
+                gap *= scale;
+            }
+            else if (style == BorderLineStyle.Dashed)
+            {
+                gap = BestGap(length, dash, gap, closed);
+            }
+            for (var at = 0f; at < length - 1e-4f; at += dash + gap)
+            {
+                intervals.Add((at, Mathf.Min(at + dash, length)));
             }
         }
 
-        private static void ComputeDots(IReadOnlyList<Vector2> polyline, bool closed, float lineWidth,
-            List<(Vector2 From, Vector2 To)> output)
+        // Round dots a diameter across, spaced so a whole number of them fits. An open line's first and last
+        // dot sit half a diameter in, so their caps end at its ends.
+        private static void RoundDots(float length, bool closed, float width, List<(float Start, float End)> intervals)
         {
-            var spacing = lineWidth * DotSpacingFactor;
-            if (spacing < 1e-6f)
+            var inset = closed ? 0f : width * 0.5f;
+            if (length < width * 2f)
             {
+                intervals.Add((inset, inset));
                 return;
             }
-
-            // Distance still to travel before the next dot; 0 places the first dot at the polyline start.
-            var remaining = 0f;
-            var count = polyline.Count;
-            var segCount = closed ? count : count - 1;
-            for (var s = 0; s < segCount; s++)
+            var pitch = BestGap(length, width, width, closed) + width;
+            var count = closed ? Mathf.Round(length / pitch) : Mathf.Round((length - width) / pitch) + 1f;
+            for (var i = 0; i < count; i++)
             {
-                var a = polyline[s];
-                var b = polyline[(s + 1) % count];
-                var segVec = b - a;
-                var segLen = segVec.magnitude;
-                if (segLen < 1e-6f)
+                var at = inset + (i * pitch);
+                intervals.Add((at, at));
+            }
+        }
+
+        // The gap nearest the preferred one that fits a whole number of dashes into the outline, the number the
+        // preferred gap fits or one more, with as many gaps as an open line has between its dashes, or a closed
+        // one has dashes.
+        private static float BestGap(float length, float dash, float gap, bool closed)
+        {
+            var available = closed ? length : length + gap;
+            var fewer = Mathf.Floor(available / (dash + gap));
+            var more = fewer + 1f;
+            var fewerGap = (length - (fewer * dash)) / (closed ? fewer : fewer - 1f);
+            var moreGap = (length - (more * dash)) / (closed ? more : more - 1f);
+            return moreGap <= 0f || Mathf.Abs(fewerGap - gap) < Mathf.Abs(moreGap - gap) ? fewerGap : moreGap;
+        }
+
+        private static float PathLength(IReadOnlyList<Vector2> polyline, bool closed)
+        {
+            var length = 0f;
+            for (var s = 0; s < SegmentCount(polyline, closed); s++)
+            {
+                length += Segment(polyline, s).magnitude;
+            }
+            return length;
+        }
+
+        private static int SegmentCount(IReadOnlyList<Vector2> polyline, bool closed)
+            => closed ? polyline.Count : polyline.Count - 1;
+
+        private static Vector2 Segment(IReadOnlyList<Vector2> polyline, int s)
+            => polyline[(s + 1) % polyline.Count] - polyline[s];
+
+        // The point arc length `at` reaches on segment s, which starts at arc length segStart.
+        private static Vector2 PointOn(IReadOnlyList<Vector2> polyline, int s, float segStart, float at)
+        {
+            var segment = Segment(polyline, s);
+            var segLen = segment.magnitude;
+            return segLen < 1e-6f ? polyline[s] : polyline[s] + (segment * ((at - segStart) / segLen));
+        }
+
+        // Lays each interval onto the polyline, breaking a stretch at every vertex it crosses.
+        private static void Emit(IReadOnlyList<Vector2> polyline, bool closed, List<(float Start, float End)> intervals,
+            List<(Vector2 From, Vector2 To)> output)
+        {
+            var segCount = SegmentCount(polyline, closed);
+            var s = 0;
+            var segStart = 0f;
+            foreach (var (start, end) in intervals)
+            {
+                while (s < segCount - 1 && start >= segStart + Segment(polyline, s).magnitude)
                 {
+                    segStart += Segment(polyline, s).magnitude;
+                    s++;
+                }
+                if (start == end)
+                {
+                    var dot = PointOn(polyline, s, segStart, start);
+                    output.Add((dot, dot));
                     continue;
                 }
-                var dir = segVec / segLen;
-
-                var pos = 0f;
-                while (remaining < segLen - pos)
+                var k = s;
+                var kStart = segStart;
+                for (; k < segCount; k++)
                 {
-                    pos += remaining;
-                    var pt = a + (dir * pos);
-                    output.Add((pt, pt));
-                    remaining = spacing;
+                    var kEnd = kStart + Segment(polyline, k).magnitude;
+                    var from = Mathf.Max(start, kStart);
+                    var to = Mathf.Min(end, kEnd);
+                    if (to - from > 1e-6f)
+                    {
+                        output.Add((PointOn(polyline, k, kStart, from), PointOn(polyline, k, kStart, to)));
+                    }
+                    if (end <= kEnd)
+                    {
+                        break;
+                    }
+                    kStart = kEnd;
                 }
-                remaining -= segLen - pos;
             }
         }
     }
