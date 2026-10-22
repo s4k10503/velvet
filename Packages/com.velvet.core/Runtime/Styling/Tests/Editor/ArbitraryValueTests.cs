@@ -59,6 +59,7 @@ namespace Velvet.Tests
             Assert.That((s.Property, s.Value, s.Unit), Is.EqualTo(((ArbitraryProperty)property, value, unit)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already declines `w-[200]`, as a BareNumberBracketTests row there pinned.
         [Test]
         public void Given_AWidthValueWithoutUnit_When_Parsed_Then_TheClassIsDeclined()
         {
