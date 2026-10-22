@@ -14,10 +14,11 @@ The `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …)
 on any driver, they outrank the element's own utilities, bracket values and `StyleOverrides`, a divider's or
 space margin's value on the same edge and variant payloads, as a CSS animation's declarations do, and lose
 to an important utility, behind a variant or not. A gesture channel (`whileHoverClass`, `whileTapClass`,
-`whileFocusClass`, `whileDraggingClass`) outranks them as Framer Motion's gesture states outrank `animate`:
-a property such a class sets stays where it puts it while the state is on, on every driver, and a play
-starting during the state leaves it out; styling-variants.md's *Class channels that are not variants* owns
-the ranking. A variant's classes rank as the element's own once its play ends.
+`whileFocusClass`, `whileDraggingClass`) outranks them but an exit's, as Framer Motion's `variantPriorityOrder`
+ranks gesture states above `animate` and below `exit`: a property such a class sets stays where it puts it while
+the state is on, on every driver, a play other than an exit starting during the state leaves it out, and a
+Spring or Bezier play still running as the state ends moves it on from where the state left it;
+styling-variants.md's *Class channels that are not variants* owns the ranking. A variant's classes rank as the element's own once its play ends.
 
 ## Variants & labels
 
@@ -650,9 +651,11 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   corners are drawn circular; a percent radius, which scales with the box, is left as it is. A style takes one
   length per corner, so while the two axes scale differently the Motion's radius slots hold none and Velvet
   paints its background colour, background image (a `bg-gradient-*` included), border and ring rounded per
-  axis — on a `shadow-*` or `skew-*` Motion the face and border those layers repaint too, though not the shadow
-  itself or a `border-dashed` / `border-dotted` outline, which keep one radius a corner —, its colours following its
-  classes and the transitions it declares for them, and its background colour,
+  axis — on a `shadow-*`, `skew-*` or `border-dashed` Motion the face, border, dashed outline and skewed gradient
+  those layers paint too; a shadow is drawn on screen with circular corners and its offset as written, as
+  Framer's `correctBoxShadow` draws it, and with its blur and spread as written on both axes, where Framer's are
+  the written ones over the mean of the two scales, stretched on each axis by its own —, its colours following its classes and the transitions it declares for
+  them, and its background colour,
   border colour and background-image slots holding Velvet's values until the move hands them back. A Motion
   that clips its content (`overflow-hidden`) clips it to its rounded border edge then, so a bordered one clips
   at its border edge rather than at its padding edge, and its background-position, background-repeat and

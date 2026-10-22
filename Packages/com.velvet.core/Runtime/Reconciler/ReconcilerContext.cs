@@ -873,8 +873,7 @@ namespace Velvet
                     && TrackVariantGateClass(element, token, priority, StyleVariantPayload.NoDeclaration, on: true);
                 return RestoreWithheld(element, token) | shown;
             }
-            var hidden = TrackVariantGateClass(element, token, StyleLayerPriority.Animation,
-                StyleVariantPayload.NoDeclaration, on: false);
+            var hidden = UntrackPlayGate(element, token);
             return (VariantGateClasses.TryGetValue(element, out var state) && state.Reconciled != null
                     && ReconciledNames(state.Reconciled, token) && state.Withhold(token, on: true))
                 | hidden;
@@ -882,9 +881,14 @@ namespace Velvet
 
         // A play's class that came to rest: the reconciled array carries it from now on.
         internal bool RestPlayGate(VisualElement element, string token)
-            => StyleVariantPayload.IsVariantGateToken(token)
-                && TrackVariantGateClass(element, token, StyleLayerPriority.Animation,
-                    StyleVariantPayload.NoDeclaration, on: false);
+            => StyleVariantPayload.IsVariantGateToken(token) && UntrackPlayGate(element, token);
+
+        // Drops the slot a play's class holds, at whichever of the two play bands it was shown in.
+        private bool UntrackPlayGate(VisualElement element, string token)
+            => TrackVariantGateClass(element, token, StyleLayerPriority.Animation, StyleVariantPayload.NoDeclaration,
+                    on: false)
+                | TrackVariantGateClass(element, token, StyleLayerPriority.Exit, StyleVariantPayload.NoDeclaration,
+                    on: false);
 
         private bool RestoreWithheld(VisualElement element, string token)
             => VariantGateClasses.TryGetValue(element, out var state) && state.Withhold(token, on: false);

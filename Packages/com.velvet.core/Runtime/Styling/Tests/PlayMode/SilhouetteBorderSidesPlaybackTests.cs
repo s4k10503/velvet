@@ -89,24 +89,48 @@ namespace Velvet.Tests
         {
             // Arrange / Act
             yield return Mount("ShadowClipped", $"{Box} overflow-hidden shadow-[0px_0px_8px_#ffffff]");
+            var shadowed = BoxShadowSilhouette.TryGet(_host.Root.Q<VisualElement>("box")) != null;
 
-            // Assert — halfway along the top band and halfway into it.
-            Assert.That(ColourAt(new Vector2(60f, 4f), 0f), Is.EqualTo("blue"));
+            // Assert — halfway along the top band and halfway into it; "no shadow" where the shadow never bound,
+            // since the same box unshadowed shows its border natively.
+            Assert.That(shadowed ? ColourAt(new Vector2(60f, 4f), 0f) : "no shadow", Is.EqualTo("blue"));
+        }
+
+        private const string DashedBox = "w-[120px] h-[80px] mt-[60px] ml-[60px] bg-[#000000] border-[8px] "
+            + "border-[#ff0000] border-dashed";
+
+        // What every other pixel along the top band shows, halfway into it, carried by the shear tanX gives.
+        private System.Collections.Generic.HashSet<string> TopBand(float tanX)
+        {
+            var seen = new System.Collections.Generic.HashSet<string>();
+            for (var x = 8f; x <= 112f; x += 2f)
+            {
+                seen.Add(ColourAt(new Vector2(x, 4f), tanX));
+            }
+            return seen;
         }
 
         [UnityTest]
         public IEnumerator Given_AShadowedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps()
         {
             // Arrange
-            yield return Mount("ShadowDashed", "w-[120px] h-[80px] mt-[60px] ml-[60px] bg-[#000000] border-[8px] "
-                + "border-[#ff0000] border-dashed shadow-[0px_0px_8px_#ffffff]");
+            yield return Mount("ShadowDashed", $"{DashedBox} shadow-[0px_0px_8px_#ffffff]");
 
-            // Act — every other pixel along the top band, halfway into it.
-            var seen = new System.Collections.Generic.HashSet<string>();
-            for (var x = 8f; x <= 112f; x += 2f)
-            {
-                seen.Add(ColourAt(new Vector2(x, 4f), 0f));
-            }
+            // Act
+            var seen = TopBand(0f);
+
+            // Assert — both dash and gap, which a solid band, or none, would not show.
+            Assert.That((seen.Contains("red"), seen.Contains("other")), Is.EqualTo((true, true)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ASkewedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps()
+        {
+            // Arrange
+            yield return Mount("SkewDashed", $"{DashedBox} skew-x-[10deg]");
+
+            // Act
+            var seen = TopBand(Mathf.Tan(10f * Mathf.Deg2Rad));
 
             // Assert — both dash and gap, which a solid band, or none, would not show.
             Assert.That((seen.Contains("red"), seen.Contains("other")), Is.EqualTo((true, true)));

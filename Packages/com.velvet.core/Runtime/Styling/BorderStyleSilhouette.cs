@@ -44,8 +44,8 @@ namespace Velvet
     /// style, color from the captured stash).
     /// <para>
     /// When the element is also skewed or shadowed, that layer owns the whole face and repaints the border as
-    /// part of it, so the reconciler defers this layer while a skew / shadow binding is present. A shadow repaints
-    /// it in this line style (<see cref="BoxShadowBinding.BorderStyle"/>); a skew repaints it SOLID, a limitation.
+    /// part of it, in this line style (<see cref="BoxShadowBinding.BorderStyle"/>, <see cref="SkewBinding.BorderStyle"/>),
+    /// so the reconciler defers this layer while a skew / shadow binding is present.
     /// </para>
     /// </remarks>
     internal static class BorderStyleSilhouette
@@ -160,6 +160,7 @@ namespace Velvet
                 RadiusTopRight = corners.RadiusTopRight,
                 RadiusBottomRight = corners.RadiusBottomRight,
                 RadiusBottomLeft = corners.RadiusBottomLeft,
+                Radii = ProjectedCornerFace.TryGetRadii(ve, out _) ? corners.Radii : null,
             };
         }
 

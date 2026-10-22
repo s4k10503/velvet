@@ -158,6 +158,10 @@ namespace Velvet
             {
                 _ctx?.StyleAnimationScheduler.YieldToGesture(target, classes);
             }
+            else
+            {
+                _ctx?.StyleAnimationScheduler.ReturnFromGesture(target, classes);
+            }
         }
     }
 }

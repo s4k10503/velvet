@@ -295,6 +295,46 @@ namespace Velvet.Tests
 
         private static StyleTransitionConfig s_swapTransition = new() { DurationSec = 0.2f };
 
+        // A Motion scaled up while hovered that, once s_setLit says so, exits from scale-100 to scale-95 on a 0.2 s
+        // tween.
+        [Component]
+        private static VNode HoveredExit()
+        {
+            var (lit, setLit) = Hooks.UseState(false);
+            s_setLit = setLit;
+            return V.AnimatePresence(children: new VNode[]
+            {
+                lit ? null : V.Motion(key: "b", name: "b", className: "w-[20px] h-[20px]", whileHoverClass: "scale-105",
+                    transition: new StyleTransitionConfig
+                    {
+                        DurationSec = 0.2f, ExitFromClass = "scale-100", ExitToClass = "scale-95",
+                    }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base ranks a gesture class with the element's own, beneath a play's.
+        // Showing an exit's classes in the play band beneath the gesture band (StyleLayerPriority.Animation) reddens
+        // this case.
+        [Test]
+        public void Given_AHoveredMotionScaledUp_When_ItExitsToAScaleClass_Then_ItReachesTheExitsScale()
+        {
+            // Arrange
+            var element = MountOnFakeClock(V.Component(HoveredExit));
+            Hover(element);
+            var hovered = element.ClassListContains("scale-105");
+
+            // Act — past the exit's swap and its 0.2 s, short of the completion that removes it.
+            s_setLit.Invoke(true);
+            _mounted.FlushStateForTest();
+            Step(element);
+            UseFrameFakeClockHost.Ms += 500;
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            ForcePanelUpdate(element.panel);
+
+            // Assert — NaN where the hover never put its class on.
+            Assert.That(hovered ? element.resolvedStyle.scale.value.x : float.NaN, Is.EqualTo(0.95f).Within(1e-4f));
+        }
+
         // A Motion that swaps from opacity-100 to opacity-0 on s_swapTransition when s_setLit says so, at half opacity
         // while hovered.
         [Component]
@@ -338,6 +378,68 @@ namespace Velvet.Tests
             // that never ran, or a hover that never came on, leaves false.
             Assert.That(StyleClassProjection.SuppressesOwnClass(element, "opacity-0") ? element.resolvedStyle.opacity
                 : float.NaN, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        private static readonly StyleTransitionConfig s_spring =
+            new() { Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f };
+
+        // Moves the fake clock on by ms and runs what the panel's scheduler then runs, a play's tick among it.
+        private static void Advance(VisualElement element, int ms)
+        {
+            UseFrameFakeClockHost.Ms += ms;
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+            ForcePanelUpdate(element.panel);
+        }
+
+        // An unhovered HoveredSwap fifty milliseconds into a spring swap.
+        private VisualElement MountSpringSwapPartWay()
+        {
+            s_swapTransition = s_spring;
+            var element = MountOnFakeClock(V.Component(HoveredSwap));
+            s_setLit.Invoke(true);
+            _mounted.FlushStateForTest();
+            Advance(element, 50);
+            return element;
+        }
+
+        [Test]
+        public void Given_ASpringSwapOfTheOpacity_When_TheMotionIsHoveredPartWay_Then_TheHoverClassTakesTheOpacity()
+        {
+            // Arrange
+            var element = MountSpringSwapPartWay();
+            // Whether the spring writes the opacity, which a swap that never started leaves to the classes.
+            var driving = element.style.opacity.keyword == StyleKeyword.Undefined;
+
+            // Act
+            Hover(element);
+            Advance(element, 50);
+
+            // Assert — NaN where the spring never wrote the opacity.
+            Assert.That(driving ? element.resolvedStyle.opacity : float.NaN, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        // Framer Motion animates a value a gesture state lets go of back to its animate target from where it is shown,
+        // on the value's transition, so the opacity leaves 0.5 on the spring rather than jumping to where the spring
+        // would have reached.
+        [Test]
+        public void Given_AHoverHoldingASpringSwapsOpacity_When_ThePointerLeavesPartWay_Then_TheOpacityLeavesFromTheHoverValue()
+        {
+            // Arrange — hovered for a quarter of a second, over which the swap's spring has run on below 0.5.
+            var element = MountSpringSwapPartWay();
+            Hover(element);
+            Advance(element, 250);
+            var hovered = element.resolvedStyle.opacity;
+
+            // Act
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                element.SimulateEvent(leave);
+            }
+            Advance(element, 16);
+
+            // Assert — NaN where the hover never held the opacity at 0.5.
+            Assert.That(Mathf.Abs(hovered - 0.5f) < 1e-3f ? element.resolvedStyle.opacity : float.NaN,
+                Is.GreaterThan(0.4f));
         }
 
         private ReconcilerContext Context => _mounted.Root.Reconciler.Context;
@@ -617,6 +719,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(box.Q<TextElement>().ClassListContains("truncate"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's play never touches the input box's clip. Keeping the clip only
+        // for a class the element keeps that is the clip itself (StyleAnimationClassUtils.ClipStays) reddens this case.
+        [Test]
+        public void Given_ATruncatingMotionTextField_When_AnEntersTextOverflowUtilityLeaves_Then_ItsInputBoxStillClips()
+        {
+            // Arrange
+            var element = MountOnFakeClock(EnterBeside("truncate", "text-ellipsis", "", typeof(TextField)));
+            var box = element.Q<VisualElement>(className: StyleChildVariantClass.InputBoxClass);
+
+            // Act — the swap, which takes the enter's class off.
+            Step(element);
+
+            // Assert
+            Assert.That(box.ClassListContains("overflow-hidden"), Is.True);
         }
 
         [Test]

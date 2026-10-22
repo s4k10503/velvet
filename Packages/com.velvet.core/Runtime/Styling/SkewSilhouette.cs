@@ -22,6 +22,9 @@ namespace Velvet
         // colors must be captured before suppression.
         public readonly SilhouetteFaceStash Face = new();
 
+        // The line style border-dashed / border-dotted give the repainted border, as BoxShadowBinding.BorderStyle.
+        public BorderLineStyle BorderStyle;
+
         // Pass-throughs onto Face so the reconciler / tests read the stash state directly off the binding.
         public Color BgColor => Face.CurrentBg;
         public Color BorderColor => Face.CurrentBorder;
@@ -45,6 +48,11 @@ namespace Velvet
         // to skip a redundant re-bake; GradBaked gates it (SetGradient clears it so a spec change re-bakes).
         public (int w, int h, int sx, int sy, int tl, int tr, int br, int bl) GradKey;
         public bool GradBaked;
+        // The scale on each axis GradientTex was baked at, Vector2.one but under a layoutId projection that draws
+        // the element at a different scale on each axis (SyncGradientBake); and whether a re-bake for that scale
+        // is waiting to run.
+        public Vector2 GradScale = Vector2.one;
+        public bool GradRebakePending;
 
         // When the caster carries an inline filter, the sheared silhouette would be clipped to the layout
         // rect by the filter's offscreen render tree (sized to boundingBox, which excludes gVC overflow). A
@@ -264,6 +272,18 @@ namespace Velvet
                 // (it pokes beyond the box, which a clipped background-image cannot). Baked in the geometry
                 // callback, so on the first frame before layout it is simply not yet present.
                 DrawGradientQuad(mgc, binding, w, h);
+                // A projection moves the scale, and ends, with no geometry change to re-bake on, and a bake cannot run
+                // here.
+                if ((ProjectedCornerFace.TryGetRadii(ve, out _) || binding.GradScale != Vector2.one)
+                    && !binding.GradRebakePending)
+                {
+                    binding.GradRebakePending = true;
+                    ve.schedule.Execute(() =>
+                    {
+                        binding.GradRebakePending = false;
+                        SyncGradientBake(ve, binding);
+                    });
+                }
             }
             else
             {
@@ -282,7 +302,7 @@ namespace Velvet
             BoxShadowSilhouette.DrawInsetLayers(mgc, ve, w, h);
 
             // Drawn after the fill so the outline sits on top and follows the shear, keeping the slanted edge crisp.
-            SilhouetteFace.PaintBorder(p, ve, SilhouetteFace.BorderOf(ve, binding.Face),
+            SilhouetteFace.PaintBorder(p, ve, SilhouetteFace.BorderOf(ve, binding.Face), binding.BorderStyle,
                 new SilhouetteFace.Shearing(w, h, tanX, tanY));
         }
 
@@ -312,10 +332,28 @@ namespace Velvet
             var rs = element.resolvedStyle;
             float tl = rs.borderTopLeftRadius, tr = rs.borderTopRightRadius;
             float br = rs.borderBottomRightRadius, bl = rs.borderBottomLeftRadius;
+            // Under a layoutId projection drawing the element at a different scale on each axis the silhouette is
+            // baked as it shows on screen, its corners the projection's radii there and its shear carried by the
+            // scale, and drawn back at the element's own size (DrawGradientQuad), so its corners show circular, as
+            // Framer's correctBorderRadius leaves them.
+            var scale = Vector2.one;
+            if (ProjectedCornerFace.TryGetProjection(element, out var projected, out var s))
+            {
+                scale = s;
+                w *= s.x;
+                h *= s.y;
+                tanX *= s.x / s.y;
+                tanY *= s.y / s.x;
+                float Corner(Vector2 r) => Mathf.Min(r.x * s.x, r.y * s.y);
+                tl = Corner(projected.TopLeft);
+                tr = Corner(projected.TopRight);
+                br = Corner(projected.BottomRight);
+                bl = Corner(projected.BottomLeft);
+            }
             var key = (Mathf.RoundToInt(w), Mathf.RoundToInt(h),
                 Mathf.RoundToInt(tanX * 100f), Mathf.RoundToInt(tanY * 100f),
                 Mathf.RoundToInt(tl), Mathf.RoundToInt(tr), Mathf.RoundToInt(br), Mathf.RoundToInt(bl));
-            if (binding.GradBaked && binding.GradientTex != null && key == binding.GradKey)
+            if (binding.GradBaked && binding.GradientTex != null && key == binding.GradKey && scale == binding.GradScale)
             {
                 return;
             }
@@ -328,6 +366,7 @@ namespace Velvet
             DestroyGradientTex(binding);
             binding.GradientTex = tex;
             binding.GradKey = key;
+            binding.GradScale = scale;
             binding.GradBaked = true;
             element.MarkDirtyRepaint();
         }
@@ -344,8 +383,8 @@ namespace Velvet
             {
                 return;
             }
-            float qw = tex.width;
-            float qh = tex.height;
+            float qw = tex.width / binding.GradScale.x;
+            float qh = tex.height / binding.GradScale.y;
             var minX = (w * 0.5f) - (qw * 0.5f);
             var maxX = (w * 0.5f) + (qw * 0.5f);
             var minY = (h * 0.5f) - (qh * 0.5f);

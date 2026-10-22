@@ -22,10 +22,10 @@ namespace Velvet
     {
         // The bracket values each element shows as an inline layer for a play, so only a layer this applied
         // is cleared: a clear with no layer behind it rewrites the property from the element's other layers.
-        private static readonly ConditionalWeakTable<VisualElement, HashSet<string>> s_inlineShown = new();
+        private static readonly ConditionalWeakTable<VisualElement, Dictionary<string, long>> s_inlineShown = new();
 
-        // priority is StyleLayerPriority.Animation for the classes a running play shows, and the base one for a
-        // class that rests on the element.
+        // priority is StyleLayerPriority.Animation for the classes a running play shows, Exit for an exit's, and the
+        // base one for a class that rests on the element.
         internal static void AddClasses(VisualElement element, string[] classes, long priority = StyleLayerPriority.Base,
             ReconcilerContext? ctx = null, bool realiseInline = false)
         {
@@ -117,10 +117,10 @@ namespace Velvet
                 if (also.Text != null)
                 {
                     Settle(also.Text, cls, keep);
-                    // A clip the element's own classes still name stays, as the class it came with would.
+                    // A clip the element's own classes still name or imply stays, as the class it came with would.
                     if (also.Clip != null)
                     {
-                        var keepClip = keep || (kept != null && System.Array.IndexOf(kept, also.Clip) >= 0);
+                        var keepClip = keep || ClipStays(dest, kept);
                         Settle(also.Text, also.Clip, keepClip);
                         Settle(dest, also.Clip, keepClip);
                     }
@@ -129,12 +129,39 @@ namespace Velvet
             changes.Settle(ctx);
         }
 
+        // The text-overflow utilities, each of which implies the box's clip (StyleInputBoxSurface.ImpliesBoxClip).
+        private static readonly string[] s_clipping = { "truncate", "text-ellipsis", "text-clip" };
+
+        // Whether the box's clip has a source besides the class being taken off: a class the element keeps that is
+        // the clip or implies it, or a text-overflow utility still on the box.
+        private static bool ClipStays(VisualElement box, string[]? kept)
+        {
+            if (kept != null)
+            {
+                foreach (var cls in kept)
+                {
+                    var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                    if (core == StyleInputBoxSurface.BoxClipCore || StyleInputBoxSurface.ImpliesBoxClip(core))
+                    {
+                        return true;
+                    }
+                }
+            }
+            foreach (var cls in s_clipping)
+            {
+                if (box.ClassListContains(cls))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static void Settle(VisualElement dest, string cls, string core, bool keep, ReconcilerContext? ctx,
             ref Changes changes)
         {
             Settle(dest, cls, keep);
-            var priority = keep ? StyleLayerPriority.Base : StyleLayerPriority.Animation;
-            changes.Note(dest, ctx != null && ctx.TrackPlayGate(dest, core, priority, on: keep), core);
+            changes.Note(dest, ctx != null && ctx.TrackPlayGate(dest, core, StyleLayerPriority.Base, on: keep), core);
             HideInline(dest, core);
         }
 
@@ -179,18 +206,18 @@ namespace Velvet
                 return;
             }
             StyleArbitraryValueResolver.Apply(element, in style, priority);
-            s_inlineShown.GetOrCreateValue(element).Add(core);
+            s_inlineShown.GetOrCreateValue(element)[core] = priority;
         }
 
-        // A play's layer is keyed by its priority, Animation, whichever priority the class leaves at.
+        // A play's layer is keyed by the priority it was shown at, whichever priority the class leaves at.
         private static void HideInline(VisualElement element, string core)
         {
-            if (!s_inlineShown.TryGetValue(element, out var shown) || !shown.Remove(core)
+            if (!s_inlineShown.TryGetValue(element, out var shown) || !shown.Remove(core, out var priority)
                 || !StyleArbitraryValueResolver.TryParseLayer(core, out var style))
             {
                 return;
             }
-            StyleArbitraryValueResolver.Clear(element, in style, StyleLayerPriority.Animation);
+            StyleArbitraryValueResolver.Clear(element, in style, priority);
         }
 
         // Where else a class lands beside its destination, as a payload of it does (StyleVariantPayload.Apply).

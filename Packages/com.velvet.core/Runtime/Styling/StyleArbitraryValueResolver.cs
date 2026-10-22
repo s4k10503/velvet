@@ -1672,7 +1672,6 @@ namespace Velvet
             return !swapped.Contains(property) || StyleLayerPriority.UnderVariant(key);
         }
 
-        // Whether a layer holding slot, as HoldsMotionSlot reads it, is in force under a variant.
         // Whether a gesture channel's layer (StyleLayerPriority.Gesture) holds a motion slot on element.
         internal static bool HoldsGestureLayer(VisualElement element, ArbitraryProperty slot)
         {
@@ -1698,6 +1697,7 @@ namespace Velvet
             return false;
         }
 
+        // Whether a layer holding slot, as HoldsMotionSlot reads it, is in force under a variant.
         internal static bool HoldsVariantLayer(VisualElement element, ArbitraryProperty slot)
         {
             if (!s_layers.TryGetValue(element, out var map))
@@ -2194,7 +2194,7 @@ namespace Velvet
         // declaration of the element's own stands down for it and comes back on the release, but a mask and the
         // important ones — an important layer or class DrivenWrite does not exempt, an important divide's hold —
         // which keep what they win, as !important outranks an animation in CSS.
-        internal static void ApplyDriven(VisualElement element, in ArbitraryStyle style)
+        internal static void ApplyDriven(VisualElement element, in ArbitraryStyle style, bool exit = false)
         {
             // Recorded from the first write, holds or none: a mount's from-pose is written before the container
             // that holds the slot first applies.
@@ -2212,6 +2212,7 @@ namespace Velvet
                 write.Reversing = false;
             }
             write.Style = style;
+            write.Exit = exit;
             var slots = HeldSlotGroups.SlotsOf(style.Property);
             if (slots != 0)
             {
@@ -2295,6 +2296,9 @@ namespace Velvet
             // Set by Redrive until the play's next frame.
             public bool Reversing;
 
+            // Whether an exit writes this, which a gesture channel does not outrank.
+            public bool Exit;
+
             private readonly StyleLonghandSet _longhands;
             private readonly List<(ArbitraryProperty Property, long Key)> _layers = new();
             private readonly Dictionary<StyleLonghand, long> _claims = new();
@@ -2334,16 +2338,17 @@ namespace Velvet
                 }
             }
 
-            // A gesture channel's layer or class outranks every drive, whenever it arrived: a play leaves a value a
-            // gesture state sets alone, as Framer Motion protects it from the element's animate and variants.
+            // A gesture channel's layer or class outranks every drive but an exit's, whenever it arrived: a play
+            // leaves a value a gesture state sets alone, as Framer Motion protects it from the element's animate and
+            // variants and not from its exit.
             public bool Outranks(ArbitraryProperty property, long key)
-                => StyleLayerPriority.IsGesture(key)
+                => (!Exit && StyleLayerPriority.IsGesture(key))
                     || ((key & StyleLayerPriority.Important) != 0 && !_layers.Contains((property, key)));
 
             public bool Outranks(StyleLonghand longhand, long claim)
             {
                 var known = _claims.TryGetValue(longhand, out var found);
-                return StyleLayerPriority.IsGesture(claim)
+                return (!Exit && StyleLayerPriority.IsGesture(claim))
                     || ((claim & StyleLayerPriority.Important) != 0 && (!known || claim > found));
             }
         }

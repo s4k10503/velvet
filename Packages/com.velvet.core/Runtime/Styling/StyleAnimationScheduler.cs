@@ -541,7 +541,7 @@ namespace Velvet
                 DelayOffsetSec = delayOffsetSec, AllProperties = restoreFromOnCancel,
                 PropertyOverrides = restoreFromOnCancel ? config.PropertyOverrides : null,
             }, out var timing);
-            StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Animation, Context,
+            StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Exit, Context,
                 realiseInline: !restoreFromOnCancel);
 
             // Step 2: swap classes on the next frame.
@@ -636,7 +636,7 @@ namespace Velvet
             }
 
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses, ctx: Context);
-            StyleAnimationClassUtils.AddClasses(element, pending.ToClasses!, StyleLayerPriority.Animation, Context,
+            StyleAnimationClassUtils.AddClasses(element, pending.ToClasses!, StyleLayerPriority.Exit, Context,
                 realiseInline: pending.RestingClasses == null);
             RunOnSwap(pending);
             // The CSS opacity fade-out is now firing — sample the caster's opacity each frame on the
@@ -716,9 +716,10 @@ namespace Velvet
             // swap names on neither side (see Resolve's own doc).
             var restingTranslate = SeatedTranslate.Read(element).value;
             var context = ReadSlotContext(element, fromClasses, toClasses);
+            var slots = context ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses);
+            slots.ForExit = isExit;
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
-                restingTranslate.x.value, restingTranslate.y.value,
-                context ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses));
+                restingTranslate.x.value, restingTranslate.y.value, slots);
             plan = StartFromHeld(element, plan, fromClasses, toClasses);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
@@ -726,6 +727,7 @@ namespace Velvet
             var state = ValidateSpringParameters(stiffness, damping, mass)
                 ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description)
                 : null;
+            GestureChannelMask.MarkExit(state, isExit);
             // A spring or bezier play this one interrupts hands on its velocity, and a native transition its rate, both
             // read before the cancel and the class swap below end them. The interrupted play's values are an enter's
             // start only where no context was read: a context reads the start of each slot a running play drives
@@ -749,7 +751,7 @@ namespace Velvet
             // zero-duration tween).
             StyleAnimationClassUtils.RemoveClasses(element, fromClasses, ctx: Context);
             StyleAnimationClassUtils.AddClasses(element, toClasses,
-                state == null ? StyleLayerPriority.Base : StyleLayerPriority.Animation, Context);
+                state == null ? StyleLayerPriority.Base : StyleLayerPriority.PlayOf(isExit), Context);
             play.OnSwap?.Invoke();
 
             if (state == null)
@@ -900,14 +902,16 @@ namespace Velvet
             // names on neither side rests at the element's own current inline translate rather than snapping to 0.
             var restingTranslate = SeatedTranslate.Read(element).value;
             var context = ReadSlotContext(element, planFrom, planTo);
+            var slots = context ?? MotionSlotContext.ReadImportant(element, planFrom, planTo);
+            slots.ForExit = play.IsExit;
             var plan = MotionSpringClassParser.Resolve(planFrom, planTo,
-                restingTranslate.x.value, restingTranslate.y.value,
-                context ?? MotionSlotContext.ReadImportant(element, planFrom, planTo));
+                restingTranslate.x.value, restingTranslate.y.value, slots);
             plan = StartFromHeld(element, plan, planFrom, planTo);
             // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
             var state = create(plan);
+            GestureChannelMask.MarkExit(state, play.IsExit);
             // A variant enter interrupting a spring or bezier play where no context was read starts from the values
             // that play drew, as a spring's does (StartSpringVariant). A classic preset enter's from-classes are its
             // own start, which Framer, having no such enter, has nothing to say about. Read before the cancel below
@@ -922,7 +926,7 @@ namespace Velvet
 
             StyleAnimationClassUtils.RemoveClasses(element, fromClasses, ctx: Context);
             StyleAnimationClassUtils.AddClasses(element, toClasses,
-                state == null ? StyleLayerPriority.Base : StyleLayerPriority.Animation, Context);
+                state == null ? StyleLayerPriority.Base : StyleLayerPriority.PlayOf(play.IsExit), Context);
             play.OnSwap?.Invoke();
 
             if (state == null)
@@ -1575,10 +1579,10 @@ namespace Velvet
             return resting.ToArray();
         }
 
-        // A gesture state turning on takes the values its classes set from the spring or bezier play this scheduler
-        // drives on element, which then show the gesture's class, as Framer Motion protects a value a gesture state sets from
-        // the element's animate and variants (StyleLayerPriority.Gesture). A play starting while the state is on
-        // leaves them out of its plan (MotionSlotContext.HoldsGesture).
+        // A gesture state turning on takes the values its classes set from the spring or bezier enter or held play
+        // this scheduler drives on element, which run on without writing them (GestureChannelMask.MaskChannels) and
+        // then show the gesture's class; an exit keeps them, as variantPriorityOrder ranks exit above every gesture
+        // state. A play starting while the state is on leaves them out of its plan (MotionSlotContext.HoldsGesture).
         internal void YieldToGesture(VisualElement element, string[] classes)
         {
             var named = FiberNodePatcher.LonghandsOf(classes);
@@ -1587,7 +1591,6 @@ namespace Velvet
                 return;
             }
             YieldToGesture(element, _pendingEnters, named);
-            YieldToGesture(element, _pendingExits, named);
             YieldToGesture(element, _held, named);
         }
 
@@ -1598,13 +1601,41 @@ namespace Velvet
             {
                 return;
             }
+            if (((IGestureMaskableState?)pending.Spring ?? pending.Bezier) is { } state)
+            {
+                GestureChannelMask.MaskChannels(element, state, named);
+            }
+        }
+
+        // A gesture state turning off hands the values its classes set back to the play still running on element,
+        // from what the element shows (MotionSpringDriver.ReturnChannels); a value another gesture state still sets
+        // stays with that state.
+        internal void ReturnFromGesture(VisualElement element, string[] classes)
+        {
+            var named = FiberNodePatcher.LonghandsOf(classes);
+            if (named.IsEmpty)
+            {
+                return;
+            }
+            var shown = MotionSlotContext.ReadImportant(element, null, null);
+            ReturnFromGesture(element, _pendingEnters, named, shown);
+            ReturnFromGesture(element, _held, named, shown);
+        }
+
+        private static void ReturnFromGesture(VisualElement element, Dictionary<VisualElement, PendingAnimation> map,
+            StyleLonghandSet named, MotionSlotContext shown)
+        {
+            if (!map.TryGetValue(element, out var pending))
+            {
+                return;
+            }
             if (pending.Spring != null)
             {
-                MotionSpringDriver.ReleaseChannels(element, pending.Spring, named);
+                MotionSpringDriver.ReturnChannels(element, pending.Spring, named, shown);
             }
             else if (pending.Bezier != null)
             {
-                BezierTweenDriver.ReleaseChannels(element, pending.Bezier, named);
+                BezierTweenDriver.ReturnChannels(element, pending.Bezier, named, shown);
             }
         }
 

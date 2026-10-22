@@ -1047,6 +1047,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_DivideXDashedRow_When_ADividerChildIsSkewed_Then_ThatChildGetsItsDashedPaint()
+        {
+            // Arrange — Chromium dashes the divider of a skewed child as of any other.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", "-skew-x-6") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.DivideDashBindings.ContainsKey(scope.Root[0][1]), Is.True);
+        }
+
+        [Test]
         public void Given_DivideXDashedRow_When_ADividerChildIsShadowed_Then_ThatChildGetsItsDashedPaint()
         {
             // Arrange — Chromium dashes the divider of a child with a box-shadow as of any other.

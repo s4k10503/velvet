@@ -118,13 +118,20 @@ namespace Velvet
         #endregion
 
         // A gesture or drag channel's class (whileHoverClass, whileTapClass, whileFocusClass, whileDraggingClass),
-        // ranked as its variant within a band above every play: Framer Motion protects a value a gesture state
-        // sets from the element's animate and variants while the state is on.
+        // ranked as its variant within a band above every play but an exit: Framer Motion's variantPriorityOrder
+        // protects a value a gesture state sets from the element's animate and variants while the state is on.
         public const long Gesture = 1L << 61;
 
         public static long GestureOf(long priority) => Gesture | priority;
 
-        public static bool IsGesture(long key) => (key & Gesture) != 0;
+        // A class an exit shows, above every gesture channel's and below every important declaration, as
+        // variantPriorityOrder ranks exit above whileDrag.
+        public const long Exit = Important - 1;
+
+        public static bool IsGesture(long key) => (key & Gesture) != 0 && (key & ~Important) != Exit;
+
+        // The band a play's classes show in.
+        public static long PlayOf(bool exit) => exit ? Exit : Animation;
 
         // A class a running play shows. CSS ranks an animation's declarations above every normal one, the style
         // attribute's included, and below every important one; a gesture channel ranks above it (Gesture).

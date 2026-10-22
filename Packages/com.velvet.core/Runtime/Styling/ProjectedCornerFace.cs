@@ -62,6 +62,8 @@ namespace Velvet
         private sealed class State
         {
             public CornerRadii Radii;
+            // The scale the element is drawn at on each axis, as the projection gave it.
+            public Vector2 Scale = Vector2.one;
             public System.Action<MeshGenerationContext> OnGenerate = null!;
             public readonly ColorSlot[] Colors = { new(), new(), new(), new(), new() };
 
@@ -126,6 +128,19 @@ namespace Velvet
             return false;
         }
 
+        // The radii TryGetRadii gives and the scale on each axis the element is drawn at with them, where that scale is
+        // positive on both.
+        public static bool TryGetProjection(VisualElement element, out CornerRadii radii, out Vector2 scale)
+        {
+            scale = Vector2.one;
+            if (!TryGetRadii(element, out radii))
+            {
+                return false;
+            }
+            scale = s_states.TryGetValue(element, out var state) ? state.Scale : Vector2.one;
+            return scale.x > 0f && scale.y > 0f;
+        }
+
         // The colour a slot of the element's (StyleCascade.FaceColor's order) is drawn with while this holds it; null where
         // it does not.
         public static Color? Drawn(VisualElement element, int slot)
@@ -139,7 +154,7 @@ namespace Velvet
         // Paints the element's face with the given radii, fitted to its box, until End, its colours carried over dtSec
         // more. Returns false, having ended any face it painted, where the element's background image is one this does
         // not paint.
-        public static bool Draw(VisualElement element, in CornerRadii radii, float dtSec)
+        public static bool Draw(VisualElement element, in CornerRadii radii, float dtSec, Vector2? scale = null)
         {
             if (!s_states.TryGetValue(element, out var state))
             {
@@ -166,6 +181,7 @@ namespace Velvet
                 WriteColor(element, state.Colors[slot], slot, Cleared);
             }
             state.Radii = radii;
+            state.Scale = scale ?? Vector2.one;
             if (state.Clips) SyncClip(element, state);
             element.MarkDirtyRepaint();
             return true;

@@ -232,10 +232,17 @@ namespace Velvet
             return false;
         }
 
+        // Whether the plan read through this is an exit's, which a gesture channel's value does not keep out.
+        public bool ForExit { get; set; }
+
         // A gesture channel holds slot: its value is protected from the swap, as Framer Motion keeps a value a gesture
         // state sets out of the element's animate and variants while the state is on.
         public bool HoldsGesture(ArbitraryProperty slot)
         {
+            if (ForExit)
+            {
+                return false;
+            }
             var owner = Owner(slot);
             return StyleArbitraryValueResolver.HoldsGestureLayer(owner, slot)
                 || StyleArbitraryValueResolver.TryGetProjection(owner)?.HoldsGesture(StyleArbitraryLonghands.Of(slot)) == true;
@@ -309,6 +316,20 @@ namespace Velvet
                 return false;
             }
             return MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit);
+        }
+
+        // What the element showed on slot at its last style pass, in unit, a skewed parent's seat taken off a
+        // translate (SeatedTranslate.Unseated); false where it cannot be read so.
+        public bool TryReadShown(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
+        {
+            if (slot == ArbitraryProperty.TranslateX || slot == ArbitraryProperty.TranslateY)
+            {
+                var owner = Owner(slot);
+                var own = SeatedTranslate.Unseated(owner, owner.resolvedStyle.translate);
+                return Pixels(slot, slot == ArbitraryProperty.TranslateX ? own.x : own.y, out value);
+            }
+            return TryReadResolved(slot, out value)
+                && (MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit));
         }
 
         private bool HasRunningNativeTransition(ArbitraryProperty slot) => TryFindRunningNative(slot, out _);

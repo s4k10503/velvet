@@ -388,7 +388,8 @@ suppresses the native background and border and repaints both in its own generat
 clip then takes that repaint too, so a bordered card carrying `skew-*` plus a hidden overflow loses **its
 border and a border-wide ring of its own background**, and whatever is behind the card shows through that ring.
 A `shadow-*` card with a hidden overflow leaves its background and border to UI Toolkit, which keeps both, and
-paints its layers over them, of which the clip leaves the inset ones:
+paints its layers over them, of which the clip leaves the inset ones. The border is then UI Toolkit's own, so a
+`border-dashed` or `border-dotted` one is drawn solid, where CSS dashes it:
 
 ```csharp
 // Border and a border-wide ring of white are missing; the parent shows through.
@@ -437,10 +438,13 @@ and would have survived, but one hosting has to serve both.
 draggable's `whileDraggingClass` are Framer Motion's gesture states, and apply their utilities as a payload
 does, ranked above every rule of the element's own short of an important one — a utility the stylesheet
 declares later, a bracket value such as `bg-[#00f]`, a divider's color, `StyleOverrides`, and a className
-variant such as `hover:`, `focus:`, `disabled:` or `dark:hover:` — and above a play's classes: Framer
-protects a value a gesture state sets from the element's `animate` and variants while the state is on, so a
-play leaves that property where the gesture puts it, whatever its driver, and a play starting during the
-state leaves it out. Among themselves they rank as `hover:`, `focus:`, `active:` and `data-[…]:` rank in
+variant such as `hover:`, `focus:`, `disabled:` or `dark:hover:` — and above a play's classes but an exit's:
+Framer's `variantPriorityOrder` protects a value a gesture state sets from the element's `animate` and variants
+while the state is on, and not from its `exit`, so a play other than an exit leaves that property where the
+gesture puts it, whatever its driver, and one starting during the state leaves it out. A Spring or Bezier
+play still running as the state ends takes the property back from where it is shown, on the play's spring or
+over what is left of its curve, as Framer animates a value a gesture state lets go of back to its `animate`
+target. Among themselves they rank as `hover:`, `focus:`, `active:` and `data-[…]:` rank in
 Tailwind, so a tap or focus class outranks a hover one; Framer Motion ranks `whileHover` above `whileFocus`.
 A droppable's `whileOverClass` and `whileDragActiveClass` apply theirs at `data-[…]:`'s rank, after every rule
 the className declares with that variant alone, and a play outranks them. An important utility outranks every

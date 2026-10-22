@@ -422,6 +422,10 @@ namespace Velvet
             {
                 _ctx.StyleAnimationScheduler.YieldToGesture(_source, _activeDraggingClasses);
             }
+            else
+            {
+                _ctx.StyleAnimationScheduler.ReturnFromGesture(_source, _activeDraggingClasses);
+            }
         }
 
         private static readonly long ChannelPriority = StyleLayerPriority.AfterEveryRule(StyleLayerPriority.Data);

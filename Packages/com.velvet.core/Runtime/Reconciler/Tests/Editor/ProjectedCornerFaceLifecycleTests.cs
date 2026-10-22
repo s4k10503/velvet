@@ -104,6 +104,48 @@ namespace Velvet.Tests
             Assert.That(drawn, Is.EqualTo(projected));
         }
 
+        private static readonly System.Reflection.MethodInfo s_shadowBox = typeof(BoxShadowSilhouette)
+            .GetMethod("BoxOf", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+        [Test]
+        public void Given_AShadowedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsShadowCornersAreRoundAgain()
+        {
+            // Arrange — moving, drawn at a quarter across and a half down, with its radius slots held at none.
+            s_classes = "rounded-[20px] bg-blue-500 shadow-md";
+            using var mounted = MountAndWiden();
+            Tick();
+            var box = Root.Q<VisualElement>("box");
+            var moved = ProjectedCornerFace.TryGetRadii(box, out _);
+
+            // Act — until the move hands its face back.
+            for (var i = 0; i < 600 && ProjectedCornerFace.TryGetRadii(box, out _); i++) Tick();
+            Tick();
+            var binding = BoxShadowSilhouette.TryGet(box)!;
+            var shadow = (ShadowBox)s_shadowBox.Invoke(null, new object[] { box, binding, box.layout.width, box.layout.height });
+
+            // Assert — NaN where the move never held the corners per axis.
+            Assert.That(moved ? shadow.Radii.x : float.NaN, Is.EqualTo(20f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ADashedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsOutlineIsLaidOut_Then_ItsCornersTakeTheProjectedRadii()
+        {
+            // Arrange — dashed, drawn at a quarter across and a half down.
+            s_classes = "rounded-[20px] bg-blue-500 border-4 border-dashed";
+            using var mounted = MountAndWiden();
+            Tick();
+            var box = Root.Q<VisualElement>("box");
+            var projected = ProjectedCornerFace.TryGetRadii(box, out var radii) && radii.TopLeft.x != radii.TopLeft.y
+                ? radii.TopLeft
+                : new Vector2(float.NaN, float.NaN);
+
+            // Act
+            var outline = BorderStyleSilhouette.BoxOf(box);
+
+            // Assert — NaN where the projection draws no uneven corner, which no reading matches.
+            Assert.That(outline?.Radii?.TopLeft, Is.EqualTo(projected));
+        }
+
         // GREEN_ON_BASE(characterization): the base never writes the background-color slot of a moving Motion.
         // Dropping `ProjectedCornerFace.End` from LayoutIdLook.WriteRadii's path for a radius one length a corner draws
         // reddens this case.

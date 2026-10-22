@@ -24,8 +24,10 @@
 
 - `whileHoverClass`, `whileTapClass`, `whileFocusClass` and `whileDraggingClass` apply their classes as a
   payload, ranked above every rule of the element's own short of an important one — `StyleOverrides` and
-  className variants such as `hover:` and `focus:` included — and above a play's classes, as Framer Motion's
-  gesture states outrank the element's style and `animate`; among themselves they rank as `hover:`, `focus:`,
+  className variants such as `hover:` and `focus:` included — and above a play's classes but an exit's, as Framer
+  Motion's `variantPriorityOrder` ranks gesture states above the element's style and `animate` and below `exit`;
+  a Spring or Bezier play still running as the state ends moves the property on from where the state left it.
+  Among themselves they rank as `hover:`, `focus:`,
   `active:` and `data-[…]:` do, so a tap or focus class outranks a hover one. `whileOverClass` and
   `whileDragActiveClass` apply theirs at `data-[…]:`'s rank, after every rule the className declares with that
   variant alone. The element's own value comes back when the state goes off. A bracket value such as `bg-[#f00]` applies through them, and on an element so do `shadow-*`,
@@ -37,8 +39,9 @@
   `AnimatePresence` preset — they outrank the element's own utilities and bracket values, its `StyleOverrides`,
   a divider's or space margin's value on the same edge, variant payloads and the droppable channels for the
   same property, as a CSS animation's declarations do, and lose to an important utility, behind a variant or
-  not, and to a gesture class: a property a gesture class sets stays where it puts it while the state is on,
-  on every driver, and a spring or bezier play starting during the state leaves it out.
+  not, and, but for an exit's, to a gesture class: a property a gesture class sets stays where it puts it while
+  the state is on, on every driver, and a spring or bezier play other than an exit starting during the state
+  leaves it out.
   A variant's classes rank as the element's own once its play ends. A class the stylesheet declares later, a
   bracket value or a droppable's class used to keep the property while the play ran, a divider's color did not
   give way to a class a variant change brought, and did not come back once an enter's class left.
@@ -47,16 +50,20 @@
   variants and the `while*Class` and drag channels, as any element does. It used to draw none of them, and
   logged a warning for a shadow.
 
-- A `shadow-*` element draws its `border-dashed` / `border-dotted` border dashed or dotted, and a `divide-dashed`
-  or `divide-dotted` divider on a `shadow-*` child dashed or dotted, as Chromium does; both used to be drawn solid.
-  A `skew-*` element still draws them solid.
+- A `shadow-*` or `skew-*` element draws its `border-dashed` / `border-dotted` border dashed or dotted, sheared
+  with a skew, and a `divide-dashed` or `divide-dotted` divider on a `shadow-*` or `skew-*` child dashed or
+  dotted, as Chromium does; both used to be drawn solid.
 
 - A `shadow-*` element whose overflow is hidden keeps its border and background where it used to lose its border
-  and a border-wide ring of its background; its outer shadow layers are still cut at its padding box.
+  and a border-wide ring of its background; its outer shadow layers are still cut at its padding box. Its border
+  is UI Toolkit's then, so a `border-dashed` / `border-dotted` one is drawn solid.
 
-- While a `layoutId` move draws a `shadow-*` or `skew-*` `V.Motion` scaled differently on each axis, the face
-  and border those layers repaint take the corner radii the move draws, a horizontal and a vertical one a corner,
-  as its background does. They used to be drawn square.
+- While a `layoutId` move draws a `shadow-*`, `skew-*` or `border-dashed` `V.Motion` scaled differently on each
+  axis, the face, border, dashed outline and skewed gradient those layers paint take the corner radii the move
+  draws, a horizontal and a vertical one a corner, as its background does, and its shadow shows circular corners
+  and its offset as written, as Framer Motion's `correctBoxShadow` shows them (motion.md says where its blur and
+  spread differ). They used to be drawn square, and a shadowed one kept square shadow corners once the move
+  landed.
 
 - The classes a play shows — a `V.Motion` pose's, an `AnimatePresence` enter or exit class — apply bracket
   values and the utilities Velvet realises itself (`gap-*`, `shadow-*`, `ring-*`, `skew-*`, gradients,

@@ -41,6 +41,42 @@ namespace Velvet.Tests
             _element = new VisualElement();
         }
 
+        #region Driven writes
+
+        private static readonly long HoverGesture = StyleLayerPriority.GestureOf(StyleLayerPriority.Hover);
+
+        [Test]
+        public void Given_AGestureLayerOnTheBackground_When_APlayDrivesTheBackground_Then_TheGesturesColorStays()
+        {
+            // Arrange
+            StyleArbitraryValueResolver.Apply(_element, new ArbitraryStyle(ArbitraryProperty.BackgroundColor, Color.red),
+                HoverGesture);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyDriven(_element,
+                new ArbitraryStyle(ArbitraryProperty.BackgroundColor, Color.blue));
+
+            // Assert
+            Assert.That(_element.style.backgroundColor.value, Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_AGestureLayerOnTheBackground_When_AnExitDrivesTheBackground_Then_TheExitsColorShows()
+        {
+            // Arrange
+            StyleArbitraryValueResolver.Apply(_element, new ArbitraryStyle(ArbitraryProperty.BackgroundColor, Color.red),
+                HoverGesture);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyDriven(_element,
+                new ArbitraryStyle(ArbitraryProperty.BackgroundColor, Color.blue), exit: true);
+
+            // Assert
+            Assert.That(_element.style.backgroundColor.value, Is.EqualTo(Color.blue));
+        }
+
+        #endregion
+
         #region VNode Builder
 
         [Test]
@@ -1049,6 +1085,28 @@ namespace Velvet.Tests
             => _mounted.Root.Reconciler.Context.ShadowBindings[card].Face.CurrentBg;
 
         private const string IdRuleSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowFaceIdRule.uss";
+
+        private static readonly FieldInfo s_carries =
+            typeof(SilhouetteFaceStash).GetField("_carries", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        // The rules are read again only once the rules matched to the element change (StyleCascade.RulesHash), which
+        // the panel's check asks each frame; a colour written over the carried one stands until then.
+        [Test]
+        public void Given_AShadowedCardWhoseRulesStayTheSame_When_ThePanelChecksItsFace_Then_ItsColorsAreNotReadAgain()
+        {
+            // Arrange
+            var (card, _) = Mount("bg-blue-500 shadow-md", "");
+            var face = _mounted.Root.Reconciler.Context.ShadowBindings[card].Face;
+            // A read first, which reads the rules this pass resolved; a colour then written over the carried one.
+            _ = face.CurrentBg;
+            ((ColorCarry[])s_carries.GetValue(face))[0].Land(Color.magenta);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+
+            // Assert
+            Assert.That(face.CurrentBg, Is.EqualTo(Color.magenta));
+        }
 
         // GREEN_ON_BASE(characterization): the base captures the face from the element's resolved style, an id rule's
         // colour included. Reading the face off an element that copies the shadowed one's classes reddens this case.

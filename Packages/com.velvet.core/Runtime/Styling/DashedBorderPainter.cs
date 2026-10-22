@@ -26,8 +26,26 @@ namespace Velvet
         public float RadiusBottomRight { get; init; }
         public float RadiusBottomLeft { get; init; }
 
+        // A radius per axis for each corner, which stands in for the four above where set: a layoutId projection's
+        // (ProjectedCornerFace).
+        public CornerRadii? Radii { get; init; }
+
         public bool IsSquare
-            => RadiusTopLeft <= 0f && RadiusTopRight <= 0f && RadiusBottomRight <= 0f && RadiusBottomLeft <= 0f;
+        {
+            get
+            {
+                if (Radii is { } radii)
+                {
+                    return Square(radii);
+                }
+                return RadiusTopLeft <= 0f && RadiusTopRight <= 0f && RadiusBottomRight <= 0f && RadiusBottomLeft <= 0f;
+            }
+        }
+
+        private static bool Square(in CornerRadii radii)
+            => IsZero(radii.TopLeft) && IsZero(radii.TopRight) && IsZero(radii.BottomRight) && IsZero(radii.BottomLeft);
+
+        private static bool IsZero(Vector2 radius) => radius.x <= 0f || radius.y <= 0f;
 
 #pragma warning disable CS8524 // no discard arm: a new edge has to name the width it reads
         public float Width(DivideEdge side) => side switch
@@ -66,6 +84,11 @@ namespace Velvet
         // near-transparent color, or a hairline width — callers do not pre-filter for the latter two.
         public static void PaintSide(Painter2D painter, DivideEdge side, in BorderBox box, Color color,
             BorderLineStyle style)
+            => PaintSide(painter, side, box, color, style, SilhouetteFace.Shearing.None);
+
+        // As above, each point carried by shear, as a skewed element's face is (SkewSilhouette).
+        public static void PaintSide(Painter2D painter, DivideEdge side, in BorderBox box, Color color,
+            BorderLineStyle style, in SilhouetteFace.Shearing shear)
         {
             if (color.a <= 0.004f)
             {
@@ -73,14 +96,17 @@ namespace Velvet
             }
             ComputeSidePieces(side, box, style, s_points, s_counts);
             painter.fillColor = color;
+            var sheared = shear.TanX != 0f || shear.TanY != 0f;
             var at = 0;
             foreach (var count in s_counts)
             {
                 painter.BeginPath();
-                painter.MoveTo(s_points[at]);
+                var first = s_points[at];
+                painter.MoveTo(sheared ? shear.Apply(first.x, first.y) : first);
                 for (var i = 1; i < count; i++)
                 {
-                    painter.LineTo(s_points[at + i]);
+                    var point = s_points[at + i];
+                    painter.LineTo(sheared ? shear.Apply(point.x, point.y) : point);
                 }
                 painter.ClosePath();
                 painter.Fill();
@@ -110,16 +136,18 @@ namespace Velvet
             }
             else
             {
-                SilhouetteFace.BuildShearedRoundedRectPolyline(s_outline, new ShearedRoundedRect
-                {
-                    Width = box.Size.x,
-                    Height = box.Size.y,
-                    Inset = width * 0.5f,
-                    RadiusTopLeft = box.RadiusTopLeft,
-                    RadiusTopRight = box.RadiusTopRight,
-                    RadiusBottomRight = box.RadiusBottomRight,
-                    RadiusBottomLeft = box.RadiusBottomLeft,
-                });
+                SilhouetteFace.BuildShearedRoundedRectPolyline(s_outline, box.Radii is { } radii
+                    ? new ShearedRoundedRect { Width = box.Size.x, Height = box.Size.y, Inset = width * 0.5f, Radii = radii }
+                    : new ShearedRoundedRect
+                    {
+                        Width = box.Size.x,
+                        Height = box.Size.y,
+                        Inset = width * 0.5f,
+                        RadiusTopLeft = box.RadiusTopLeft,
+                        RadiusTopRight = box.RadiusTopRight,
+                        RadiusBottomRight = box.RadiusBottomRight,
+                        RadiusBottomLeft = box.RadiusBottomLeft,
+                    });
                 ComputeSegments(s_outline, closed: true, width, style, s_segments);
             }
             SideQuad(side, box, s_quad);

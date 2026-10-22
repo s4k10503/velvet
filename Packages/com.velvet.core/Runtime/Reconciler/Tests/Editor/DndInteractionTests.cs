@@ -446,6 +446,51 @@ namespace Velvet.Tests
                     }),
             });
 
+        // A draggable Motion halving its opacity while dragged, which springs from opacity-100 to opacity-0 once
+        // s_setFlag says so.
+        [Component]
+        private static VNode DraggableSwapScene()
+        {
+            var (lit, setLit) = Hooks.UseState(false);
+            s_setFlag = setLit;
+            var poses = new Dictionary<string, MotionVariant> { ["a"] = "opacity-100", ["b"] = "opacity-0" };
+            return V.DndContext(
+                activation: new DragActivation(Distance: 4f),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Motion(name: "item", key: "item", className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]",
+                        variants: poses, animate: lit ? "b" : "a",
+                        transition: new StyleTransitionConfig
+                        {
+                            Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f,
+                        },
+                        props: new FiberElementProps
+                        {
+                            Draggable = new DraggableSettings("item", WhileDraggingClass: "opacity-50"),
+                        }),
+                });
+        }
+
+        [Test]
+        public void Given_ADraggableMotionSpringingItsOpacity_When_ItIsDraggedPartWay_Then_TheSpringLeavesTheOpacityToTheDraggingClass()
+        {
+            // Arrange — the swap's spring started and run once, so it writes the opacity.
+            Mount(DraggableSwapScene);
+            s_setFlag.Invoke(true);
+            _mounted.FlushStateForTest();
+            var item = Q("item");
+            EditorPanelTestHelpers.DriveSchedulerOnce(item.panel);
+            var driving = item.style.opacity.keyword == StyleKeyword.Undefined;
+
+            // Act
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Assert — read as null where the spring never wrote the opacity.
+            Assert.That(driving ? item.style.opacity.keyword : (StyleKeyword?)null, Is.EqualTo(StyleKeyword.Null));
+        }
+
         [Test]
         public void Given_ADraggableMotionWhoseDraggingClassPaints_When_ItIsDragged_Then_ItPaints()
         {

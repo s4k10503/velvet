@@ -185,6 +185,46 @@ namespace Velvet
                 : BorderSides.Of(rs, rs.borderLeftColor, rs.borderTopColor, rs.borderRightColor, rs.borderBottomColor);
         }
 
+        // Repaints a border over the face in the line style the element gives it, a dashed or dotted one side by side
+        // (DashedBorderPainter). A side a dashed divider paints is left to it (DivideDashPainter), as the dashed layer
+        // leaves it (BorderStyleSilhouette.PaintsSide).
+        internal static void PaintBorder(Painter2D p, VisualElement ve, in BorderSides sides, BorderLineStyle style,
+            in Shearing box)
+        {
+            var divided = DivideDashPainter.BoundEdge(ve);
+            if (style == BorderLineStyle.Solid)
+            {
+                PaintBorder(p, ve, divided is { } edge ? Without(sides, edge) : sides, box);
+                return;
+            }
+            if (BorderStyleSilhouette.BoxOf(ve) is not { } outline)
+            {
+                return;
+            }
+            foreach (var side in s_borderSides)
+            {
+                if (side != divided)
+                {
+                    DashedBorderPainter.PaintSide(p, side, outline, sides.ColorOf(side), style, box);
+                }
+            }
+        }
+
+        private static readonly DivideEdge[] s_borderSides =
+            { DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom, DivideEdge.Left };
+
+        private static BorderSides Without(in BorderSides sides, DivideEdge edge) => new()
+        {
+            Left = sides.Left,
+            Top = sides.Top,
+            Right = sides.Right,
+            Bottom = sides.Bottom,
+            LeftColor = edge == DivideEdge.Left ? Color.clear : sides.LeftColor,
+            TopColor = edge == DivideEdge.Top ? Color.clear : sides.TopColor,
+            RightColor = edge == DivideEdge.Right ? Color.clear : sides.RightColor,
+            BottomColor = edge == DivideEdge.Bottom ? Color.clear : sides.BottomColor,
+        };
+
         // Repaints a border over the face. One the same on every side is a stroke centred on a half-width-inset path,
         // approximating CSS's inside border; any other is filled side by side (BorderBandPainter).
         internal static void PaintBorder(Painter2D p, VisualElement ve, in BorderSides sides, in Shearing box)
@@ -369,8 +409,9 @@ namespace Velvet
     // The inline bg/border slots are shared with the arbitrary-value resolver, and a fresh value there is
     // captured directly. A face a stylesheet rule colours cannot be read off the element while the sentinel
     // masks it, so it is read from the rules beneath the inline slots (StyleCascade.FaceColor), whichever selector
-    // matched, and carried onto each colour they give on the element's transition of it (ColorCarry). A check
-    // each frame repaints the element while a colour is carried or the rules give a new one.
+    // matched, and carried onto each colour they give on the element's transition of it (ColorCarry). The
+    // colours are read again only once the rules matched to the element change (StyleCascade.RulesHash), and the
+    // panel's check repaints the element while a colour is carried or the rules give a new one.
     //
     // includeBackground gates every background touch: the skew / shadow layers own the whole face (fill +
     // border), so they suppress and repaint both (default true); the border-dashed layer restyles only the
@@ -410,10 +451,13 @@ namespace Velvet
         private readonly bool _includeBackground;
 
         // The element whose rules colour the face while this suppresses it, each slot's colour carried in
-        // StyleCascade.FaceColor's order, and the per-frame check.
+        // StyleCascade.FaceColor's order, the key of the rules matched to it when those colours were last read
+        // (StyleCascade.RulesHash; null where it cannot be read, which reads them every time), and the panel whose
+        // per-frame check carries them.
         private VisualElement? _element;
         private readonly ColorCarry[] _carries = { new(), new(), new(), new(), new() };
-        private IVisualElementScheduledItem? _watch;
+        private long? _rulesHash;
+        private IPanel? _checkedBy;
 
         public SilhouetteFaceStash(bool includeBackground = true)
         {
@@ -436,7 +480,7 @@ namespace Velvet
         private readonly bool[] _sideKept = new bool[4];
         private readonly bool[] _sideInline = new bool[4];
 
-        // A slot's colour carried to what the rules give it now, else to captured where they cannot be read; captured
+        // A slot's colour carried to what the rules give it, else to captured where they cannot be read; captured
         // alone while this suppresses no element.
         private Color Current(int slot, Color captured)
         {
@@ -444,9 +488,35 @@ namespace Velvet
             {
                 return captured;
             }
-            var target = StyleCascade.FaceColor(_element, slot) ?? captured;
-            return _carries[slot].Step(target, 0f, _element, s_slotProperties[slot], slot == 0 ? null : "border-color");
+            Refresh(_element);
+            return _carries[slot].Value;
         }
+
+        // Reads the colours the rules give the face again where the rules matched to element changed since the
+        // last read, each then carried on the element's transition of it; true where it read them.
+        private bool Refresh(VisualElement element)
+        {
+            EnsureChecked(element);
+            var hash = StyleCascade.RulesHash(element);
+            if (hash != null && hash == _rulesHash)
+            {
+                return false;
+            }
+            _rulesHash = hash;
+            for (var slot = 0; slot < _carries.Length; slot++)
+            {
+                if (RulesColor(slot))
+                {
+                    _carries[slot].Step(StyleCascade.FaceColor(element, slot) ?? Captured(slot), 0f, element,
+                        s_slotProperties[slot], Shorthand(slot));
+                }
+            }
+            return true;
+        }
+
+        private Color Captured(int slot) => slot == 0 ? BgColor : BorderColors[(int)s_slotSides[slot - 1]];
+
+        private static string? Shorthand(int slot) => slot == 0 ? null : "border-color";
 
         private bool RulesColor(int slot)
             => slot == 0 ? _includeBackground && !BgFromInline : !_sideKept[(int)s_slotSides[slot - 1]];
@@ -648,29 +718,10 @@ namespace Velvet
             element.style.borderBottomColor = SilhouetteFace.SuppressedColor;
         }
 
-        // Releases the suppression (nulls the shared inline slots so the native chrome resolves again) and
-        // clears the stash. A pooled element thus restores its native background/border on detach.
+        // Releases the suppression and clears the stash, handing the slots back to the element: a colour captured
+        // from an inline value is written back and the rest are nulled, so the native chrome resolves again and an
+        // inline bg-[…] or border-[…] stays the element's (a face handed from a shadow to a skew keeps it).
         public void Release(VisualElement element)
-        {
-            if (_includeBackground)
-            {
-                element.style.backgroundColor = StyleKeyword.Null;
-            }
-            element.style.borderLeftColor = StyleKeyword.Null;
-            element.style.borderRightColor = StyleKeyword.Null;
-            element.style.borderTopColor = StyleKeyword.Null;
-            element.style.borderBottomColor = StyleKeyword.Null;
-            // A hold or a driver on a border color slot is not this stash's to drop: a divider's mask or color
-            // goes back over the slot it nulled.
-            StyleArbitraryValueResolver.ReassertBorderColors(element);
-            SuppressionApplied = false;
-            HasStash = false;
-            Abandon(element);
-        }
-
-        // Hands the slots back to the element while it stays bound: a colour captured from an inline value is written
-        // back, and the rest are cleared as Release clears them.
-        public void Yield(VisualElement element)
         {
             if (_includeBackground)
             {
@@ -681,19 +732,27 @@ namespace Velvet
                 WriteBorderColor(element, side,
                     _sideInline[(int)side] ? BorderColors[(int)side] : new StyleColor(StyleKeyword.Null));
             }
+            // A hold or a driver on a border color slot is not this stash's to drop: a divider's mask or color
+            // goes back over the slot it nulled.
             StyleArbitraryValueResolver.ReassertBorderColors(element);
             SuppressionApplied = false;
             HasStash = false;
             Abandon(element);
         }
 
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the slot it writes
         private static void WriteBorderColor(VisualElement element, DivideEdge side, StyleColor value)
         {
-            if (side == DivideEdge.Left) element.style.borderLeftColor = value;
-            else if (side == DivideEdge.Top) element.style.borderTopColor = value;
-            else if (side == DivideEdge.Right) element.style.borderRightColor = value;
-            else element.style.borderBottomColor = value;
+            var style = element.style;
+            _ = side switch
+            {
+                DivideEdge.Left => style.borderLeftColor = value,
+                DivideEdge.Top => style.borderTopColor = value,
+                DivideEdge.Right => style.borderRightColor = value,
+                DivideEdge.Bottom => style.borderBottomColor = value,
+            };
         }
+#pragma warning restore CS8524
 
         // Drops the per-frame check and this stash's claim on element without touching the inline slots, for a layer
         // that hands its suppression on (BorderStyleSilhouette.DetachPreservingSuppression).
@@ -703,8 +762,7 @@ namespace Velvet
             {
                 s_owners.Remove(element);
             }
-            _watch?.Pause();
-            _watch = null;
+            Unregister();
             _element = null;
         }
 
@@ -728,49 +786,103 @@ namespace Velvet
             HasStash = true;
         }
 
-        // Starts the per-frame check on element, the colours landed where the rules give them now, so that taking the
-        // face is not a change they transition.
+        // Takes element's face from the rules, the colours landed where they give them now, so that taking the face
+        // is not a change they transition.
         private void Watch(VisualElement element)
         {
             if (ReferenceEquals(_element, element))
             {
-                _watch?.Resume();
                 return;
             }
-            _watch?.Pause();
             _element = element;
-            _carries[0].Land(StyleCascade.FaceColor(element, 0) ?? BgColor);
-            for (var slot = 1; slot < _carries.Length; slot++)
-            {
-                var side = (int)s_slotSides[slot - 1];
-                _carries[slot].Land(StyleCascade.FaceColor(element, slot) ?? BorderColors[side]);
-            }
-            _watch = element.schedule.Execute(ts => Check(element, ts.deltaTime / 1000f)).Every(0);
-        }
-
-        // Carries each colour the rules give over dtSec more, repainting element while one moves.
-        private void Check(VisualElement element, float dtSec)
-        {
-            var moved = false;
+            _rulesHash = StyleCascade.RulesHash(element);
             for (var slot = 0; slot < _carries.Length; slot++)
             {
-                var read = RulesColor(slot) ? StyleCascade.FaceColor(element, slot) : null;
-                if (read is not { } target)
-                {
-                    continue;
-                }
-                var carry = _carries[slot];
-                if (carry.Landed && carry.Target == target)
-                {
-                    continue;
-                }
-                carry.Step(target, dtSec, element, s_slotProperties[slot], slot == 0 ? null : "border-color");
-                moved = true;
+                _carries[slot].Land(StyleCascade.FaceColor(element, slot) ?? Captured(slot));
             }
-            if (moved)
+            EnsureChecked(element);
+        }
+
+        private sealed class PanelCheck
+        {
+            public readonly List<SilhouetteFaceStash> Stashes = new();
+            public IVisualElementScheduledItem Item = null!;
+        }
+
+        private static readonly ConditionalWeakTable<IPanel, PanelCheck> s_checks = new();
+
+        // Every face a panel shows is carried by one check run each frame among the panel's scheduled items, as a
+        // dashed divider's mask is checked (DivideDashPainter.EnsureCheck).
+        private void EnsureChecked(VisualElement element)
+        {
+            var panel = element.panel;
+            if (panel == null || ReferenceEquals(panel, _checkedBy))
             {
-                element.MarkDirtyRepaint();
+                return;
             }
+            Unregister();
+            if (!s_checks.TryGetValue(panel, out var check))
+            {
+                var created = new PanelCheck();
+                created.Item = panel.visualTree.schedule.Execute(ts => Check(panel, created, ts.deltaTime / 1000f))
+                    .Every(0);
+                s_checks.Add(panel, created);
+                check = created;
+            }
+            check.Stashes.Add(this);
+            check.Item.Resume();
+            _checkedBy = panel;
+        }
+
+        private void Unregister()
+        {
+            if (_checkedBy != null)
+            {
+                if (s_checks.TryGetValue(_checkedBy, out var check))
+                {
+                    check.Stashes.Remove(this);
+                }
+            }
+            _checkedBy = null;
+        }
+
+        private static void Check(IPanel panel, PanelCheck check, float dtSec)
+        {
+            for (var i = check.Stashes.Count - 1; i >= 0; i--)
+            {
+                var stash = check.Stashes[i];
+                var element = stash._element;
+                if (element == null || element.panel != panel)
+                {
+                    stash._checkedBy = null;
+                    check.Stashes.RemoveAt(i);
+                    continue;
+                }
+                if (stash.Advance(element, dtSec))
+                {
+                    element.MarkDirtyRepaint();
+                }
+            }
+            if (check.Stashes.Count == 0)
+            {
+                check.Item.Pause();
+            }
+        }
+
+        // Carries each colour the rules give over dtSec more; true where one moved or the rules gave a new one.
+        private bool Advance(VisualElement element, float dtSec)
+        {
+            var moved = Refresh(element);
+            for (var slot = 0; slot < _carries.Length; slot++)
+            {
+                var carry = _carries[slot];
+                if (RulesColor(slot) && !carry.Landed)
+                {
+                    carry.Step(carry.Target, dtSec, element, s_slotProperties[slot], Shorthand(slot));
+                    moved = true;
+                }
+            }
+            return moved;
         }
     }
 }

@@ -9,7 +9,7 @@ namespace Velvet
     /// velocity it was released with and the value it heads toward — the value it last showed, and the value it
     /// rested at before the play (<see cref="RestingTarget"/>, which an exit-cancel hand-off heads back to).
     /// </summary>
-    internal sealed class SpringChannel
+    internal sealed class SpringChannel : IGestureMaskable
     {
         // Deliberately NOT readonly: SpringIntegrator is a mutable struct embedded inline (see its own doc), and
         // every Set call mutates it in place through this field. Marking the field readonly would make the
@@ -17,6 +17,9 @@ namespace Velvet
         // initial value.
         public SpringIntegrator Integrator;
         public float Target;
+        // Set while a gesture channel holds the property (GestureChannelMask.MaskChannels): the spring runs on and
+        // writes nothing.
+        public bool Masked { get; set; }
         // Not readonly: a play continuing from one it interrupts (MotionSpringDriver.ContinueFrom) starts elsewhere.
         public float RestingTarget;
         // The spring's start, in the channel's own units, and its start velocity on the scale below.
@@ -55,12 +58,15 @@ namespace Velvet
     /// channel. Interpolation stays in straight RGBA — the space UI Toolkit's own color transition uses — so
     /// switching a config between Tween and Spring cannot change which colors the element passes through.
     /// </summary>
-    internal sealed class SpringColorChannel
+    internal sealed class SpringColorChannel : IPropertyChannel
     {
         public readonly ArbitraryProperty Property;
         public readonly Color From;
         public readonly Color To;
         public readonly SpringChannel Progress;
+
+        ArbitraryProperty IPropertyChannel.Property => Property;
+        IGestureMaskable IPropertyChannel.Channel => Progress;
 
         public SpringColorChannel(ArbitraryProperty property, Color from, Color to)
         {
@@ -79,11 +85,14 @@ namespace Velvet
     /// One spring-driven length channel: the property to write, the unit both endpoints share (see
     /// <see cref="MotionSpringClassParser.LengthChannelPlan"/>), and the magnitude spring itself.
     /// </summary>
-    internal sealed class SpringLengthChannel
+    internal sealed class SpringLengthChannel : IPropertyChannel
     {
         public readonly ArbitraryProperty Property;
         public readonly LengthUnit Unit;
         public readonly SpringChannel Value;
+
+        ArbitraryProperty IPropertyChannel.Property => Property;
+        IGestureMaskable IPropertyChannel.Channel => Value;
 
         public SpringLengthChannel(ArbitraryProperty property, float from, float to, LengthUnit unit)
         {
@@ -100,8 +109,18 @@ namespace Velvet
     /// resolved, the shared stiffness/damping/mass, the recurring tick handle, and the completion callback.
     /// Owned by <c>StyleAnimationScheduler</c>'s <c>PendingAnimation</c>.
     /// </summary>
-    internal sealed class MotionSpringState
+    internal sealed class MotionSpringState : IGestureMaskableState
     {
+        bool IGestureMaskableState.IsExit { set => Exit = value; }
+
+        (IGestureMaskable? Opacity, IGestureMaskable? TranslateX, IGestureMaskable? TranslateY, IGestureMaskable? Scale,
+            IGestureMaskable? Rotate) IGestureMaskableState.Scalars => (Opacity, TranslateX, TranslateY, Scale, Rotate);
+
+        IReadOnlyList<IPropertyChannel>? IGestureMaskableState.ColorChannels => Colors;
+        IReadOnlyList<IPropertyChannel>? IGestureMaskableState.LengthChannels => Lengths;
+
+        // Whether an exit plays this, whose driven writes outrank a gesture channel (StyleLayerPriority.Exit).
+        public bool Exit;
         public SpringChannel? Opacity;
         public SpringChannel? TranslateX;
         public SpringChannel? TranslateY;
@@ -327,22 +346,22 @@ namespace Velvet
         private static void WriteChannelValues(VisualElement element, MotionSpringState state)
         {
             SyncLayoutOwner(element, state);
-            if (state.Opacity != null)
+            if (state.Opacity is { Masked: false })
             {
                 MotionOpacity.Write(element, state.Opacity.Integrator.Value);
             }
-            if (state.TranslateX != null || state.TranslateY != null)
+            if ((state.TranslateX != null || state.TranslateY != null) && state.TranslateX?.Masked != true)
             {
                 SeatedTranslate.Write(element, new Translate(
                     new Length(state.TranslateX?.Integrator.Value ?? 0f),
                     new Length(state.TranslateY?.Integrator.Value ?? 0f)));
             }
-            if (state.Scale != null)
+            if (state.Scale is { Masked: false })
             {
                 var v = state.Scale.Integrator.Value;
                 element.style.scale = new Scale(new Vector2(v, v));
             }
-            if (state.Rotate != null)
+            if (state.Rotate is { Masked: false })
             {
                 element.style.rotate = new Rotate(Angle.Degrees(state.Rotate.Integrator.Value));
             }
@@ -350,18 +369,21 @@ namespace Velvet
             {
                 foreach (var c in state.Colors)
                 {
+                    if (c.Progress.Masked) continue;
                     StyleArbitraryValueResolver.ApplyDriven(element,
-                        new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)));
+                        new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)),
+                        state.Exit);
                 }
             }
             if (state.Lengths != null)
             {
                 foreach (var l in state.Lengths)
                 {
+                    if (l.Value.Masked) continue;
                     // The integrator already holds the spring's true position, overshoot included; the emitter
                     // is what saturates a property with no negative meaning.
                     var v = MotionPropertyInterpolation.ClampLength(l.Property, l.Value.Integrator.Value);
-                    StyleArbitraryValueResolver.ApplyDriven(element, new ArbitraryStyle(l.Property, v, l.Unit));
+                    StyleArbitraryValueResolver.ApplyDriven(element, new ArbitraryStyle(l.Property, v, l.Unit), state.Exit);
                 }
             }
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
@@ -658,6 +680,76 @@ namespace Velvet
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
             SyncLayoutOwner(element, state);
+        }
+
+        /// <summary>
+        /// Hands the channels <see cref="GestureChannelMask.MaskChannels"/> held for a gesture, among <paramref name="named"/>, back to
+        /// the play, each from what <paramref name="shown"/> reads the element showing, and releases every channel's
+        /// spring again from where it stands, so the returned ones head for the play's target on its spring and the
+        /// others carry on with the value and velocity they had, as Framer Motion animates a value a gesture state
+        /// let go of back to its animate target.
+        /// </summary>
+        public static void ReturnChannels(VisualElement element, MotionSpringState state, StyleLonghandSet named,
+            MotionSlotContext shown)
+        {
+            var returned = Reorigin(state.Opacity, named, StyleLonghand.Opacity, ArbitraryProperty.Opacity, shown);
+            returned |= Reorigin(state.TranslateX, named, StyleLonghand.Translate, ArbitraryProperty.TranslateX, shown)
+                | Reorigin(state.TranslateY, named, StyleLonghand.Translate, ArbitraryProperty.TranslateY, shown);
+            returned |= Reorigin(state.Scale, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown);
+            returned |= Reorigin(state.Rotate, named, StyleLonghand.Rotate, ArbitraryProperty.Rotate, shown);
+            if (state.Colors != null)
+            {
+                for (var i = 0; i < state.Colors.Count; i++)
+                {
+                    var c = state.Colors[i];
+                    if (!GestureChannelMask.ReturnsProperty(c.Progress, c.Property, named, shown))
+                    {
+                        continue;
+                    }
+                    var from = shown.TryReadShown(c.Property, LengthUnit.Pixel, out var color) ? color.Color
+                        : MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value);
+                    state.Colors[i] = new SpringColorChannel(c.Property, from, c.To);
+                    returned = true;
+                }
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths)
+                {
+                    if (GestureChannelMask.ReturnsProperty(l.Value, l.Property, named, shown))
+                    {
+                        PutAtShown(l.Value, l.Property, l.Unit, shown);
+                        returned = true;
+                    }
+                }
+            }
+            if (!returned)
+            {
+                return;
+            }
+            state.ElapsedSec = 0.0;
+            ForEachActiveChannel(state, c => Release(state, c, c.Integrator.Value, c.Integrator.Velocity));
+            WriteChannelValues(element, state);
+        }
+
+        private static bool Reorigin(SpringChannel? channel, StyleLonghandSet named, StyleLonghand longhand,
+            ArbitraryProperty slot, MotionSlotContext shown)
+        {
+            if (!GestureChannelMask.Returns(channel, named, longhand, slot, shown))
+            {
+                return false;
+            }
+            PutAtShown(channel!, slot, LengthUnit.Pixel, shown);
+            return true;
+        }
+
+        // Puts the channel at what the element shows on slot, at rest; leaves it where it is where that cannot be read.
+        private static void PutAtShown(SpringChannel channel, ArbitraryProperty slot, LengthUnit unit, MotionSlotContext shown)
+        {
+            if (shown.TryReadShown(slot, unit, out var value))
+            {
+                channel.Integrator.Set(value.Value, 0f);
+            }
         }
 
         // Holds translate at (x, y) from its next write on, the start values of a play CancelPlay holds.

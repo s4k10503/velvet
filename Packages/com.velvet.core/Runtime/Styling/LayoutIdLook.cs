@@ -283,7 +283,7 @@ namespace Velvet
             }
             Array.Copy(radii ?? OwnRadii(element, projection, dtSec, projection.OwnRadiiBuffer), projection.DrawnRadii, 4);
             if (!Uniform(scale) && HasPixelRadius(projection.DrawnRadii)
-                && ProjectedCornerFace.Draw(element, PerAxis(projection.DrawnRadii, scale, element.layout), dtSec))
+                && ProjectedCornerFace.Draw(element, PerAxis(projection.DrawnRadii, scale, element.layout), dtSec, scale))
             {
                 for (var corner = 0; corner < 4; corner++)
                 {

@@ -11,8 +11,8 @@ namespace Velvet.Tests
     /// The outline is wrapper-less (the element's own <c>generateVisualContent</c>): a bordered element keeps its
     /// DOM slot, gets a tracked <see cref="BorderStyleBinding"/>, suppresses only the border COLOR (the width
     /// stays real so layout is unchanged), and detaches cleanly. Skew and shadow each own the whole face and
-    /// repaint its border themselves, so a skewed / shadowed element tracks NO border-style binding (a skewed
-    /// one's border stays solid — a documented limitation). A pooled element sheds the binding so a recycle cannot ghost a
+    /// repaint its border themselves, in its line style, so a skewed / shadowed element tracks NO border-style
+    /// binding. A pooled element sheds the binding so a recycle cannot ghost a
     /// dashed outline. GWT, one assert per case.
     /// </summary>
     [TestFixture]
@@ -64,8 +64,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ASkewedBorderDashedElement_When_Reconciled_Then_NoBorderStyleBindingIsTracked()
         {
-            // Arrange — skew owns the whole face (it repaints a solid border as part of the sheared silhouette),
-            // so the dashed layer defers: border-dashed + skew keeps a solid border (a documented limitation).
+            // Arrange — skew owns the whole face (it repaints the border as part of the sheared silhouette), so the
+            // dashed layer defers to it.
             using var scope = new ReconcilerScope();
 
             // Act

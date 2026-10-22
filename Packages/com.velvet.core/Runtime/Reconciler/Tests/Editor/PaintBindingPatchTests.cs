@@ -46,6 +46,23 @@ namespace Velvet.Tests
         private static void Mount(ReconcilerScope scope, VNode[] tree)
             => scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
 
+        [Test]
+        public void Given_AShadowedElementWithABracketBackground_When_ItGainsASkewInOnePatch_Then_TheSkewFaceKeepsTheBackground()
+        {
+            // Arrange — the skew attaches while the shadow's sentinel stands in the background slot.
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: "bg-[#FF0000] shadow-md", name: "card") };
+            Mount(scope, oldTree);
+            var card = scope.Root[0];
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, oldTree,
+                new VNode[] { V.Div(className: "bg-[#FF0000] shadow-md " + Skew, name: "card") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.SkewBindings[card].Face.CurrentBg, Is.EqualTo(Color.red));
+        }
+
         // Creation — wrapper-less paint
 
         [Test]

@@ -5,8 +5,8 @@ namespace Velvet
     // The wrapper-less PAINT layer for border-dashed / border-dotted utilities: a dashed-outline painter
     // drawn via the element's own generateVisualContent. Defers to skew / shadow (FiberSkewApplier /
     // FiberBoxShadowApplier) when either already owns the whole face, since both repaint the border themselves
-    // and would otherwise fight a dashed outline on the same element; a shadow is told the line style to repaint
-    // it in (NoteShadowBorderStyle), a skew repaints it solid.
+    // and would otherwise fight a dashed outline on the same element; each is told the line style to repaint it
+    // in (NoteFaceBorderStyle).
     internal sealed class FiberBorderStyleApplier
     {
         private readonly ReconcilerContext _ctx;
@@ -19,12 +19,11 @@ namespace Velvet
         // Create-time entry point: when classNames resolves to an active border-dashed / border-dotted, wires
         // the dashed-outline painter onto the element (no structural wrapper — the outline is the element's own
         // generateVisualContent). Defers to skew / shadow: either owns the whole face and already repaints its
-        // border, so a dashed outline on the same element would fight it — border-dashed + skew keeps a SOLID
-        // border (documented limitation). ApplySkewOnCreate / ApplyShadowOnCreate ran before this in the factory
-        // order, so their bindings are already present to gate on.
+        // border, so a dashed outline on the same element would fight it. ApplySkewOnCreate / ApplyShadowOnCreate
+        // ran before this in the factory order, so their bindings are already present to gate on.
         internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)
         {
-            NoteShadowBorderStyle(element, classNames);
+            NoteFaceBorderStyle(element, classNames);
             if (_ctx.SkewBindings.ContainsKey(element) || _ctx.ShadowBindings.ContainsKey(element))
             {
                 return;
@@ -45,7 +44,7 @@ namespace Velvet
         // change lives in what the live class list added, not in a difference between two reconciled arrays.
         internal void ApplyBorderStyleOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)
         {
-            NoteShadowBorderStyle(element, newClassNames);
+            NoteFaceBorderStyle(element, newClassNames);
             var bound = _ctx.BorderStyleBindings.TryGetValue(element, out var binding);
             var has = StyleBorderStyleClass.TryGetWinningBorderStyleClass(newClassNames, out var winner);
             // Skew or shadow owning the face repaints the border itself, so the dashed layer must stand down.
@@ -102,17 +101,23 @@ namespace Velvet
             }
         }
 
-        // Gives a shadow that owns the face the line style its classes give the border it repaints.
-        private void NoteShadowBorderStyle(VisualElement element, string[] classNames)
+        // Gives a skew or a shadow that owns the face the line style its classes give the border it repaints.
+        private void NoteFaceBorderStyle(VisualElement element, string[] classNames)
         {
-            if (!_ctx.ShadowBindings.TryGetValue(element, out var shadow))
-            {
-                return;
-            }
             var style = StyleBorderStyleClass.TryExtract(classNames, out var spec) ? spec.Style : BorderLineStyle.Solid;
-            if (shadow.BorderStyle != style)
+            var changed = false;
+            if (_ctx.SkewBindings.TryGetValue(element, out var skew) && skew.BorderStyle != style)
+            {
+                skew.BorderStyle = style;
+                changed = true;
+            }
+            if (_ctx.ShadowBindings.TryGetValue(element, out var shadow) && shadow.BorderStyle != style)
             {
                 shadow.BorderStyle = style;
+                changed = true;
+            }
+            if (changed)
+            {
                 element.MarkDirtyRepaint();
             }
         }
