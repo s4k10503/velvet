@@ -46,8 +46,7 @@ namespace Velvet
         private static string UncaughtErrorWarning(ErrorInfo info)
         {
             var firstLine = info.ComponentStack.Split('\n')[0];
-            var named = !info.ThrownByTheMountRoot && firstLine.StartsWith(StackLinePrefix, StringComparison.Ordinal);
-            var component = named
+            var component = firstLine.StartsWith(StackLinePrefix, StringComparison.Ordinal)
                 ? $"An error occurred in the <{firstLine.Substring(StackLinePrefix.Length)}> component."
                 : "An error occurred in one of your Velvet components.";
             return component + "\n\nConsider adding an error boundary to your tree to customize error handling behavior.";
@@ -69,19 +68,19 @@ namespace Velvet
             => new(BuildComponentStack(throwingFiber))
             {
                 ErrorBoundary = boundary.IsMountRoot ? string.Empty : Hooks.ComponentName(boundary),
-                ThrownByTheMountRoot = throwingFiber?.IsMountRoot == true,
             };
 
         // Walks the throwing fiber's Parent chain to produce a component stack
         // (one line per fiber, deepest first), honoring [Component(DisplayName)] overrides
-        // via Hooks.ComponentName.
+        // via Hooks.ComponentName. It stops below the fiber V.Mount made, as React's stack leaves out the HostRoot,
+        // so an error the root itself raises has an empty stack.
         private const string StackLinePrefix = "    at ";
 
         private static string BuildComponentStack(ComponentFiber? throwingFiber)
         {
             if (throwingFiber == null) return string.Empty;
             var sb = new System.Text.StringBuilder();
-            for (var current = throwingFiber; current != null; current = current.Parent)
+            for (var current = throwingFiber; current is { IsMountRoot: false }; current = current.Parent)
             {
                 if (sb.Length > 0) sb.Append('\n');
                 sb.Append(StackLinePrefix).Append(Hooks.ComponentName(current));

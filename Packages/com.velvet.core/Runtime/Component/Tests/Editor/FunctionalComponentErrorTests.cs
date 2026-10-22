@@ -21,7 +21,7 @@ namespace Velvet.Tests
     /// boundary, which catches the child's exception (not the fallback's).</item>
     /// <item>A fallback factory receives the original exception thrown by the child, and when it also takes an
     /// <see cref="ErrorInfo"/> it sees a component stack that lists the throwing fiber first and walks up
-    /// through ancestors to the catching boundary.</item>
+    /// through ancestors to the catching boundary, ending at the outermost component rather than the root.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -191,6 +191,21 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_errorInfoLastInfo.ComponentStack, Does.Contain("ErrorInfoCaptureEbRender"),
                 "The component stack walks up the parent chain to include the catching boundary");
+        }
+
+        [Test]
+        public void Given_FallbackReceivesErrorInfo_When_ChildThrows_Then_TheStacksLastLineIsTheOutermostComponent()
+        {
+            // Arrange
+            ResetErrorInfoCapture();
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Child error"));
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(ErrorInfoCaptureEbRender, key: "info-eb"), CaughtErrors.Unlogged);
+
+            // Assert — the root V.Mount makes is not listed below it, as React's stack leaves out the root
+            Assert.That(s_errorInfoLastInfo?.ComponentStack.Split('\n')[^1],
+                Is.EqualTo("    at FunctionalComponentErrorTests.ErrorInfoCaptureEbRender"));
         }
 
         [Test]

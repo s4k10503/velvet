@@ -17,5 +17,8 @@
   being removed, as React's commit-phase capture starts at the nearest mounted ancestor. A boundary removed along
   with the component used to catch it, so it was never reported, and one under an ancestor already torn down was
   dropped, which happened to the children of a `V.VirtualList` row.
+- `ErrorInfo.ComponentStack` ends at the outermost component of the tree passed to `V.Mount`, as React's stack
+  leaves out the root. It used to end with a line for the root `V.Mount` makes, which is no component of the
+  application's; an error that root raises itself, such as a node its reconcile refuses, now has an empty stack.
 - `MountOptions` takes every option as an `init` property, as React's `createRoot` takes them as properties of one
   object: `new MountOptions(handler)` is written `new MountOptions { OnCaughtError = handler }`.
