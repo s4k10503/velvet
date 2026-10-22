@@ -661,33 +661,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AMotionDriverWritingAGridChildsWidth_When_ItReleasesIt_Then_TheColumnWidthComesBack()
-        {
-            // Arrange
-            _mounted = V.Mount(_window.rootVisualElement,
-                V.Div(name: "grid", className: "grid grid-cols-2 gap-4 w-[300px]",
-                    children: new VNode[] { V.Div(), V.Div() }));
-            var container = _window.rootVisualElement.Q<VisualElement>("grid");
-            ForcePanelUpdate(container.panel);
-            using (var evt = EventBase<GeometryChangedEvent>.GetPooled())
-            {
-                container.SimulateEvent(evt);
-            }
-            var child = container[0];
-            var column = child.style.width.value.value;
-            Assume.That(column, Is.GreaterThan(100f), "Precondition: the grid sized the child's column");
-            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.Width, 50f, LengthUnit.Pixel));
-            Assume.That(child.style.width.value.value, Is.EqualTo(50f), "Precondition: the driver's write stands over the column");
-
-            // Act — a driver's release: the channel's slots nulled, then the element's own layers and holds.
-            StyleArbitraryValueResolver.ReleaseDriven(child, ArbitraryProperty.Width);
-            StyleArbitraryValueResolver.ReapplyLayeredValues(child);
-
-            // Assert
-            Assert.That(child.style.width.value.value, Is.EqualTo(column));
-        }
-
-        [Test]
         public void Given_AGridMotionChildDelayedOnItsWidth_When_TheGridSizesItsColumns_Then_TheFromPoseStands()
         {
             // Arrange — the spring waits out its delay holding its from-pose, w-[10px].

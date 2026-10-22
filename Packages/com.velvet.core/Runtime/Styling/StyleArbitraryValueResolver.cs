@@ -2018,8 +2018,8 @@ namespace Velvet
         internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value) => Hold(element, slot, value, 0f);
 
         // The form for a gap's margin, gap being the part of value the gap contributes rather than a space rule:
-        // CSS spaces a flex item by its gap and its own margin together, so a driver's margin adds to that
-        // part where it replaces the rest.
+        // CSS spaces a flex or grid item by its gap and its own margin together, so a driver's margin adds to
+        // that part where it replaces the rest.
         internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value, float gap)
         {
             var map = MapOf(element);
@@ -2156,8 +2156,10 @@ namespace Velvet
                 => (key & StyleLayerPriority.Important) != 0 && !_layers.Contains((property, key));
 
             public bool Outranks(StyleLonghand longhand, long claim)
-                => (claim & StyleLayerPriority.Important) != 0
-                    && (!_claims.TryGetValue(longhand, out var found) || claim > found);
+            {
+                var known = _claims.TryGetValue(longhand, out var found);
+                return (claim & StyleLayerPriority.Important) != 0 && (!known || claim > found);
+            }
         }
 
         // Reused by every YieldToImportant: it resolves nothing re-entrantly.
@@ -2174,8 +2176,11 @@ namespace Velvet
             foreach (var pair in map)
             {
                 if (pair.Key == ArbitraryProperty.FilterCustom || IsFilter(pair.Key)
-                    || !StyleArbitraryLonghands.Of(pair.Key).Overlaps(longhands)
-                    || !TryWinningLayer(map, pair.Key, out var style))
+                    || !StyleArbitraryLonghands.Of(pair.Key).Overlaps(longhands))
+                {
+                    continue;
+                }
+                if (!TryWinningLayer(map, pair.Key, out var style))
                 {
                     continue;
                 }
@@ -2197,9 +2202,12 @@ namespace Velvet
             foreach (var longhand in s_longhands)
             {
                 var claim = map.Projection.ClaimOf(longhand);
-                if (longhands.Contains(longhand) && write.Outranks(longhand, claim)
-                    && !OutrankedOn(longhand, claim, s_importantWinners)
-                    && s_soleWriters.TryGetValue(longhand, out var sole))
+                if (!longhands.Contains(longhand) || !write.Outranks(longhand, claim)
+                    || OutrankedOn(longhand, claim, s_importantWinners))
+                {
+                    continue;
+                }
+                if (s_soleWriters.TryGetValue(longhand, out var sole))
                 {
                     ClearInline(element, sole);
                 }
@@ -2211,7 +2219,6 @@ namespace Velvet
             => TryLayeredWinner(map, slot, out var winner, out var rank) && write.Outranks(winner.Property, rank)
                 || map.Projection != null && write.Outranks(HeldSlotGroups.LonghandOf(slot),
                     map.Projection.ClaimOf(HeldSlotGroups.LonghandOf(slot)));
-
 
         // Puts back the important holds a driver's write covered, and adds a gap to a driven margin
         // (Hold's gap form) where the driven value shows.

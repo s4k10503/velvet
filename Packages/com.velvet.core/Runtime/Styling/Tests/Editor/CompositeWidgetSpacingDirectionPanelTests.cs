@@ -69,7 +69,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AGapRow_When_AMotionDriverWritesAPercentMarginOnAChild_Then_TheGapAddsToItInPixels()
+        public void Given_AGapRow_When_APlayDrivesAPercentMarginOnAChild_Then_TheGapAddsToItInPixels()
         {
             // Arrange — the reference child resolves ml-[10%] the engine's way, in a row of the same width.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[]
@@ -88,10 +88,11 @@ namespace Velvet.Tests
             ForcePanelUpdate(child.panel);
             var reference = _window.rootVisualElement.Q("ref").resolvedStyle.marginLeft;
             Assume.That(reference, Is.GreaterThan(0f), "Precondition: a percentage left unresolved could not pass");
+            var plan = MotionSpringClassParser.Resolve(new[] { "ml-[10%]" }, new[] { "ml-[20%]" });
+            var state = BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, durationSec: 1f)!;
 
             // Act
-            StyleArbitraryValueResolver.ApplyDriven(child,
-                new ArbitraryStyle(ArbitraryProperty.MarginLeft, 10f, LengthUnit.Percent));
+            BezierTweenDriver.ApplyCurrentValues(child, state);
             ForcePanelUpdate(child.panel);
 
             // Assert
