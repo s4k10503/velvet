@@ -76,7 +76,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs	9
 Packages/com.velvet.core/Runtime/Styling/StyleRuleOrder.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleSkewChildTranslateManipulator.cs	1
-Packages/com.velvet.core/Runtime/Styling/StyleSkewClass.cs	2
+Packages/com.velvet.core/Runtime/Styling/StyleSkewClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleSlotRecipe.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleSpacingPrecedence.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleStackedVariantManipulator.cs	1
