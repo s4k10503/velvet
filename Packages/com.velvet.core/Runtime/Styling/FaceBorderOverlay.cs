@@ -146,7 +146,7 @@ namespace Velvet
             {
                 return;
             }
-            style.transformOrigin = rs.transformOrigin;
+            style.transformOrigin = new TransformOrigin(rs.transformOrigin.x, rs.transformOrigin.y, rs.transformOrigin.z);
             style.translate = new Translate(rs.translate.x, rs.translate.y, rs.translate.z);
             style.scale = rs.scale;
             style.rotate = rs.rotate;
