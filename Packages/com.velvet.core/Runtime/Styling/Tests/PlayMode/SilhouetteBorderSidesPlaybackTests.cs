@@ -84,17 +84,18 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base strokes every side in the left one's colour, red here too.
-        // Returning 0.5 from BorderBandPainter's corner split, dividing the corner halfway, reddens this case.
+        // Cutting BorderBandPainter's sides on each corner's diagonal rather than on DashedBorderPainter.SideQuad's
+        // line reddens this case.
         [UnityTest]
-        public IEnumerator Given_AShadowedRoundedBoxWhoseLeftBorderIsFourTimesItsTop_When_ItsFaceIsRepainted_Then_TheLeftSideTakesFourFifthsOfTheCorner()
+        public IEnumerator Given_AShadowedRoundedBoxWhoseLeftBorderIsFourTimesItsTop_When_ItsFaceIsRepainted_Then_TheLeftSideReachesPastTheCornersDiagonal()
         {
             // Arrange / Act — a 24px corner between a sixteen-pixel red left side and a four-pixel blue top.
             yield return Mount("ShadowCornerSplit", "w-[120px] h-[80px] mt-[60px] ml-[60px] bg-[#000000] rounded-[24px] "
                 + "border-[4px] border-l-[16px] border-[#ff0000] border-t-[#0000ff] shadow-[0px_0px_8px_#ffffff]");
 
-            // Assert — some two thirds of the way round the corner from the left side, midway across the band: in the half
-            // the top takes of a corner divided evenly, and outside the fifth it takes of one divided by width.
-            Assert.That(ColourAt(new Vector2(15.6f, 5.2f), 0f), Is.EqualTo("red"));
+            // Assert — a point of the band above the corner's diagonal and below the line from its outer corner to its
+            // inner one, (16, 4).
+            Assert.That(ColourAt(new Vector2(14.15f, 8f), 0f), Is.EqualTo("red"));
         }
     }
 }

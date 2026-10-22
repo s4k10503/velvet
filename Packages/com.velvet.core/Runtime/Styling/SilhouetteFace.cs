@@ -30,24 +30,28 @@ namespace Velvet
         public float TanY { get; init; }
         public float Inset { get; init; }
 
-        // Each of these four sets both axes of its corner.
+        // Each of these four sets both axes of its corner and reads its horizontal one.
         public float RadiusTopLeft
         {
+            get => _radii.TopLeft.x;
             init => _radii = _radii with { TopLeft = new Vector2(value, value) };
         }
 
         public float RadiusTopRight
         {
+            get => _radii.TopRight.x;
             init => _radii = _radii with { TopRight = new Vector2(value, value) };
         }
 
         public float RadiusBottomRight
         {
+            get => _radii.BottomRight.x;
             init => _radii = _radii with { BottomRight = new Vector2(value, value) };
         }
 
         public float RadiusBottomLeft
         {
+            get => _radii.BottomLeft.x;
             init => _radii = _radii with { BottomLeft = new Vector2(value, value) };
         }
 
@@ -140,6 +144,24 @@ namespace Velvet
             points.Clear();
             EmitShearedRoundedRectPath(new PolylineSink(points, bezierSamples), in box);
         }
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
+        internal static StyleColor InlineBorderColor(VisualElement element, DivideEdge side) => side switch
+        {
+            DivideEdge.Left => element.style.borderLeftColor,
+            DivideEdge.Top => element.style.borderTopColor,
+            DivideEdge.Right => element.style.borderRightColor,
+            DivideEdge.Bottom => element.style.borderBottomColor,
+        };
+
+        internal static Color ResolvedBorderColor(IResolvedStyle style, DivideEdge side) => side switch
+        {
+            DivideEdge.Left => style.borderLeftColor,
+            DivideEdge.Top => style.borderTopColor,
+            DivideEdge.Right => style.borderRightColor,
+            DivideEdge.Bottom => style.borderBottomColor,
+        };
+#pragma warning restore CS8524
 
         internal static float MaxRadius(float width, float height) => Mathf.Min(width, height) * 0.5f;
 
@@ -343,13 +365,14 @@ namespace Velvet
     // border, so it constructs with includeBackground:false and never suppresses or re-captures the fill.
     internal sealed class SilhouetteFaceStash
     {
-        // The captured face colors (valid while HasStash), each border side its own; BorderColor is the left one.
+        // The captured face colors (valid while HasStash), the border's one per side and indexed by DivideEdge;
+        // BorderColor is the left side's. Widths are never suppressed, so a painter reads them off the resolved
+        // style rather than from here.
         public Color BgColor;
-        public Color BorderColor;
-        public Color BorderTopColor;
-        public Color BorderRightColor;
-        public Color BorderBottomColor;
+        public readonly Color[] BorderColors = new Color[4];
         public bool HasStash;
+
+        public Color BorderColor => BorderColors[(int)DivideEdge.Left];
 
         // Whether the captured background came from an INLINE value (the resolver's bg-[…] write) rather than a
         // USS rule. An inline color is authoritative and only ever changes via another resolver write — which
@@ -358,10 +381,9 @@ namespace Velvet
         // the native-rectangle double image back). Only a USS-driven stash can change beneath the sentinel.
         public bool BgFromInline;
 
-        // The border equivalent of BgFromInline: whether a captured border side came from an inline border-[…]
-        // write rather than a USS rule. Same authority rule — an inline-driven border stash is kept across an
-        // unrelated class change (it only changes via a resolver write, caught by the re-stash branch), and the
-        // release that change would take nulls every side's slot, so one inline side is enough to keep it.
+        // The border equivalent of BgFromInline: whether any side's captured border came from an inline
+        // border-[…] write rather than a USS rule. Same authority rule — an inline-driven border stash is kept
+        // across an unrelated class change (it only changes via a resolver write, caught by the re-stash branch).
         public bool BorderFromInline;
 
         // Whether the sentinel suppression is currently written to the element's inline style.
@@ -418,7 +440,11 @@ namespace Velvet
                 return;
             }
 
-            var borderReclaimed = !SilhouetteFace.IsSentinel(element.style.borderLeftColor.value);
+            var borderReclaimed = false;
+            foreach (var side in s_sides)
+            {
+                borderReclaimed |= !SilhouetteFace.IsSentinel(SilhouetteFace.InlineBorderColor(element, side).value);
+            }
             var bgReclaimed = _includeBackground && !SilhouetteFace.IsSentinel(element.style.backgroundColor.value);
             if (borderReclaimed || bgReclaimed)
             {
@@ -450,20 +476,35 @@ namespace Velvet
                 CaptureFace(element.style.backgroundColor.value, element.resolvedStyle.backgroundColor,
                     ref BgColor, ref BgFromInline);
             }
-            var style = element.style;
-            var resolved = element.resolvedStyle;
-            bool left = BorderFromInline, top = false, right = false, bottom = false;
-            CaptureFace(style.borderLeftColor.value, resolved.borderLeftColor, ref BorderColor, ref left);
-            CaptureFace(style.borderTopColor.value, resolved.borderTopColor, ref BorderTopColor, ref top);
-            CaptureFace(style.borderRightColor.value, resolved.borderRightColor, ref BorderRightColor, ref right);
-            CaptureFace(style.borderBottomColor.value, resolved.borderBottomColor, ref BorderBottomColor, ref bottom);
-            BorderFromInline = left || top || right || bottom;
+            var anyInline = false;
+            foreach (var side in s_sides)
+            {
+                var inline = SilhouetteFace.InlineBorderColor(element, side).value;
+                var fromInline = false;
+                // A dashed divider's mask is not this stash's suppression, so a first capture under it takes the
+                // color the divider paints there rather than keeping a stash it never had.
+                if (!HasStash && SilhouetteFace.IsSentinel(inline)
+                    && DivideDashPainter.ColorUnderMask(element, side) is { } underMask)
+                {
+                    BorderColors[(int)side] = underMask;
+                }
+                else
+                {
+                    CaptureFace(inline, SilhouetteFace.ResolvedBorderColor(element.resolvedStyle, side),
+                        ref BorderColors[(int)side], ref fromInline);
+                }
+                anyInline |= fromInline;
+            }
+            BorderFromInline = anyInline;
             HasStash = true;
         }
 
+        private static readonly DivideEdge[] s_sides = { DivideEdge.Left, DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom };
+
         // The captured border, at the widths the element is laid out with.
-        public BorderSides Border(IResolvedStyle resolved)
-            => BorderSides.Of(resolved, BorderColor, BorderTopColor, BorderRightColor, BorderBottomColor);
+        public BorderSides Border(IResolvedStyle resolved) => BorderSides.Of(resolved,
+            BorderColors[(int)DivideEdge.Left], BorderColors[(int)DivideEdge.Top], BorderColors[(int)DivideEdge.Right],
+            BorderColors[(int)DivideEdge.Bottom]);
 
         // Captures one face color from its shared inline slot. Three cases:
         // - a fresh non-sentinel inline value → the resolver's bg-[…]/border-[…] write; it is authoritative;
@@ -512,6 +553,9 @@ namespace Velvet
             element.style.borderRightColor = StyleKeyword.Null;
             element.style.borderTopColor = StyleKeyword.Null;
             element.style.borderBottomColor = StyleKeyword.Null;
+            // A hold or a driver on a border color slot is not this stash's to drop: a divider's mask or color
+            // goes back over the slot it nulled.
+            StyleArbitraryValueResolver.ReassertBorderColors(element);
             SuppressionApplied = false;
             HasStash = false;
         }
@@ -529,10 +573,7 @@ namespace Velvet
             {
                 return;
             }
-            BorderColor = source.BorderColor;
-            BorderTopColor = source.BorderTopColor;
-            BorderRightColor = source.BorderRightColor;
-            BorderBottomColor = source.BorderBottomColor;
+            source.BorderColors.CopyTo(BorderColors, 0);
             BorderFromInline = source.BorderFromInline;
             HasStash = true;
         }

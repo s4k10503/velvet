@@ -92,6 +92,8 @@ namespace Velvet.Tests
             Assert.That(CommittedKeys(mounted), Is.EqualTo("x,y,k"));
         }
 
+        // GREEN_ON_BASE(characterization): the base's state flush already left both exits waiting on the passive flush.
+        // FlushStateForTest now runs pending passive effects first, so the act takes the variant that does not.
         [TestCase("Exiting")]
         [TestCase("PendingSettles")]
         public void Given_AWaitModeRenderWithholdingAKeyStillLeavingThatAnAbortStopped_When_ItsRemovalsArePutBack_Then_ThePresenceHoldsTheKeysRecordAgain(
@@ -113,7 +115,7 @@ namespace Velvet.Tests
 
             // Act — "x" comes back while "k" is still leaving, so the render withholds it, and the boundary aborts it
             s_setTick.Invoke(2);
-            mounted.FlushStateForTest();
+            mounted.FlushStateKeepingPassiveEffectsForTest();
 
             // Assert
             Assert.That(Holds(mounted, record, "x"), Is.True);

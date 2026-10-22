@@ -57,6 +57,7 @@ namespace Velvet.Tests
             ["StylePointerEventsClass.IsPointerEventsToken"] = "pointer-events-none",
             ["StyleSkewClass.IsSkewClass"] = "skew-x-6",
             ["StyleShadowClass.IsShadowClass"] = "shadow-lg",
+            ["StyleShadowClass.IsInsetBoxShadowClass"] = "inset-ring-[length:2]",
             ["StyleGradientClass.IsGradientClass"] = "bg-gradient-to-r from-red-500 to-blue-500",
             ["StyleAnimateClass.IsAnimateClass"] = "animate-pulse",
             ["StyleBorderStyleClass.IsBorderStyleClass"] = "border-dashed",
@@ -68,7 +69,17 @@ namespace Velvet.Tests
         // A ratchet on the declaration, because the two-directional check alone is satisfied by deleting a
         // family from the dispatcher AND its representative here — one plausible cleanup edit that removes a
         // family's coverage with both tests green.
-        private const int FamilyFloor = 16;
+        private const int FamilyFloor = 17;
+
+        // What a family's representative acts on, written bare in every render of that family's cells. Velvet
+        // draws no inset ring, so what the inset representative changes is the box-shadow its rejected width discards.
+        private static readonly Dictionary<string, string> Contexts = new(StringComparer.Ordinal)
+        {
+            ["StyleShadowClass.IsInsetBoxShadowClass"] = "shadow-md",
+        };
+
+        private static string InContext(string family, string utility)
+            => Contexts.TryGetValue(family, out var context) ? context + " " + utility : utility;
 
         /// <summary>The variants posed, with what opens each one's gate.</summary>
         /// <remarks>
@@ -169,7 +180,6 @@ namespace Velvet.Tests
         /// leaves the derived set, the matrix stops posing it, and the deletion — the exact defect this
         /// fixture exists for — passes. Dropping one now leaves a representative naming nothing.
         /// </remarks>
-        // GREEN_ON_BASE(characterization): the dispatcher's gated families and this fixture's declared set agree on the base as they do here, since this branch changes neither.
         [Test]
         public void Given_ThePayloadDispatcher_When_ItsFamiliesAreDerived_Then_TheyAreExactlyTheDeclaredOnes()
         {
@@ -207,11 +217,12 @@ namespace Velvet.Tests
                 foreach (var family in families)
                 {
                     var utility = Representatives[family];
-                    var bare = Observe(utility, open);
-                    var gated = Observe(Gated(utility, prefix), open);
-                    var shut = Observe(Gated(utility, prefix), open: null);
+                    var baseline = Contexts.TryGetValue(family, out var context) ? Observe(context, open) : none;
+                    var bare = Observe(InContext(family, utility), open);
+                    var gated = Observe(InContext(family, Gated(utility, prefix)), open);
+                    var shut = Observe(InContext(family, Gated(utility, prefix)), open: null);
 
-                    if (StripClasses(bare) == StripClasses(none))
+                    if (StripClasses(bare) == StripClasses(baseline))
                     {
                         inert.Add($"{prefix} {family}: '{utility}' changes nothing a bare render shows");
                     }

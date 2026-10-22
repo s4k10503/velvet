@@ -20,24 +20,19 @@ namespace Velvet
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
 
         // Suppresses only the native border color (never the background) and captures its effective color,
-        // reusing the shared sentinel machinery. Border uses the LEFT side (a single uniform stroke).
+        // reusing the shared sentinel machinery, a color per side.
         public readonly SilhouetteFaceStash Face = new(includeBackground: false);
 
         // Pass-throughs onto Face so the reconciler / tests read the stash state directly off the binding.
         public Color BorderColor => Face.BorderColor;
         public bool HasStash => Face.HasStash;
         public bool SuppressionApplied => Face.SuppressionApplied;
-
-        // Reusable polyline buffer for the outline (rebuilt each Draw from the live layout), so a steady-state
-        // repaint allocates nothing.
-        public readonly List<Vector2> Polyline = new();
     }
 
     /// <summary>
-    /// Paints a <c>border-dashed</c> / <c>border-dotted</c> element's outline — a dashed or dotted rounded-rect
-    /// stroke drawn via Painter2D in the element's own <c>generateVisualContent</c>. UI Toolkit has no CSS
-    /// border-style, so a non-solid border is unrepresentable natively; the arc-length marcher
-    /// (<see cref="DashedBorderPainter"/>) walks the box outline emitting dash / dot runs.
+    /// Paints a <c>border-dashed</c> / <c>border-dotted</c> element's outline side by side, drawn via Painter2D
+    /// in the element's own <c>generateVisualContent</c>. UI Toolkit has no CSS border-style, so a non-solid
+    /// border is unrepresentable natively; <see cref="DashedBorderPainter"/> lays out and fills each side.
     /// </summary>
     /// <remarks>
     /// The native border color is suppressed with a near-invisible sentinel (the inline slot is shared with
@@ -56,6 +51,8 @@ namespace Velvet
     /// </remarks>
     internal static class BorderStyleSilhouette
     {
+        private static readonly DivideEdge[] s_sides = { DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom, DivideEdge.Left };
+
         // Wires the paint + stash callbacks onto the element and returns the binding. The first stash (capture
         // the border color, then suppress the native border color) is driven, in order of reliability: a
         // synchronous attempt here, then a GeometryChangedEvent, then CustomStyleResolvedEvent — mirroring
@@ -142,37 +139,55 @@ namespace Velvet
             bool canReleaseFace)
             => binding.Face.SyncOnPatch(element, classesChanged, canReleaseFace);
 
-        private static void Draw(MeshGenerationContext mgc, VisualElement ve, BorderStyleBinding binding)
+        // The laid-out border of ve, or null before it has a size.
+        internal static BorderBox? BoxOf(VisualElement ve)
         {
             var w = ve.layout.width;
             var h = ve.layout.height;
             if (w <= 0f || h <= 0f || float.IsNaN(w) || float.IsNaN(h))
             {
-                return;
+                return null;
             }
+            var rs = ve.resolvedStyle;
+            var corners = ShearedRoundedRect.ForElement(ve, 0f, w, h, 0f, 0f);
+            return new BorderBox
+            {
+                Size = new Vector2(w, h),
+                Left = rs.borderLeftWidth,
+                Top = rs.borderTopWidth,
+                Right = rs.borderRightWidth,
+                Bottom = rs.borderBottomWidth,
+                RadiusTopLeft = corners.RadiusTopLeft,
+                RadiusTopRight = corners.RadiusTopRight,
+                RadiusBottomRight = corners.RadiusBottomRight,
+                RadiusBottomLeft = corners.RadiusBottomLeft,
+            };
+        }
 
-            // The width is never suppressed — only the color — so it reads real off the live resolved style,
-            // exactly like the skew silhouette's border stroke.
-            var borderWidth = ve.resolvedStyle.borderLeftWidth;
-            if (borderWidth <= 0.01f)
+        // Whether this outline paints side of ve: every side but one a dashed divider paints, square or rounded.
+        internal static bool PaintsSide(VisualElement ve, DivideEdge side) => side != DivideDashPainter.BoundEdge(ve);
+
+        private static void Draw(MeshGenerationContext mgc, VisualElement ve, BorderStyleBinding binding)
+        {
+            if (BoxOf(ve) is not { } box)
             {
                 return;
             }
 
-            // Pre-stash frame (the first paint racing the stash): read the live color directly — the native
-            // border is still visible this frame, so the overdraw is identical-colored.
-            var color = binding.HasStash ? binding.BorderColor : ve.resolvedStyle.borderLeftColor;
-            if (color.a <= 0.004f)
+            // Each side is painted on its own, in its own color at its own width, cut to its own corner of the box
+            // (DashedBorderPainter.ComputeSidePieces). Pre-stash frame (the first paint racing the stash): read
+            // the live color directly — the native border is still visible this frame, so the overdraw is
+            // identical-colored.
+            foreach (var side in s_sides)
             {
-                return;
+                if (PaintsSide(ve, side))
+                {
+                    var color = binding.HasStash
+                        ? binding.Face.BorderColors[(int)side]
+                        : SilhouetteFace.ResolvedBorderColor(ve.resolvedStyle, side);
+                    DashedBorderPainter.PaintSide(mgc.painter2D, side, box, color, binding.Spec.Style);
+                }
             }
-
-            // Stroke centered on a half-width-inset outline ≈ CSS's inside border, matching the skew
-            // silhouette's border stroke inset. A border stroke never bleeds past the box, so (unlike skew /
-            // shadow) no bounds-spacer is needed.
-            SilhouetteFace.BuildShearedRoundedRectPolyline(binding.Polyline,
-                ShearedRoundedRect.ForElement(ve, borderWidth * 0.5f, w, h, 0f, 0f));
-            DashedBorderPainter.StrokeDashed(mgc.painter2D, binding.Polyline, closed: true, borderWidth, color, binding.Spec.Style);
         }
     }
 }

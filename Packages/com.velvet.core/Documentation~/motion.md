@@ -348,7 +348,8 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   utilities write. Naming one on one side of the delta is enough. When only the from-side names
   it and no resting class supplies a target, the target is its identity value (opacity 1, scale 1,
   translate 0, rotate 0deg). When only the to-side names it, the play samples the current value;
-  on an off-panel element it starts at identity.
+  on an off-panel element it starts at identity. A both-axis `translate-8` or `translate-[10px]` drives the
+  x and y channels with its one value.
 - **Colors.** `background-color`, `color` and `border-color`, from palette utilities
   (`bg-red-500`), the alpha modifier (`bg-red-500/50`) and the bracket forms (`bg-[#1e293b]`).
   Interpolation is straight RGBA, the same path UI Toolkit's own color transition takes, so
@@ -393,9 +394,17 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   Inline values hold their slots over surviving stylesheet utilities; between two stylesheet utilities
   the one the stylesheet declares later holds it, wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
   other three toward `p-8`, and `opacity-50 opacity-20` animates toward `opacity-50`. A slot held by a
-  class no number is read from (`rounded-tl-full` beside `rounded-3xl`, `scale-x-[.5]` beside
-  `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. Per-axis scale
-  composition remains undriven beside an important uniform inline scale declaration.
+  class no number is read from (`rounded-tl-full` beside `rounded-3xl`, `!scale-x-[.5]` beside
+  `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. A `scale-[…]` of the
+  per-axis utilities' importance or above holds the scale channel, as the element draws it alone, so
+  `scale-x-[.5] scale-[1.4]` animates toward 1.4. A resting class or value in force under a variant
+  (`hover:scale-x-[.5]`, `focus:scale-50`, `focus:translate-8`, `focus:opacity-50`, `focus:bg-red-500`,
+  `focus:w-[60px]`) ranks above the swap's classes, so the slots it holds land with the swap, the element drawing
+  the resting value. A resting `translate-x-*` or `translate-y-*`, important or not, keeps its
+  axis beside a `translate-<n>` the swap adds, and the other axis animates, as the element draws them. A translate holding
+  a value the browser rejects (`translate-x-[10]`), on the target or resting beside it, lands both translate axes
+  with the swap, the element drawing no translation, and a resting rejected `scale-x-*` or `scale-y-*` lands the
+  scale the same way ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#a-rejected-value)).
 - **A driven value stands over the element's own utilities, short of an important one.** While a driver
   writes a length or a color, the value it writes holds its slot against the element's variant layers
   (`dark:`, `sm:`, `hover:` and the rest), a `space-*` margin, a `divide-*` color or width and the column
@@ -405,7 +414,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   play's own pose carries does not, since that pose's end value is what the play drives toward, and neither does
   one of the pose an interrupted exit reverses to. A gap, a grid's included, adds to a driven margin, and to an
   important margin of the element's own that outranks the play
-  ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)).
+  ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)). This holds for a play that is planned; a swap whose
+  target a resting holder under a variant outranks plans none for that slot (*Classes on one side* above), as a
+  class change that leaves the computed value alone starts no transition.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
@@ -416,7 +427,7 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   parser, so a ratio change snaps.
 - A target-only uniform scale or border color lands instantly when the sampled x/y scale values
   or border edge colors differ.
-- **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`) **and per-axis `scale-x-` /
+- **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`, `translate-1/2`, `translate-full`) **and per-axis `scale-x-` /
   `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.
   Both families resolve as ordinary utilities; they just apply as plain classes, so the swap lands
   them instantly.

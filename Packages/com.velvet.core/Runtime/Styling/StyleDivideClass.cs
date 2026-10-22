@@ -28,14 +28,15 @@ namespace Velvet
 
     // The slots of a divide whose winning token carries the important modifier. An important slot is written
     // over the divided child's own plain border width or colour instead of giving way to it, as Tailwind's
-    // `!important` divide declaration does, and yields to the child's own important one. The line style has no
-    // bit because the style never yields to a child's slot.
+    // `!important` divide declaration does, and yields to the child's own important one. An important line
+    // style is drawn over a border-style class of the child's own.
     [Flags]
     internal enum DivideImportance
     {
         None = 0,
         Width = 1,
         Color = 2,
+        Style = 4,
     }
 
     // A resolved divide-* utility: the axis + width of the inter-child border, an optional color, the line
@@ -201,7 +202,8 @@ namespace Velvet
             // does not name it can never apply.
             var reverse = axis == DivideAxis.Horizontal ? xReverse : yReverse;
             var importance = (axisImportant ? DivideImportance.Width : DivideImportance.None)
-                | (hasColor && colorImportant ? DivideImportance.Color : DivideImportance.None);
+                | (hasColor && colorImportant ? DivideImportance.Color : DivideImportance.None)
+                | (styleImportant ? DivideImportance.Style : DivideImportance.None);
             spec = new DivideSpec(axis, width, hasColor ? color : null, style, reverse, importance);
             return true;
         }

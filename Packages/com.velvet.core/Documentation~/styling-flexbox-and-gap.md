@@ -121,9 +121,28 @@ wrap-specific strategy, and CSS has none either: the rule selects by sibling pos
 `flex-wrap` every child but the last gets its one divider edge whichever line it sits on. The last child
 of a wrapped line therefore keeps its end edge, and no rule is drawn along the break between two lines.
 
-`divide-dashed` / `divide-dotted` have no UI Toolkit border-style, so Velvet paints those rules
-itself, which costs them on a child that also carries `overflow-hidden` — see the painted-utility
-table in [styling-variants.md](styling-variants.md).
+`divide-dashed` / `divide-dotted` have no UI Toolkit border-style, so Velvet paints those rules itself,
+which costs them on a child that also carries `overflow-hidden` — see the painted-utility table in
+[styling-variants.md](styling-variants.md). The dash is drawn at whichever border width and in whichever
+color win the divided edge under the specificity rule above, so a child's own `border-r-4` that wins the
+edge is drawn dashed. A `border-solid`, `border-dashed` or `border-dotted` of the child's own sets the
+divided edge's line style over the divide's, unless the divide's is important (`!divide-dashed`), so
+`border-solid` on a child of a `divide-dashed` row draws its divider solid. A color the child's own code
+writes inline on a divided edge outranks a plain divide color, solid or dashed, and on a dashed edge the
+child's own color classes too, as an inline style does; an important divide color keeps the edge, as an
+important color class of the child's own keeps a dashed one, and a `V.Motion` driving the color outranks the
+written one. The pattern is the one Chrome draws a dashed or dotted border side in: a dash is three widths
+long with a two-width gap below 3px and two widths with a one-width gap from 3px up, its gap is stretched or
+shrunk so the edge starts and ends on a dash, a dot is a square up to 3px, where the first dot or its gap
+gains or loses a pixel and the last dot is drawn on its own as the length needs so an edge at least three
+widths long starts and ends on a whole dot, and round past it, and an edge too short for two dashes or two
+square dots is drawn solid. `border-dashed` / `border-dotted` paint each side on its own in that side's
+color and at its width, as Chrome does: a side of a box with square corners as a line from corner to corner,
+a side of a box with a rounded corner along the whole rounded outline. Each side is cut to its own corner of
+the box at the line from the outer corner to the inner one, the miter Chrome clips a side to, so a
+translucent color is laid once where two sides meet. A side a dashed divider paints is left to the divider,
+which is laid out the same way, so on a rounded child it follows the child's curve. A panel holding such a
+divider runs one check per frame, which masks a color the child's own code writes over the divided edge.
 
 ### How re-spacing stays correct
 

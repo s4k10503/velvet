@@ -33,10 +33,15 @@ namespace Velvet
         public bool Uniform => Top == Left && Right == Left && Bottom == Left
             && TopColor == LeftColor && RightColor == LeftColor && BottomColor == LeftColor;
 
-        // Side 0 is the top, then clockwise.
-        public float Width(int side) => side switch { 0 => Top, 1 => Right, 2 => Bottom, _ => Left };
-
-        public Color ColorOf(int side) => side switch { 0 => TopColor, 1 => RightColor, 2 => BottomColor, _ => LeftColor };
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the colour it reads
+        public Color ColorOf(DivideEdge side) => side switch
+        {
+            DivideEdge.Left => LeftColor,
+            DivideEdge.Top => TopColor,
+            DivideEdge.Right => RightColor,
+            DivideEdge.Bottom => BottomColor,
+        };
+#pragma warning restore CS8524
 
         private static float Finite(float width) => float.IsNaN(width) ? 0f : Mathf.Max(0f, width);
     }
@@ -44,9 +49,9 @@ namespace Velvet
     /// <summary>
     /// Fills a border as CSS draws one: the band between the border edge and the padding edge, each side its own
     /// width and colour, each inner corner's radius the outer one less the widths of the two sides meeting there. Two
-    /// sides of different colours meet on a line across the corner from its outer arc to its inner one, which divides
-    /// each arc in proportion to the two widths: the wider side takes the larger part, and a side of no width leaves
-    /// the whole corner to the other.
+    /// sides meet across a corner on the line from its outer corner to its inner one, the line a dashed or dotted side
+    /// is cut on as well (DashedBorderPainter.SideQuad): the wider side takes the larger part, and a side of no width
+    /// leaves the whole corner to the other.
     /// </summary>
     internal static class BorderBandPainter
     {
@@ -55,6 +60,8 @@ namespace Velvet
 
         private static readonly List<Vector2> s_outer = new();
         private static readonly List<Vector2> s_inner = new();
+        private static readonly List<Vector2> s_clipped = new();
+        private static readonly Vector2[] s_quad = new Vector2[4];
 
         // Fills the border of a box whose border edge is rounded by radii, which are fitted to it first.
         public static void Paint(Painter2D painter, in ShearedRoundedRect box, in BorderSides sides)
@@ -78,17 +85,31 @@ namespace Velvet
                 painter.Fill(FillRule.OddEven);
                 return;
             }
-            for (var side = 0; side < 4; side++)
+            BuildContour(s_outer, borderEdge, outer, SilhouetteFace.Shearing.None);
+            BuildContour(s_inner, paddingEdge, inner, SilhouetteFace.Shearing.None);
+            var quadBox = new BorderBox
             {
-                if (sides.Width(side) <= 0f || sides.ColorOf(side).a <= 0.004f) continue;
+                Size = new Vector2(w, h),
+                Left = sides.Left,
+                Top = sides.Top,
+                Right = sides.Right,
+                Bottom = sides.Bottom,
+            };
+            for (var side = DivideEdge.Left; side <= DivideEdge.Bottom; side++)
+            {
+                if (quadBox.Width(side) <= 0f || sides.ColorOf(side).a <= 0.004f) continue;
+                DashedBorderPainter.SideQuad(side, quadBox, s_quad);
+                DashedBorderPainter.ClipConvex(s_outer, s_quad, s_clipped);
+                if (s_clipped.Count < 3) continue;
                 painter.BeginPath();
-                BuildSide(s_outer, new Edge(borderEdge, outer, sides, shear), side);
-                BuildSide(s_inner, new Edge(paddingEdge, inner, sides, shear), side);
-                s_inner.Reverse();
-                s_outer.AddRange(s_inner);
-                Trace(painter, s_outer);
+                TraceSheared(painter, s_clipped, shear);
+                if (paddingEdge.width > 0f && paddingEdge.height > 0f)
+                {
+                    DashedBorderPainter.ClipConvex(s_inner, s_quad, s_clipped);
+                    if (s_clipped.Count >= 3) TraceSheared(painter, s_clipped, shear);
+                }
                 painter.fillColor = sides.ColorOf(side);
-                painter.Fill();
+                painter.Fill(FillRule.OddEven);
             }
         }
 
@@ -160,69 +181,24 @@ namespace Velvet
             return shear.Apply(at.x, at.y);
         }
 
-        // One edge of the band, the border edge or the padding edge, with the widths that divide its corners.
-        private readonly struct Edge
-        {
-            public Edge(Rect rect, in CornerRadii radii, in BorderSides sides, in SilhouetteFace.Shearing shear)
-            {
-                Rect = rect;
-                Radii = radii;
-                Sides = sides;
-                Shear = shear;
-            }
-
-            public Rect Rect { get; }
-            public CornerRadii Radii { get; }
-            public BorderSides Sides { get; }
-            public SilhouetteFace.Shearing Shear { get; }
-
-            public Vector2 RadiusOf(int corner) => corner switch
-            {
-                0 => Radii.TopLeft,
-                1 => Radii.TopRight,
-                2 => Radii.BottomRight,
-                _ => Radii.BottomLeft,
-            };
-
-            // How far round corner's arc the side before it gives way to the side after it: the share of their widths
-            // the side before holds.
-            public float Split(int corner)
-            {
-                var before = Sides.Width((corner + 3) % 4);
-                var after = Sides.Width(corner);
-                return before + after > 0f ? before / (before + after) : 0.5f;
-            }
-        }
-
-        // Side 0 (the top), then clockwise: along its edge from where the corner before it divides to where the corner
-        // after it does.
-        private static void BuildSide(List<Vector2> points, in Edge edge, int side)
-        {
-            points.Clear();
-            var next = (side + 1) % 4;
-            AddArc(points, edge, side, edge.Split(side), 1f);
-            AddArc(points, edge, next, 0f, edge.Split(next));
-        }
-
-        // The arc of corner from from to to, at its ends and at every sample between them.
-        private static void AddArc(List<Vector2> points, in Edge edge, int corner, float from, float to)
-        {
-            var radius = edge.RadiusOf(corner);
-            points.Add(OnCorner(edge.Rect, radius, corner, from, edge.Shear));
-            for (var i = 1; i < CornerSamples - 1; i++)
-            {
-                var t = (float)i / (CornerSamples - 1);
-                if (t > from && t < to) points.Add(OnCorner(edge.Rect, radius, corner, t, edge.Shear));
-            }
-            points.Add(OnCorner(edge.Rect, radius, corner, to, edge.Shear));
-        }
-
         private static void Trace(Painter2D painter, List<Vector2> contour)
         {
             painter.MoveTo(contour[0]);
             for (var i = 1; i < contour.Count; i++)
             {
                 LineTo(painter, contour[i - 1], contour[i]);
+            }
+            painter.ClosePath();
+        }
+
+        // The contour is clipped upright, where the side quads are, and sheared after.
+        private static void TraceSheared(Painter2D painter, List<Vector2> contour, in SilhouetteFace.Shearing shear)
+        {
+            var at = shear.Apply(contour[0].x, contour[0].y);
+            painter.MoveTo(at);
+            for (var i = 1; i < contour.Count; i++)
+            {
+                at = LineTo(painter, at, shear.Apply(contour[i].x, contour[i].y));
             }
             painter.ClosePath();
         }

@@ -22,6 +22,10 @@ namespace Velvet
         private static readonly PropertyInfo? s_rotate = EngineMember.ComputedStyleRotate.ResolveProperty();
         private static readonly PropertyInfo? s_scale = EngineMember.ComputedStyleScale.ResolveProperty();
         private static readonly PropertyInfo? s_translate = EngineMember.ComputedStyleTranslate.ResolveProperty();
+        private static readonly PropertyInfo? s_borderLeftColor = EngineMember.ComputedStyleBorderLeftColor.ResolveProperty();
+        private static readonly PropertyInfo? s_borderRightColor = EngineMember.ComputedStyleBorderRightColor.ResolveProperty();
+        private static readonly PropertyInfo? s_borderTopColor = EngineMember.ComputedStyleBorderTopColor.ResolveProperty();
+        private static readonly PropertyInfo? s_borderBottomColor = EngineMember.ComputedStyleBorderBottomColor.ResolveProperty();
 
         private static readonly PropertyInfo? s_property = EngineMember.ComputedStyleTransitionProperty.ResolveProperty();
         private static readonly PropertyInfo? s_duration = EngineMember.ComputedStyleTransitionDuration.ResolveProperty();
@@ -38,11 +42,8 @@ namespace Velvet
         // ProjectedCornerFace's colour slots, in its order: the background, then the top, right, bottom and left borders.
         private static readonly PropertyInfo?[] s_faceColors =
         {
-            EngineMember.ComputedStyleBackgroundColor.ResolveProperty(),
-            EngineMember.ComputedStyleBorderTopColor.ResolveProperty(),
-            EngineMember.ComputedStyleBorderRightColor.ResolveProperty(),
-            EngineMember.ComputedStyleBorderBottomColor.ResolveProperty(),
-            EngineMember.ComputedStyleBorderLeftColor.ResolveProperty(),
+            EngineMember.ComputedStyleBackgroundColor.ResolveProperty(), s_borderTopColor, s_borderRightColor,
+            s_borderBottomColor, s_borderLeftColor,
         };
         private static readonly PropertyInfo? s_backgroundImage = EngineMember.ComputedStyleBackgroundImage.ResolveProperty();
         private static readonly PropertyInfo? s_backgroundPositionX = EngineMember.ComputedStyleBackgroundPositionX.ResolveProperty();
@@ -368,6 +369,25 @@ namespace Velvet
             translate = (Translate)s_translate.GetValue(style);
             return true;
         }
+
+        public static bool TryReadBorderColor(object style, DivideEdge edge, out UnityEngine.Color color)
+        {
+            color = default;
+            var property = Property(edge);
+            if (property == null) return false;
+            color = (UnityEngine.Color)property.GetValue(style);
+            return true;
+        }
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
+        private static PropertyInfo? Property(DivideEdge edge) => edge switch
+        {
+            DivideEdge.Left => s_borderLeftColor,
+            DivideEdge.Right => s_borderRightColor,
+            DivideEdge.Top => s_borderTopColor,
+            DivideEdge.Bottom => s_borderBottomColor,
+        };
+#pragma warning restore CS8524
     }
 
     // What an element's classes give the four slots a loop writes, read once and kept until the element's class list

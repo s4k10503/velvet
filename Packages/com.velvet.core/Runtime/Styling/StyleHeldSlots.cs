@@ -35,12 +35,13 @@ namespace Velvet
         // The yielding slots that give way only to an important layer.
         private int _importantOnlyMask;
 
-        // The slots a per-frame driver writes now, which every hold but an important one leaves to it
-        // (StyleArbitraryValueResolver.ApplyDriven).
+        // The slots a per-frame driver writes now, which every hold but a mask or an important one leaves to it
+        // (StyleArbitraryValueResolver.ApplyDriven), and the held slots that are masks.
         private int _driven;
+        private int _masks;
 
         // An important hold is one yielding only to an important layer: an important divide's (Yield).
-        private int Overridden => _driven & ~(_yieldMask & _importantOnlyMask);
+        private int Overridden => _driven & ~_masks & ~(_yieldMask & _importantOnlyMask);
         private StyleLength[]? _lengths;
 
         // The part of each held length a gap contributes, indexed like _lengths.
@@ -73,7 +74,10 @@ namespace Velvet
         {
             _mask |= Bit(slot);
             _yieldMask &= ~Bit(slot);
+            _masks &= ~Bit(slot);
         }
+
+        public void SetMask(HeldSlot slot) => _masks |= Bit(slot);
 
         public void Drive(int slots) => _driven |= slots;
 
@@ -93,6 +97,11 @@ namespace Velvet
 
         public bool IsHeld(HeldSlot slot) => (_mask & Bit(slot)) != 0;
 
+        public UnityEngine.Color? ColorOf(HeldSlot slot)
+            => IsHeld(slot) && _colors != null && _colors[(int)slot].keyword == StyleKeyword.Undefined
+                ? _colors[(int)slot].value
+                : null;
+
         public bool IsDriven(HeldSlot slot) => (_driven & Bit(slot)) != 0;
 
         // The pixels a held length carries, and the part of them a gap does not contribute: a space rule's.
@@ -100,9 +109,11 @@ namespace Velvet
 
         public float OwnPart(HeldSlot slot) => Length(slot) - (_gaps?[(int)slot] ?? 0f);
 
-        // The gap part of a held, driven slot, which a driver's value adds to.
+        public bool HoldsAny(int slots) => (_mask & slots) != 0;
+
+        // The gap part of a held, driven, unmasked slot, which a driver's value adds to.
         public float DrivenGap(HeldSlot slot)
-            => (_mask & _driven & Bit(slot)) != 0 && _gaps != null ? _gaps[(int)slot] : 0f;
+            => (_mask & _driven & ~_masks & Bit(slot)) != 0 && _gaps != null ? _gaps[(int)slot] : 0f;
 
         // Writes every held slot among slots back onto style.
         public void Reassert(IStyle style, int slots)

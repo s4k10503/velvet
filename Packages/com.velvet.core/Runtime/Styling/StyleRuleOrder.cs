@@ -411,7 +411,7 @@ namespace Velvet
             var property = default(ArbitraryProperty);
             StyleLonghandSet set;
             if (StyleArbitraryValueResolver.IsInlineResolved(core)
-                && StyleArbitraryValueResolver.TryParse(core, out var style))
+                && StyleArbitraryValueResolver.TryParseComposed(core, out var style))
             {
                 inline = true;
                 property = style.Property;
@@ -475,6 +475,11 @@ namespace Velvet
             if (set.Contains(StyleLonghand.Scale))
             {
                 count = ScaleDeclarationsOf(inline, property);
+            }
+            else if (inline && set.Contains(StyleLonghand.Translate))
+            {
+                // A variable per axis it writes, and translate itself: translate-4 is emitted ahead of translate-x-4.
+                count = property == ArbitraryProperty.Translate ? 3 : 2;
             }
             order.Sort();
             return (order, count);

@@ -10,4 +10,4 @@
   A Motion whose background image is repeated, positioned, sized in lengths, nine-sliced or a vector image keeps
   the elliptical corners.
 - The face a `skew-*` or upright `shadow-*` element repaints draws each border side in its own colour and width,
-  rather than every side in the left one's, two sides meeting in a corner divided in proportion to their widths.
+  rather than every side in the left one's, two sides meeting in a corner divided on the line from its outer corner to its inner one, as a dashed side is.

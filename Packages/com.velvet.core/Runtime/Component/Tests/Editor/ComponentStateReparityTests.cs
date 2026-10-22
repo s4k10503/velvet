@@ -256,6 +256,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base's render already subscribed, which the precondition reads.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first.
         [Test]
         public void Given_AnInlineChildInsideAKeyedHost_When_TheHostTypeSwapsAway_Then_TheChildsSubscriptionIsReleased()
         {
@@ -265,6 +267,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             var baseline = StoreSubscriberCount(store);
             using var mounted = V.Mount(root, V.Component(TypeSwapHost, key: "ts"));
+            mounted.FlushEffectsForTest();
             Assume.That(StoreSubscriberCount(store), Is.EqualTo(baseline + 1),
                 "Precondition: the inline child subscribed exactly once");
 
@@ -295,6 +298,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base's render already subscribed, which the precondition reads.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first.
         [Test]
         public void Given_AnInlineChildInsidePortalContent_When_ThePortalUnmounts_Then_ItsSubscriptionIsReleased()
         {
@@ -308,6 +313,7 @@ namespace Velvet.Tests
                 var root = new VisualElement();
                 var baseline = StoreSubscriberCount(store);
                 using var mounted = V.Mount(root, V.Component(PortalLeakHost, key: "portal-host"));
+                mounted.FlushEffectsForTest();
                 Assume.That(StoreSubscriberCount(store), Is.EqualTo(baseline + 1),
                     "Precondition: the portal content's inline child subscribed exactly once");
 
@@ -329,6 +335,8 @@ namespace Velvet.Tests
         // dispose the inline child mounted under it.
         private readonly record struct Row(string Id);
 
+        // GREEN_ON_BASE(characterization): the base's item renders already subscribed, which the precondition reads.
+        // The subscriptions are now made in each window's passive effects, which the case runs after each range.
         [Test]
         public void Given_InlineChildrenInVirtualListItems_When_ScrolledToADisjointWindow_Then_RecycledChildrenAreReleased()
         {
@@ -348,11 +356,13 @@ namespace Velvet.Tests
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, node, scope.Reconciler);
             controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            FiberEffects.FlushPendingPassiveEffects(scope.Reconciler.Context);
             var firstWindow = StoreSubscriberCount(store);
             Assume.That(firstWindow, Is.GreaterThan(baseline), "Precondition: the first window's items subscribed");
 
             // Act — the viewport jumps to a fully disjoint same-size window (items 80..84), recycling 0..4 out.
             controller.UpdateVisibleRange(scrollY: 4000f, viewportHeight: 200f);
+            FiberEffects.FlushPendingPassiveEffects(scope.Reconciler.Context);
 
             // Assert — the recycled items' inline children were disposed, so the live count is one window, not two.
             Assert.That(StoreSubscriberCount(store), Is.EqualTo(firstWindow),

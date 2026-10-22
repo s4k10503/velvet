@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -13,6 +14,8 @@ namespace Velvet.Tests
     /// <item>When the selected value changes, the component re-renders once and observes the new value.</item>
     /// <item>When a store change leaves the selected value unchanged, no re-render is scheduled.</item>
     /// <item>Change detection uses the supplied <see cref="IEqualityComparer{T}"/> (default Object.is): values equal by the comparer skip the re-render, values that differ trigger it.</item>
+    /// <item>The subscription is made in the commit's passive effects; a change made before they run re-renders
+    /// the component once they do.</item>
     /// <item>Unmount disposes the store subscription, so later store changes no longer reach the component.</item>
     /// <item>Re-mounting establishes a fresh subscription.</item>
     /// <item>A selector that throws on a store emit is not swallowed: it re-renders so the render-phase throw reaches the ErrorBoundary.</item>
@@ -43,6 +46,7 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             ResetStoreRead();
+            s_clickStore = null;
             ResetSelectorPartial();
             ResetCustomComparer();
             ResetThrowingSelector();
@@ -64,6 +68,9 @@ namespace Velvet.Tests
             Assert.AreEqual(100, s_storeReadLastValue);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_MountedComponent_When_SelectedValueChanges_Then_NewValueIsObserved()
         {
@@ -71,6 +78,7 @@ namespace Velvet.Tests
             using var store = new TestCounterStore(initial: 0);
             s_storeReadStore = store;
             using var mounted = V.Mount(_root, V.Component(StoreReadRender, key: "store"));
+            mounted.FlushEffectsForTest();
 
             // Act
             store.SetValue(5);
@@ -80,6 +88,9 @@ namespace Velvet.Tests
             Assert.AreEqual(5, s_storeReadLastValue);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_MountedComponent_When_SelectedValueChanges_Then_ComponentReRendersExactlyOnce()
         {
@@ -87,6 +98,7 @@ namespace Velvet.Tests
             using var store = new TestCounterStore(initial: 0);
             s_storeReadStore = store;
             using var mounted = V.Mount(_root, V.Component(StoreReadRender, key: "store"));
+            mounted.FlushEffectsForTest();
             var renderCountBefore = s_storeReadRenderCount;
 
             // Act
@@ -97,6 +109,9 @@ namespace Velvet.Tests
             Assert.AreEqual(renderCountBefore + 1, s_storeReadRenderCount);
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_MountedComponent_When_StoreChangesButSelectedValueIsEqual_Then_NoRerender()
         {
@@ -104,6 +119,7 @@ namespace Velvet.Tests
             using var store = new TestPairStore(new PairState(1, "a"));
             s_selectorPartialStore = store;
             using var mounted = V.Mount(_root, V.Component(SelectorPartialRender, key: "partial"));
+            mounted.FlushEffectsForTest();
             var renderCountBefore = s_selectorPartialRenderCount;
 
             // Act — only Text changes; the .Number selector output is unchanged
@@ -115,6 +131,9 @@ namespace Velvet.Tests
                 "A store change that leaves the selected value equal schedules no re-render");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_CustomComparer_When_ValuesEqualByComparer_Then_NoRerender()
         {
@@ -123,6 +142,7 @@ namespace Velvet.Tests
             s_customComparerStore = store;
             s_customComparerComparer = new NumberEqualityOnly();
             using var mounted = V.Mount(_root, V.Component(CustomComparerRender, key: "custom"));
+            mounted.FlushEffectsForTest();
             var renderCountBefore = s_customComparerRenderCount;
 
             // Act — Number is unchanged, so the comparer treats the value as equal
@@ -134,6 +154,9 @@ namespace Velvet.Tests
                 "Values equal under the supplied comparer skip the re-render");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_CustomComparer_When_ValuesDifferByComparer_Then_ComponentReRenders()
         {
@@ -142,6 +165,7 @@ namespace Velvet.Tests
             s_customComparerStore = store;
             s_customComparerComparer = new NumberEqualityOnly();
             using var mounted = V.Mount(_root, V.Component(CustomComparerRender, key: "custom"));
+            mounted.FlushEffectsForTest();
             var renderCountBefore = s_customComparerRenderCount;
 
             // Act — Number changes, so the comparer treats the value as different
@@ -153,6 +177,8 @@ namespace Velvet.Tests
                 "Values that differ under the supplied comparer trigger a re-render");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, and its unmount already disposed that.
+        // The passive flush below is what makes the subscription this case disposes exist on the head.
         [Test]
         public void Given_MountedComponent_When_Unmounted_Then_StoreSubscriptionIsDisposed()
         {
@@ -160,6 +186,7 @@ namespace Velvet.Tests
             using var store = new TestCounterStore(initial: 0);
             s_storeReadStore = store;
             var mounted = V.Mount(_root, V.Component(StoreReadRender, key: "store"));
+            mounted.FlushEffectsForTest();
 
             // Act
             mounted.Dispose();
@@ -169,6 +196,48 @@ namespace Velvet.Tests
             Assert.AreEqual(0, s_storeReadLastValue, "A store change after unmount does not reach the component");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // On the head nothing is subscribed until the passive effects run, and the comparison the subscription
+        // makes once it exists is what finds the change.
+        [Test]
+        public void Given_TheSelectedFieldChangedBeforeTheMountsEffectsRun_When_TheyRun_Then_TheComponentReRenders()
+        {
+            // Arrange
+            using var store = new TestPairStore(new PairState(1, "a"));
+            s_selectorPartialStore = store;
+            using var mounted = V.Mount(_root, V.Component(SelectorPartialRender, key: "partial"));
+            var renderCountBefore = s_selectorPartialRenderCount;
+            store.SetPair(new PairState(2, "a"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.AreEqual(renderCountBefore + 1, s_selectorPartialRenderCount);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the layout effect's write rendered in the click.
+        // On the head the subscription that finds the write forces a sync-lane render, which the click's drain renders.
+        [Test]
+        public void Given_AClickMountingAReaderWhoseLayoutEffectWritesTheStore_When_TheClickFlushes_Then_TheReaderShowsTheWrite()
+        {
+            // Arrange
+            using var store = new TestCounterStore(initial: 0);
+            s_clickStore = store;
+            using var mounted = V.Mount(_root, V.Component(ClickMountStoreHostRender, key: "click-host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            _root.Q<Button>("show").SimulateClick();
+
+            // Assert
+            Assert.AreEqual("7", _root.Q<Label>("layout-store-reader").text);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_RemountedComponent_When_StoreChanges_Then_FreshSubscriptionObservesChange()
         {
@@ -178,6 +247,7 @@ namespace Velvet.Tests
             var first = V.Mount(_root, V.Component(StoreReadRender, key: "store"));
             first.Dispose();
             using var second = V.Mount(_root, V.Component(StoreReadRender, key: "store"));
+            second.FlushEffectsForTest();
 
             // Act
             store.SetValue(42);
@@ -187,6 +257,9 @@ namespace Velvet.Tests
             Assert.AreEqual(42, s_storeReadLastValue, "Re-mounting establishes a fresh subscription that observes changes");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
+        // The subscription is now made in the mount's passive effects, which the arrangement runs first, so the
+        // change is notified rather than found when the subscription is made.
         [Test]
         public void Given_SelectorThatThrowsOnEmit_When_StoreChanges_Then_ExceptionReachesErrorBoundary()
         {
@@ -194,6 +267,7 @@ namespace Velvet.Tests
             using var store = new TestIndexedStore(new IndexedState(0, new[] { 10, 20 }));
             s_throwingSelectorStore = store;
             using var mounted = V.Mount(_root, V.Component(ThrowingSelectorBoundaryRender, key: "boundary"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
             Assume.That(s_throwingSelectorFallbackShown, Is.False, "Precondition: the boundary is healthy before the bad emit");
 
             // Act — move Index out of range so the selector throws on the subscription callback
@@ -230,7 +304,8 @@ namespace Velvet.Tests
         public void Given_AncestorImmediateAndDescendantDelayed_When_AStoreMutationInsideATransitionLandsBetweenDrains_Then_TheDelayedDrainCommitsItToBoth()
         {
             // Arrange — the immediate drain renders the ancestor at 0; the mutation, made inside a transition,
-            // re-schedules both readers on the Transition lane, so no immediate work precedes the delayed drain.
+            // re-schedules both readers on the Urgent lane as a store change does anywhere, so the delayed drain
+            // renders them in the immediate passes that run ahead of its own queue.
             using var store = new TestCounterStore(initial: 0);
             s_store = store;
             using var mounted = MountAncestorDescendant();
@@ -354,6 +429,29 @@ namespace Velvet.Tests
                 "A reader that read a pin older than the store renders again and catches up with it");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render asked for the catch-up render, which its drain then ran.
+        // The catch-up is now the commit's passive check, which forces a sync-lane render the same drain runs.
+        [Test]
+        public void Given_AReaderTheMidPassMutationLeavesUnnotified_When_ItRendersThePinBehindTheStore_Then_TheDrainCatchesItUp()
+        {
+            // Arrange — the reader committed 1 and is queued by the change to 0; the mutator, queued ahead of it,
+            // moves the store back to 1, which leaves the reader's committed selection equal and notifies it of nothing
+            using var store = new TestCounterStore(initial: 1);
+            s_store = store;
+            using var mounted = MountMidPassMutation();
+            mounted.FlushEffectsForTest();
+            s_midPassMutateOnRender = true;
+            s_midPassFirstFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_midPassMutatorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            store.SetValue(0);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("mid-pass-reader").text, Is.EqualTo("1"));
+        }
+
         [Test]
         public void Given_NullSnapshot_When_StoreMutatesPartwayThroughADrainPass_Then_ALaterReaderObservesThePinnedNull()
         {
@@ -414,6 +512,35 @@ namespace Velvet.Tests
             public bool Equals(int x, int y) => x == y;
             public int GetHashCode(int obj) => obj.GetHashCode();
         }
+
+        #region ClickMount components (a reader a click mounts, writing the store from its layout effect)
+
+        private static TestCounterStore s_clickStore;
+
+        [Component]
+        private static VNode ClickMountStoreHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "show", onClick: () => setShown.Invoke(true)),
+                shown ? V.Component(LayoutWritingStoreReaderRender, key: "reader") : null,
+            });
+        }
+
+        [Component]
+        private static VNode LayoutWritingStoreReaderRender()
+        {
+            var value = Hooks.UseStore(s_clickStore, s => s);
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (s_clickStore.Current == 0) s_clickStore.SetValue(7);
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(name: "layout-store-reader", text: value.ToString());
+        }
+
+        #endregion
 
         #region StoreRead component (UseStore identity selector)
 

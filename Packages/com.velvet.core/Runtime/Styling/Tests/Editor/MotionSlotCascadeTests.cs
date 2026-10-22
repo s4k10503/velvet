@@ -103,12 +103,14 @@ namespace Velvet.Tests
             Assert.That(Lengths(plan), Is.EqualTo("Width:0->40"));
         }
 
+        // GREEN_ON_BASE(characterization): the base ranks every per-axis scale over a uniform scale-[…]; the important
+        // modifier keeps that holder now that a plain one yields to the uniform Tailwind emits after it.
         [Test]
-        public void Given_APerAxisScaleAfterAUniformOne_When_Resolved_Then_NoScaleChannelIsPlanned()
+        public void Given_AnImportantPerAxisScaleBesideAUniformOne_When_Resolved_Then_NoScaleChannelIsPlanned()
         {
-            // Arrange — the per-axis layer writes the x axis over the uniform one, a pair no single scale
+            // Arrange — the important per-axis layer writes the x axis over the uniform one, a pair no single scale
             // magnitude describes.
-            var to = new[] { "scale-[1.4]", "scale-x-[.5]" };
+            var to = new[] { "scale-[1.4]", "!scale-x-[.5]" };
 
             // Act
             var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
@@ -117,19 +119,19 @@ namespace Velvet.Tests
             Assert.That(plan.Scale, Is.Null);
         }
 
-        [Test]
-        public void Given_APerAxisScaleBeforeAUniformOne_When_Resolved_Then_OnlyTheUniformControlHasAScaleChannel()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_APerAxisScaleBesideAUniformOneOfItsImportance_When_Resolved_Then_TheUniformHoldsTheScaleChannel(
+            bool reversed)
         {
-            // Arrange — the resolver composes a per-axis layer over the uniform one whichever comes first.
-            var to = new[] { "scale-x-[.5]", "scale-[1.4]" };
+            // Arrange — Tailwind emits scale-[1.4] after scale-x-[.5], and the element draws it alone.
+            var to = reversed ? new[] { "scale-[1.4]", "scale-x-[.5]" } : new[] { "scale-x-[.5]", "scale-[1.4]" };
 
             // Act
-            var control = MotionSpringClassParser.Resolve(new[] { "scale-[2]" },
-                to.Where(cls => !cls.StartsWith("scale-x", System.StringComparison.Ordinal)).ToArray());
             var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
 
             // Assert
-            Assert.That((control.Scale?.to, plan.Scale.HasValue), Is.EqualTo(((float?)1.4f, false)));
+            Assert.That(plan.Scale?.to ?? float.NaN, Is.EqualTo(1.4f));
         }
 
         [TestCase("!p-8", "pt-[2px]")]
@@ -219,8 +221,10 @@ namespace Velvet.Tests
             Assert.That((plan.TranslateX?.to, plan.TranslateY?.to), Is.EqualTo(((float?)16f, (float?)8f)));
         }
 
-        [TestCase("scale-x-[.5]")]
-        [TestCase("scale-y-[.5]")]
+        // GREEN_ON_BASE(characterization): the base ranks every per-axis scale over a uniform scale-[…]; the important
+        // modifier keeps that holder now that a plain one yields to the uniform Tailwind emits after it.
+        [TestCase("!scale-x-[.5]")]
+        [TestCase("!scale-y-[.5]")]
         public void Given_APerAxisScaleOnTheLeavingSide_When_Resolved_Then_OnlyTheUniformControlHasAScaleChannel(string layer)
         {
             // Arrange
@@ -293,13 +297,28 @@ namespace Velvet.Tests
                 Is.EqualTo(((float?)4f, (float?)8f, 4f, 8f)));
         }
 
-        // GREEN_ON_BASE(characterization): per-axis scale composition remains nonuniform beside an important
-        // uniform declaration; adding important ranks must preserve its unreadable holder.
+        // The important scale-[1.4] declares scale itself above the axis utility, so the element draws it alone.
         [TestCase("scale-x-[.5]", false)]
         [TestCase("scale-x-[.5]", true)]
         [TestCase("scale-x-50", false)]
         [TestCase("scale-x-50", true)]
-        public void Given_AnImportantUniformScaleBesideAPlainPerAxisScale_When_Resolved_Then_OnlyTheUniformControlHasAScaleChannel(string axis, bool reversed)
+        public void Given_AnImportantUniformScaleBesideAPlainPerAxisScale_When_Resolved_Then_TheUniformHoldsTheScaleChannel(string axis, bool reversed)
+        {
+            // Arrange
+            var to = reversed ? new[] { axis, "!scale-[1.4]", "scale-[2]" } : new[] { "!scale-[1.4]", "scale-[2]", axis };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
+
+            // Assert
+            Assert.That(plan.Scale?.to ?? float.NaN, Is.EqualTo(1.4f));
+        }
+
+        [TestCase("scale-x-[.5]", false)]
+        [TestCase("scale-x-[.5]", true)]
+        [TestCase("scale-x-50", false)]
+        [TestCase("scale-x-50", true)]
+        public void Given_AnImportantUniformScaleBesideAPlainPerAxisScale_When_Mounted_Then_TheAxisDrawsTheUniform(string axis, bool reversed)
         {
             // Arrange
             var to = reversed ? new[] { axis, "!scale-[1.4]", "scale-[2]" } : new[] { "!scale-[1.4]", "scale-[2]", axis };
@@ -307,13 +326,9 @@ namespace Velvet.Tests
 
             // Act
             using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));
-            var control = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, new[] { "!scale-[1.4]" });
-            var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
-            var settled = root.Q<VisualElement>("leaf").style.scale.value.value;
 
             // Assert
-            Assert.That((control.Scale?.to, plan.Scale.HasValue, settled.x, settled.y),
-                Is.EqualTo(((float?)1.4f, false, 0.5f, 1.4f)));
+            Assert.That(root.Q<VisualElement>("leaf").style.scale.value.value.x, Is.EqualTo(1.4f));
         }
 
         // GREEN_ON_BASE(characterization): an important stylesheet scale clears the plain inline axis;

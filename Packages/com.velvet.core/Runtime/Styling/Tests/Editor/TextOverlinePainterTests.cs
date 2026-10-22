@@ -7,8 +7,8 @@ namespace Velvet.Tests
     /// Specifies the pure geometry behind the <c>overline</c> text-decoration's painted rule
     /// (<see cref="TextOverlinePainter.TryComputeGeometry"/>) and its thickness rule
     /// (<see cref="TextOverlinePainter.ResolveThickness"/>, public, tested directly). The horizontal/vertical
-    /// anchor resolvers are private, so — mirroring how <c>DashedBorderPainterTests</c> never calls
-    /// <c>DashedBorderPainter</c>'s private <c>ComputeDashes</c> / <c>ComputeDots</c> directly — they are
+    /// anchor resolvers are private, so — mirroring how <c>DashedBorderPainterTests</c> reaches
+    /// <c>DashedBorderPainter</c>'s private pattern only through <c>ComputeSegments</c> — they are
     /// exercised only through TryComputeGeometry's own output. Both measurements the function needs (the
     /// text's natural width and the wrapped text block's height) are ordinary parameters supplied by the
     /// caller, not a live <c>MeasureTextSize</c> call, so every case here runs headless with no panel and no

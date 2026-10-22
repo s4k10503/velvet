@@ -537,6 +537,8 @@ namespace Velvet.Tests
                 "The update commit fires cleanup once and the new setup once — no StrictMode mount double-invoke");
         }
 
+        // GREEN_ON_BASE(characterization): the base's state flush already left the mount-staged entry pending for the bundle.
+        // FlushStateForTest now runs pending passive effects first, so this case takes the variant that does not.
         [Test]
         public void Given_StrictMode_When_MountAndUpdatePassiveEntriesDrainTogether_Then_StagedSetupRunsOnce()
         {
@@ -553,7 +555,7 @@ namespace Velvet.Tests
 
             // Act
             s_reexpansionParentSet.Invoke("b");
-            mounted.FlushStateForTest();
+            mounted.FlushStateKeepingPassiveEffectsForTest();
             mounted.FlushEffectsForTest();
 
             // Assert

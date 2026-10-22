@@ -10,7 +10,9 @@ namespace Velvet
     /// synchronously, so the update commits in the same frame. That commit is a sync-lane one, so it runs its
     /// own passive effects as it ends (<c>FiberBatchScheduler.DrainImmediatePasses</c>). The flag is restored
     /// before both, so an update an effect schedules takes the Normal lane: one from the earlier commits'
-    /// effects commits within this same flush, and one from this commit's waits for the next drain. A state
+    /// effects commits within this same flush, and one from this commit's waits for the next drain, unless one of those
+    /// effects forces a store hook's re-render, which takes the sync lane: the drain then renders again before the flush
+    /// returns, the waiting updates with it. A state
     /// update issued during the commit still commits within the same flush (the drain loops until its queue
     /// is quiet, with the maximum-update-depth cap bounding a runaway feedback pair). Shared by
     /// <c>FiberEventBindingManager</c> (clicks, value changes, discrete pointer/key bindings) and the

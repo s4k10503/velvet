@@ -20,10 +20,20 @@ namespace Velvet.TestUtilities
         private const string DrainDelayedMethodName = "DrainDelayed";
         private const string RunImmediateCallbackMethodName = "RunImmediateCallback";
 
-        /// <summary>Drains the Normal / Urgent tier.</summary>
-        // Bypasses: the panel scheduler callback: production registers RunImmediateCallback, which also retires the tier's registration and marks a scheduler pass; this runs DrainImmediate as FlushImmediate does, doing neither (RunImmediateCallbackForTest runs the callback itself).
+        /// <summary>
+        /// Drains the Normal / Urgent tier. When the tier holds nothing, it first runs the passive effects earlier
+        /// commits left pending, as React's <c>act()</c> flushes them, so an update one of them schedules is drained
+        /// here too.
+        /// </summary>
+        // Bypasses: the panel scheduler callback: production registers RunImmediateCallback, which also retires the tier's registration and marks a scheduler pass; this runs DrainImmediate as FlushImmediate does, doing neither (RunImmediateCallbackForTest runs the callback itself). Also the passive drain's own callback, which production runs on the panel scheduler after the commit that armed it.
         internal static void DrainImmediateForTest(this FiberBatchScheduler scheduler)
-            => Drain(scheduler, DrainImmediateMethodName);
+        {
+            // A tier holding work runs them itself ahead of its render (FiberBatchScheduler.Drain); a flush here as
+            // well would leave that one nothing to run, so a case draining through this helper could not fail for
+            // its loss.
+            if (scheduler.ImmediatePendingCount == 0) scheduler.FlushPendingPassiveEffects();
+            Drain(scheduler, DrainImmediateMethodName);
+        }
 
         /// <summary>Runs the callback the Normal / Urgent tier registers with the panel scheduler.</summary>
         // Bypasses: the panel scheduler that decides when it runs.

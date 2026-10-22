@@ -96,6 +96,21 @@ namespace Velvet.Tests
         // the native rectangular border behind the sheared / shadowed face.
 
         [Test]
+        public void Given_ABorderDashedElementWithATopColorOfItsOwn_When_Mounted_Then_ItsOutlineKeepsTheTopColor()
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#0000FF", out var blue);
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "border-dashed border-[#FF0000] border-t-[#0000FF]", name: "card") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.BorderStyleBindings[scope.Root[0]].Face.BorderColors[(int)DivideEdge.Top],
+                Is.EqualTo(blue));
+        }
+
+        [Test]
         public void Given_ABorderDashedColoredElement_When_SkewIsAddedInOnePatch_Then_TheSkewFaceAdoptsTheBorderColor()
         {
             // Arrange — a dashed border captures its inline color and masks the native border with the sentinel.

@@ -549,7 +549,7 @@ namespace Velvet
 
         private static readonly List<Vector2> s_contour = new();
         private static readonly List<Vector2> s_clipped = new();
-        private static readonly List<Vector2> s_scratch = new();
+        private static readonly Vector2[] s_rect = new Vector2[4];
 
         // A fan over the part of the image's rect inside the border edge.
         private static void PaintImage(MeshGenerationContext mgc, in FaceImage image, in ShearedRoundedRect box)
@@ -572,55 +572,16 @@ namespace Velvet
             }
         }
 
-        // The outline of the part of rect inside the border edge of box, clockwise, into outline.
+        // The outline of the part of rect inside the border edge of box, into outline.
         private static void ImageOutline(in ShearedRoundedRect box, Rect rect, List<Vector2> outline)
         {
             BorderBandPainter.BuildContour(s_contour, new Rect(0f, 0f, box.Width, box.Height),
                 BorderBandPainter.Fitted(box.Radii, box.Width, box.Height), SilhouetteFace.Shearing.None);
-            outline.Clear();
-            outline.AddRange(s_contour);
-            for (var edge = 0; edge < 4; edge++)
-            {
-                ClipAgainst(outline, rect, edge);
-            }
-        }
-
-        // How far p lies inside the edge of rect: 0 its left, 1 its right, 2 its top, 3 its bottom.
-        private static float Inside(Vector2 p, Rect rect, int edge) => edge switch
-        {
-            0 => p.x - rect.xMin,
-            1 => rect.xMax - p.x,
-            2 => p.y - rect.yMin,
-            _ => rect.yMax - p.y,
-        };
-
-        // Where the segment a-b crosses that edge's line.
-        private static Vector2 Cross(Vector2 a, Vector2 b, Rect rect, int edge)
-        {
-            var t = edge switch
-            {
-                0 => (rect.xMin - a.x) / (b.x - a.x),
-                1 => (rect.xMax - a.x) / (b.x - a.x),
-                2 => (rect.yMin - a.y) / (b.y - a.y),
-                _ => (rect.yMax - a.y) / (b.y - a.y),
-            };
-            return Vector2.LerpUnclamped(a, b, t);
-        }
-
-        // One Sutherland-Hodgman step: keeps the part of the polygon inside that edge.
-        private static void ClipAgainst(List<Vector2> polygon, Rect rect, int edge)
-        {
-            s_scratch.Clear();
-            for (var i = 0; i < polygon.Count; i++)
-            {
-                var current = polygon[i];
-                var previous = polygon[(i + polygon.Count - 1) % polygon.Count];
-                var currentIn = Inside(current, rect, edge) >= 0f;
-                if (currentIn != Inside(previous, rect, edge) >= 0f) s_scratch.Add(Cross(previous, current, rect, edge));
-                if (currentIn) s_scratch.Add(current);
-            }
-            polygon.Clear();
-            polygon.AddRange(s_scratch);
+            s_rect[0] = new Vector2(rect.xMin, rect.yMin);
+            s_rect[1] = new Vector2(rect.xMax, rect.yMin);
+            s_rect[2] = new Vector2(rect.xMax, rect.yMax);
+            s_rect[3] = new Vector2(rect.xMin, rect.yMax);
+            DashedBorderPainter.ClipConvex(s_contour, s_rect, outline);
         }
 
         // The rect the image is drawn in: the box, or the image's own proportions covering or contained by the box,

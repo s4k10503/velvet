@@ -78,6 +78,23 @@ namespace Velvet
             return winner != null;
         }
 
+        // The line style element's own classes select, by TryExtract's cascade, or null where none names one.
+        public static BorderLineStyle? StyleOf(UnityEngine.UIElements.VisualElement element)
+        {
+            BorderLineStyle? style = null;
+            foreach (var cls in element.GetClasses())
+            {
+                style = cls switch
+                {
+                    Dashed => BorderLineStyle.Dashed,
+                    Dotted => BorderLineStyle.Dotted,
+                    Solid => BorderLineStyle.Solid,
+                    _ => style,
+                };
+            }
+            return style;
+        }
+
         // Resolves the cascade (last recognized class wins) into a BorderStyleSpec. Returns true only when the
         // result is ACTIVE (dashed or dotted) — border-solid resets, so a list ending in border-solid extracts
         // to false.
