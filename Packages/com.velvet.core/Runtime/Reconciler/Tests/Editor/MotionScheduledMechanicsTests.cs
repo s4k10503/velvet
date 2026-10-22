@@ -5071,6 +5071,45 @@ namespace Velvet.Tests
         }
 
 
+        [TestCase("translate-y-1/2", "translate-y-[40px]", "translate-y-1/2", "translate", 85f, 92f)]
+        [TestCase("", "rotate-45", "rotate-0", "rotate", 10.5f, 14f)]
+        public void Given_AMotionTransitioningItsTransformAsItTakesAHeldId_When_ItsClassesSendItBack_Then_ItRunsAsTheEngineRunsIt(
+            string from, string to, string back, string slot, float low, float high)
+        {
+            // Arrange — the bundled sheet; "a" 200px square at from, and a control holding no id as large and as given,
+            // both transitioning everything linearly over a second; both take to; some 0.2 s on, "a" moves under "card"
+            // from "b", as large and 300px right, on a three-second tween, taking over its own transition; some 0.1 s on.
+            const string transitioning = "transition-all duration-1000 ease-linear";
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted, s_aSize, s_bSize) = ("solo", 20, true, true, 200, 200);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            s_aTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
+            (s_aClasses, s_controlClasses) = ($"{transitioning} {from}", $"min-w-[200px] min-h-[200px] {transitioning} {from}");
+            using var mounted = MountAAlone();
+            (s_aClasses, s_controlClasses) = ($"{transitioning} {to}", $"min-w-[200px] min-h-[200px] {transitioning} {to}");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+            (s_aId, s_aLeft) = ("card", 0);
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Act — both take back: the half of the box the translate ran from, which UI Toolkit reads as a reversal, or a
+            // rotate of 0deg where it ran from none, which it does not; some 0.1 s on.
+            (s_aClasses, s_controlClasses) = ($"{transitioning} {back}", $"min-w-[200px] min-h-[200px] {transitioning} {back}");
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert — "a"'s own translate down, or own rotate, where the control stands, within a frame of it.
+            var a = Root.Q<VisualElement>("a");
+            var control = Root.Q<VisualElement>("control").resolvedStyle;
+            var expected = slot == "rotate" ? control.rotate.angle.ToDegrees() : control.translate.y;
+            var own = !mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection) ? float.NaN
+                : slot != "rotate" ? a.style.translate.value.y.value
+                : projection.WritesRotate ? projection.RotateCarry.Value : float.NaN;
+            Assert.That(own, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(1f));
+        }
+
+
         [TestCase("scale-150", true, false, null, 1.3f, 1.48f)]
         [TestCase("translate-y-[40px]", false, false, null, 24f, 38f)]
         [TestCase("scale-150", true, true, null, 1.2f, 1.45f)]
@@ -5908,15 +5947,18 @@ namespace Velvet.Tests
             Assert.That(from, Is.EqualTo(drawnThen > 3f && drawnThen < 10f ? drawnThen : float.NaN).Within(0.6f));
         }
 
-        [Test]
-        public void Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt()
+        [TestCase("rounded-[20px]", 6f, 14f)]
+        [TestCase("rounded-[25%]", 8f, 17f)]
+        public void Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt(string to,
+            float low, float high)
         {
-            // Arrange / Act
-            var (own, control) = TakeOverAsItTurns("rounded-[20px]", e => e.resolvedStyle.borderTopLeftRadius,
+            // Arrange / Act — a percent runs from the box's 0px, which UI Toolkit keeps in pixels as what a reversal runs
+            // back to; on the 100px box a percent of its width reads as the same number of pixels.
+            var (own, control) = TakeOverAsItTurns(to, e => e.resolvedStyle.borderTopLeftRadius,
                 (projection, _) => projection.RadiusCarries[0].Value);
 
             // Assert — within half a pixel of the control, which is half way round.
-            Assert.That(own, Is.EqualTo(control > 6f && control < 14f ? control : float.NaN).Within(0.5f));
+            Assert.That(own, Is.EqualTo(control > low && control < high ? control : float.NaN).Within(0.5f));
         }
 
         [Test]

@@ -152,19 +152,23 @@ namespace Velvet
         }
 #endif
 
-        // The rotate the rules declare, in degrees; NaN where the cached style cannot be read. Read by an accessor compiled
-        // once, since a layoutId lead mixing its rotate reads it on every pass
+        // The rotate the rules declare, none included; null where the cached style cannot be read. Read by an accessor
+        // compiled once, since a layoutId lead mixing its rotate reads it on every pass
         // (Given_ALeadMixingItsRotate_When_ItsOwnRotateIsReadAgain_Then_NothingIsAllocated).
-        public static float Rotate(VisualElement element)
+        public static Rotate? Rotation(VisualElement element)
         {
 #if !ENABLE_IL2CPP
-            if (s_compiledRotate != null) return s_compiledRotate(element).angle.ToDegrees();
+            if (s_compiledRotate != null)
+            {
+                var read = s_compiledRotate(element);
+                return float.IsNaN(read.angle.value) ? null : read;
+            }
 #endif
-            return Of(element) is { } style && TryReadRotate(style, out var rotate) ? rotate.angle.ToDegrees() : float.NaN;
+            return Of(element) is { } style && TryReadRotate(style, out var rotate) ? rotate : null;
         }
 
         // The translate and the scale the rules declare; null where the cached style cannot be read. Read by accessors
-        // compiled once, as Rotate is, since a layoutId projection can read both on every pass.
+        // compiled once, as Rotation is, since a layoutId projection can read both on every pass.
         public static Translate? Translate(VisualElement element)
         {
 #if !ENABLE_IL2CPP

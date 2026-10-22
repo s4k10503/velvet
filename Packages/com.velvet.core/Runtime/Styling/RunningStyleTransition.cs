@@ -61,7 +61,7 @@ namespace Velvet
             TakeOver(element, carry, s_floats, s_opacityId, value => ((float)value, 0));
 
         public static void TakeOverRotate(VisualElement element, LayoutIdCarry carry) =>
-            TakeOver(element, carry, s_rotates, s_rotateId, value => (((Rotate)value).angle.ToDegrees(), 0));
+            TakeOver(element, carry, s_rotates, s_rotateId, value => (((Rotate)value).angle.ToDegrees(), LayoutIdLook.Tag((Rotate)value)));
 
         // The x and y axes, each carried in the given unit. UI Toolkit runs a transition in the unit of its end and keeps
         // what a reversal runs back to as it was given, in its own unit or as none
@@ -72,7 +72,8 @@ namespace Velvet
             for (var axis = 0; axis < 2; axis++)
             {
                 TakeOver(element, axes[axis], s_translates, s_translateId,
-                    value => (InUnit(element, (Translate)value, axis, units[axis]), MotionLayoutIdDriver.Tag((Translate)value, axis)));
+                    value => (InUnit(axis == 0 ? ((Translate)value).x : ((Translate)value).y, units[axis], element.layout.size[axis]),
+                        MotionLayoutIdDriver.Tag((Translate)value, axis)));
             }
         }
 
@@ -84,20 +85,20 @@ namespace Velvet
             }
         }
 
-        // NaN where a pixel value would need a percent of a box with no extent, a conversion UI Toolkit refuses.
-        private static float InUnit(VisualElement element, Translate translate, int axis, LengthUnit unit)
-        {
-            var length = axis == 0 ? translate.x : translate.y;
-            var size = element.layout.size[axis];
-            if (length.unit == unit) return length.value;
-            if (unit != LengthUnit.Percent) return length.value / 100f * size;
-            return size > 0f ? length.value * 100f / size : float.NaN;
-        }
+        // A length in the given unit, a percent being of size. On a box with no extent a percent is NaN, which AllNumbers
+        // refuses, or infinite, which no reversal matches; UI Toolkit runs no transition into a percent there.
+        private static float InUnit(Length length, LengthUnit unit, float size) =>
+            length.unit == unit ? length.value
+            : unit == LengthUnit.Percent ? length.value * 100f / size
+            : length.value / 100f * size;
 
-        // A corner, in LayoutIdLook's corner order, carried in the given unit; one running in another is not taken over.
+        // A corner, in LayoutIdLook's corner order, carried in the given unit, each value taken into it as a percent of the
+        // element's width, which UI Toolkit takes a radius's percent of; it keeps what a reversal runs back to as it was
+        // given, as TakeOverTranslate reads
+        // (Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt).
         public static void TakeOverRadius(VisualElement element, int corner, LayoutIdCarry carry, LengthUnit unit) =>
             TakeOver(element, carry, s_lengths, s_cornerIds[corner],
-                value => (((Length)value).unit == unit ? ((Length)value).value : float.NaN, 0));
+                value => (InUnit((Length)value, unit, element.resolvedStyle.width), (int)((Length)value).unit));
 
         // A corner, in LayoutIdLook's corner order, as UI Toolkit draws it now: where a transition of it runs in the given
         // radius's unit, its current value, else that radius.

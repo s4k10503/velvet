@@ -157,17 +157,21 @@ namespace Velvet
                 if (inline.keyword == StyleKeyword.Undefined) return inline.value.angle.ToDegrees();
                 return float.IsNaN(projection.RestoredRotate) ? element.resolvedStyle.rotate.angle.ToDegrees() : projection.RestoredRotate;
             }
-            return projection.RotateCarry.Step(DeclaredRotate(element, projection), dtSec, element, "rotate", null);
+            var declared = DeclaredRotate(element, projection);
+            return projection.RotateCarry.Step(declared.angle.ToDegrees(), Tag(declared), dtSec, element, "rotate", null);
         }
 
-        // The rotate the element is given while the projection writes the slot, in degrees, which the slot holds once it
-        // is handed back.
-        public static float DeclaredRotate(VisualElement element, LayoutIdProjection projection)
+        // The rotate the element is given while the projection writes the slot, which the slot holds once it is handed back.
+        public static Rotate DeclaredRotate(VisualElement element, LayoutIdProjection projection)
         {
             var inline = projection.OwnInlineRotate;
-            var declared = inline.keyword != StyleKeyword.Null ? inline.value.angle.ToDegrees() : StyleCascade.Rotate(element);
-            return float.IsNaN(declared) ? projection.StartRotate : declared;
+            if (inline.keyword == StyleKeyword.Undefined) return inline.value;
+            if (inline.keyword != StyleKeyword.Null) return UnityEngine.UIElements.Rotate.None();
+            return StyleCascade.Rotation(element) ?? new Rotate(new Angle(projection.StartRotate));
         }
+
+        // A rotate tagged as LayoutIdCarry.TargetTag reads it.
+        internal static int Tag(Rotate rotate) => rotate == UnityEngine.UIElements.Rotate.None() ? LayoutIdCarry.NoneTag : (int)rotate.angle.unit;
 
         // The element's own radii as they are now. While the projection writes the slots a corner's own is an inline
         // value the projection took over from something other than CornerRadiusFit, else the radius the fit gives
@@ -195,7 +199,7 @@ namespace Velvet
             if (target.unit != projection.RadiusUnits[corner])
             {
                 projection.RadiusUnits[corner] = target.unit;
-                carry.Land(target.value);
+                carry.Land(target.value, (int)target.unit);
                 return target;
             }
             return new Length(carry.Step(target.value, dtSec, element, s_cornerNames[corner], "border-radius"), target.unit);
@@ -230,7 +234,7 @@ namespace Velvet
                     : element.style.rotate;
                 projection.WritesRotate = true;
                 projection.StartRotate = own;
-                projection.RotateCarry.Land(own);
+                projection.RotateCarry.Land(own, Tag(DeclaredRotate(element, projection)));
                 RunningStyleTransition.TakeOverRotate(element, projection.RotateCarry);
                 MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Rotate);
                 StyleAnimateDriver.YieldSlots(element, projection, MotionLayoutIdDriver.WrittenSlots(projection));
@@ -269,7 +273,7 @@ namespace Velvet
                 projection.DrawnRadii = new Length[4];
                 for (var corner = 0; corner < 4; corner++)
                 {
-                    projection.RadiusCarries[corner].Land(own[corner].value);
+                    projection.RadiusCarries[corner].Land(own[corner].value, (int)own[corner].unit);
                     projection.RadiusUnits[corner] = own[corner].unit;
                     RunningStyleTransition.TakeOverRadius(element, corner, projection.RadiusCarries[corner], own[corner].unit);
                 }

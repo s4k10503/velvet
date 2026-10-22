@@ -735,7 +735,10 @@ namespace Velvet
             // the slot after this render
             // (Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate).
             var handed = LayoutIdLook.End(element, projection, ctx.StyleAnimationScheduler.Clock);
-            if (projection.WritesRotate) restored.Rotate = handed ? LayoutIdLook.DeclaredRotate(element, projection) : projection.RotateCarry.Value;
+            if (projection.WritesRotate)
+            {
+                restored.Rotate = handed ? LayoutIdLook.DeclaredRotate(element, projection).angle.ToDegrees() : projection.RotateCarry.Value;
+            }
             if (ctx.CurrentPass != null && (restored.Translate != null || restored.Scale != null || restored.Rotate != null))
             {
                 ctx.LayoutIdRestored[element] = restored;
@@ -1357,10 +1360,12 @@ namespace Velvet
         // The held list has named the property since it was written.
         private bool _named;
 
-        // What UI Toolkit tells values of the property apart by beyond their number, a translate's unit or its none, so that
-        // a change of it alone is a change of the value, and a change back is a reversal only onto the same: NoneTag, else a
-        // LengthUnit; 0 where no tag is kept, as for the scale, whose none UI Toolkit compares as its value
-        // (Given_ALeadWhoseTransformChangesLateInItsMove_When_TheMoveLands_Then_ItRunsOnAsTheEngineRunsIt).
+        // What UI Toolkit tells values of the property apart by beyond their number, a unit or a none, so that a change of
+        // it alone is a change of the value, and a change back is a reversal only onto the same: NoneTag, else the
+        // LengthUnit of a translate or a radius, or the AngleUnit of a rotate; 0 where no tag is kept, as for the scale,
+        // whose none UI Toolkit compares as its value
+        // (Given_ALeadWhoseTransformChangesLateInItsMove_When_TheMoveLands_Then_ItRunsOnAsTheEngineRunsIt,
+        // Given_AMotionTransitioningItsTransformAsItTakesAHeldId_When_ItsClassesSendItBack_Then_ItRunsAsTheEngineRunsIt).
         public const int NoneTag = -1;
 
         public float Value { get; private set; }
@@ -1417,9 +1422,12 @@ namespace Velvet
         // reversal reversed — is shortened by how far the running one had got, as UI Toolkit shortens a reversing
         // transition
         // (Given_ALeadCrossfadingIn_When_ItsClassesFadeItOutAndBackMidway_Then_TheWayBackIsShortened).
-        public float Step(float target, float dtSec, VisualElement element, string property, string? shorthand)
+        public float Step(float target, float dtSec, VisualElement element, string property, string? shorthand) =>
+            Step(target, TargetTag, dtSec, element, property, shorthand);
+
+        public float Step(float target, int tag, float dtSec, VisualElement element, string property, string? shorthand)
         {
-            if (target != Target) Retarget(target, TargetTag, Reverses(target, TargetTag), element, property, shorthand);
+            if (target != Target || tag != TargetTag) Retarget(target, tag, Reverses(target, tag), element, property, shorthand);
             return Advance(dtSec);
         }
 
