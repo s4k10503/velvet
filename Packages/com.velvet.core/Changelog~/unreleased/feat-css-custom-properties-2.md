@@ -3,7 +3,8 @@
 - CSS custom properties as classes: `[--name:value]` declares one on an element and its descendants inherit it,
   `var(--name)` and `var(--name, fallback)` read it in a utility's bracket or its modifier's
   (`w-[calc(var(--w)*2)]`, `from-[var(--brand)]`, `bg-red-500/[var(--alpha)]`), and Tailwind v4's
-  `bg-(--brand)` / `bg-red-500/(--alpha)` shorthand and `[property:value]` arbitrary properties read it too.
+  `bg-(--brand)` / `bg-red-500/(--alpha)` shorthand and `[property:value]` arbitrary properties read it too,
+  and `z-[var(--z)]` / `z-(--z)` restack an absolute element when the property changes.
   Custom properties a USS stylesheet declares are read as well. A `var()` that does not resolve computes the
   property to `unset`, as in a browser. These classes were inert before. See
   `Documentation~/styling-custom-properties.md`.

@@ -121,6 +121,7 @@ namespace Velvet
         // this one has committed.
         internal static VisualElement EnqueueMount(ReconcilerContext ctx, VisualElement real, int resolvedZ)
         {
+            resolvedZ = StyleCustomProperties.VariableZ(real) ?? resolvedZ;
             var placeholder = CreatePlaceholder();
             ctx.ZLayerPlaceholders[placeholder] = real;
             ctx.PendingPortalMounts.Enqueue(
@@ -152,6 +153,7 @@ namespace Velvet
         // where this parent's FIRST member of the opposite sign has just appeared.
         internal static void Reposition(ReconcilerContext ctx, VisualElement placeholder, VisualElement real, int newResolvedZ)
         {
+            newResolvedZ = StyleCustomProperties.VariableZ(real) ?? newResolvedZ;
             if (!ctx.ZLayerMembers.TryGetValue(real, out var member) || member.ResolvedZ == newResolvedZ)
             {
                 return;
@@ -181,6 +183,43 @@ namespace Velvet
                     null, null, null));
         }
 
+        // A z a custom property supplies (StyleCustomProperties.VariableZ) changed with no patch of real: a queued
+        // mount takes it when it drains, and inside a pass a member is Repositioned, whose deferred half that
+        // pass's drain places. Outside a pass no drain follows, so the destination layer is created here and the
+        // layers are settled at once.
+        internal static void Restack(ReconcilerContext ctx, VisualElement real, int resolvedZ)
+        {
+            if (!ctx.ZLayerMembers.TryGetValue(real, out var member))
+            {
+                foreach (var queued in ctx.PendingPortalMounts)
+                {
+                    if (queued.Node is ZLayerMountNode node && ReferenceEquals(node.Real, real))
+                    {
+                        node.ResolvedZ = resolvedZ;
+                    }
+                }
+                return;
+            }
+            if (ctx.SharedReconcileDepth > 0)
+            {
+                Reposition(ctx, member.Placeholder, real, resolvedZ);
+                return;
+            }
+            if (member.ResolvedZ == resolvedZ)
+            {
+                return;
+            }
+            var rescue = CaptureFocusForRescue(real);
+            var container = GetOrCreateContainer(ctx, member.StackingParent, resolvedZ);
+            if (!ReferenceEquals(container, member.Container))
+            {
+                DetachFromContainer(ctx, member.Container, real);
+            }
+            Place(ctx, member.Placeholder, container, member.StackingParent, real, resolvedZ, rescue);
+            DrainTeardowns(ctx);
+            ResortLayers(ctx);
+        }
+
         // Patch-time none-to-z: `real` is still ordinary (physically at its declared slot under
         // `stackingParent`); relocates it out, leaving `placeholder` in its place at the SAME physical
         // index (an in-place swap, like a WrapElement type-flip — parent childCount/order is unchanged, so
@@ -188,6 +227,7 @@ namespace Velvet
         // the destination layer already exists; defers only when it must be created for the first time.
         internal static VisualElement RelocateFromOrdinarySlot(ReconcilerContext ctx, VisualElement real, int resolvedZ)
         {
+            resolvedZ = StyleCustomProperties.VariableZ(real) ?? resolvedZ;
             var stackingParent = real.parent!;
             var idx = stackingParent.IndexOf(real);
             // Captured before the detach two lines below drops it — see Reposition's own comment on why this
@@ -363,7 +403,7 @@ namespace Velvet
         }
 
         // The container for `resolvedZ`'s sign under `stackingParent`, creating (and physically attaching)
-        // it on first use. Only ever called from a safe (post-pass) context — creating one changes
+        // it on first use. Only ever called from a safe context, after a pass or outside one — creating one changes
         // `stackingParent`'s own child list, which a live diff over that same parent may still be indexing
         // by absolute position.
         private static VisualElement GetOrCreateContainer(

@@ -64,12 +64,13 @@ namespace Velvet.Tests
             ["StyleRingClass.IsRingClass"] = "ring-2",
             ["StyleFontClass.IsFontToken"] = "italic",
             ["StyleTextEffectClass.IsTextEffectToken"] = "uppercase",
+            ["StyleCustomPropertyClass.IsCustomPropertyToken"] = "[width:120px]",
         };
 
         // A ratchet on the declaration, because the two-directional check alone is satisfied by deleting a
         // family from the dispatcher AND its representative here — one plausible cleanup edit that removes a
         // family's coverage with both tests green.
-        private const int FamilyFloor = 17;
+        private const int FamilyFloor = 18;
 
         // What a family's representative acts on, written bare in every render of that family's cells. Velvet
         // draws no inset ring, so what the inset representative changes is the box-shadow its rejected width discards.

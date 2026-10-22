@@ -27,6 +27,8 @@
       href: guides/styling-colors.md
     - name: Bracketed lengths
       href: guides/styling-arbitrary-lengths.md
+    - name: Custom properties
+      href: guides/styling-custom-properties.md
     - name: Gradients
       href: guides/styling-gradients.md
     - name: Backgrounds and nine-slice

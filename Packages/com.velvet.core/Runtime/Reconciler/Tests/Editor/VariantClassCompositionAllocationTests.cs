@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
@@ -14,9 +15,9 @@ namespace Velvet.Tests
     internal sealed class VariantClassCompositionAllocationTests
     {
         // A direct call, so the probe counts the composer alone.
-        private static readonly Func<string[], VariantGateState, string[]?, string[]> Compose =
-            (Func<string[], VariantGateState, string[]?, string[]>)Delegate.CreateDelegate(
-                typeof(Func<string[], VariantGateState, string[]?, string[]>),
+        private static readonly Func<VisualElement, string[], VariantGateState, string[]?, string[]> Compose =
+            (Func<VisualElement, string[], VariantGateState, string[]?, string[]>)Delegate.CreateDelegate(
+                typeof(Func<VisualElement, string[], VariantGateState, string[]?, string[]>),
                 typeof(FiberNodePatcher).GetMethod("ComposeVariantClasses",
                     BindingFlags.NonPublic | BindingFlags.Static)!);
 
@@ -24,11 +25,12 @@ namespace Velvet.Tests
         public void Given_APlayWithholdingAToken_When_TheSameClassesComposeAgain_Then_NothingIsBuilt()
         {
             // Arrange — a fresh array of the same classes, as a render hands the patcher.
+            var element = new VisualElement();
             var state = new VariantGateState();
             state.Withhold("shadow-lg", on: true);
-            var reuse = Compose(new[] { "w-4", "shadow-lg" }, state, null);
+            var reuse = Compose(element, new[] { "w-4", "shadow-lg" }, state, null);
             var classNames = new[] { "w-4", "shadow-lg" };
-            void Once() => Compose(classNames, state, reuse);
+            void Once() => Compose(element, classNames, state, reuse);
             for (var i = 0; i < 64; i++)
             {
                 Once();

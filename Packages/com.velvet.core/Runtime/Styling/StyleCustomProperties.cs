@@ -74,6 +74,8 @@ namespace Velvet
             public readonly string[]? Sides;
             // Whether a modifier bracket reads a var(), whose value is a color-mix() percentage.
             public readonly bool ModifierReadsVariable;
+            // A z-* reader, whose value restacks the element (VariableZ) rather than being applied as a payload.
+            public readonly bool StacksZ;
             // The resolution the applied state came from, null when the last one resolved nothing.
             public string? Source;
             public bool Resolved;
@@ -94,6 +96,7 @@ namespace Velvet
                 AddedHint = DefaultHint(utility, Shape);
                 EffectiveHint = Shape.Hint ?? AddedHint;
                 Sides = StyleCustomPropertyClass.SidesOf(utility, Shape);
+                StacksZ = StyleZIndexClass.VariableUtility(utility) != null;
                 var readsVariable = utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0;
                 ModifierReadsVariable = Shape.HasModifier
                     && utility.IndexOf("var(", Math.Max(Shape.MainClose, 0), StringComparison.OrdinalIgnoreCase) >= 0;
@@ -467,6 +470,16 @@ namespace Velvet
                 return;
             }
             var source = resolved ? s_built.ToString() : null;
+            if (consumer.StacksZ)
+            {
+                consumer.Source = source;
+                consumer.Resolved = true;
+                if (consumer.Context != null && VariableZ(target) is { } z)
+                {
+                    FiberZLayerCoordinator.Restack(consumer.Context, target, z);
+                }
+                return;
+            }
             var split = source == null ? null : Split(consumer, source);
             var payloads = Outranked(target, consumer, split);
             var unset = false;
@@ -494,6 +507,30 @@ namespace Velvet
                     declarations: Repeat(consumer.Declaration, payloads.Length));
             }
             SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
+        }
+
+        // The z a custom property gives element where the z-* class that wins on it reads one: what the reader
+        // resolves to, and 0 where that is nothing or no integer. Null where a literal z-* class wins, and where no
+        // class list is recorded for element.
+        public static int? VariableZ(VisualElement element)
+        {
+            if (!s_classes.TryGetValue(element, out var classes) || !StyleZIndexClass.TryExtract(classes, out _, out var winner)
+                || winner == null
+                || StyleZIndexClass.VariableUtility(StyleArbitraryValueResolver.StripImportant(winner, out _)) is not { } utility)
+            {
+                return null;
+            }
+            if (s_consumers.TryGetValue(element, out var consumers))
+            {
+                foreach (var consumer in consumers.Entries)
+                {
+                    if (consumer.Utility == utility && consumer.Source != null)
+                    {
+                        return StyleZIndexClass.TryParse(consumer.Source, out var z) ? z ?? 0 : 0;
+                    }
+                }
+            }
+            return 0;
         }
 
         // A consumer on the base layer shares it with the literal base utilities writing the same property, so

@@ -1,3 +1,4 @@
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -51,6 +52,24 @@ namespace Velvet.Tests
                 V.Div(name: "inner", className: s_inner),
             });
         }
+
+        // Two absolute siblings under outer: inner stacked by --z, lit at z-10.
+        [Component]
+        private static VNode RenderStacked()
+        {
+            var (outer, setOuter) = Hooks.UseState(s_outer);
+            s_setOuter = setOuter;
+            return V.Div(name: "outer", className: outer, children: new VNode?[]
+            {
+                V.Div(name: "inner", className: "absolute z-(--z)"),
+                V.Div(name: "lit", className: "absolute z-10"),
+            });
+        }
+
+        // The order inner and lit paint in within lit's layer.
+        private string PaintOrder()
+            => string.Join(",", _window.rootVisualElement.Q<VisualElement>("lit").parent.Children()
+                .Select(child => child.name).Where(name => name is "inner" or "lit"));
 
         private static (StyleKeyword, float) Width(VisualElement element)
             => (element.style.width.keyword, element.style.width.value.value);
@@ -412,6 +431,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Width(child), Is.EqualTo((StyleKeyword.Undefined, 20f)));
+        }
+
+        [Test]
+        public void Given_AZIndexReadingADeclaration_When_TheDeclarationChanges_Then_TheElementRestacks()
+        {
+            // Arrange — the declaration reaches the reader once it is attached, at the panel's next scheduler tick.
+            s_outer = "[--z:20]";
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderStacked));
+            EditorPanelTestHelpers.DriveSchedulerOnce(_window.rootVisualElement.panel);
+            var raised = PaintOrder();
+
+            // Act
+            s_setOuter.Invoke("[--z:5]");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That((raised, PaintOrder()), Is.EqualTo(("lit,inner", "inner,lit")));
         }
 
         [Test]

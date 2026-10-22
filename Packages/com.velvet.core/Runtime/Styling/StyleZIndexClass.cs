@@ -7,7 +7,8 @@ namespace Velvet
     // Parses Velvet's z-* utility classes into a resolved stacking value for FiberZLayerCoordinator. Mirrors
     // StyleGapClass/StyleGridClass: a cheap prefix-scan gate (HasZIndexClass) before the full TryExtract parse.
     // Follows Tailwind v4's z utility: z-auto, a bare non-negative integer (z-15), a bracketed integer (z-[-5]),
-    // and a leading "-" negating either of the last two (-z-15, -z-[5]).
+    // and a leading "-" negating either of the last two (-z-15, -z-[5]), and either bracket reading a custom
+    // property (z-[var(--z)], z-(--z)).
     internal static class StyleZIndexClass
     {
         // Cheap early-out gate: true when ANY class looks like a z-* utility (after stripping a leading "-").
@@ -44,9 +45,13 @@ namespace Velvet
         // wherever it sits, and within either group the later class wins. Returns false when no z utility is
         // present, when every z-looking token failed to parse (e.g. a user class that merely starts with
         // "z-"), or when the winner is z-auto, which leaves the element unstacked.
-        public static bool TryExtract(string[] classNames, out int z)
+        public static bool TryExtract(string[] classNames, out int z) => TryExtract(classNames, out z, out _);
+
+        // winnerClass is the class the value came from, null where no z utility parsed.
+        public static bool TryExtract(string[] classNames, out int z, out string? winnerClass)
         {
             z = 0;
+            winnerClass = null;
             if (classNames == null)
             {
                 return false;
@@ -55,7 +60,8 @@ namespace Velvet
             // A null value is z-auto, so whether an important token was seen is tracked apart from its value.
             int? plain = null;
             int? important = null;
-            var anyImportant = false;
+            string? plainClass = null;
+            string? importantClass = null;
             foreach (var cls in classNames)
             {
                 if (!TryParse(cls, out var parsed, out var bang))
@@ -64,18 +70,26 @@ namespace Velvet
                 }
                 if (bang)
                 {
-                    important = parsed;
-                    anyImportant = true;
+                    (important, importantClass) = (parsed, cls);
                 }
                 else
                 {
-                    plain = parsed;
+                    (plain, plainClass) = (parsed, cls);
                 }
             }
-            var winner = anyImportant ? important : plain;
+            var winner = importantClass != null ? important : plain;
+            winnerClass = importantClass ?? plainClass;
             z = winner.GetValueOrDefault();
             return winner.HasValue;
         }
+
+        // The utility a z-* class reading a custom property is read as (StyleCustomPropertyClass.Consumer), for
+        // a class with its important bang stripped; null for any other class.
+        public static string? VariableUtility(string core)
+            => StyleCustomPropertyClass.Consumer(core) is { } utility
+                && utility.StartsWith(utility[0] == '-' ? "-z-[" : "z-[", StringComparison.Ordinal)
+                ? utility
+                : null;
 
         // A null z is z-auto.
         public static bool TryParse(string cls, out int? z) => TryParse(cls, out z, out _);
@@ -86,6 +100,13 @@ namespace Velvet
             z = null;
             // StripImportant leaves the bang of "-!z-10" in place, so that stays rejected.
             cls = StyleArbitraryValueResolver.StripImportant(cls, out important);
+            // Its value is the custom property's, which StyleCustomProperties.VariableZ reads on the element; here
+            // the class makes the element z-managed, at 0 until that is read.
+            if (!string.IsNullOrEmpty(cls) && VariableUtility(cls) != null)
+            {
+                z = 0;
+                return true;
+            }
             cls = StyleArbitraryValueResolver.WithoutTypeHint(cls ?? string.Empty) ?? string.Empty;
             if (string.IsNullOrEmpty(cls))
             {
