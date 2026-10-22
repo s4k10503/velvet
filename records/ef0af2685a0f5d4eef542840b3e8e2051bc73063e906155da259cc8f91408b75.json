@@ -1,0 +1,105 @@
+{
+ "detail": "EditMode: 10 failed in Velvet.Tests.Reconciler.Editor: Given_AChildExiting_When_TheKeyReturnsBeforeTheExitCompletes_Then_ItsMotionRestsVisible(\"component\"), Given_AChildExiting_When_TheKeyReturnsBeforeTheExitCompletes_Then_ItsMotionRestsVisible(\"element\"), Given_AComponentChildExiting_When_ItsMotionsExitCompletes_Then_TheChildIsRemoved",
+ "file": "2cc1897d41f3576a9c44bc753632e9eee5f4fe8feec8866a50bbc3c75f674637",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AChildExiting_When_TheKeyReturnsBeforeTheExitCompletes_Then_ItsMotionRestsVisible(\"component\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "08f09babc5814d422ee9f76746ccf4d79b094aa76eae89eda98ec1902380f852",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AChildExiting_When_TheKeyReturnsBeforeTheExitCompletes_Then_ItsMotionRestsVisible(\"element\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "08f09babc5814d422ee9f76746ccf4d79b094aa76eae89eda98ec1902380f852",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AComponentChildExiting_When_ItsMotionUnmountsBeforeTheExitCompletes_Then_TheChildIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "08f09babc5814d422ee9f76746ccf4d79b094aa76eae89eda98ec1902380f852",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AComponentChildExiting_When_ItsMotionsExitCompletes_Then_TheChildIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "08f09babc5814d422ee9f76746ccf4d79b094aa76eae89eda98ec1902380f852",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AComponentChildExiting_When_TheWholePresenceUnmounts_Then_OnExitCompleteRunsOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "08f09babc5814d422ee9f76746ccf4d79b094aa76eae89eda98ec1902380f852",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AComponentChildRenderedAgain_When_TheKeyIsRemoved_Then_ItIsHeldUntilItsExitCompletes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "08f09babc5814d422ee9f76746ccf4d79b094aa76eae89eda98ec1902380f852",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_ACoordinatorStaggeringItsExit_When_AChildOfItsInheritingChildExits_Then_ItExitsWithItsOwnParent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "08f09babc5814d422ee9f76746ccf4d79b094aa76eae89eda98ec1902380f852",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_ACoordinatorStaggeringItsExit_When_ItsChildrenMixOwnLabelsAndAPoselessVariantChild_Then_OnlyTheVariantChildrenTakeSlots",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "08f09babc5814d422ee9f76746ccf4d79b094aa76eae89eda98ec1902380f852",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_ACoordinatorStaggeringItsExit_When_TheKeyIsRemoved_Then_ItsInheritingChildrenExitInTurn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "08f09babc5814d422ee9f76746ccf4d79b094aa76eae89eda98ec1902380f852",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_ACoordinatorWhoseBeforeChildrenExitAnImportantOpacityKeepsOut_When_TheKeyIsRemoved_Then_ItsChildExitsAtOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "08f09babc5814d422ee9f76746ccf4d79b094aa76eae89eda98ec1902380f852",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 32,
+  "line": 705,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

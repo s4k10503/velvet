@@ -1,16 +1,16 @@
 {
- "detail": "EditMode: 1 failed: Given_TwoRegistrationsAtOneExplicitPosition_When_EachUnmounts_Then_TheCacheReferenceCountTracksThem",
+ "detail": "EditMode: 1 failed in Velvet.Tests.Reconciler.Editor: Given_TwoRegistrationsAtOneExplicitPosition_When_EachUnmounts_Then_TheCacheReferenceCountTracksThem",
  "file": "48c936621431b5a5bb5f21e7db638e87e744c6685af4302d658e242b129a9cec",
  "killers": [
   {
    "case": "Velvet.Tests.InlineExplicitPositionCacheTests.Given_TwoRegistrationsAtOneExplicitPosition_When_EachUnmounts_Then_TheCacheReferenceCountTracksThem",
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineExplicitPositionCacheTests.cs": "fb8aff5122fb8e284de248842143d48c266424ce17a74175c381adc08c1aa9bc",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
    }
   }
  ],
- "measured_by": "39723193086",
+ "measured_by": "39767874313",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -27,6 +27,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
  "verdict": "killed"
 }

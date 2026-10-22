@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable",
+ "file": "037e8948ba7bc5a41376baba1157ee7af3a4e93627461b6cfff03bd2858aa5aa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UncalledRuntimeMemberTests.Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/UncalledRuntimeMemberTests.cs": "60bd57285e73ac27e4ef7dc25ca75ad041d9a148e352a1e585eb23e774bb9665"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ";",
+  "before": "SeatedTranslate.Forget(element);",
+  "column": 12,
+  "line": 140,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementPoolReset.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

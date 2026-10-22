@@ -7,7 +7,7 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorHandlerTests.cs": "28bbe9304f66c322d6c17d45e1152105d557a820a79b7dce869e770c180a8a38",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorRootTests.cs": "21256c6fb6bece7f046735e1c78f1a01aa9e491104e6d5b9ec5f8b4a14484b15",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
   },
@@ -16,12 +16,12 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorHandlerTests.cs": "28bbe9304f66c322d6c17d45e1152105d557a820a79b7dce869e770c180a8a38",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/UncaughtErrorRootTests.cs": "21256c6fb6bece7f046735e1c78f1a01aa9e491104e6d5b9ec5f8b4a14484b15",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
   }
  ],
- "measured_by": "39723193086",
+ "measured_by": "39767874313",
  "mutant": {
   "after": ";",
   "before": "ReportUncaughtError(ctx, thrown[i].Error, thrown[i].Info);",
@@ -35,6 +35,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
  "verdict": "killed"
 }

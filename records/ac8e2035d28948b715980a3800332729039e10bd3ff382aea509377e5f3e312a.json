@@ -5,23 +5,23 @@
   {
    "case": "Velvet.Tests.PresenceKeyRecordTests.Given_AWaitModeRenderWithholdingAKeyStillLeavingThatAnAbortStopped_When_ItsRemovalsArePutBack_Then_ThePresenceHoldsTheKeysRecordAgain(\"Exiting\")",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "5eccea92861f1caf73f155d4793a34a1e5a48640fba1c46c19e757424a6e63cd",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "a7aad6197e64fd481fd9d1eb9c81487593997dfa26219a48f40c11276869edcd",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
    }
   },
   {
    "case": "Velvet.Tests.PresenceKeyRecordTests.Given_AWaitModeRenderWithholdingAKeyStillLeavingThatAnAbortStopped_When_ItsRemovalsArePutBack_Then_ThePresenceHoldsTheKeysRecordAgain(\"PendingSettles\")",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "5eccea92861f1caf73f155d4793a34a1e5a48640fba1c46c19e757424a6e63cd",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "a7aad6197e64fd481fd9d1eb9c81487593997dfa26219a48f40c11276869edcd",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
    }
   }
  ],
- "measured_by": "39723193086",
+ "measured_by": "39767874313",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -35,6 +35,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
  "verdict": "killed"
 }

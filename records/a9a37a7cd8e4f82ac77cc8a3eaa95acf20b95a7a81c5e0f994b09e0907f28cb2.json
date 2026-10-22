@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "0b5c6464bdb2686b9f6cc77681ae3707976cf23a5990f35e8c910c17e2b74d9f",
+ "killers": [],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileDragActiveClass));",
+  "column": 16,
+  "line": 228,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWrapperElementAppliers.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "survived"
+}

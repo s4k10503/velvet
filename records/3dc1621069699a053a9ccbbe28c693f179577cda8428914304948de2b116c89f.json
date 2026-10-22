@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed: Given_StoreChangedBeforeTheMountsEffects_When_ThePassiveFlushRuns_Then_TheChangeRendersBeforeItReturns",
+ "file": "d3c95dbdc56ca7cbad8a13fd2f167935992c9b3fef9424bd1b075e2366800e7d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_StoreChangedBeforeTheMountsEffects_When_ThePassiveFlushRuns_Then_TheChangeRendersBeforeItReturns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "8d55806babf5ba593a6ca086ce81e9b6b7b4b09de82262fefdbae1fbfafd71a7",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 44,
+  "line": 642,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

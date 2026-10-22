@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 335 case(s) that ran the site: Given_DuplicateKeys_When_TheRepeatIsRemoved_Then_ItLeavesAtOnceWithoutAnExit",
+ "file": "6483a85c931d10d4eb62bf853e099776a9470f6007e82322264e43eecb979927",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_DuplicateKeys_When_TheRepeatIsRemoved_Then_ItLeavesAtOnceWithoutAnExit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "90f467fce2e9d5f2a31d474859cd39bf366ef9f3e59073602e104b531f5f71db",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 54,
+  "line": 2057,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": [
+   "clause removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

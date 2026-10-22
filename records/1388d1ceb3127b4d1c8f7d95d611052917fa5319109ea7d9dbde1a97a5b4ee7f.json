@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed: Given_AMotionCarryingUppercase_When_ItMountsWithoutEverPatching_Then_ItsTextLeafIsUppercased, Given_AMotionHostingALabelWithItsOwnText_When_ItMountsWithoutEverPatching_Then_ThatTextIsUppercased",
+ "file": "5f77188c813851e4a46c4db24533ce4b44b000f3dfc652c4885f43e4eb79bb63",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionTextEffectCreateTests.Given_AMotionCarryingUppercase_When_ItMountsWithoutEverPatching_Then_ItsTextLeafIsUppercased",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionTextEffectCreateTests.cs": "d29b3b4f8b6d4f5f5ab6813bb7ff761d878e0ebe500fe89a09a528e41883e28a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionTextEffectCreateTests.Given_AMotionHostingALabelWithItsOwnText_When_ItMountsWithoutEverPatching_Then_ThatTextIsUppercased",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionTextEffectCreateTests.cs": "d29b3b4f8b6d4f5f5ab6813bb7ff761d878e0ebe500fe89a09a528e41883e28a"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ";",
+  "before": "_patcher.ApplyTextEffects(element, writtenClasses);",
+  "column": 12,
+  "line": 363,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

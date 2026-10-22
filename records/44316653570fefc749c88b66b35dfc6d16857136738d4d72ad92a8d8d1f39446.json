@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_MountedComponent_When_Disposed_Then_RenderedDomIsCleared",
+ "file": "6483a85c931d10d4eb62bf853e099776a9470f6007e82322264e43eecb979927",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_MountedComponent_When_Disposed_Then_RenderedDomIsCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "77965d3a5c6689f7ceb37c3cba4c993edf7137e87ba8e46030b36ede0dc69f98"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ";",
+  "before": "_componentKeyClaims.Clear();",
+  "column": 16,
+  "line": 736,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

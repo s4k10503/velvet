@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 7 case(s) that ran the site: Given_AnInnerKeyAddedWhileTheOuterChildLeaves_When_ItsExitOutlastsTheOthers_Then_TheOuterChildWaitsForItAndEachCallbackRunsOnce(\"top\")",
+ "file": "6483a85c931d10d4eb62bf853e099776a9470f6007e82322264e43eecb979927",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresencePropagateTests.Given_AnInnerKeyAddedWhileTheOuterChildLeaves_When_ItsExitOutlastsTheOthers_Then_TheOuterChildWaitsForItAndEachCallbackRunsOnce(\"top\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePropagateTests.cs": "730c0d4bd759efc4a8d14df2eb9b25b04a973d5857931a723c205626d6df271f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ";",
+  "before": "pass.NextCommitted.Add((key, node));",
+  "column": 12,
+  "line": 2187,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

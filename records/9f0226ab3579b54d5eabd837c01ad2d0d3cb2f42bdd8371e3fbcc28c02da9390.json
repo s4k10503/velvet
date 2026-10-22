@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnActionThatFaultsAfterItsComponentUnmounted_When_ItCompletes_Then_NothingIsReported",
+ "file": "6483a85c931d10d4eb62bf853e099776a9470f6007e82322264e43eecb979927",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TransitionCallbackTests.Given_AnActionThatFaultsAfterItsComponentUnmounted_When_ItCompletes_Then_NothingIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/TransitionCallbackTests.cs": "f6d020c1f120643a74042e3916064e199b5982869319863216543fe4d429cf3f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 30,
+  "line": 1064,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

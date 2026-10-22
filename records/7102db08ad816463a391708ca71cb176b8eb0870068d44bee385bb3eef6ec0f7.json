@@ -1,0 +1,49 @@
+{
+ "detail": "EditMode survived; PlayMode: 3 failed: Given_AShadowedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps, Given_AShadowedBoxWithADashedBorderThatClipsItsContent_When_Painted_Then_ItsTopBandHasGaps, Given_ASkewedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps",
+ "file": "95c6cfb7c8b9a3984e29af884c194fca3cf700ca6c2cbd2c10e02c6b90fc93c6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SilhouetteBorderSidesPlaybackTests.Given_AShadowedBoxWithADashedBorderThatClipsItsContent_When_Painted_Then_ItsTopBandHasGaps",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/SilhouetteBorderSidesPlaybackTests.cs": "90ae91d992b50673554be75c38f3b62f421a2d5b99210796c0d974c5ac5a6ef3",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteBorderSidesPlaybackTests.Given_AShadowedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/SilhouetteBorderSidesPlaybackTests.cs": "90ae91d992b50673554be75c38f3b62f421a2d5b99210796c0d974c5ac5a6ef3",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteBorderSidesPlaybackTests.Given_ASkewedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/SilhouetteBorderSidesPlaybackTests.cs": "90ae91d992b50673554be75c38f3b62f421a2d5b99210796c0d974c5ac5a6ef3",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ";",
+  "before": "NoteFaceBorderStyle(element, classNames);",
+  "column": 12,
+  "line": 26,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

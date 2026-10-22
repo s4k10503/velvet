@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AFilterTweenTheWriteHookBoundOnTheInputBox_When_TheFieldIsRemoved_Then_TheBindingIsReleased",
+ "file": "940ace2a313b57ef02cd17d0ab84425878833bda47357cc26a3ffe0a79e9a9ec",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AFilterTweenTheWriteHookBoundOnTheInputBox_When_TheFieldIsRemoved_Then_TheBindingIsReleased",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d9300c83deac4cf93fe99994e0f2b152600ae8853f4b91ca02b61c84373102a3",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ";",
+  "before": "StyleFilterTransitionDriver.DetachBound(element);",
+  "column": 16,
+  "line": 396,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

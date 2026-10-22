@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 1102 case(s) that ran the site: Given_ShadowOnMotion_When_Reconciled_Then_APaintBindingIsCreated",
+ "file": "5f77188c813851e4a46c4db24533ce4b44b000f3dfc652c4885f43e4eb79bb63",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintBindingPatchTests.Given_ShadowOnMotion_When_Reconciled_Then_APaintBindingIsCreated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintBindingPatchTests.cs": "65306209596ff37a7c8474fd5920467a8c18723383e129716914c3032ce4b5a5",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 90,
+  "line": 375,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

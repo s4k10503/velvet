@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 38 case(s) that ran the site: Given_ACommitsSubscriptionStillPending_When_ALaterRenderThatNeverSettlesReadsAnotherStore_Then_TheEffectSubscribesTheCommittedStore",
+ "file": "75eae5697a29ae31be836e24e55442a994ea2c52426ed6ebc46eb97a4803714e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ExternalStoreSlotStagingTests.Given_ACommitsSubscriptionStillPending_When_ALaterRenderThatNeverSettlesReadsAnotherStore_Then_TheEffectSubscribesTheCommittedStore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ExternalStoreSlotStagingTests.cs": "1afa1381a5828d1a267d542b8a1a7536afbe9b3a3d43c9f76ed8887957427e5c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ";",
+  "before": "if (!pendingEffects.Contains(_subscribeEffect)) pendingEffects.Add(_subscribeEffect);",
+  "column": 16,
+  "line": 809,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookSlots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

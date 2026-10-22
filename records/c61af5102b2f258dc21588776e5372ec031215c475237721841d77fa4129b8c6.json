@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "5f2f4a05963efd92a091406f1c35d31ce948435fabf1c193caf8c545f7959c97",
+ "killers": [],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 80,
+  "line": 106,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "survived"
+}

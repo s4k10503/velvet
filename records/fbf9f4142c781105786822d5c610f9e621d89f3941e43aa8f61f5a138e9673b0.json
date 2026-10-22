@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Reconciler.Editor: Given_ABorderDashedColoredElement_When_ShadowIsAddedInOnePatch_Then_TheShadowFaceAdoptsTheBorderColor",
+ "file": "2cc1897d41f3576a9c44bc753632e9eee5f4fe8feec8866a50bbc3c75f674637",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BorderStylePatchTests.Given_ABorderDashedColoredElement_When_ShadowIsAddedInOnePatch_Then_TheShadowFaceAdoptsTheBorderColor",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BorderStylePatchTests.cs": "f704a56980b423616ea3c702bcce8d246f70580ff6c9dceace9ac42febe2d165",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ";",
+  "before": "_appliers.ApplyShadowOnPatch(element, classNames, clipActive, skew);",
+  "column": 12,
+  "line": 442,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}

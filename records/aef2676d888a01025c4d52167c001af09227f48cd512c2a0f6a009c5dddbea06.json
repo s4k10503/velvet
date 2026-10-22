@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Reconciler.Editor: Given_ARenderTakingAKeyOutOfTheCommittedSet_When_ItCommits_Then_ThePresenceKeepsNoExitAnchorForTheKey(\"drop\",\"a\")",
+ "file": "6483a85c931d10d4eb62bf853e099776a9470f6007e82322264e43eecb979927",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PresenceKeyRecordTests.Given_ARenderTakingAKeyOutOfTheCommittedSet_When_ItCommits_Then_ThePresenceKeepsNoExitAnchorForTheKey(\"drop\",\"a\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "a7aad6197e64fd481fd9d1eb9c81487593997dfa26219a48f40c11276869edcd",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "39767874313",
+ "mutant": {
+  "after": ";",
+  "before": "DisposeGhostFibersOnceCommitted(commit, state, key);",
+  "column": 12,
+  "line": 2393,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "verdict": "killed"
+}
