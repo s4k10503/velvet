@@ -83,9 +83,10 @@ namespace Velvet
             // resolve through the arbitrary-value dispatch; only the in-scope subset of its properties is
             // claimed here, so an opacity/transform/filter token stays with its own owner.
             if (StyleArbitraryValueResolver.TryParse(core, out var arbitrary) && !arbitrary.Auto
-                && arbitrary.Expression == null && IsDrivable(arbitrary.Property))
+                && arbitrary.Expression == null && IsDrivable(PhysicalSide(arbitrary.Property)))
             {
-                style = arbitrary;
+                var physical = PhysicalSide(arbitrary.Property);
+                style = physical == arbitrary.Property ? arbitrary : new ArbitraryStyle(physical, arbitrary.Color);
                 return true;
             }
 
@@ -93,9 +94,24 @@ namespace Velvet
                 || TryParsePresetLength(core, out style);
         }
 
+        // A logical side's color drives the physical side it writes (StyleBorderSideColor), whose channel it shares.
+        private static ArbitraryProperty PhysicalSide(ArbitraryProperty property)
+            => s_physicalSides.TryGetValue(property, out var physical) ? physical : property;
+
+        private static readonly Dictionary<ArbitraryProperty, ArbitraryProperty> s_physicalSides = new()
+        {
+            [ArbitraryProperty.BorderInlineStartColor] = ArbitraryProperty.BorderLeftColor,
+            [ArbitraryProperty.BorderInlineEndColor] = ArbitraryProperty.BorderRightColor,
+            [ArbitraryProperty.BorderBlockStartColor] = ArbitraryProperty.BorderTopColor,
+            [ArbitraryProperty.BorderBlockEndColor] = ArbitraryProperty.BorderBottomColor,
+        };
+
         /// <summary>True for the color-valued properties, whose channel interpolates a <see cref="UnityEngine.Color"/>.</summary>
         internal static bool IsColor(ArbitraryProperty property)
-            => property is ArbitraryProperty.TextColor or ArbitraryProperty.BackgroundColor or ArbitraryProperty.BorderColor;
+            => property is ArbitraryProperty.TextColor or ArbitraryProperty.BackgroundColor or ArbitraryProperty.BorderColor
+                or ArbitraryProperty.BorderTopColor or ArbitraryProperty.BorderRightColor
+                or ArbitraryProperty.BorderBottomColor or ArbitraryProperty.BorderLeftColor
+                or ArbitraryProperty.BorderXColor or ArbitraryProperty.BorderYColor;
 
         /// <summary>
         /// True when the magnitude of <paramref name="property"/> can legitimately go negative (a pulled-in
@@ -127,6 +143,9 @@ namespace Velvet
             var drivable = new[]
             {
                 ArbitraryProperty.TextColor, ArbitraryProperty.BackgroundColor, ArbitraryProperty.BorderColor,
+                ArbitraryProperty.BorderTopColor, ArbitraryProperty.BorderRightColor,
+                ArbitraryProperty.BorderBottomColor, ArbitraryProperty.BorderLeftColor,
+                ArbitraryProperty.BorderXColor, ArbitraryProperty.BorderYColor,
 
                 ArbitraryProperty.Width, ArbitraryProperty.Height, ArbitraryProperty.MinWidth,
                 ArbitraryProperty.MinHeight, ArbitraryProperty.MaxWidth, ArbitraryProperty.MaxHeight,

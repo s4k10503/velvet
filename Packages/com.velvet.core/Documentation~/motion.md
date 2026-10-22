@@ -234,6 +234,9 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
 - `When = BeforeChildren`: children additionally wait out the parent's own delay and play: its
   `DurationSec` for a tween or a bezier, the time its slowest channel takes to rest for a spring
   (measured as *Repeating a play* gives), and every repeat of either (see *Repeating a play*). A
+  play with no channel to animate, as when an important utility of the element's own keeps the only one
+  out, holds them for nothing, its delay included, as Framer's animation promise for a variant with no
+  value to animate resolves at once. A
   spring's wait is measured from the pose classes at rest, so a spring that interrupts a running
   one, starting where that one stood and with its velocity, can end before or after its children
   start, where Framer's children wait for the animation itself.
@@ -354,7 +357,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   (`bg-red-500`), the alpha modifier (`bg-red-500/50`) and the bracket forms (`bg-[#1e293b]`).
   Interpolation is straight RGBA, the same path UI Toolkit's own color transition takes, so
   switching a config between `Tween` and `Spring` never changes which colors the element passes
-  through. `border-color` fans out to all four sides.
+  through. `border-color` fans out to all four sides, each its own channel, as do the per-side
+  forms (`border-t-red-500`, `border-x-[#f00]`, `border-s-red-500`), a logical side driving the
+  physical side it resolves to.
 - **`border-radius`,** from the `rounded-*` scale and the bracket forms, including the per-side and
   per-corner spellings.
 - **Spacing-scale lengths:** width / height / min / max / `size-*`, padding, margin, inset (`top-*`
@@ -388,8 +393,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   including when an update reorders existing tokens.
   Classes left in place participate in the cascade of the slots named by the delta. A resting inline
   value keeps its slot over a plain stylesheet utility, so `pt-[2px]` beside a `p-0` → `p-8` swap keeps its top edge. Running
-  custom frames and native targets supply current values instead of ordinary resting holders;
-  inactive inline border edges still block a uniform stylesheet border-color channel. Resting
+  custom frames and native targets supply current values instead of ordinary resting holders, and
+  so do a `space-*` margin, a `divide-*` color or width that is not important, and a dashed divider's masked edge, each of
+  which gives way to the element's own classes. Resting
   important holders keep their priority, while an important inline holder the swap replaces can change.
   Inline values hold their slots over surviving stylesheet utilities; between two stylesheet utilities
   the one the stylesheet declares later holds it, wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
@@ -425,8 +431,8 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   gradients are baked silhouette paints; `filter-*` transitions by its own path
   ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
   parser, so a ratio change snaps.
-- A target-only uniform scale or border color lands instantly when the sampled x/y scale values
-  or border edge colors differ.
+- A target-only uniform scale lands instantly when the sampled x and y scale values differ. The edge
+  a `divide-dashed` or `divide-dotted` divider draws is sampled as the color its dash takes.
 - **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`, `translate-1/2`, `translate-full`) **and per-axis `scale-x-` /
   `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.
   Both families resolve as ordinary utilities; they just apply as plain classes, so the swap lands

@@ -16,12 +16,18 @@ namespace Velvet
         private readonly HashSet<ArbitraryProperty> _inlineBySwap = new();
         private readonly HashSet<ArbitraryProperty> _importantInlineBySwap = new();
 
-        private MotionSlotContext(VisualElement element, Func<ArbitraryProperty, bool> drivenByRunningPlay)
+        private MotionSlotContext(VisualElement element, Func<ArbitraryProperty, bool> drivenByRunningPlay,
+            bool attached)
         {
             _element = element;
             _drivenByRunningPlay = drivenByRunningPlay;
             _drivenByLivePlay = drivenByRunningPlay;
+            Attached = attached;
         }
+
+        // False for ReadImportant's: a play planned off a panel takes from it only the important declarations of the
+        // element's own, and reads no current value and no other resting holder.
+        public bool Attached { get; }
 
         public static MotionSlotContext? Read(VisualElement element, string[]? fromClasses, string[]? toClasses,
             Func<ArbitraryProperty, bool> drivenByRunningPlay, Func<ArbitraryProperty, bool>? drivenByLivePlay = null)
@@ -30,8 +36,18 @@ namespace Velvet
             {
                 return null;
             }
-            var context = new MotionSlotContext(element, drivenByRunningPlay);
+            var context = new MotionSlotContext(element, drivenByRunningPlay, attached: true);
             if (drivenByLivePlay != null) context._drivenByLivePlay = drivenByLivePlay;
+            return Swapping(context, fromClasses, toClasses);
+        }
+
+        // An important declaration of the element's own holds its slot through a play on a panel or off one, as
+        // !important outranks an animation in CSS.
+        public static MotionSlotContext ReadImportant(VisualElement element, string[]? fromClasses, string[]? toClasses)
+            => Swapping(new MotionSlotContext(element, static _ => false, attached: false), fromClasses, toClasses);
+
+        private static MotionSlotContext Swapping(MotionSlotContext context, string[]? fromClasses, string[]? toClasses)
+        {
             context.NoteSwapped(fromClasses);
             context.NoteSwapped(toClasses);
             return context;
@@ -85,7 +101,7 @@ namespace Velvet
                     || HoldsBorderEdge(owner, StyleLonghand.BorderRightColor, style.borderRightColor)
                     || HoldsBorderEdge(owner, StyleLonghand.BorderBottomColor, style.borderBottomColor)
                     || HoldsBorderEdge(owner, StyleLonghand.BorderLeftColor, style.borderLeftColor)
-                : TryReadInline(slot, out _) && !HasRunningNativeTransition(slot);
+                : TryReadInline(slot, out _) && !HasRunningNativeTransition(slot) && OwnsInline(owner, longhands);
             if (!hasInline) return false;
             foreach (var property in _inlineBySwap)
             {
@@ -98,7 +114,25 @@ namespace Velvet
         }
 
         private static bool HoldsBorderEdge(VisualElement owner, StyleLonghand longhand, StyleColor inline)
-            => inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(owner, longhand);
+            => inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(owner, longhand)
+                && OwnsInline(owner, StyleLonghandSet.Of(longhand));
+
+        // An inline value a container holds for the element (StyleArbitraryValueResolver.HoldsForContainer) is not
+        // one of the element's own, so it holds no slot against the element's own classes, which it gives way to;
+        // a dash mask over a color of the element's own still stands for that color.
+        private static bool OwnsInline(VisualElement owner, StyleLonghandSet longhands)
+        {
+            foreach (var held in HeldSlotGroups.EverySlot)
+            {
+                if (longhands.Contains(HeldSlotGroups.LonghandOf(held))
+                    && StyleArbitraryValueResolver.HoldsForContainer(owner, held)
+                    && !DivideDashPainter.MasksOwnColor(owner, held))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         // Read off the layers rather than the inline translate, which an axis utility and a both-axis one write alike.
         public bool HoldsRestingAxisTranslate(ArbitraryProperty slot)
@@ -327,40 +361,23 @@ namespace Velvet
                     return Float(slot, style.opacity, out value);
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
-                {
-                    var translate = style.translate;
-                    if (translate.keyword != StyleKeyword.Undefined)
-                    {
-                        return false;
-                    }
-                    var axis = slot == ArbitraryProperty.TranslateX ? translate.value.x : translate.value.y;
-                    value = new ArbitraryStyle(slot, axis.value, axis.unit);
-                    return true;
-                }
+                    return Translate(slot, style.translate, out value);
                 case ArbitraryProperty.Scale:
-                {
-                    var scale = style.scale;
-                    if (scale.keyword != StyleKeyword.Undefined || !scale.value.value.x.Equals(scale.value.value.y))
-                    {
-                        return false;
-                    }
-                    value = new ArbitraryStyle(slot, scale.value.value.x, LengthUnit.Pixel);
-                    return true;
-                }
+                    return Scale(slot, style.scale, out value);
                 case ArbitraryProperty.Rotate:
-                {
-                    var rotate = style.rotate;
-                    if (rotate.keyword != StyleKeyword.Undefined)
-                    {
-                        return false;
-                    }
-                    value = new ArbitraryStyle(slot, rotate.value.angle.ToDegrees(), LengthUnit.Pixel);
-                    return true;
-                }
+                    return Rotate(slot, style.rotate, out value);
                 case ArbitraryProperty.TextColor:
                     return Color(slot, style.color, out value);
                 case ArbitraryProperty.BackgroundColor:
                     return Color(slot, style.backgroundColor, out value);
+                case ArbitraryProperty.BorderTopColor:
+                    return EdgeColor(slot, StyleLonghand.BorderTopColor, style.borderTopColor, out value);
+                case ArbitraryProperty.BorderRightColor:
+                    return EdgeColor(slot, StyleLonghand.BorderRightColor, style.borderRightColor, out value);
+                case ArbitraryProperty.BorderBottomColor:
+                    return EdgeColor(slot, StyleLonghand.BorderBottomColor, style.borderBottomColor, out value);
+                case ArbitraryProperty.BorderLeftColor:
+                    return EdgeColor(slot, StyleLonghand.BorderLeftColor, style.borderLeftColor, out value);
                 case ArbitraryProperty.BorderTopWidth:
                     return Float(slot, style.borderTopWidth, out value);
                 case ArbitraryProperty.BorderRightWidth:
@@ -399,6 +416,18 @@ namespace Velvet
                 case ArbitraryProperty.BackgroundColor:
                     value = new ArbitraryStyle(slot, resolved.backgroundColor);
                     return true;
+                case ArbitraryProperty.BorderTopColor:
+                    value = new ArbitraryStyle(slot, resolved.borderTopColor);
+                    return true;
+                case ArbitraryProperty.BorderRightColor:
+                    value = new ArbitraryStyle(slot, resolved.borderRightColor);
+                    return true;
+                case ArbitraryProperty.BorderBottomColor:
+                    value = new ArbitraryStyle(slot, resolved.borderBottomColor);
+                    return true;
+                case ArbitraryProperty.BorderLeftColor:
+                    value = new ArbitraryStyle(slot, resolved.borderLeftColor);
+                    return true;
                 default:
                     return s_resolvedLengths.TryGetValue(slot, out var read) && Pixels(slot, read(resolved), out value);
             }
@@ -418,9 +447,10 @@ namespace Velvet
             return top.Equals(right) && top.Equals(bottom) && top.Equals(left);
         }
 
-        private static Color ReadBorderEdge(VisualElement owner, bool native, StyleLonghand longhand, StyleColor inline, Color resolved)
-            => native && HasRunningNativeTransition(owner, longhand) || inline.keyword != StyleKeyword.Undefined
-                ? resolved : inline.value;
+        private Color ReadBorderEdge(VisualElement owner, bool native, StyleLonghand longhand, StyleColor inline, Color resolved)
+            => DivideDashPainter.IsMask(inline) && DivideDashPainter.TryReadPainted(_element, longhand, out var painted) ? painted
+                : native && HasRunningNativeTransition(owner, longhand) || inline.keyword != StyleKeyword.Undefined
+                    ? resolved : inline.value;
 
         private bool TryConvert(ArbitraryProperty slot, ref ArbitraryStyle value, LengthUnit unit)
         {
@@ -445,6 +475,51 @@ namespace Velvet
         {
             value = new ArbitraryStyle(slot, style.value, LengthUnit.Pixel);
             return style.keyword == StyleKeyword.Undefined;
+        }
+
+        private static bool Translate(ArbitraryProperty slot, StyleTranslate style, out ArbitraryStyle value)
+        {
+            value = default;
+            if (style.keyword != StyleKeyword.Undefined)
+            {
+                return false;
+            }
+            var axis = slot == ArbitraryProperty.TranslateX ? style.value.x : style.value.y;
+            value = new ArbitraryStyle(slot, axis.value, axis.unit);
+            return true;
+        }
+
+        private static bool Scale(ArbitraryProperty slot, StyleScale style, out ArbitraryStyle value)
+        {
+            value = default;
+            if (style.keyword != StyleKeyword.Undefined || !style.value.value.x.Equals(style.value.value.y))
+            {
+                return false;
+            }
+            value = new ArbitraryStyle(slot, style.value.value.x, LengthUnit.Pixel);
+            return true;
+        }
+
+        private static bool Rotate(ArbitraryProperty slot, StyleRotate style, out ArbitraryStyle value)
+        {
+            value = default;
+            if (style.keyword != StyleKeyword.Undefined)
+            {
+                return false;
+            }
+            value = new ArbitraryStyle(slot, style.value.angle.ToDegrees(), LengthUnit.Pixel);
+            return true;
+        }
+
+        // A masked edge reads as the color its dash takes.
+        private bool EdgeColor(ArbitraryProperty slot, StyleLonghand longhand, StyleColor style, out ArbitraryStyle value)
+        {
+            if (DivideDashPainter.IsMask(style) && DivideDashPainter.TryReadPainted(_element, longhand, out var painted))
+            {
+                value = new ArbitraryStyle(slot, painted);
+                return true;
+            }
+            return Color(slot, style, out value);
         }
 
         private static bool Color(ArbitraryProperty slot, StyleColor style, out ArbitraryStyle value)

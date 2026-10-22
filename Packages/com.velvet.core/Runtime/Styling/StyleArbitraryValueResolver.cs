@@ -2612,6 +2612,12 @@ namespace Velvet
             }
         }
 
+        // Whether what element shows inline on slot is a container's rather than a value of its own: a mask, or a
+        // hold giving way to a plain declaration of the element's own (Yield), with no layer of its own over it.
+        internal static bool HoldsForContainer(VisualElement element, HeldSlot slot)
+            => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.HoldsForContainer(slot)
+                && !TryLayeredWinner(map, slot, out _);
+
         // Hands slot back when a gap, grid or divide manipulator holds it on element, and leaves it alone
         // otherwise: an inline value nothing here wrote is not this layer's to clear.
         internal static void HandBackIfHeld(VisualElement element, HeldSlot slot)

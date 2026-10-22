@@ -2678,7 +2678,8 @@ namespace Velvet
             {
                 frame = FiberNodePatcher.ResolveChildOrchestration(motion, exitTransition,
                     childLabelChanged: label != null, frame, claimSec,
-                    V.ParseClassNames(RestingVariantClass(element)), V.ParseClassNames(exitPoseClass));
+                    V.ParseClassNames(RestingVariantClass(element)), V.ParseClassNames(exitPoseClass), element,
+                    _ctx.StyleAnimationScheduler);
             }
             return plays;
         }

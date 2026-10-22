@@ -142,7 +142,9 @@ a side of a box with a rounded corner along the whole rounded outline. Each side
 the box at the line from the outer corner to the inner one, the miter Chrome clips a side to, so a
 translucent color is laid once where two sides meet. A side a dashed divider paints is left to the divider,
 which is laid out the same way, so on a rounded child it follows the child's curve. A panel holding such a
-divider runs one check per frame, which masks a color the child's own code writes over the divided edge.
+divider runs one check per frame, which masks a color the child's own code writes over the divided edge. A transition entry of the child's own that covers
+that edge's color (`border-color`, the edge's own color property, or `all`) runs on the dash too, from the
+color the dash shows to the one it heads for, with the entry's duration, delay and easing.
 
 ### How re-spacing stays correct
 

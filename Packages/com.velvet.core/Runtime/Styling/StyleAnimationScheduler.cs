@@ -703,10 +703,10 @@ namespace Velvet
             // variant pair that only touches translate-x. Used as the resting value for a translate axis the
             // swap names on neither side (see Resolve's own doc).
             var restingTranslate = element.style.translate.value;
-            var context = MotionSlotContext.Read(element, fromClasses, toClasses,
-                slot => DrivenByRunningPlay(element, slot), slot => DrivenByLivePlay(element, slot));
+            var context = ReadSlotContext(element, fromClasses, toClasses);
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
-                restingTranslate.x.value, restingTranslate.y.value, context);
+                restingTranslate.x.value, restingTranslate.y.value,
+                context ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses));
             plan = StartFromHeld(element, plan, fromClasses, toClasses);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
@@ -886,10 +886,10 @@ namespace Velvet
             // Read BEFORE the class swap lands (same rationale as StartSpringVariant): a translate axis the swap
             // names on neither side rests at the element's own current inline translate rather than snapping to 0.
             var restingTranslate = element.style.translate.value;
-            var context = MotionSlotContext.Read(element, planFrom, planTo, slot => DrivenByRunningPlay(element, slot),
-                slot => DrivenByLivePlay(element, slot));
+            var context = ReadSlotContext(element, planFrom, planTo);
             var plan = MotionSpringClassParser.Resolve(planFrom, planTo,
-                restingTranslate.x.value, restingTranslate.y.value, context);
+                restingTranslate.x.value, restingTranslate.y.value,
+                context ?? MotionSlotContext.ReadImportant(element, planFrom, planTo));
             plan = StartFromHeld(element, plan, planFrom, planTo);
             // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
@@ -1375,6 +1375,18 @@ namespace Velvet
                 ReleaseHeld(element);
             }
         }
+
+        // What a play on element between fromClasses and toClasses is planned against, read before its swap lands;
+        // MotionPlaySpan reads it too, so a span counts the channels the play has.
+        internal MotionSlotContext SlotContext(VisualElement element, string[]? fromClasses, string[]? toClasses)
+            => ReadSlotContext(element, fromClasses, toClasses)
+                ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses);
+
+        // Null off a panel, which the spring and bezier starts read as no current value to continue from or inherit a
+        // velocity off; SlotContext stands ReadImportant's in for it in the plan alone.
+        private MotionSlotContext? ReadSlotContext(VisualElement element, string[]? fromClasses, string[]? toClasses)
+            => MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot),
+                slot => DrivenByLivePlay(element, slot));
 
         // A held play counts, so the slots it holds read as its values rather than as resting inline holders.
         private bool DrivenByRunningPlay(VisualElement element, ArbitraryProperty slot)
