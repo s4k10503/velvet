@@ -85,6 +85,18 @@ namespace Velvet.Tests
                 .Select(child => child == lit ? "lit" : "inner"));
         }
 
+        // Attaches CustomPropertyRule.uss, and whether it loaded, which the cases reading it fold into their
+        // assertion: a tree without the sheet has no rule to read.
+        private bool AddRuleSheet()
+        {
+            var sheet = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet);
+            if (sheet != null)
+            {
+                _window.rootVisualElement.styleSheets.Add(sheet);
+            }
+            return sheet != null;
+        }
+
         private static (StyleKeyword, float) Width(VisualElement element)
             => (element.style.width.keyword, element.style.width.value.value);
 
@@ -277,21 +289,21 @@ namespace Velvet.Tests
         public void Given_AStylesheetDeclaringAProperty_When_AStylePassRuns_Then_TheChildTakesItsValueInThatPass()
         {
             // Arrange
-            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            var loaded = AddRuleSheet();
             var child = Mount("css-var-host", "w-[var(--w)]");
 
             // Act — no scheduler tick: the value has to be written while the style pass runs.
             ForcePanelUpdate(child.panel);
 
             // Assert
-            Assert.That(Width(child), Is.EqualTo((StyleKeyword.Undefined, 25f)));
+            Assert.That((loaded, Width(child)), Is.EqualTo((true, (StyleKeyword.Undefined, 25f))));
         }
 
         [Test]
         public void Given_AThemeRuleOnTheReader_When_AnInheritedColourIsUnset_Then_TheParentsColourShows()
         {
             // Arrange — the reader's own rule sets a colour, which the browser's unset does not let through.
-            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            var loaded = AddRuleSheet();
             var child = Mount("text-[#ff0000]", "css-var-themed hover:text-[var(--c)]");
 
             // Act
@@ -301,7 +313,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(child.panel);
 
             // Assert
-            Assert.That(child.resolvedStyle.color, Is.EqualTo(new UnityEngine.Color(1f, 0f, 0f, 1f)));
+            Assert.That((loaded, child.resolvedStyle.color), Is.EqualTo((true, new UnityEngine.Color(1f, 0f, 0f, 1f))));
         }
 
         [Test]
@@ -425,16 +437,27 @@ namespace Velvet.Tests
         [Test]
         public void Given_APaintedReaderBesideALiteralTailwindEmitsLater_When_Mounted_Then_TheLiteralWins()
         {
-            // Arrange / Act — gap-2 sorts after gap-(--g), whatever order the class list writes them in.
-            _mounted = V.Mount(_window.rootVisualElement,
+            // Arrange / Act — gap-2 sorts after gap-(--g), whatever order the class list writes them in. The
+            // reader alone, beside it, is what shows the reader applies at all.
+            _mounted = V.Mount(_window.rootVisualElement, V.Fragment(
+                V.Div(className: "[--g:20px] flex-row gap-(--g)", children: new VNode?[]
+                {
+                    V.Div(),
+                    V.Div(name: "alone"),
+                }),
                 V.Div(className: "[--g:20px] flex-row gap-2 gap-(--g)", children: new VNode?[]
                 {
-                    V.Div(name: "first"),
+                    V.Div(),
                     V.Div(name: "second"),
-                }));
+                })));
 
             // Assert
-            Assert.That(_window.rootVisualElement.Q<VisualElement>("second").style.marginLeft.value.value, Is.EqualTo(8f));
+            Assert.That(new[]
+                {
+                    _window.rootVisualElement.Q<VisualElement>("alone").style.marginLeft.value.value,
+                    _window.rootVisualElement.Q<VisualElement>("second").style.marginLeft.value.value,
+                },
+                Is.EqualTo(new[] { 20f, 8f }));
         }
 
         [Test]
@@ -496,7 +519,7 @@ namespace Velvet.Tests
         public void Given_AStylesheetRuleRedeclaringAProperty_When_ItsClassIsRemoved_Then_TheReaderTakesTheOuterValue()
         {
             // Arrange
-            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            var loaded = AddRuleSheet();
             var child = MountSwitchable("css-var-host css-var-alt", "w-[var(--w)]");
             ForcePanelUpdate(child.panel);
             EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
@@ -509,8 +532,8 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
 
             // Assert
-            Assert.That((redeclared, Width(child)),
-                Is.EqualTo(((StyleKeyword.Undefined, 40f), (StyleKeyword.Undefined, 25f))));
+            Assert.That((loaded, redeclared, Width(child)),
+                Is.EqualTo((true, (StyleKeyword.Undefined, 40f), (StyleKeyword.Undefined, 25f))));
         }
 
         [Test]
@@ -589,7 +612,7 @@ namespace Velvet.Tests
         public void Given_AStylesheetDeclaringAProperty_When_AChildReadsIt_Then_TheChildTakesItsValue()
         {
             // Arrange
-            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            var loaded = AddRuleSheet();
             var child = Mount("css-var-host", "w-[var(--w)]");
 
             // Act — the engine fills the declaration in at a style pass, and the scheduler is what reads it again.
@@ -597,7 +620,7 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
 
             // Assert
-            Assert.That(Width(child), Is.EqualTo((StyleKeyword.Undefined, 25f)));
+            Assert.That((loaded, Width(child)), Is.EqualTo((true, (StyleKeyword.Undefined, 25f))));
         }
     }
 }

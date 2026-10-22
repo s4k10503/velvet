@@ -154,7 +154,7 @@ namespace Velvet.Tests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-        // GREEN_ON_BASE(characterization): the family reader runs over the literal gate strings below, and this branch changes neither it nor them, so the base reads them the same way.
+        // GREEN_ON_BASE(characterization): this branch adds a declared family and changes neither the family reader nor the gate strings below.
         [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
         [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
             "StyleGapClass.IsGapToken")]
