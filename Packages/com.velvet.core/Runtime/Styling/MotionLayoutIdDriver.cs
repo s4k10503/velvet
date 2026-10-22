@@ -56,6 +56,12 @@ namespace Velvet
         internal static void OnPatched(VisualElement element, string layoutId, LayoutIdTiming timing, ReconcilerContext ctx)
         {
             ctx.LayoutIdTimings[element] = timing;
+            // A projection draws a class change the style pass has yet to take from this render on, read off the classes,
+            // whether this render's pass ran before the patch or the panel's frame did.
+            if (PendingClassTransform.Observe(element) && ctx.LayoutIdProjections.TryGetValue(element, out var drawing))
+            {
+                Project(drawing.Host, ctx);
+            }
             ctx.ElementToLayoutId.TryGetValue(element, out var heldId);
             var joins = heldId != layoutId;
             var previous = ctx.LayoutIdRegistry.GetValueOrDefault(layoutId);
@@ -630,7 +636,8 @@ namespace Velvet
             var inline = projection.OwnInlineScale;
             if (inline.keyword == StyleKeyword.Undefined) return inline.value.value;
             if (inline.keyword != StyleKeyword.Null) return Vector3.one;
-            return StyleCascade.Scale(element) is { } declared ? declared.value : projection.StartScale;
+            return PendingClassTransform.DeclaredScale(element)
+                ?? (StyleCascade.Scale(element) is { } declared ? declared.value : projection.StartScale);
         }
 
         private static void EnsureFrame(VisualElement host, ReconcilerContext ctx)
@@ -766,7 +773,12 @@ namespace Velvet
         private static Vector2 AxisLengths(Matrix4x4 world) =>
             new(world.MultiplyVector(Vector3.right).magnitude, world.MultiplyVector(Vector3.up).magnitude);
 
-        private static Vector2 TransformOrigin(VisualElement element) => element.resolvedStyle.transformOrigin;
+        // An inline origin outranks the classes.
+        private static Vector2 TransformOrigin(VisualElement element) =>
+            element.style.transformOrigin.keyword != StyleKeyword.Undefined
+            && PendingClassTransform.DeclaredOrigin(element) is { } fraction
+                ? Vector2.Scale(fraction, element.layout.size)
+                : (Vector2)element.resolvedStyle.transformOrigin;
 
         private static bool IsMoving(VisualElement element, ReconcilerContext ctx) =>
             ctx.LayoutIdProjections.TryGetValue(element, out var projection) && projection.Moving;
@@ -813,6 +825,7 @@ namespace Velvet
             MotionOpacity.Forget(element);
             LayoutIdLook.Forget(element);
             ProjectedCornerFace.Forget(element);
+            PendingClassTransform.Forget(element);
             CancelPendingSettle(element, ctx);
         }
 

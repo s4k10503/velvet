@@ -167,7 +167,7 @@ namespace Velvet
             var inline = projection.OwnInlineRotate;
             if (inline.keyword == StyleKeyword.Undefined) return inline.value;
             if (inline.keyword != StyleKeyword.Null) return UnityEngine.UIElements.Rotate.None();
-            return StyleCascade.Rotation(element) ?? new Rotate(new Angle(projection.StartRotate));
+            return PendingClassTransform.DeclaredRotate(element) ?? StyleCascade.Rotation(element) ?? new Rotate(new Angle(projection.StartRotate));
         }
 
         // A rotate tagged as LayoutIdCarry.TargetTag reads it.

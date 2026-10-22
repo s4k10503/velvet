@@ -82,6 +82,7 @@ namespace Velvet.Tests
             s_cardTransition = null;
             (s_cardMounted, s_m1Open, s_m2Open) = (false, false, false);
             s_closeRead = null;
+            s_lateTransitions = null;
         }
 
         [TearDown]
@@ -2952,16 +2953,79 @@ namespace Velvet.Tests
             AdvancePast(1f);
 
             // Act — one render takes "b" away, which hands "a" the lead from b's box before the style pass, and rescales
-            // "a"; the frame after it and two more.
+            // "a"; the frame after it.
             (s_bMounted, s_aClasses) = (false, "scale-125");
             RenderShared(mounted);
-            Tick();
-            Tick();
 
             // Assert — the slot holds its own one and a quarter times the scale its move draws it at.
             var a = Root.Q<VisualElement>("a");
             var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection);
             Assert.That(moving ? a.style.scale.value.value.x / projection.Scale.x : float.NaN, Is.EqualTo(1.25f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AHolderTurnedByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatTurnsIt_Then_ItsFirstFrameMixesTowardsTheNewRotate()
+        {
+            // Arrange — the bundled sheet turning "a" by 45 degrees; "b", twice its side, has taken the id from it and landed.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aSize, s_bSize, s_aClasses) = (100, 200, "rotate-45");
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+
+            // Act — one render takes "b" away, which hands "a" the lead from b's box, and turns "a" by 12 degrees; the frame
+            // after it.
+            (s_bMounted, s_aClasses) = (false, "rotate-12");
+            RenderShared(mounted);
+
+            // Assert — the rotate a's move mixes towards from b's is its new own.
+            var a = Root.Q<VisualElement>("a");
+            var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection);
+            Assert.That(moving ? projection.RotateCarry.Target : float.NaN, Is.EqualTo(12f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AHolderPivotedByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatMovesItsOrigin_Then_ItsFirstFrameIsDrawnWhereItsMoveIs()
+        {
+            // Arrange — the bundled sheet pivoting "a" on its top left corner; "b", twice its side, has taken the id from it
+            // and landed.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aSize, s_bSize, s_aClasses) = (100, 200, "origin-top-left");
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+
+            // Act — one render takes "b" away, which hands "a" the lead from b's box, and pivots "a" on its bottom right
+            // corner; the frame after it.
+            (s_bMounted, s_aClasses) = (false, "origin-bottom-right");
+            RenderShared(mounted);
+
+            // Assert — a's left edge is drawn where its move has got to between b's box and its own, which an origin
+            // the move did not draw about moves by nearly a's side.
+            var a = Root.Q<VisualElement>("a");
+            var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection);
+            var expected = moving ? Mathf.LerpUnclamped(a.layout.x, projection.From.x, projection.Progress.Value) : float.NaN;
+            Assert.That(DrawnBox(a).x, Is.EqualTo(expected).Within(0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the translate utilities write the element's inline translate, which a projection
+        // takes as the element's own (OwnInlineTranslate, AdoptForeignWrites) without waiting for a style pass.
+        [Test]
+        public void Given_AHolderTranslatedByAUtility_When_ItTakesTheLeadBackInTheRenderThatMovesItsTranslate_Then_ItsFirstFrameCarriesTheNewTranslate()
+        {
+            // Arrange — "a" translated 10px right; "b", twice its side, has taken the id from it and landed.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aSize, s_bSize, s_aClasses) = (100, 200, "translate-x-[10px]");
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+
+            // Act — one render takes "b" away, which hands "a" the lead from b's box, and translates "a" 30px right; the
+            // frame after it.
+            (s_bMounted, s_aClasses) = (false, "translate-x-[30px]");
+            RenderShared(mounted);
+
+            // Assert
+            var a = Root.Q<VisualElement>("a");
+            var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection);
+            Assert.That(moving ? projection.TranslateCarries[0].Target : float.NaN, Is.EqualTo(30f).Within(0.01f));
         }
 
         [Test]
@@ -7446,6 +7510,9 @@ namespace Velvet.Tests
             public void Release() { }
         }
 
+        // The transition classes "late" carries beside its scale; none while null.
+        private static string s_lateTransitions;
+
         // Step 1 grows the outer one; step 2 mounts "late" inside it with the bundled stylesheet's scale-150; step 3
         // removes "lead", which leads "held"'s id.
         [Component]
@@ -7461,7 +7528,7 @@ namespace Velvet.Tests
             if (step >= 2)
             {
                 children.Add(V.Motion(key: "late", name: "late", layoutId: "late-box", transition: s_layoutSpring,
-                    className: "left-[20px] top-[80px] w-[50px] h-[50px] scale-150"));
+                    className: $"left-[20px] top-[80px] w-[50px] h-[50px] scale-150 {s_lateTransitions}"));
             }
             if (step < 3)
             {
@@ -7501,6 +7568,38 @@ namespace Velvet.Tests
             for (var i = 0; i < 20 && !act.Done; i++) Tick();
 
             // Assert — its own one and a half, drawn inside an outer one whose scale its own undoes.
+            var late = Root.Q<VisualElement>("late");
+            var outer = Root.Q<VisualElement>("outer");
+            Assert.That(act.Done ? late.style.scale.value.value.x * outer.style.scale.value.value.x : float.NaN, Is.EqualTo(1.5f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base creates no projection for a Motion before its first layout
+        // (MotionLayoutIdDriver.Project), which this pins for one whose scale transitions.
+        [Test]
+        public void Given_AMotionTransitioningItsTransformMountedInsideOneStillGrowing_When_ARenderPromotesAnotherBeforeItIsLaidOut_Then_ItIsDrawnAtItsOwnScale()
+        {
+            // Arrange — the outer one part way through growing, and "late" declaring a transition of its scale.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_lateTransitions = "transition-transform";
+            using var mounted = V.Mount(Root, V.Component(PromotionInsideGrowingRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 4; i++) Tick();
+
+            // Act — as above: inside one panel tick, before its style and layout passes, "late" mounts and "held" takes the
+            // lead.
+            var act = new OneShotBinding(() =>
+            {
+                s_setStep.Invoke(2);
+                mounted.FlushStateForTest();
+                s_setStep.Invoke(3);
+                mounted.FlushStateForTest();
+            });
+            Root.Add(new Label { binding = act });
+            for (var i = 0; i < 20 && !act.Done; i++) Tick();
+
+            // Assert — its own one and a half on the frame it is first laid out, though it declares a transition of its scale.
             var late = Root.Q<VisualElement>("late");
             var outer = Root.Q<VisualElement>("outer");
             Assert.That(act.Done ? late.style.scale.value.value.x * outer.style.scale.value.value.x : float.NaN, Is.EqualTo(1.5f).Within(0.01f));
