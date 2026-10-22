@@ -338,7 +338,14 @@ namespace Velvet
                 return;
             }
 
-            // ring-current / outline-current: the family's colour is currentcolor, which is what an unset one draws.
+            AccumulateColour(ringSuffix!, isRingFamily, ref slots);
+        }
+
+        // A colour token (ring-red-500 / outline-white / ring-[#abc]) sets its own family's colour and names no band:
+        // in Tailwind v4 it writes only the colour property. ring-current / outline-current is currentcolor, which
+        // is what an unset colour draws. An unrecognized ring-*/outline-* suffix is ignored (not a known utility).
+        private static void AccumulateColour(string ringSuffix, bool isRingFamily, ref RingSlots slots)
+        {
             if (ringSuffix == "current")
             {
                 if (isRingFamily)
@@ -351,10 +358,7 @@ namespace Velvet
                 }
                 return;
             }
-
-            // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]), which sets its own family's
-            // colour and names no band: in Tailwind v4 it writes only the colour property.
-            if (TryParseColorValue(isRingFamily ? "ring" : "outline", ringSuffix, isOutlineFamily, out var c))
+            if (TryParseColorValue(isRingFamily ? "ring" : "outline", ringSuffix, !isRingFamily, out var c))
             {
                 if (isRingFamily)
                 {
@@ -367,7 +371,6 @@ namespace Velvet
                     slots.OutlineColor = c;
                 }
             }
-            // An unrecognized ring-*/outline-* suffix is ignored (not a known utility).
         }
 
         // An outline-[…] that Tailwind's type tests (or a length, number or percentage hint) take for a width, which
