@@ -346,7 +346,7 @@ namespace Velvet.Tests
         public void Given_ANegatedTokenWithAnEmbeddedBang_When_Parsed_Then_ItIsRejected()
         {
             // Arrange / Act — the bang sits after the leading dash, a shape StripImportant does not recognize
-            // (it only strips a bang at the very first or very last character), so this stays rejected.
+            // (it strips a bang at the first or last character, or right after the variants), so this stays rejected.
             var ok = StyleZIndexClass.TryParse("-!z-10", out _);
 
             // Assert

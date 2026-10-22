@@ -85,7 +85,7 @@ namespace Velvet
         {
             z = null;
             // A dash embedded AFTER a leading "-" (e.g. "-!z-10") is not a shape StripImportant recognizes (it
-            // only strips a bang at the very first or very last character), so that stays rejected.
+            // strips a bang at the first or last character, or right after the variants), so that stays rejected.
             cls = StyleArbitraryValueResolver.StripImportant(cls, out important);
             cls = StyleArbitraryValueResolver.WithoutTypeHint(cls ?? string.Empty) ?? string.Empty;
             if (string.IsNullOrEmpty(cls))

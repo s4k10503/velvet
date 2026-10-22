@@ -140,6 +140,17 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
         }
 
+        // The bang behind the variants, as Tailwind spells it, is read as important and written back there.
+        [Test]
+        public void Given_AnImportantClassBehindAVariantBesideAnImportantShorthand_When_Parsed_Then_TheClassIsWrittenInline()
+        {
+            // Act
+            var tokens = V.ParseClassNames("sm:!p-[52px] sm:!pt-2");
+
+            // Assert
+            Assert.That(string.Join(" ", tokens), Is.EqualTo("sm:!p-[52px] sm:!pt-[8px]"));
+        }
+
         // GREEN_ON_BASE(characterization): the base rewrites no class, so each list below reaches the reconciler as written.
         // Each is a pair where leaving the class alone gives Tailwind's answer already or the two do not
         // contend, so a rewrite of every stylesheet class beside an inline one reddens it.
