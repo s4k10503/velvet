@@ -33,6 +33,8 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setStep;
         private static string s_cardClasses;
         private static VNode[] s_children;
+        private static string s_containerClasses;
+        private static VNode s_sibling;
 
         private RenderTexturePanelHost _host;
         private MountedTree _mounted;
@@ -46,6 +48,8 @@ namespace Velvet.Tests
             s_setStep = default;
             s_cardClasses = "";
             s_children = null;
+            s_containerClasses = null;
+            s_sibling = null;
             yield break;
         }
 
@@ -64,10 +68,11 @@ namespace Velvet.Tests
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
             var size = step == 0 ? "w-[200px] h-[200px]" : "w-[800px] h-[200px]";
-            return V.Div(children: new VNode[]
+            return V.Div(className: s_containerClasses, children: new VNode[]
             {
                 V.Motion(name: "card", layoutId: "card", transition: s_held,
                     className: $"absolute left-[40px] top-[40px] {size} rounded-[48px] {s_cardClasses}", children: s_children),
+                s_sibling,
             });
         }
 
@@ -295,6 +300,32 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(IsRed(Interior), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a moving Motion's face to UI Toolkit, which paints it beneath
+        // everything generated in the Motion's content. Appending the face's callback in ProjectedCornerFace.InsertFirst,
+        // after the divider's painter, reddens this case: the face then covers the dashes.
+        [UnityTest]
+        public IEnumerator Given_ADividedLayoutIdMotionDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_ItsDashedDividerShowsOverIt()
+        {
+            // Arrange / Act — blue, the first child of a container dividing its children with eight-pixel green dashes.
+            s_cardClasses = "bg-[#0000ff]";
+            s_containerClasses = "divide-y-[8px] divide-[#00ff00] divide-dashed";
+            s_sibling = V.Div(className: "w-[10px] h-[10px]");
+            yield return MountAndWiden("DividerOverFace");
+
+            // Assert — green along the middle of its bottom edge, clear of its rounded corners.
+            var bottom = Card.worldBound.yMax;
+            var pixels = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(0, 0, Size, Size));
+            var dashes = 0;
+            for (var row = Mathf.FloorToInt(bottom) - 6; row < Mathf.FloorToInt(bottom) - 2; row++)
+            {
+                for (var col = Mathf.FloorToInt(DrawnCorner.x) + 60; col < Mathf.FloorToInt(DrawnCorner.x) + 140; col++)
+                {
+                    dashes += IsGreen(pixels[((Size - 1 - row) * Size) + col]) ? 1 : 0;
+                }
+            }
+            Assert.That(dashes, Is.GreaterThan(0));
         }
     }
 }

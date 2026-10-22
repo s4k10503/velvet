@@ -210,7 +210,7 @@ namespace Velvet
             state.WrittenRepeat = style.backgroundRepeat;
             state.WrittenSize = style.backgroundSize;
             state.OnGenerate = mgc => Paint(mgc, element, state);
-            InsertBeforeOwnPaint(element, state.OnGenerate);
+            InsertFirst(element, state.OnGenerate);
             s_states.Add(element, state);
             return state;
         }
@@ -223,7 +223,7 @@ namespace Velvet
             var style = element.style;
             state.Own.Image = state.WrittenImage = style.backgroundImage;
             state.BakedSize = new Vector2(float.NaN, float.NaN);
-            InsertBeforeOwnPaint(element, state.OnGenerate);
+            InsertFirst(element, state.OnGenerate);
         }
 
         // Steps the colours on to the element's own, writing each inline until it lands and then its own; true once
@@ -449,22 +449,11 @@ namespace Velvet
             return true;
         }
 
-        // Ahead of the first callback whose target is the element itself, and of every callback after it, so that the
-        // face lies beneath what the element paints through such a callback; after the callbacks before it.
-        private static void InsertBeforeOwnPaint(VisualElement element, System.Action<MeshGenerationContext> paint)
-        {
-            System.Action<MeshGenerationContext>? before = null;
-            System.Action<MeshGenerationContext>? after = null;
-            if (element.generateVisualContent is { } existing)
-            {
-                foreach (var callback in existing.GetInvocationList())
-                {
-                    if (after != null || ReferenceEquals(callback.Target, element)) after += (System.Action<MeshGenerationContext>)callback;
-                    else before += (System.Action<MeshGenerationContext>)callback;
-                }
-            }
-            element.generateVisualContent = before + paint + after;
-        }
+        // First, so that the face lies beneath what the element paints in its own content already: its text or picture,
+        // and a dashed divider StyleDivideManipulator's painter draws on its edge
+        // (Given_ADividedLayoutIdMotionDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_ItsDashedDividerShowsOverIt).
+        private static void InsertFirst(VisualElement element, System.Action<MeshGenerationContext> paint)
+            => element.generateVisualContent = paint + element.generateVisualContent;
 
         // Bakes the border edge again where the box or a radius has moved since the last bake.
         private static void SyncClip(VisualElement element, State state)
