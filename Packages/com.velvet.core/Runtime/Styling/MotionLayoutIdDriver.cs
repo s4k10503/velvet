@@ -489,7 +489,7 @@ namespace Velvet
         private static void WriteScale(VisualElement element, LayoutIdProjection projection, Vector2 scale, float dtSec)
         {
             var target = OwnScale(element, projection);
-            var own = Carried(element, projection.ScaleCarries, target, dtSec, "scale");
+            var own = Carried(element, projection.ScaleCarries, target, dtSec, "scale", false);
             var ping = StyleAnimateDriver.CurrentPingFactor(element);
             element.style.scale = new Scale(new Vector3(own.x * scale.x * ping, own.y * scale.y * ping, target.z));
             projection.WrittenScale = element.style.scale;
@@ -543,9 +543,10 @@ namespace Velvet
         private static Vector3 CarriedTranslate(VisualElement element, LayoutIdProjection projection, float dtSec)
         {
             var target = OwnTranslate(element, projection);
-            TakeUnit(element, projection, 0, target.x);
-            TakeUnit(element, projection, 1, target.y);
-            var carried = Carried(element, projection.TranslateCarries, new Vector2(target.x.value, target.y.value), dtSec, "translate");
+            // A change of unit alone is a change of the value, as UI Toolkit compares lengths with their units.
+            var unitChanged = TakeUnit(element, projection, 0, target.x) | TakeUnit(element, projection, 1, target.y);
+            var carried = Carried(element, projection.TranslateCarries, new Vector2(target.x.value, target.y.value), dtSec, "translate",
+                unitChanged);
             var size = element.layout.size;
             return new Vector3(target.x.unit == LengthUnit.Percent ? carried.x / 100f * size.x : carried.x,
                 target.y.unit == LengthUnit.Percent ? carried.y / 100f * size.y : carried.y, target.z);
@@ -563,10 +564,10 @@ namespace Velvet
         }
 
         // Takes an axis's carry into the unit it is given in, as UI Toolkit takes a transition's start into the unit of the
-        // value it runs to.
-        private static void TakeUnit(VisualElement element, LayoutIdProjection projection, int axis, Length given)
+        // value it runs to. Returns whether it did.
+        private static bool TakeUnit(VisualElement element, LayoutIdProjection projection, int axis, Length given)
         {
-            if (given.unit == projection.TranslateUnits[axis]) return;
+            if (given.unit == projection.TranslateUnits[axis]) return false;
             projection.TranslateUnits[axis] = given.unit;
             var size = element.layout.size[axis];
             var carry = projection.TranslateCarries[axis];
@@ -575,17 +576,19 @@ namespace Velvet
             if (given.unit != LengthUnit.Percent) carry.Convert(size / 100f);
             else if (size > 0f) carry.Convert(100f / size);
             else carry.Land(given.value);
+            return true;
         }
 
         // The element's own value carried towards target on both axes as LayoutIdLook.OwnRotate carries the rotate. UI
         // Toolkit runs a translate or a scale as one value, so a change of either axis starts both over, and reverses only
-        // where both run back
+        // where both run back; changed: the value changed in a way the targets do not show, which is no reversal
         // (Given_ALeadMovingOnATransitionOfItsOwn_When_ItsTransformChanges_Then_ItRunsAsTheEngineRunsIt).
-        private static Vector2 Carried(VisualElement element, LayoutIdCarry[] axes, Vector2 target, float dtSec, string property)
+        private static Vector2 Carried(VisualElement element, LayoutIdCarry[] axes, Vector2 target, float dtSec, string property,
+            bool changed)
         {
-            if (target.x != axes[0].Target || target.y != axes[1].Target)
+            if (changed || target.x != axes[0].Target || target.y != axes[1].Target)
             {
-                var reverses = axes[0].Reverses(target.x) && axes[1].Reverses(target.y);
+                var reverses = !changed && axes[0].Reverses(target.x) && axes[1].Reverses(target.y);
                 axes[0].Retarget(target.x, reverses, element, property, null);
                 axes[1].Retarget(target.y, reverses, element, property, null);
             }
@@ -725,11 +728,11 @@ namespace Velvet
             StyleAnimateDriver.ReassertLoop(element, held);
             WriteOpacity(element, projection, null, ctx);
             LayoutIdPicking.Restore(projection);
-            // The rotate is handed back by LayoutIdLook.End, at once unless something the projection carries runs on.
-            if (LayoutIdLook.End(element, projection, ctx.StyleAnimationScheduler.Clock) && projection.WritesRotate)
-            {
-                restored.Rotate = LayoutIdLook.DeclaredRotate(element, projection);
-            }
+            // The rotate is handed back by LayoutIdLook.End at once, or else drawn by its tail from the carry, which only takes
+            // the slot after this render
+            // (Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate).
+            var handed = LayoutIdLook.End(element, projection, ctx.StyleAnimationScheduler.Clock);
+            if (projection.WritesRotate) restored.Rotate = handed ? LayoutIdLook.DeclaredRotate(element, projection) : projection.RotateCarry.Value;
             if (ctx.CurrentPass != null && (restored.Translate != null || restored.Scale != null || restored.Rotate != null))
             {
                 ctx.LayoutIdRestored[element] = restored;

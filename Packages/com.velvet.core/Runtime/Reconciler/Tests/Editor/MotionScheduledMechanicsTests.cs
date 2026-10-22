@@ -5138,6 +5138,9 @@ namespace Velvet.Tests
         [TestCase("translate-y-[40px]", null, false, 4f, 20f)]
         [TestCase("scale-[1.5]", "scale-[1.5] scale-x-[2]", true, 1.28f, 1.37f)]
         [TestCase("scale-[1.5]", "scale-x-[1] scale-y-[2]", true, 1.4f, 1.55f)]
+        [TestCase("scale-[1.5]", "scale-x-[2] scale-y-[1]", true, 1.12f, 1.22f)]
+        [TestCase("translate-y-[50px]", "translate-y-1/2", false, 28f, 37f)]
+        [TestCase("translate-y-[50px]", "translate-y-[0%]", false, 12f, 23f)]
         public void Given_ALeadMovingOnATransitionOfItsOwn_When_ItsTransformChanges_Then_ItRunsAsTheEngineRunsIt(string change, string then,
             bool scale, float low, float high)
         {
@@ -5154,7 +5157,8 @@ namespace Velvet.Tests
 
             // Act — both take the class change; where then is given, both take it in its place some 0.5 s on, which changes
             // one axis of the value alone, or sends one axis back where it started and the other on, which UI Toolkit does
-            // not read as a reversal of the value; some 0.3 s on.
+            // not read as a reversal of the value, or gives the translate in a percent of the box in place of pixels, the
+            // same length or none, which UI Toolkit reads as a change of the value and no reversal; some 0.3 s on.
             (s_bClasses, s_controlClasses) = ($"{transitioning} {change}", $"{transitioning} {change}");
             RenderShared(mounted);
             if (then != null)

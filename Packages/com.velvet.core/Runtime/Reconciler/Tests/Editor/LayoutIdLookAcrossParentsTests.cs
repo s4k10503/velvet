@@ -17,16 +17,19 @@ namespace Velvet.Tests
         private static readonly StyleTransitionConfig s_slowTween = new() { DurationSec = 1f, Easing = EasingMode.Linear };
 
         private static StateUpdater<int> s_setStep;
+        // The classes "a" carries of its own.
+        private static string s_aClasses;
 
         [SetUp]
         public override void SetUp()
         {
             base.SetUp();
-            s_setStep = default;
+            (s_setStep, s_aClasses) = (default, "");
         }
 
         // "a" holds "card" in the first parent, moving at once. Step 1 mounts "b", turned 45 degrees, beside it under the
-        // id on a one-second tween; step 2 takes "b" away and mounts "c" under the id in the second parent.
+        // id on a one-second tween, and step 3 keeps it there; step 2 takes "b" away and mounts "c" under the id in the
+        // second parent.
         [Component]
         private static VNode TwoParentsRender()
         {
@@ -35,9 +38,9 @@ namespace Velvet.Tests
             var first = new List<VNode>
             {
                 V.Motion(key: "a", name: "a", layoutId: "card", transition: s_atOnce,
-                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]"),
+                    className: $"absolute left-[0px] top-[0px] w-[100px] h-[100px] {s_aClasses}"),
             };
-            if (step == 1)
+            if (step == 1 || step == 3)
             {
                 first.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_slowTween,
                     className: "absolute left-[300px] top-[0px] w-[100px] h-[100px] rotate-45"));
@@ -56,17 +59,25 @@ namespace Velvet.Tests
             });
         }
 
-        [Test]
-        public void Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate()
+        [TestCase("", "")]
+        [TestCase("transition-all duration-1000 ease-linear", "translate-y-[40px]")]
+        public void Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate(
+            string aClasses, string late)
         {
-            // Arrange — the bundled sheet; "b" takes the id from "a", mixing its rotate in from a's none, and "a" is drawn
-            // over "b" at b's rotate; some 0.2 s in.
+            // Arrange — the bundled sheet; "a" carrying aClasses; "b" takes the id from "a", mixing its rotate in from a's
+            // none, and "a" is drawn over "b" at b's rotate; some 0.2 s in "a" takes late, which a translate on a transition
+            // carries on past the render that ends a's draw over "b", and three frames on.
             VelvetStyleUtilities.AttachTo(Root);
+            s_aClasses = aClasses;
             using var mounted = V.Mount(Root, V.Component(TwoParentsRender, key: "root"));
             Tick();
             s_setStep.Invoke(1);
             mounted.FlushStateForTest();
             for (var i = 0; i < 12; i++) Tick();
+            s_aClasses = $"{aClasses} {late}";
+            s_setStep.Invoke(3);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 3; i++) Tick();
 
             // Act — one render takes "b" away, which hands "a" the lead back, landing at once, and mounts "c" under the id,
             // which takes it from "a"; the frame after.
