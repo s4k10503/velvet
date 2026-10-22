@@ -5181,8 +5181,10 @@ namespace Velvet.Tests
         }
 
 
+        // GREEN_ON_BASE(characterization): the base composes scale-x-[…] and scale-y-[…] as this branch does; the second row
+        // spells its uniform 1.5 with them because a scale-[…] beside an axis utility is drawn alone.
         [TestCase("translate-y-[40px]", null, false, 4f, 20f)]
-        [TestCase("scale-[1.5]", "scale-[1.5] scale-x-[2]", true, 1.28f, 1.37f)]
+        [TestCase("scale-x-[1.5] scale-y-[1.5]", "scale-x-[2] scale-y-[1.5]", true, 1.28f, 1.37f)]
         [TestCase("scale-[1.5]", "scale-x-[1] scale-y-[2]", true, 1.4f, 1.55f)]
         [TestCase("scale-[1.5]", "scale-x-[2] scale-y-[1]", true, 1.12f, 1.22f)]
         [TestCase("translate-y-[50px]", "translate-y-1/2", false, 28f, 37f)]
