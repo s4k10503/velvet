@@ -152,6 +152,12 @@ namespace Velvet
         internal static readonly EngineMember AnimationSystemRotates =
             Field(UIElements, AnimationSystemType, "m_Rotate", AnimationSystemType + "+ValuesRotate");
 
+        internal static readonly EngineMember AnimationSystemTranslates =
+            Field(UIElements, AnimationSystemType, "m_Translate", AnimationSystemType + "+ValuesTranslate");
+
+        internal static readonly EngineMember AnimationSystemScales =
+            Field(UIElements, AnimationSystemType, "m_Scale", AnimationSystemType + "+ValuesScale");
+
         internal static readonly EngineMember AnimationSystemTime =
             Field(UIElements, AnimationSystemType, "m_CurrentTime", "System.Double");
 
@@ -203,6 +209,12 @@ namespace Velvet
 
         internal static readonly EngineMember RotatePropertyId =
             Field(UIElements, StylePropertyIdType, "Rotate", StylePropertyIdShape);
+
+        internal static readonly EngineMember TranslatePropertyId =
+            Field(UIElements, StylePropertyIdType, "Translate", StylePropertyIdShape);
+
+        internal static readonly EngineMember ScalePropertyId =
+            Field(UIElements, StylePropertyIdType, "Scale", StylePropertyIdShape);
 
         internal static readonly EngineMember BorderTopLeftRadiusPropertyId =
             Field(UIElements, StylePropertyIdType, "BorderTopLeftRadius", StylePropertyIdShape);

@@ -152,21 +152,57 @@ namespace Velvet
         }
 #endif
 
-        // The rotate the rules declare, in degrees; NaN where the cached style cannot be read. Read by an accessor compiled
-        // once, since a layoutId lead mixing its rotate reads it on every pass
+        // The rotate the rules declare, none included; null where the cached style cannot be read. Read by an accessor
+        // compiled once, since a layoutId lead mixing its rotate reads it on every pass
         // (Given_ALeadMixingItsRotate_When_ItsOwnRotateIsReadAgain_Then_NothingIsAllocated).
-        public static float Rotate(VisualElement element)
+        public static Rotate? Rotation(VisualElement element)
         {
 #if !ENABLE_IL2CPP
-            if (s_compiledRotate != null) return s_compiledRotate(element).angle.ToDegrees();
+            if (s_compiledRotate != null)
+            {
+                var read = s_compiledRotate(element);
+                return float.IsNaN(read.angle.value) ? null : read;
+            }
 #endif
-            return Of(element) is { } style && TryReadRotate(style, out var rotate) ? rotate.angle.ToDegrees() : float.NaN;
+            return Of(element) is { } style && TryReadRotate(style, out var rotate) ? rotate : null;
+        }
+
+        // The translate and the scale the rules declare; null where the cached style cannot be read. Read by accessors
+        // compiled once, as Rotation is, since a layoutId projection can read both on every pass.
+        public static Translate? Translate(VisualElement element)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledTranslate != null)
+            {
+                var read = s_compiledTranslate(element);
+                return float.IsNaN(read.z) ? null : read;
+            }
+#endif
+            return Of(element) is { } style && TryReadTranslate(style, out var translate) ? translate : null;
+        }
+
+        public static Scale? Scale(VisualElement element)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledScale != null)
+            {
+                var read = s_compiledScale(element);
+                return float.IsNaN(read.value.x) ? null : read;
+            }
+#endif
+            return Of(element) is { } style && TryReadScale(style, out var scale) ? scale : null;
         }
 
 #if !ENABLE_IL2CPP
         // A NaN angle where the element's style is not cached.
         private static readonly Func<VisualElement, Rotate>? s_compiledRotate =
             s_rotate == null ? null : Compile<Rotate>(s_rotate, new Rotate(new Angle(float.NaN)));
+
+        // A NaN depth, and a NaN scale, where the element's style is not cached.
+        private static readonly Func<VisualElement, Translate>? s_compiledTranslate =
+            s_translate == null ? null : Compile<Translate>(s_translate, new Translate(new Length(0f), new Length(0f), float.NaN));
+        private static readonly Func<VisualElement, Scale>? s_compiledScale =
+            s_scale == null ? null : Compile<Scale>(s_scale, new Scale(new UnityEngine.Vector3(float.NaN, float.NaN, float.NaN)));
 
         // A reader of one member of the element's cached style, giving fallback where the style is not cached; null where
         // the members it goes through do not resolve or it cannot be compiled.

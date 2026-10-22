@@ -2036,6 +2036,90 @@ namespace Velvet.Tests
             Assert.That(new[] { translate.x.value, translate.y.value }, Is.EqualTo(new[] { -200f, -20f }).Within(1f));
         }
 
+        [Test]
+        public void Given_ALayoutIdMotionTranslatedByItsRulesMidMove_When_ItsClassesTranslateItElsewhere_Then_TheMoveAddsToTheNewTranslate()
+        {
+            // Arrange — the bundled sheet lifting the box 20px; widened to 200px with its top-left corner fixed, so its
+            // move translates it across and not down.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_resizeOrigin, s_resizeTo) = ("anim-slide-up-exit-to", new Vector2Int(200, 100));
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Act — its rules drop it 20px instead, its box unchanged; the frame the styles take it and the next.
+            s_resizeOrigin = "anim-slide-down-exit-to";
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+            Tick();
+
+            // Assert — its own 20px down, to which the move adds nothing.
+            var element = Root.Q<VisualElement>("shared");
+            Assert.That(element.style.translate.value.y.value, Is.EqualTo(20f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionTranslatedByAFractionOfItsSizeMidMove_When_ItGrowsAgain_Then_TheFractionFollowsAtOnce()
+        {
+            // Arrange — the bundled sheet; the box translated down by half its height and transitioning its transform
+            // linearly over a second, its size on no transition, so that the box is laid out at once at each size; grown
+            // from 100px to 200px square about its top centre, a few frames into the move.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_resizeOrigin, s_resizeTo) = ("origin-[50%_0%] translate-y-1/2 transition-transform duration-1000 ease-linear",
+                new Vector2Int(200, 200));
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 4; i++) Tick();
+
+            // Act — grown to 300px square; the frame it is laid out on, and the next.
+            s_resizeTo = new Vector2Int(300, 300);
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+            Tick();
+
+            // Assert — half its new height down at once, the box being laid out at its new size at once: a percent translate
+            // follows the box rather than transitioning towards a new pixel value. The move adds nothing down about a top
+            // edge it keeps where it was.
+            var element = Root.Q<VisualElement>("shared");
+            Assert.That(element.style.translate.value.y.value, Is.EqualTo(150f).Within(0.01f));
+        }
+
+        [TestCase("translate-y-1/2", "translate-y-[120px]", "origin-[50%_0%]", false)]
+        [TestCase("translate-x-1/2", "translate-x-[120px]", "origin-[0%_50%]", true)]
+        public void Given_ALayoutIdMotionTranslatedByAFractionOfItsSizeMidMove_When_ItTakesAPixelTranslate_Then_ItRunsThereFromWhereItIsDrawn(
+            string fraction, string pixels, string origin, bool across)
+        {
+            // Arrange — the bundled sheet; the box translated by half its size on one axis and transitioning its transform
+            // linearly over a second, grown from 100px to 200px square about the middle of the edge it keeps where it was on
+            // that axis, a few frames into the move.
+            const string transitioning = "transition-transform duration-1000 ease-linear";
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_resizeOrigin, s_resizeTo) = ($"{origin} {fraction} {transitioning}", new Vector2Int(200, 200));
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 4; i++) Tick();
+
+            // Act — it takes 120px on that axis in place of the fraction, its box unchanged; the frame after and the next.
+            s_resizeOrigin = $"{origin} {pixels} {transitioning}";
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+            Tick();
+
+            // Assert — two frames on from the 100px it was drawn at towards 120px, under a pixel on, rather than at 120px
+            // at once or on towards 120% of its size; the move adds nothing on that axis.
+            var translate = Root.Q<VisualElement>("shared").style.translate.value;
+            Assert.That(across ? translate.x.value : translate.y.value, Is.EqualTo(100f).Within(1f));
+        }
+
         private static string s_ownClasses;
 
         // Step 1 moves the box 200px right; s_ownClasses are its own transform classes.
@@ -2855,6 +2939,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
+        }
+
+        [Test]
+        public void Given_AHolderScaledByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatRescalesIt_Then_ItsMoveIsDrawnAtTheNewScale()
+        {
+            // Arrange — the bundled sheet scaling "a" by one and a half; "b", twice its side, has taken the id from it and
+            // landed.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aSize, s_bSize, s_aClasses) = (100, 200, "scale-150");
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+
+            // Act — one render takes "b" away, which hands "a" the lead from b's box before the style pass, and rescales
+            // "a"; the frame after it and two more.
+            (s_bMounted, s_aClasses) = (false, "scale-125");
+            RenderShared(mounted);
+            Tick();
+            Tick();
+
+            // Assert — the slot holds its own one and a quarter times the scale its move draws it at.
+            var a = Root.Q<VisualElement>("a");
+            var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection);
+            Assert.That(moving ? a.style.scale.value.value.x / projection.Scale.x : float.NaN, Is.EqualTo(1.25f).Within(0.01f));
         }
 
         [Test]
@@ -4936,6 +5043,399 @@ namespace Velvet.Tests
         }
 
 
+        [Test]
+        public void Given_AMotionScalingOnATransition_When_ItTakesAHeldId_Then_ItsOwnScaleRunsAsTheEngineRunsIt()
+        {
+            // Arrange / Act — "b" twice the side of "a", so that the move draws "a" scaled and writes the slot; the scale
+            // comes from the bundled sheet's rules.
+            s_bSize = 200;
+            var (own, control) = TakeOverAsItTurns("scale-150", e => e.resolvedStyle.scale.value.x,
+                (projection, a) => a.style.scale.value.value.x / projection.Scale.x);
+
+            // Assert — within a frame of the control, which is about half way from one to one and a half.
+            Assert.That(own, Is.EqualTo(control > 1.15f && control < 1.35f ? control : float.NaN).Within(0.015f));
+        }
+
+
+        [TestCase("translate-y-[40px]", 12f, 28f)]
+        [TestCase("translate-y-1/2", 15f, 35f)]
+        public void Given_AMotionTranslatingOnATransition_When_ItTakesAHeldId_Then_ItsOwnTranslateRunsAsTheEngineRunsIt(string to, float low,
+            float high)
+        {
+            // Arrange / Act — "a" and "b" one size and one top, so that the move writes "a"'s translate across alone and
+            // its own down is what the slot holds down. UI Toolkit runs a translate to a percent of the box in percent.
+            var (own, control) = TakeOverAsItTurns(to, e => e.resolvedStyle.translate.y, (_, a) => a.style.translate.value.y.value);
+
+            // Assert — within a frame of the control, which is about half way down.
+            Assert.That(own, Is.EqualTo(control > low && control < high ? control : float.NaN).Within(1f));
+        }
+
+
+        [TestCase("translate-y-1/2", "translate-y-[40px]", "translate-y-1/2", "translate", 85f, 92f)]
+        [TestCase("", "rotate-45", "rotate-0", "rotate", 10.5f, 14f)]
+        [TestCase("layout-id-test-eighth-turn", "rotate-90", "rotate-45", "rotate", 55.5f, 59f)]
+        [TestCase("", "rounded-[40px]", "rounded-[0px]", "radius", 7.5f, 10.5f)]
+        public void Given_AMotionTransitioningItsTransformAsItTakesAHeldId_When_ItsClassesSendItBack_Then_ItRunsAsTheEngineRunsIt(
+            string from, string to, string back, string slot, float low, float high)
+        {
+            // Arrange — the bundled sheet and the test's own; "a" 200px square at from, and a control holding no id as large and as given,
+            // both transitioning everything linearly over a second; both take to; some 0.2 s on, "a" moves under "card"
+            // from "b", as large and 300px right, on a three-second tween, taking over its own transition; some 0.1 s on.
+            const string transitioning = "transition-all duration-1000 ease-linear";
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_aId, s_aLeft, s_aMounted, s_bMounted, s_aSize, s_bSize) = ("solo", 20, true, true, 200, 200);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            s_aTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
+            (s_aClasses, s_controlClasses) = ($"{transitioning} {from}", $"min-w-[200px] min-h-[200px] {transitioning} {from}");
+            using var mounted = MountAAlone();
+            (s_aClasses, s_controlClasses) = ($"{transitioning} {to}", $"min-w-[200px] min-h-[200px] {transitioning} {to}");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+            (s_aId, s_aLeft) = ("card", 0);
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Act — both take back: the half of the box the translate ran from, which UI Toolkit reads as a reversal, or a
+            // rotate of 0deg where it ran from none, or of 45deg where it ran from an eighth of a turn, neither of which it
+            // does, or the square corner the radius ran from, which it does; some 0.1 s on.
+            (s_aClasses, s_controlClasses) = ($"{transitioning} {back}", $"min-w-[200px] min-h-[200px] {transitioning} {back}");
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert — "a"'s own translate down, own rotate or own corner, where the control stands, within a frame of it.
+            var a = Root.Q<VisualElement>("a");
+            var control = Root.Q<VisualElement>("control").resolvedStyle;
+            var expected = slot == "rotate" ? control.rotate.angle.ToDegrees()
+                : slot == "radius" ? control.borderTopLeftRadius
+                : control.translate.y;
+            var own = !mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection) ? float.NaN
+                : slot == "translate" ? a.style.translate.value.y.value
+                : slot == "radius" ? projection.WritesRadii ? projection.RadiusCarries[0].Value : float.NaN
+                : projection.WritesRotate ? projection.RotateCarry.Value : float.NaN;
+            Assert.That(own, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(1f));
+        }
+
+
+        [TestCase("scale-150", true, false, null, 1.3f, 1.48f)]
+        [TestCase("translate-y-[40px]", false, false, null, 24f, 38f)]
+        [TestCase("scale-150", true, true, null, 1.2f, 1.45f)]
+        [TestCase("translate-y-[40px]", false, true, null, 16f, 36f)]
+        [TestCase("translate-y-[40px]", false, false, "translate-y-[0px]", 6f, 19f)]
+        public void Given_ALeadWhoseTransformChangesLateInItsMove_When_TheMoveLands_Then_ItRunsOnAsTheEngineRunsIt(string to, bool scale,
+            bool movesAgain, string later, float low, float high)
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second; "b" takes the id from "a" on a one-second tween, from "a" twice its side for a scale, so that the move
+            // draws "b" scaled, and from "a" its size and top for a translate, so that the move writes "b"'s translate
+            // across alone. Some 0.6 s in, both take the class to.
+            const string transitioning = "transition-all duration-1000 ease-linear";
+            VelvetStyleUtilities.AttachTo(Root);
+            s_aSize = scale ? 200 : 100;
+            (s_bClasses, s_controlClasses) = (transitioning, transitioning);
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = ($"{transitioning} {to}", $"{transitioning} {to}");
+            RenderShared(mounted);
+
+            // Act — the move lands some 0.4 s on; some 0.4 s past it, or just past its landing either "b" moves 100px
+            // further right or both take the class later in place of to, and some 0.2 s on.
+            for (var i = 0; i < (movesAgain || later != null ? 30 : 50); i++) Tick();
+            if (movesAgain || later != null)
+            {
+                s_bLeft = movesAgain ? 400 : s_bLeft;
+                (s_bClasses, s_controlClasses) = later != null ? ($"{transitioning} {later}", $"{transitioning} {later}") : (s_bClasses, s_controlClasses);
+                RenderShared(mounted);
+                for (var i = 0; i < 12; i++) Tick();
+            }
+
+            // Assert — "b" drawn within a frame of the control, which is some way along its transition still: 0.015 of a
+            // scale, 1px of a translate.
+            var control = Root.Q<VisualElement>("control").resolvedStyle;
+            var b = Root.Q<VisualElement>("b").resolvedStyle;
+            var expected = scale ? control.scale.value.x : control.translate.y;
+            var drawn = scale ? b.scale.value.x : b.translate.y;
+            Assert.That(drawn, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(scale ? 0.015f : 1f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base hands the scale slot back as the move lands. Running a translate on
+        // past the landing must still hand back a scale that has landed.
+        [Test]
+        public void Given_ALeadWhoseTranslateRunsOnPastItsLanding_When_ItsScaleHasLanded_Then_TheScaleSlotIsHandedBack()
+        {
+            // Arrange — the bundled sheet; "b", transitioning everything linearly over a second, takes the id from "a", twice
+            // its side, on a one-second tween, so that the move draws "b" scaled; some 0.6 s in it takes a translate down.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aSize, s_bClasses) = (200, "transition-all duration-1000 ease-linear");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            s_bClasses += " translate-y-[40px]";
+            RenderShared(mounted);
+
+            // Act — the move lands with the translate still running; some 0.1 s past it.
+            for (var i = 0; i < 32; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("b").style.scale.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+
+        [TestCase("translate-y-[40px]", null, false, 4f, 20f)]
+        [TestCase("scale-[1.5]", "scale-[1.5] scale-x-[2]", true, 1.28f, 1.37f)]
+        [TestCase("scale-[1.5]", "scale-x-[1] scale-y-[2]", true, 1.4f, 1.55f)]
+        [TestCase("scale-[1.5]", "scale-x-[2] scale-y-[1]", true, 1.12f, 1.22f)]
+        [TestCase("translate-y-[50px]", "translate-y-1/2", false, 28f, 37f)]
+        [TestCase("translate-y-[50px]", "translate-y-[0%]", false, 12f, 23f)]
+        public void Given_ALeadMovingOnATransitionOfItsOwn_When_ItsTransformChanges_Then_ItRunsAsTheEngineRunsIt(string change, string then,
+            bool scale, float low, float high)
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second; "b" takes the id on a one-second tween from "a", twice its side for a scale, so that the move draws "b"
+            // scaled, and its size and top for a translate, so that the move writes "b"'s translate across alone; some 0.1 s
+            // on.
+            const string transitioning = "transition-all duration-1000 ease-linear";
+            VelvetStyleUtilities.AttachTo(Root);
+            s_aSize = scale ? 200 : 100;
+            (s_bClasses, s_controlClasses) = (transitioning, transitioning);
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Act — both take the class change; where then is given, both take it in its place some 0.5 s on, which changes
+            // one axis of the value alone, or sends one axis back where it started and the other on, which UI Toolkit does
+            // not read as a reversal of the value, or gives the translate in a percent of the box in place of pixels, the
+            // same length or none, which UI Toolkit reads as a change of the value and no reversal; some 0.3 s on.
+            (s_bClasses, s_controlClasses) = ($"{transitioning} {change}", $"{transitioning} {change}");
+            RenderShared(mounted);
+            if (then != null)
+            {
+                for (var i = 0; i < 30; i++) Tick();
+                (s_bClasses, s_controlClasses) = ($"{transitioning} {then}", $"{transitioning} {then}");
+                RenderShared(mounted);
+            }
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Assert — "b"'s own translate down, or own scale down, where the control stands: UI Toolkit starts a translate or
+            // a scale over as one value, both axes on the full duration, when either axis changes. 1px of a translate, 0.015
+            // of a scale.
+            var b = Root.Q<VisualElement>("b");
+            var control = Root.Q<VisualElement>("control").resolvedStyle;
+            var expected = scale ? control.scale.value.y : control.translate.y;
+            var own = !mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(b, out var projection) ? float.NaN
+                : scale ? b.style.scale.value.value.y / projection.Scale.y : b.style.translate.value.y.value;
+            Assert.That(own, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(scale ? 0.015f : 1f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base starts a follower taking the lead back from its own scale, translate
+        // and rotate. What this branch carries and records of each must start there too rather than where the follower
+        // was drawn over the lead.
+        [TestCase(100, 200, "", "", "scale", 1f)]
+        [TestCase(200, 200, "translate-x-[30px]", "", "translate", 30f)]
+        [TestCase(100, 100, "", "rotate-45", "rotate", 0f)]
+        public void Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform(int aSize, int bSize, string aClasses,
+            string bClasses, string slot, float own)
+        {
+            // Arrange — the bundled sheet; "a", aSize square, transitioning everything linearly over a second and carrying
+            // aClasses, drawn over "b", bSize square and carrying bClasses, as "b" moves from a's box 300px right on a
+            // one-second tween, mixing in its rotate from a's; some 0.2 s in. A translate of a's own on a box other than
+            // 100px tells its pixels from a percent of the box.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aSize, s_bSize, s_bClasses, s_aClasses) = (aSize, bSize, bClasses, $"transition-all duration-1000 ease-linear {aClasses}");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Act — "b" leaves, handing "a" the lead back from b's box; some three frames on.
+            s_bMounted = false;
+            RenderShared(mounted);
+            Tick();
+            Tick();
+
+            // Assert — "a"'s own scale, translate across or rotate, rather than what it was drawn at over "b": the slot divided
+            // by the scale its move draws it at, less the translate its move adds, or the rotate it carries as its own. 0.015
+            // of a scale, half a pixel or half a degree.
+            var a = Root.Q<VisualElement>("a");
+            var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection);
+            var carried = !moving ? float.NaN
+                : slot == "scale" ? a.style.scale.value.value.x / projection.Scale.x
+                : slot == "translate" ? a.style.translate.value.x.value - (projection.From.x - a.layout.x) * projection.Progress.Value
+                : projection.WritesRotate ? projection.RotateCarry.Value : float.NaN;
+            Assert.That(carried, Is.EqualTo(own).Within(slot == "scale" ? 0.015f : 0.5f));
+        }
+
+
+        [Test]
+        public void Given_AFollowerWhoseOwnRotateTurnsOnATransition_When_TheLeadLeaves_Then_ItsOwnRunsAsTheEngineRunsIt()
+        {
+            // Arrange — the bundled sheet; "a", and a control holding no id, both transitioning everything linearly over a
+            // second; "a" drawn over "b", turned a quarter round, as "b" moves from a's box 300px right on a one-second
+            // tween, mixing in its rotate from a's none; some 0.1 s on, both take rotate-45 and turn on their own
+            // transitions for some 0.2 s while "a" is drawn at b's rotate.
+            const string transitioning = "transition-all duration-1000 ease-linear";
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aClasses, s_bClasses, s_controlClasses) = (transitioning, "rotate-90", transitioning);
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 6; i++) Tick();
+            (s_aClasses, s_controlClasses) = ($"{transitioning} rotate-45", $"{transitioning} rotate-45");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Act — "b" leaves, handing "a" the lead back; some three frames on.
+            s_bMounted = false;
+            RenderShared(mounted);
+            Tick();
+            Tick();
+
+            // Assert — "a"'s own rotate where the control stands, within a degree of it, a quarter of the way round.
+            var a = Root.Q<VisualElement>("a");
+            var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
+            var own = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection) && projection.WritesRotate
+                ? projection.RotateCarry.Value
+                : float.NaN;
+            Assert.That(own, Is.EqualTo(control > 9f && control < 13.5f ? control : float.NaN).Within(1f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base leaves a rotate the follower never wrote to the engine. A rotate is
+        // recorded as handed back only where the projection that ended wrote it.
+        [Test]
+        public void Given_AFollowerTurnedAsItsLeadIs_When_TheLeadLeaves_Then_ItIsDrawnAtItsOwnRotate()
+        {
+            // Arrange — the bundled sheet; "a", turned 45 degrees and transitioning everything linearly over a second, drawn
+            // over "b", turned the same, as "b" moves from a's box on a one-second tween; some 0.2 s in.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aClasses, s_bClasses) = ("transition-all duration-1000 ease-linear rotate-45", "rotate-45");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Act — "b" leaves, handing "a" the lead back from b's box; some three frames on.
+            s_bMounted = false;
+            RenderShared(mounted);
+            Tick();
+            Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").resolvedStyle.rotate.angle.ToDegrees(), Is.EqualTo(45f).Within(0.5f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base reads a holder's own rotate afresh until it writes the slot. What one
+        // render handed back must not stand for it in a later one.
+        [Test]
+        public void Given_AHolderThatTookTheLeadBackAtItsOwnRotate_When_ItsClassesTurnItLater_Then_ItMixesTowardsTheTurn()
+        {
+            // Arrange — the bundled sheet; "b", turned 45 degrees, takes the id from "a" on a one-second tween, mixing its
+            // rotate in from a's none, and "a" is drawn over "b" at b's rotate; some 0.2 s in "b" is turned back to none,
+            // which the pass of the frame after the style pass resolves it draws, and it then leaves, handing "a" the lead
+            // back with no rotate to mix in from.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "rotate-45";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 12; i++) Tick();
+            s_bClasses = "rotate-0";
+            RenderShared(mounted);
+            Tick();
+            s_bMounted = false;
+            RenderShared(mounted);
+
+            // Act — a later render turns "a" a quarter round; the frame after and the next.
+            s_aClasses = "rotate-90";
+            RenderShared(mounted);
+            Tick();
+
+            // Assert — drawn at the mix from b's none to its quarter turn, as far as its move has got.
+            var a = Root.Q<VisualElement>("a");
+            var projection = mounted.Root.Reconciler.Context.LayoutIdProjections[a];
+            var drawn = projection.WritesRotate ? projection.DrawnRotate : float.NaN;
+            Assert.That(drawn, Is.EqualTo(90f * (1f - projection.Progress.Value)).Within(1f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base reads a Motion's own translate afresh as each move starts. What a
+        // projection ended inside one render handed back must not stand for it in a later render.
+        [Test]
+        public void Given_AMotionWhoseIdWasTakenAwayMidMove_When_ItMovesUnderItAgainLater_Then_ItStartsFromWhereItIsDrawn()
+        {
+            // Arrange — the bundled sheet; "a" alone under "card", transitioning everything linearly over a second, moving
+            // 100px right; some frames on a render takes its id away, ending the move, and once it settles it takes a
+            // translate down, settles again, and takes the id back.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aClasses = "transition-all duration-1000 ease-linear";
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            s_aId = null;
+            RenderShared(mounted);
+            AdvancePast(1.2f);
+            s_aClasses += " translate-y-[40px]";
+            RenderShared(mounted);
+            AdvancePast(1.2f);
+            s_aId = "card";
+            RenderShared(mounted);
+
+            // Act — a move 100px further right; the frame after and the next.
+            s_aLeft = 200;
+            RenderShared(mounted);
+            Tick();
+
+            // Assert — its own 40px down, to which the move adds nothing.
+            Assert.That(Root.Q<VisualElement>("a").style.translate.value.y.value, Is.EqualTo(40f).Within(0.5f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base reads a percent of a box with no extent as no translate. Carrying
+        // the percent must not divide by that extent.
+        [Test]
+        public void Given_AMotionTranslatedByAFractionOfNoHeight_When_ItMoves_Then_ItIsTranslatedByNone()
+        {
+            // Arrange — the bundled sheet; "b", of no extent, translated down by half its height and transitioning everything
+            // linearly over a second.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bSize, s_bClasses) = (0, "translate-y-1/2 transition-all duration-1000 ease-linear");
+
+            // Act — "b" takes the id from "a" 300px left of it; the frame after.
+            using var mounted = MountBOverA();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("b").style.translate.value.y.value, Is.EqualTo(0f).Within(0.01f));
+        }
+
+
+        [TestCase("scale-150", "scale-125", true, 1.3f, 1.47f)]
+        [TestCase("translate-y-[40px]", "translate-y-[0px]", false, 8f, 32f)]
+        public void Given_AHolderOnATransition_When_ItTakesTheLeadBackInTheRenderThatChangesItsTransform_Then_ItRunsAsTheEngineRunsIt(
+            string from, string to, bool scale, float low, float high)
+        {
+            // Arrange — the bundled sheet; "a", and a control holding no id, both transitioning everything linearly over a
+            // second, carrying the class from; "b" has taken the id from "a" and landed, and what that landing handed back
+            // to the engine has run out. For a scale "b" is twice the side of "a", so that the move draws "a" scaled; for a
+            // translate one size and one top have it write "a"'s translate across alone.
+            const string transitioning = "transition-all duration-1000 ease-linear";
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bSize = scale ? 200 : 100;
+            (s_aClasses, s_controlClasses) = ($"{transitioning} {from}", $"{transitioning} {from}");
+            using var mounted = MountBOverA();
+            AdvancePast(2.5f);
+
+            // Act — one render takes "b" away, which hands "a" the lead before the style pass, and gives both the class to;
+            // some 0.4 s on.
+            (s_bMounted, s_aClasses, s_controlClasses) = (false, $"{transitioning} {to}", $"{transitioning} {to}");
+            RenderShared(mounted);
+            for (var i = 0; i < 24; i++) Tick();
+
+            // Assert — "a"'s own scale or own translate down within a frame of the control's, part way from one to the
+            // other: 0.015 of a scale, 1px of a translate.
+            var a = Root.Q<VisualElement>("a");
+            var control = Root.Q<VisualElement>("control").resolvedStyle;
+            var expected = scale ? control.scale.value.x : control.translate.y;
+            var own = !mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection) ? float.NaN
+                : scale ? a.style.scale.value.value.x / projection.Scale.x : a.style.translate.value.y.value;
+            Assert.That(own, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(scale ? 0.015f : 1f));
+        }
+
+
         // GREEN_ON_BASE(characterization): the base's driver writes no rotate, so the engine runs the element's own rotate
         // transition there as it runs the control's. A rotate the projection mixes must run on as the engine runs it.
         [Test]
@@ -5489,15 +5989,18 @@ namespace Velvet.Tests
             Assert.That(from, Is.EqualTo(drawnThen > 3f && drawnThen < 10f ? drawnThen : float.NaN).Within(0.6f));
         }
 
-        [Test]
-        public void Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt()
+        [TestCase("rounded-[20px]", 6f, 14f)]
+        [TestCase("rounded-[25%]", 8f, 17f)]
+        public void Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt(string to,
+            float low, float high)
         {
-            // Arrange / Act
-            var (own, control) = TakeOverAsItTurns("rounded-[20px]", e => e.resolvedStyle.borderTopLeftRadius,
+            // Arrange / Act — a percent runs from the box's 0px, which UI Toolkit keeps in pixels as what a reversal runs
+            // back to; on the 100px box a percent of its width reads as the same number of pixels.
+            var (own, control) = TakeOverAsItTurns(to, e => e.resolvedStyle.borderTopLeftRadius,
                 (projection, _) => projection.RadiusCarries[0].Value);
 
             // Assert — within half a pixel of the control, which is half way round.
-            Assert.That(own, Is.EqualTo(control > 6f && control < 14f ? control : float.NaN).Within(0.5f));
+            Assert.That(own, Is.EqualTo(control > low && control < high ? control : float.NaN).Within(0.5f));
         }
 
         [Test]

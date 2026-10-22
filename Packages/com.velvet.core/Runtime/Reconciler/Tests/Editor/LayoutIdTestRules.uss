@@ -64,3 +64,7 @@
 .layout-id-test-half-round {
     border-radius: 50%;
 }
+
+.layout-id-test-eighth-turn {
+    rotate: 0.125turn;
+}
