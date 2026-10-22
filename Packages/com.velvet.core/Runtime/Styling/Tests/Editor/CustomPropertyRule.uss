@@ -1,0 +1,4 @@
+/* A custom property a stylesheet declares, which CustomPropertyTests reads. */
+.css-var-host {
+    --w: 25px;
+}

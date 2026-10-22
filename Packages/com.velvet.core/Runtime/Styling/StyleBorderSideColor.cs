@@ -48,6 +48,19 @@ namespace Velvet
         internal static bool TryParse(string? cls, out ArbitraryStyle result)
             => TryResolve(cls, out _, out result);
 
+        // Whether root names one of the per-side families, which read the shorthand border's type hints.
+        internal static bool IsSideRoot(string root)
+        {
+            foreach (var family in s_families)
+            {
+                if (family.Name == root)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         internal static string? SortPropertyOf(string core)
             => TryResolve(core, out var family, out _) ? family.SortProperty : null;
 

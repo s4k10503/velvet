@@ -438,7 +438,8 @@ namespace Velvet
 
         // The inline length this result writes.
         public StyleLength ToStyleLength()
-            => Auto ? new StyleLength(StyleKeyword.Auto) : new StyleLength(new Length(Value, Unit));
+            => Keyword != StyleKeyword.Undefined ? new StyleLength(Keyword)
+                : Auto ? new StyleLength(StyleKeyword.Auto) : new StyleLength(new Length(Value, Unit));
 
         private ArbitraryStyle(ArbitraryProperty property, bool auto)
         {

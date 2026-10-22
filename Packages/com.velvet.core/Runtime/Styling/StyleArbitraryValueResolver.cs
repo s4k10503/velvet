@@ -3088,6 +3088,7 @@ namespace Velvet
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
         {
+            if (element != null) StyleCustomProperties.Release(element);
             if (element != null && s_layers.TryGetValue(element, out var map))
             {
                 map.RelativePoll?.Stop();
@@ -3406,8 +3407,9 @@ namespace Velvet
                 SeatedTranslate.Write(element, new StyleTranslate(StyleKeyword.None));
                 return;
             }
-            var x = hasX ? new Length(xw.Value, xw.Unit) : new Length(0f);
-            var y = hasY ? new Length(yw.Value, yw.Unit) : new Length(0f);
+            // A keyword axis is an axis at its initial value, which translates by nothing.
+            var x = hasX && xw.Keyword == StyleKeyword.Undefined ? new Length(xw.Value, xw.Unit) : new Length(0f);
+            var y = hasY && yw.Keyword == StyleKeyword.Undefined ? new Length(yw.Value, yw.Unit) : new Length(0f);
             SeatedTranslate.Write(element, new Translate(x, y));
         }
 
@@ -3449,7 +3451,9 @@ namespace Velvet
             }
             if (TryDrawnScaleBracket(map, out var uw))
             {
-                element.style.scale = new Scale(new Vector2(uw.Value, uw.Value));
+                // A keyword is scale at its initial value, which scales by one.
+                var factor = uw.Keyword == StyleKeyword.Undefined ? uw.Value : 1f;
+                element.style.scale = new Scale(new Vector2(factor, factor));
                 return;
             }
             // As for translate, over the scale declaration the axes share; a uniform scale-<n> writes that same
@@ -3460,8 +3464,9 @@ namespace Velvet
                 return;
             }
             var uniform = UniformScaleFromClasses(element);
-            var x = hasX ? xw.Value : uniform;
-            var y = hasY ? yw.Value : uniform;
+            // A keyword axis is an axis at its initial value, which scales by one.
+            var x = hasX ? (xw.Keyword == StyleKeyword.Undefined ? xw.Value : 1f) : uniform;
+            var y = hasY ? (yw.Keyword == StyleKeyword.Undefined ? yw.Value : 1f) : uniform;
             element.style.scale = new Scale(new Vector2(x, y));
         }
 
@@ -3536,7 +3541,9 @@ namespace Velvet
             StyleList<TimeValue> duration = StyleKeyword.Null;
             if (TryWinningLayer(map, ArbitraryProperty.TransitionDuration, out var winner))
             {
-                duration = new List<TimeValue> { new TimeValue(winner.Value, TimeUnit.Second) };
+                duration = winner.Keyword == StyleKeyword.Undefined
+                    ? new List<TimeValue> { new TimeValue(winner.Value, TimeUnit.Second) }
+                    : new StyleList<TimeValue>(winner.Keyword);
             }
             element.style.transitionDuration = duration;
             var box = ClipPathLayoutBox.Of(element);
@@ -3667,7 +3674,9 @@ namespace Velvet
                     {
                         continue;
                     }
-                    if (BuildFilter(prop, layers.Values[layers.Count - 1].Value) is { } fn)
+                    // A keyword layer is the function at its initial value, which Tailwind composes as no function.
+                    var winner = layers.Values[layers.Count - 1];
+                    if (winner.Keyword == StyleKeyword.Undefined && BuildFilter(prop, winner.Value) is { } fn)
                     {
                         (functions ??= new List<FilterFunction>()).Add(fn);
                     }
@@ -3891,15 +3900,12 @@ namespace Velvet
                 // property written in one go — rotate, transform-origin — plus aspect-ratio, the four-edge Slice and
                 // the flex shorthand's three longhands.
                 case ArbitraryProperty.Rotate:
-                    element.style.rotate = new Rotate(new Angle(style.Value, AngleUnit.Degree));
-                    return;
                 case ArbitraryProperty.TransformOrigin:
-                    element.style.transformOrigin = new TransformOrigin(
-                        new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2), style.Value3);
+                    WriteTransform(element, style);
                     return;
                 // opacity-[..] is a unitless factor (0..1), written through the slot a layoutId crossfade shares.
                 case ArbitraryProperty.Opacity:
-                    MotionOpacity.WriteTransitioned(element, style.Value);
+                    MotionOpacity.WriteTransitioned(element, style.Keyword == StyleKeyword.Undefined ? style.Value : 1f);
                     return;
                 case ArbitraryProperty.Slice:
                 {
@@ -3926,11 +3932,10 @@ namespace Velvet
                     return;
                 }
                 case ArbitraryProperty.AspectRatio:
-                {
-                    Ratio ratio = style.Value;          // float -> Ratio (implicit)
-                    ClipPathLayoutBox.StyleFor(element, style.Property).aspectRatio = ratio;  // Ratio -> StyleRatio (implicit)
+                    ClipPathLayoutBox.StyleFor(element, style.Property).aspectRatio = style.Keyword == StyleKeyword.Undefined
+                        ? new StyleRatio(style.Value)
+                        : new StyleRatio(style.Keyword);
                     return;
-                }
             }
 
             if (ColorSetters.TryGetValue(style.Property, out var colorSetters))
@@ -3989,6 +3994,20 @@ namespace Velvet
             => flex.Expression != null ? new ArbitraryStyle(ArbitraryProperty.FlexBasis, flex.Expression)
                 : float.IsNaN(flex.Value2) ? ArbitraryStyle.AutoLength(ArbitraryProperty.FlexBasis)
                 : new ArbitraryStyle(ArbitraryProperty.FlexBasis, flex.Value2, flex.Unit2);
+
+        private static void WriteTransform(VisualElement element, in ArbitraryStyle style)
+        {
+            if (style.Property == ArbitraryProperty.Rotate)
+            {
+                element.style.rotate = style.Keyword == StyleKeyword.Undefined
+                    ? new Rotate(new Angle(style.Value, AngleUnit.Degree))
+                    : new StyleRotate(style.Keyword);
+                return;
+            }
+            element.style.transformOrigin = style.Keyword == StyleKeyword.Undefined
+                ? new TransformOrigin(new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2), style.Value3)
+                : new StyleTransformOrigin(style.Keyword);
+        }
 
         // A relative length is measured per setter, since each carries its own axis and its own stand-in for an
         // indefinite one; a length that cannot be measured yet leaves that slot as it is.
@@ -4216,6 +4235,18 @@ namespace Velvet
             property = default;
             return prefix != null && s_prefixProperties.TryGetValue(prefix, out property);
         }
+
+        // Whether a keyword layer (ArbitraryStyle.Keyword) for property writes what that keyword computes to: the
+        // keyword itself, or for a corner radius, a scale or translate axis, opacity and a built-in filter
+        // function the initial value it stands for.
+        internal static bool WritesKeyword(ArbitraryProperty property)
+            => property is ArbitraryProperty.Opacity or ArbitraryProperty.Rotate or ArbitraryProperty.TransformOrigin
+                    or ArbitraryProperty.AspectRatio or ArbitraryProperty.TransitionDuration
+                    or ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY or ArbitraryProperty.Scale
+                    or ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY
+                || IsFilter(property)
+                || ColorSetters.ContainsKey(property) || FloatSetters.ContainsKey(property)
+                || PropertySetters.ContainsKey(property) || RadiusCornersOf.ContainsKey(property);
 
         // Strips the enclosing brackets off a bracketed JIT arbitrary-value token (`[value]`), optionally
         // after a fixed literal prefix that precedes the '[' (prefixLength chars — e.g. 2 for "z-" in

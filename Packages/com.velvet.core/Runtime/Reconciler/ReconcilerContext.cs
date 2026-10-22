@@ -487,6 +487,10 @@ namespace Velvet
         // before re-deriving. Cleared on element cleanup / reconciler dispose.
         public Dictionary<VisualElement, List<(string[] Payloads, int[] Declarations)>> SupportsVariants { get; } = new();
 
+        // The element's own custom-property tokens as FiberNodePatcher.ApplyCustomPropertyConfig last applied them,
+        // so a class-list change toggles only the ones that moved. Cleared on element cleanup / reconciler dispose.
+        public Dictionary<VisualElement, List<(string Core, long Priority, int Declaration)>> CustomPropertyClasses { get; } = new();
+
         // text-transform / text-decoration / whitespace-pre-line / leading-* (uppercase / underline / … / the
         // pre-line collapse / line-height). UI Toolkit has no property for any of them, so they are realised
         // by mutating the displayed text (StyleTextEffectResolver). TextEffects holds each element's OWN
@@ -2995,6 +2999,7 @@ namespace Velvet
                 AttributeVariants,
                 DataAttributes,
                 SupportsVariants,
+                CustomPropertyClasses,
                 MotionAppliedClasses,
                 MotionHeldInline,
                 MotionInlineExits,

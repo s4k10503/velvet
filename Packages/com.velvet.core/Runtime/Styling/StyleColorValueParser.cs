@@ -75,6 +75,11 @@ namespace Velvet
         internal static bool HintSelectsNonColour(string root, string? hint)
             => hint != null && s_nonColourHints.TryGetValue(root, out var hints) && Array.IndexOf(hints, hint) >= 0;
 
+        // True for the utilities HintSelectsNonColour knows, each of which Tailwind writes an untyped value of as a
+        // colour when its type tests take it as nothing else; a border side reads the border's hints.
+        internal static bool DefaultsToColour(string root)
+            => s_nonColourHints.ContainsKey(root) || StyleBorderSideColor.IsSideRoot(root);
+
         private static readonly Dictionary<string, string[]> s_nonColourHints = new()
         {
             ["text"] = new[] { "size", "length", "percentage", "absolute-size", "relative-size" },

@@ -72,4 +72,5 @@ The functions follow CSS Color 4:
   `#ef4444`, not v4's `oklch(63.7% 0.237 25.331)`. Write the v4 value in brackets to get it.
 - **A colour outside sRGB**, which an `hsl()` or `hwb()` whose components lie outside their ranges can
   describe, has each channel clipped to 0–1 where CSS Color 4 maps it into the gamut.
-- **`calc()`, `var()`, `currentColor` and relative colour syntax** are not read.
+- **`calc()`, `currentColor` and relative colour syntax** are not read. A `var()` is replaced by the custom
+  property it reads before the colour is read ([styling-custom-properties.md](styling-custom-properties.md)).

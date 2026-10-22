@@ -187,6 +187,13 @@ namespace Velvet
                     continue;
                 }
 
+                // Custom-property tokens are owned by the custom-property side-table, which the variant pass
+                // configures; never added as classes.
+                if (StyleCustomPropertyClass.IsCustomPropertyToken(StyleArbitraryValueResolver.StripImportant(className, out _)))
+                {
+                    continue;
+                }
+
                 // font-[...] arbitrary font classes are owned by StyleFontResolver (resolved from the
                 // whole class array and applied as inline style); like other arbitrary values they must
                 // not enter the USS class list.
