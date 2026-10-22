@@ -86,13 +86,15 @@ namespace Velvet
 
         public DeclaredShadowColour InsetRing { get; }
 
+#pragma warning disable CS8524 // no discard arm: a new family has to say what it declares
         public DeclaredShadowColour Of(ShadowColourFamily family) => family switch
         {
+            ShadowColourFamily.None => default,
             ShadowColourFamily.Shadow => Shadow,
             ShadowColourFamily.InsetShadow => InsetShadow,
             ShadowColourFamily.InsetRing => InsetRing,
-            _ => default,
         };
+#pragma warning restore CS8524
     }
 
     // Parses Velvet's shadow-* utility classes into the layers of a box-shadow list, and resolves the companion
