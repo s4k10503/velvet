@@ -1054,6 +1054,54 @@ namespace Velvet.Tests
 
         #endregion
 
+        // A play holding element's border color at its from pose, red.
+        private static void DriveBorderRed(VisualElement element)
+        {
+            var plan = MotionSpringClassParser.Resolve(new[] { "border-[#ff0000]" }, new[] { "border-[#00ff00]" });
+            BezierTweenDriver.ApplyCurrentValues(element, BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, durationSec: 1f)!);
+        }
+
+        [Test]
+        public void Given_APlayOnABorderColorTheDividerGivesWayFor_When_TheDividerAppliesAgain_Then_TheDrivenColorStands()
+        {
+            // Arrange — border-[#0000ff] is a layer of the child's own, which the divide color's hold on its other
+            // edges gives way to.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-gray-200", "border-[#0000ff]"),
+            });
+            var child = scope.Root[0][1];
+            Assume.That(child.style.borderLeftColor.value, Is.EqualTo(Color.blue),
+                "Precondition: the child's own color stands on the divide's other edges");
+            DriveBorderRed(child);
+
+            // Act
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+
+            // Assert
+            Assert.That(child.style.borderLeftColor.value, Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_AnImportantDivideColor_When_APlayDrivesTheChildsBorderColor_Then_TheDivideColorStands()
+        {
+            // Arrange — !important outranks an animation in CSS, and Tailwind emits the divide color !important.
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x !divide-gray-200", ""),
+            });
+            var child = scope.Root[0][1];
+
+            // Act
+            DriveBorderRed(child);
+
+            // Assert
+            Assert.That(child.style.borderRightColor.value, Is.EqualTo(gray200));
+        }
+
         [Test]
         public void Given_ADividedChild_When_ItGainsABorderWidthClassOfItsOwn_Then_TheDividerGivesWayToIt()
         {

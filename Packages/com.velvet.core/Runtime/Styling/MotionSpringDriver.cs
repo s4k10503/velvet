@@ -350,7 +350,7 @@ namespace Velvet
             {
                 foreach (var c in state.Colors)
                 {
-                    StyleArbitraryValueResolver.ApplyInline(element,
+                    StyleArbitraryValueResolver.ApplyDriven(element,
                         new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)));
                 }
             }
@@ -361,7 +361,7 @@ namespace Velvet
                     // The integrator already holds the spring's true position, overshoot included; the emitter
                     // is what saturates a property with no negative meaning.
                     var v = MotionPropertyInterpolation.ClampLength(l.Property, l.Value.Integrator.Value);
-                    StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
+                    StyleArbitraryValueResolver.ApplyDriven(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
@@ -596,7 +596,8 @@ namespace Velvet
         /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
         /// </summary>
         /// <remarks>
-        /// The slots are nulled first and the element's surviving arbitrary-value layers re-asserted afterwards,
+        /// The slots are nulled first and the element's surviving arbitrary-value layers, then the holds on its slots,
+        /// re-asserted afterwards,
         /// in that order: a driven shorthand owns a whole fan-out (a `padding` channel writes all four edges)
         /// while an authored longhand (`pt-[2px]`) is registered against ONE of them, so per-property
         /// interleaving would let a later null wipe a value an earlier re-assert had just restored.
@@ -609,11 +610,11 @@ namespace Velvet
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
             if (state.Colors != null)
             {
-                foreach (var c in state.Colors) StyleArbitraryValueResolver.ClearInline(element, c.Property);
+                foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
             }
             if (state.Lengths != null)
             {
-                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
+                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ReleaseDriven(element, l.Property);
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
             StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
@@ -672,7 +673,7 @@ namespace Velvet
             {
                 return false;
             }
-            StyleArbitraryValueResolver.ClearInline(element, property);
+            StyleArbitraryValueResolver.ReleaseDriven(element, property);
             return true;
         }
 

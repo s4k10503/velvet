@@ -95,9 +95,7 @@ namespace Velvet
         // z-index layer container (FiberZLayerCoordinator's front/back containers, which are equally
         // reconciler-invisible — a z-marked absolute child's real element lives inside one instead of at its
         // logical slot), OR a ring overlay (RingOverlay's band, hosted beside the element it rings rather than
-        // wrapped around it). NonSpacerChildCount below is the single centralized consumer every "real child"
-        // count/index site already goes through, so broadening this one predicate makes the whole reconciler
-        // treat all three as invisible without touching any of those call sites.
+        // wrapped around it).
         internal static bool IsSpacer(VisualElement child)
             => child != null
                 && (child.ClassListContains(MarkerClass)

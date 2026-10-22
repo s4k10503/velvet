@@ -367,13 +367,19 @@ namespace Velvet.Tests
         }
 
         private static StateUpdater<bool> s_swapStacked;
+        private static bool? s_backLayerAtUnmount;
+
+        // A field, so every render hands the element the same callback and only the unmount runs its cleanup.
+        private static readonly System.Func<VisualElement, System.Action> s_recordBackLayerAtUnmount =
+            element => () => s_backLayerAtUnmount = HasBackLayerContainer(element);
 
         [Component]
         private static VNode StackedSwapHost()
         {
             var (swapped, setSwapped) = Hooks.UseState(false);
             s_swapStacked = setSwapped;
-            return V.Div(name: "swap-root", className: "relative", children: new VNode[]
+            return V.Div(name: "swap-root", className: "relative", refCallback: s_recordBackLayerAtUnmount,
+                children: new VNode[]
             {
                 swapped ? null : V.Div(name: "behind", className: "absolute -z-10", key: "behind"),
                 swapped
@@ -385,20 +391,21 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsInThePassThatEmptiedAnotherLayer_Then_TheEmptiedContainerIsStillRemoved()
         {
-            // Arrange — no boundary, so no fallback replaces the stacking parent the assertion reads; the back
-            // container's only member leaves in the same pass the front placement throws from. The expected
-            // exception fails the case when the arrangement stops throwing from that placement.
+            // Arrange — the back container's only member leaves in the same pass the front placement throws from.
+            // No boundary takes the throw, so the root unmounts the tree in a pass of its own; the stacking parent's
+            // ref cleanup reads its layers as that unmount removes it, ahead of that pass's own teardown drain.
+            // The expected exception fails the case when the arrangement stops throwing from that placement.
+            s_backLayerAtUnmount = null;
             MountAndLayout(V.Component(StackedSwapHost, key: "host"));
-            var root = _host.Root.Q<VisualElement>("swap-root");
-            Assume.That(HasBackLayerContainer(root), Is.True, "Precondition: there is a back container to tear down");
+            var hadABackContainer = HasBackLayerContainer(_host.Root.Q<VisualElement>("swap-root"));
             LogAssert.Expect(LogType.Exception, new Regex("attach callback"));
 
             // Act
             s_swapStacked.Invoke(true);
             FlushAndLayout();
 
-            // Assert
-            Assert.That(HasBackLayerContainer(root), Is.False);
+            // Assert — null where the mount made no back container to tear down, or where the tree never unmounted
+            Assert.That(hadABackContainer ? s_backLayerAtUnmount : null, Is.False);
         }
 
         private static bool HasBackLayerContainer(VisualElement parent)

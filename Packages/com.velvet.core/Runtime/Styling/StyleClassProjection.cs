@@ -363,17 +363,39 @@ namespace Velvet
             // when none does: what an inline writer of it has to outrank.
             public long ClaimOf(StyleLonghand longhand)
             {
+                var index = ClaimIndex(longhand);
+                return index < 0 ? long.MinValue : _entries[index].Priority;
+            }
+
+            // The class whose key ClaimOf answers, or null where no class claims longhand.
+            public string? ClaimantOf(StyleLonghand longhand)
+            {
+                var index = ClaimIndex(longhand);
+                return index < 0 ? null : _entries[index].Class;
+            }
+
+            // Between two classes of one priority, the one the stylesheet declares later, as the cascade settles it
+            // whatever order they arrived in.
+            private int ClaimIndex(StyleLonghand longhand)
+            {
+                var index = -1;
                 var claim = long.MinValue;
-                foreach (var entry in _entries)
+                for (var i = 0; i < _entries.Count; i++)
                 {
-                    // MUTANT_SURVIVES(equivalent): accepting an equal priority assigns the claim its existing value.
-                    if (!entry.Dead && entry.Gate == (int)StyleUtilityGate.None && entry.Priority > claim
-                        && entry.Properties.Contains(longhand))
+                    var entry = _entries[i];
+                    if (entry.Dead || entry.Gate != (int)StyleUtilityGate.None || !entry.Properties.Contains(longhand))
+                    {
+                        continue;
+                    }
+                    if (entry.Priority > claim || (entry.Priority == claim
+                        && StyleSpacingPrecedence.CascadePositionOf(entry.Class)
+                            > StyleSpacingPrecedence.CascadePositionOf(_entries[index].Class)))
                     {
                         claim = entry.Priority;
+                        index = i;
                     }
                 }
-                return claim;
+                return index;
             }
 
             // The class `rank` accepts at the highest key the element holds it at, whether or not a layer above

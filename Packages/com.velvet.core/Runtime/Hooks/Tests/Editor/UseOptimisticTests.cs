@@ -214,12 +214,14 @@ namespace Velvet.Tests
                 "An action that completes without moving the pass-through state still discards its entry");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnEntryAddedByAnAsyncAction_When_TheActionFaults_Then_ThePassthroughStateIsShownAgain()
         {
             // Arrange — the starter sits under a boundary of its own, which the fault is thrown to
             using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"),
-                new MountOptions((_, _) => { }));
+                new MountOptions { OnCaughtError = (_, _) => { } });
             var gate = new VelvetTaskCompletionSource();
             s_childStart.Invoke(async () =>
             {

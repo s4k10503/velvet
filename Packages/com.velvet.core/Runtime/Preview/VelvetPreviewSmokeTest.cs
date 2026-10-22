@@ -39,18 +39,21 @@ namespace Velvet
 
             // A boundary's catch is still logged the way MountOptions' default logs it; only the flag around it
             // keeps that log from reading as uncaught.
-            var options = new MountOptions((exception, info) =>
+            var options = new MountOptions
             {
-                catching = true;
-                try
+                OnCaughtError = (exception, info) =>
                 {
-                    FiberErrorBoundary.LogCaughtError(exception, info);
-                }
-                finally
-                {
-                    catching = false;
-                }
-            });
+                    catching = true;
+                    try
+                    {
+                        FiberErrorBoundary.LogCaughtError(exception, info);
+                    }
+                    finally
+                    {
+                        catching = false;
+                    }
+                },
+            };
 
             Application.logMessageReceived += OnLog;
             try

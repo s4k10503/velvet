@@ -409,7 +409,7 @@ namespace Velvet
             return winner;
         }
 
-        private static int CascadePositionOf(string cls)
+        internal static int CascadePositionOf(string cls)
             => StyleUtilityProperties.TryGet(cls, out var rule) ? rule.CascadePosition : -1;
 
         private static bool IsStylesheetClassOrLogical(string token)

@@ -77,6 +77,63 @@ namespace Velvet.Tests
             return false;
         }
 
+        // A width drive on element holding its from pose, w-[10px], as a play's first write does until a delay ends.
+        private static BezierTweenState HoldWidthFromPose(VisualElement element)
+        {
+            var plan = MotionSpringClassParser.Resolve(new[] { "w-[10px]" }, new[] { "w-[120px]" });
+            var state = BezierTweenDriver.Create(plan, LinearX1, LinearY1, LinearX2, LinearY2, durationSec: 1f)!;
+            BezierTweenDriver.ApplyCurrentValues(element, state);
+            return state;
+        }
+
+        [Test]
+        public void Given_AWidthDriveHoldingItsFromPose_When_AVariantWidthLayerComes_Then_TheDrivenWidthStands()
+        {
+            // Arrange
+            var element = new VisualElement();
+            HoldWidthFromPose(element);
+
+            // Act — a dark: width toggling on.
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                StyleLayerPriority.Dark);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(10f));
+        }
+
+        // GREEN_ON_BASE(characterization): main writes a driven width without reading the element's layers.
+        // Giving way to the play's own important pose would hold the width at the pose's end value instead.
+        [Test]
+        public void Given_AnImportantWidthLayerAlreadyOnTheElement_When_AWidthDriveWrites_Then_TheDrivenWidthShows()
+        {
+            // Arrange — the play's own important pose lands before its first frame, as !w-[80px] does here.
+            var element = new VisualElement();
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+
+            // Act
+            HoldWidthFromPose(element);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(10f));
+        }
+
+        [Test]
+        public void Given_AnImportantWidthLayerArrivingDuringAWidthDrive_When_TheDriveWritesItsNextFrame_Then_TheImportantWidthStands()
+        {
+            // Arrange — !important outranks an animation in CSS.
+            var element = new VisualElement();
+            var state = HoldWidthFromPose(element);
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                StyleLayerPriority.ImportantOf(StyleLayerPriority.Dark));
+
+            // Act
+            BezierTweenDriver.Step(element, state, 0f);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(80f));
+        }
+
         [Test]
         public void Given_ABackgroundColorPair_When_SteppedToHalfTheDuration_Then_TheInlineBackgroundColorIsTheExactMidpoint()
         {

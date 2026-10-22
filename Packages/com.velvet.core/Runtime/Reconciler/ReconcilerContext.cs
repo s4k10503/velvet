@@ -1235,6 +1235,8 @@ namespace Velvet
 
         internal System.Action<System.Exception, ErrorInfo> OnCaughtError { get; set; } = FiberErrorBoundary.LogCaughtError;
 
+        internal System.Action<System.Exception, ErrorInfo> OnUncaughtError { get; set; } = FiberErrorBoundary.LogUncaughtError;
+
         // Framework-owned layer host panels (V.Portal(layer:)), one per UILayer, created lazily at
         // the first drain that needs the layer and shared by every portal on it. NOT a pure
         // side-table: each record owns a live GameObject plus runtime-created panel assets, torn
@@ -1563,10 +1565,18 @@ namespace Velvet
         }
 
         // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
-        // effects to deliver it to OnCaughtError (FiberEffects.DeliverCaughtErrors). Sequence is taken from
+        // effects to deliver it to OnCaughtError, or to OnUncaughtError where the mount root caught it
+        // (FiberEffects.DeliverCaughtErrors). Sequence is taken from
         // NextCaughtErrorSequence at the catch.
         internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info, long Sequence)> PendingCaughtErrorReports = new();
         internal long NextCaughtErrorSequence;
+
+        // Errors a boundary took while showing its fallback (FiberErrorBoundary.TakeDuringTheSwap), which
+        // FiberErrorBoundary.RecordCatch queues behind the report of the error the swap is for.
+        internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info)> ErrorsDuringFallbackSwap = new();
+
+        // Errors the root took while MountedTree.Dispose unmounted its tree, which it reports once the unmount is done.
+        internal readonly List<(System.Exception Error, ErrorInfo Info)> ErrorsDuringRootDisposal = new();
 
         // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
         // it (FiberEffects.CommitStrandedLayoutWork).

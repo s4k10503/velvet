@@ -1994,8 +1994,8 @@ namespace Velvet
         /// Boundary path, so it is effectively a no-op. Do not call this hook from non-EB components.
         /// <para/>
         /// <b>Bubble-up</b>: when the factory returns <c>null</c> or itself throws, the exception
-        /// bubbles to the next enclosing Error Boundary, ultimately reaching the root as an
-        /// unhandled exception when no boundary catches it.
+        /// bubbles to the next enclosing Error Boundary, ultimately reaching the root, which unmounts the tree
+        /// and reports it to <see cref="MountOptions.OnUncaughtError"/> when no boundary catches it.
         /// <para/>
         /// Once the component has caught, each later render of it invokes the factory again with the error
         /// it caught and renders what it returns in place of its children, until the component remounts —
