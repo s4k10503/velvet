@@ -4,20 +4,28 @@ using UnityEngine;
 namespace Velvet
 {
     // The caster box a shadow layer is baked against: its border-box size, its corner radii (top-left, top-right,
-    // bottom-right, bottom-left) and its border widths (left, top, right, bottom), which place the padding box an
-    // inset layer draws inside.
+    // bottom-right, bottom-left), horizontal in Radii and vertical in RadiiY, and its border widths (left, top, right,
+    // bottom), which place the padding box an inset layer draws inside.
     internal readonly struct ShadowBox
     {
         public readonly float Width;
         public readonly float Height;
         public readonly Vector4 Radii;
+        public readonly Vector4 RadiiY;
         public readonly Vector4 Borders;
 
+        // Each corner as round on both axes.
         public ShadowBox(float width, float height, Vector4 radii, Vector4 borders)
+            : this(width, height, radii, radii, borders)
+        {
+        }
+
+        public ShadowBox(float width, float height, Vector4 radii, Vector4 radiiY, Vector4 borders)
         {
             Width = width;
             Height = height;
             Radii = radii;
+            RadiiY = radiiY;
             Borders = borders;
         }
 
@@ -50,7 +58,7 @@ namespace Velvet
         // size, x skew, offset). A baked shadow cannot be size-independent (a full-size quad is drawn), so a card
         // that animates through many pixel sizes would otherwise leak one full-quad Texture2D per distinct size.
         // The LRU below caps the cache and evicts the least-recently-used bake; a re-needed size re-bakes.
-        private static readonly Dictionary<(long shape, long radii, long borders, int w, int h, int skewCenti, long offset),
+        private static readonly Dictionary<(long shape, long radii, long radiiY, long borders, int w, int h, int skewCenti, long offset),
             Texture2D> s_silhouetteCache = new();
 
         // Most-recently-used at the TAIL of s_silhouetteLru, least at the HEAD; a node-by-key map keeps
@@ -58,10 +66,10 @@ namespace Velvet
         // Each layer of a shadow is its own entry and a preset has up to two, so this doubles the 64 entries
         // that held one entry per shadow.
         private const int MaxSilhouetteCacheEntries = 128;
-        private static readonly LinkedList<(long shape, long radii, long borders, int w, int h, int skewCenti, long offset)>
+        private static readonly LinkedList<(long shape, long radii, long radiiY, long borders, int w, int h, int skewCenti, long offset)>
             s_silhouetteLru = new();
-        private static readonly Dictionary<(long shape, long radii, long borders, int w, int h, int skewCenti, long offset),
-            LinkedListNode<(long shape, long radii, long borders, int w, int h, int skewCenti, long offset)>>
+        private static readonly Dictionary<(long shape, long radii, long radiiY, long borders, int w, int h, int skewCenti, long offset),
+            LinkedListNode<(long shape, long radii, long radiiY, long borders, int w, int h, int skewCenti, long offset)>>
             s_silhouetteLruNodes = new();
 
         private static readonly int BlurRadiusId = Shader.PropertyToID("_BlurRadius");
@@ -69,6 +77,8 @@ namespace Velvet
         private static readonly int ShapeRadiiId = Shader.PropertyToID("_ShapeRadii");
         private static readonly int ClipId = Shader.PropertyToID("_Clip");
         private static readonly int ClipRadiiId = Shader.PropertyToID("_ClipRadii");
+        private static readonly int ShapeRadiiYId = Shader.PropertyToID("_ShapeRadiiY");
+        private static readonly int ClipRadiiYId = Shader.PropertyToID("_ClipRadiiY");
         private static readonly int ElementSizeId = Shader.PropertyToID("_ElementSize");
         private static readonly int InsetId = Shader.PropertyToID("_Inset");
         private static readonly int SkewXId = Shader.PropertyToID("_SkewX");
@@ -113,7 +123,8 @@ namespace Velvet
                 return null;
             }
 
-            var key = (ShapeKey(layer, skewDeg.y), PackQuad(box.Radii), PackQuad(layer.Inset ? box.Borders : Vector4.zero),
+            var key = (ShapeKey(layer, skewDeg.y), PackQuad(box.Radii), PackQuad(box.RadiiY),
+                PackQuad(layer.Inset ? box.Borders : Vector4.zero),
                 Mathf.RoundToInt(box.Width), Mathf.RoundToInt(box.Height),
                 Mathf.RoundToInt(skewDeg.x * 100f), OffsetKey(layer.OffsetX, layer.OffsetY));
             if (s_silhouetteCache.TryGetValue(key, out var tex) && tex != null)
@@ -185,11 +196,15 @@ namespace Velvet
                 Mathf.Max(box.Height - box.Borders.y - box.Borders.w, 0f));
 
         // The padding box's corner radii: each border-box radius less the wider of the two borders meeting there.
-        internal static Vector4 PaddingRadii(in ShadowBox box)
-            => new(Mathf.Max(box.Radii.x - Mathf.Max(box.Borders.x, box.Borders.y), 0f),
-                Mathf.Max(box.Radii.y - Mathf.Max(box.Borders.z, box.Borders.y), 0f),
-                Mathf.Max(box.Radii.z - Mathf.Max(box.Borders.z, box.Borders.w), 0f),
-                Mathf.Max(box.Radii.w - Mathf.Max(box.Borders.x, box.Borders.w), 0f));
+        internal static Vector4 PaddingRadii(in ShadowBox box) => PaddingRadii(box.Radii, box.Borders);
+
+        internal static Vector4 PaddingRadiiY(in ShadowBox box) => PaddingRadii(box.RadiiY, box.Borders);
+
+        private static Vector4 PaddingRadii(Vector4 radii, Vector4 borders)
+            => new(Mathf.Max(radii.x - Mathf.Max(borders.x, borders.y), 0f),
+                Mathf.Max(radii.y - Mathf.Max(borders.z, borders.y), 0f),
+                Mathf.Max(radii.z - Mathf.Max(borders.z, borders.w), 0f),
+                Mathf.Max(radii.w - Mathf.Max(borders.x, borders.w), 0f));
 
         // Disposes the bake Material. Invoked once on reconciler teardown — the baked textures are cached
         // process-wide and are NOT touched here (the editor reset above destroys them). Idempotent.
@@ -240,7 +255,8 @@ namespace Velvet
         private static Texture2D BakeSilhouetteTexture(Material mat, in ShadowBox box, in ShadowSpec layer,
             Vector2 skewDeg)
         {
-            var quantized = new ShadowBox(box.Width, box.Height, Quantize(box.Radii), Quantize(box.Borders));
+            var quantized = new ShadowBox(box.Width, box.Height, Quantize(box.Radii), Quantize(box.RadiiY),
+                Quantize(box.Borders));
             var spread = QuantizeSpread(layer.Spread);
             var offset = new Vector2(OffsetPx(layer.OffsetX), OffsetPx(layer.OffsetY));
             var rect = ShadowRect(quantized, layer, skewDeg);
@@ -248,31 +264,38 @@ namespace Velvet
 
             // Centres relative to the quad's (the shape's for an outer layer, the padding box's for an inset one),
             // in the unsheared frame the shader evaluates in.
-            Vector4 shape, shapeRadii, clip, clipRadii;
+            Vector4 shape, shapeRadii, shapeRadiiY, clip, clipRadii, clipRadiiY;
             if (layer.Inset)
             {
                 var padding = PaddingRect(quantized);
                 var paddingRadii = PaddingRadii(quantized);
+                var paddingRadiiY = PaddingRadiiY(quantized);
                 clip = new Vector4(padding.width * 0.5f, padding.height * 0.5f, 0f, 0f);
                 clipRadii = paddingRadii;
+                clipRadiiY = paddingRadiiY;
                 shape = new Vector4(Mathf.Max((padding.width * 0.5f) - spread, 0f),
                     Mathf.Max((padding.height * 0.5f) - spread, 0f), offset.x, offset.y);
                 shapeRadii = SpreadRadii(paddingRadii, -spread);
+                shapeRadiiY = SpreadRadii(paddingRadiiY, -spread);
             }
             else
             {
                 clip = new Vector4(box.Width * 0.5f, box.Height * 0.5f, -offset.x, -offset.y);
                 clipRadii = quantized.Radii;
+                clipRadiiY = quantized.RadiiY;
                 shape = new Vector4(Mathf.Max((box.Width * 0.5f) + spread, 0f),
                     Mathf.Max((box.Height * 0.5f) + spread, 0f), 0f, 0f);
                 shapeRadii = SpreadRadii(quantized.Radii, spread);
+                shapeRadiiY = SpreadRadii(quantized.RadiiY, spread);
             }
 
             mat.SetFloat(BlurRadiusId, QuantizePx(layer.Blur));
             mat.SetVector(ShapeId, shape);
             mat.SetVector(ShapeRadiiId, shapeRadii);
+            mat.SetVector(ShapeRadiiYId, shapeRadiiY);
             mat.SetVector(ClipId, clip);
             mat.SetVector(ClipRadiiId, clipRadii);
+            mat.SetVector(ClipRadiiYId, clipRadiiY);
             mat.SetVector(ElementSizeId, new Vector4(rect.width, rect.height, 0f, 0f));
             mat.SetFloat(InsetId, layer.Inset ? 1f : 0f);
             mat.SetFloat(SkewXId, Mathf.Tan(skewDeg.x * Mathf.Deg2Rad));
@@ -302,7 +325,7 @@ namespace Velvet
         // when the cache would exceed its cap. A null bake (shader unresolved) is not cached so it re-attempts.
         // Re-storing an already-present key replaces its texture and just refreshes recency (no duplicate node).
         private static void StoreSilhouette(
-            (long shape, long radii, long borders, int w, int h, int skewCenti, long offset) key, Texture2D tex)
+            (long shape, long radii, long radiiY, long borders, int w, int h, int skewCenti, long offset) key, Texture2D tex)
         {
             if (tex == null)
             {
@@ -339,7 +362,7 @@ namespace Velvet
         // Marks an existing key most-recently-used (moves its node to the tail) on a cache hit — O(1) via the
         // node map, so a frequently re-hit silhouette pays no linear scan.
         private static void TouchSilhouette(
-            (long shape, long radii, long borders, int w, int h, int skewCenti, long offset) key)
+            (long shape, long radii, long radiiY, long borders, int w, int h, int skewCenti, long offset) key)
         {
             if (s_silhouetteLruNodes.TryGetValue(key, out var node))
             {

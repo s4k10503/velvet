@@ -812,6 +812,7 @@ namespace Velvet
             LayoutIdPicking.Release(element, ctx);
             MotionOpacity.Forget(element);
             LayoutIdLook.Forget(element);
+            ProjectedCornerFace.End(element);
             CancelPendingSettle(element, ctx);
         }
 

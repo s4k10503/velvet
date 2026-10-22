@@ -158,6 +158,7 @@ namespace Velvet
                 element.UnregisterCallback(binding.OnAttach);
             }
             binding.StateTick?.Pause();
+            ProjectedCornerFace.End(binding.Overlay);
             // The overlay lives in the element's PARENT, so it does not leave with the element's own subtree
             // the way the old wrapper-hosted one did — a detach that skipped this would strand a live band.
             binding.Overlay.RemoveFromHierarchy();
@@ -287,6 +288,7 @@ namespace Velvet
             {
                 return; // pre-layout: a percentage pivot has no box to resolve against yet
             }
+            SyncProjectedCorners(element, binding);
             var grow = binding.Spec.Inset ? 0f : binding.Spec.Offset + binding.Spec.Width;
             var origin = rs.transformOrigin;
             var translate = rs.translate;
@@ -294,6 +296,27 @@ namespace Velvet
             style.translate = new Translate(translate.x, translate.y, translate.z);
             style.scale = rs.scale;
             style.rotate = rs.rotate;
+        }
+
+        // While a layoutId projection paints the element with a radius per axis (ProjectedCornerFace), the band is
+        // painted the same way, each of its corners the element's grown on both axes as SyncGeometry grows them.
+        private static void SyncProjectedCorners(VisualElement element, RingBinding binding)
+        {
+            if (!ProjectedCornerFace.TryGetRadii(element, out var radii))
+            {
+                ProjectedCornerFace.End(binding.Overlay);
+                return;
+            }
+            var grow = binding.Spec.Inset ? 0f : binding.Spec.Offset + binding.Spec.Width;
+            var fitted = BorderBandPainter.Fitted(radii, element.layout.width, element.layout.height);
+            var g = new Vector2(grow, grow);
+            ProjectedCornerFace.Draw(binding.Overlay, new CornerRadii
+            {
+                TopLeft = fitted.TopLeft + g,
+                TopRight = fitted.TopRight + g,
+                BottomRight = fitted.BottomRight + g,
+                BottomLeft = fitted.BottomLeft + g,
+            });
         }
 
         // The four corner radii the band rounds to. Laid out, the resolved values are authoritative per

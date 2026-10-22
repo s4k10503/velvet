@@ -19,8 +19,7 @@ namespace Velvet
 
         // The native-face stash + sentinel suppression shared with the drop-shadow layer: the rectangular
         // background / border are suppressed with a sentinel color and re-painted sheared, so their effective
-        // colors must be captured before suppression. Border uses the LEFT side (the sheared outline is a
-        // single uniform stroke, so per-side colors/widths collapse to one).
+        // colors must be captured before suppression.
         public readonly SilhouetteFaceStash Face = new();
 
         // Pass-throughs onto Face so the reconciler / tests read the stash state directly off the binding.
@@ -286,19 +285,9 @@ namespace Velvet
             // CSS paints an inset shadow above the background and below the border.
             BoxShadowSilhouette.DrawInsetLayers(mgc, ve, w, h);
 
-            var borderColor = binding.HasStash ? binding.BorderColor : ve.resolvedStyle.borderLeftColor;
-            var borderWidth = ve.resolvedStyle.borderLeftWidth;
-            if (borderWidth > 0.01f && borderColor.a > 0.004f)
-            {
-                // Stroke centered on a half-width-inset path ≈ CSS's inside border. Drawn after the fill
-                // so the outline sits on top and follows the shear, keeping the slanted edge crisp.
-                SilhouetteFace.BuildShearedRoundedRect(p,
-                    ShearedRoundedRect.ForElement(ve, borderWidth * 0.5f, w, h, tanX, tanY));
-                p.strokeColor = borderColor;
-                p.lineWidth = borderWidth;
-                p.lineJoin = LineJoin.Miter;
-                p.Stroke();
-            }
+            // Drawn after the fill so the outline sits on top and follows the shear, keeping the slanted edge crisp.
+            SilhouetteFace.PaintBorder(p, ve, SilhouetteFace.BorderOf(ve, binding.Face),
+                new SilhouetteFace.Shearing(w, h, tanX, tanY));
         }
 
         // Re-bakes the gradient silhouette when the element's size / skew / spec changed since the last bake
@@ -324,9 +313,11 @@ namespace Velvet
 
             var tanX = Mathf.Tan(binding.Spec.XDeg * Mathf.Deg2Rad);
             var tanY = Mathf.Tan(binding.Spec.YDeg * Mathf.Deg2Rad);
-            var rs = element.resolvedStyle;
-            float tl = rs.borderTopLeftRadius, tr = rs.borderTopRightRadius;
-            float br = rs.borderBottomRightRadius, bl = rs.borderBottomLeftRadius;
+            // The bake rounds each corner alike on both axes, so one a layoutId projection rounds per axis takes the
+            // geometric mean of its two, which the projection's own fallback divides a radius by.
+            var radii = SilhouetteFace.RadiiOf(element);
+            float tl = Mean(radii.TopLeft), tr = Mean(radii.TopRight);
+            float br = Mean(radii.BottomRight), bl = Mean(radii.BottomLeft);
             var key = (Mathf.RoundToInt(w), Mathf.RoundToInt(h),
                 Mathf.RoundToInt(tanX * 100f), Mathf.RoundToInt(tanY * 100f),
                 Mathf.RoundToInt(tl), Mathf.RoundToInt(tr), Mathf.RoundToInt(br), Mathf.RoundToInt(bl));
@@ -346,6 +337,8 @@ namespace Velvet
             binding.GradBaked = true;
             element.MarkDirtyRepaint();
         }
+
+        private static float Mean(Vector2 radius) => Mathf.Sqrt(radius.x * radius.y);
 
         // Draws the baked silhouette as a quad covering the element's sheared bounding box (centred on the
         // box centre, matching the bake) in the element's own generateVisualContent, so the slant pokes

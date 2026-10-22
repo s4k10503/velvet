@@ -298,16 +298,25 @@ namespace Velvet
         }
 
         // The caster box the bakes are taken against. Each radius is bounded as the face painter bounds a
-        // corner; RoundedFullSilhouettePlaybackTests pins the halo an unbounded --radius-full bakes away.
+        // corner; RoundedFullSilhouettePlaybackTests pins the halo an unbounded --radius-full bakes away. A caster a
+        // layoutId projection draws with a radius per axis takes those, fitted to its box as the face is.
         private static ShadowBox BoxOf(VisualElement ve, BoxShadowBinding binding, float w, float h)
         {
+            var style = ve.resolvedStyle;
+            var borders = new Vector4(Finite(style.borderLeftWidth), Finite(style.borderTopWidth),
+                Finite(style.borderRightWidth), Finite(style.borderBottomWidth));
+            if (ProjectedCornerFace.TryGetRadii(ve, out var projected))
+            {
+                var fitted = BorderBandPainter.Fitted(projected, w, h);
+                return new ShadowBox(w, h,
+                    new Vector4(fitted.TopLeft.x, fitted.TopRight.x, fitted.BottomRight.x, fitted.BottomLeft.x),
+                    new Vector4(fitted.TopLeft.y, fitted.TopRight.y, fitted.BottomRight.y, fitted.BottomLeft.y), borders);
+            }
             var bound = SilhouetteFace.MaxRadius(w, h);
             var r = binding.CornerRadii;
-            var style = ve.resolvedStyle;
             return new ShadowBox(w, h,
                 new Vector4(Mathf.Min(r.x, bound), Mathf.Min(r.y, bound), Mathf.Min(r.z, bound), Mathf.Min(r.w, bound)),
-                new Vector4(Finite(style.borderLeftWidth), Finite(style.borderTopWidth),
-                    Finite(style.borderRightWidth), Finite(style.borderBottomWidth)));
+                borders);
         }
 
         private static float Finite(float v) => float.IsNaN(v) ? 0f : v;
@@ -436,20 +445,7 @@ namespace Velvet
 
         private static void RepaintUprightBorder(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding,
             float w, float h)
-        {
-            var p = mgc.painter2D;
-            var borderColor = binding.Face.HasStash ? binding.Face.BorderColor : ve.resolvedStyle.borderLeftColor;
-            var borderWidth = ve.resolvedStyle.borderLeftWidth;
-            if (borderWidth > 0.01f && borderColor.a > 0.004f)
-            {
-                // Stroke centered on a half-width-inset path ≈ CSS's inside border, matching the skew layer.
-                SilhouetteFace.BuildShearedRoundedRect(p,
-                    ShearedRoundedRect.ForElement(ve, borderWidth * 0.5f, w, h, 0f, 0f));
-                p.strokeColor = borderColor;
-                p.lineWidth = borderWidth;
-                p.lineJoin = LineJoin.Miter;
-                p.Stroke();
-            }
-        }
+            => SilhouetteFace.PaintBorder(mgc.painter2D, ve, SilhouetteFace.BorderOf(ve, binding.Face),
+                new SilhouetteFace.Shearing(w, h, 0f, 0f));
     }
 }

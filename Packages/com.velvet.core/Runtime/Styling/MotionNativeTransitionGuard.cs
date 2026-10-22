@@ -38,6 +38,9 @@ namespace Velvet
         // reports it: what an element declares is Length, which Contends reads as covering it, and All leaves it out so
         // that a play suspending All names no radius to take out of a held list.
         Radius = 1 << 9,
+        // The background colour, the border colours and the background image with its placement, which ProjectedCornerFace
+        // hides and takes the image slot through while it paints the face. Left out of All as Radius is.
+        Face = 1 << 10,
         All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition | Visibility,
     }
 
@@ -541,11 +544,26 @@ namespace Velvet
             StyleLonghand.BorderBottomLeftRadius,
             StyleLonghand.BorderBottomRightRadius);
 
+        private static readonly StyleLonghandSet s_faceProperties = SetOf(
+            StyleLonghand.BackgroundColor,
+            StyleLonghand.BorderTopColor,
+            StyleLonghand.BorderRightColor,
+            StyleLonghand.BorderBottomColor,
+            StyleLonghand.BorderLeftColor,
+            StyleLonghand.BackgroundImage,
+            StyleLonghand.BackgroundPositionX,
+            StyleLonghand.BackgroundPositionY,
+            StyleLonghand.BackgroundRepeat,
+            StyleLonghand.BackgroundSize);
+
         // Whether what an element declares transitions a slot a driver writes. Length stands for every length-valued
-        // property, the corner radii among them, so it meets a driver's Radius.
+        // property, the corner radii among them, so it meets a driver's Radius; Face meets the colours, the lengths and
+        // the background position its longhands are among.
         private static bool Contends(MotionTransitionSlots declared, MotionTransitionSlots driven) =>
             (declared & driven) != MotionTransitionSlots.None
-            || ((driven & MotionTransitionSlots.Radius) != 0 && (declared & MotionTransitionSlots.Length) != 0);
+            || ((driven & MotionTransitionSlots.Radius) != 0 && (declared & MotionTransitionSlots.Length) != 0)
+            || ((driven & MotionTransitionSlots.Face) != 0
+                && (declared & (MotionTransitionSlots.Color | MotionTransitionSlots.Length | MotionTransitionSlots.BackgroundPosition)) != 0);
 
         /// <summary>The driver channels that would contend for the properties a declaration names.</summary>
         private static MotionTransitionSlots SlotsOf(StyleLonghandSet declared)
@@ -572,6 +590,7 @@ namespace Velvet
             if ((slots & MotionTransitionSlots.Color) != 0) set = set.Union(s_colorProperties);
             if ((slots & MotionTransitionSlots.Length) != 0) set = set.Union(s_lengthProperties);
             if ((slots & MotionTransitionSlots.Radius) != 0) set = set.Union(s_radiusProperties);
+            if ((slots & MotionTransitionSlots.Face) != 0) set = set.Union(s_faceProperties);
             if ((slots & MotionTransitionSlots.Visibility) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Visibility));
             if ((slots & MotionTransitionSlots.Filter) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Filter));
             if ((slots & MotionTransitionSlots.BackgroundPosition) != 0)

@@ -126,6 +126,11 @@ namespace Velvet
         internal static readonly EngineMember ComputedStyleBorderBottomLeftRadius =
             ReadProperty(UIElements, ComputedStyleType, "borderBottomLeftRadius", "UnityEngine.UIElements.Length");
 
+        // ProjectedCornerFace's reading of whether an element clips its content: the element's own computed style, inline
+        // style included, since IResolvedStyle carries no overflow.
+        internal static readonly EngineMember ComputedStyleOverflow =
+            ReadProperty(UIElements, ComputedStyleType, "overflow", "enum:UnityEngine.UIElements.OverflowInternal");
+
         internal static readonly EngineMember IsMatchingShorthand = Method(UIElements,
             "UnityEngine.UIElements.StyleSheets.StylePropertyUtil", "IsMatchingShorthand", "System.Boolean",
             StylePropertyIdShape, StylePropertyIdShape);

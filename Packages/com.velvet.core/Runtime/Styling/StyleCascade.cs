@@ -40,6 +40,16 @@ namespace Velvet
 
         private static readonly object?[] s_args = new object?[2];
 
+        private static readonly PropertyInfo? s_overflow = EngineMember.ComputedStyleOverflow.ResolveProperty();
+
+        // Whether the element clips its content, by its own computed style; by its inline overflow alone where that
+        // cannot be read.
+        public static bool ClipsOverflow(VisualElement element)
+        {
+            if (s_style == null || s_overflow == null) return element.style.overflow.value == Overflow.Hidden;
+            return Convert.ToInt32(s_overflow.GetValue(s_style.GetValue(element))) != 0;
+        }
+
         // The cached ComputedStyle boxed, or null where it cannot be read. Members of it are read off the result
         // by their PropertyInfo.
         public static object? Of(VisualElement element)
