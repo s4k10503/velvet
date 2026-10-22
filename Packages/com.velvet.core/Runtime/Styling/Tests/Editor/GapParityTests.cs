@@ -186,10 +186,15 @@ namespace Velvet.Tests
             Assert.That(child.style.marginLeft.value.value, Is.EqualTo(Space4));
         }
 
+        // arrival is "layer" for an important ml-[5px] layer, else the classes the important hover payload adds,
+        // in that order: ml-4 sits after ml-2 in the stylesheet, so it wins between them whichever arrives first.
         [TestCase("layer", 5f, TestName = "Given_APlayOnAGappedChildsMargin_When_AnImportantMarginLayerOfItsOwnArrives_Then_TheGapAddsToIt")]
-        [TestCase("class", Space2, TestName = "Given_APlayOnAGappedChildsMargin_When_AnImportantMarginClassOfItsOwnArrives_Then_TheGapAddsToIt")]
+        [TestCase("ml-2", Space2, TestName = "Given_APlayOnAGappedChildsMargin_When_AnImportantMarginClassOfItsOwnArrives_Then_TheGapAddsToIt")]
+        [TestCase("ml-px", 1f, TestName = "Given_APlayOnAGappedChildsMargin_When_AnImportantPxMarginClassArrives_Then_TheGapAddsToItsToken")]
+        [TestCase("ml-4 ml-2", Space4, TestName = "Given_APlayOnAGappedChildsMargin_When_TwoImportantMarginClassesArriveLaterFirst_Then_TheGapAddsToTheLaterDeclared")]
+        [TestCase("ml-2 ml-4", Space4, TestName = "Given_APlayOnAGappedChildsMargin_When_TwoImportantMarginClassesArriveEarlierFirst_Then_TheGapAddsToTheLaterDeclared")]
         public void Given_APlayOnAGappedChildsMargin_When_AnImportantMarginOfItsOwnArrives_Then_TheGapAddsToIt(
-            string spelling, float own)
+            string arrival, float own)
         {
             // Arrange — the important margin outranks the play, and CSS adds a margin of any origin to the gap.
             using var scope = new ReconcilerScope();
@@ -199,13 +204,16 @@ namespace Velvet.Tests
             var state = BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, durationSec: 1f)!;
             BezierTweenDriver.ApplyCurrentValues(child, state);
             var hover = StyleLayerPriority.ImportantOf(StyleLayerPriority.Hover);
-            if (spelling == "layer")
+            if (arrival == "layer")
             {
                 StyleArbitraryValueResolver.Apply(child, new ArbitraryStyle(ArbitraryProperty.MarginLeft, 5f, LengthUnit.Pixel), hover);
             }
             else
             {
-                StyleClassProjection.Add(child, "ml-2", hover);
+                foreach (var cls in arrival.Split(' '))
+                {
+                    StyleClassProjection.Add(child, cls, hover);
+                }
             }
 
             // Act — the play's next frame.

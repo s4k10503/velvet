@@ -364,6 +364,8 @@ namespace Velvet
                 return index < 0 ? null : _entries[index].Class;
             }
 
+            // Between two classes of one priority, the one the stylesheet declares later, as the cascade settles it
+            // whatever order they arrived in.
             private int ClaimIndex(StyleLonghand longhand)
             {
                 var index = -1;
@@ -371,8 +373,13 @@ namespace Velvet
                 for (var i = 0; i < _entries.Count; i++)
                 {
                     var entry = _entries[i];
-                    if (!entry.Dead && entry.Gate == (int)StyleUtilityGate.None && entry.Priority > claim
-                        && entry.Properties.Contains(longhand))
+                    if (entry.Dead || entry.Gate != (int)StyleUtilityGate.None || !entry.Properties.Contains(longhand))
+                    {
+                        continue;
+                    }
+                    if (entry.Priority > claim || (entry.Priority == claim
+                        && StyleSpacingPrecedence.CascadePositionOf(entry.Class)
+                            > StyleSpacingPrecedence.CascadePositionOf(_entries[index].Class)))
                     {
                         claim = entry.Priority;
                         index = i;

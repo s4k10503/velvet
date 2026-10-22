@@ -2271,7 +2271,8 @@ namespace Velvet
             return Pixels(element, layered ? winner : write.Style);
         }
 
-        // The pixels the class claiming longhand writes, where the class names a number to read.
+        // The pixels the class claiming longhand writes, read as its inline form (TryReadStylesheetClass), so a
+        // spacing step takes Velvet's scale as the other rewrites of a stylesheet class do.
         private static float ClaimedPixels(VisualElement element, StyleClassProjection.Model projection,
             StyleLonghand longhand)
         {
@@ -2280,7 +2281,11 @@ namespace Velvet
             {
                 return float.NaN;
             }
-            return MotionPropertyClassParser.TryParse(claimant, out var style) ? Pixels(element, style) : float.NaN;
+            if (!TryReadStylesheetClass(StripImportant(claimant, out _), out _, out var inlineForm))
+            {
+                return float.NaN;
+            }
+            return TryParse(inlineForm, out var style) ? Pixels(element, style) : float.NaN;
         }
 
         // Puts back the important holds a driver's write covered, adds a gap to the value a driven margin shows
