@@ -172,14 +172,14 @@ namespace Velvet
                 return true;
             }
             var core = StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out important);
-            rejected = core.Length > 0 && StyleCompositeRejection.RejectsSkew(core, out axis);
+            rejected = StyleCompositeRejection.RejectsSkew(core, out axis);
             return rejected;
         }
 
         // Whether core, a skew utility without its important modifier, writes one axis rather than both.
         internal static bool IsAxisClass(string core)
         {
-            var at = core.Length > 0 && core[0] == '-' ? 1 : 0;
+            var at = core.StartsWith("-", StringComparison.Ordinal) ? 1 : 0;
             return string.CompareOrdinal(core, at, XPrefix, 0, XPrefix.Length) == 0
                 || string.CompareOrdinal(core, at, YPrefix, 0, YPrefix.Length) == 0;
         }
@@ -224,8 +224,8 @@ namespace Velvet
             }
 
             // Arbitrary form: an angle as skewX() takes one, a bare number only as 0. A malformed bracket (or
-            // one TryStripBrackets rejects as empty) falls through to int.TryParse below, which rejects it just
-            // the same (a bracket character is never a valid digit).
+            // one TryStripBrackets rejects as empty) falls through to TryParseWhole below, which rejects it just
+            // the same (a bracket character is never a digit).
             if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
                 if (!StyleArbitraryValueResolver.TryParseAngleDegrees(inner, out var value)
@@ -237,7 +237,7 @@ namespace Velvet
                 return true;
             }
 
-            // Numeric form: an integer number of degrees (the preset scale is a subset).
+            // Numeric form: a whole number of degrees without a leading zero (the preset scale is a subset).
             if (!StyleArbitraryValueResolver.TryParseWhole(suffix.AsSpan(), out var whole))
             {
                 return false;

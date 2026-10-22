@@ -24,9 +24,10 @@ namespace Velvet
         private static readonly Func<string, int> s_byKey = _ => 0;
         private static readonly Func<string, int> s_noLane = _ => 0;
 
-        // A token belongs to the first family that claims it. The families on s_byKey carry longhands the sort key counts and
-        // are ordered by StyleRuleOrder.CompareUtilities: a slash size declares a line height beside its font size,
-        // and a nine-slice inset writes as many longhands as the edges it names. The others are ordered by their
+        // A token belongs to the first family that claims it. The families on s_byKey carry declarations the sort key counts
+        // and are ordered by StyleRuleOrder.CompareUtilities: a slash size declares a line height beside its font size,
+        // a nine-slice inset writes as many longhands as the edges it names, and a skew-<n> one more variable than a
+        // skew-x-* or skew-y-*. The others are ordered by their
         // lane, then by candidate name, where Tailwind's sort ends for two utilities that declare the same properties.
         private static readonly (Func<string, bool> Claims, Func<string, int> Lane)[] s_families =
         {
@@ -41,7 +42,7 @@ namespace Velvet
             (StyleShadowClass.IsInsetBoxShadowClass, s_noLane),
             (StyleRingClass.IsRingClass, RingLane),
             (token => StyleClipPathClass.IsClipPathClass(token), s_noLane),
-            (token => StyleSkewClass.IsSkewClass(token), SkewLane),
+            (token => StyleSkewClass.IsSkewClass(token), s_byKey),
             (IsBackgroundImageToken, s_noLane),
             (token => StyleBorderStyleClass.IsBorderStyleClass(token), s_noLane),
             (StyleAnimateClass.IsAnimateClass, s_noLane),
@@ -191,10 +192,6 @@ namespace Velvet
         // Same list: the ring's box-shadow properties come before the outline ones.
         private static int RingLane(string core)
             => core == "outline" || core.StartsWith("outline-", StringComparison.Ordinal) ? 1 : 0;
-
-        // Every skew-<n> goes ahead of every skew-x-* and skew-y-*, where Tailwind emits them (FamilyOrderTests):
-        // -skew-x-12 after skew-6 too, which the candidate name alone would put first.
-        private static int SkewLane(string core) => StyleSkewClass.IsAxisClass(core) ? 1 : 0;
 
         // A colour stop declares its own variables and is ordered apart. A shape that declares its position variable
         // once inside @supports as well (a keyword or integer bg-linear-*) counts three declarations, and

@@ -107,77 +107,76 @@ namespace Velvet.Tests
             Assert.That((backdrop > 0, shadow > 0), Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already tilts a shadow on a caster skewed on y alone with its face; the product shear differs from it only where both axes are skewed.
+        // GREEN_ON_BASE(characterization): the base already shears a shadow on a caster skewed on y alone with its face.
+        // Have FiberBoxShadowApplier pass `default` for the caster's skew and the upright shadow's level edge reddens it.
         [UnityTest]
         public IEnumerator Given_ABoxShadowCasterSkewedOnY_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes()
         {
-            // Arrange — a green face over the blue backdrop with a red shadow below it. Across the 30px between
-            // the sampled columns a 20deg y shear moves an edge by tan(20deg)·30 ≈ 11px; an upright shadow moves
-            // it by 0, so the product of the two tilts is positive only where both slant, the same way.
-            yield return MountOverBackdrop("SkewedBoxShadowPanel", V.Div(
+            // Arrange — a green face over the blue backdrop with a red shadow 14px below it. A 20deg y shear drops
+            // the bottom edge of both by tan(20deg) ≈ 0.36px a column, about 11px between the sampled columns, 5px in
+            // from each side of the box; an upright shadow's bottom edge is level there.
+            yield return MountOverBackdrop("SkewedBoxShadowPanel", V.Div(name: "caster",
                 className: "w-[40px] h-[30px] bg-[#00ff00] skew-y-[20deg] shadow-[0px_14px_10px_0px_#ff0000]"));
+            var box = CasterBox();
             var pixels = RenderTexturePixelReader.ReadPixels(
                 _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
 
-            // The last row, in the reader's order, at which column x holds a pixel the predicate takes; -1 for
-            // none. Read the same way for both paints, it compares their edges whichever way up the frame comes back.
-            int LastRow(int x, Func<Color32, bool> predicate)
-            {
-                var last = -1;
-                for (var y = 0; y < PanelSize; y++)
-                {
-                    if (predicate(pixels[(y * PanelSize) + x]))
-                    {
-                        last = y;
-                    }
-                }
-                return last;
-            }
-
             // Act
-            var faceTilt = LastRow(65, p => p.g > 200 && p.r < 60 && p.b < 60)
-                - LastRow(35, p => p.g > 200 && p.r < 60 && p.b < 60);
-            var shadowTilt = LastRow(65, p => p.r > 120 && p.g < 100 && p.b < 140)
-                - LastRow(35, p => p.r > 120 && p.g < 100 && p.b < 140);
+            var ratio = TiltRatio(pixels, (int)box.xMin + 5, (int)box.xMin + 35);
 
             // Assert
-            Assert.That(faceTilt * shadowTilt, Is.GreaterThan(0), $"face tilt {faceTilt}, shadow tilt {shadowTilt}");
+            Assert.That(ratio, Is.EqualTo(1f).Within(0.5f));
         }
 
         [UnityTest]
         public IEnumerator Given_ABoxShadowCasterSkewedOnBothAxesByOneClass_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes()
         {
-            // Arrange — skew-[20deg] is skewX(20deg) skewY(20deg), whose bottom edge falls by
-            // tan θ / (1 + tan² θ) ≈ 0.32px a column, about 9px between the sampled columns. Both columns sit on the
-            // bottom edge of the face and of the shadow, and on that of a shadow sheared by the x angle alone,
-            // which is level.
-            yield return MountOverBackdrop("BothAxesSkewedBoxShadowPanel", V.Div(
+            // Arrange — skew-[20deg] is skewX(20deg) skewY(20deg). The bottom edge of the face and of the shadow
+            // falls by tan θ / (1 + tan² θ) ≈ 0.32px a column, about 9px between the sampled columns, 15px and 42px
+            // right of the box's left side: the face's bottom edge spans 3px to 48px there, and the shadow's, which
+            // its offset also carries 5px right, 8px to 53px. A shadow sheared by the x angle alone has a level
+            // bottom edge from 11px to 51px, and an upright one ends at 40px, short of the second column.
+            yield return MountOverBackdrop("BothAxesSkewedBoxShadowPanel", V.Div(name: "caster",
                 className: "w-[40px] h-[30px] bg-[#00ff00] skew-[20deg] shadow-[0px_14px_10px_0px_#ff0000]"));
+            var box = CasterBox();
             var pixels = RenderTexturePixelReader.ReadPixels(
                 _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
-            Func<Color32, bool> face = p => p.g > 200 && p.r < 60 && p.b < 60;
-            Func<Color32, bool> shadow = p => p.r > 120 && p.g < 100 && p.b < 140;
 
             // Act
-            var faceTilt = LastRowAt(pixels, 72, face) - LastRowAt(pixels, 45, face);
-            var shadowTilt = LastRowAt(pixels, 72, shadow) - LastRowAt(pixels, 45, shadow);
+            var ratio = TiltRatio(pixels, (int)box.xMin + 15, (int)box.xMin + 42);
 
             // Assert
-            Assert.That(faceTilt * shadowTilt, Is.GreaterThan(0), $"face tilt {faceTilt}, shadow tilt {shadowTilt}");
+            Assert.That(ratio, Is.EqualTo(1f).Within(0.5f));
         }
 
-        // The last row, in the reader's order, at which column x holds a pixel the predicate takes; -1 for none.
-        private static int LastRowAt(Color32[] pixels, int x, Func<Color32, bool> predicate)
+        private Rect CasterBox()
+            => UnityEngine.UIElements.UQueryExtensions.Q<UnityEngine.UIElements.VisualElement>(_host.Root, "caster").worldBound;
+
+        // How far the shadow's bottom edge drops between the two columns, over how far the face's does; NaN where the
+        // face's does not drop, so a face that was never sheared cannot read as a shadow that matched it. The
+        // shadow's bottom edge lies below the face, so the face covers neither reading of it.
+        private static float TiltRatio(Color32[] pixels, int left, int right)
         {
-            var last = -1;
-            for (var y = 0; y < PanelSize; y++)
+            Func<Color32, bool> face = p => p.g > 200 && p.r < 60 && p.b < 60;
+            Func<Color32, bool> shadow = p => p.r > 120 && p.g < 100 && p.b < 140;
+            var faceTilt = BottomRow(pixels, right, face) - BottomRow(pixels, left, face);
+            var shadowTilt = BottomRow(pixels, right, shadow) - BottomRow(pixels, left, shadow);
+            return faceTilt > 0 ? (float)shadowTilt / faceTilt : float.NaN;
+        }
+
+        // The lowest row on the panel, counted down from its top, at which column x holds a pixel the predicate
+        // takes; -1 for none. The readback runs bottom-up, as the inset case's indexing reads it.
+        private static int BottomRow(Color32[] pixels, int x, Func<Color32, bool> predicate)
+        {
+            var bottom = -1;
+            for (var row = 0; row < PanelSize; row++)
             {
-                if (predicate(pixels[(y * PanelSize) + x]))
+                if (predicate(pixels[((PanelSize - 1 - row) * PanelSize) + x]))
                 {
-                    last = y;
+                    bottom = row;
                 }
             }
-            return last;
+            return bottom;
         }
 
         [UnityTest]

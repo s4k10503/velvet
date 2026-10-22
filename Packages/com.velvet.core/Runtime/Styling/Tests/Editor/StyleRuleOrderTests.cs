@@ -26,7 +26,12 @@ namespace Velvet.Tests
 
         // Tailwind 4.3.3 emits each earlier utility ahead of the later one: compile.ts puts the rule with more
         // declarations first, and scale-<n> declares three variables beside scale, an axis utility one, and
-        // scale-[..] only scale, while a slash size declares its line-height as a named size does.
+        // scale-[..] only scale, while a slash size declares its line-height as a named size does. Tailwind 4.1.11
+        // emits the skew rows so: skew-<n> declares --tw-skew-x, --tw-skew-y and transform, a per-axis skew one
+        // variable fewer, and two payloads of one variant are ordered the same way.
+        [TestCase("skew-6", "-skew-x-12")]
+        [TestCase("hover:skew-6", "hover:-skew-x-12")]
+        [TestCase("dark:skew-[3deg]", "dark:-skew-y-3")]
         [TestCase("scale-100", "-scale-[0.5]")]
         [TestCase("scale-95", "-scale-x-[1]")]
         [TestCase("scale-x-50", "scale-[.5]")]

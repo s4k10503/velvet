@@ -1,8 +1,7 @@
 ### Fixed
 
 - An important skew (`!skew-x-6`, `skew-x-6!`) applies and outranks every plain skew on its axis; it was ignored,
-  and a plain skew beside it was drawn instead. An important skew behind a variant (`hover:!skew-x-6`) outranks
-  an important base skew while the variant holds; it was read as a plain one, which lost to it.
+  and a plain skew beside it was drawn instead.
 - A skew bracket whose angle the browser rejects leaves the element unskewed when it is important (`!skew-x-[5px]`)
   or writes both axes (`skew-[10]`), as it already did for a plain `skew-x-[…]` or `skew-y-[…]`; it was ignored,
   and the other skew classes on the element were drawn.

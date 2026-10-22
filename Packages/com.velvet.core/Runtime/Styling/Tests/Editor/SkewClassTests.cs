@@ -186,8 +186,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reads no skew-<n>, so the per-axis class holds x there as well.
-        // Swap the two lanes of StyleFamilyOrder.SkewLane and every row reddens; the candidate name alone, without
-        // the lane, reddens the negative one.
+        // Swap StyleRuleOrder's SkewClassDeclarations and SkewAxisDeclarations and every row reddens; the candidate
+        // name alone, without either count, reddens the negative one.
         [TestCase("skew-x-12 skew-6", 12f)]
         [TestCase("skew-6 skew-x-12", 12f)]
         [TestCase("-skew-x-12 skew-6", -12f)]
@@ -218,8 +218,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reads no skew-<n>, so the per-axis class holds y there as well.
-        // Swap the two lanes of StyleFamilyOrder.SkewLane and every row reddens; the candidate name alone, without
-        // the lane, reddens the negative one.
+        // Swap StyleRuleOrder's SkewClassDeclarations and SkewAxisDeclarations and every row reddens; the candidate
+        // name alone, without either count, reddens the negative one.
         [TestCase("skew-y-3 skew-6", 3f)]
         [TestCase("skew-6 skew-y-3", 3f)]
         [TestCase("-skew-y-3 skew-6", -3f)]
@@ -234,7 +234,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APlainSkewBracket_When_Extracted_Then_BothAxesTakeTheAngleInItsUnit()
+        public void Given_APlainSkewBracket_When_Extracted_Then_YTakesTheAngleInItsUnit()
         {
             // Act
             var spec = Resolved("skew-[.25turn]");
@@ -270,18 +270,16 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reads no skew-<n>, and declines each of these with it.
-        // Parse the bare value with `float.TryParse` and both bare rows redden, with `int.TryParse` the skew-07 row
-        // alone; take the bracket without its unit and the skew-[8] row does.
+        // Parse the bare value with `float.TryParse` and both rows redden, with `int.TryParse` the skew-07 row alone.
         [TestCase("skew-1.5")]
         [TestCase("skew-07")]
-        [TestCase("skew-[8]")]
-        public void Given_APlainSkewThatIsNoWholeNumberOfDegrees_When_Extracted_Then_ItIsDeclined(string utility)
+        public void Given_ABarePlainSkewThatIsNoWholeNumberOfDegrees_When_Extracted_Then_ItIsDeclined(string utility)
         {
             // Act
             var want = StyleSkewClass.TryExtract(new[] { utility }, out _);
 
-            // Assert — Tailwind takes a bare skew value only as a whole number without a leading zero, and a bracket
-            // only as an angle or 0.
+            // Assert — Tailwind generates no rule for a bare skew value other than a whole number without a leading
+            // zero.
             Assert.That(want, Is.False);
         }
 
@@ -337,7 +335,8 @@ namespace Velvet.Tests
         }
 
         [TestCase("skew-[5px]", "skew-y-3")]
-        [TestCase("skew-x-6", "!skew-y-[10]")]
+        [TestCase("skew-[8]", "skew-x-6")]
+        [TestCase("!skew-y-[10]", "skew-x-6")]
         public void Given_ASkewHeldByAnAngleTheBrowserRejects_When_Extracted_Then_NoSkewIsWanted(
             string rejected, string other)
         {

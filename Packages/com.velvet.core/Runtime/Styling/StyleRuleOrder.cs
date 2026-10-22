@@ -392,6 +392,13 @@ namespace Velvet
         private const int ScaleClassDeclarations = 4;
         private const int ScaleAxisDeclarations = 2;
 
+        // The declarations Tailwind counts for a skew utility: --tw-skew-x and --tw-skew-y for skew-<n>, one of them for
+        // skew-x-* or skew-y-*, and transform. So of two skews under the same variants a skew-<n> is emitted ahead of
+        // a per-axis one, -skew-x-12 after skew-6 included, which the candidate name alone would reverse
+        // (FamilyOrderTests, StyleRuleOrderTests).
+        private const int SkewClassDeclarations = 3;
+        private const int SkewAxisDeclarations = 2;
+
         private static int ScaleDeclarationsOf(bool inline, ArbitraryProperty property)
             => !inline ? ScaleClassDeclarations
                 : property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY ? ScaleAxisDeclarations : 1;
@@ -403,7 +410,7 @@ namespace Velvet
 
         // The Tailwind property-order indexes of what the utility writes, ascending, and how many declarations
         // Tailwind counts for it: its longhands, plus the line-height a named or slash text size also declares, except
-        // where a variable beside the property adds to them (see ScaleClassDeclarations).
+        // where a variable beside the property adds to them (see ScaleClassDeclarations and SkewClassDeclarations).
         private static (List<int> Order, int Count) PropertySortOf(string utility)
         {
             var core = StyleArbitraryValueResolver.StripImportant(utility, out _);
@@ -475,6 +482,10 @@ namespace Velvet
             if (set.Contains(StyleLonghand.Scale))
             {
                 count = ScaleDeclarationsOf(inline, property);
+            }
+            else if (StyleSkewClass.IsSkewClass(core))
+            {
+                count = StyleSkewClass.IsAxisClass(core) ? SkewAxisDeclarations : SkewClassDeclarations;
             }
             else if (inline && set.Contains(StyleLonghand.Translate))
             {

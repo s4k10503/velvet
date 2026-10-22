@@ -14,9 +14,9 @@ namespace Velvet.Tests
     /// re-render happened to bring the bare token in literally.
     /// </summary>
     /// <remarks>
-    /// Each case asserts the style write the layer actually makes — the face-suppression sentinel a
-    /// silhouette installs so it can repaint the face itself, the baked gradient texture, the pan oversize —
-    /// rather than class membership, which is true whether or not the layer ever ran. <c>dark:</c> needs no
+    /// Each case asserts what the layer actually made — the face-suppression sentinel a silhouette installs so
+    /// it can repaint the face itself, the baked gradient texture, the pan oversize, the angle a skew binding
+    /// carries — rather than class membership, which is true whether or not the layer ever ran. <c>dark:</c> needs no
     /// panel: the conditional manipulator subscribes to <see cref="VelvetTheme"/>'s theme signal when it
     /// attaches to the element and evaluates it off-panel, so a bare reconciler crosses the same side channel
     /// a breakpoint crossing uses. GWT, one assert per case.

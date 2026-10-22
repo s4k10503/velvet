@@ -83,7 +83,7 @@ namespace Velvet
         // browser rejects, and which axes it holds.
         internal static bool RejectsSkew(string core, out SkewAxis axis)
         {
-            var negated = core.Length > 0 && core[0] == '-';
+            var negated = core.StartsWith("-", StringComparison.Ordinal);
             var at = negated ? 1 : 0;
             axis = OpensBracket(core, at, "skew-x-") ? SkewAxis.X
                 : OpensBracket(core, at, "skew-y-") ? SkewAxis.Y
