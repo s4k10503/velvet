@@ -95,3 +95,6 @@
   `V.Motion` translation, a drag offset — whichever was written last. The two compose, as CSS composes a
   parent's transform with the child's, and a translate play on such a child starts from its own translate
   rather than offset by the seat, as does a `layoutId` move.
+
+- A clipping `layoutId` `V.Motion` drawn at a different scale on each axis could show its content past its rounded
+  corners for a frame after code gave it an inline background image.

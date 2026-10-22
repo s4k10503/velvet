@@ -92,6 +92,8 @@ namespace Velvet
 
             // Painting stopped and the colours run on to the element's own (End), stepped by this.
             public IVisualElementScheduledItem? Tail;
+            // Takes back a slot something else wrote at each panel update while this paints (Reassert).
+            public IVisualElementScheduledItem? Guard;
         }
 
         // A background image as painted here: the texture, the part of it the image is, the size it is drawn from,
@@ -192,6 +194,7 @@ namespace Velvet
         public static void End(VisualElement element)
         {
             if (!s_states.TryGetValue(element, out var state) || state.Tail != null) return;
+            state.Guard?.Pause();
             element.generateVisualContent -= state.OnGenerate;
             HandBackImage(element, state);
             if (StepTail(element, state, 0f)) return;
@@ -211,6 +214,7 @@ namespace Velvet
             if (!s_states.TryGetValue(element, out var state)) return;
             s_states.Remove(element);
             state.Tail?.Pause();
+            state.Guard?.Pause();
             element.generateVisualContent -= state.OnGenerate;
             HandBackImage(element, state);
             for (var slot = 0; slot < SlotCount; slot++)
@@ -248,6 +252,7 @@ namespace Velvet
             state.OnGenerate = mgc => Paint(mgc, element, state);
             InsertFirst(element, state);
             s_states.Add(element, state);
+            state.Guard = element.schedule.Execute(() => Reassert(element, state)).Every(0);
             return state;
         }
 
@@ -260,7 +265,29 @@ namespace Velvet
             state.Own.Image = state.WrittenImage = style.backgroundImage;
             state.RewriteClip = true;
             InsertFirst(element, state);
+            state.Guard?.Resume();
         }
+
+        // The projection's pass runs every StyleAnimateDriver.TickMs and a write lands at any time, so a slot something
+        // else wrote is taken back here, at each update of the panel, rather than left to that pass: until the clip is
+        // written back over the image slot, the element clips to its native, unrounded box
+        // (Given_AnOverflowHiddenRoundedLayoutIdMotionHeldByItsDelay_When_ItsInlineBackgroundImageChanges_Then_ItsChildStaysClippedAtTheCircle).
+        private static void Reassert(VisualElement element, State state)
+        {
+            if (state.Tail != null || !WrittenElsewhere(element.style, state)) return;
+            if (!SyncImage(element, state))
+            {
+                End(element);
+                return;
+            }
+            if (state.Clips) SyncClip(element, state);
+            element.MarkDirtyRepaint();
+        }
+
+        private static bool WrittenElsewhere(IStyle style, State state)
+            => style.backgroundImage != state.WrittenImage || style.backgroundPositionX != state.WrittenPositionX
+                || style.backgroundPositionY != state.WrittenPositionY || style.backgroundRepeat != state.WrittenRepeat
+                || style.backgroundSize != state.WrittenSize;
 
         // Steps the colours on to the element's own, writing each inline until it lands and then its own; true once
         // every one has, when the face is done with the element.
