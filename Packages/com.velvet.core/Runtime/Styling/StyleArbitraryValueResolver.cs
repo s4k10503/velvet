@@ -2502,9 +2502,6 @@ namespace Velvet
             }
         }
 
-        internal static bool IsHeld(VisualElement element, HeldSlot slot)
-            => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.IsHeld(slot);
-
         internal static bool IsDriven(VisualElement element, HeldSlot slot)
             => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.IsDriven(slot);
 
