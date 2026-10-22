@@ -58,35 +58,46 @@ namespace Velvet
 
         // Has the carry run on from the element's running opacity transition, if it has one.
         public static void TakeOverOpacity(VisualElement element, LayoutIdCarry carry) =>
-            TakeOver(element, carry, s_floats, s_opacityId, value => (float)value);
+            TakeOver(element, carry, s_floats, s_opacityId, value => ((float)value, 0));
 
         public static void TakeOverRotate(VisualElement element, LayoutIdCarry carry) =>
-            TakeOver(element, carry, s_rotates, s_rotateId, value => ((Rotate)value).angle.ToDegrees());
+            TakeOver(element, carry, s_rotates, s_rotateId, value => (((Rotate)value).angle.ToDegrees(), 0));
 
-        // The x and y axes, each carried in the given unit; an axis running in another is not taken over.
+        // The x and y axes, each carried in the given unit. UI Toolkit runs a transition in the unit of its end and keeps
+        // what a reversal runs back to as it was given, in its own unit or as none
+        // (Given_AMotionTranslatingOnATransition_When_ItTakesAHeldId_Then_ItsOwnTranslateRunsAsTheEngineRunsIt), so each
+        // value is taken into the carry's unit through the element's box.
         public static void TakeOverTranslate(VisualElement element, LayoutIdCarry[] axes, LengthUnit[] units)
         {
             for (var axis = 0; axis < 2; axis++)
             {
-                TakeOver(element, axes[axis], s_translates, s_translateId, value => InUnit((Translate)value, axis, units[axis]));
+                TakeOver(element, axes[axis], s_translates, s_translateId,
+                    value => (InUnit(element, (Translate)value, axis, units[axis]), MotionLayoutIdDriver.Tag((Translate)value, axis)));
             }
         }
 
         public static void TakeOverScale(VisualElement element, LayoutIdCarry[] axes)
         {
-            for (var axis = 0; axis < 2; axis++) TakeOver(element, axes[axis], s_scales, s_scaleId, value => ((Scale)value).value[axis]);
+            for (var axis = 0; axis < 2; axis++)
+            {
+                TakeOver(element, axes[axis], s_scales, s_scaleId, value => (((Scale)value).value[axis], 0));
+            }
         }
 
-        private static float InUnit(Translate translate, int axis, LengthUnit unit)
+        // NaN where a pixel value would need a percent of a box with no extent, a conversion UI Toolkit refuses.
+        private static float InUnit(VisualElement element, Translate translate, int axis, LengthUnit unit)
         {
             var length = axis == 0 ? translate.x : translate.y;
-            return length.unit == unit ? length.value : float.NaN;
+            var size = element.layout.size[axis];
+            if (length.unit == unit) return length.value;
+            if (unit != LengthUnit.Percent) return length.value / 100f * size;
+            return size > 0f ? length.value * 100f / size : float.NaN;
         }
 
         // A corner, in LayoutIdLook's corner order, carried in the given unit; one running in another is not taken over.
         public static void TakeOverRadius(VisualElement element, int corner, LayoutIdCarry carry, LengthUnit unit) =>
             TakeOver(element, carry, s_lengths, s_cornerIds[corner],
-                value => ((Length)value).unit == unit ? ((Length)value).value : float.NaN);
+                value => (((Length)value).unit == unit ? ((Length)value).value : float.NaN, 0));
 
         // A corner, in LayoutIdLook's corner order, as UI Toolkit draws it now: where a transition of it runs in the given
         // radius's unit, its current value, else that radius.
@@ -140,7 +151,9 @@ namespace Velvet
         }
 #endif
 
-        private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property, Func<object, float> read)
+        // read: a value of the transition as the carry holds it, and its LayoutIdCarry.TargetTag.
+        private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property,
+            Func<object, (float Value, int Tag)> read)
         {
             if (Find(element, set, property) is not { } found) return;
             // A member whose type or shape has changed under the read fails it as one gone does.
@@ -148,10 +161,10 @@ namespace Velvet
             {
                 var (system, timing, style) = found;
                 var (from, to, reversingStart) = (read(Read(s_from!, style)), read(Read(s_to!, style)), read(Read(s_reversingStart!, style)));
-                if (!AllNumbers(from, to, reversingStart)) return;
+                if (!AllNumbers(from.Value, to.Value, reversingStart.Value)) return;
                 var elapsedSec = (double)s_now!.GetValue(system) - (double)Read(s_startTime!, timing);
-                carry.TakeOver((from, to, (float)Read(s_duration!, timing), (float)elapsedSec), (Func<float, float>)Read(s_curve!, timing),
-                    (reversingStart, (float)Read(s_shortening!, timing), (float)Read(s_eased!, timing)));
+                carry.TakeOver((from.Value, to.Value, (float)Read(s_duration!, timing), (float)elapsedSec), (Func<float, float>)Read(s_curve!, timing),
+                    (reversingStart.Value, (float)Read(s_shortening!, timing), (float)Read(s_eased!, timing)), (to.Tag, reversingStart.Tag));
             }
             catch (Exception)
             {

@@ -489,7 +489,7 @@ namespace Velvet
         private static void WriteScale(VisualElement element, LayoutIdProjection projection, Vector2 scale, float dtSec)
         {
             var target = OwnScale(element, projection);
-            var own = Carried(element, projection.ScaleCarries, target, dtSec, "scale", false);
+            var own = Carried(element, projection.ScaleCarries, target, Vector2Int.zero, dtSec, "scale");
             var ping = StyleAnimateDriver.CurrentPingFactor(element);
             element.style.scale = new Scale(new Vector3(own.x * scale.x * ping, own.y * scale.y * ping, target.z));
             projection.WrittenScale = element.style.scale;
@@ -530,7 +530,7 @@ namespace Velvet
             var target = OwnTranslate(element, projection);
             for (var axis = 0; axis < 2; axis++)
             {
-                projection.TranslateCarries[axis].Land(projection.StartTranslate[axis]);
+                projection.TranslateCarries[axis].Land(projection.StartTranslate[axis], Tag(target, axis));
                 TakeUnit(element, projection, axis, axis == 0 ? target.x : target.y);
             }
             RunningStyleTransition.TakeOverTranslate(element, projection.TranslateCarries, projection.TranslateUnits);
@@ -543,10 +543,10 @@ namespace Velvet
         private static Vector3 CarriedTranslate(VisualElement element, LayoutIdProjection projection, float dtSec)
         {
             var target = OwnTranslate(element, projection);
-            // A change of unit alone is a change of the value, as UI Toolkit compares lengths with their units.
-            var unitChanged = TakeUnit(element, projection, 0, target.x) | TakeUnit(element, projection, 1, target.y);
-            var carried = Carried(element, projection.TranslateCarries, new Vector2(target.x.value, target.y.value), dtSec, "translate",
-                unitChanged);
+            TakeUnit(element, projection, 0, target.x);
+            TakeUnit(element, projection, 1, target.y);
+            var carried = Carried(element, projection.TranslateCarries, new Vector2(target.x.value, target.y.value),
+                new Vector2Int(Tag(target, 0), Tag(target, 1)), dtSec, "translate");
             var size = element.layout.size;
             return new Vector3(target.x.unit == LengthUnit.Percent ? carried.x / 100f * size.x : carried.x,
                 target.y.unit == LengthUnit.Percent ? carried.y / 100f * size.y : carried.y, target.z);
@@ -563,11 +563,15 @@ namespace Velvet
             return new Vector3(Axis(0), Axis(1), OwnTranslate(element, projection).z);
         }
 
+        // An axis of a translate tagged as LayoutIdCarry.TargetTag reads it.
+        internal static int Tag(Translate translate, int axis) =>
+            translate == Translate.None() ? LayoutIdCarry.NoneTag : (int)(axis == 0 ? translate.x : translate.y).unit;
+
         // Takes an axis's carry into the unit it is given in, as UI Toolkit takes a transition's start into the unit of the
-        // value it runs to. Returns whether it did.
-        private static bool TakeUnit(VisualElement element, LayoutIdProjection projection, int axis, Length given)
+        // value it runs to.
+        private static void TakeUnit(VisualElement element, LayoutIdProjection projection, int axis, Length given)
         {
-            if (given.unit == projection.TranslateUnits[axis]) return false;
+            if (given.unit == projection.TranslateUnits[axis]) return;
             projection.TranslateUnits[axis] = given.unit;
             var size = element.layout.size[axis];
             var carry = projection.TranslateCarries[axis];
@@ -575,22 +579,21 @@ namespace Velvet
             // (Given_AMotionTranslatedByAFractionOfNoHeight_When_ItMoves_Then_ItIsTranslatedByNone).
             if (given.unit != LengthUnit.Percent) carry.Convert(size / 100f);
             else if (size > 0f) carry.Convert(100f / size);
-            else carry.Land(given.value);
-            return true;
+            else carry.Land(given.value, carry.TargetTag);
         }
 
-        // The element's own value carried towards target on both axes as LayoutIdLook.OwnRotate carries the rotate. UI
-        // Toolkit runs a translate or a scale as one value, so a change of either axis starts both over, and reverses only
-        // where both run back; changed: the value changed in a way the targets do not show, which is no reversal
+        // The element's own value carried towards target, tagged tags, on both axes as LayoutIdLook.OwnRotate carries the
+        // rotate. UI Toolkit runs a translate or a scale as one value, so a change of either axis starts both over, and
+        // reverses only where both run back
         // (Given_ALeadMovingOnATransitionOfItsOwn_When_ItsTransformChanges_Then_ItRunsAsTheEngineRunsIt).
-        private static Vector2 Carried(VisualElement element, LayoutIdCarry[] axes, Vector2 target, float dtSec, string property,
-            bool changed)
+        private static Vector2 Carried(VisualElement element, LayoutIdCarry[] axes, Vector2 target, Vector2Int tags, float dtSec,
+            string property)
         {
-            if (changed || target.x != axes[0].Target || target.y != axes[1].Target)
+            if (target.x != axes[0].Target || target.y != axes[1].Target || tags.x != axes[0].TargetTag || tags.y != axes[1].TargetTag)
             {
-                var reverses = !changed && axes[0].Reverses(target.x) && axes[1].Reverses(target.y);
-                axes[0].Retarget(target.x, reverses, element, property, null);
-                axes[1].Retarget(target.y, reverses, element, property, null);
+                var reverses = axes[0].Reverses(target.x, tags.x) && axes[1].Reverses(target.y, tags.y);
+                axes[0].Retarget(target.x, tags.x, reverses, element, property, null);
+                axes[1].Retarget(target.y, tags.y, reverses, element, property, null);
             }
             return new Vector2(axes[0].Advance(dtSec), axes[1].Advance(dtSec));
         }
@@ -604,7 +607,7 @@ namespace Velvet
         {
             var inline = projection.OwnInlineTranslate;
             if (inline.keyword == StyleKeyword.Undefined) return inline.value;
-            if (inline.keyword != StyleKeyword.Null) return new Translate(new Length(0f), new Length(0f), 0f);
+            if (inline.keyword != StyleKeyword.Null) return Translate.None();
             var start = projection.StartTranslate;
             return StyleCascade.Translate(element) ?? new Translate(new Length(start.x), new Length(start.y), start.z);
         }
@@ -1345,6 +1348,7 @@ namespace Velvet
         // Where a change back runs to, and how far the transition running now was shortened, which UI Toolkit keeps per
         // transition to shorten one that reverses the transition it interrupts.
         private float _reversingStart;
+        private int _reversingTag;
         private float _shortening = 1f;
         // The timing the list a variant swap holds inline gave the property; NaN duration while it holds none.
         private float _heldDurationSec = float.NaN;
@@ -1353,8 +1357,15 @@ namespace Velvet
         // The held list has named the property since it was written.
         private bool _named;
 
+        // What UI Toolkit tells values of the property apart by beyond their number, a translate's unit or its none, so that
+        // a change of it alone is a change of the value, and a change back is a reversal only onto the same: NoneTag, else a
+        // LengthUnit; 0 where no tag is kept, as for the scale, whose none UI Toolkit compares as its value
+        // (Given_ALeadWhoseTransformChangesLateInItsMove_When_TheMoveLands_Then_ItRunsOnAsTheEngineRunsIt).
+        public const int NoneTag = -1;
+
         public float Value { get; private set; }
         public float Target { get; private set; }
+        public int TargetTag { get; private set; }
         public bool Landed => _elapsedSec >= _delaySec + _durationSec;
 
         // Re-expresses what is carried in a unit factor times as fine, as UI Toolkit takes a transition's start into the
@@ -1362,19 +1373,22 @@ namespace Velvet
         public void Convert(float factor) =>
             (Value, _from, Target, _reversingStart) = (Value * factor, _from * factor, Target * factor, _reversingStart * factor);
 
-        public void Land(float value)
+        public void Land(float value, int tag = 0)
         {
             Value = _from = Target = value;
+            TargetTag = _reversingTag = tag;
             _elapsedSec = _delaySec = _durationSec = 0f;
         }
 
         // Runs on from where UI Toolkit's transition of the property had got: its start and end, its curve, its eased
         // progress and its shortening, with elapsedSec counted from the end of its delay, below zero while still inside it.
+        // tags: the TargetTag of its end and of what a reversal of it runs back to.
         public void TakeOver((float From, float Target, float DurationSec, float ElapsedSec) run, System.Func<float, float> curve,
-            (float Start, float Shortening, float Eased) reversing)
+            (float Start, float Shortening, float Eased) reversing, (int Target, int Reversing) tags = default)
         {
             (_from, Target, _durationSec, _elapsedSec, _delaySec, _curve) = (run.From, run.Target, run.DurationSec, run.ElapsedSec, 0f, curve);
             (_reversingStart, _shortening, _eased) = reversing;
+            (TargetTag, _reversingTag) = tags;
         }
 
         // Read as the swap writes the list, before the projection takes the property out of it: listed is whether the
@@ -1405,17 +1419,21 @@ namespace Velvet
         // (Given_ALeadCrossfadingIn_When_ItsClassesFadeItOutAndBackMidway_Then_TheWayBackIsShortened).
         public float Step(float target, float dtSec, VisualElement element, string property, string? shorthand)
         {
-            if (target != Target) Retarget(target, Reverses(target), element, property, shorthand);
+            if (target != Target) Retarget(target, TargetTag, Reverses(target, TargetTag), element, property, shorthand);
             return Advance(dtSec);
         }
 
-        // Whether target is where UI Toolkit would reverse a running transition of the value to.
-        public bool Reverses(float target) => !Landed && Mathf.Approximately(target, _reversingStart);
+        // Whether target, tagged tag, is where UI Toolkit would reverse a running transition of the value to.
+        public bool Reverses(float target, int tag) => !Landed && Mathf.Approximately(target, _reversingStart) && tag == _reversingTag;
 
-        // Starts over from where the value stands towards target, shortened where reverses, on the timing the property
-        // takes now.
-        public void Retarget(float target, bool reverses, VisualElement element, string property, string? shorthand)
+        // Starts over from where the value stands towards target, tagged tag, shortened where reverses, on the timing the
+        // property takes now. A reversal runs back to the end of the transition it reverses, and a transition from rest to
+        // the value at rest, as UI Toolkit keeps them with their tags; one from part way runs back to where it stood, which
+        // UI Toolkit holds in the unit of the end it ran to, and so as no none.
+        public void Retarget(float target, int tag, bool reverses, VisualElement element, string property, string? shorthand)
         {
+            _reversingTag = reverses || Landed ? TargetTag : System.Math.Max(TargetTag, 0);
+            TargetTag = tag;
             _shortening = reverses ? Mathf.Clamp01(Mathf.Abs(1f - (1f - _eased) * _shortening)) : 1f;
             _reversingStart = reverses ? Target : Value;
             (_from, Target, _elapsedSec, _curve) = (Value, target, 0f, null);

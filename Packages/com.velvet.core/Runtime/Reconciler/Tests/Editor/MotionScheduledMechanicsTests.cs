@@ -5245,13 +5245,15 @@ namespace Velvet.Tests
         {
             // Arrange — the bundled sheet; "b", turned 45 degrees, takes the id from "a" on a one-second tween, mixing its
             // rotate in from a's none, and "a" is drawn over "b" at b's rotate; some 0.2 s in "b" is turned back to none,
-            // and the frame after it leaves, handing "a" the lead back with no rotate to mix in from.
+            // which the pass of the frame after the style pass resolves it draws, and it then leaves, handing "a" the lead
+            // back with no rotate to mix in from.
             VelvetStyleUtilities.AttachTo(Root);
             s_bClasses = "rotate-45";
             using var mounted = MountBOverA();
             for (var i = 0; i < 12; i++) Tick();
             s_bClasses = "rotate-0";
             RenderShared(mounted);
+            Tick();
             s_bMounted = false;
             RenderShared(mounted);
 
