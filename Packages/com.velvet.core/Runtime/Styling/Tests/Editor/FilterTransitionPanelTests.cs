@@ -2283,13 +2283,13 @@ namespace Velvet.Tests
             AdvanceAndPaint(element.panel, 0.15);
         }
 
-        // The number of transitionrun events the element dispatches for filter from here on.
-        private static Func<int> CountFilterRuns(VisualElement element)
+        // The number of transitionrun events the element dispatches for the property from here on.
+        private static Func<int> CountRuns(VisualElement element, string property)
         {
             var count = 0;
             element.RegisterCallback<TransitionRunEvent>(evt =>
             {
-                if (evt.stylePropertyNames.Contains(new StylePropertyName("filter")))
+                if (evt.stylePropertyNames.Contains(new StylePropertyName(property)))
                 {
                     count++;
                 }
@@ -2373,7 +2373,7 @@ namespace Velvet.Tests
             var element = MountUnderTransitions("transform-origin");
             ApplyBlur(element, 4f);
             RunTransformOriginHalfWay(element);
-            var runs = CountFilterRuns(element);
+            var runs = CountRuns(element, "filter");
 
             // Act
             ApplyBlur(element, 12f);
@@ -2389,7 +2389,7 @@ namespace Velvet.Tests
             // Arrange
             var element = MountUnderTransitions("transform-origin");
             RunTransformOriginHalfWay(element);
-            var runs = CountFilterRuns(element);
+            var runs = CountRuns(element, "filter");
 
             // Act
             ApplyBlur(element, 12f);
@@ -2397,6 +2397,59 @@ namespace Velvet.Tests
 
             // Assert — the one filter transition the write past the setter starts from nothing.
             Assert.That(runs(), Is.EqualTo(1));
+        }
+
+
+        private static StyleBackgroundSize HalfSize
+            => new BackgroundSize(new Length(50f, LengthUnit.Percent), new Length(50f, LengthUnit.Percent));
+
+        // GREEN_ON_BASE(characterization): written past Velvet, a background size cancels transform-origin's transition.
+        // TransformOriginSparing exists for this and names this group.
+        [Test]
+        public void Given_ATransformOriginTransitionRunning_When_ABackgroundSizeIsWrittenStraightToTheInlineStyle_Then_TheOriginLandsOnItsEnd()
+        {
+            // Arrange
+            var element = MountUnderTransitions("transform-origin");
+            RunTransformOriginHalfWay(element);
+
+            // Act
+            element.style.backgroundSize = HalfSize;
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert — at the corner, where the transition was half way to it.
+            Assert.That(element.resolvedStyle.transformOrigin.x, Is.EqualTo(0f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATransformOriginTransitionRunning_When_AGradientSizesTheBackground_Then_TheOriginRunsOn()
+        {
+            // Arrange
+            var element = MountUnderTransitions("transform-origin");
+            RunTransformOriginHalfWay(element);
+
+            // Act — the gradient's bake is sized to the element's box.
+            Reconcile("w-[100px] h-[40px]", "w-[100px] h-[40px] bg-linear-to-r from-[#ff0000] to-[#0000ff]");
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert — still half way.
+            Assert.That(element.resolvedStyle.transformOrigin.x, Is.EqualTo(25f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): a gradient's size written with no entry running for it started no transition on the base.
+        [Test]
+        public void Given_ATransformOriginTransitionRunning_When_AGradientSizesTheBackground_Then_NoBackgroundSizeTransitionRuns()
+        {
+            // Arrange
+            var element = MountUnderTransitions("transform-origin");
+            RunTransformOriginHalfWay(element);
+            var runs = CountRuns(element, "background-size");
+
+            // Act
+            Reconcile("w-[100px] h-[40px]", "w-[100px] h-[40px] bg-linear-to-r from-[#ff0000] to-[#0000ff]");
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert
+            Assert.That(runs(), Is.Zero);
         }
 
         #endregion

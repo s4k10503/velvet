@@ -8,3 +8,5 @@
 
 - A filter change that lands at once no longer ends a running transform-origin transition on its element. Where
   the element showed no filter, the change now dispatches a `TransitionRunEvent` for `filter`.
+- A gradient, a clip path or a projected corner face sizing an element's background no longer ends a running
+  transform-origin transition on it.

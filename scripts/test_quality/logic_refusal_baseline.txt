@@ -49,7 +49,7 @@ Packages/com.velvet.core/Runtime/Styling/LayoutIdLook.cs	1
 Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs	13
 Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs	7
 Packages/com.velvet.core/Runtime/Styling/MotionPlaySpan.cs	1
-Packages/com.velvet.core/Runtime/Styling/MotionSlotContext.cs	9
+Packages/com.velvet.core/Runtime/Styling/MotionSlotContext.cs	10
 Packages/com.velvet.core/Runtime/Styling/MotionSpringClassParser.cs	5
 Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs	3
 Packages/com.velvet.core/Runtime/Styling/NativeTransitionVelocity.cs	2
@@ -60,7 +60,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleAnimateClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleAnimateDriver.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleAnimationClassUtils.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs	3
-Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs	49
+Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs	54
 Packages/com.velvet.core/Runtime/Styling/StyleBorderSideColor.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleCascade.cs	7
 Packages/com.velvet.core/Runtime/Styling/StyleClassProjection.cs	1
@@ -72,7 +72,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs	12
 Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleDivideManipulator.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleFamilyOrder.cs	3
-Packages/com.velvet.core/Runtime/Styling/StyleFilterEngineWrite.cs	2
+Packages/com.velvet.core/Runtime/Styling/StyleFilterEngineWrite.cs	4
 Packages/com.velvet.core/Runtime/Styling/StyleFilterValueParser.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleGapClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs	19
@@ -96,6 +96,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleTransformValueParser.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleUtilityProperties.g.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleVariantPayload.cs	6
 Packages/com.velvet.core/Runtime/Styling/StyleZIndexClass.cs	2
+Packages/com.velvet.core/Runtime/Styling/TransformOriginSparing.cs	2
 Packages/com.velvet.core/Runtime/Styling/VelvetFonts.cs	5
 Packages/com.velvet.core/Runtime/Styling/VelvetPalette.cs	1
 Packages/com.velvet.core/Runtime/Styling/VelvetStyleUtilities.cs	1

@@ -35,7 +35,6 @@ namespace Velvet
             }
         }
 
-        private static readonly StylePropertyName s_backgroundSize = new("background-size");
 
         private static int s_withheld;
 
@@ -222,37 +221,22 @@ namespace Velvet
             }
         }
 
-        // UI Toolkit's inline-filter setter, on a write no transition entry animates, cancels the element's
-        // transform-origin transition rather than its filter one, landing the origin on its end. While one runs, the
-        // write is made instead under an entry the setter animates it by, the element's own entries kept so the
-        // transform-origin one stays covered, and still lands at once: where the shown list and the written one both
-        // hold a function, through a list whose first function's type is in neither, which pairs with neither and so
-        // starts no transition; otherwise by cancelling the filter transition the write starts. One still running is
-        // cancelled first, since a write that pairs with nothing leaves it running. False for a clear, which leaves the
-        // transform-origin transition running, and where none runs or the engine's members do not resolve. Group G of
-        // FilterTransitionPanelTests holds each of these.
+        // A write TransformOriginSparing takes, landed at once: where the shown list and the written one both hold a
+        // function, through a list whose first function's type is in neither, which pairs with neither and so starts no
+        // transition; otherwise by cancelling the filter transition the write starts. One still running is cancelled
+        // first, since a write that pairs with nothing leaves it running. False for a clear, which leaves the
+        // transform-origin transition running, and where no transform-origin transition runs or the engine's members do
+        // not resolve. Group G of FilterTransitionPanelTests holds each of these.
         private static bool TryWritePastTransformOrigin(VisualElement element, List<FilterFunction>? list)
         {
             if (list == null || !MotionSlotContext.CancelsNativeTransition(StyleLonghand.Filter)
-                || !MotionSlotContext.HasRunningNativeTransition(element, StyleLonghand.TransformOrigin))
+                || !TransformOriginSparing.TryBegin(element, out var scope))
             {
                 return false;
             }
-            var style = element.style;
-            var resolved = element.resolvedStyle;
-            var saved = (CornerRadiusFit.DetachedCopy(style.transitionProperty), MotionTweenTiming.Copy(style.transitionDuration),
-                MotionTweenTiming.Copy(style.transitionDelay), MotionTweenTiming.Copy(style.transitionTimingFunction));
-            var properties = resolved.transitionProperty.ToList();
-            var durations = Spread(resolved.transitionDuration.ToList(), properties.Count, new TimeValue(1f, TimeUnit.Second));
-            var delays = Spread(resolved.transitionDelay.ToList(), properties.Count, new TimeValue(0f));
-            var curves = Spread(resolved.transitionTimingFunction.ToList(), properties.Count, new EasingFunction(EasingMode.Ease));
-            properties.Add(s_backgroundSize);
-            style.transitionProperty = properties;
-            style.transitionDuration = durations;
-            style.transitionDelay = delays;
-            style.transitionTimingFunction = curves;
-            try
+            using (scope)
             {
+                var style = element.style;
                 MotionSlotContext.CancelNativeTransition(element, StyleLonghand.Filter);
                 var shown = element.resolvedStyle.filter?.ToList();
                 if (shown is { Count: > 0 } && list.Count > 0)
@@ -267,24 +251,7 @@ namespace Velvet
                 }
                 MotionSlotContext.CancelNativeTransition(element, StyleLonghand.Filter);
             }
-            finally
-            {
-                (style.transitionProperty, style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) = saved;
-            }
             return true;
-        }
-
-        // A resolved timing list, wrapped as UI Toolkit wraps a list shorter than the properties, over the entries
-        // before the one added, followed by the added entry's own.
-        private static List<T> Spread<T>(List<T> list, int entries, T added)
-        {
-            var spread = new List<T>(entries + 1);
-            for (var i = 0; i < entries; i++)
-            {
-                spread.Add(list.Count == 0 ? default! : list[i % list.Count]);
-            }
-            spread.Add(added);
-            return spread;
         }
 
         // A function of neither type.
