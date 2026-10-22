@@ -747,6 +747,35 @@ namespace Velvet.Tests
             Assert.That(box.ClassListContains("truncate") || box.ClassListContains("overflow-hidden"), Is.True);
         }
 
+        // A truncating TextField Motion entering from text-ellipsis that drops truncate once s_setLit says so.
+        [Component]
+        private static VNode TruncateDropped()
+        {
+            var (lit, setLit) = Hooks.UseState(false);
+            s_setLit = setLit;
+            return EnterBeside(lit ? "" : "truncate", "text-ellipsis", "", typeof(TextField));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never routes a Motion's truncate to its input box at all.
+        // Counting truncate among `s_clipping` (StyleAnimationClassUtils.ClipStays) reddens this case.
+        [Test]
+        public void Given_ATruncatingMotionTextFieldAfterAnEllipsisEnter_When_TruncateIsDropped_Then_ItsInputBoxStopsClipping()
+        {
+            // Arrange — past the enter's swap and its completion.
+            var element = MountOnFakeClock(V.Component(TruncateDropped));
+            var box = element.Q<VisualElement>(className: StyleChildVariantClass.InputBoxClass);
+            Step(element);
+            Step(element);
+
+            // Act
+            s_setLit.Invoke(true);
+            _mounted.FlushStateForTest();
+            ForcePanelUpdate(element.panel);
+
+            // Assert
+            Assert.That(box.ClassListContains("truncate") || box.ClassListContains("overflow-hidden"), Is.False);
+        }
+
         [Test]
         public void Given_AMotionTextField_When_AnEnterShowsATextOverflowUtility_Then_ItsInputBoxClips()
         {

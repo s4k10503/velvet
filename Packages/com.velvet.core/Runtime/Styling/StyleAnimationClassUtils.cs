@@ -129,12 +129,12 @@ namespace Velvet
             changes.Settle(ctx);
         }
 
-        // The text-overflow utilities: truncate carries the box's clip, the others imply it
-        // (StyleInputBoxSurface.ImpliesBoxClip).
-        private static readonly string[] s_clipping = { "truncate", "text-ellipsis", "text-clip" };
+        // The text-overflow utilities that imply the box's clip (StyleInputBoxSurface.ImpliesBoxClip). truncate is not
+        // one: it writes the overflow itself.
+        private static readonly string[] s_clipping = { "text-ellipsis", "text-clip" };
 
         // Whether the box's clip has a source besides the class being taken off: a class the element keeps that is
-        // the clip or implies it, or a text-overflow utility still on the box or the text it draws, where a
+        // the clip or implies it, or a utility implying it still on the box or the text it draws, where a
         // reconciled one lands (StyleInputBoxSurface.TryGetBoxText).
         private static bool ClipStays(VisualElement box, VisualElement text, string[]? kept)
         {
