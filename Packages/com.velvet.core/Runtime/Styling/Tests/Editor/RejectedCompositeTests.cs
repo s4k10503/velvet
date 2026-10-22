@@ -132,6 +132,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHoverUniformScaleHeldBeforeABaseOne_When_AnImportantAxisTakesOneAxis_Then_TheOtherAxisKeepsTheHoverScale()
+        {
+            // Arrange — the base class arrives once the hover one has built the projection, so the projection holds
+            // the hover entry first; scale-90 follows scale-50 in the stylesheet, so only the key keeps it below.
+            var element = new VisualElement();
+            StyleClassProjection.Add(element, "scale-50", StyleLayerPriority.Hover);
+            StyleClassProjection.Add(element, "scale-90", StyleLayerPriority.Base);
+            var axis = new ArbitraryStyle(ArbitraryProperty.ScaleX, 0.75f, LengthUnit.Pixel);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(element, in axis, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var scale = element.style.scale.value.value;
+
+            // Assert — NaN where the important axis did not land.
+            Assert.That(Mathf.Approximately(scale.x, 0.75f) ? scale.y : float.NaN, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_ASkewAxisTheBrowserRejects_When_Extracted_Then_NoSkewIsDrawn()
         {
             // Act
