@@ -313,7 +313,7 @@ namespace Velvet
         // Where the lead is drawn, in the frame of this member's parent: Framer projects a member behind the lead
         // onto the lead's box. Read as the lead was last computed, in this pass or the one before.
         private static Rect Followed(VisualElement element, VisualElement leader, ReconcilerContext ctx) =>
-            TryReadBox(leader, leader.layout, ctx, out var box) ? FromRect(element, box, ctx) : element.layout;
+            TryReadBox(leader, leader.layout, ctx, readLook: false, out var box) ? FromRect(element, box, ctx) : element.layout;
 
         // Framer's crossfade and its only-member mix (mix-values.ts): the lead fades in over the first half of its move,
         // on circOut, and the members behind it are drawn at the previous lead's opacity fading out between halfway
@@ -357,26 +357,33 @@ namespace Velvet
             }
         }
 
-        // Draws the element at the rotate its id's lead mixes in from the box it took, and a member behind a crossfading
-        // lead at the lead's, as Framer draws every node of a shared animation with the lead's values.
+        // Draws the element at the rotate and radii its id's lead mixes in from the box it took, and a member behind
+        // a crossfading lead at the lead's, as Framer draws every node of a shared animation with the lead's values.
         private static void WriteLook(VisualElement element, LayoutIdProjection projection, ReconcilerContext ctx)
         {
             LayoutIdLook.Adopt(element, projection);
             LayoutIdLook.Narrow(element, projection);
             var rotate = float.NaN;
+            Length[]? radii = null;
             if (projection.Leader != null)
             {
-                rotate = LayoutIdLook.RotateOf(projection.Leader, ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader));
+                var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
+                rotate = LayoutIdLook.RotateOf(projection.Leader, leading);
+                radii = LayoutIdLook.RadiiOf(projection.Leader, leading, projection.LeadRadii);
             }
             else if (projection is { Shared: true, Moving: true, Held: { } held })
             {
-                rotate = held.Rotate;
+                (rotate, radii) = (held.Rotate, held.Radii);
             }
             else if (projection is { Shared: true, Moving: true, FromLook: { } from })
             {
-                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection, s_passDt), CrossfadeProgress(projection));
+                var progress = CrossfadeProgress(projection);
+                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection, s_passDt), progress);
+                radii = LayoutIdLook.Mix(from.Radii, LayoutIdLook.OwnRadii(element, projection, s_passDt, projection.OwnRadiiBuffer), progress,
+                    projection.MixedRadii);
             }
             LayoutIdLook.WriteRotate(element, projection, rotate, s_passDt);
+            LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale, s_passDt);
         }
 
         // Read before the projection takes its new tween. A move of the lead's own that interrupts its shared move
@@ -611,7 +618,12 @@ namespace Velvet
             ctx.LayoutIdProjections.TryGetValue(element, out var projection) && projection.Moving;
 
         // The box the element is drawn at while its layout is the given one.
-        private static bool TryReadBox(VisualElement element, Rect layout, ReconcilerContext ctx, out LayoutIdBox box)
+        private static bool TryReadBox(VisualElement element, Rect layout, ReconcilerContext ctx, out LayoutIdBox box) =>
+            TryReadBox(element, layout, ctx, readLook: true, out box);
+
+        // readLook false leaves the look out, for the read a follower makes of its lead on every pass, which uses the
+        // box alone (Given_AMemberBehindARoundedLead_When_ItFollowsTheLeadAgain_Then_NothingIsAllocated).
+        private static bool TryReadBox(VisualElement element, Rect layout, ReconcilerContext ctx, bool readLook, out LayoutIdBox box)
         {
             box = default;
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return false;
@@ -619,7 +631,7 @@ namespace Velvet
             var drawn = ctx.LayoutIdProjections.TryGetValue(element, out var projection) ? Drawn(projection, layout, parentScale) : layout;
             var world = parent.worldTransform;
             box = new LayoutIdBox(parent, drawn, world.MultiplyPoint3x4(drawn.center), drawn.size * AxisLengths(world), parentScale,
-                LayoutIdLook.Read(element, projection));
+                readLook ? LayoutIdLook.Read(element, projection) : null);
             return true;
         }
 
@@ -1041,8 +1053,24 @@ namespace Velvet
         public float StartRotate;
         public float DrawnRotate;
         public StyleRotate WrittenRotate;
-        // How the own rotate is carried while the projection writes it (LayoutIdLook.OwnRotate).
+
+        public bool WritesRadii;
+        public StyleLength[] OwnInlineRadii = System.Array.Empty<StyleLength>();
+        // The corners whose inline value is the element's own rather than one CornerRadiusFit wrote.
+        public bool[] InlineRadii = System.Array.Empty<bool>();
+        // The radii the element had as the projection first wrote them.
+        public Length[] StartRadii = System.Array.Empty<Length>();
+        public Length[] DrawnRadii = System.Array.Empty<Length>();
+        public StyleLength[] WrittenRadii = System.Array.Empty<StyleLength>();
+        // What a pass reads the radii into rather than allocating: the lead's, the element's own and their mix.
+        public readonly Length[] LeadRadii = new Length[4];
+        public readonly Length[] OwnRadiiBuffer = new Length[4];
+        public readonly Length[] MixedRadii = new Length[4];
+        // How the own rotate and each corner's own radius are carried while the projection writes them
+        // (LayoutIdLook.OwnRotate, OwnRadii), and the unit each corner's is carried in.
         public LayoutIdCarry RotateCarry = new();
+        public LayoutIdCarry[] RadiusCarries = { new(), new(), new(), new() };
+        public LengthUnit[] RadiusUnits = new LengthUnit[4];
 
         // Each element of a member's subtree whose picking it holds off while drawn over the lead (LayoutIdPicking).
         public HashSet<VisualElement>? Picking;

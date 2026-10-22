@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
@@ -33,6 +34,10 @@ namespace Velvet
         BackgroundPosition = 1 << 7,
         // MotionLayoutIdDriver hides a layoutId member that another holder leads through `visibility`.
         Visibility = 1 << 8,
+        // The four corner radii alone, for a layoutId projection that writes them and no other length. Only a driver
+        // reports it: what an element declares is Length, which Contends reads as covering it, and All leaves it out so
+        // that a play suspending All names no radius to take out of a held list.
+        Radius = 1 << 9,
         All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition | Visibility,
     }
 
@@ -124,7 +129,7 @@ namespace Velvet
             {
                 ExcludeFromHeldList(element, LonghandsOf(drivenSlots & ~MotionTransitionSlots.Length).Union(drivenLengths));
             }
-            if ((DeclaredSlots(element) & drivenSlots) == MotionTransitionSlots.None)
+            if (!Contends(DeclaredSlots(element), drivenSlots))
             {
                 return;
             }
@@ -153,7 +158,7 @@ namespace Velvet
         /// </remarks>
         public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots) =>
             SyncSuspension(element, owner, drivenSlots,
-                (DeclaredSlots(element, readInlineDuration: false) & drivenSlots) != MotionTransitionSlots.None);
+                Contends(DeclaredSlots(element, readInlineDuration: false), drivenSlots));
 
         /// <summary>
         /// <see cref="SyncSuspension(VisualElement, object, MotionTransitionSlots)"/> with whether the element
@@ -182,7 +187,7 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// The element's transitions are read off its cascade (<see cref="StyleCascade.Lists"/>) and written inline
-        /// without those longhands, an <c>all</c> becoming the other longhands the utility tables name. The duration,
+        /// without those longhands, an <c>all</c> or shorthand becoming the other longhands it covers. The duration,
         /// delay and curve lists the element holds inline are its own, and are handed back as the last narrower lets go.
         /// A variant tween's list in the slot is narrowed instead, and a play's suspension left to suspend everything;
         /// either is replaced by the narrowed lists as it ends (<see cref="RestoreAfterForeignWrite"/>,
@@ -192,7 +197,7 @@ namespace Velvet
         {
             var driven = LonghandsOf(drivenSlots);
             ExcludeFromHeldList(element, driven);
-            if (Intercepts(element, driven) ?? (DeclaredSlots(element) & drivenSlots) != MotionTransitionSlots.None)
+            if (Intercepts(element, driven) ?? Contends(DeclaredSlots(element), drivenSlots))
             {
                 Narrow(element, owner, drivenSlots);
                 return;
@@ -530,6 +535,18 @@ namespace Velvet
             StyleLonghand.FontSize,
             StyleLonghand.LetterSpacing);
 
+        private static readonly StyleLonghandSet s_radiusProperties = SetOf(
+            StyleLonghand.BorderTopLeftRadius,
+            StyleLonghand.BorderTopRightRadius,
+            StyleLonghand.BorderBottomLeftRadius,
+            StyleLonghand.BorderBottomRightRadius);
+
+        // Whether what an element declares transitions a slot a driver writes. Length stands for every length-valued
+        // property, the corner radii among them, so it meets a driver's Radius.
+        private static bool Contends(MotionTransitionSlots declared, MotionTransitionSlots driven) =>
+            (declared & driven) != MotionTransitionSlots.None
+            || ((driven & MotionTransitionSlots.Radius) != 0 && (declared & MotionTransitionSlots.Length) != 0);
+
         /// <summary>The driver channels that would contend for the properties a declaration names.</summary>
         private static MotionTransitionSlots SlotsOf(StyleLonghandSet declared)
         {
@@ -554,6 +571,7 @@ namespace Velvet
             if ((slots & MotionTransitionSlots.Rotate) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Rotate));
             if ((slots & MotionTransitionSlots.Color) != 0) set = set.Union(s_colorProperties);
             if ((slots & MotionTransitionSlots.Length) != 0) set = set.Union(s_lengthProperties);
+            if ((slots & MotionTransitionSlots.Radius) != 0) set = set.Union(s_radiusProperties);
             if ((slots & MotionTransitionSlots.Visibility) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Visibility));
             if ((slots & MotionTransitionSlots.Filter) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Filter));
             if ((slots & MotionTransitionSlots.BackgroundPosition) != 0)
@@ -578,8 +596,8 @@ namespace Velvet
             return names;
         }
 
-        // Rewrites the held transition-property list without the driven longhands — an `all` entry
-        // becoming every other longhand, on that entry's timing — and rebuilds each companion list to match,
+        // Rewrites the held transition-property list without the driven longhands — an `all` or shorthand entry
+        // becoming every other longhand it covers, on that entry's timing — and rebuilds each companion list to match,
         // since those pair with transition-property by position.
         internal static void ExcludeFromHeldList(VisualElement element, StyleLonghandSet driven)
         {
@@ -606,12 +624,13 @@ namespace Velvet
                 Realigned(element.style.transitionDelay.value, heldCount, sources));
         }
 
-        // Whether the list holds `all` or a driven longhand, which is what makes Exclude take something out.
+        // Whether the list holds an entry Exclude takes something out of: a driven longhand, or `all` or a shorthand
+        // covering one.
         private static bool Names(List<StylePropertyName> held, StyleLonghandSet driven)
         {
             for (var i = 0; i < held.Count; i++)
             {
-                if (held[i] == s_allName || NamesADrivenLonghand(held[i], driven)) return true;
+                if (Covered(held[i]).Overlaps(driven) || NamesADrivenLonghand(held[i], driven)) return true;
             }
             return false;
         }
@@ -628,12 +647,13 @@ namespace Velvet
             names.Clear();
             for (var i = 0; i < held.Length; i++)
             {
-                if (held[i] == s_allName)
+                var covered = Covered(held[i]);
+                if (covered.Overlaps(driven))
                 {
                     changed = true;
                     for (var longhand = 0; longhand < s_longhandNames.Length; longhand++)
                     {
-                        if (!driven.Contains((StyleLonghand)longhand))
+                        if (covered.Contains((StyleLonghand)longhand) && !driven.Contains((StyleLonghand)longhand))
                         {
                             names.Add(s_longhandNames[longhand]);
                             sources.Add(i);
@@ -653,8 +673,32 @@ namespace Velvet
             return changed ? sources : null;
         }
 
+        // The longhands a name in transition-property stands for where it is `all` or a shorthand, as UI Toolkit matches
+        // them (StylePropertyUtil.IsMatchingShorthand, read through EngineMember); none for a longhand.
+        // Given_AMotionWhoseOwnStylesheetTransitionsBorderRadius_When_AProjectionWritesItsRadii_Then_TheyAreDrawnAsWritten
+        // fails when the read stops giving a shorthand's longhands.
+        private static StyleLonghandSet Covered(StylePropertyName name)
+        {
+            if (s_covered.TryGetValue(name, out var covered)) return covered;
+            covered = StyleLonghandSet.Empty;
+            for (var longhand = 0; longhand < s_longhandNames.Length; longhand++)
+            {
+                if (name == s_allName || Matches(name, s_longhandNames[longhand])) covered = covered.Union(StyleLonghandSet.Of((StyleLonghand)longhand));
+            }
+            s_covered[name] = covered;
+            return covered;
+        }
+
+        private static readonly Dictionary<StylePropertyName, StyleLonghandSet> s_covered = new();
+        private static readonly PropertyInfo? s_nameId = EngineMember.StylePropertyNameId.ResolveProperty();
+        private static readonly MethodInfo? s_matching = EngineMember.IsMatchingShorthand.ResolveMethod();
+
+        private static bool Matches(StylePropertyName shorthand, StylePropertyName longhand) =>
+            s_nameId != null && s_matching != null
+            && s_matching.Invoke(null, new[] { s_nameId.GetValue(shorthand), s_nameId.GetValue(longhand) }) is true;
+
         // Whether the element's transitions, as its cascade gives them, run a longhand of driven over some time, named
-        // itself or through `all`; null where the cascade cannot be read.
+        // itself or through a shorthand or `all`; null where the cascade cannot be read.
         private static bool? Intercepts(VisualElement element, StyleLonghandSet driven)
         {
             if (StyleCascade.Lists(element) is not { } lists) return null;
@@ -667,7 +711,7 @@ namespace Velvet
                 var duration = lists.Durations.Count > 0 ? StyleFilterTransitionDriver.Milliseconds(lists.Durations[i % lists.Durations.Count]) : 0;
                 var delay = lists.Delays.Count > 0 ? StyleFilterTransitionDriver.Milliseconds(lists.Delays[i % lists.Delays.Count]) : 0;
                 var timed = Math.Max(0, duration) + delay > 0;
-                if (timed && (name == s_allName || NamesADrivenLonghand(name, driven))) return true;
+                if (timed && (Covered(name).Overlaps(driven) || NamesADrivenLonghand(name, driven))) return true;
             }
             return false;
         }

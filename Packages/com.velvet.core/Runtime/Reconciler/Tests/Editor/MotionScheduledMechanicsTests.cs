@@ -75,6 +75,7 @@ namespace Velvet.Tests
             (s_aClasses, s_bClasses, s_aSize, s_bSize) = (null, null, 100, 100);
             (s_aPose, s_aTransition, s_bPose, s_bVariants) = (null, null, null, null);
             s_aVariants = null;
+            (s_resizeFrom, s_resizeTo) = (100, null);
             (s_aField, s_looseField, s_controlClasses) = (false, false, null);
             (s_modalTransition, s_exitCompletions, s_presenceGone, s_cardClasses) = (null, 0, false, null);
             (s_modalLeft, s_moverLeft) = (300, -1);
@@ -1223,18 +1224,22 @@ namespace Velvet.Tests
         }
 
         private static string s_resizeOrigin;
+        private static int s_resizeFrom;
+        // The size step 1 lays the box out at, two hundred pixels square while null.
+        private static Vector2Int? s_resizeTo;
 
-        // Step 1 doubles the box in place, its top-left corner fixed; s_resizeOrigin is its transform origin.
+        // At step 0 the box is s_resizeFrom pixels square, and from step 1 s_resizeTo, in place, its top-left corner
+        // fixed; s_resizeOrigin holds its transform origin, or any other classes.
         [Component]
         private static VNode ResizingBoxRender()
         {
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
-            var size = step == 0 ? 100 : 200;
+            var size = step == 0 ? new Vector2Int(s_resizeFrom, s_resizeFrom) : s_resizeTo ?? new Vector2Int(200, 200);
             return V.Div(children: new VNode[]
             {
                 V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
-                    className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px] {s_resizeOrigin}"),
+                    className: $"left-[0px] top-[0px] w-[{size.x}px] h-[{size.y}px] {s_resizeOrigin}"),
             });
         }
 
@@ -4881,10 +4886,12 @@ namespace Velvet.Tests
         }
 
 
-        // "a", and a control holding no id, both transitioning everything linearly over a second, turn as classes turn;
-        // some 0.3 s in, "a" moves under "card" from "b" 300px right on a three-second tween, mixing in from "b"'s none.
-        // Returns what read gives of "a" and its projection some 0.2 s on, and the control's rotate.
-        private (float Read, float Control) TakeOverAsItTurns(System.Func<LayoutIdProjection, VisualElement, float> read)
+        // "a", and a control holding no id, both transitioning everything linearly over a second, take the class to as
+        // classes turn; some 0.3 s in, "a" moves under "card" from "b" 300px right on a three-second tween, mixing in
+        // from "b"'s none. Returns what read gives of "a" and its projection some 0.2 s on, and what control gives of the
+        // control.
+        private (float Read, float Control) TakeOverAsItTurns(string to, System.Func<VisualElement, float> control,
+            System.Func<LayoutIdProjection, VisualElement, float> read)
         {
             VelvetStyleUtilities.AttachTo(Root);
             (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
@@ -4892,15 +4899,14 @@ namespace Velvet.Tests
             s_aTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
             (s_aClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
             using var mounted = MountAAlone();
-            (s_aClasses, s_controlClasses) = (s_aClasses + " rotate-90", s_controlClasses + " rotate-90");
+            (s_aClasses, s_controlClasses) = (s_aClasses + " " + to, s_controlClasses + " " + to);
             RenderShared(mounted);
             for (var i = 0; i < 18; i++) Tick();
             (s_aId, s_aLeft) = ("card", 0);
             RenderShared(mounted);
             for (var i = 0; i < 12; i++) Tick();
             var a = Root.Q<VisualElement>("a");
-            return (read(mounted.Root.Reconciler.Context.LayoutIdProjections[a], a),
-                Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees());
+            return (read(mounted.Root.Reconciler.Context.LayoutIdProjections[a], a), control(Root.Q<VisualElement>("control")));
         }
 
 
@@ -4908,7 +4914,8 @@ namespace Velvet.Tests
         public void Given_AMotionTurningOnATransition_When_ItTakesAHeldIdAndMixesItsRotate_Then_ItsOwnRunsAsTheEngineRunsIt()
         {
             // Arrange / Act
-            var (own, control) = TakeOverAsItTurns((projection, _) => projection.RotateCarry.Value);
+            var (own, control) = TakeOverAsItTurns("rotate-90", e => e.resolvedStyle.rotate.angle.ToDegrees(),
+                (projection, _) => projection.RotateCarry.Value);
 
             // Assert — within a degree of the control, which is half way round.
             Assert.That(own, Is.EqualTo(control > 30f && control < 60f ? control : float.NaN).Within(1f));
@@ -4921,7 +4928,7 @@ namespace Velvet.Tests
             // Arrange / Act — "b" holds no rotate, so the mix runs from none to the rotate "a" carries as its own, as far as
             // the move has got. "a"'s own left transitions meanwhile, and the projection measures the box it has then, so the
             // move's progress is how far the translate has come back of what is left to cover.
-            var (difference, _) = TakeOverAsItTurns((projection, a) =>
+            var (difference, _) = TakeOverAsItTurns("rotate-90", e => e.resolvedStyle.rotate.angle.ToDegrees(), (projection, a) =>
                 projection.DrawnRotate - Mathf.LerpUnclamped(0f, projection.RotateCarry.Value, 1f - TranslateX(a) / (300f - a.layout.x)));
 
             // Assert
@@ -5232,6 +5239,647 @@ namespace Velvet.Tests
             var own = 40f * 16 * 0.016f;
             var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
             Assert.That(rotate, Is.EqualTo(Mathf.Lerp(20f, own, BProgress())).Within(1.5f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWithAPixelRadius_When_ItsTweenStartsScaledDifferentlyOnEachAxis_Then_TheRadiusIsDividedByTheirGeometricMean()
+        {
+            // Arrange / Act — laid out at 400×200 from 100×100, so drawn at a quarter across and a half down.
+            s_resizeTo = new Vector2Int(400, 200);
+            var element = ResizeBoxWithOrigin("rounded-[20px]");
+
+            // Assert — twenty over the square root of an eighth.
+            Assert.That(element.style.borderTopLeftRadius.value.value, Is.EqualTo(20f / Mathf.Sqrt(0.125f)).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionRoundedFullStartingAtAQuarterOfItsWidth_When_ItsTweenStarts_Then_ItsCornersFitItsBox()
+        {
+            // Arrange / Act — round at 100×100, laid out at 400×200, so its radius divided by the scale would overlap its
+            // own on the 200px sides.
+            s_resizeTo = new Vector2Int(400, 200);
+            var element = ResizeBoxWithOrigin("rounded-[50px]");
+
+            // Assert — scaled down to half the 200px sides, as CSS scales radii that overlap.
+            Assert.That(element.style.borderTopLeftRadius.value.value, Is.EqualTo(100f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ARoundedLayoutIdMotionMidTween_When_ARadiusWrittenOverItIsClearedAgain_Then_ItIsDrawnAtTheRadiusItsRulesDeclare()
+        {
+            // Arrange — the bundled sheet; rounded-lg, some way into doubling in place.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_resizeOrigin = "rounded-lg";
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            for (var i = 0; i < 5; i++) Tick();
+            element.style.borderTopLeftRadius = 30f;
+            Tick();
+
+            // Act
+            element.style.borderTopLeftRadius = StyleKeyword.Null;
+            for (var i = 0; i < 2; i++) Tick();
+
+            // Assert — the 8px the rules declare, not none.
+            var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[element].DrawnRadii[0].value;
+            Assert.That(drawn, Is.EqualTo(8f).Within(0.01f));
+        }
+
+        [TestCase(0, 150f)]
+        [TestCase(1, 50f)]
+        public void Given_ALayoutIdMotionWithUnequalArbitraryRadiiThatOverlapAsItsTweenStarts_When_ItStarts_Then_TheyAreScaledDownTogether(int corner, float expected)
+        {
+            // Arrange / Act — ninety and thirty at 100×100, doubled in place, so drawn at half and written at twice, 180
+            // and 60 on a 200px side.
+            var element = ResizeBoxWithOrigin("rounded-tl-[90px] rounded-tr-[30px]");
+
+            // Assert — both by the one factor that fits the side, 200 over 240, as CSS scales radii, rather than each
+            // bounded on its own.
+            Assert.That(CornerRadiusFit.InlineCorner(element.style, corner).value.value, Is.EqualTo(expected).Within(0.5f));
+        }
+
+        [TestCase(0, 180f)]
+        [TestCase(1, 60f)]
+        public void Given_ALayoutIdMotionWhoseOwnStylesheetGivesItOverlappingRadii_When_ItsTweenStarts_Then_TheyAreLeftUnfittedAsAtRest(int corner, float expected)
+        {
+            // Arrange / Act — the test's own sheet giving ninety and thirty, which Velvet leaves unfitted at rest; doubled in
+            // place.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            var element = ResizeBoxWithOrigin("layout-id-test-uneven");
+
+            // Assert — written at twice each, drawn at half as at rest.
+            Assert.That(CornerRadiusFit.InlineCorner(element.style, corner).value.value, Is.EqualTo(expected).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_AnArbitrarilyRoundedLayoutIdMotionMidTween_When_ARadiusWrittenOverItIsClearedAgain_Then_ItLandsAtItsOwnRadius()
+        {
+            // Arrange — rounded-[20px], which no rule declares, some way into doubling in place, with a radius written over
+            // a corner.
+            s_resizeOrigin = "rounded-[20px]";
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 5; i++) Tick();
+            var element = Root.Q<VisualElement>("shared");
+            element.style.borderTopLeftRadius = 30f;
+            Tick();
+
+            // Act — the written radius cleared, and the move landed.
+            element.style.borderTopLeftRadius = StyleKeyword.Null;
+            AdvancePast(3f);
+
+            // Assert — the corner held at its own twenty, as the other corners are.
+            var corner = element.style.borderTopLeftRadius;
+            Assert.That(corner.keyword == StyleKeyword.Undefined ? corner.value.value : float.NaN, Is.EqualTo(20f));
+        }
+
+        [Test]
+        public void Given_ARoundedLayoutIdMotionMidTween_When_ItsRadiusIsWrittenInitial_Then_ItIsDrawnSquare()
+        {
+            // Arrange — the bundled sheet; rounded-lg, some way into doubling in place.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_resizeOrigin = "rounded-lg";
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 6; i++) Tick();
+            var element = Root.Q<VisualElement>("shared");
+
+            // Act — Initial, which UI Toolkit draws as no radius.
+            element.style.borderTopLeftRadius = StyleKeyword.Initial;
+            for (var i = 0; i < 2; i++) Tick();
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler.Context.LayoutIdProjections[element].DrawnRadii[0].value, Is.EqualTo(0f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionRoundedByItsRulesWithAnInlineInitialRadius_When_ItDoublesInPlace_Then_ItIsDrawnSquare()
+        {
+            // Arrange — the test's own sheet rounds the box to twenty pixels; `initial` is in one corner's slot before the
+            // move starts.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            s_resizeOrigin = "layout-id-test-rounder";
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            element.style.borderTopLeftRadius = StyleKeyword.Initial;
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler.Context.LayoutIdProjections[element].DrawnRadii[0].value, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated()
+        {
+            // Arrange — the test's own sheet; a holder rounded at 50% by its rules, read off them since a percent is not
+            // what it resolves at, beside another whose radius runs on a transition, so that the panel holds running
+            // radius transitions to look the holder up in; one read to warm it, and a canary allocating a known array.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            var holder = new VisualElement();
+            holder.AddToClassList("layout-id-test-half-round");
+            var turning = new VisualElement();
+            turning.AddToClassList("layout-id-test-radius-transition");
+            turning.AddToClassList("layout-id-test-round");
+            Root.Add(holder);
+            Root.Add(turning);
+            Tick();
+            turning.AddToClassList("layout-id-test-rounder");
+            Tick();
+            var radii = new Length[4];
+            Action read = () => LayoutIdLook.RadiiOf(holder, null, radii);
+            read();
+            Action canary = () => GC.KeepAlive(new byte[16]);
+            canary();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(read);
+            var counted = GCAllocationProbe.MedianBlocksDuring(canary) > 0;
+
+            // Assert — none, where the canary's are counted, with the rules' percent read and the other's transition still
+            // running as it was read.
+            var running = (bool)EngineMember.HasRunningStyleAnimation.ResolveMethod()
+                .Invoke(turning, new[] { EngineMember.BorderTopLeftRadiusPropertyId.ResolveField().GetValue(null) });
+            Assert.That(counted && radii[0].unit == LengthUnit.Percent && running ? blocks : -1, Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's look holds no radii, so its follower read allocates nothing there.
+        // The read must stay free now that a look holds four of them.
+        [Test]
+        public void Given_AMemberBehindARoundedLead_When_ItFollowsTheLeadAgain_Then_NothingIsAllocated()
+        {
+            // Arrange — "a" behind "b", both rounded, some way into the crossfade; one follow to warm it, and a canary
+            // allocating a known array.
+            (s_aClasses, s_bClasses) = ("rounded-[20px]", "rounded-[30px]");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+            var context = mounted.Root.Reconciler.Context;
+            var a = Root.Q<VisualElement>("a");
+            var followed = (Func<VisualElement, VisualElement, ReconcilerContext, Rect>)Delegate.CreateDelegate(
+                typeof(Func<VisualElement, VisualElement, ReconcilerContext, Rect>),
+                typeof(MotionLayoutIdDriver).GetMethod("Followed", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static));
+            Action follow = () => followed(a, context.LayoutIdProjections[a].Leader, context);
+            follow();
+            Action canary = () => GC.KeepAlive(new byte[16]);
+            canary();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(follow);
+            var counted = GCAllocationProbe.MedianBlocksDuring(canary) > 0;
+
+            // Assert — none, where the canary's are counted.
+            Assert.That(counted ? blocks : -1, Is.Zero, $"{blocks} blocks per follow; the canary's counted: {counted}");
+        }
+
+        [Test]
+        public void Given_AHolderWithAnInlineInitialRadius_When_ItsRadiiAreRead_Then_ItIsSquare()
+        {
+            // Arrange — a holder the test's own sheet rounds to twenty pixels, with `initial` in one corner's slot.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            var holder = new VisualElement();
+            holder.AddToClassList("layout-id-test-rounder");
+            holder.style.borderTopLeftRadius = StyleKeyword.Initial;
+            Root.Add(holder);
+            Tick();
+            var radii = new Length[4];
+
+            // Act
+            LayoutIdLook.RadiiOf(holder, null, radii);
+
+            // Assert
+            Assert.That(radii[0].value, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt()
+        {
+            // Arrange — the bundled sheet; "a" alone under "card", and a control holding no id, both transitioning
+            // everything linearly over a second, some 0.3 s into rounding to twenty pixels.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            (s_aClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountAAlone();
+            (s_aClasses, s_controlClasses) = (s_aClasses + " rounded-[20px]", s_controlClasses + " rounded-[20px]");
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+            var drawnThen = Root.Q<VisualElement>("control").resolvedStyle.borderTopLeftRadius;
+
+            // Act — "b" mounts under "card" 300px right; a few frames on.
+            s_bMounted = true;
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert — "b", unrounded of its own, mixes in from the radius "a" was drawn at as "b" took the id, rather
+            // than from the twenty it was on the way to.
+            var b = Root.Q<VisualElement>("b");
+            var from = mounted.Root.Reconciler.Context.LayoutIdProjections[b].DrawnRadii[0].value / (1f - BProgress());
+            Assert.That(from, Is.EqualTo(drawnThen > 3f && drawnThen < 10f ? drawnThen : float.NaN).Within(0.6f));
+        }
+
+        [Test]
+        public void Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt()
+        {
+            // Arrange / Act
+            var (own, control) = TakeOverAsItTurns("rounded-[20px]", e => e.resolvedStyle.borderTopLeftRadius,
+                (projection, _) => projection.RadiusCarries[0].Value);
+
+            // Assert — within half a pixel of the control, which is half way round.
+            Assert.That(own, Is.EqualTo(control > 6f && control < 14f ? control : float.NaN).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseOwnStylesheetTransitionsBorderRadius_When_AProjectionWritesItsRadii_Then_TheyAreDrawnAsWritten()
+        {
+            // Arrange — the test's own sheet transitioning border-radius, a shorthand, over a second; rounded-[20px], doubled
+            // in place.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            var element = ResizeBoxWithOrigin("layout-id-test-radius-transition rounded-[20px]");
+
+            // Act
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert — drawn at the radius the projection writes, which a transition of the shorthand would trail.
+            var written = element.style.borderTopLeftRadius.value.value;
+            Assert.That(element.resolvedStyle.borderTopLeftRadius, Is.EqualTo(written > 21f ? written : float.NaN).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionJoiningARoundedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRadiusIsMixingFromTheHolders()
+        {
+            // Arrange
+            s_aClasses = "rounded-[20px]";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var radius = Root.Q<VisualElement>("b").style.borderTopLeftRadius.value.value;
+            Assert.That(radius, Is.EqualTo(20f * (1f - BProgress())).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ARoundedLayoutIdMotion_When_ItDoublesInPlace_Then_ItsRadiusIsDividedByTheScaleItStartsAt()
+        {
+            // Arrange / Act — drawn at half its new size as its tween starts.
+            var element = ResizeBoxWithOrigin("rounded-[10px]");
+
+            // Assert — twice its own ten pixels, which the half scale draws at ten.
+            Assert.That(element.style.borderTopLeftRadius.value.value, Is.EqualTo(20f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ARoundedHolderBehindALeadMovingFromIt_When_TheCrossfadeIsUnderWay_Then_ItIsDrawnAtTheLeadsRadius()
+        {
+            // Arrange
+            s_aClasses = "rounded-[20px]";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var lead = Root.Q<VisualElement>("b").style.borderTopLeftRadius.value.value;
+            Assert.That(Root.Q<VisualElement>("a").style.borderTopLeftRadius.value.value, Is.EqualTo(lead).Within(0.1f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion.
+        // A move at its own size, from its own box, must leave a rounded class's radius to the stylesheet.
+        [Test]
+        public void Given_AStylesheetRoundedLayoutIdMotion_When_ItMovesAtItsOwnSize_Then_ItsRadiusIsLeftAlone()
+        {
+            // Arrange — the bundled sheet, so rounded-lg resolves.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bTransition, s_sharedClasses, s_aClasses) = (s_slowTween, "", "rounded-lg");
+            using var mounted = MountAAlone();
+
+            // Act
+            s_aLeft = 200;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").style.borderTopLeftRadius.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AMemberMidVariantSwapBehindARoundedLead_When_ItIsDrawnAtTheLeadsRadius_Then_TheSwapsListCarriesNoRadius()
+        {
+            // Arrange / Act
+            using var mounted = MountBOverASwappingA("rounded-[20px]");
+
+            // Assert
+            Assert.That(HoldsAListWithout(Root.Q<VisualElement>("a"), "border-top-left-radius"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion, so none goes below zero.
+        // A radius mix carried past its end by an overshooting curve must stop at zero, as mixValues clamps it.
+        [Test]
+        public void Given_ALeadJoiningARoundedHolderOnASpring_When_ItOvershootsItsBox_Then_ItsRadiusNeverGoesBelowZero()
+        {
+            // Arrange
+            (s_aClasses, s_bTransition) = ("rounded-[20px]", s_layoutSpring);
+            using var mounted = MountBOverA();
+            var b = Root.Q<VisualElement>("b");
+
+            // Act — the move's whole length, overshoot included.
+            var least = float.PositiveInfinity;
+            var overshot = false;
+            for (var i = 0; i < 90; i++)
+            {
+                Tick();
+                least = Mathf.Min(least, b.style.borderTopLeftRadius.value.value);
+                overshot |= TranslateX(b) > 1f;
+            }
+
+            // Assert — the spring carries "b" past its box, where the mix runs past its own radius of none.
+            Assert.That(overshot ? least : float.NaN, Is.GreaterThanOrEqualTo(0f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base narrows a held variant list by nothing a radius mix writes.
+        // A radius mix must take the four radii out of the list and leave every other length in it.
+        [Test]
+        public void Given_AMemberMidVariantSwapBehindARoundedLead_When_ItIsDrawnAtTheLeadsRadius_Then_TheSwapsListStillCarriesItsWidth()
+        {
+            // Arrange / Act
+            using var mounted = MountBOverASwappingA("rounded-[20px]");
+
+            // Assert
+            var names = Root.Q<VisualElement>("a").style.transitionProperty.value;
+            Assert.That(names != null && names.Exists(n => n == new StylePropertyName("width")), Is.True);
+        }
+
+        [Test]
+        public void Given_AnUnroundedHolderRemovedAsARoundedLeadMountsOnADelayedTween_When_TheDelayRuns_Then_TheLeadIsDrawnAtTheHoldersRadius()
+        {
+            // Arrange — "a" with no radius, removed as "b" mounts under its id with a radius of its own, on a tween that
+            // waits half a second before it starts.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_sharedClasses, s_bClasses) = (300, "", "rounded-[20px]");
+            s_bTransition = new StyleTransitionConfig { DurationSec = 1f, DelaySec = 0.5f, Easing = EasingMode.Linear };
+            using var mounted = MountAAlone();
+            (s_aMounted, s_bMounted) = (false, true);
+            RenderShared(mounted);
+
+            // Act
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — at "a"'s radius of none while "b" is still drawn over "a"'s box.
+            var b = Root.Q<VisualElement>("b");
+            Assert.That(TranslateX(b) < -290f ? b.style.borderTopLeftRadius.value.value : float.NaN, Is.Zero);
+        }
+
+        [Test]
+        public void Given_ALeadJoiningARoundedHolder_When_ItTakesALargerRadiusMidMove_Then_ItMixesTowardsThatRadius()
+        {
+            // Arrange — "b", with no radius of its own, a quarter of the way from "a"'s twenty pixels.
+            s_aClasses = "rounded-[20px]";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Act
+            s_bClasses = "rounded-[30px]";
+            RenderShared(mounted);
+
+            // Assert — between "a"'s twenty and its own thirty, rather than on the way to none.
+            var radius = Root.Q<VisualElement>("b").style.borderTopLeftRadius.value.value;
+            Assert.That(radius, Is.EqualTo(Mathf.Lerp(20f, 30f, BProgress())).Within(0.5f));
+        }
+
+        private static readonly Dictionary<string, MotionVariant> s_radiusPoses = new()
+        {
+            ["small"] = "rounded-[10px]",
+            ["large"] = "rounded-[30px]",
+        };
+        private static string s_radiusPose;
+
+        // From step 1 the box doubles in place, its top-left corner fixed, on a linear second; it takes s_radiusPose,
+        // on the same second.
+        [Component]
+        private static VNode PosedBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var size = step == 0 ? 100 : 200;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_slowTween, variants: s_radiusPoses,
+                    animate: s_radiusPose, className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px] origin-[0%_0%]"),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionDoublingInPlace_When_ItsPoseTweensItsRadiusMidMove_Then_ItIsDrawnAtThePosesRadiusAsItTweens()
+        {
+            // Arrange — at its small pose, some way into doubling.
+            s_radiusPose = "small";
+            using var mounted = V.Mount(Root, V.Component(PosedBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — the large pose, about a quarter of a second on.
+            s_radiusPose = "large";
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert — on screen, the radius written times the scale it is drawn at, about a quarter of the way from ten
+            // to thirty pixels, rather than at thirty.
+            var element = Root.Q<VisualElement>("shared");
+            Assert.That(element.style.borderTopLeftRadius.value.value * element.style.scale.value.value.x, Is.InRange(12f, 18f));
+        }
+
+        // Steps the resizing box to step 1, where it doubles, with s_resizeOrigin as its classes, and plays the frames.
+        private MountedTree ResizeBoxFor(string classes, int frames)
+        {
+            s_resizeOrigin = classes;
+            var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < frames; i++) Tick();
+            return mounted;
+        }
+
+        // Renders the resizing box again at its doubled size with the given classes, and plays a frame.
+        private void RestyleResizedBox(MountedTree mounted, string classes)
+        {
+            s_resizeOrigin = classes;
+            s_setStep.Invoke(++s_sharedRenders + 1);
+            mounted.FlushStateForTest();
+            Tick();
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion, so CornerRadiusFit keeps fitting it.
+        // The radius correction must hand the slots back to the fit, which then fits the radius the element takes later.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionResizedWhileItsClassesChange_When_ItTakesAnotherRadiusAfterLanding_Then_ItIsDrawnAtThatRadius()
+        {
+            // Arrange — doubling in place, an arbitrary background swapped in mid-move, and then landed.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 5);
+            RestyleResizedBox(mounted, "rounded-[10px] bg-[#ff0000]");
+            AdvancePast(2f);
+
+            // Act
+            RestyleResizedBox(mounted, "rounded-[30px] bg-[#ff0000]");
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("shared").resolvedStyle.borderTopLeftRadius, Is.EqualTo(30f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_ItsRadiusClassChangesMidMove_Then_ItIsDrawnAtTheNewRadius()
+        {
+            // Arrange — a few frames into doubling on a spring.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 3);
+
+            // Act
+            RestyleResizedBox(mounted, "rounded-[20px]");
+
+            // Assert — twenty pixels on screen, the radius written times the scale it is drawn at, while that scale is
+            // still well short of whole.
+            var element = Root.Q<VisualElement>("shared");
+            var scale = element.style.scale.value.value.x;
+            Assert.That(scale < 0.95f ? element.style.borderTopLeftRadius.value.value * scale : float.NaN, Is.EqualTo(20f).Within(0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion.
+        // A radius correction must leave a Motion with no radius alone.
+        [Test]
+        public void Given_AnUnroundedLayoutIdMotion_When_ItDoublesInPlace_Then_ItsRadiusIsLeftAlone()
+        {
+            // Arrange / Act
+            using var mounted = ResizeBoxFor("", 3);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("shared").style.borderTopLeftRadius.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a layoutId Motion's radius to CornerRadiusFit, which fits a new one as it is declared.
+        // A radius declared while the correction writes the slots must be fitted once it hands them back.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_ItsRadiusClassChangesMidMove_Then_ItLandsAtTheNewRadius()
+        {
+            // Arrange — a few frames into doubling on a spring, when the class changes.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 3);
+            RestyleResizedBox(mounted, "rounded-[20px]");
+
+            // Act
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("shared").resolvedStyle.borderTopLeftRadius, Is.EqualTo(20f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionRoundedByAStylesheetDoublingInPlace_When_ItsClassChangesToALargerRadiusMidMove_Then_ItIsDrawnAtTheNewRadius()
+        {
+            // Arrange — rules of the test's own, and a few frames into doubling on a spring.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            using var mounted = ResizeBoxFor("layout-id-test-round", 3);
+
+            // Act — and a frame more, the first pass reading the rules as the render left them.
+            RestyleResizedBox(mounted, "layout-id-test-rounder");
+            Tick();
+
+            // Assert — twenty pixels on screen, the radius written times the scale it is drawn at, while that scale is
+            // still well short of whole.
+            var element = Root.Q<VisualElement>("shared");
+            var scale = element.style.scale.value.value.x;
+            Assert.That(scale < 0.95f ? element.style.borderTopLeftRadius.value.value * scale : float.NaN, Is.EqualTo(20f).Within(0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a percent radius in its slot as the fit wrote it.
+        // A percent radius is of the box and scales with it, so a scaled Motion's must be left as it is.
+        [Test]
+        public void Given_APercentRoundedLayoutIdMotionDoublingInPlace_When_ItIsDrawnScaled_Then_ItsRadiusIsTheSamePercent()
+        {
+            // Arrange / Act — a few frames into doubling on a spring.
+            using var mounted = ResizeBoxFor("rounded-[25%]", 3);
+
+            // Assert
+            var radius = Root.Q<VisualElement>("shared").style.borderTopLeftRadius.value;
+            Assert.That(radius.unit == LengthUnit.Percent ? radius.value : float.NaN, Is.EqualTo(25f));
+        }
+
+        [Test]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_SomethingElseWritesOneCornerMidMove_Then_ItIsDrawnAtThatCornerAtOnce()
+        {
+            // Arrange — a few frames into doubling on a spring.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 3);
+            var element = Root.Q<VisualElement>("shared");
+
+            // Act
+            element.style.borderTopLeftRadius = 5f;
+            Tick();
+
+            // Assert — five pixels on screen, the radius written times the scale it is drawn at, while that scale is
+            // still well short of whole.
+            var scale = element.style.scale.value.value.x;
+            Assert.That(scale < 0.95f ? element.style.borderTopLeftRadius.value.value * scale : float.NaN, Is.EqualTo(5f).Within(0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a removed rounded class to CornerRadiusFit, which clears the slot.
+        // A radius the Motion loses mid-move must be drawn as none at once.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_ItLosesItsRadiusMidMove_Then_ItIsDrawnWithNone()
+        {
+            // Arrange — a few frames into doubling on a spring.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 3);
+
+            // Act
+            RestyleResizedBox(mounted, "");
+
+            // Assert
+            var element = Root.Q<VisualElement>("shared");
+            Assert.That(element.style.scale.value.value.x < 0.95f ? element.style.borderTopLeftRadius.value.value : float.NaN, Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion, so a corner written there stays.
+        // A radius correction must take a value written over one corner as that corner's own alone.
+        [TestCase(0, 5f)]
+        [TestCase(1, 10f)]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_SomethingElseWritesOneCornerMidMove_Then_TheOthersGoBackToTheirOwn(int corner, float expected)
+        {
+            // Arrange — a few frames into doubling on a spring.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 3);
+            var element = Root.Q<VisualElement>("shared");
+
+            // Act
+            element.style.borderTopLeftRadius = 5f;
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(CornerRadiusFit.InlineCorner(element.style, corner).value.value, Is.EqualTo(expected).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion, so it never divides one.
+        // A box drawn with no extent must be drawn with no radius rather than an infinite one.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionGrowingFromNothing_When_ItsTweenStarts_Then_ItsRadiusIsFinite()
+        {
+            // Arrange / Act — from a box of no size.
+            s_resizeFrom = 0;
+            using var mounted = ResizeBoxFor("rounded-[10px]", 1);
+
+            // Assert
+            Assert.That(float.IsFinite(Root.Q<VisualElement>("shared").style.borderTopLeftRadius.value.value), Is.True);
         }
 
         [Test]
