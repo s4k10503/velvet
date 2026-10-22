@@ -5,7 +5,8 @@
   `bg-gradient-*` included), border and ring are painted rounded by each axis's own scale, its colours following
   its classes and the transitions it declares for them, and one that clips its content (`overflow-hidden`) clips
   it to that rounded edge — at its border edge, where it has a border. Its inline background colour, border
-  colours and background image hold Velvet's values while it is drawn so, and are handed back as the move lands.
+  colours and background image, and for one that clips its background position, repeat and size, hold Velvet's
+  values while it is drawn so, and are handed back as the move lands.
   A Motion whose background image is repeated, positioned, sized in lengths, nine-sliced or a vector image keeps
   the elliptical corners.
 - The face a `skew-*` or upright `shadow-*` element repaints draws each border side in its own colour and width,

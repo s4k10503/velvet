@@ -630,7 +630,8 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   axis, its colours following its classes and the transitions it declares for them, and its background colour,
   border colour and background-image slots holding Velvet's values until the move hands them back. A Motion
   that clips its content (`overflow-hidden`) clips it to its rounded border edge then, so a bordered one clips
-  at its border edge rather than at its padding edge. A background image is painted where its
+  at its border edge rather than at its padding edge, and its background-position, background-repeat and
+  background-size slots hold Velvet's values too. A background image is painted where its
   `background-size` is one `-unity-background-scale-mode` spells (stretched, `cover` or `contain`, centred and
   unrepeated), without antialiasing along the rounded corners; a Motion with any other image, a nine-sliced one
   or a vector image keeps one length per corner, its radius divided by the geometric mean of the two scales and

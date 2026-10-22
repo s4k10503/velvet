@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -16,9 +17,10 @@ namespace Velvet.Tests
     /// down.
     /// </summary>
     /// <remarks>
-    /// Each case samples the pixel whose centre lies deepest on the stated side of every shape it names, each shape
-    /// derived from the declared radius and the measured box, and reports the reading as a word, so that a reading
-    /// whose pixel cannot be separated, or a box not drawn where its delay holds it, fails on its own word.
+    /// Each case reads the pixel whose centre lies deepest on the stated side of every shape it names, each shape derived
+    /// from the declared radius and the measured box, and asserts one word: that reading, or a word saying why it
+    /// could not be taken — a pixel that cannot be separated, a box not drawn where its delay holds it, or a control
+    /// the case names that is not painted.
     /// </remarks>
     [Timeout(600000)]
     internal sealed class ProjectedCornerFacePlaybackTests
@@ -35,6 +37,9 @@ namespace Velvet.Tests
         private static VNode[] s_children;
         private static string s_containerClasses;
         private static VNode s_sibling;
+        private static StyleTransitionConfig s_transition;
+        private static IReadOnlyDictionary<string, MotionVariant> s_variants;
+        private static string s_animate;
 
         private RenderTexturePanelHost _host;
         private MountedTree _mounted;
@@ -50,6 +55,9 @@ namespace Velvet.Tests
             s_children = null;
             s_containerClasses = null;
             s_sibling = null;
+            s_transition = s_held;
+            s_variants = null;
+            s_animate = null;
             yield break;
         }
 
@@ -70,7 +78,7 @@ namespace Velvet.Tests
             var size = step == 0 ? "w-[200px] h-[200px]" : "w-[800px] h-[200px]";
             return V.Div(className: s_containerClasses, children: new VNode[]
             {
-                V.Motion(name: "card", layoutId: "card", transition: s_held,
+                V.Motion(name: "card", layoutId: "card", transition: s_transition, variants: s_variants, animate: s_animate,
                     className: $"absolute left-[40px] top-[40px] {size} rounded-[48px] {s_cardClasses}", children: s_children),
                 s_sibling,
             });
@@ -283,9 +291,6 @@ namespace Velvet.Tests
             Assert.That(banded ? reading : "no band", Is.EqualTo("black"));
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves a moving Motion's background to UI Toolkit, which paints the
-        // colour its classes give. Painting the colour the face began with, as reading the resolved style beneath a slot
-        // it has hidden does, reddens this case.
         [UnityTest]
         public IEnumerator Given_ARoundedLayoutIdMotionDrawnAQuarterAcross_When_ItsClassesChangeItsBackgroundMidMove_Then_TheFaceIsPaintedInTheNewColour()
         {
@@ -298,13 +303,54 @@ namespace Velvet.Tests
             s_setStep.Invoke(2);
             yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
 
-            // Assert
-            Assert.That(IsRed(Interior), Is.True);
+            // Assert — red inside the circle where the ellipse would have left it bare: painted by the face, in the colour
+            // its classes now give.
+            Assert.That(Read(new[] { Circle }, new[] { Ellipse }, ("red", IsRed), ("blue", IsBlue), ("black", IsBlack)),
+                Is.EqualTo("red"));
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves a moving Motion's face to UI Toolkit, which paints it beneath
-        // everything generated in the Motion's content. Appending the face's callback in ProjectedCornerFace.InsertFirst,
-        // after the divider's painter, reddens this case: the face then covers the dashes.
+        [UnityTest]
+        public IEnumerator Given_ARoundedLayoutIdMotionDrawnAQuarterAcross_When_ASpringTakesItsBackgroundToAnotherColourMidMove_Then_ItStartsFromTheColourOnScreen()
+        {
+            // Arrange — blue, its variant swaps on a spring critically damped at two radians a second, its move held by
+            // the delay.
+            s_transition = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, Stiffness = 4f, Damping = 4f, Mass = 1f, Layout = s_held,
+            };
+            s_variants = new Dictionary<string, MotionVariant> { ["blue"] = "bg-[#0000ff]", ["red"] = "bg-[#ff0000]" };
+            s_animate = "blue";
+            yield return MountAndWiden("SpringFromScreen");
+
+            // Act — red, read a fifth of a second on, when the spring has carried it some six percent of the way.
+            s_animate = "red";
+            s_setStep.Invoke(2);
+            yield return WaitRealtimeDraining(0.2, _host.TargetTexture);
+
+            // Assert — still blue inside the circle, where a spring from the face's hidden slot would start from nothing
+            // and show the black behind it.
+            Assert.That(Read(new[] { Circle }, new[] { Ellipse }, ("blue", IsBlue), ("black", IsBlack)), Is.EqualTo("blue"));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnOverflowHiddenRoundedLayoutIdMotionHeldByItsDelay_When_ItsInlineBackgroundImageChanges_Then_ItsChildStaysClippedAtTheCircle()
+        {
+            // Arrange — a red child filling a clipping card, held over its old box.
+            s_cardClasses = "overflow-hidden";
+            s_children = new VNode[] { V.Div(className: "w-full h-full bg-[#ff0000]") };
+            yield return MountAndWiden("ClipAfterImage");
+
+            // Act — an image given inline while its scale holds still.
+            _texture = new Texture2D(4, 4);
+            Card.style.backgroundImage = new StyleBackground(_texture);
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
+
+            // Assert — clipped outside the circle, while the child shows inside it.
+            var shown = IsRed(Interior);
+            Assert.That(shown ? Read(new[] { Ellipse }, new[] { Circle }, ("red", IsRed), ("black", IsBlack)) : "no child",
+                Is.EqualTo("black"));
+        }
+
         [UnityTest]
         public IEnumerator Given_ADividedLayoutIdMotionDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_ItsDashedDividerShowsOverIt()
         {
@@ -314,7 +360,9 @@ namespace Velvet.Tests
             s_sibling = V.Div(className: "w-[10px] h-[10px]");
             yield return MountAndWiden("DividerOverFace");
 
-            // Assert — green along the middle of its bottom edge, clear of its rounded corners.
+            // Assert — the face painting, blue inside the circle where the ellipse would have left it bare, and green
+            // along the middle of the bottom edge over it, clear of the rounded corners.
+            var face = Read(new[] { Circle }, new[] { Ellipse }, ("blue", IsBlue), ("black", IsBlack));
             var bottom = Card.worldBound.yMax;
             var pixels = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(0, 0, Size, Size));
             var dashes = 0;
@@ -325,7 +373,7 @@ namespace Velvet.Tests
                     dashes += IsGreen(pixels[((Size - 1 - row) * Size) + col]) ? 1 : 0;
                 }
             }
-            Assert.That(dashes, Is.GreaterThan(0));
+            Assert.That(face != "blue" ? $"no face ({face})" : dashes > 0 ? "dashes" : "covered", Is.EqualTo("dashes"));
         }
     }
 }
