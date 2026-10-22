@@ -1290,6 +1290,8 @@ namespace Velvet.Tests
                 "A render already owed absorbs the one the completion asks for");
         }
 
+        // GREEN_ON_BASE(characterization): the base's reader subscribed at render, so the write reached it already.
+        // The reader now subscribes in the mount's passive effects, which the arrangement runs first.
         [Test]
         public void Given_ATransitionWritingOnlyAStoreOtherComponentsRead_When_ThatWorkCommits_Then_TheDeclaringComponentClearsItsIndicator()
         {
@@ -1298,6 +1300,7 @@ namespace Velvet.Tests
             using var store = new TransitionCountStore();
             s_storeStore = store;
             using var mounted = V.Mount(_root, V.Component(StoreTransitionParentRender, key: "store-transition"));
+            mounted.FlushEffectsForTest();
             s_storeWriterStart.Invoke(() => store.Set(1));
             s_storeWriterSetTick.Invoke(1);
             FiberWorkLoop.FlushState(s_storeWriterFiber);
@@ -1386,8 +1389,8 @@ namespace Velvet.Tests
             protected override void ResetCore() => SetState(_ => new TransitionCountState(0));
         }
 
-        // GREEN_ON_BASE(refactor): the flush before the measurement renders the writer with the flag lit on the
-        // head, and finds it clean on the base, where the settle asks for the same one render.
+        // GREEN_ON_BASE(characterization): the base's reader subscribed at render, and its settle asked the same render.
+        // The reader now subscribes in the mount's passive effects, which the arrangement runs first.
         [Test]
         public void Given_ATransitionWhoseWorkLandsOnAnotherComponent_When_ThatWorkCommits_Then_TheDeclaringComponentRendersOnceToClearItsIndicator()
         {
@@ -1395,6 +1398,7 @@ namespace Velvet.Tests
             using var store = new TransitionCountStore();
             s_storeStore = store;
             using var mounted = V.Mount(_root, V.Component(StoreTransitionParentRender, key: "store-transition"));
+            mounted.FlushEffectsForTest();
             s_storeWriterStart.Invoke(() => store.Set(1));
             FiberWorkLoop.FlushState(s_storeWriterFiber);
             var writerRendersBefore = s_storeWriterRenderCount;
@@ -1451,6 +1455,8 @@ namespace Velvet.Tests
 
         #region A callback enrolling two fibers
 
+        // GREEN_ON_BASE(characterization): the base's readers subscribed at render, so the write enrolled both already.
+        // The readers now subscribe in the mount's passive effects, which the arrangement runs first.
         [Test]
         public void Given_ATransitionCallbackThatEnrolledTwoFibers_When_TheFirstOfThemCommits_Then_ItStaysPendingUntilTheSecondDoes()
         {
@@ -1459,6 +1465,7 @@ namespace Velvet.Tests
             using var store = new TransitionCountStore();
             s_twoReaderStore = store;
             using var mounted = V.Mount(_root, V.Component(TwoReaderStoreParentRender, key: "two-reader"));
+            mounted.FlushEffectsForTest();
             s_twoReaderWriterStart.Invoke(() => store.Set(1));
 
             // Act — each reader is flushed on its own, so the two commits are separable
@@ -1709,6 +1716,7 @@ namespace Velvet.Tests
         // The write sits in a store rather than in a state slot, so a pass of the Normal lane renders it and settles
         // the transition, while the reader's deferred value keeps the Transition lane queued.
         // GREEN_ON_BASE(characterization): no state slot holds this write, so the base settled the transition the same way.
+        // The reader now subscribes in the mount's passive effects, which the arrangement runs first.
         [Test]
         public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassRendersTheReaderWhoseDeferredValueHoldsTheLane_Then_IsPendingClears()
         {
@@ -1716,6 +1724,7 @@ namespace Velvet.Tests
             using var store = new TransitionCountStore();
             s_deferredStore = store;
             using var mounted = V.Mount(_root, V.Component(DeferredStoreParentRender, key: "deferred-store-parent"));
+            mounted.FlushEffectsForTest();
             s_deferredChildStart.Invoke(() => store.Set(1));
             Assume.That(s_deferredChildFiber.TransitionSlots[0].IsPending, Is.True, "Precondition: the transition is pending");
             s_deferredParentSetQuery.Invoke("beta");

@@ -237,12 +237,15 @@ namespace Velvet.Tests
             return V.Button(name: "btn", onClick: () => setTick.Invoke(t => t + 1));
         }
 
+        // GREEN_ON_BASE(characterization): the base's state flush left the mount effect pending and the log clean.
+        // FlushStateForTest now runs it first, so the arrangement runs the mount's effects before clearing the log.
         [Test]
         public void Given_APendingPassiveEffect_When_ADiscreteClickReRenders_Then_TheEffectRunsBeforeTheClicksRender()
         {
             // Arrange — mounted (its mount effect already ran), then a dep change re-renders and SCHEDULES a
             // fresh passive effect (effect:d1) that the EditMode scheduler never drains, so it stays pending.
             _mounted = V.Mount(_root, V.Component(Widget, key: "w"));
+            _mounted.FlushEffectsForTest();
             s_log.Clear();
             s_setDep.Invoke(1);
             _mounted.FlushStateForTest();

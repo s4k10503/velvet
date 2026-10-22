@@ -29,6 +29,16 @@ namespace Velvet.TestUtilities
         }
 
         /// <summary>
+        /// As <see cref="FlushStateForTest"/>, leaving the passive effects earlier commits left pending as they are,
+        /// for a case about what a render does while they still wait. Test-only.
+        /// </summary>
+        // Bypasses: the batch scheduler's tier and drain buffer, as FlushStateForTest does, and the passive flush a drain runs before it renders.
+        public static void FlushStateKeepingPassiveEffectsForTest(this MountedTree mounted)
+        {
+            FiberTreeTraversal.Visit(mounted.Root, FiberWorkLoop.FlushState);
+        }
+
+        /// <summary>
         /// Immediately fires any pending UseEffect (post-paint async) callbacks for the whole tree
         /// produced by V.Mount, via FiberRenderer's tree-wide 2-phase passive drain: every pending
         /// fiber's cleanups run before any setup, both phases post-order (child-before-parent) — the
