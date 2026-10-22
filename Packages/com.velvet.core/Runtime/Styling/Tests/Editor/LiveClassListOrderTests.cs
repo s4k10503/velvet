@@ -558,7 +558,9 @@ namespace Velvet.Tests
         [ReaderVerdict(OwnBorderStyleReader)]
         public void Given_TwoBorderStylesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheStyleThatResolvesIsTheOneAddedLast()
         {
-            // Arrange — StyleDivideManipulator.EdgeStyle reads this off a divided child.
+            // Arrange — StyleDivideManipulator.EdgeStyle reads this off a divided child. Carrying skips the
+            // parse, so the order here is the one written; a mount and a patch put the base tokens of the list
+            // in Tailwind's order first, which FamilyOrderTests' border-style rows pin.
             var added = Carrying("border-dotted", "border-dashed");
             var reversed = Carrying("border-dashed", "border-dotted");
 

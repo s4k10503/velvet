@@ -25,6 +25,9 @@ namespace Velvet.Tests
         // beside them, z-index, gap and space, grid columns, divide, shadow, ring, clip-path, skew, the gradient
         // stops, pointer events, the background image, the border line style, the animate-* modes and the nine-slice
         // insets.
+        // GREEN_ON_BASE(characterization): the base already puts each of these lists in Tailwind's order.
+        // The border and divide line styles are among them: drop the border-style family from StyleFamilyOrder's
+        // `s_families` and the border-dotted row reddens.
         [TestCase("font-light font-bold", "font-bold font-light")]
         [TestCase("not-italic italic", "italic not-italic")]
         [TestCase("font-[700] font-[600]", "font-[600] font-[700]")]
@@ -74,6 +77,8 @@ namespace Velvet.Tests
         [TestCase("!outline-2 !ring-0", "!ring-0 !outline-2")]
         [TestCase("bg-[addr:b] bg-[addr:a]", "bg-[addr:a] bg-[addr:b]")]
         [TestCase("border-solid border-dashed", "border-dashed border-solid")]
+        [TestCase("border-dotted border-dashed", "border-dashed border-dotted")]
+        [TestCase("divide-dotted divide-dashed", "divide-dashed divide-dotted")]
         [TestCase("animate-spin animate-pulse", "animate-pulse animate-spin")]
         [TestCase("slice-t-[2] slice-y-[8]", "slice-y-[8] slice-t-[2]")]
         [TestCase("slice-l-[2] slice-[6] slice-y-[8]", "slice-[6] slice-y-[8] slice-l-[2]")]
@@ -134,15 +139,20 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", tokens), Is.EqualTo("drop-shadow-sm shadow-lg"));
         }
 
-        // One row for each reader that folds the live class list: the clip shape, and the layout gates LiveClasses
-        // hands to (pointer events, gap, grid columns, divide). A token a later render adds sorts ahead of the ones
-        // already there in each, which the diff appends it behind; the expected list is the order Tailwind emits them in.
+        // One row for each reader that folds the live class list: the clip shape, the border line style a divided
+        // child's own classes select, and the layout gates LiveClasses hands to (pointer events, gap, grid columns,
+        // divide). A token a later render adds sorts ahead of the ones already there in each, which the diff appends
+        // it behind; the expected list is the order Tailwind emits them in.
+        // GREEN_ON_BASE(characterization): the base already restores each family's order after the diff.
+        // The border line style is among them: drop the `StyleFamilyOrder.RestoreLiveOrder` call from DiffClassList
+        // and every row reddens.
         [TestCase("pointer-events-none", "pointer-events-none pointer-events-auto", "pointer-events-auto pointer-events-none")]
         [TestCase("clip-path-none", "clip-path-none clip-path-[inset(10%)]", "clip-path-[inset(10%)] clip-path-none")]
         [TestCase("clip-path-[inset(10%)]", "clip-path-[inset(10%)] clip-path-[circle(40%)]", "clip-path-[circle(40%)] clip-path-[inset(10%)]")]
         [TestCase("gap-x-4", "gap-x-4 gap-2", "gap-2 gap-x-4")]
         [TestCase("grid-cols-3", "grid-cols-3 grid-cols-2", "grid-cols-2 grid-cols-3")]
         [TestCase("divide-y-2", "divide-y-2 divide-x-2", "divide-x-2 divide-y-2")]
+        [TestCase("border-dotted", "border-dotted border-dashed", "border-dashed border-dotted")]
         public void Given_ATokenAddedByALaterRenderThatSortsAheadOfTheOnesThere_When_Reconciled_Then_TheLiveClassListIsInTheOrderAFreshMountGives(
             string first, string second, string expected)
         {
