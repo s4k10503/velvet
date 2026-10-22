@@ -2688,7 +2688,8 @@ namespace Velvet.Tests
         {
             // Arrange
             var (child, binding, references) = MountRunningDashTransition();
-            Assume.That(binding.Tick.isActive, Is.True, "Precondition: a transition that never ran would leave nothing to stop");
+            // Whether the transition runs, since one that never ran leaves nothing to stop.
+            var running = binding.Tick.isActive;
             var strong = references[2].resolvedStyle.borderRightColor;
 
             // Act
@@ -2697,43 +2698,45 @@ namespace Velvet.Tests
             StyleClassProjection.Add(child, "border-strong", StyleLayerPriority.Base);
             ForcePanelUpdate(child.panel);
 
-            // Assert
-            Assert.That(DashColorOf(child), Is.EqualTo(strong));
+            // Assert — read as null where the transition never ran, which is not the color.
+            Assert.That(running ? DashColorOf(child) : (Color?)null, Is.EqualTo(strong));
         }
 
         // The same dash with its transition entry removed while it runs: the tick the running transition repaints on,
-        // then the paint; the transition is made long enough to be running still whatever time the run takes.
-        private (VisualElement Child, DivideDashChildBinding Binding, Color Accent) MountDashWhoseEntryIsRemoved()
+        // then the paint; the transition is made long enough to be running still whatever time the run takes. Running
+        // says whether the transition ran before the entry went, since one that never ran leaves nothing to end.
+        private (VisualElement Child, DivideDashChildBinding Binding, Color Accent, bool Running)
+            MountDashWhoseEntryIsRemoved()
         {
             var (child, binding, references) = MountRunningDashTransition();
-            Assume.That(binding.Tick.isActive, Is.True, "Precondition: a transition that never ran would leave nothing to end");
+            var running = binding.Tick.isActive;
             var accent = references[1].resolvedStyle.borderRightColor;
             binding.DurationSec = 1000f;
             StyleClassProjection.Remove(child, "transition-colors", StyleLayerPriority.Base);
             ForcePanelUpdate(child.panel);
             EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
             ForcePanelUpdate(child.panel);
-            return (child, binding, accent);
+            return (child, binding, accent, running);
         }
 
         [Test]
         public void Given_ARunningDashTransition_When_ItsTransitionEntryIsRemoved_Then_TheDashLandsAtTheTarget()
         {
             // Arrange / Act
-            var (child, _, accent) = MountDashWhoseEntryIsRemoved();
+            var (child, _, accent, running) = MountDashWhoseEntryIsRemoved();
 
-            // Assert
-            Assert.That(DashColorOf(child), Is.EqualTo(accent));
+            // Assert — read as null where the transition never ran, which is not the color.
+            Assert.That(running ? DashColorOf(child) : (Color?)null, Is.EqualTo(accent));
         }
 
         [Test]
         public void Given_ARunningDashTransition_When_ItsTransitionEntryIsRemoved_Then_TheTickStopsRepainting()
         {
             // Arrange / Act
-            var (_, binding, _) = MountDashWhoseEntryIsRemoved();
+            var (_, binding, _, running) = MountDashWhoseEntryIsRemoved();
 
-            // Assert
-            Assert.That(binding.Tick.isActive, Is.False);
+            // Assert — read as null where the transition never ran, which is not false.
+            Assert.That(running ? binding.Tick.isActive : (bool?)null, Is.False);
         }
 
         [Test]
@@ -2741,13 +2744,14 @@ namespace Velvet.Tests
         {
             // Arrange
             var (child, binding, _) = MountRunningDashTransition();
-            Assume.That(binding.Tick.isActive, Is.True, "Precondition: a tick that never ran would stop for no reason of the detach");
+            // Whether the tick runs, since one that never ran would read stopped for no reason of the detach.
+            var running = binding.Tick.isActive;
 
             // Act
             DivideDashPainter.Detach(child, binding);
 
-            // Assert
-            Assert.That(binding.Tick.isActive, Is.False);
+            // Assert — read as null where the tick never ran, which is not false.
+            Assert.That(running ? binding.Tick.isActive : (bool?)null, Is.False);
         }
     }
 }

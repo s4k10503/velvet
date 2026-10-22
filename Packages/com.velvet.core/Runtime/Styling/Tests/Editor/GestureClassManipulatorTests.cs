@@ -238,14 +238,15 @@ namespace Velvet.Tests
             using (var over = PointerOverEvent.GetPooled()) _element.SimulateEvent(over);
             using (var down = PointerDownEvent.GetPooled()) _element.SimulateEvent(down);
             using (var focus = FocusEvent.GetPooled()) _element.SimulateEvent(focus);
-            Assume.That(new[] { "hovered", "tapped", "focused" }.Where(_element.ClassListContains), Has.Exactly(3).Items,
-                "Precondition: a state that never came on removes nothing");
+            // Whether every state came on, since a state that never did removes nothing.
+            var on = new[] { "hovered", "tapped", "focused" }.All(_element.ClassListContains);
 
             // Act
             _element.RemoveManipulator(manipulator);
 
-            // Assert
-            Assert.That(new[] { "hovered", "tapped", "focused" }.Where(_element.ClassListContains), Is.Empty);
+            // Assert — read as the three states where they never all came on, which is not empty.
+            Assert.That(on ? new[] { "hovered", "tapped", "focused" }.Where(_element.ClassListContains)
+                : new[] { "hovered", "tapped", "focused" }, Is.Empty);
         }
 
         [Test]
@@ -820,14 +821,14 @@ namespace Velvet.Tests
             // Arrange
             var (child, _) = Mount("", "bg-white", hover: hover);
             Hover(child, true);
-            Assume.That(Painted(_mounted.Root.Reconciler.Context, child, paint), Is.True,
-                "Precondition: a paint never bound has nothing to go");
+            // Whether the paint bound while hovered, since a paint never bound has nothing to go.
+            var shown = Painted(_mounted.Root.Reconciler.Context, child, paint);
 
             // Act
             Hover(child, false);
 
-            // Assert
-            Assert.That(Painted(_mounted.Root.Reconciler.Context, child, paint), Is.False);
+            // Assert — read as null where the paint never bound, which is not false.
+            Assert.That(shown ? Painted(_mounted.Root.Reconciler.Context, child, paint) : (bool?)null, Is.False);
         }
 
         [Test]

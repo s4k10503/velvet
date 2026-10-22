@@ -71,15 +71,15 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountOnFakeClock(ClassicEnter("opacity-[0.7]", "opacity-0", "opacity-100"));
-            Assume.That(element.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null),
-                "Precondition: the class stands over the bracket while the enter shows it");
+            // Whether the class stands over the bracket while the enter shows it.
+            var shown = element.style.opacity.keyword == StyleKeyword.Null;
 
             // Act
             Step(element);
             Step(element);
 
-            // Assert
-            Assert.That(element.style.opacity.value, Is.EqualTo(0.7f));
+            // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
+            Assert.That(shown ? element.style.opacity.value : float.NaN, Is.EqualTo(0.7f));
         }
 
         [Test]
@@ -107,14 +107,14 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountOnFakeClock(ClassicEnter("opacity-[0.7]", "opacity-0", "opacity-100"));
-            Assume.That(element.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null),
-                "Precondition: the class stands over the bracket while the enter shows it");
+            // Whether the class stands over the bracket while the enter shows it.
+            var shown = element.style.opacity.keyword == StyleKeyword.Null;
 
             // Act
             StyleClassProjection.Remove(element, "opacity-0", StyleLayerPriority.Base);
 
-            // Assert
-            Assert.That(element.style.opacity.value, Is.EqualTo(0.7f));
+            // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
+            Assert.That(shown ? element.style.opacity.value : float.NaN, Is.EqualTo(0.7f));
         }
 
         // A variant enter from opacity-0 to opacity-100 over a base opacity-[0.7].
@@ -130,15 +130,15 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountVariantEnterOverBracketOpacity();
-            Assume.That(element.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null),
-                "Precondition: the class stands over the bracket while the enter shows it");
+            // Whether the class stands over the bracket while the enter shows it.
+            var shown = element.style.opacity.keyword == StyleKeyword.Null;
 
             // Act
             Step(element);
             Step(element);
 
             // Assert — an inline value outranks the resting class as the element's own.
-            Assert.That(element.style.opacity.value, Is.EqualTo(0.7f));
+            Assert.That(shown ? element.style.opacity.value : float.NaN, Is.EqualTo(0.7f));
         }
 
         [Test]
@@ -181,16 +181,16 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountBezierEnterOverOpacityClass();
-            Assume.That(element.ClassListContains("opacity-50"), Is.False,
-                "Precondition: the base class is off the list while the enter plays");
+            // Whether the base class is off the list while the enter plays.
+            var shown = !element.ClassListContains("opacity-50");
 
             // Act
             Step(element);
             Step(element);
             Step(element);
 
-            // Assert
-            Assert.That(element.ClassListContains("opacity-50"), Is.True);
+            // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
+            Assert.That(shown ? element.ClassListContains("opacity-50") : (bool?)null, Is.True);
         }
 
         // A divided row whose middle child enters from border-red-500 to border-blue-500.
@@ -220,8 +220,8 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountDividedChildEnter();
-            Assume.That(element.style.borderRightColor.keyword, Is.EqualTo(StyleKeyword.Null),
-                "Precondition: the class stands over the divide color while the enter shows it");
+            // Whether the class stands over the divide color while the enter shows it.
+            var shown = element.style.borderRightColor.keyword == StyleKeyword.Null;
 
             // Act
             Step(element);
@@ -229,7 +229,7 @@ namespace Velvet.Tests
 
             // Assert — e5e7eb is gray-200, the divide color.
             ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
-            Assert.That(element.style.borderRightColor.value, Is.EqualTo(gray200));
+            Assert.That(shown ? element.style.borderRightColor.value : (Color?)null, Is.EqualTo(gray200));
         }
 
         private static string s_rowClass;
@@ -255,19 +255,18 @@ namespace Velvet.Tests
             });
         }
 
-        // What slot reads on the middle child of a row of rowClass after a variant swap shows swappedClass on it,
-        // the row holding the slot before.
-        private StyleKeyword SwapInRow(string rowClass, string swappedClass, System.Func<IStyle, StyleKeyword> slot)
+        // What slot reads on the middle child of a row of rowClass after a variant swap shows swappedClass on it, or
+        // null where the row held nothing there before, which gives way to nothing.
+        private StyleKeyword? SwapInRow(string rowClass, string swappedClass, System.Func<IStyle, StyleKeyword> slot)
         {
             s_rowClass = rowClass;
             s_swappedClass = swappedClass;
             var element = MountOnFakeClock(V.Component(RowSwap));
-            Assume.That(slot(element.style), Is.EqualTo(StyleKeyword.Undefined),
-                "Precondition: a row holding nothing gives way to nothing");
+            var held = slot(element.style) == StyleKeyword.Undefined;
             s_setLit.Invoke(true);
             _mounted.FlushStateForTest();
             Step(element);
-            return slot(element.style);
+            return held ? slot(element.style) : null;
         }
 
         [Test]
@@ -332,14 +331,14 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountHoveredSwapAfterTheSwap();
-            Assume.That(element.ClassListContains("opacity-50"), Is.False,
-                "Precondition: the hover class is off while the play's class shows");
+            // Whether the hover class is off while the play's class shows.
+            var shown = !element.ClassListContains("opacity-50");
 
             // Act
             Step(element);
 
-            // Assert
-            Assert.That(element.ClassListContains("opacity-50"), Is.True);
+            // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
+            Assert.That(shown ? element.ClassListContains("opacity-50") : (bool?)null, Is.True);
         }
 
         private ReconcilerContext Context => _mounted.Root.Reconciler.Context;
@@ -359,14 +358,15 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountOnFakeClock(ClassicEnter("", "shadow-lg", "opacity-100"));
-            Assume.That(Context.ShadowBindings.ContainsKey(element), Is.True, "Precondition: the shadow paints while the enter shows it");
+            // Whether the shadow paints while the enter shows it.
+            var shown = Context.ShadowBindings.ContainsKey(element);
 
             // Act
             Step(element);
             Step(element);
 
-            // Assert
-            Assert.That(Context.ShadowBindings.ContainsKey(element), Is.False);
+            // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
+            Assert.That(shown ? Context.ShadowBindings.ContainsKey(element) : (bool?)null, Is.False);
         }
 
         // A row Motion entering from gap-4, with two children.
@@ -396,14 +396,15 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountGapEnter();
-            Assume.That(Context.GapManipulators.ContainsKey(element), Is.True, "Precondition: the gap applies while the enter shows it");
+            // Whether the gap applies while the enter shows it.
+            var shown = Context.GapManipulators.ContainsKey(element);
 
             // Act
             Step(element);
             Step(element);
 
-            // Assert
-            Assert.That(Context.GapManipulators.ContainsKey(element), Is.False);
+            // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
+            Assert.That(shown ? Context.GapManipulators.ContainsKey(element) : (bool?)null, Is.False);
         }
 
         [Test]
@@ -421,13 +422,14 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountOnFakeClock(ClassicEnter("", "w-[40px]", "opacity-100"));
-            Assume.That(element.style.width.value.value, Is.EqualTo(40f), "Precondition: the play's width applies while it shows");
+            // Whether the play's width applies while it shows.
+            var shown = element.style.width.value.value == 40f;
 
             // Act
             Step(element);
 
             // Assert — ClassicEnter's own w-[20px] holds the width once the play's class is gone.
-            Assert.That(element.style.width.value.value, Is.EqualTo(20f));
+            Assert.That(shown ? element.style.width.value.value : float.NaN, Is.EqualTo(20f));
         }
 
         // A variant enter into a pose carrying shadow-lg, from one that does not.
@@ -457,15 +459,15 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountEnterIntoShadowedPose();
-            Assume.That(Context.ShadowBindings.ContainsKey(element), Is.False,
-                "Precondition: the shadow waits for the swap");
+            // Whether the shadow waits for the swap.
+            var shown = !Context.ShadowBindings.ContainsKey(element);
 
             // Act
             Step(element);
             Step(element);
 
-            // Assert
-            Assert.That(Context.ShadowBindings.ContainsKey(element), Is.True);
+            // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
+            Assert.That(shown ? Context.ShadowBindings.ContainsKey(element) : (bool?)null, Is.True);
         }
 
         // A Motion named "b" entering under an AnimatePresence on a 0.2 s tween from `from` to opacity-100, beside a
@@ -517,14 +519,14 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountHoveredEnterOverHoverBackground();
-            Assume.That(element.style.backgroundColor.value, Is.EqualTo(Color.red),
-                "Precondition: the play's color wins while it shows");
+            // Whether the play's color wins while it shows.
+            var shown = element.style.backgroundColor.value == Color.red;
 
             // Act
             Step(element);
 
-            // Assert
-            Assert.That(element.style.backgroundColor.value, Is.EqualTo(Color.green));
+            // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
+            Assert.That(shown ? element.style.backgroundColor.value : (Color?)null, Is.EqualTo(Color.green));
         }
 
         // A hovered element with a hover padding class of its own, entering from a bracket padding.
@@ -551,13 +553,14 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountHoveredEnterOverHoverPadding();
-            Assume.That(element.resolvedStyle.paddingTop, Is.EqualTo(6f), "Precondition: the play's padding wins while it shows");
+            // Whether the play's padding wins while it shows.
+            var shown = element.resolvedStyle.paddingTop == 6f;
 
             // Act
             Step(element);
 
-            // Assert
-            Assert.That(element.resolvedStyle.paddingTop,
+            // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
+            Assert.That(shown ? element.resolvedStyle.paddingTop : float.NaN,
                 Is.EqualTo(_window.rootVisualElement.Q("ref").resolvedStyle.paddingTop));
         }
 

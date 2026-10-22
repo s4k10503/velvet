@@ -335,7 +335,8 @@ namespace Velvet.Tests
             {
                 card.SimulateEvent(over);
             }
-            Assume.That(card.text, Is.EqualTo("DOCS"), "Precondition: the transform comes on while hovered");
+            // Whether the transform comes on while hovered.
+            var shown = card.text == "DOCS";
 
             // Act
             using (var leave = PointerOutEvent.GetPooled())
@@ -343,8 +344,8 @@ namespace Velvet.Tests
                 card.SimulateEvent(leave);
             }
 
-            // Assert
-            Assert.That(card.text, Is.EqualTo("Docs"));
+            // Assert — read as null where the transform never came on, which the expected text is not.
+            Assert.That(shown ? card.text : null, Is.EqualTo("Docs"));
         }
     }
 

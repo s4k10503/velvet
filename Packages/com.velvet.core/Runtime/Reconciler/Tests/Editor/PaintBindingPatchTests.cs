@@ -143,14 +143,14 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Motion("", key: "m") };
             Mount(scope, before);
-            Assume.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Null,
-                "Precondition: the create path binds nothing for a Motion without a shadow class");
+            // Whether the create path bound nothing for a Motion without a shadow class.
+            var unbound = BoxShadowSilhouette.TryGet(scope.Root[0]) == null;
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Motion("shadow-lg", key: "m") });
 
-            // Assert
-            Assert.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Not.Null);
+            // Assert — read as null where the create path had bound one already, so the patch is what binds it.
+            Assert.That(unbound ? BoxShadowSilhouette.TryGet(scope.Root[0]) : null, Is.Not.Null);
         }
 
         [Test]
@@ -173,14 +173,15 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Motion("", key: "m") };
             Mount(scope, before);
-            Assume.That(scope.Reconciler.Context.SkewBindings.ContainsKey(scope.Root[0]), Is.False,
-                "Precondition: the create path binds nothing for a Motion without a skew class");
+            // Whether the create path bound nothing for a Motion without a skew class.
+            var unbound = !scope.Reconciler.Context.SkewBindings.ContainsKey(scope.Root[0]);
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Motion(Skew, key: "m") });
 
-            // Assert
-            Assert.That(scope.Reconciler.Context.SkewBindings.ContainsKey(scope.Root[0]), Is.True);
+            // Assert — read as null where the create path had bound one already, so the patch is what binds it.
+            Assert.That(unbound ? scope.Reconciler.Context.SkewBindings.ContainsKey(scope.Root[0]) : (bool?)null,
+                Is.True);
         }
 
         [Test]
@@ -203,14 +204,15 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Motion("border-2", key: "m") };
             Mount(scope, before);
-            Assume.That(scope.Reconciler.Context.BorderStyleBindings.ContainsKey(scope.Root[0]), Is.False,
-                "Precondition: the create path binds nothing for a Motion with a solid border");
+            // Whether the create path bound nothing for a Motion with a solid border.
+            var unbound = !scope.Reconciler.Context.BorderStyleBindings.ContainsKey(scope.Root[0]);
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Motion("border-2 border-dotted", key: "m") });
 
-            // Assert
-            Assert.That(scope.Reconciler.Context.BorderStyleBindings.ContainsKey(scope.Root[0]), Is.True);
+            // Assert — read as null where the create path had bound one already, so the patch is what binds it.
+            Assert.That(unbound ? scope.Reconciler.Context.BorderStyleBindings.ContainsKey(scope.Root[0]) : (bool?)null,
+                Is.True);
         }
 
         [Test]
