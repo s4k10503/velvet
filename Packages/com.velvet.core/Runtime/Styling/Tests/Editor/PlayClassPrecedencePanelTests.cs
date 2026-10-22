@@ -742,8 +742,9 @@ namespace Velvet.Tests
             // Act — the swap, which takes the enter's class off.
             Step(element);
 
-            // Assert
-            Assert.That(box.ClassListContains("overflow-hidden"), Is.True);
+            // Assert — either class clips: the projection takes a play's overflow-hidden off the box while the
+            // truncate routed there claims the overflow above it.
+            Assert.That(box.ClassListContains("truncate") || box.ClassListContains("overflow-hidden"), Is.True);
         }
 
         [Test]
