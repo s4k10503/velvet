@@ -372,7 +372,7 @@ namespace Velvet
             if (projection.Leader != null)
             {
                 var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
-                rotate = LayoutIdLook.RotateOf(projection.Leader, leading);
+                rotate = LayoutIdLook.RotateOf(projection.Leader, leading, float.NaN);
                 radii = LayoutIdLook.RadiiOf(projection.Leader, leading, projection.LeadRadii);
             }
             else if (projection is { Shared: true, Moving: true, Held: { } held })
@@ -413,7 +413,7 @@ namespace Velvet
         // meanwhile (Given_ALeadMixingFromAHalfOpaqueHolder_When_ItsOwnOpacityChangesDuringAMoveThatInterruptedTheMix_Then_ItIsDrawnAtWhatTheMixHadReached).
         private static void Hold(VisualElement element, LayoutIdProjection projection, string layoutId, ReconcilerContext ctx)
         {
-            projection.Held = float.IsNaN(projection.FadeAt) ? null : LayoutIdLook.Read(element, projection);
+            projection.Held = float.IsNaN(projection.FadeAt) ? null : LayoutIdLook.Read(element, projection, float.NaN);
             if (projection is { Held: not null, FromLook: { } look }) projection.FromLook = look.Holding(PreviousOpacity(look, layoutId, ctx));
         }
 
@@ -717,12 +717,6 @@ namespace Velvet
                 element.style.scale = projection.OwnInlineScale;
                 projection.WritesScale = false;
             }
-            // The rotate is handed back by LayoutIdLook.End, at once unless something the projection carries runs on.
-            if (projection.WritesRotate && !LayoutIdLook.RunsOn(projection)) restored.Rotate = LayoutIdLook.DeclaredRotate(element, projection);
-            if (ctx.CurrentPass != null && (restored.Translate != null || restored.Scale != null || restored.Rotate != null))
-            {
-                ctx.LayoutIdRestored[element] = restored;
-            }
             // A slot that runs on past the move keeps it from a loop until it lands (LayoutIdLook.Hand).
             var held = WrittenSlots(projection);
             StyleAnimateDriver.YieldSlots(element, projection, LayoutIdLook.RunsOn(projection) ? held : MotionTransitionSlots.None);
@@ -731,7 +725,15 @@ namespace Velvet
             StyleAnimateDriver.ReassertLoop(element, held);
             WriteOpacity(element, projection, null, ctx);
             LayoutIdPicking.Restore(projection);
-            LayoutIdLook.End(element, projection, ctx.StyleAnimationScheduler.Clock);
+            // The rotate is handed back by LayoutIdLook.End, at once unless something the projection carries runs on.
+            if (LayoutIdLook.End(element, projection, ctx.StyleAnimationScheduler.Clock) && projection.WritesRotate)
+            {
+                restored.Rotate = LayoutIdLook.DeclaredRotate(element, projection);
+            }
+            if (ctx.CurrentPass != null && (restored.Translate != null || restored.Scale != null || restored.Rotate != null))
+            {
+                ctx.LayoutIdRestored[element] = restored;
+            }
         }
 
         private static Vector3 Pixels(Translate translate, Rect layout) => new(
@@ -762,9 +764,12 @@ namespace Velvet
             var drawn = ctx.LayoutIdProjections.TryGetValue(element, out var projection) ? Drawn(projection, layout, parentScale) : layout;
             var world = parent.worldTransform;
             box = new LayoutIdBox(parent, drawn, world.MultiplyPoint3x4(drawn.center), drawn.size * AxisLengths(world), parentScale,
-                readLook ? LayoutIdLook.Read(element, projection) : null);
+                readLook ? LayoutIdLook.Read(element, projection, RestoredRotate(element, ctx)) : null);
             return true;
         }
+
+        private static float RestoredRotate(VisualElement element, ReconcilerContext ctx) =>
+            ctx.LayoutIdRestored.TryGetValue(element, out var restored) && restored.Rotate is { } rotate ? rotate : float.NaN;
 
         private static void CancelPendingSettle(VisualElement element, ReconcilerContext ctx)
         {

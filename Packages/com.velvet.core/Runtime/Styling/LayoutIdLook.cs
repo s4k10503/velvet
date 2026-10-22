@@ -40,19 +40,26 @@ namespace Velvet
 
         // A holder read mid-way through a shared move of its own gives the opacity that move drew it at, and no
         // holder to read again, as promote takes animationValues, which the new lead's animation stops.
-        public static LayoutIdLook Read(VisualElement element, LayoutIdProjection? projection) =>
+        // restored: the rotate a projection ended earlier in this render handed back to an element no projection draws now,
+        // or NaN
+        // (RotateOf).
+        public static LayoutIdLook Read(VisualElement element, LayoutIdProjection? projection, float restored) =>
             projection is { Shared: true, Moving: true }
-                ? new LayoutIdLook(element.resolvedStyle.opacity, RotateOf(element, projection), RadiiOf(element, projection, new Length[4]), s_released)
-                : new LayoutIdLook(MotionOpacity.Own(element), RotateOf(element, projection), RadiiOf(element, projection, new Length[4]), element);
+                ? new LayoutIdLook(element.resolvedStyle.opacity, RotateOf(element, projection, restored), RadiiOf(element, projection, new Length[4]), s_released)
+                : new LayoutIdLook(MotionOpacity.Own(element), RotateOf(element, projection, restored), RadiiOf(element, projection, new Length[4]), element);
 
-        // The rotate and radii an element is drawn with: what its projection wrote, or else its own.
-        public static float RotateOf(VisualElement element, LayoutIdProjection? projection) =>
-            projection is { WritesRotate: true } ? projection.DrawnRotate : Unspun(element, element.style.rotate);
+        // The rotate and radii an element is drawn with: what its projection wrote, or else its own. The resolved style
+        // still shows what a projection that ended earlier in this render drew until a style pass has run, so what that
+        // projection handed back is read in its place, off the projection that took the record or else restored
+        // (Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate).
+        public static float RotateOf(VisualElement element, LayoutIdProjection? projection, float restored) =>
+            projection is { WritesRotate: true } ? projection.DrawnRotate : Unspun(element, element.style.rotate, projection?.RestoredRotate ?? restored);
 
         // The rotate the element is drawn at less a running spin's turn, which the spin adds to the element's own
         // (StyleAnimateDriver.WriteRotation) rather than being a rotate of the element's own.
-        private static float Unspun(VisualElement element, StyleRotate inline) =>
-            StyleAnimateDriver.TryReadSpinOwn(element, inline, out _, out var own) ? own : element.resolvedStyle.rotate.angle.ToDegrees();
+        private static float Unspun(VisualElement element, StyleRotate inline, float restored) =>
+            StyleAnimateDriver.TryReadSpinOwn(element, inline, out _, out var own) ? own
+            : float.IsNaN(restored) ? element.resolvedStyle.rotate.angle.ToDegrees() : restored;
 
         // Written into the four corners of into, which is returned. A pass that reads them again, as a member behind the
         // lead does each frame, hands an array it keeps, so that reading them allocates nothing
@@ -335,13 +342,17 @@ namespace Velvet
         // Given_ALeadWhoseTransformChangesLateInItsMove_When_TheMoveLands_Then_ItRunsOnAsTheEngineRunsIt). The translate
         // and scale that have landed MotionLayoutIdDriver has handed back already.
         // clock: the mount's, on which the tail steps.
-        public static void End(VisualElement element, LayoutIdProjection projection, MotionClock clock)
+        // Returns whether it handed them back at once.
+        public static bool End(VisualElement element, LayoutIdProjection projection, MotionClock clock)
         {
-            if (Landed(projection))
-            {
-                Hand(element, projection);
-                return;
-            }
+            var landed = Landed(projection);
+            if (landed) Hand(element, projection);
+            else RunOnPast(element, projection, clock);
+            return landed;
+        }
+
+        private static void RunOnPast(VisualElement element, LayoutIdProjection projection, MotionClock clock)
+        {
             // The tail writes the rotate and radii, and the translate and scale it still carries, so a translate or scale the
             // projection wrote that has landed transitions again
             // (Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsTranslateChanges_Then_TheTranslateTransitions).
