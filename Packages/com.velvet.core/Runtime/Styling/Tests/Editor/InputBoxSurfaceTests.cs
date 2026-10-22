@@ -32,9 +32,10 @@ namespace Velvet.Tests
             var table = (System.Collections.IDictionary)typeof(StyleUtilityProperties)
                 .GetField("ByClassName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
                 .GetValue(null);
-            var named = (string[])typeof(StyleAnimationClassUtils)
-                .GetField("s_clipping", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
-                .GetValue(null);
+            // Empty where the list is missing, which the bundled table's implying utilities never match.
+            var named = typeof(StyleAnimationClassUtils)
+                .GetField("s_clipping", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                ?.GetValue(null) as string[] ?? Array.Empty<string>();
 
             // Act
             var implying = new List<string>();

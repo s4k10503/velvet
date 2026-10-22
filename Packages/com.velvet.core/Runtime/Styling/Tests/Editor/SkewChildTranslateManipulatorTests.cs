@@ -231,6 +231,8 @@ namespace Velvet.Tests
             Assert.That(abs.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base already writes the child's own translate back on unskew.
+        // Writing `StyleKeyword.Null` for `seated.Own` in SeatedTranslate.Unseat reddens this case.
         [Test]
         public void Given_ChildWithExplicitTranslateXUnderCaster_When_CasterUnskewed_Then_ChildsOwnTranslateXSurvives()
         {

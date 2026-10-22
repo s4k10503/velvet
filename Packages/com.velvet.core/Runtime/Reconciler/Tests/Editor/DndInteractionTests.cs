@@ -160,12 +160,13 @@ namespace Velvet.Tests
             var item = Q("item");
             SendPointerDown(item, new Vector2(10, 10));
             SendPointerMove(item, new Vector2(20, 10));
+            var stoodDown = item.style.opacity.keyword == StyleKeyword.Null;
 
             // Act
             SendPointerUp(item, new Vector2(20, 10));
 
-            // Assert
-            Assert.That(item.style.opacity.value, Is.EqualTo(0.9f));
+            // Assert — NaN where the drag never stood the own opacity down, so it had nothing to give back.
+            Assert.That(stoodDown ? item.style.opacity.value : float.NaN, Is.EqualTo(0.9f));
         }
 
         [Test]
@@ -191,12 +192,14 @@ namespace Velvet.Tests
             var item = Q("item");
             SendPointerDown(item, new Vector2(10, 10));
             SendPointerMove(item, new Vector2(20, 10));
+            var bound = _mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(item);
 
             // Act
             SendPointerUp(item, new Vector2(20, 10));
 
-            // Assert
-            Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(item), Is.False);
+            // Assert — the paint the drag bound, gone once it ends.
+            Assert.That((bound, _mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(item)),
+                Is.EqualTo((true, false)));
         }
 
         // A skewed draggable whose dragging class brings in a background of its own.
@@ -251,12 +254,13 @@ namespace Velvet.Tests
             SendPointerDown(item, new Vector2(10, 10));
             SendPointerMove(item, new Vector2(20, 10));
             SendPointerMove(item, new Vector2(180, 30));
+            var tookIt = slot.style.backgroundColor.value == Color.red;
 
             // Act
             SendPointerUp(item, new Vector2(180, 30));
 
-            // Assert
-            Assert.That(slot.style.backgroundColor.value, Is.EqualTo(Color.blue));
+            // Assert — clear where the over class never took the background, so it had nothing to give back.
+            Assert.That(tookIt ? slot.style.backgroundColor.value : Color.clear, Is.EqualTo(Color.blue));
         }
 
         // A droppable that paints while a drag is active and while the item is over it, which flag unmounts.
@@ -531,12 +535,13 @@ namespace Velvet.Tests
             var slot = Q("slot");
             SendPointerDown(item, new Vector2(10, 10));
             SendPointerMove(item, new Vector2(20, 10));
+            var stoodDown = slot.style.width.keyword == StyleKeyword.Null;
 
             // Act
             SendPointerUp(item, new Vector2(20, 10));
 
-            // Assert
-            Assert.That(slot.style.width.value.value, Is.EqualTo(100f));
+            // Assert — NaN where the drag never stood the own width down, so it had nothing to give back.
+            Assert.That(stoodDown ? slot.style.width.value.value : float.NaN, Is.EqualTo(100f));
         }
 
         [Test]
@@ -549,12 +554,13 @@ namespace Velvet.Tests
             SendPointerDown(item, new Vector2(10, 10));
             SendPointerMove(item, new Vector2(20, 10));
             SendPointerMove(item, new Vector2(180, 30));
+            var tookIt = slot.style.backgroundColor.value == Color.red;
 
             // Act
             SendPointerMove(item, new Vector2(20, 200));
 
-            // Assert
-            Assert.That(slot.style.backgroundColor.value, Is.EqualTo(Color.blue));
+            // Assert — clear where the over class never took the background, so it had nothing to give back.
+            Assert.That(tookIt ? slot.style.backgroundColor.value : Color.clear, Is.EqualTo(Color.blue));
         }
 
         // GREEN_ON_BASE(characterization): a declared 4 px distance, the constraint the base applied by default.

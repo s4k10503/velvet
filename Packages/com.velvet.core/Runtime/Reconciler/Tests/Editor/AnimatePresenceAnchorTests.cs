@@ -145,11 +145,22 @@ namespace Velvet.Tests
         private static VNode SpringCoordinatorRender() => V.Motion(name: "spring-coordinator",
             variants: s_springCoordinator, animate: "visible", exit: "hidden", children: new[] { InheritingMotion(0) });
 
-        // The spring coordinator under an important opacity of its own, which keeps the exit's only channel out of
-        // the play, so the play lands at once; above an inheriting child slow enough to still be exiting.
+        // The spring coordinator's exit on a 1 s duration, which a BeforeChildren span counting the channels it
+        // names rather than the ones that play holds the children for.
+        private static readonly Dictionary<string, MotionVariant> s_slowSpringCoordinator = new()
+        {
+            ["visible"] = "opacity-100",
+            ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, DurationSec = 1f, When = TransitionWhen.BeforeChildren,
+            }),
+        };
+
+        // The slow spring coordinator under an important opacity of its own, which keeps the exit's only channel out
+        // of the play, so the play lands at once; above an inheriting child slow enough to still be exiting.
         [Component]
         private static VNode ImportantSpringCoordinatorRender() => V.Motion(name: "important-coordinator",
-            className: "!opacity-[1]", variants: s_springCoordinator, animate: "visible", exit: "hidden",
+            className: "!opacity-[1]", variants: s_slowSpringCoordinator, animate: "visible", exit: "hidden",
             children: new[]
             {
                 V.Motion(name: "slow-child", variants: s_fade, transition: new StyleTransitionConfig { DurationSec = 2f }),
@@ -602,7 +613,7 @@ namespace Velvet.Tests
             using var mounted = MountSettled("coordinator-spring-important", "a");
             using var keys = s_keyStore;
 
-            // Act — well short of the 1.05 s the spring would take were it to play.
+            // Act — 0.32 s, well short of the 1 s the spring would take were it to play.
             keys.Set(string.Empty);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             Frames(20);

@@ -481,6 +481,8 @@ namespace Velvet.Tests
                 + "a case here and the reading belongs in this list; one leaving it takes its line with it");
         }
 
+        // GREEN_ON_BASE(refactor): only the constructor call changed, to fill a parameter MotionSlotContext gained.
+        // Writing `cls` for `"!" + cls` in MotionSlotContext.RestingClasses reddens this case.
         [Test]
         [ReaderVerdict(MotionRestingReader)]
         public void Given_AnImportantRestingOpacityBesidePlainWidths_When_TheirClassOrderIsReversed_Then_BothPlansRetainTheImportantOpacity()
@@ -508,6 +510,8 @@ namespace Velvet.Tests
                 Is.EqualTo(((float?)320f, (float?)320f, (float?)0.5f, (float?)0.5f)));
         }
 
+        // GREEN_ON_BASE(refactor): only the constructor call changed, to fill a parameter MotionSlotContext gained.
+        // A `break` after the first class MotionSlotContext.HoldsRestingVariant's loop reads reddens this case.
         [Test]
         [ReaderVerdict(MotionRestingVariantReader)]
         public void Given_AFocusScaleClassBesideAPlainClass_When_TheirClassOrderIsReversed_Then_BothHoldTheScaleSlot()

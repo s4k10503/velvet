@@ -56,9 +56,10 @@ namespace Velvet.Tests
             // Arrange / Act
             var (skewed, twin) = MountPartWay();
 
-            // Assert
-            Assert.That(_mounted.Root.Reconciler.Context.SkewBindings[skewed].BgColor.r,
-                Is.EqualTo(PartWay(twin)).Within(1e-3f));
+            // Assert — -1 where no skew binding was built, which neither a channel nor PartWay's NaN equals.
+            Assert.That(_mounted.Root.Reconciler.Context.SkewBindings.TryGetValue(skewed, out var binding)
+                ? binding.BgColor.r
+                : -1f, Is.EqualTo(PartWay(twin)).Within(1e-3f));
         }
 
         [Test]
