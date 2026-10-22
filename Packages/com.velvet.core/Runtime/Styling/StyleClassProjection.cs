@@ -128,6 +128,7 @@ namespace Velvet
             private Dictionary<ArbitraryProperty, long>? _floors;
             private Dictionary<string, bool>? _verdict;
             private int _deadCount;
+            private TransformPart _claimedParts;
 
             public Model(ILayerHost host) => _host = host;
 
@@ -194,6 +195,7 @@ namespace Velvet
                 }
                 _floors?.Clear();
                 _deadCount = 0;
+                _claimedParts = TransformPart.None;
 
                 var cutoff = long.MaxValue;
                 while (TryNextBand(cutoff, out var priority))
@@ -259,8 +261,11 @@ namespace Velvet
                 {
                     var layer = inline[i];
                     var properties = StyleArbitraryLonghands.Of(layer.Property);
+                    var parts = TransformParts.Of(layer.Property);
                     if (layer.Priority != priority || properties.IsEmpty
-                        || !IsSubset(properties, _claimed[(int)StyleUtilityGate.None]))
+                        || (parts.Supplies == TransformPart.None
+                            ? !IsSubset(properties, _claimed[(int)StyleUtilityGate.None])
+                            : !parts.FallsUnder(_claimedParts)))
                     {
                         continue;
                     }
@@ -277,19 +282,24 @@ namespace Velvet
             // than only its survivors gives the same set for less work.
             private void ClaimBand(long priority)
             {
+                var none = (int)StyleUtilityGate.None;
                 foreach (var entry in _entries)
                 {
                     if (entry.Priority == priority)
                     {
                         _claimed[entry.Gate] = _claimed[entry.Gate].Union(entry.Properties);
+                        if (entry.Gate == none)
+                        {
+                            _claimedParts |= TransformParts.OfClass(entry.Properties);
+                        }
                     }
                 }
-                var none = (int)StyleUtilityGate.None;
                 foreach (var layer in Inline)
                 {
                     if (layer.Priority == priority)
                     {
                         _claimed[none] = _claimed[none].Union(StyleArbitraryLonghands.Of(layer.Property));
+                        _claimedParts |= TransformParts.Of(layer.Property).Writes;
                     }
                 }
             }
@@ -481,6 +491,67 @@ namespace Velvet
             public ArbitraryProperty Property { get; }
 
             public long Priority { get; }
+        }
+
+        // Tailwind composes translate and scale from per-axis variables written beside one declaration, so a layer
+        // of either falls to what takes the variables it supplies rather than to whatever writes the longhand the
+        // axes share: hover:translate-x-2 leaves translate-8's y. scale-[…] is the exception, declaring scale itself
+        // with no variable, so it falls to any scale declaration above it and overrides the axes below it.
+        [System.Flags]
+        private enum TransformPart
+        {
+            None = 0,
+            TranslateX = 1,
+            TranslateY = 2,
+            ScaleX = 4,
+            ScaleY = 8,
+            ScaleDeclared = 16,
+            ScaleBracket = 32,
+        }
+
+        private readonly struct TransformParts
+        {
+            private TransformParts(TransformPart supplies, TransformPart overriddenBy, TransformPart writes)
+            {
+                Supplies = supplies;
+                OverriddenBy = overriddenBy;
+                Writes = writes;
+            }
+
+            // None for a property outside both families, which is judged by its longhands.
+            public TransformPart Supplies { get; }
+
+            public TransformPart OverriddenBy { get; }
+
+            public TransformPart Writes { get; }
+
+            public bool FallsUnder(TransformPart claimed)
+                => (Supplies & ~claimed) == TransformPart.None || (OverriddenBy & claimed) != TransformPart.None;
+
+            public static TransformParts Of(ArbitraryProperty property) => property switch
+            {
+                ArbitraryProperty.TranslateX => Axis(TransformPart.TranslateX),
+                ArbitraryProperty.TranslateY => Axis(TransformPart.TranslateY),
+                ArbitraryProperty.Translate => Axis(TransformPart.TranslateX | TransformPart.TranslateY),
+                ArbitraryProperty.ScaleX => new TransformParts(TransformPart.ScaleX, TransformPart.ScaleBracket,
+                    TransformPart.ScaleX | TransformPart.ScaleDeclared),
+                ArbitraryProperty.ScaleY => new TransformParts(TransformPart.ScaleY, TransformPart.ScaleBracket,
+                    TransformPart.ScaleY | TransformPart.ScaleDeclared),
+                ArbitraryProperty.Scale => new TransformParts(TransformPart.ScaleBracket, TransformPart.ScaleDeclared,
+                    TransformPart.ScaleBracket | TransformPart.ScaleDeclared),
+                _ => default,
+            };
+
+            // A bundled class writing either longhand writes every variable of it, as a uniform scale-<n> does.
+            public static TransformPart OfClass(StyleLonghandSet properties)
+                => (properties.Contains(StyleLonghand.Translate)
+                        ? TransformPart.TranslateX | TransformPart.TranslateY
+                        : TransformPart.None)
+                    | (properties.Contains(StyleLonghand.Scale)
+                        ? TransformPart.ScaleX | TransformPart.ScaleY | TransformPart.ScaleDeclared
+                        : TransformPart.None);
+
+            private static TransformParts Axis(TransformPart parts) => new(parts, TransformPart.None, parts);
         }
     }
 }

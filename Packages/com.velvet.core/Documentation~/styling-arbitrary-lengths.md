@@ -113,8 +113,8 @@ Tailwind composes four more families through one declaration each: `translate-*`
 `scale` alone); `skew-x-*` and `skew-y-*`; and the filters, `blur-*` to `sepia-*`, `hue-rotate-*` and
 `drop-shadow-*`. Each utility writes custom properties of the element, and whenever the value holding one of them
 is one the browser rejects, the family's declaration is dropped and the family draws nothing:
-`translate-x-4 translate-y-[10]` translates nowhere, `blur-sm brightness-[abc]` filters nothing, and
-`drop-shadow-lg blur-[2]` loses its drop shadow. Velvet answers which value holds as it does for any value of the
+`translate-x-4 translate-y-[10]` translates nowhere, and `blur-sm brightness-[abc]`, `drop-shadow-lg blur-[2]` and
+`blur-sm drop-shadow-[foo]` filter nothing. Velvet answers which value holds as it does for any value of the
 property, in the state the element is in: an important one first
 (`!translate-y-[10] hover:translate-y-2 translate-x-4` translates nowhere, hovered or not), then the one whose
 variants rank higher, by the selector they add and then by the order Tailwind registers them, with every
@@ -128,8 +128,12 @@ utility writing both axes (`translate-4`, `translate-[10px]`, `translate-full`, 
 and their negations) holds each axis as an axis utility does, and an axis utility of the same rank holds over it,
 Tailwind emitting it later: `translate-x-4 translate-[10]` translates nowhere, its y holding the rejected value. A
 uniform `scale-<n>` writes both scale axes the same way and ranks against `scale-x-*` and `scale-y-*` by its
-variants: `scale-50 hover:scale-x-[2]` keeps its y at 0.5 while hovered. A `rotate-[…]` and a `scale-[…]` the
-browser rejects take nothing with them.
+variants: `scale-50 hover:scale-x-[2]` keeps its y at 0.5 while hovered. A variant's value of one axis leaves the
+other axis to the value holding it: `translate-8 hover:translate-x-2` translates by 8 and 32 while hovered. A
+`scale-[…]` declares `scale` itself rather than either axis, so where its rank is at or above every axis utility's
+it is drawn alone, whatever the axes hold (`scale-x-[2px] scale-[1.5]` scales by 1.5, Tailwind emitting
+`scale-[1.5]` later), and below one it supplies neither axis (`scale-[1.5] hover:scale-x-[2]` scales by 2 and 1
+while hovered). A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with them.
 
 ## Lengths only an element can measure
 

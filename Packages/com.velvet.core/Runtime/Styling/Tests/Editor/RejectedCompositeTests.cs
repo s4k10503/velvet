@@ -46,6 +46,12 @@ namespace Velvet.Tests
                     StyleArbitraryValueResolver.Apply(element, in style, key);
                 }
             }
+            return Drawn(element);
+        }
+
+        // The translate, scale and filter count the element's inline style holds.
+        private static string Drawn(VisualElement element)
+        {
             var translate = element.style.translate;
             var scale = element.style.scale;
             return string.Join(" ",
@@ -68,6 +74,7 @@ namespace Velvet.Tests
         [TestCase("scale-x-[2] scale-y-[2px]", "- none 0")]
         [TestCase("blur-sm brightness-[abc]", "- - 0")]
         [TestCase("drop-shadow-lg hover:blur-[2]", "- - 0")]
+        [TestCase("blur-sm drop-shadow-[foo]", "- - 0")]
         public void Given_LayersWhereARejectedValueHoldsItsProperty_When_Composed_Then_TheFamilyDrawsNothing(
             string classes, string expected)
         {
@@ -109,6 +116,42 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(composed, Is.EqualTo(expected));
+        }
+
+        [TestCase("scale-x-[2px] scale-[1.5]", "- 1.5,1.5 0")]
+        [TestCase("scale-x-[2px] hover:scale-[1.5]", "- 1.5,1.5 0")]
+        [TestCase("scale-[1.5] hover:scale-x-[2]", "- 2,1 0")]
+        public void Given_AScaleBracketAndAnAxisLayer_When_Composed_Then_TheScaleDeclarationTailwindEmitsLastDecides(
+            string classes, string expected)
+        {
+            // Act
+            var composed = Composed(classes);
+
+            // Assert
+            Assert.That(composed, Is.EqualTo(expected));
+        }
+
+        // hover:bg-red-500 is a class payload, which builds the class projection the hover layers are judged in.
+        [TestCase("translate-8 hover:translate-x-2 hover:bg-red-500", "8,32 - 0")]
+        [TestCase("translate-x-[10] hover:translate-y-2 hover:bg-red-500", "none - 0")]
+        [TestCase("scale-x-[2px] hover:scale-y-[2] hover:bg-red-500", "- none 0")]
+        [TestCase("scale-x-[2px] hover:scale-[1.5] hover:bg-red-500", "- 1.5,1.5 0")]
+        public void Given_AHoverLayerOfOneAxisBesideABaseLayerOfTheOther_When_Hovered_Then_TheBaseLayerKeepsItsAxis(
+            string classes, string expected)
+        {
+            // Arrange
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "box", className: classes));
+            var box = root.Q("box");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                box.SimulateEvent(over);
+            }
+
+            // Assert
+            Assert.That(Drawn(box), Is.EqualTo(expected));
         }
 
         [Test]

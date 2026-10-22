@@ -395,7 +395,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   the one the stylesheet declares later holds it, wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
   other three toward `p-8`, and `opacity-50 opacity-20` animates toward `opacity-50`. A slot held by a
   class no number is read from (`rounded-tl-full` beside `rounded-3xl`, `scale-x-[.5]` beside
-  `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. Per-axis scale
+  `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. A target whose translate holds
+  a value the browser rejects (`translate-x-[10]`) lands both translate axes with the swap, the element drawing no
+  translation ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#a-rejected-value)). Per-axis scale
   composition remains undriven beside an important uniform inline scale declaration.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through

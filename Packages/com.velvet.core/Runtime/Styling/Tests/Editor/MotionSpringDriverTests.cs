@@ -250,6 +250,32 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnAxisTranslateWrittenBeforeABothAxisOne_When_Resolved_Then_TheAxisTargetIsTheAxisValue()
+        {
+            // Arrange — Tailwind emits translate-x-4 after translate-8, so it holds x however the two are written.
+            var to = new[] { "translate-x-4", "translate-8" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "translate-0" }, to);
+
+            // Assert — NaN where y is not planned to the both-axis value.
+            Assert.That(plan.TranslateY?.to == 32f ? plan.TranslateX?.to ?? float.NaN : float.NaN, Is.EqualTo(16f));
+        }
+
+        [TestCase("translate-x-4", "translate-y-4 translate-x-[10]")]
+        [TestCase("scale-50", "scale-y-50 scale-x-[2px]")]
+        public void Given_ATargetWhereARejectedValueHoldsOneAxis_When_Resolved_Then_NoTranslateOrScaleChannelIsPlanned(
+            string from, string to)
+        {
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from.Split(' '), to.Split(' '));
+
+            // Assert
+            Assert.That($"{plan.TranslateX.HasValue} {plan.TranslateY.HasValue} {plan.Scale.HasValue}",
+                Is.EqualTo("False False False"));
+        }
+
+        [Test]
         public void Given_ASpringChannelMidExit_When_Retargeted_Then_ItHeadsBackTowardTheValueItStartedFrom()
         {
             // Arrange — an exit-shaped channel: starts at the resting value (1, opaque) and heads to the exit

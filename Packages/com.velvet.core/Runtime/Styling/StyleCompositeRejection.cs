@@ -30,6 +30,7 @@ namespace Velvet
             ("invert-", ArbitraryProperty.FilterInvert, "invert", false),
             ("saturate-", ArbitraryProperty.FilterSaturate, "saturate", false),
             ("sepia-", ArbitraryProperty.FilterSepia, "sepia", false),
+            ("drop-shadow-", ArbitraryProperty.FilterDropShadow, "drop-shadow", false),
         };
 
         // Whether core, a utility without variants or important modifier, writes a bracket the browser rejects
@@ -92,11 +93,40 @@ namespace Velvet
                 "scale" => IsNumber(value) || IsPercentage(value),
                 "angle" or "hue-rotate" => IsZero(value) || IsDimension(value, s_angleUnits),
                 "blur" => !value.StartsWith("-", StringComparison.Ordinal) && (IsZero(value) || IsLength(value)),
-                // A drop shadow is read by its own grammar, which this does not repeat.
-                "drop-shadow" => true,
+                // A colour is the drop-shadow-color utility rather than a shadow (Tailwind's inferDataType).
+                "drop-shadow" => TailwindDataTypes.IsColor(value.AsSpan()) || IsDropShadowList(value),
                 _ => !value.StartsWith("-", StringComparison.Ordinal) && (IsNumber(value) || IsPercentage(value)),
             };
         }
+
+        // Whether the browser takes value inside drop-shadow(), one shadow per comma: two or three lengths in a run, the
+        // third not negative, and at most one colour before or after them.
+        private static bool IsDropShadowList(string value)
+        {
+            foreach (var shadow in value.Split(','))
+            {
+                var tokens = shadow.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                var colourFirst = tokens.Length > 0 && !IsShadowLength(tokens[0]);
+                var start = colourFirst ? 1 : 0;
+                var end = start;
+                while (end < tokens.Length && IsShadowLength(tokens[end]))
+                {
+                    end++;
+                }
+                var lengths = end - start;
+                var trailing = tokens.Length - end;
+                if (lengths is < 2 or > 3 || trailing + (colourFirst ? 1 : 0) > 1
+                    || (lengths == 3 && tokens[start + 2].StartsWith("-", StringComparison.Ordinal))
+                    || (colourFirst && !TailwindDataTypes.IsColor(tokens[0].AsSpan()))
+                    || (trailing == 1 && !TailwindDataTypes.IsColor(tokens[end].AsSpan())))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool IsShadowLength(string token) => IsZero(token) || IsLength(token);
 
         // Whether the browser takes value as a <length-percentage>, a function taken as Accepts takes one.
         internal static bool TakesLengthPercentage(string value)

@@ -18,4 +18,9 @@
   drop shadow. Which value holds is decided as for any value, by importance, then variant rank, then Tailwind's
   order, so `blur-[2] blur-md` still blurs, `translate-x-4 hover:translate-y-[10]` stops translating only while
   hovered, and `translate-x-4 hover:translate-y-[10] focus:translate-y-2` translates while hovered and focused.
-  `blur-[-2px]` is such a value too.
+  `blur-[-2px]` is such a value too, as is a `drop-shadow-[…]` that is no shadow and no colour
+  (`blur-sm drop-shadow-[foo]` no longer blurs).
+- A `scale-[…]` at or above the rank of the `scale-x-*` and `scale-y-*` on an element is now drawn alone, as the
+  `scale` it declares replaces theirs: `scale-[1.4] scale-x-[.5]` scales by 1.4, where it used to scale x by 0.5.
+  Below an axis utility it no longer stands in for the other axis: `scale-[1.5] hover:scale-x-[2]` scales y by 1
+  while hovered, where it used to keep 1.5.

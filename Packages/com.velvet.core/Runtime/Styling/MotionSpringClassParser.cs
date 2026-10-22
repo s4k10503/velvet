@@ -323,6 +323,9 @@ namespace Velvet
             };
 
             public bool HeldUnread(ArbitraryProperty axis) => (UnreadAxes & (1 << s_slotIndex[(int)axis])) != 0;
+
+            // A rejected value holding either translate axis, which leaves the element no translation at all.
+            public bool RejectedTranslate { get; init; }
         }
 
         // Translate x/y are independent springs but always compose onto ONE inline `translate` (UI Toolkit has
@@ -333,6 +336,13 @@ namespace Velvet
         private static void PairTranslate(in SideScan from, in SideScan to,
             float restingTranslateX, float restingTranslateY, MotionSlotContext? context, ref SpringPlan plan)
         {
+            // The resolver draws no translation where the to-side holds a rejected value on either axis, so neither
+            // axis gets a channel and the swap lands at once. A rejected scale-x-/scale-y- needs no such rule: it
+            // holds the one scale channel unread.
+            if (to.RejectedTranslate)
+            {
+                return;
+            }
             var x = PairAxis(in from, in to, ArbitraryProperty.TranslateX, 0f, context);
             var y = PairAxis(in from, in to, ArbitraryProperty.TranslateY, 0f, context);
             if (x == null && y == null)
@@ -416,6 +426,7 @@ namespace Velvet
             public long Precedence;
             public bool Readable;
             public bool Swapped;
+            public bool Rejected;
             public ArbitraryStyle Value;
         }
 
@@ -524,6 +535,8 @@ namespace Velvet
                     (properties ??= new Dictionary<ArbitraryProperty, ArbitraryStyle>())[s_slots[i]] = claims[i].Value;
                 }
             }
+            var rejectedTranslate = (claims[s_slotIndex[(int)ArbitraryProperty.TranslateX]].Rejected
+                || claims[s_slotIndex[(int)ArbitraryProperty.TranslateY]].Rejected);
             var unreadAxes = 0;
             // MUTANT_SURVIVES(equivalent, boundary): <= adds only bit 5, while HeldUnread reads axis bits 0..4.
             // The nonempty drivable map has a minimal property after those axes, so claims[5] exists.
@@ -545,6 +558,7 @@ namespace Velvet
                 SwappedAxes = swappedAxes,
                 SwappedProperties = swappedProperties,
                 UnreadAxes = unreadAxes,
+                RejectedTranslate = rejectedTranslate,
             };
         }
 
@@ -635,7 +649,10 @@ namespace Velvet
                 {
                     continue;
                 }
-                claims[i] = new SlotClaim { Claimed = true, Precedence = token.Precedence, Swapped = swapped };
+                claims[i] = new SlotClaim
+                {
+                    Claimed = true, Precedence = token.Precedence, Swapped = swapped, Rejected = token.Rejected,
+                };
                 // MUTANT_SURVIVES(equivalent, clause removed): deleting the slot comparison changes no admitted write.
                 // Axis-readable opacity/scale/rotate tokens write one axis; per-axis translates set TranslateAxis.
                 if ((hasAxisValue && slot == AxisSlot(readAxis)) || bothTranslateAxes)
@@ -661,6 +678,7 @@ namespace Velvet
             public ArbitraryProperty? TranslateAxis { get; init; }
             public bool Important { get; init; }
             public bool Inline { get; init; }
+            public bool Rejected { get; init; }
         }
 
         // Two inline spacing utilities tie as the resolver orders them, shorthand before longhand, whichever is
@@ -683,6 +701,7 @@ namespace Velvet
                         ? inline.Property : null,
                     Important = important,
                     Inline = true,
+                    Rejected = inline.Rejected,
                 };
                 return true;
             }

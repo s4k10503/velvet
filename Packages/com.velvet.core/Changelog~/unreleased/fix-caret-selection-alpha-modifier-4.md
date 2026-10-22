@@ -10,3 +10,7 @@
 
 - A uniform `scale-<n>` keeps the axis a `scale-x-*` or `scale-y-*` variant above it leaves, where a class
   variant on the same element used to drop it to 1.
+- A variant's translate or scale of one axis no longer drops the other axis's value once a class variant on the
+  element is active: `translate-8 hover:translate-x-2 hover:bg-red-500` keeps its y at 32 while hovered.
+- A `V.Motion` pose whose translate holds a value the browser rejects (`translate-x-[10]`) plans no translate
+  channel, so the swap lands at once rather than springing one axis and then dropping the translation.

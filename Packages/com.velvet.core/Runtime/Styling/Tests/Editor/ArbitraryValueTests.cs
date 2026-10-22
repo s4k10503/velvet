@@ -2219,22 +2219,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_UniformScaleThenScaleX_When_Applied_Then_PerAxisWinsAndUniformIsTheYFallback()
+        public void Given_UniformScaleThenScaleXAtOneRank_When_Applied_Then_TheUniformScaleHoldsTheXAxis()
         {
-            // Arrange — scale-[1.4] sets both axes to the uniform factor.
+            // Arrange — scale-[1.4] declares scale itself, and Tailwind emits it after scale-x-[.5], so at one rank
+            // its declaration replaces the axis utility's whichever is applied last.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("scale-[1.4]", out var uniform);
             StyleArbitraryValueResolver.TryParse("scale-x-[0.5]", out var sx);
             StyleArbitraryValueResolver.Apply(el, in uniform);
-            Assume.That((el.style.scale.value.value.x, el.style.scale.value.value.y), Is.EqualTo((1.4f, 1.4f)),
-                "Precondition: the uniform scale set both axes");
 
-            // Act — a per-axis scale-x-[.5] is applied over the uniform layer.
+            // Act
             StyleArbitraryValueResolver.Apply(el, in sx);
 
-            // Assert — x takes the per-axis value, y falls back to the uniform scale (merge, not last-write-wins).
-            Assert.That((el.style.scale.value.value.x, el.style.scale.value.value.y),
-                Is.EqualTo((0.5f, 1.4f)));
+            // Assert
+            Assert.That(el.style.scale.value.value.x, Is.EqualTo(1.4f).Within(1e-4f));
         }
 
         [Test]

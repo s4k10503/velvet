@@ -2841,12 +2841,20 @@ namespace Velvet
 
         private static void ApplyCombinedScale(VisualElement element, LayerMap map)
         {
-            var hasX = TryWinningLayer(map, ArbitraryProperty.ScaleX, out var xw);
-            var hasY = TryWinningLayer(map, ArbitraryProperty.ScaleY, out var yw);
-            var hasUniform = TryWinningLayer(map, ArbitraryProperty.Scale, out var uw);
+            var hasX = TryWinningKey(map, ArbitraryProperty.ScaleX, out var xw, out var xKey);
+            var hasY = TryWinningKey(map, ArbitraryProperty.ScaleY, out var yw, out var yKey);
+            var hasUniform = TryWinningKey(map, ArbitraryProperty.Scale, out var uw, out var uniformKey);
             if (!hasX && !hasY && !hasUniform)
             {
                 element.style.scale = StyleKeyword.Null;
+                return;
+            }
+            // scale-[…] declares scale itself rather than the axis variables, and Tailwind emits it after an axis
+            // utility of the same rank, so at or above every axis layer it is drawn alone; below one, the axis
+            // utility's declaration replaces it and it supplies neither axis.
+            if (hasUniform && (!hasX || uniformKey >= xKey) && (!hasY || uniformKey >= yKey))
+            {
+                element.style.scale = new Scale(new Vector2(uw.Value, uw.Value));
                 return;
             }
             // As for translate, over the scale declaration the axes share; a uniform scale-<n> writes that same
@@ -2856,7 +2864,7 @@ namespace Velvet
                 element.style.scale = new StyleScale(StyleKeyword.None);
                 return;
             }
-            var uniform = hasUniform ? uw.Value : UniformScaleFromClasses(element);
+            var uniform = UniformScaleFromClasses(element);
             var x = hasX ? xw.Value : uniform;
             var y = hasY ? yw.Value : uniform;
             element.style.scale = new Scale(new Vector2(x, y));
@@ -3003,13 +3011,16 @@ namespace Velvet
         {
             foreach (var prop in s_filterOrder)
             {
-                if (map.TryGetValue(prop, out var layers) && layers.Count > 0 && layers.Values[layers.Count - 1].Rejected)
+                if (HoldsRejected(map, prop))
                 {
                     return true;
                 }
             }
-            return false;
+            return HoldsRejected(map, ArbitraryProperty.FilterDropShadow);
         }
+
+        private static bool HoldsRejected(LayerMap map, ArbitraryProperty property)
+            => map.TryGetValue(property, out var layers) && layers.Count > 0 && layers.Values[layers.Count - 1].Rejected;
 
         private static List<FilterFunction>? ComposeFilter(VisualElement element, LayerMap map, out bool dropped)
         {
