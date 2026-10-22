@@ -146,6 +146,7 @@ namespace Velvet.Tests
         private static StrStore s_store;
         private static string s_selectorRead;
         private static string s_lastRendered;
+        private static ComponentFiber s_readerFiber;
 
         [SetUp]
         public void SetUp()
@@ -154,13 +155,15 @@ namespace Velvet.Tests
             s_store = null;
             s_selectorRead = null;
             s_lastRendered = null;
+            s_readerFiber = null;
         }
 
         // Selects the length, which every "vN" snapshot shares, so a store change asks this reader for no render and
         // only the renders a case schedules read the store; the selector records the snapshot each of them read.
-        [Component]
+        [Component(Compiler = false)]
         private static VNode Reader()
         {
+            s_readerFiber = FiberAmbientStack.Current;
             var length = Hooks.UseStore(s_store, s =>
             {
                 s_selectorRead = s;
@@ -182,7 +185,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
             mounted.FlushEffectsForTest();
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
-            var readerFiber = mounted.Root.Child;
+            var readerFiber = s_readerFiber;
             Assume.That(s_lastRendered, Is.EqualTo("v0"), "Precondition: mounted at v0");
 
             // Establish a pin: an immediate drain renders the reader, which pins the now-current snapshot (v1).
