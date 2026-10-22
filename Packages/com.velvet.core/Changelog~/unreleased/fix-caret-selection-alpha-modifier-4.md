@@ -17,5 +17,6 @@
 - A `V.Motion` swap adding a `translate-<n>` beside a resting `translate-x-*` or `translate-y-*` leaves that axis
   where the element draws it, important or not, instead of springing it to the both-axis value and snapping back;
   beside an important one the other axis now animates where it used to land.
-- A `V.Motion` swap no longer animates a translate or scale slot that a resting class or value in force under a
-  variant holds (`focus:scale-50`, `focus:translate-8`); the element keeps drawing that value, so the slot lands.
+- A `V.Motion` swap no longer animates a slot that a resting class or value in force under a variant holds
+  (`focus:scale-50`, `focus:translate-8`, `focus:opacity-50`, `focus:bg-red-500`); the element keeps drawing that
+  value, so the slot lands.

@@ -289,6 +289,34 @@ namespace Velvet.Tests
             Assert.That(plan.TranslateX.HasValue ? plan.TranslateX.Value.to : -1f, Is.EqualTo(-1f));
         }
 
+        // Each focus holder outranks the swap's plain tokens, so the element keeps drawing it: a class the projection
+        // holds at the focus rank, or an inline layer.
+        [TestCase("opacity-50", "opacity-0", "opacity-100")]
+        [TestCase("bg-red-500", "bg-[#000000]", "bg-[#ffffff]")]
+        [TestCase("w-[60px]", "w-[40px]", "w-[100px]")]
+        public void Given_AFocusHolderInForceBesideASwappedPlainToken_When_Resolved_Then_ItsSlotPlansNoChannel(
+            string resting, string from, string to)
+        {
+            // Arrange
+            var element = MountInFixedParent();
+            if (StyleArbitraryValueResolver.IsInlineResolved(resting))
+            {
+                StyleArbitraryValueResolver.ApplyClassToken(element, resting, StyleLayerPriority.Focus);
+            }
+            else
+            {
+                StyleClassProjection.Add(element, resting, StyleLayerPriority.Focus);
+            }
+            var context = MotionSlotContext.Read(element, new[] { from }, new[] { to }, _ => false);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { from }, new[] { to }, 0f, 0f, context);
+
+            // Assert
+            Assert.That($"{plan.Opacity.HasValue} {plan.Colors?.Count ?? 0} {plan.Lengths?.Count ?? 0}",
+                Is.EqualTo("False 0 0"));
+        }
+
         [Test]
         public void Given_ANullLeavingClassArray_When_AWidthTargetIsResolved_Then_ItStartsFromTheCurrentWidth()
         {

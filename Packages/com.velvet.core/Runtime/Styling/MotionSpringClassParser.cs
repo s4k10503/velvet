@@ -608,8 +608,8 @@ namespace Velvet
         // same importance, as the resolver's TryWinningAxis gives the axis a tie; it still yields to an important one.
         private const long RestingAxisTranslateRank = InlineRank + (1L << 30);
 
-        // A resting holder under a variant outranks every plain token of the swap, which sit in the scale band or the
-        // inline band by slot, and yields to an important one.
+        // A resting holder under a variant outranks every plain token of the swap, which sit in the scale band or
+        // below the inline band's spacing and place offsets by slot, and yields to an important one.
         private static long RestingVariantRank(ArbitraryProperty slot)
             => (slot == ArbitraryProperty.Scale ? AxisScaleRank : InlineRank) + (1L << 31);
 

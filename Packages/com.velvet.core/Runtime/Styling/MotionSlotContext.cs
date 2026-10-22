@@ -117,15 +117,10 @@ namespace Velvet
         public bool HasImportantInlineOutsideSwap(ArbitraryProperty slot)
             => StyleArbitraryValueResolver.HasImportantInlineOutside(_element, slot, _importantInlineBySwap);
 
-        // A swap's tokens carry no variant, so a translate or scale holder in force under one outranks them: the
-        // element draws it whatever the swap writes, as it does a resting hover:scale-x-* that composes the scale.
+        // A swap's tokens carry no variant, so a holder in force under one outranks them: the element draws it
+        // whatever the swap writes, as it does a resting hover:scale-x-* that composes the scale.
         public bool HoldsRestingVariant(ArbitraryProperty slot)
         {
-            if (slot != ArbitraryProperty.Scale && slot != ArbitraryProperty.TranslateX
-                && slot != ArbitraryProperty.TranslateY)
-            {
-                return false;
-            }
             if (_drivenByRunningPlay(slot))
             {
                 return false;
