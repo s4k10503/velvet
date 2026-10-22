@@ -172,10 +172,11 @@ namespace Velvet.Tests
             return new Vector2(Mathf.Round(stage.resolvedStyle.width), Mathf.Round(stage.resolvedStyle.height));
         }
 
-        // (0, 0) when the canvas shows no texture.
+        // (0, 0) when the canvas shows no texture. Read from resolvedStyle: the inline style getter hands back
+        // no render texture, so reading it reports none whatever the canvas shows.
         private (int Width, int Height) ShownTextureSize()
         {
-            var texture = Field<VisualElement>("_canvas")?.style.backgroundImage.value.renderTexture;
+            var texture = Field<VisualElement>("_canvas")?.resolvedStyle.backgroundImage.renderTexture;
             return texture == null ? (0, 0) : (texture.width, texture.height);
         }
 

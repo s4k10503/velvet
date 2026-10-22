@@ -730,7 +730,8 @@ namespace Velvet.Editor.Preview
             var texture = _panel.Texture;
             // Each texel drawn whole, so the canvas shows the panel's own pixels at any zoom and offset.
             texture.filterMode = FilterMode.Point;
-            if (_canvas.style.backgroundImage.value.renderTexture != texture)
+            // resolvedStyle: the inline style getter hands back no render texture.
+            if (_canvas.resolvedStyle.backgroundImage.renderTexture != texture)
             {
                 _canvas.style.backgroundImage = Background.FromRenderTexture(texture);
             }

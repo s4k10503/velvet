@@ -206,7 +206,8 @@ namespace Velvet.Tests
         // Empty when the canvas shows no texture.
         private Color32[] ReadShown()
         {
-            var texture = Field<VisualElement>("_canvas")?.style.backgroundImage.value.renderTexture;
+            // resolvedStyle, as ShownTextureSize in PreviewPanelScaleWindowTests reads it.
+            var texture = Field<VisualElement>("_canvas")?.resolvedStyle.backgroundImage.renderTexture;
             return texture == null
                 ? Array.Empty<Color32>()
                 : RenderTexturePixelReader.ReadPixels(texture, new RectInt(0, 0, texture.width, texture.height));
