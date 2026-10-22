@@ -423,7 +423,7 @@ namespace Velvet
             }
             if (set.Contains(StyleLonghand.Scale))
             {
-                return !inline ? s_scaleVariables
+                return !inline || property == ArbitraryProperty.ScaleBoth ? s_scaleVariables
                     : property == ArbitraryProperty.ScaleX ? s_scaleXVariable
                     : property == ArbitraryProperty.ScaleY ? s_scaleYVariable
                     : Array.Empty<int>();

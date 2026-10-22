@@ -43,6 +43,7 @@ namespace Velvet.Tests
         [TestCase("scale-50", "rotate-6")]
         [TestCase("hover:scale-x-50", "hover:rotate-6")]
         [TestCase("translate-x-[4px]", "scale-50")]
+        [TestCase("-scale-50", "scale-x-75")]
         [TestCase("translate-x-[4px]", "translate-y-[4px]")]
         [TestCase("hover:translate-[4px]", "hover:translate-x-[4px]")]
         [TestCase("scale-100", "-scale-[0.5]")]

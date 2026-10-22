@@ -798,7 +798,7 @@ namespace Velvet
 
         // Cheap dispatch gate: true when cls is a static-scale utility with NO static USS class, so
         // the reconciler must route it to TryParseStaticScale instead of the class list. That set is exactly
-        // the names a USS selector cannot spell — any '-'-prefixed margin/rotate/translate name, the
+        // the names a USS selector cannot spell — any '-'-prefixed margin/rotate/translate/scale name, the
         // '/'-bearing translate, sizing and position fractions, the positive per-axis translate/scale
         // presets (no USS class — a per-axis rule would clobber the other axis via the shorthand), and a
         // spacing step the bundled sheets declare no rule for (mt-13, p-4.5, -top-4). Other
@@ -824,12 +824,7 @@ namespace Velvet
             }
             if (cls[0] == '-')
             {
-                var body = cls.AsSpan(1);
-                if (body.StartsWith("skew-"))
-                {
-                    return false; // -skew-x-6 is owned by StyleSkewClass, not this resolver.
-                }
-                return IsMarginName(body) || body.StartsWith("rotate-") || body.StartsWith("translate-");
+                return IsNegatedStaticScale(cls.AsSpan(1));
             }
             // Positive per-axis translate presets (translate-x-4, translate-y-2, translate-x-1/2, translate-x-full)
             // have no USS class: a .translate-x-N rule writes the whole `translate: x y` shorthand and clobbers
@@ -855,12 +850,22 @@ namespace Velvet
             // Per-axis scale presets (scale-x-50 / scale-y-110) have no USS class; route them to the merge path.
             // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here. Span-based to
             // keep this per-class hot gate allocation-free (matching the AsSpan style above).
-            if (cls.StartsWith("scale-x-", StringComparison.Ordinal) || cls.StartsWith("scale-y-", StringComparison.Ordinal))
+            if (ScalePresetAxis(cls.AsSpan()) is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY)
             {
-                return SuffixInKeys(cls.AsSpan("scale-x-".Length), s_axisScale); // "scale-x-" and "scale-y-" share a length
+                return IsScalePreset(cls.AsSpan());
             }
             return TryGetFlexFactorPreset(cls, out _, out _) || TryGetFlexPreset(cls, out _);
         }
+
+        // A negated name no selector can spell, by its body: a margin, rotate, translate or scale preset. A negated
+        // skew is none of them, StyleSkewClass owning it.
+        private static bool IsNegatedStaticScale(ReadOnlySpan<char> body)
+            => IsMarginName(body) || body.StartsWith("rotate-") || body.StartsWith("translate-") || IsScalePreset(body);
+
+        // Whether body is a scale preset, uniform or per-axis, whose value the preset table holds.
+        private static bool IsScalePreset(ReadOnlySpan<char> body)
+            => ScalePresetAxis(body) is { } axis
+                && SuffixInKeys(body.Slice(axis == ArbitraryProperty.ScaleBoth ? "scale-".Length : "scale-x-".Length), s_axisScale);
 
         // The physical margin utilities, whose negated names no selector can spell. -max-w-4 and -min-h-4 start
         // with the same letter and are not margins.
@@ -997,7 +1002,7 @@ namespace Velvet
                 }
             }
 
-            var scale = TryParseAxisScalePreset(body, negate, out result);
+            var scale = TryParseScalePreset(body, negate, out result);
             if (scale.HasValue)
             {
                 return scale.Value;
@@ -1023,29 +1028,33 @@ namespace Velvet
             return null;
         }
 
-        // Per-axis scale presets (positive only; a flip is the arbitrary scale-x-[-1]). Routed to the same
-        // ScaleX/ScaleY merge as the bracket form so the axes compose onto one inline `scale`. Null when body
-        // names neither axis.
-        private static bool? TryParseAxisScalePreset(string body, bool negate, out ArbitraryStyle result)
+        // The scale presets no USS class spells: a per-axis one, routed to the same ScaleX/ScaleY merge as the
+        // bracket form so the axes compose onto one inline `scale`, and a negated one, -scale-50 writing both axes'
+        // variables as the positive scale-<n> class does. Null when body is a positive uniform preset, which is that
+        // class, or names no scale.
+        private static bool? TryParseScalePreset(string body, bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (negate)
+            var axis = ScalePresetAxis(body);
+            if (axis == null || (axis == ArbitraryProperty.ScaleBoth && !negate))
             {
                 return null;
             }
-            var isScaleX = body.StartsWith("scale-x-", StringComparison.Ordinal);
-            if (!isScaleX && !body.StartsWith("scale-y-", StringComparison.Ordinal))
-            {
-                return null;
-            }
-            if (!s_axisScale.TryGetValue(body.Substring("scale-x-".Length), out var factor))
+            var prefix = axis == ArbitraryProperty.ScaleBoth ? "scale-".Length : "scale-x-".Length;
+            if (!s_axisScale.TryGetValue(body.Substring(prefix), out var factor))
             {
                 return false;
             }
-            result = new ArbitraryStyle(
-                isScaleX ? ArbitraryProperty.ScaleX : ArbitraryProperty.ScaleY, factor, LengthUnit.Pixel);
+            result = new ArbitraryStyle(axis.Value, negate ? -factor : factor, LengthUnit.Pixel);
             return true;
         }
+
+        // The scale property a preset body writes ("scale-x-" and "scale-y-" share a length); null for no scale.
+        private static ArbitraryProperty? ScalePresetAxis(ReadOnlySpan<char> body)
+            => body.StartsWith("scale-x-".AsSpan()) ? ArbitraryProperty.ScaleX
+                : body.StartsWith("scale-y-".AsSpan()) ? ArbitraryProperty.ScaleY
+                : body.StartsWith("scale-".AsSpan()) ? ArbitraryProperty.ScaleBoth
+                : null;
 
         private static bool TryParseTranslatePreset(string body, bool negate, out ArbitraryStyle result)
         {
@@ -3080,7 +3089,7 @@ namespace Velvet
                 ApplyCombinedTranslate(element, map);
                 return;
             }
-            if (property == ArbitraryProperty.Scale
+            if (property == ArbitraryProperty.Scale || property == ArbitraryProperty.ScaleBoth
                 || property == ArbitraryProperty.ScaleX || property == ArbitraryProperty.ScaleY)
             {
                 ApplyCombinedScale(element, map);
@@ -3351,10 +3360,24 @@ namespace Velvet
             return hasAxis;
         }
 
+        // The layer holding one scale axis, as TryWinningAxis picks for translate: the axis's own or a negated uniform
+        // preset writing both (ArbitraryProperty.ScaleBoth), whichever has the higher key, the axis on a tie.
+        private static bool TryWinningScaleAxis(LayerMap map, ArbitraryProperty axis, out ArbitraryStyle style, out long key)
+        {
+            var hasAxis = TryWinningKey(map, axis, out style, out key);
+            if (TryWinningKey(map, ArbitraryProperty.ScaleBoth, out var both, out var bothKey) && (!hasAxis || bothKey > key))
+            {
+                style = both;
+                key = bothKey;
+                return true;
+            }
+            return hasAxis;
+        }
+
         private static void ApplyCombinedScale(VisualElement element, LayerMap map)
         {
-            var hasX = TryWinningLayer(map, ArbitraryProperty.ScaleX, out var xw);
-            var hasY = TryWinningLayer(map, ArbitraryProperty.ScaleY, out var yw);
+            var hasX = TryWinningScaleAxis(map, ArbitraryProperty.ScaleX, out var xw, out _);
+            var hasY = TryWinningScaleAxis(map, ArbitraryProperty.ScaleY, out var yw, out _);
             if (!hasX && !hasY && !TryWinningLayer(map, ArbitraryProperty.Scale, out _))
             {
                 element.style.scale = StyleKeyword.Null;
@@ -3383,8 +3406,8 @@ namespace Velvet
         // declaration replaces it and it supplies neither axis.
         private static bool TryDrawnScaleBracket(LayerMap map, out ArbitraryStyle bracket)
         {
-            var hasX = TryWinningKey(map, ArbitraryProperty.ScaleX, out _, out var xKey);
-            var hasY = TryWinningKey(map, ArbitraryProperty.ScaleY, out _, out var yKey);
+            var hasX = TryWinningScaleAxis(map, ArbitraryProperty.ScaleX, out _, out var xKey);
+            var hasY = TryWinningScaleAxis(map, ArbitraryProperty.ScaleY, out _, out var yKey);
             return TryWinningKey(map, ArbitraryProperty.Scale, out bracket, out var bracketKey)
                 && (!hasX || bracketKey >= xKey) && (!hasY || bracketKey >= yKey);
         }
@@ -3392,7 +3415,8 @@ namespace Velvet
         private static void RefreshScaleClassFallback(VisualElement element, LayerMap map, float? previousUniform)
         {
             if (previousUniform.HasValue && !TryDrawnScaleBracket(map, out _)
-                && TryWinningLayer(map, ArbitraryProperty.ScaleX, out _) != TryWinningLayer(map, ArbitraryProperty.ScaleY, out _)
+                && TryWinningScaleAxis(map, ArbitraryProperty.ScaleX, out _, out _)
+                    != TryWinningScaleAxis(map, ArbitraryProperty.ScaleY, out _, out _)
                 && previousUniform.Value != UniformScaleFromClasses(element))
             {
                 ApplyCombinedScale(element, map);
@@ -4025,6 +4049,7 @@ namespace Velvet
                     element.style.translate = StyleKeyword.Null;
                     return true;
                 case ArbitraryProperty.Scale:
+                case ArbitraryProperty.ScaleBoth:
                 case ArbitraryProperty.ScaleX:
                 case ArbitraryProperty.ScaleY:
                     element.style.scale = StyleKeyword.Null;

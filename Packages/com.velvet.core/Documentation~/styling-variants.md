@@ -158,7 +158,9 @@ both work. The filter family is the exception — filters compose rather than ov
 and a `blur-[6px]` layer both apply.
 
 A per-axis scale keeps the uniform utility on its other axis: `scale-50 scale-x-75` resolves to
-`(0.75, 0.5)`, and `scale-50 scale-y-75` to `(0.5, 0.75)`. Adding or removing a uniform preset
+`(0.75, 0.5)`, and `scale-50 scale-y-75` to `(0.5, 0.75)`. A negated preset (`-scale-50`, `-scale-x-50`,
+`-scale-y-50`) writes the negative factor on the same axes, mirroring the element, so `-scale-50 scale-x-75`
+resolves to `(0.75, -0.5)`. Adding or removing a uniform preset
 updates that fallback. Several uniform presets follow the bundled stylesheet's declaration order;
 an inline uniform value supplies the fallback ahead of a plain preset. The priority rules above
 still decide which classes and inline layers participate.

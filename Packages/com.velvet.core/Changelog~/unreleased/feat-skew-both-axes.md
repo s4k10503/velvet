@@ -7,3 +7,6 @@
   behind a variant takes it over the base ones (`skew-x-12 hover:skew-6` gives 6° on both axes while hovered), and
   an important class takes it over every plain one. A bare value is a whole number of degrees without a
   leading zero (`skew-1.5` and `skew-07` are declined), and a bracket an angle or `0`.
+- `-scale-<n>`, `-scale-x-<n>` and `-scale-y-<n>` scale by the negative factor, mirroring the element, as Tailwind
+  writes them; they drew nothing. `-scale-<n>` writes both axes the way `scale-<n>` does, so `-scale-50 scale-x-75`
+  gives `(0.75, -0.5)`.

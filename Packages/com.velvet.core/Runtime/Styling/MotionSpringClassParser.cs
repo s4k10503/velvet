@@ -162,6 +162,7 @@ namespace Velvet
                         value = arbitrary.Value;
                         return true;
                     case ArbitraryProperty.Scale:
+                    case ArbitraryProperty.ScaleBoth:
                         axis = SpringAxis.Scale;
                         value = arbitrary.Value;
                         return true;
@@ -751,7 +752,8 @@ namespace Velvet
             if (StyleArbitraryValueResolver.IsInlineResolved(core) && StyleArbitraryValueResolver.TryParseLayer(core, out var inline))
             {
                 var declaresScale = inline.Property
-                    is ArbitraryProperty.Scale or ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
+                    is ArbitraryProperty.Scale or ArbitraryProperty.ScaleBoth or ArbitraryProperty.ScaleX
+                        or ArbitraryProperty.ScaleY;
                 token = new RankedToken
                 {
                     Precedence = (declaresScale ? AxisScaleRank : InlineRank) + (important ? ImportantRank : 0)

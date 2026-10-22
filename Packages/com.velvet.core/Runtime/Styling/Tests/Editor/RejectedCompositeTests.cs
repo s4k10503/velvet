@@ -92,7 +92,9 @@ namespace Velvet.Tests
         [TestCase("translate-x-4 sm:translate-x-[10] md:translate-8 md:translate-y-6", "32,24 - 0")]
         [TestCase("-translate-px translate-y-full", "-1,100 - 0")]
         [TestCase("translate-1/2", "50,50 - 0")]
-        public void Given_LayersWritingBothTranslateAxes_When_Composed_Then_EachAxisHoldsByRank(string classes, string expected)
+        [TestCase("-scale-50 scale-x-75", "- 0.75,-0.5 0")]
+        [TestCase("-scale-y-50", "- 1,-0.5 0")]
+        public void Given_LayersWritingBothAxes_When_Composed_Then_EachAxisHoldsByRank(string classes, string expected)
         {
             // Act
             var composed = Composed(classes);

@@ -129,7 +129,7 @@ filters nothing, while `blur-sm drop-shadow-[#ggg]` blurs. A
 utility writing both axes (`translate-4`, `translate-[10px]`, `translate-full`, `translate-px`, `translate-1/2`,
 and their negations) holds each axis as an axis utility does, and an axis utility of the same rank holds over it,
 Tailwind emitting it later: `translate-x-4 translate-[10]` translates nowhere, its y holding the rejected value. A
-uniform `scale-<n>` writes both scale axes the same way and ranks against `scale-x-*` and `scale-y-*` by its
+uniform `scale-<n>` or `-scale-<n>` writes both scale axes the same way and ranks against `scale-x-*` and `scale-y-*` by its
 variants: `scale-50 hover:scale-x-[2]` keeps its y at 0.5 while hovered. A variant's value of one axis leaves the
 other axis to the value holding it: `translate-8 hover:translate-x-2` translates by 8 and 32 while hovered. A
 `scale-[…]` declares `scale` itself rather than either axis, so where its rank is at or above every axis utility's
