@@ -5,11 +5,11 @@
   {
    "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnAbsoluteLengthFromPosition_When_Extracted_Then_ItIsNinetySixPixels(\"from-[2.54cm]\")",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "f9afaa3a4f25432b3f5060e36e776dcc9ae201e67d13a24ee17d1d6ed8c9c564"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "6ea0fb99ca1bec2bc7171333220d166ac4e417a530bb458a29fdb3f7d286c8c0"
    }
   }
  ],
- "measured_by": "39046269867",
+ "measured_by": "39656590683",
  "mutant": {
   "after": ">",
   "before": ">=",
@@ -23,6 +23,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
  "verdict": "killed"
 }

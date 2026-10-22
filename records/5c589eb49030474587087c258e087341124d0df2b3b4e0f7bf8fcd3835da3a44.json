@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "9d127f32115198cfc227af410c87b02895dd7317571c0078dca8bdfa048502a3",
+ "killers": [],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": ";",
+  "before": "ReSyncVariantGatedPasses(box);",
+  "column": 16,
+  "line": 383,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "survived"
+}

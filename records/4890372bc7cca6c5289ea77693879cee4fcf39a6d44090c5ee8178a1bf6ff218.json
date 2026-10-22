@@ -1,0 +1,76 @@
+{
+ "detail": "EditMode: 14 failed in Velvet.Tests.Styling.Editor: Given_AnInchShadowOffset_When_Extracted_Then_ItIsNinetySixPixels, Given_AMathFunctionShadowOffset_When_Extracted_Then_ItIsTwentyPixels, Given_AShadowOfBareNumberOffsets_When_Extracted_Then_TheClassIsDeclined",
+ "file": "514b1848f5e559a0639faa08a12d448c87ca70d7add909c0d43f7ab2523c9c5f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnInchShadowOffset_When_Extracted_Then_ItIsNinetySixPixels",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "6ea0fb99ca1bec2bc7171333220d166ac4e417a530bb458a29fdb3f7d286c8c0"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryMathFunctionTests.Given_AMathFunctionShadowOffset_When_Extracted_Then_ItIsTwentyPixels",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryMathFunctionTests.cs": "37e2955bf159a1c2d4e2ec34e4b17eb9878aa82d6475084cda8c25e446c3f3ce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BareNumberBracketTests.Given_AShadowOfBareNumberOffsets_When_Extracted_Then_TheClassIsDeclined",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BareNumberBracketTests.cs": "b559cf2213497d7bc477fc66095db10c6a258e157265040e64be29f9c021a4eb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CssColorFunctionUtilityTests.Given_AShadowColorFunctionWithSpaces_When_Extracted_Then_ItIsOneColourToken",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorFunctionUtilityTests.cs": "e789e353551c90e680ca57260505f8ff767ecd5b4fb9023426e459ee3f04f234"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CssColorFunctionUtilityTests.Given_AShadowLegacyRgbWithSpacesAfterItsCommas_When_Extracted_Then_ItIsOneColourToken",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorFunctionUtilityTests.cs": "e789e353551c90e680ca57260505f8ff767ecd5b4fb9023426e459ee3f04f234"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShadowClassParityTests.Given_AnArbitraryShadowListWithAMalformedLayer_When_Extracted_Then_TheWholeListIsRejected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowClassParityTests.cs": "18d5e052038977c3acfa0dc0721ba1c382ac4a842abfcd8d351aa62fbe13d224"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShadowClassParityTests.Given_AnArbitraryShadowList_When_Extracted_Then_EachLayerIsReadInOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowClassParityTests.cs": "18d5e052038977c3acfa0dc0721ba1c382ac4a842abfcd8d351aa62fbe13d224"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShadowClassParityTests.Given_AnArbitraryShadowWithANegativeBlur_When_Extracted_Then_ItIsRejected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowClassParityTests.cs": "18d5e052038977c3acfa0dc0721ba1c382ac4a842abfcd8d351aa62fbe13d224"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShadowClassParityTests.Given_AnArbitraryShadowWithDoubledSpaces_When_Extracted_Then_TheEmptyTokensAreSkipped",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowClassParityTests.cs": "18d5e052038977c3acfa0dc0721ba1c382ac4a842abfcd8d351aa62fbe13d224"
+   }
+  }
+ ],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": "||",
+  "before": "&&",
+  "column": 15,
+  "line": 182,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

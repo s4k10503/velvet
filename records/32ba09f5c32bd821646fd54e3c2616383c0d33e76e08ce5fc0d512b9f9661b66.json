@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.CssColorFunctionUtilityTests.Given_AnOutlineColorFunction_When_Extracted_Then_TheOutlineTakesIt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorFunctionUtilityTests.cs": "93357cf859bb0123f1fb96352e36043ad243374539da20e9e6973198aa84cd72"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorFunctionUtilityTests.cs": "e789e353551c90e680ca57260505f8ff767ecd5b4fb9023426e459ee3f04f234"
    }
   },
   {
@@ -21,7 +21,7 @@
    }
   }
  ],
- "measured_by": "39046269867",
+ "measured_by": "39656590683",
  "mutant": {
   "after": "&&",
   "before": "||",
@@ -37,6 +37,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
  "verdict": "killed"
 }

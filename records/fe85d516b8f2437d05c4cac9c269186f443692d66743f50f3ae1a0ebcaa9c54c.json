@@ -2,7 +2,7 @@
  "detail": "EditMode survived; PlayMode: -",
  "file": "80be5af201d2f15d73bb800dff6da538aa365f97ab913ae5964bc6ac109e0c60",
  "killers": [],
- "measured_by": "39225757367",
+ "measured_by": "39656590683",
  "mutant": {
   "after": "",
   "before": " || TailwindDataTypes.IsPercentage(value)",
@@ -18,6 +18,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "b5909b53aa8a9d8573de7d7b433b13888be563f97582aae33329437171f362b0",
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
  "verdict": "survived"
 }

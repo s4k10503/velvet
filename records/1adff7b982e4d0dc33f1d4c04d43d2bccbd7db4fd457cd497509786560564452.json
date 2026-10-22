@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 8 failed: Given_ABareNumberWhereALengthIsRead_When_Parsed_Then_TheClassIsDeclined(\"text-[0]\"), Given_AnOutlineColorFunction_When_Extracted_Then_TheOutlineTakesIt, Given_AnHslSaturationAbove100_When_OutlineReadsIt_Then_ItClamps",
+ "detail": "EditMode: 1 failed among the 17 case(s) that ran the site: Given_ABareNumberWhereALengthIsRead_When_Parsed_Then_TheClassIsDeclined(\"text-[0]\")",
  "file": "4ba4e0bdc6c90a9f2ea9b1c7f209a0879c30e6d592d8067ab76071042c23ccfb",
  "killers": [
   {
@@ -7,51 +7,9 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BareNumberBracketTests.cs": "b559cf2213497d7bc477fc66095db10c6a258e157265040e64be29f9c021a4eb"
    }
-  },
-  {
-   "case": "Velvet.Tests.CssColorFunctionUtilityTests.Given_AnOutlineColorFunction_When_Extracted_Then_TheOutlineTakesIt",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorFunctionUtilityTests.cs": "93357cf859bb0123f1fb96352e36043ad243374539da20e9e6973198aa84cd72"
-   }
-  },
-  {
-   "case": "Velvet.Tests.CssColorHslScopeTests.Given_AnHslSaturationAbove100_When_OutlineReadsIt_Then_ItClamps",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CssColorHslScopeTests.cs": "b84b4d62bc8161815ef15e66580611c1268b548a588487321bc13e8d37189f5b"
-   }
-  },
-  {
-   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AUnitOutOfTailwindsCaseWhereItInfersALength_When_Parsed_Then_TheClassIsDeclined(\"text-[101.6q]\")",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
-   }
-  },
-  {
-   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AUnitOutOfTailwindsCaseWhereItInfersALength_When_Parsed_Then_TheClassIsDeclined(\"text-[16PX]\")",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
-   }
-  },
-  {
-   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AUnitOutOfTailwindsCaseWhereItInfersALength_When_Parsed_Then_TheClassIsDeclined(\"text-[1IN]\")",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
-   }
-  },
-  {
-   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AUnitOutOfTailwindsCaseWhereItInfersALength_When_Parsed_Then_TheClassIsDeclined(\"text-[2EM]\")",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
-   }
-  },
-  {
-   "case": "Velvet.Tests.LengthUnitCaseTests.Given_AnUpperCaseRingWidth_When_Extracted_Then_TheClassIsIgnored(\"outline-[5PX]\")",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "9b397853b851e1b9b02fa51e89848d9ee47605421abbca6b2963dd78126b706f"
-   }
   }
  ],
- "measured_by": "39046269867",
+ "measured_by": "39656590683",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -65,6 +23,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
  "verdict": "killed"
 }

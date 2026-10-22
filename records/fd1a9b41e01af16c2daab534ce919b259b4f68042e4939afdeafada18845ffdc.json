@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 6 failed: Given_AnInsetShadowOffsetDown_When_Baked_Then_ItCoversTheTopEdge, Given_AnInsetShadowWithASpread_When_Baked_Then_ItCoversABandInsideTheBox, 29116f)",
+ "file": "b9e11215a83bb7cea86d3f73a2f0666b88a209c6e9fbfcf62069ef5471ebd45a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowBakeTests.Given_AShadowBake_When_SampledPastAnEdge_Then_ItFallsOffAsAGaussianOfHalfTheBlur(10.5f,0.14686f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowBakeTests.cs": "a8ce2b83c64bf7b7628224e213be43eba85c4de2ee0e84267ea7e3efcc27f341",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowBakeTests.Given_AShadowBake_When_SampledPastAnEdge_Then_ItFallsOffAsAGaussianOfHalfTheBlur(20.5f,0.02018f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowBakeTests.cs": "a8ce2b83c64bf7b7628224e213be43eba85c4de2ee0e84267ea7e3efcc27f341",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowBakeTests.Given_AShadowBake_When_SampledPastAnEdge_Then_ItFallsOffAsAGaussianOfHalfTheBlur(5.5f,0.29116f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowBakeTests.cs": "a8ce2b83c64bf7b7628224e213be43eba85c4de2ee0e84267ea7e3efcc27f341",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": ";",
+  "before": "mat.SetVector(ElementSizeId, new Vector4(rect.width, rect.height, 0f, 0f));",
+  "column": 12,
+  "line": 276,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowBaker.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

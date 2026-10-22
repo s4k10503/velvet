@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: 2 failed among the 14 case(s) that ran the site: Given_AnInsetShadowOffsetDown_When_Baked_Then_ItCoversTheTopEdge, Given_AnInsetShadowOffsetDown_When_Baked_Then_ItDoesNotCoverTheBottomEdge",
+ "file": "b9e11215a83bb7cea86d3f73a2f0666b88a209c6e9fbfcf62069ef5471ebd45a",
+ "killers": [],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 24,
+  "line": 213,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowBaker.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

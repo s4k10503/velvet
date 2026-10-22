@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AShadowedElement_When_ItsOwnOverflowIsHidden_Then_TheWholeShadowIsLost",
+ "file": "2484c3d2ef8af20f19b234fdb50c97c84be4a102ad18b2508a802aa8ca18406a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.WrapperLessPaintOverflowClipPlaybackTests.Given_AShadowedElement_When_ItsOwnOverflowIsHidden_Then_TheWholeShadowIsLost",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/WrapperLessPaintOverflowClipPlaybackTests.cs": "0bb5736637716d47e7194ee27f6b17a4aeea415903b18b97cd6aae9e1032abde",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": ";",
+  "before": "RepaintUprightFill(mgc, ve, binding, w, h);",
+  "column": 12,
+  "line": 342,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowSilhouette.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

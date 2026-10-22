@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Styling.Editor: Given_AnArbitraryShadowWithTheInsetKeyword_When_Extracted_Then_ThatLayerIsInset, Given_AnArbitraryShadowWithTheInsetKeyword_When_Extracted_Then_TheLayerWithoutItIsOuter",
+ "file": "514b1848f5e559a0639faa08a12d448c87ca70d7add909c0d43f7ab2523c9c5f",
+ "killers": [],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 24,
+  "line": 229,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

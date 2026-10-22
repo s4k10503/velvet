@@ -5,11 +5,11 @@
   {
    "case": "Velvet.Tests.ArbitraryMathFunctionTests.Given_ALengthOnlyAnElementCanMeasure_When_ParsedForAnInlineLength_Then_ItIsClaimed(\"top-[calc(50%-1rem)]\",Top)",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryMathFunctionTests.cs": "64258dc334eba02dd2c988d4659b1447ac9c9835452401901c6d1c5f63b5b98d"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryMathFunctionTests.cs": "37e2955bf159a1c2d4e2ec34e4b17eb9878aa82d6475084cda8c25e446c3f3ce"
    }
   }
  ],
- "measured_by": "39046269867",
+ "measured_by": "39656590683",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -27,6 +27,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "76309e91a4c128f75d085827c1f64dd9aa29779443e0e20e5e97a4d376492b9e",
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
  "verdict": "killed"
 }

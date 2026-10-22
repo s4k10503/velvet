@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "6cdb334190f3cc6781dbca78e21dfc75186e37fe28db2c4ca6d9bb7cd0db15f6",
+ "killers": [],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": ";",
+  "before": "BoxShadowSilhouette.DrawInsetLayers(mgc, ve, w, h);",
+  "column": 12,
+  "line": 287,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/SkewSilhouette.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "survived"
+}

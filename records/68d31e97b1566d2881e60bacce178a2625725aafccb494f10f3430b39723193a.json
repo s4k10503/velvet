@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ASkewOnBothAxes_When_SizingTheBake_Then_TheQuadWidthFollowsTheSkewXSkewYProduct",
+ "file": "9d77392d41c54719294ad401f293c8a25193d8b0a9e3a51267ad41df6746d89c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GradientSilhouetteBakeTests.Given_ASkewOnBothAxes_When_SizingTheBake_Then_TheQuadWidthFollowsTheSkewXSkewYProduct",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientSilhouetteBakeTests.cs": "fad036d2de5306e7aaf8b21465ddad05de400ae4fd0733d98fd8b9eafeaad87a",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 65,
+  "line": 87,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GradientSilhouetteBaker.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

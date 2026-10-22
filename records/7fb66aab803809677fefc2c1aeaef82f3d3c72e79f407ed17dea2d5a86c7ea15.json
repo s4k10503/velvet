@@ -1,0 +1,114 @@
+{
+ "detail": "EditMode survived; PlayMode: 10 failed: Given_ABoxWithAnOversizedInlineRadiusWearingAShadow_When_Painted_Then_ItsHaloReachesTheScreen, Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRounded3xl_Then_TheShadowCornerKeepsItsTwentyFourPixelRadius, Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRoundedFull_Then_TheShadowCornerTakesHalfTheShorterSide",
+ "file": "2484c3d2ef8af20f19b234fdb50c97c84be4a102ad18b2508a802aa8ca18406a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RoundedFullSilhouettePlaybackTests.Given_ABoxWithAnOversizedInlineRadiusWearingAShadow_When_Painted_Then_ItsHaloReachesTheScreen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/RoundedFullSilhouettePlaybackTests.cs": "264472d8ebc164712775208e2f4c9684311cbaa34da370841fcb8fc06760eb23",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RoundedFullSilhouettePlaybackTests.Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRounded3xl_Then_TheShadowCornerKeepsItsTwentyFourPixelRadius",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/RoundedFullSilhouettePlaybackTests.cs": "264472d8ebc164712775208e2f4c9684311cbaa34da370841fcb8fc06760eb23",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RoundedFullSilhouettePlaybackTests.Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRoundedFull_Then_TheShadowCornerTakesHalfTheShorterSide",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/RoundedFullSilhouettePlaybackTests.cs": "264472d8ebc164712775208e2f4c9684311cbaa34da370841fcb8fc06760eb23",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShaderBackedPaintRuntimeTests.Given_ABoxShadowCasterSkewedOnY_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShaderBackedPaintRuntimeTests.cs": "97f3a3d0a34010026f09822866d67221c3a5f23ab84f236e34d1d085f7ac14bb",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShaderBackedPaintRuntimeTests.Given_ABoxShadowCaster_When_RenderedOnARuntimePanel_Then_TheShadowPaintsItsColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShaderBackedPaintRuntimeTests.cs": "97f3a3d0a34010026f09822866d67221c3a5f23ab84f236e34d1d085f7ac14bb",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShaderBackedPaintRuntimeTests.Given_AnInsetShadowOnAnElementUnderEightPixelsTall_When_RenderedOnARuntimePanel_Then_NothingIsPaintedBelowIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShaderBackedPaintRuntimeTests.cs": "97f3a3d0a34010026f09822866d67221c3a5f23ab84f236e34d1d085f7ac14bb",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShadowFadeOpacityPlaybackTests.Given_AShadowCaster_When_ItsOpacityIsHalved_Then_TheHaloIsHalvedWithIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShadowFadeOpacityPlaybackTests.cs": "20dec33b3e6575c505242b7b557d91a4b829bd67a860ede32ec39d392c2555a5",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShadowFadeOpacityPlaybackTests.Given_ATranslucentShadowCaster_When_AnEnterIsInFlightOverIt_Then_TheHaloMatchesTheSameCasterAtRest",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShadowFadeOpacityPlaybackTests.cs": "20dec33b3e6575c505242b7b557d91a4b829bd67a860ede32ec39d392c2555a5",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WrapperLessPaintOverflowClipPlaybackTests.Given_AShadowCasterWithNoOpaqueFill_When_ItsOwnOverflowIsHidden_Then_TheInteriorSurvivesAndOnlyTheOutsideIsCut",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/WrapperLessPaintOverflowClipPlaybackTests.cs": "0bb5736637716d47e7194ee27f6b17a4aeea415903b18b97cd6aae9e1032abde",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WrapperLessPaintOverflowClipPlaybackTests.Given_AShadowedElement_When_ItsOwnOverflowIsHidden_Then_TheWholeShadowIsLost",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/WrapperLessPaintOverflowClipPlaybackTests.cs": "0bb5736637716d47e7194ee27f6b17a4aeea415903b18b97cd6aae9e1032abde",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 53,
+  "line": 359,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowSilhouette.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Reconciler.Editor: Given_AStaggeredChildMidwayOnABezier_When_ItsLabelChangesToAnInstantSpring_Then_ItHoldsTheValueDrawnThroughItsStagger",
+ "file": "9d127f32115198cfc227af410c87b02895dd7317571c0078dca8bdfa048502a3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InstantSpringStaggerTests.Given_AStaggeredChildMidwayOnABezier_When_ItsLabelChangesToAnInstantSpring_Then_ItHoldsTheValueDrawnThroughItsStagger",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InstantSpringStaggerTests.cs": "d94971a6af8e6febcb152d126e1917cc49d34c3586e43c27283a68d604683d89",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "6df94014048a15514cfd1cfb03811e8a93655bd5461f9ba290117f82fd898472",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "a0c171c1d4784f1e6eb763d048c368fe25a6f6bf98db1bd763c475cafcbb7e3b"
+   }
+  }
+ ],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": ";",
+  "before": "extraDelaySec = ambientOrchestration.ClaimNextChildDelaySec();",
+  "column": 16,
+  "line": 574,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

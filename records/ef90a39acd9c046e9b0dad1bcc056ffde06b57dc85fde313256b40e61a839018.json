@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ShadowInner_When_Extracted_Then_ItsLayerIsInset",
+ "file": "514b1848f5e559a0639faa08a12d448c87ca70d7add909c0d43f7ab2523c9c5f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ShadowClassParityTests.Given_ShadowInner_When_Extracted_Then_ItsLayerIsInset",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowClassParityTests.cs": "18d5e052038977c3acfa0dc0721ba1c382ac4a842abfcd8d351aa62fbe13d224"
+   }
+  }
+ ],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 84,
+  "line": 65,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

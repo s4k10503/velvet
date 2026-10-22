@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_Rounded2xlShadow_When_Reconciled_Then_CornerRadiusFollowsRoundedScale",
+ "file": "2484c3d2ef8af20f19b234fdb50c97c84be4a102ad18b2508a802aa8ca18406a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintBindingPatchTests.Given_Rounded2xlShadow_When_Reconciled_Then_CornerRadiusFollowsRoundedScale",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintBindingPatchTests.cs": "b10be65e3d30121ae310e47dd87a98673c614e5f188e61098d88144d242dbe0e",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 29,
+  "line": 285,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowSilhouette.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

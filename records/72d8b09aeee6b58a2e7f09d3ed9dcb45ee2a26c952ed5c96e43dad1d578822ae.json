@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ABoxSkewedOnBothAxes_When_ItsTopRightCornerIsSheared_Then_XFollowsTheSkewXSkewYProduct",
+ "file": "6bdd203824e2678795c5357f4be5e73d6b8c5300310c9c3255deb997c8a3c493",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SilhouetteBoundsSpacerTests.Given_ABoxSkewedOnBothAxes_When_ItsTopRightCornerIsSheared_Then_XFollowsTheSkewXSkewYProduct",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteBoundsSpacerTests.cs": "79973a549713621391952991e92bf48c0193b6d0399dc106ca745a2e6bf2eaee"
+   }
+  }
+ ],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 23,
+  "line": 89,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/SilhouetteFace.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}

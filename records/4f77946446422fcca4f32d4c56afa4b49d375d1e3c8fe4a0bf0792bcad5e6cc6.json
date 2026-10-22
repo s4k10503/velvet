@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ANegativeSpread_When_ItsRectIsTaken_Then_TheShapeShrinks",
+ "file": "b9e11215a83bb7cea86d3f73a2f0666b88a209c6e9fbfcf62069ef5471ebd45a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowBakeTests.Given_ANegativeSpread_When_ItsRectIsTaken_Then_TheShapeShrinks",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowBakeTests.cs": "a8ce2b83c64bf7b7628224e213be43eba85c4de2ee0e84267ea7e3efcc27f341",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39656590683",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 48,
+  "line": 148,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowBaker.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "verdict": "killed"
+}
