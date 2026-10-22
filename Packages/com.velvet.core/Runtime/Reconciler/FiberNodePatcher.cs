@@ -2696,6 +2696,7 @@ namespace Velvet
             {
                 ToggleCustomPropertyTokens(element, leaving, on: false);
                 ToggleCustomPropertyTokens(element, arriving, on: true);
+                StyleCustomProperties.RerankSplit(element);
             }
             finally
             {

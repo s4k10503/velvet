@@ -434,7 +434,7 @@ namespace Velvet
                 return;
             }
             var source = resolved ? s_built.ToString() : null;
-            var payloads = source == null ? null : Split(consumer, source);
+            var payloads = source == null ? null : Outranked(target, consumer, Split(consumer, source));
             var unset = false;
             if (consumer.Property is { } property)
             {
@@ -568,6 +568,84 @@ namespace Velvet
             }
         }
 
+        // A split shorthand's sides each write a longhand, which the cascade at the shared base layer ranks above a
+        // shorthand or axis utility of the same family whatever their rule order: a side another base utility
+        // Tailwind emits later also writes is left to it.
+        private static string[]? Outranked(VisualElement target, Consumer consumer, string[]? payloads)
+        {
+            if (payloads == null || payloads.Length < 2 || !consumer.OnBaseLayer)
+            {
+                return payloads;
+            }
+            var later = LaterLonghands(target, consumer);
+            if (later.IsEmpty)
+            {
+                return payloads;
+            }
+            var kept = new List<string>(payloads.Length);
+            foreach (var payload in payloads)
+            {
+                if (!StyleArbitraryValueResolver.TryParseLayer(payload, out var side)
+                    || later.Union(StyleArbitraryLonghands.Of(side.Property)) != later)
+                {
+                    kept.Add(payload);
+                }
+            }
+            return kept.ToArray();
+        }
+
+        private static StyleLonghandSet LaterLonghands(VisualElement target, Consumer consumer)
+        {
+            var later = StyleLonghandSet.Empty;
+            if (s_classes.TryGetValue(target, out var classes))
+            {
+                for (var i = 0; i < classes.Length; i++)
+                {
+                    var core = StyleArbitraryValueResolver.StripImportant(classes[i], out var important);
+                    if (FiberNodePatcher.IsInlineResolved(classes[i])
+                        && (important ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base) : StyleLayerPriority.Base) == consumer.Key
+                        && StyleRuleOrder.OrdinalOf(classes, i) > consumer.Order
+                        && StyleArbitraryValueResolver.TryParseLayer(core, out var style))
+                    {
+                        later = later.Union(StyleArbitraryLonghands.Of(style.Property));
+                    }
+                }
+            }
+            if (s_consumers.TryGetValue(target, out var consumers))
+            {
+                foreach (var other in consumers.Entries)
+                {
+                    if (other != consumer && other.Key == consumer.Key && other.Order > consumer.Order)
+                    {
+                        foreach (var property in WrittenBy(other.Applied, other.Unset ? other.Property : null)
+                            ?? new List<ArbitraryProperty>())
+                        {
+                            later = later.Union(StyleArbitraryLonghands.Of(property));
+                        }
+                    }
+                }
+            }
+            return later;
+        }
+
+        // Resolves element's split shorthands again once a reconcile has applied its class list, which may have
+        // added a utility Tailwind emits after one of them (Outranked).
+        public static void RerankSplit(VisualElement element)
+        {
+            if (!s_consumers.TryGetValue(element, out var consumers))
+            {
+                return;
+            }
+            foreach (var consumer in consumers.Entries.ToArray())
+            {
+                if (consumer.Sides != null && consumer.OnBaseLayer)
+                {
+                    consumer.Resolved = false;
+                    Reresolve(element, consumer);
+                }
+            }
+        }
+
         // Re-ranks element's base-layer consumers against the literal base utilities the reconciler has just
         // re-applied, for the properties writing one of longhands, or every one when longhands is null.
         public static void ReassertBase(VisualElement element, StyleLonghandSet? longhands)
@@ -682,28 +760,29 @@ namespace Velvet
             {
                 return null;
             }
-            return hint is null or "color" ? unset.Colour
+            return hint == null ? unset.Untyped
+                : hint == "color" ? unset.Colour
                 : hint is "family-name" or "generic-name" ? unset.Family
                 : unset.Typed;
         }
 
-        // Per painted utility: what an unresolvable var() stands for when the value is a colour (or untyped), a
-        // family name, and any other type.
-        private static readonly Dictionary<string, (string? Colour, string? Family, string? Typed)> s_paintedUnset =
+        // Per painted utility: what an unresolvable var() stands for when the value is untyped, a colour, a family
+        // name, and any other type. An untyped shadow is a box shadow, as Tailwind writes one it does not test.
+        private static readonly Dictionary<string, (string? Untyped, string? Colour, string? Family, string? Typed)> s_paintedUnset =
             new(StringComparer.Ordinal)
             {
-                ["from-"] = ("from-transparent", "from-transparent", "from-0%"),
-                ["via-"] = ("via-transparent", "via-transparent", "via-50%"),
-                ["to-"] = ("to-transparent", "to-transparent", "to-100%"),
-                ["shadow-"] = (null, "shadow-none", "shadow-none"),
-                ["ring-"] = ("ring-current", "ring-current", "ring-0"),
-                ["ring-offset-"] = (null, null, "ring-offset-0"),
-                ["outline-"] = ("outline-current", "outline-current", "outline-[length:3px]"),
-                ["gap-"] = ("gap-0", "gap-0", "gap-0"),
-                ["gap-x-"] = ("gap-x-0", "gap-x-0", "gap-x-0"),
-                ["gap-y-"] = ("gap-y-0", "gap-y-0", "gap-y-0"),
-                ["font-"] = ("font-[weight:inherit]", "font-[family-name:inherit]", "font-[weight:inherit]"),
-                ["leading-"] = ("leading-[inherit]", "leading-[inherit]", "leading-[inherit]"),
+                ["from-"] = ("from-transparent", "from-transparent", "from-transparent", "from-0%"),
+                ["via-"] = ("via-transparent", "via-transparent", "via-transparent", "via-50%"),
+                ["to-"] = ("to-transparent", "to-transparent", "to-transparent", "to-100%"),
+                ["shadow-"] = ("shadow-none", null, "shadow-none", "shadow-none"),
+                ["ring-"] = ("ring-current", "ring-current", "ring-current", "ring-0"),
+                ["ring-offset-"] = (null, null, null, "ring-offset-0"),
+                ["outline-"] = ("outline-current", "outline-current", "outline-current", "outline-[length:3px]"),
+                ["gap-"] = ("gap-0", "gap-0", "gap-0", "gap-0"),
+                ["gap-x-"] = ("gap-x-0", "gap-x-0", "gap-x-0", "gap-x-0"),
+                ["gap-y-"] = ("gap-y-0", "gap-y-0", "gap-y-0", "gap-y-0"),
+                ["font-"] = ("font-[weight:inherit]", "font-[weight:inherit]", "font-[family-name:inherit]", "font-[weight:inherit]"),
+                ["leading-"] = ("leading-[inherit]", "leading-[inherit]", "leading-[inherit]", "leading-[inherit]"),
             };
 
         private static bool Inherits(ArbitraryProperty property)

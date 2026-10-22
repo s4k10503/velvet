@@ -339,6 +339,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ATwoValuePaddingBesideALiteralAxis_When_Mounted_Then_TheAxisKeepsItsSides()
+        {
+            // Arrange / Act — Tailwind emits padding ahead of padding-inline, so px- wins left and right.
+            var child = Mount("", "px-[8px] p-[1px_2px]");
+
+            // Assert
+            Assert.That((child.style.paddingLeft.value.value, child.style.paddingTop.value.value), Is.EqualTo((8f, 1f)));
+        }
+
+        [Test]
         public void Given_TwoReadersOfOneWidth_When_Mounted_Then_TheOneTailwindEmitsLaterWins()
         {
             // Arrange / Act — w-[var(--b)] sorts after w-[var(--a)], though the class list writes it first.
