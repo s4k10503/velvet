@@ -11,12 +11,11 @@
   `from-` / `via-` / `to-` colour that is no colour leaves its stop transparent, and a position that is no length
   or percentage returns the stop to its initial one. A function, `var()`, `currentColor`, a colour name or a unit
   Velvet does not read is not taken for a rejected value.
-- A value the browser rejects in one utility of a family Tailwind composes through one declaration — translate,
-  per-axis and uniform scale, skew, the filters — drops the family's other utilities, as the browser drops the
-  shared declaration: `translate-x-4 translate-y-[10]` and `!translate-y-[10] translate-x-4` no longer translate
-  along x, and `drop-shadow-lg blur-[2]` no longer draws its drop shadow. Only the value each property holds
-  counts, so `blur-[2] blur-md` still blurs. Under a variant the family is off while the variant applies:
-  `translate-x-4 hover:translate-y-[10]` stops translating while hovered, and
-  `dark:translate-x-4 hover:translate-y-[10]` while hovered in dark mode. A variant value holds over another by its
-  selector and then Tailwind's variant order, so `translate-x-4 hover:translate-y-[10] focus:translate-y-2`
-  translates while hovered and focused. `blur-[-2px]` is declined.
+- A value the browser rejects in one utility of a family Tailwind composes through one declaration — the
+  per-axis translate and scale, the per-axis skew, the filters — now draws nothing for the whole family wherever
+  it holds its property, as the browser drops the shared declaration: `translate-x-4 translate-y-[10]` and
+  `!translate-y-[10] translate-x-4` no longer translate along x, and `drop-shadow-lg blur-[2]` no longer draws its
+  drop shadow. Which value holds is decided as for any value, by importance, then variant rank, then Tailwind's
+  order, so `blur-[2] blur-md` still blurs, `translate-x-4 hover:translate-y-[10]` stops translating only while
+  hovered, and `translate-x-4 hover:translate-y-[10] focus:translate-y-2` translates while hovered and focused.
+  `blur-[-2px]` is such a value too.

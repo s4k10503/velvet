@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Globalization;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -5,66 +7,104 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the families Tailwind composes through one declaration — translate, the per-axis and uniform
-    /// scale, skew, and the filters — where a value the browser rejects in one utility discards the family's
-    /// declaration, and with it the family's other utilities, wherever the rejected value holds its property.
+    /// Specifies the families Tailwind composes through one declaration — translate, the per-axis scale, skew, and
+    /// the filters — where a value the browser rejects holds its property at the rank its variants give it, and the
+    /// family draws nothing while it does.
     /// </summary>
     internal sealed class RejectedCompositeTests
     {
-        [TestCase("translate-x-4 translate-y-[10]", "")]
-        [TestCase("scale-x-[2] scale-y-[2px]", "")]
-        [TestCase("scale-50 scale-x-[abc]", "")]
-        [TestCase("skew-x-6 skew-y-[10]", "")]
-        [TestCase("blur-sm brightness-[abc]", "")]
-        [TestCase("drop-shadow-lg blur-[2]", "")]
-        [TestCase("blur-[-2px]", "")]
-        [TestCase("blur-sm p-4 hue-rotate-[45]", "p-4")]
-        [TestCase("!translate-y-[10] translate-x-4", "")]
-        [TestCase("translate-y-[10] translate-y-2 translate-x-4", "")]
-        [TestCase("translate-x-4 hover:translate-y-[10]", "translate-x-4 hover:translate-x-0")]
-        [TestCase("drop-shadow-lg hover:blur-[2]", "drop-shadow-lg hover:drop-shadow-none")]
-        [TestCase("translate-y-[10] translate-x-4 hover:translate-y-2", "hover:translate-x-4 hover:translate-y-2")]
-        [TestCase("dark:translate-x-4 hover:translate-y-[10]", "dark:translate-x-4 hover:dark:translate-x-0")]
-        [TestCase("translate-x-4 hover:translate-y-[10] focus:translate-y-2",
-            "translate-x-4 hover:translate-x-0 hover:focus:translate-x-4 focus:translate-y-2")]
-        [TestCase("translate-x-4 dark:translate-y-[10] hover:translate-y-2",
-            "translate-x-4 dark:translate-x-0 dark:hover:translate-x-4 hover:translate-y-2")]
-        [TestCase("drop-shadow-lg drop-shadow-red-500 blur-[2] hover:blur-md",
-            "hover:drop-shadow-lg hover:drop-shadow-red-500 hover:blur-md")]
-        public void Given_AFamilyHoldingARejectedValue_When_Normalized_Then_TheFamilyIsDropped(string classes, string kept)
+        private static readonly Dictionary<string, long> s_ranks = new()
         {
-            // Act
-            var tokens = StyleSpacingPrecedence.Normalize(classes.Split(' '));
+            ["sm"] = StyleLayerPriority.ResponsiveSm,
+            ["md"] = StyleLayerPriority.ResponsiveMd,
+            ["dark"] = StyleLayerPriority.Dark,
+            ["hover"] = StyleLayerPriority.Hover,
+            ["focus"] = StyleLayerPriority.Focus,
+        };
 
-            // Assert
-            Assert.That(string.Join(" ", tokens), Is.EqualTo(kept));
+        // The translate, scale and filter the classes compose to with every variant they name in force: each token
+        // is applied as the reconciler and the variant manipulators apply it, a base token at the base rank once
+        // Normalize has ordered the base, and a variant token at its variants' stacked rank and its rule's place.
+        private static string Composed(string classes)
+        {
+            var tokens = StyleSpacingPrecedence.Normalize(classes.Split(' '));
+            var element = new VisualElement();
+            for (var i = 0; i < tokens.Length; i++)
+            {
+                var core = StyleArbitraryValueResolver.StripImportant(tokens[i], out var important);
+                var variants = StyleSpacingPrecedence.VariantsLength(core);
+                var rank = StyleLayerPriority.Base;
+                foreach (var part in core.Substring(0, variants).Split(':', System.StringSplitOptions.RemoveEmptyEntries))
+                {
+                    rank = StyleLayerPriority.Stack(rank, s_ranks[part]);
+                }
+                rank = important ? StyleLayerPriority.ImportantOf(rank) : rank;
+                var key = variants == 0 ? rank : StyleLayerPriority.WithRule(rank, StyleRuleOrder.OrdinalOf(tokens, i));
+                if (StyleArbitraryValueResolver.TryParseLayer(core.Substring(variants), out var style))
+                {
+                    StyleArbitraryValueResolver.Apply(element, in style, key);
+                }
+            }
+            var translate = element.style.translate;
+            var scale = element.style.scale;
+            return string.Join(" ",
+                translate.keyword == StyleKeyword.None ? "none"
+                : translate.keyword == StyleKeyword.Undefined ? Pair(translate.value.x.value, translate.value.y.value) : "-",
+                scale.keyword == StyleKeyword.None ? "none"
+                : scale.keyword == StyleKeyword.Undefined ? Pair(scale.value.value.x, scale.value.value.y) : "-",
+                (element.style.filter.value?.Count ?? 0).ToString(CultureInfo.InvariantCulture));
         }
 
-        // GREEN_ON_BASE(characterization): every value here is one the browser takes, so the base kept them too.
-        [TestCase("translate-x-4 translate-y-[10px]")]
-        [TestCase("scale-x-[2] scale-y-[50%]")]
-        [TestCase("skew-x-6 skew-y-[0]")]
-        [TestCase("blur-sm brightness-[1.5]")]
-        [TestCase("blur-sm hue-rotate-[.5TURN]")]
-        public void Given_AFamilyOfValuesTheBrowserTakes_When_Normalized_Then_ItIsKept(string classes)
+        private static string Pair(float x, float y)
+            => string.Format(CultureInfo.InvariantCulture, "{0:0.##},{1:0.##}", x, y);
+
+        [TestCase("translate-x-4 hover:translate-y-[10]", "none - 0")]
+        [TestCase("!translate-y-[10] hover:translate-y-2 translate-x-4", "none - 0")]
+        [TestCase("translate-y-[10] translate-y-2 translate-x-4", "none - 0")]
+        [TestCase("sm:translate-x-[10] md:translate-y-6", "none - 0")]
+        [TestCase("translate-x-4 dark:hover:translate-y-[10] hover:translate-y-2", "none - 0")]
+        [TestCase("scale-x-[2] scale-y-[2px]", "- none 0")]
+        [TestCase("blur-sm brightness-[abc]", "- - 0")]
+        [TestCase("drop-shadow-lg hover:blur-[2]", "- - 0")]
+        public void Given_LayersWhereARejectedValueHoldsItsProperty_When_Composed_Then_TheFamilyDrawsNothing(
+            string classes, string expected)
         {
             // Act
-            var tokens = StyleSpacingPrecedence.Normalize(classes.Split(' '));
+            var composed = Composed(classes);
 
             // Assert
-            Assert.That(string.Join(" ", tokens), Is.EqualTo(classes));
+            Assert.That(composed, Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(characterization): the base kept both tokens, and Tailwind emits blur-md after blur-[2].
-        [TestCase("blur-[2] blur-md")]
-        [TestCase("blur-md blur-[2]")]
-        public void Given_ARejectedValueAnotherHoldsThePropertyOver_When_Normalized_Then_TheFamilyIsKept(string classes)
+        // GREEN_ON_BASE(characterization): the base read no rejected value, and in these no rejected value holds.
+        [TestCase("sm:translate-y-8 sm:translate-x-[10] focus:translate-x-2", "8,32 - 0")]
+        [TestCase("translate-x-2 translate-y-[3] hover:translate-y-1 md:translate-x-4", "16,4 - 0")]
+        [TestCase("translate-x-0 sm:translate-x-[10] md:translate-x-4 hover:translate-y-1", "16,4 - 0")]
+        [TestCase("sm:translate-x-[10] md:translate-y-6 dark:translate-x-2", "8,24 - 0")]
+        [TestCase("hover:translate-y-6 sm:translate-x-[10] md:translate-x-4", "16,24 - 0")]
+        [TestCase("translate-x-4 hover:translate-y-[10] focus:translate-y-2", "16,8 - 0")]
+        [TestCase("translate-x-4 dark:translate-y-[10] hover:translate-y-2", "16,8 - 0")]
+        [TestCase("translate-x-4 hover:translate-y-[10] focus:translate-y-[2px]", "16,2 - 0")]
+        [TestCase("drop-shadow-lg drop-shadow-red-500 blur-[2] hover:blur-md", "- - 2")]
+        [TestCase("blur-[2] blur-md", "- - 1")]
+        [TestCase("blur-md blur-[2]", "- - 1")]
+        public void Given_LayersWhereEveryHoldingValueIsTaken_When_Composed_Then_TheyCompose(string classes, string expected)
         {
             // Act
-            var tokens = StyleSpacingPrecedence.Normalize(classes.Split(' '));
+            var composed = Composed(classes);
 
             // Assert
-            Assert.That(string.Join(" ", tokens), Is.EqualTo(classes));
+            Assert.That(composed, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ASkewAxisTheBrowserRejects_When_Extracted_Then_NoSkewIsDrawn()
+        {
+            // Act
+            var skewed = StyleSkewClass.TryExtract(new[] { "skew-x-6", "skew-y-[10]" }, out _);
+
+            // Assert
+            Assert.That(skewed, Is.False);
         }
 
         [Test]
@@ -101,16 +141,5 @@ namespace Velvet.Tests
             Assert.That(ringDiscarded ? root.Q("box").style.filter.value?.Count ?? 0 : -1, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): the base kept both tokens, as a dropped plain declaration takes no sibling.
-        [TestCase("scale-x-[2] scale-[2px]")]
-        [TestCase("rotate-45 rotate-[45]")]
-        public void Given_APlainDeclarationTheBrowserDrops_When_Normalized_Then_ItsNeighbourStays(string classes)
-        {
-            // Act
-            var tokens = StyleSpacingPrecedence.Normalize(classes.Split(' '));
-
-            // Assert
-            Assert.That(string.Join(" ", tokens), Is.EqualTo(classes));
-        }
     }
 }

@@ -1,469 +1,80 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
 
 namespace Velvet
 {
-    // Tailwind writes translate-*, scale-x-* / scale-y-* and the uniform scale-*, skew-*, and the filter
+    // Tailwind writes translate-x-* / translate-y-*, scale-x-* / scale-y-*, skew-x-* / skew-y-* and the filter
     // utilities as custom properties that one declaration per family composes (translate: var(--tw-translate-x)
     // var(--tw-translate-y), filter: var(--tw-blur,) var(--tw-brightness,) …). A value the browser rejects in one
-    // of them makes that declaration invalid at computed-value time, so the family's other utilities go with it;
-    // RejectedCompositeTests pins the families.
-    //
-    // The custom properties are the element's: a variant or an important modifier decides only which rule's value a
-    // property holds. So a family is judged once per variant set its tokens are written under and per union of
-    // those sets, over the tokens of every set it contains, and on the value holding each property alone. Where it is rejected
-    // under a variant set, its tokens there give way to tokens under the same variants that write each property the
-    // contained sets hold back to a value that does nothing (translate-x-0, blur-none), so the family is off while
-    // those variants apply; where it is accepted, a holding value that a rejection below took out is written again
-    // under its variants. A [&>*]: scope styles the children rather than the element, and is judged on its own
-    // tokens.
+    // of them makes that declaration invalid at computed-value time once it holds its property, so the family draws
+    // nothing. Which value holds is the cascade's question, answered where Velvet answers it for every value: a
+    // rejected value is read as a layer of its own (ArbitraryStyle.Rejected), ranked as any value of its property,
+    // and the family's composer draws nothing while one holds (StyleArbitraryValueResolver's translate, scale and
+    // filter composers, and StyleSkewClass for skew). RejectedCompositeTests pins the families.
     internal static class StyleCompositeRejection
     {
-        private enum Family
+        // The utilities whose bracket a family composes, by prefix: the property its layer holds, and the CSS
+        // function or longhand the value is written into. A sign is read where Tailwind negates the utility.
+        private static readonly (string Prefix, ArbitraryProperty Property, string Function, bool Negates)[] s_composed =
         {
-            None,
-            Translate,
-            Scale,
-            Transform,
-            Filter,
+            ("translate-x-", ArbitraryProperty.TranslateX, "translate", true),
+            ("translate-y-", ArbitraryProperty.TranslateY, "translate", true),
+            ("scale-x-", ArbitraryProperty.ScaleX, "scale", true),
+            ("scale-y-", ArbitraryProperty.ScaleY, "scale", true),
+            ("blur-", ArbitraryProperty.FilterBlur, "blur", false),
+            ("brightness-", ArbitraryProperty.FilterBrightness, "brightness", false),
+            ("contrast-", ArbitraryProperty.FilterContrast, "contrast", false),
+            ("grayscale-", ArbitraryProperty.FilterGrayscale, "grayscale", false),
+            ("hue-rotate-", ArbitraryProperty.FilterHueRotate, "hue-rotate", true),
+            ("invert-", ArbitraryProperty.FilterInvert, "invert", false),
+            ("saturate-", ArbitraryProperty.FilterSaturate, "saturate", false),
+            ("sepia-", ArbitraryProperty.FilterSepia, "sepia", false),
+        };
+
+        // Whether core, a utility without variants or important modifier, writes a bracket the browser rejects
+        // into a family Tailwind composes, and the property it holds. Read on every class a layer is parsed for,
+        // so nothing is allocated before a prefix matches.
+        internal static bool TryReadRejected(string core, out ArbitraryProperty property)
+        {
+            property = default;
+            var negated = core.Length > 0 && core[0] == '-';
+            foreach (var (prefix, composed, function, negates) in s_composed)
+            {
+                if (OpensBracket(core, negated ? 1 : 0, prefix))
+                {
+                    property = composed;
+                    return (negates || !negated) && TryReadValue(core, negated, out var value) && !Accepts(function, value);
+                }
+            }
+            return false;
         }
 
-        private static readonly Family[] s_families = { Family.Translate, Family.Scale, Family.Transform, Family.Filter };
-
-        // One family token: the properties it writes, one bit each, and the variant set it is written under.
-        private sealed class Reading
+        // Whether cls is a skew-x-[…] or skew-y-[…] whose angle the browser rejects, and which axis it holds.
+        internal static bool RejectsSkew(string cls, out bool isX)
         {
-            public int Index { get; init; }
-            public Family Family { get; init; }
-            public int Properties { get; init; }
-            public bool Rejected { get; init; }
-            public bool Important { get; init; }
-            // As written, each followed by its ':'.
-            public string Variants { get; init; } = string.Empty;
-            public List<string> Parts { get; init; } = new();
-            public string Scope { get; init; } = string.Empty;
-            public bool Child { get; init; }
-            // The rank Velvet layers the token's variants at.
-            public long Rank { get; init; }
-            // The utility without its variants and important modifier.
-            public string Leaf { get; init; } = string.Empty;
+            var negated = cls.Length > 0 && cls[0] == '-';
+            isX = OpensBracket(cls, negated ? 1 : 0, "skew-x-");
+            return (isX || OpensBracket(cls, negated ? 1 : 0, "skew-y-"))
+                && TryReadValue(cls, negated, out var value) && !Accepts("angle", value);
         }
 
-        // tokens with each family judged as above; tokens itself when no token has a value the browser rejects.
-        internal static string[] WithoutRejectedComposites(string[] tokens)
-        {
-            List<Reading>? readings = null;
-            var rejected = false;
-            for (var i = 0; i < tokens.Length; i++)
-            {
-                if (TryRead(tokens[i], i, out var reading))
-                {
-                    (readings ??= new List<Reading>()).Add(reading);
-                    rejected |= reading.Rejected;
-                }
-            }
-            if (!rejected)
-            {
-                return tokens;
-            }
-            var removed = new bool[tokens.Length];
-            var written = new Dictionary<int, List<string>>();
-            foreach (var family in s_families)
-            {
-                Judge(readings!.FindAll(reading => reading.Family == family), removed, written);
-            }
-            var kept = new List<string>(tokens.Length);
-            for (var i = 0; i < tokens.Length; i++)
-            {
-                if (written.TryGetValue(i, out var before))
-                {
-                    kept.AddRange(before);
-                }
-                if (!removed[i])
-                {
-                    kept.Add(tokens[i]);
-                }
-            }
-            return kept.ToArray();
-        }
+        // Whether core holds prefix and a bracket from at.
+        private static bool OpensBracket(string core, int at, string prefix)
+            => core.Length > at + prefix.Length && core[at + prefix.Length] == '['
+                && string.CompareOrdinal(core, at, prefix, 0, prefix.Length) == 0;
 
-        // Takes out the tokens of each variant set the family is rejected under, and records what each set writes in
-        // their place, ahead of the set's first token.
-        private static void Judge(List<Reading> members, bool[] removed, Dictionary<int, List<string>> written)
+        // The bracket's value as CSS reads it, without the type hint.
+        private static bool TryReadValue(string core, bool negated, out string value)
         {
-            var scopes = new List<Reading>();
-            foreach (var member in members)
-            {
-                if (!scopes.Exists(scope => scope.Scope == member.Scope))
-                {
-                    scopes.Add(member);
-                }
-            }
-            var own = scopes.FindAll(scope => Holding(members, scope).Exists(holder => holder.Reading.Rejected));
-            if (own.Count == 0)
-            {
-                return;
-            }
-            // A rejection under one variant set has to take out what another holds while both apply, so the union of
-            // each set the family is rejected under with each other set is judged too, under the stacked variants
-            // that apply while both do: at most k * k unions for k sets. Where three or more apply, the tokens of
-            // every such union among them apply, ranked as their stacked variants are.
-            var plain = scopes.FindAll(scope => !scope.Child && scope.Parts.Count > 0);
-            foreach (var rejectedScope in own)
-            {
-                foreach (var other in plain)
-                {
-                    var union = Union(rejectedScope, other);
-                    if (!rejectedScope.Child && !scopes.Exists(scope => scope.Scope == union.Scope))
-                    {
-                        scopes.Add(union);
-                    }
-                }
-            }
-            var rejected = scopes.FindAll(scope => Holding(members, scope).Exists(holder => holder.Reading.Rejected));
-            foreach (var member in members)
-            {
-                if (rejected.Exists(scope => scope.Scope == member.Scope))
-                {
-                    removed[member.Index] = true;
-                }
-            }
-            var neutralised = new Dictionary<Reading, int>();
-            foreach (var scope in rejected)
-            {
-                if (!scope.Child && scope.Parts.Count > 0)
-                {
-                    Write(written, scope.Index, Neutralising(members, scope, scopes, rejected, out var bits));
-                    neutralised[scope] = bits;
-                }
-            }
-            foreach (var scope in scopes)
-            {
-                if (scope.Child || scope.Parts.Count == 0 || rejected.Contains(scope))
-                {
-                    continue;
-                }
-                var undone = 0;
-                foreach (var (below, bits) in neutralised)
-                {
-                    if (Contains(scope.Parts, below.Parts))
-                    {
-                        undone |= bits;
-                    }
-                }
-                Write(written, scope.Index, Restoring(members, scope, removed, undone));
-            }
-        }
-
-        private static void Write(Dictionary<int, List<string>> written, int index, List<string> tokens)
-        {
-            if (tokens.Count == 0)
-            {
-                return;
-            }
-            if (written.TryGetValue(index, out var before))
-            {
-                before.AddRange(tokens);
-            }
-            else
-            {
-                written[index] = tokens;
-            }
-        }
-
-        // The variant set holding the variants of both a and z, which has no token of its own; its tokens are written
-        // ahead of the later of the two sets' first tokens.
-        private static Reading Union(Reading a, Reading z)
-        {
-            var parts = new List<string>(a.Parts);
-            parts.AddRange(z.Parts.FindAll(part => !a.Parts.Contains(part)));
-            var variants = string.Concat(parts.ConvertAll(part => part + ":"));
-            return new Reading
-            {
-                Index = Math.Max(a.Index, z.Index),
-                Family = a.Family,
-                Variants = variants,
-                Parts = parts,
-                Scope = StyleSpacingPrecedence.VariantSetOf(variants),
-            };
-        }
-
-        // The tokens under scope's variants that write each property a set it contains, and the family is accepted
-        // under, holds back to a value that does nothing; important where what holds it there is. neutralised has a
-        // bit for each property written.
-        private static List<string> Neutralising(List<Reading> members, Reading scope, List<Reading> scopes,
-            List<Reading> rejected, out int neutralised)
-        {
-            neutralised = 0;
-            var tokens = new List<string>();
-            var neutrals = NeutralsOf(scope.Family);
-            for (var bit = 0; bit < neutrals.Length; bit++)
-            {
-                var neutral = neutrals[bit];
-                var important = false;
-                var held = false;
-                foreach (var below in scopes)
-                {
-                    if (below == scope || below.Child || rejected.Contains(below) || !Contains(scope.Parts, below.Parts))
-                    {
-                        continue;
-                    }
-                    foreach (var (property, holder) in Holding(members, below))
-                    {
-                        if (property == 1 << bit)
-                        {
-                            held = true;
-                            important |= holder.Important;
-                        }
-                    }
-                }
-                if (held && neutral != null)
-                {
-                    tokens.Add(scope.Variants + neutral + (important ? "!" : string.Empty));
-                    neutralised |= 1 << bit;
-                }
-            }
-            return tokens;
-        }
-
-        // The holding tokens of an accepted scope that a rejection below it took out, or that a set it contains wrote
-        // a neutral over (undone), written again under its variants, which outrank that set's.
-        private static List<string> Restoring(List<Reading> members, Reading scope, bool[] removed, int undone)
-        {
-            var tokens = new List<string>();
-            foreach (var (property, holder) in Holding(members, scope))
-            {
-                var token = scope.Variants + holder.Leaf + (holder.Important ? "!" : string.Empty);
-                var lost = removed[holder.Index] || ((undone & property) != 0 && holder.Scope != scope.Scope);
-                if (lost && !tokens.Contains(token))
-                {
-                    tokens.Add(token);
-                }
-            }
-            return tokens;
-        }
-
-        // Each property the tokens applying under scope write, with the token holding it.
-        private static List<(int Property, Reading Reading)> Holding(List<Reading> members, Reading scope)
-        {
-            var holding = new List<(int, Reading)>();
-            for (var property = 1; property <= AllProperties(scope.Family); property <<= 1)
-            {
-                Reading? holder = null;
-                foreach (var member in members)
-                {
-                    var applies = scope.Child ? member.Scope == scope.Scope : !member.Child && Contains(scope.Parts, member.Parts);
-                    if (applies && (member.Properties & property) != 0 && (holder == null || Compare(holder, member) < 0))
-                    {
-                        holder = member;
-                    }
-                }
-                if (holder != null)
-                {
-                    holding.Add((property, holder));
-                }
-            }
-            return holding;
-        }
-
-        // Negative when z holds a property both write over a: an important one over any other, then the one Velvet
-        // layers higher for its variants (StyleRuleOrder.RankOfVariants), then the one Tailwind emits later among
-        // rules of one rank: the one writing fewer of the family's properties, then the later by name.
-        private static int Compare(Reading a, Reading z)
-        {
-            if (a.Important != z.Important)
-            {
-                return a.Important ? 1 : -1;
-            }
-            if (a.Rank != z.Rank)
-            {
-                return a.Rank.CompareTo(z.Rank);
-            }
-            var byCount = CountOf(z.Properties).CompareTo(CountOf(a.Properties));
-            if (byCount != 0)
-            {
-                return byCount;
-            }
-            return StyleRuleOrder.CompareCandidates(a.Leaf, z.Leaf);
-        }
-
-        private static int CountOf(int properties)
-        {
-            var count = 0;
-            for (; properties != 0; properties &= properties - 1)
-            {
-                count++;
-            }
-            return count;
-        }
-
-        // Whether every variant of inner is one of outer's.
-        private static bool Contains(List<string> outer, List<string> inner)
-            => inner.TrueForAll(outer.Contains);
-
-        private static bool TryRead(string token, int index, out Reading reading)
-        {
-            reading = null!;
-            if (string.IsNullOrEmpty(token))
+            value = string.Empty;
+            if (core[core.Length - 1] != ']'
+                || !StyleArbitraryValueResolver.TryDropTypeHint(negated ? core.Substring(1) : core, out var body))
             {
                 return false;
             }
-            var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
-            var variantsLength = StyleSpacingPrecedence.VariantsLength(core);
-            var leaf = StyleArbitraryValueResolver.StripImportant(core.Substring(variantsLength), out var leafImportant);
-            if (!StyleArbitraryValueResolver.TryDropTypeHint(leaf, out var payload))
-            {
-                return false;
-            }
-            var body = payload.Length > 0 && payload[0] == '-' ? payload.Substring(1) : payload;
-            var family = FamilyOf(body, out var function, out var properties);
-            if (family == Family.None)
-            {
-                return false;
-            }
-            if (function == "drop-shadow" && WritesDropShadowColour(leaf))
-            {
-                properties = DropShadowColour;
-            }
-            var rejected = false;
             var open = body.IndexOf('[');
-            if (open > 0 && body[body.Length - 1] == ']')
-            {
-                var value = body.Substring(open + 1, body.Length - open - 2).Replace('_', ' ').Trim();
-                rejected = !Accepts(function, value);
-            }
-            var variants = core.Substring(0, variantsLength);
-            var child = StyleChildVariantClass.IsChildVariant(variants);
-            reading = new Reading
-            {
-                Index = index,
-                Family = family,
-                Properties = properties,
-                Rejected = rejected,
-                Important = important || leafImportant,
-                Variants = variants,
-                Parts = StyleSpacingPrecedence.VariantPartsOf(variants),
-                Scope = (child ? "&" : string.Empty) + StyleSpacingPrecedence.VariantSetOf(variants),
-                Child = child,
-                Leaf = leaf,
-                Rank = StyleRuleOrder.RankOfVariants(variants + leaf),
-            };
+            value = body.Substring(open + 1, body.Length - open - 2).Replace('_', ' ').Trim();
             return true;
-        }
-
-        // The family a utility's body belongs to, the CSS function or longhand its bracket is written into, and the
-        // family's custom properties it writes: translate-4 both axes, translate-none none of them.
-        private static Family FamilyOf(string body, out string function, out int properties)
-        {
-            function = string.Empty;
-            properties = 0;
-            if (body.StartsWith("translate-", StringComparison.Ordinal))
-            {
-                function = "translate";
-                properties = AxesOf(body, "translate-", Both);
-                return Family.Translate;
-            }
-            // A bracketed scale-[…] is written as scale itself, beside no other utility.
-            if (body.StartsWith("scale-", StringComparison.Ordinal)
-                && (body[body.Length - 1] != ']' || body.StartsWith("scale-x-", StringComparison.Ordinal)
-                    || body.StartsWith("scale-y-", StringComparison.Ordinal) || body.StartsWith("scale-z-", StringComparison.Ordinal)))
-            {
-                function = "scale";
-                properties = AxesOf(body, "scale-", Both | Depth);
-                return Family.Scale;
-            }
-            if (body.StartsWith("skew-", StringComparison.Ordinal))
-            {
-                function = "angle";
-                properties = AxesOf(body, "skew-", Both);
-                return Family.Transform;
-            }
-            if (body.StartsWith("rotate-x-", StringComparison.Ordinal) || body.StartsWith("rotate-y-", StringComparison.Ordinal)
-                || body.StartsWith("rotate-z-", StringComparison.Ordinal))
-            {
-                function = "angle";
-                properties = AxesOf(body, "rotate-", 0) << 2;
-                return Family.Transform;
-            }
-            for (var i = 0; i < s_filters.Length; i++)
-            {
-                var filter = s_filters[i];
-                if (body == filter || body.StartsWith(filter + "-", StringComparison.Ordinal))
-                {
-                    function = filter;
-                    properties = 1 << i;
-                    return Family.Filter;
-                }
-            }
-            return Family.None;
-        }
-
-        private const int Both = 0b011;
-        private const int Depth = 0b100;
-
-        // The axis bits a prefix-x- / -y- / -z- utility writes, none for prefix-none and prefix-3d, which write no
-        // custom property, and whole for the rest.
-        private static int AxesOf(string body, string prefix, int whole)
-        {
-            var axis = body.Length > prefix.Length + 1 && body[prefix.Length + 1] == '-' ? body[prefix.Length] : '\0';
-            return axis switch
-            {
-                'x' => 0b001,
-                'y' => 0b010,
-                'z' => 0b100,
-                _ => body == prefix + "none" || body == prefix + "3d" ? 0 : whole,
-            };
-        }
-
-        private static int AllProperties(Family family) => (1 << NeutralsOf(family).Length) - 1;
-
-        // By property bit, a token writing it back to a value that does nothing; null where Velvet draws no such
-        // property.
-        private static string?[] NeutralsOf(Family family) => family switch
-        {
-            Family.Translate => new[] { "translate-x-0", "translate-y-0", null },
-            Family.Scale => new[] { "scale-x-100", "scale-y-100", null },
-            Family.Transform => new[] { "skew-x-0", "skew-y-0", null, null, null },
-            Family.Filter => s_filterNeutrals,
-            Family.None => throw new ArgumentOutOfRangeException(nameof(family), family, "no family token is read as None"),
-            _ => throw new ArgumentOutOfRangeException(nameof(family), family, null),
-        };
-
-        private static readonly string[] s_filters =
-        {
-            "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia", "drop-shadow",
-        };
-
-        // drop-shadow-none writes the drop shadow off whatever its colour, which needs no token of its own.
-        private static readonly string?[] s_filterNeutrals =
-        {
-            "blur-none", "brightness-100", "contrast-100", "grayscale-0", "hue-rotate-0", "invert-0", "saturate-100",
-            "sepia-0", "drop-shadow-none", null,
-        };
-
-        // The bit of --tw-drop-shadow-color, which a drop-shadow colour writes apart from the size's --tw-drop-shadow.
-        private const int DropShadowColour = 1 << 9;
-
-        private static readonly string[] s_dropShadowSizes = { "none", "xs", "sm", "md", "lg", "xl", "2xl" };
-
-        // Whether Tailwind writes leaf, a drop-shadow utility, as its colour: a name it holds no size for, or a
-        // bracket typed as a colour.
-        private static bool WritesDropShadowColour(string leaf)
-        {
-            const string prefix = "drop-shadow-";
-            if (!leaf.StartsWith(prefix, StringComparison.Ordinal))
-            {
-                return false;
-            }
-            var slash = StyleColorValueParser.ColorModifierSlashIndex(leaf, prefix.Length);
-            var suffix = slash < 0 ? leaf.Substring(prefix.Length) : leaf.Substring(prefix.Length, slash - prefix.Length);
-            if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
-            {
-                return Array.IndexOf(s_dropShadowSizes, suffix) < 0;
-            }
-            return StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out var value)
-                && (hint != null ? hint == "color" : TailwindDataTypes.IsColor(value));
         }
 
         // Whether the browser takes value where Tailwind writes it for function. A value only a math function or a

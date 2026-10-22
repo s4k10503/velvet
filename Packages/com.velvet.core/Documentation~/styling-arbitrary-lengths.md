@@ -96,37 +96,36 @@ no colour where the shadow reads it (`shadow-md shadow-[#ggg]`, `inset-shadow-sm
 ([shadows](styling-shadows.md)), but their values count. A `shadow-[…]` Tailwind types as a colour
 (`shadow-[#f00]`, `shadow-[color:red]`) writes the shadow colour alone, so it does not stand in for a rejected
 `shadow-[…]` before it. Each of these is the value of the class Tailwind emits last among those writing it, in
-whatever order they are written: `ring-2 ring-red-500 ring-[5PX]` draws a red ring, Tailwind emitting `ring-[5PX]`
-first, while `ring-[length:2] ring-4` discards, Tailwind emitting `ring-[length:2]` last. A colour keyword
-(`ring-current`, `ring-inherit`, `ring-transparent`) is a colour. A `from-` / `via-` / `to-` colour that is no
-colour (`from-[1IN]`) leaves its stop transparent, and a position that is no length or percentage
-(`from-[length:red]`) returns the stop to its initial position: 0%, 50% or 100%.
+whatever order they are written, and a variant's value holds while its variant applies
+(`ring ring-red-500 hover:ring-[5PX]` draws no ring while hovered): `ring-2 ring-red-500 ring-[5PX]` draws a red
+ring, Tailwind emitting `ring-[5PX]` first, while `ring-[length:2] ring-4` discards, Tailwind emitting
+`ring-[length:2]` last. A colour keyword (`ring-current`, `ring-inherit`, `ring-transparent`) is a colour. A
+`from-` / `via-` / `to-` colour that is no colour (`from-[1IN]`) leaves its stop transparent, and a position that
+is no length or percentage (`from-[length:red]`) returns the stop to its initial position: 0%, 50% or 100%.
 
 Only what the browser rejects counts. A function, `var()`, `currentColor` or a colour name Velvet does not read
 (`ring-[oklch(62.3%_0.214_259.815)]`, `ring-[var(--brand)]`, `from-[var(--x)]`, `ring-[rebeccapurple]`), and a
 length in a unit a stop cannot place (`via-[length:2em]`), discard nothing, and Velvet leaves such a class
 unread.
 
-Tailwind composes four more families through one declaration each: `translate-*`; `scale-x-*`, `scale-y-*` and the
-uniform `scale-<n>` (a bracketed `scale-[…]` is written as `scale` alone); `skew-*`; and the filters, `blur-*` to
-`sepia-*`, `hue-rotate-*` and `drop-shadow-*`. Each utility writes custom properties of the element, and when the
-value a property holds is one the browser rejects, the family's declaration is dropped and every utility of the
-family with it: `translate-x-4 translate-y-[10]` translates nowhere, `blur-sm brightness-[abc]` filters nothing,
-and `drop-shadow-lg blur-[2]` loses its drop shadow. A property holds the value of the rule that wins it: an
-important one (`!translate-y-[10] translate-x-4` translates nowhere), then the one whose variants rank higher, by
-the selector they add and then by the order Tailwind registers them (a `hover:` value over a `dark:` one, a
-`focus:` value over a `hover:` one), then the one Tailwind emits last, in whatever order they are written. So
-`blur-[2] blur-md` blurs as `blur-md`, while `translate-y-[10] translate-y-2 translate-x-4` translates nowhere,
-Tailwind emitting `translate-y-[10]` after `translate-y-2`. Where the rejected value that holds is a variant's,
-the family is off while the variant applies: `translate-x-4 hover:translate-y-[10]` translates along x until
-hovered and not at all while hovered, and `drop-shadow-lg hover:blur-[2]` loses its drop shadow while hovered.
-Where two variants apply at once, the family is judged on what both hold, so
-`dark:translate-x-4 hover:translate-y-[10]` translates in dark mode until hovered, and
+Tailwind composes four more families through one declaration each: `translate-x-*` and `translate-y-*`;
+`scale-x-*`, `scale-y-*` and the uniform `scale-<n>` (a bracketed `scale-[…]` is written as `scale` alone);
+`skew-x-*` and `skew-y-*`; and the filters, `blur-*` to `sepia-*`, `hue-rotate-*` and `drop-shadow-*`. Each
+utility writes custom properties of the element, and whenever the value holding one of them is one the browser
+rejects, the family's declaration is dropped and the family draws nothing: `translate-x-4 translate-y-[10]`
+translates nowhere, `blur-sm brightness-[abc]` filters nothing, and `drop-shadow-lg blur-[2]` loses its drop
+shadow. Velvet answers which value holds as it does for any value of the property, in the state the element is in:
+an important one first (`!translate-y-[10] hover:translate-y-2 translate-x-4` translates nowhere, hovered or not),
+then the one whose variants rank higher, by the selector they add and then by the order Tailwind registers them,
+with every breakpoint at or below the viewport's applying, then the one Tailwind emits last, in whatever order
+they are written. So `blur-[2] blur-md` blurs as `blur-md`, while `translate-y-[10] translate-y-2 translate-x-4`
+translates nowhere, Tailwind emitting `translate-y-[10]` after `translate-y-2`;
+`translate-x-4 hover:translate-y-[10]` translates along x until hovered and not at all while hovered; and
 `translate-x-4 hover:translate-y-[10] focus:translate-y-2` translates along both axes while hovered and focused,
-the `focus:` value holding. Velvet judges each variant a value is rejected under beside each other one; where
-three or more apply, what those pairs write applies, ranked by its variants. A `drop-shadow-*` colour and size are
-separate values, as Tailwind writes them. A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with
-them.
+the `focus:` value holding. A `drop-shadow-*` colour and size are separate values, as Tailwind writes them. Velvet
+draws no `translate-<n>`, `translate-[…]` or `skew-<n>`, which write both axes, so their values hold nothing here,
+and it writes a uniform `scale-<n>` from the stylesheet, which a `scale-x-*` or `scale-y-*` value holds over
+whatever its variants. A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with them.
 
 ## Lengths only an element can measure
 

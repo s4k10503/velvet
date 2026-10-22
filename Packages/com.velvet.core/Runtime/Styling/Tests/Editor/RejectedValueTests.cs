@@ -22,7 +22,7 @@ namespace Velvet.Tests
         public void Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(string classes)
         {
             // Act
-            var ok = StyleRingClass.TryExtract(classes.Split(' '), out _);
+            var ok = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -45,18 +45,19 @@ namespace Velvet.Tests
         public void Given_ARingWhoseBoxShadowHoldsNoValueTheBrowserRejects_When_Extracted_Then_TheRingIsDrawn(string classes)
         {
             // Act
-            var ok = StyleRingClass.TryExtract(classes.Split(' '), out _);
+            var ok = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
 
             // Assert
             Assert.That(ok, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base drew this shadow, whose ring colour the browser takes.
-        [Test]
-        public void Given_AShadowBesideARingColourVelvetDoesNotRead_When_Extracted_Then_TheShadowIsDrawn()
+        // GREEN_ON_BASE(characterization): the base drew these shadows, whose box-shadow holds no value the browser rejects.
+        [TestCase("ring-2 ring-[oklch(62.3%_0.214_259.815)] shadow-md")]
+        [TestCase("ring-01 ring-[5PX] shadow-md")]
+        public void Given_AShadowBesideNoValueTheBrowserRejects_When_Extracted_Then_TheShadowIsDrawn(string classes)
         {
             // Act
-            var ok = StyleShadowClass.TryExtract(new[] { "ring-2", "ring-[oklch(62.3%_0.214_259.815)]", "shadow-md" }, out _);
+            var ok = StyleShadowClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
 
             // Assert
             Assert.That(ok, Is.True);
@@ -75,7 +76,7 @@ namespace Velvet.Tests
         public void Given_AShadowBesideAValueTheBrowserRejects_When_Extracted_Then_TheShadowIsDiscarded(string classes)
         {
             // Act
-            var ok = StyleShadowClass.TryExtract(classes.Split(' '), out _);
+            var ok = StyleShadowClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -110,10 +111,25 @@ namespace Velvet.Tests
             VelvetPalette.TryResolveColorToken("red-500", out var red);
 
             // Act
-            var ok = StyleRingClass.TryExtract(new[] { "ring-2", "ring-red-500", "ring-[5PX]" }, out var spec);
+            var ok = StyleRingClass.TryExtract(
+                StyleSpacingPrecedence.Normalize(new[] { "ring-2", "ring-red-500", "ring-[5PX]" }), out var spec);
 
             // Assert
             Assert.That(ok ? spec.Color : Color.clear, Is.EqualTo(red));
+        }
+
+        [Test]
+        public void Given_ARejectedRingColourAVariantAppliesAfterTheBase_When_Extracted_Then_NoRingIsDrawn()
+        {
+            // Arrange — the class source a hover:ring-[5PX] payload composes while hovered: the reconciled classes
+            // in Tailwind's order, then the payload.
+            var classes = new[] { "ring", "ring-red-500", "ring-[5PX]" };
+
+            // Act
+            var ok = StyleRingClass.TryExtract(classes, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
         }
 
         [Test]

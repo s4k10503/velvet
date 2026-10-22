@@ -259,20 +259,6 @@ namespace Velvet
             }
         }
 
-        // The rank Velvet layers token's payload at for its variants: each variant's own, stacked as a stacked
-        // variant's payload is (StyleLayerPriority.Stack); Base for a token under none.
-        internal static long RankOfVariants(string token)
-        {
-            var values = new List<(long Rank, string Value)>();
-            PeelVariants(token, values);
-            var rank = StyleLayerPriority.Base;
-            foreach (var (variantRank, _) in values)
-            {
-                rank = StyleLayerPriority.Stack(rank, variantRank);
-            }
-            return rank;
-        }
-
         // Strips every variant off token, recording each one's family rank and value, and returns the utility
         // left under them.
         private static string PeelVariants(string token, List<(long Rank, string Value)> values)
@@ -425,7 +411,7 @@ namespace Velvet
             var property = default(ArbitraryProperty);
             StyleLonghandSet set;
             if (StyleArbitraryValueResolver.IsInlineResolved(core)
-                && StyleArbitraryValueResolver.TryParse(core, out var style))
+                && StyleArbitraryValueResolver.TryParseComposed(core, out var style))
             {
                 inline = true;
                 property = style.Property;

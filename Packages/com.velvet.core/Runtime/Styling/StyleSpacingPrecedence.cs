@@ -105,12 +105,10 @@ namespace Velvet
             return aRank < 0 || zRank < 0 ? StyleBorderSideColor.CompareCascade(a, z) : aRank.CompareTo(zRank);
         }
 
-        // tokens without a composite family the browser discards (StyleCompositeRejection), as NormalizeSpacing leaves
-        // them, with the tokens of each family a C# resolver folds from the whole list put in Tailwind's order
-        // (StyleFamilyOrder); tokens itself when nothing moves.
+        // tokens as NormalizeSpacing leaves them, with the tokens of each family a C# resolver folds from the whole list
+        // put in Tailwind's order (StyleFamilyOrder); tokens itself when nothing moves.
         internal static string[] Normalize(string[] tokens)
         {
-            tokens = StyleCompositeRejection.WithoutRejectedComposites(tokens);
             if (tokens.Length < 2)
             {
                 return tokens;
@@ -502,7 +500,7 @@ namespace Velvet
         // `hover:focus:` and `focus:hover:` name one rule's variants, so plain ones compare as a set. An arbitrary
         // selector variant (`[&>*]:`) is order-sensitive, as Tailwind reads `[&>*]:hover:` and `hover:[&>*]:` as
         // different selectors, so those keep their order.
-        internal static string VariantSetOf(string variants)
+        private static string VariantSetOf(string variants)
         {
             if (variants.Length == 0)
             {
@@ -510,18 +508,6 @@ namespace Velvet
             }
             var parts = new List<string>();
             var ordered = new List<string>();
-            foreach (var part in VariantPartsOf(variants))
-            {
-                (part.StartsWith("[", StringComparison.Ordinal) ? ordered : parts).Add(part);
-            }
-            parts.Sort(StringComparer.Ordinal);
-            return string.Join(":", parts) + "|" + string.Join(":", ordered);
-        }
-
-        // The variants in front of a payload as written, split at each ':' outside brackets.
-        internal static List<string> VariantPartsOf(string variants)
-        {
-            var parts = new List<string>();
             var depth = 0;
             var start = 0;
             for (var i = 0; i < variants.Length; i++)
@@ -536,11 +522,13 @@ namespace Velvet
                 }
                 else if (variants[i] == ':' && depth == 0)
                 {
-                    parts.Add(variants.Substring(start, i - start));
+                    var part = variants.Substring(start, i - start);
+                    (part.StartsWith("[", StringComparison.Ordinal) ? ordered : parts).Add(part);
                     start = i + 1;
                 }
             }
-            return parts;
+            parts.Sort(StringComparer.Ordinal);
+            return string.Join(":", parts) + "|" + string.Join(":", ordered);
         }
 
         private static bool SameSlot(Reading a, Reading z)

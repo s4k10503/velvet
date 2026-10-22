@@ -64,7 +64,7 @@ namespace Velvet
         // resolves to. Every other token is as TryParse leaves it.
         internal static bool TryParseLayer(string className, out ArbitraryStyle result)
         {
-            if (!TryParse(className, out result))
+            if (!TryParseComposed(className, out result))
             {
                 return false;
             }
@@ -86,6 +86,19 @@ namespace Velvet
             {
                 StyleFilterValueParser.QuietUnregistered = was;
             }
+        }
+
+        // TryParse, where a value the browser rejects in a family Tailwind composes through one declaration is a
+        // layer of its own (ArbitraryStyle.Rejected) rather than no layer: it has to hold the property at its rank,
+        // as the rejected value does in the browser, for the family's composer to see it.
+        internal static bool TryParseComposed(string className, out ArbitraryStyle result)
+        {
+            if (StyleCompositeRejection.TryReadRejected(className, out var property))
+            {
+                result = ArbitraryStyle.RejectedIn(property);
+                return true;
+            }
+            return TryParse(className, out result);
         }
 
         // Parses using IndexOf + string operations rather than regex — a per-class hot path.
@@ -2786,6 +2799,13 @@ namespace Velvet
                 element.style.translate = StyleKeyword.Null;
                 return;
             }
+            // Both axes are written by one translate declaration, which a rejected value holding either one makes
+            // invalid, leaving no translation.
+            if ((hasX && xw.Rejected) || (hasY && yw.Rejected))
+            {
+                element.style.translate = new StyleTranslate(StyleKeyword.None);
+                return;
+            }
             var x = hasX ? new Length(xw.Value, xw.Unit) : new Length(0f);
             var y = hasY ? new Length(yw.Value, yw.Unit) : new Length(0f);
             element.style.translate = new Translate(x, y);
@@ -2799,6 +2819,13 @@ namespace Velvet
             if (!hasX && !hasY && !hasUniform)
             {
                 element.style.scale = StyleKeyword.Null;
+                return;
+            }
+            // As for translate, over the scale declaration the axes share; a uniform scale-<n> writes that same
+            // declaration, so none of it is drawn.
+            if ((hasX && xw.Rejected) || (hasY && yw.Rejected))
+            {
+                element.style.scale = new StyleScale(StyleKeyword.None);
                 return;
             }
             var uniform = hasUniform ? uw.Value : UniformScaleFromClasses(element);
@@ -2926,22 +2953,39 @@ namespace Velvet
             }
         }
 
+        private static bool HoldsRejectedFilter(LayerMap map)
+        {
+            foreach (var prop in s_filterOrder)
+            {
+                if (map.TryGetValue(prop, out var layers) && layers.Count > 0 && layers.Values[layers.Count - 1].Rejected)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static List<FilterFunction>? ComposeFilter(VisualElement element, LayerMap map, out bool dropped)
         {
             dropped = false;
             List<FilterFunction>? functions = null;
-            foreach (var prop in s_filterOrder)
+            // The built-in functions and the drop shadow are one filter declaration, which a rejected value
+            // holding any of them makes invalid; a filter-[name:…] custom is a declaration of its own.
+            if (!HoldsRejectedFilter(map))
             {
-                if (!map.TryGetValue(prop, out var layers) || layers.Count == 0)
+                foreach (var prop in s_filterOrder)
                 {
-                    continue;
+                    if (!map.TryGetValue(prop, out var layers) || layers.Count == 0)
+                    {
+                        continue;
+                    }
+                    if (BuildFilter(prop, layers.Values[layers.Count - 1].Value) is { } fn)
+                    {
+                        (functions ??= new List<FilterFunction>()).Add(fn);
+                    }
                 }
-                if (BuildFilter(prop, layers.Values[layers.Count - 1].Value) is { } fn)
-                {
-                    (functions ??= new List<FilterFunction>()).Add(fn);
-                }
+                AppendDropShadows(element, map, ref functions);
             }
-            AppendDropShadows(element, map, ref functions);
             // Customs compose AFTER every built-in, in first-application order — each entry contributing
             // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
             // SortedList wins" rule the built-ins use above, just keyed by name instead of by

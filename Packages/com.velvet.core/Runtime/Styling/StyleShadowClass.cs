@@ -194,35 +194,38 @@ namespace Velvet
             return false;
         }
 
-        // One custom property of the element's box-shadow and the class holding it: the one Tailwind emits last of
-        // those writing it, an important one over any other, whatever order they are written in
-        // (StyleRuleOrder.CompareCandidates). Rejected and ReadsColour describe the value it holds.
+        // One custom property of the element's box-shadow and the class holding it: the last of those writing it in
+        // the order the class passes read them, which is Tailwind's for the reconciled classes (StyleFamilyOrder) with
+        // the variant payloads that apply after them, weakest first (VariantGateState); an important one holds over
+        // any other. Rejected and ReadsColour describe the value it holds.
         internal struct BoxShadowSlot
         {
-            private string? _holder;
             private bool _important;
 
-            public bool Set => _holder != null;
+            public bool Set { get; private set; }
 
             public bool Rejected { get; private set; }
 
             public bool ReadsColour { get; private set; }
 
-            // Takes the slot for candidate when it holds the property over the class holding it so far.
-            public void Offer(string candidate, bool important, bool rejected, bool readsColour = false)
+            // Takes the slot for a class read after the one holding it, unless that one is important and this is not.
+            public void Offer(bool important, bool rejected, bool readsColour = false)
             {
-                if (_holder != null && (_important != important
-                    ? _important
-                    : StyleRuleOrder.CompareCandidates(_holder, candidate) > 0))
+                if (Set && _important && !important)
                 {
                     return;
                 }
-                _holder = candidate;
+                Set = true;
                 _important = important;
                 Rejected = rejected;
                 ReadsColour = readsColour;
             }
         }
+
+        // Whether cls is an inset-shadow-* or inset-ring-* class, which Velvet draws nothing for but whose values
+        // take part in the box-shadow the others share (StyleRingClass.DiscardsBoxShadow).
+        internal static bool IsInsetBoxShadowClass(string cls)
+            => cls.StartsWith("inset-shadow", StringComparison.Ordinal) || cls.StartsWith("inset-ring", StringComparison.Ordinal);
 
         // Whether a family's layer and colour discard the box-shadow: a layer the browser rejects, or one reading
         // the family's colour variable where the colour is one the browser rejects.
@@ -242,7 +245,7 @@ namespace Velvet
             var inset = root == "inset-shadow";
             if (core == root && !inset)
             {
-                layer.Offer(core, important, false, readsColour: true);
+                layer.Offer(important, false, readsColour: true);
                 return true;
             }
             if (!core.StartsWith(root + "-", StringComparison.Ordinal))
@@ -252,24 +255,24 @@ namespace Velvet
             var suffix = core.Substring(root.Length + 1);
             if (suffix == "none" || (inset ? Array.IndexOf(s_insetPresets, suffix) >= 0 : Presets.ContainsKey(suffix)))
             {
-                layer.Offer(core, important, false, readsColour: suffix != "none");
+                layer.Offer(important, false, readsColour: suffix != "none");
                 return true;
             }
             if (TryReadBracket(core, root, out var hint, out var value))
             {
                 if (hint != null ? hint == "color" : TailwindDataTypes.IsColor(value.AsSpan()))
                 {
-                    colour.Offer(core, important, StyleColorValueParser.RejectsAsColour(value));
+                    colour.Offer(important, StyleColorValueParser.RejectsAsColour(value));
                 }
                 else
                 {
-                    layer.Offer(core, important, RejectsAsBoxShadow(value, inset), ReadsShadowColour(value));
+                    layer.Offer(important, RejectsAsBoxShadow(value, inset), ReadsShadowColour(value));
                 }
                 return true;
             }
             if (suffix is "inherit" or "initial" or "current" or "transparent" || VelvetPalette.TryResolveColorToken(suffix, out _))
             {
-                colour.Offer(core, important, false);
+                colour.Offer(important, false);
                 return true;
             }
             return false;
