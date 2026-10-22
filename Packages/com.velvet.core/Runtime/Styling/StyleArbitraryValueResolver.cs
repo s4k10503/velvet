@@ -2300,6 +2300,12 @@ namespace Velvet
             return TryParse(inlineForm, out var style) ? Pixels(element, style) : float.NaN;
         }
 
+        // Whether an important declaration of the element's own outranking write wins slot.
+        private static bool ImportantWins(LayerMap map, HeldSlot slot, DrivenWrite write)
+            => TryLayeredWinner(map, slot, out var winner, out var rank) && write.Outranks(winner.Property, rank)
+                || map.Projection != null && write.Outranks(HeldSlotGroups.LonghandOf(slot),
+                    map.Projection.ClaimOf(HeldSlotGroups.LonghandOf(slot)));
+
         // Whether a driver writes slot and an important declaration of the element's own outranking it wins there,
         // so a dashed divider paints the slot in what the slot shows.
         internal static bool ImportantWinsOverDriven(VisualElement element, HeldSlot slot)

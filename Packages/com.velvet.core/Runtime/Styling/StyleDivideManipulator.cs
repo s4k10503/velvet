@@ -214,9 +214,10 @@ namespace Velvet
                 // Solid divider, the last child (no divider), or a child whose face a skew / shadow layer owns:
                 // a plain inline border. Detach any stale dash paint (e.g. a divide-dashed → divide-solid flip, or
                 // a colored child reordered to the last slot).
-                DetachDash(child);
+                var carried = DetachDash(child);
                 WriteWidth(child, edge, isDivider && !ownWidth);
                 WriteColors(child, null, isDivider);
+                RestoreCodeColor(child, carried, isDivider);
                 return;
             }
 
@@ -417,12 +418,57 @@ namespace Velvet
         };
 #pragma warning restore CS8524
 
-        private void DetachDash(VisualElement child)
+        // Detaches child's dash paint, returning the color its code wrote over the masked edge, which only the
+        // binding kept while the mask held the slot: a write since the last paint, or the one the binding took.
+        private (DivideEdge Edge, Color Color)? DetachDash(VisualElement child)
         {
-            if (_ctx.DivideDashBindings.TryGetValue(child, out var binding))
+            if (!_ctx.DivideDashBindings.TryGetValue(child, out var binding))
             {
-                DivideDashPainter.Detach(child, binding);
-                _ctx.DivideDashBindings.Remove(child);
+                return null;
+            }
+            var written = InlineColor(child, binding.Edge);
+            var code = DivideDashPainter.IsMask(written) ? binding.Inline
+                : written.keyword == StyleKeyword.Undefined && !StyleArbitraryValueResolver.IsDriven(child, ColorSlot(binding.Edge))
+                    ? written.value
+                    : null;
+            DivideDashPainter.Detach(child, binding);
+            _ctx.DivideDashBindings.Remove(child);
+            return code is { } color ? (binding.Edge, color) : null;
+        }
+
+        // Writes back a color the child's code wrote while a dash masked its edge, as that edge's inline style,
+        // where nothing that outranks an inline style holds it: an important divide color while the child is
+        // divided, an important declaration of the child's own, or a motion driver.
+        private void RestoreCodeColor(VisualElement child, (DivideEdge Edge, Color Color)? carried, bool divided)
+        {
+            if (carried is not { } written)
+            {
+                return;
+            }
+            var (edge, color) = written;
+            var slot = ColorSlot(edge);
+            if ((divided && _spec.HasColor && (_spec.Important & DivideImportance.Color) != 0)
+                || StyleArbitraryValueResolver.DeclaresImportantOwn(child, slot)
+                || StyleArbitraryValueResolver.ResolveLayered(child, slot, importantOnly: true) != null
+                || StyleArbitraryValueResolver.IsDriven(child, slot))
+            {
+                return;
+            }
+            StyleArbitraryValueResolver.LetGo(child, slot);
+            switch (edge)
+            {
+                case DivideEdge.Left:
+                    child.style.borderLeftColor = color;
+                    break;
+                case DivideEdge.Right:
+                    child.style.borderRightColor = color;
+                    break;
+                case DivideEdge.Top:
+                    child.style.borderTopColor = color;
+                    break;
+                case DivideEdge.Bottom:
+                    child.style.borderBottomColor = color;
+                    break;
             }
         }
 
@@ -462,8 +508,9 @@ namespace Velvet
             for (var i = 0; i < count; i++)
             {
                 var child = ClipPathLayoutBox.InnerOf(container[i]);
-                DetachDash(child);
+                var carried = DetachDash(child);
                 ResetEdge(child, edge);
+                RestoreCodeColor(child, carried, divided: true);
             }
         }
 
@@ -500,9 +547,10 @@ namespace Velvet
         {
             if (StyleChildOwnership.TryRelease(_ctx.ChildDividerOwners, child, this))
             {
-                DetachDash(child);
+                var carried = DetachDash(child);
                 ResetOwnedEdges(child);
                 WriteColors(child, null, false);
+                RestoreCodeColor(child, carried, divided: false);
             }
         }
 

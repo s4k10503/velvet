@@ -5,9 +5,9 @@ using UnityEngine;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies how a square-cornered box's dashed side is laid out
-    /// (<see cref="DashedBorderPainter.ComputeSideRuns"/>): each side is a line of its own from corner to corner.
-    /// GWT, one assert per case.
+    /// Specifies how a box's dashed side is laid out: a square-cornered side is a line of its own from corner to
+    /// corner (<see cref="DashedBorderPainter.ComputeSideRuns"/>), and every side is cut to its own corner of the
+    /// box (<see cref="DashedBorderPainter.ComputeSidePieces"/>). GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class DashedBorderSideTests
@@ -24,6 +24,35 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(runs[runs.Count - 1].To.x, Is.EqualTo(40f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ASquareBoxWithEveryBorderTwoWide_When_ItsTopSidesPiecesAreComputed_Then_TheFirstStopsAtTheCornerMiter()
+        {
+            // Arrange — the top's first dash covers 0 to 6 across the 2-wide band; the left side owns the corner's
+            // lower half, the triangle under the line from (0, 0) to (2, 2), which takes 2 of its 12.
+            var box = new BorderBox { Size = new Vector2(40f, 20f), Left = 2f, Top = 2f, Right = 2f, Bottom = 2f };
+            var points = new List<Vector2>();
+            var counts = new List<int>();
+
+            // Act
+            DashedBorderPainter.ComputeSidePieces(DivideEdge.Top, box, BorderLineStyle.Dashed, points, counts);
+
+            // Assert
+            Assert.That(Area(points, counts[0]), Is.EqualTo(10f).Within(1e-3f));
+        }
+
+        // The area of the polygon whose count vertices open points.
+        private static float Area(List<Vector2> points, int count)
+        {
+            var twice = 0f;
+            for (var i = 0; i < count; i++)
+            {
+                var p = points[i];
+                var q = points[(i + 1) % count];
+                twice += (p.x * q.y) - (q.x * p.y);
+            }
+            return Mathf.Abs(twice) * 0.5f;
         }
     }
 }

@@ -344,8 +344,19 @@ namespace Velvet
                 CaptureFace(element.style.backgroundColor.value, element.resolvedStyle.backgroundColor,
                     ref BgColor, ref BgFromInline);
             }
-            CaptureFace(element.style.borderLeftColor.value, element.resolvedStyle.borderLeftColor,
-                ref BorderColor, ref BorderFromInline);
+            // A dashed divider's mask on the left edge is not this stash's suppression, so a first capture under it
+            // takes the color the divider paints there rather than keeping a stash it never had.
+            if (!HasStash && SilhouetteFace.IsSentinel(element.style.borderLeftColor.value)
+                && DivideDashPainter.ColorUnderMask(element, DivideEdge.Left) is { } underMask)
+            {
+                BorderColor = underMask;
+                BorderFromInline = false;
+            }
+            else
+            {
+                CaptureFace(element.style.borderLeftColor.value, element.resolvedStyle.borderLeftColor,
+                    ref BorderColor, ref BorderFromInline);
+            }
             HasStash = true;
         }
 

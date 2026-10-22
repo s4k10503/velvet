@@ -1337,6 +1337,59 @@ namespace Velvet.Tests
                 Is.EqualTo(Color.red));
         }
 
+        [Test]
+        public void Given_ARoundedDashedChildInADashedRow_When_ItsOutlineChoosesItsSides_Then_TheDividedSideIsLeftToTheDivider()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-dashed rounded-lg"),
+            };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Act
+            var paints = BorderStyleSilhouette.PaintsSide(scope.Root[0][1], DivideEdge.Right);
+
+            // Assert
+            Assert.That(paints, Is.False);
+        }
+
+        [Test]
+        public void Given_AReversedColoredDashedRow_When_ADividedChildGainsBorderDashed_Then_ItsOutlineTakesTheColorUnderTheMask()
+        {
+            // Arrange — the reversed divider masks the child's left edge, the side the outline's color is read from.
+            using var scope = new ReconcilerScope();
+            const string row = "flex flex-row divide-x divide-x-reverse divide-dashed divide-[#ff0000]";
+            var before = new VNode[] { DividerRowWithColoredChild(row, "") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var child = scope.Root[0][1];
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { DividerRowWithColoredChild(row, "border-dashed") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.BorderStyleBindings[child].BorderColor, Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_AColorTheChildsCodeWroteOverADash_When_TheDividerTurnsSolid_Then_ThatColorStands()
+        {
+            // Arrange — the dash takes the written color and masks the edge again.
+            using var scope = new ReconcilerScope();
+            var dashed = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), dashed);
+            var child = scope.Root[0][1];
+            child.style.borderRightColor = Color.blue;
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, dashed, new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) });
+
+            // Assert
+            Assert.That(child.style.borderRightColor.value, Is.EqualTo(Color.blue));
+        }
+
         // GREEN_ON_BASE(characterization): the base already paints a dashed divider in the divide color. What
         // reddens it is DivideDashPainter.PaintColor passing over the divider color.
         [Test]

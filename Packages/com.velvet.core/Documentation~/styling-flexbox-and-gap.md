@@ -134,12 +134,15 @@ important color class of the child's own keeps a dashed one, and a `V.Motion` dr
 written one. The pattern is the one Chrome draws a dashed or dotted border side in: a dash is three widths
 long with a two-width gap below 3px and two widths with a one-width gap from 3px up, its gap is stretched or
 shrunk so the edge starts and ends on a dash, a dot is a square up to 3px, where the first dot or its gap
-gains or loses a pixel and the last dot is drawn on its own as the length needs so the edge starts and ends
-on a whole dot, and round past it, and an edge too short for two dashes or two square dots is drawn solid.
-`border-dashed` / `border-dotted` stroke each side of a box with square corners on its own, at that side's
-width and from corner to corner, as Chrome does, leaving a side a dashed divider paints to it, and lay the
-pattern once along the whole outline of a box with a rounded corner. A panel holding such a divider runs one
-check per frame, which masks a color the child's own code writes over the divided edge.
+gains or loses a pixel and the last dot is drawn on its own as the length needs so an edge at least three
+widths long starts and ends on a whole dot, and round past it, and an edge too short for two dashes or two
+square dots is drawn solid. `border-dashed` / `border-dotted` paint each side on its own at that side's
+width, as Chrome does: a side of a box with square corners as a line from corner to corner, a side of a box
+with a rounded corner along the whole rounded outline. Each side is cut to its own corner of the box at the
+line from the outer corner to the inner one, the miter Chrome clips a side to, so a translucent color is
+laid once where two sides meet. A side a dashed divider paints is left to the divider, which is laid out the
+same way, so on a rounded child it follows the child's curve. A panel holding such a divider runs one check
+per frame, which masks a color the child's own code writes over the divided edge.
 
 ### How re-spacing stays correct
 

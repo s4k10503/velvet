@@ -13,69 +13,204 @@ namespace Velvet
         Dotted,
     }
 
+    // A laid-out box's border as the side painter reads it: its size, each side's width and each corner's radius.
+    internal readonly struct BorderBox
+    {
+        public Vector2 Size { get; init; }
+        public float Left { get; init; }
+        public float Top { get; init; }
+        public float Right { get; init; }
+        public float Bottom { get; init; }
+        public float RadiusTopLeft { get; init; }
+        public float RadiusTopRight { get; init; }
+        public float RadiusBottomRight { get; init; }
+        public float RadiusBottomLeft { get; init; }
+
+        public bool IsSquare
+            => RadiusTopLeft <= 0f && RadiusTopRight <= 0f && RadiusBottomRight <= 0f && RadiusBottomLeft <= 0f;
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the width it reads
+        public float Width(DivideEdge side) => side switch
+        {
+            DivideEdge.Left => Left,
+            DivideEdge.Top => Top,
+            DivideEdge.Right => Right,
+            DivideEdge.Bottom => Bottom,
+        };
+#pragma warning restore CS8524
+    }
+
     // Arc-length dash/dot marcher on top of Painter2D. A dashed or dotted outline is walked here: the outline
-    // is a flat polyline (SilhouetteFace.BuildShearedRoundedRectPolyline for a full border, a 2-point segment
-    // for a divide edge), and this walks it by arc length emitting the painted runs, in the pattern
-    // styling-flexbox-and-gap.md describes and DashedBorderPainterTests pins. A round dot is a zero-length
-    // round-capped stroke. `closed` wraps the last point back to point 0 (a full border); an open polyline
-    // leaves the raw ends (a divide edge).
+    // is a flat polyline, a box side's own line or a rounded box's whole outline, and this walks it by arc length
+    // emitting the painted runs, in the pattern styling-flexbox-and-gap.md describes and DashedBorderPainterTests
+    // pins. A round dot is a zero-length run. `closed` wraps the last point back to point 0; an open polyline
+    // leaves the raw ends.
     internal static class DashedBorderPainter
     {
+        private const int DotSides = 16;
+
         // Reused across draws so a steady-state repaint allocates nothing. UI Toolkit generateVisualContent
         // callbacks run sequentially on the main thread, so a single shared buffer is safe (no re-entrancy).
         private static readonly List<(Vector2 From, Vector2 To)> s_segments = new();
         private static readonly List<(float Start, float End)> s_intervals = new();
         private static readonly Vector2[] s_side = new Vector2[2];
+        private static readonly List<Vector2> s_outline = new();
+        private static readonly List<Vector2> s_points = new();
+        private static readonly List<int> s_counts = new();
+        private static readonly List<Vector2> s_piece = new();
+        private static readonly List<Vector2> s_clipped = new();
+        private static readonly Vector2[] s_quad = new Vector2[4];
+        private static readonly List<Vector2> s_scratch = new();
 
-        // A no-op for Solid (the native border already draws that), a near-transparent color, or a
-        // hairline width — callers do not pre-filter for the latter two.
-        public static void StrokeDashed(Painter2D painter, IReadOnlyList<Vector2> polyline, bool closed,
-            float lineWidth, Color color, BorderLineStyle style)
-        {
-            if (style == BorderLineStyle.Solid || color.a <= 0.004f || lineWidth <= 0.01f)
-            {
-                return;
-            }
-            ComputeSegments(polyline, closed, lineWidth, style, s_segments);
-            Stroke(painter, lineWidth, color);
-        }
-
-        // Strokes one side of a square-cornered size.x × size.y box on its own, as StrokeDashed's guards allow.
-        public static void StrokeSide(Painter2D painter, DivideEdge side, Vector2 size, float lineWidth, Color color,
+        // Fills one side of box in its pattern. A no-op for Solid (the native border already draws that), a
+        // near-transparent color, or a hairline width — callers do not pre-filter for the latter two.
+        public static void PaintSide(Painter2D painter, DivideEdge side, in BorderBox box, Color color,
             BorderLineStyle style)
         {
-            if (style == BorderLineStyle.Solid || color.a <= 0.004f || lineWidth <= 0.01f)
+            if (color.a <= 0.004f)
             {
                 return;
             }
-            ComputeSideRuns(side, size, lineWidth, style, s_segments);
-            Stroke(painter, lineWidth, color);
-        }
-
-        private static void Stroke(Painter2D painter, float lineWidth, Color color)
-        {
-            if (s_segments.Count == 0)
-            {
-                return;
-            }
-
-            painter.strokeColor = color;
-            painter.lineWidth = lineWidth;
-            painter.lineJoin = LineJoin.Miter;
-            // A round dot is a zero-length run, which only a round cap gives a footprint. Every other run is
-            // butt-capped so it is exactly as long as computed: a round cap would bleed half a width past each
-            // end and close the gaps.
-            var first = s_segments[0];
-            painter.lineCap = first.From == first.To ? LineCap.Round : LineCap.Butt;
-
-            foreach (var (from, to) in s_segments)
+            ComputeSidePieces(side, box, style, s_points, s_counts);
+            painter.fillColor = color;
+            var at = 0;
+            foreach (var count in s_counts)
             {
                 painter.BeginPath();
-                painter.MoveTo(from);
-                painter.LineTo(to);
-                painter.Stroke();
+                painter.MoveTo(s_points[at]);
+                for (var i = 1; i < count; i++)
+                {
+                    painter.LineTo(s_points[at + i]);
+                }
+                painter.ClosePath();
+                painter.Fill();
+                at += count;
             }
         }
+
+        // The filled pieces one side of box paints, as convex polygons: points holds their vertices one polygon
+        // after another and counts how many each has. A square box strokes the side as a line of its own
+        // (ComputeSideRuns); a rounded one walks its whole outline at the side's width. Each run is then cut to
+        // the side's own region, the quad between its outer edge, the inner edge the border widths leave and the
+        // lines joining their corners, so two sides meeting at a corner each paint their own half of it and
+        // a translucent color is laid there once.
+        public static void ComputeSidePieces(DivideEdge side, in BorderBox box, BorderLineStyle style,
+            List<Vector2> points, List<int> counts)
+        {
+            points.Clear();
+            counts.Clear();
+            var width = box.Width(side);
+            if (style == BorderLineStyle.Solid || width <= 0.01f)
+            {
+                return;
+            }
+            if (box.IsSquare)
+            {
+                ComputeSideRuns(side, box.Size, width, style, s_segments);
+            }
+            else
+            {
+                SilhouetteFace.BuildShearedRoundedRectPolyline(s_outline, new ShearedRoundedRect
+                {
+                    Width = box.Size.x,
+                    Height = box.Size.y,
+                    Inset = width * 0.5f,
+                    RadiusTopLeft = box.RadiusTopLeft,
+                    RadiusTopRight = box.RadiusTopRight,
+                    RadiusBottomRight = box.RadiusBottomRight,
+                    RadiusBottomLeft = box.RadiusBottomLeft,
+                });
+                ComputeSegments(s_outline, closed: true, width, style, s_segments);
+            }
+            SideQuad(side, box, s_quad);
+            foreach (var (from, to) in s_segments)
+            {
+                RunPolygon(from, to, width * 0.5f, s_piece);
+                ClipConvex(s_piece, s_quad, s_clipped);
+                if (s_clipped.Count >= 3)
+                {
+                    points.AddRange(s_clipped);
+                    counts.Add(s_clipped.Count);
+                }
+            }
+        }
+
+        // Outer corner, outer corner, inner corner, inner corner, wound the same way for every side.
+        private static void SideQuad(DivideEdge side, in BorderBox box, Vector2[] quad)
+        {
+            var w = box.Size.x;
+            var h = box.Size.y;
+            var innerTopLeft = new Vector2(box.Left, box.Top);
+            var innerTopRight = new Vector2(w - box.Right, box.Top);
+            var innerBottomRight = new Vector2(w - box.Right, h - box.Bottom);
+            var innerBottomLeft = new Vector2(box.Left, h - box.Bottom);
+#pragma warning disable CS8524 // no discard arm: a new edge has to name its quad
+            (quad[0], quad[1], quad[2], quad[3]) = side switch
+            {
+                DivideEdge.Top => (new Vector2(0f, 0f), new Vector2(w, 0f), innerTopRight, innerTopLeft),
+                DivideEdge.Right => (new Vector2(w, 0f), new Vector2(w, h), innerBottomRight, innerTopRight),
+                DivideEdge.Bottom => (new Vector2(w, h), new Vector2(0f, h), innerBottomLeft, innerBottomRight),
+                DivideEdge.Left => (new Vector2(0f, h), new Vector2(0f, 0f), innerTopLeft, innerBottomLeft),
+            };
+#pragma warning restore CS8524
+        }
+
+        // A run's footprint: the rectangle a butt-capped stroke of it covers, or a round dot's circle.
+        private static void RunPolygon(Vector2 from, Vector2 to, float half, List<Vector2> polygon)
+        {
+            polygon.Clear();
+            var along = to - from;
+            var length = along.magnitude;
+            if (length < 1e-6f)
+            {
+                for (var i = 0; i < DotSides; i++)
+                {
+                    var angle = i * 2f * Mathf.PI / DotSides;
+                    polygon.Add(from + (new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * half));
+                }
+                return;
+            }
+            var normal = new Vector2(-along.y, along.x) * (half / length);
+            polygon.Add(from + normal);
+            polygon.Add(to + normal);
+            polygon.Add(to - normal);
+            polygon.Add(from - normal);
+        }
+
+        // Sutherland-Hodgman: subject cut by each edge of the convex clip polygon in turn, keeping the side the
+        // clip polygon's centre lies on, so the winding of either polygon does not matter.
+        private static void ClipConvex(List<Vector2> subject, Vector2[] clip, List<Vector2> output)
+        {
+            output.Clear();
+            output.AddRange(subject);
+            var centre = (clip[0] + clip[1] + clip[2] + clip[3]) * 0.25f;
+            for (var e = 0; e < clip.Length && output.Count > 0; e++)
+            {
+                var a = clip[e];
+                var b = clip[(e + 1) % clip.Length];
+                var inside = Mathf.Sign(Cross(b - a, centre - a));
+                s_scratch.Clear();
+                s_scratch.AddRange(output);
+                output.Clear();
+                for (var i = 0; i < s_scratch.Count; i++)
+                {
+                    var p = s_scratch[i];
+                    var q = s_scratch[(i + 1) % s_scratch.Count];
+                    var dp = Cross(b - a, p - a) * inside;
+                    var dq = Cross(b - a, q - a) * inside;
+                    if (dp >= 0f)
+                    {
+                        output.Add(p);
+                    }
+                    if ((dp >= 0f) != (dq >= 0f))
+                    {
+                        output.Add(p + ((q - p) * (dp / (dp - dq))));
+                    }
+                }
+            }
+        }
+
+        private static float Cross(Vector2 u, Vector2 v) => (u.x * v.y) - (u.y * v.x);
 
         // Pure arc-length marcher: fills `output` with the individual stroke runs for the style, a (from, to)
         // pair each, and a round dot as a zero-length one (from == to). Painter-free so it is unit-testable

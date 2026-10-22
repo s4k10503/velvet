@@ -23,8 +23,16 @@
   The divider used to write its color back over it on its next pass, and a dashed one painted the divide
   color or the child's classes' color instead.
 
-- `border-dashed` and `border-dotted` on a box with square corners stroke each side on its own, at that
-  side's width and from corner to corner, so each side starts and ends on a dash, and a side a dashed
-  divider paints is left to it. They used to lay one pattern around the whole outline at the left side's
-  width, and drew nothing on a box with no left border. A thin dotted line's first and last dots are whole,
-  as Chrome draws them.
+- `border-dashed` and `border-dotted` paint each side on its own at that side's width: on a box with square
+  corners from corner to corner, so each side starts and ends on a dash, and on a box with a rounded corner
+  along the rounded outline. Each side is cut to its own corner at the miter, so a translucent color is laid
+  once where two sides meet, and a side a dashed divider paints is left to it. They used to lay one pattern
+  around the whole outline at the left side's width, overlapping a dashed divider on a rounded child, and
+  drew nothing on a box with no left border.
+
+- A dashed divider on a rounded child follows the child's curve rather than running straight to its corners.
+  A child that gains `border-dashed` or `border-dotted` in a reversed dashed row takes its outline's color from
+  the divider rather than drawing nothing, and a color the child's code wrote over a dashed edge stays on the
+  edge when the divider turns solid.
+
+- A thin dotted line at least three widths long starts and ends on a whole dot, as Chrome draws it.

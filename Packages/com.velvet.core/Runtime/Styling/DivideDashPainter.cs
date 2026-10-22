@@ -95,6 +95,10 @@ namespace Velvet
             child.MarkDirtyRepaint();
         }
 
+        // The color the dash on child's edge paints, where a dashed divider masks that edge, or null.
+        internal static Color? ColorUnderMask(VisualElement child, DivideEdge edge)
+            => s_bound.TryGetValue(child, out var binding) && binding.Edge == edge ? PaintColor(binding) : null;
+
         // The edge a dashed divider paints on child, which the child's own border-dashed outline leaves to it.
         internal static DivideEdge? BoundEdge(VisualElement child)
             => s_bound.TryGetValue(child, out var binding) ? binding.Edge : null;
@@ -265,16 +269,12 @@ namespace Velvet
             {
                 return;
             }
-            var w = child.layout.width;
-            var h = child.layout.height;
-            if (w <= 0f || h <= 0f || float.IsNaN(w) || float.IsNaN(h))
+            if (BorderStyleSilhouette.BoxOf(child) is { } box)
             {
-                return;
+                // The divider is painted where a solid inline border of the same width would sit, as a side of
+                // the child's own border.
+                DashedBorderPainter.PaintSide(mgc.painter2D, binding.Edge, box, binding.Color, binding.Style);
             }
-
-            // The divider is stroked where a solid inline border of the same width would sit, as a side of its own.
-            DashedBorderPainter.StrokeSide(mgc.painter2D, binding.Edge, new Vector2(w, h), binding.Width, binding.Color,
-                binding.Style);
         }
     }
 }

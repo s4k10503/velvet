@@ -13,7 +13,7 @@ namespace Velvet
     // Pure geometry for the `overline` text-decoration's painted rule (see TextOverlineBinding for the
     // generateVisualContent attach/detach that consumes it). Painter-free so ComputeGeometry is
     // unit-testable headless — a Painter2D cannot be read back — mirroring DashedBorderPainter's own split
-    // between pure math (ComputeSegments) and the live-Painter2D stroke call (StrokeDashed).
+    // between pure math (ComputeSidePieces) and the live-Painter2D fill call (PaintSide).
     internal static class TextOverlinePainter
     {
         private const float TopOffsetFraction = 0.15f;
@@ -108,7 +108,7 @@ namespace Velvet
         }
 
         // Strokes the already-computed rule onto a live Painter2D. A no-op for a transparent color or a
-        // degenerate width, mirroring DashedBorderPainter.StrokeDashed's own guards. Butt caps (not round)
+        // degenerate width, mirroring DashedBorderPainter.PaintSide's own guards. Butt caps (not round)
         // so the painted length matches the computed width exactly — a round cap would bleed half the line
         // width past each end.
         public static void Stroke(Painter2D painter, in OverlineRule rule, Color color)
