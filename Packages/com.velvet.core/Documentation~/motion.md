@@ -401,9 +401,10 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   (`hover:scale-x-[.5]`, `focus:scale-50`, `focus:translate-8`, `focus:opacity-50`, `focus:bg-red-500`,
   `focus:w-[60px]`) ranks above the swap's classes, so the slots it holds land with the swap, the element drawing
   the resting value. A resting `translate-x-*` or `translate-y-*`, important or not, keeps its
-  axis beside a `translate-<n>` the swap adds, and the other axis animates, as the element draws them. A target whose translate holds
-  a value the browser rejects (`translate-x-[10]`) lands both translate axes with the swap, the element drawing no
-  translation ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#a-rejected-value)).
+  axis beside a `translate-<n>` the swap adds, and the other axis animates, as the element draws them. A translate holding
+  a value the browser rejects (`translate-x-[10]`), on the target or resting beside it, lands both translate axes
+  with the swap, the element drawing no translation, and a resting rejected `scale-x-*` or `scale-y-*` lands the
+  scale the same way ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#a-rejected-value)).
 - **A driven value stands over the element's own utilities, short of an important one.** While a driver
   writes a length or a color, the value it writes holds its slot against the element's variant layers
   (`dark:`, `sm:`, `hover:` and the rest), a `space-*` margin, a `divide-*` color or width and the column

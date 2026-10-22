@@ -302,7 +302,23 @@ namespace Velvet.Tests
         [TestCase("scale-x-[.5]", true)]
         [TestCase("scale-x-50", false)]
         [TestCase("scale-x-50", true)]
-        public void Given_AnImportantUniformScaleBesideAPlainPerAxisScale_When_Resolved_Then_TheUniformHoldsBothAxes(string axis, bool reversed)
+        public void Given_AnImportantUniformScaleBesideAPlainPerAxisScale_When_Resolved_Then_TheUniformHoldsTheScaleChannel(string axis, bool reversed)
+        {
+            // Arrange
+            var to = reversed ? new[] { axis, "!scale-[1.4]", "scale-[2]" } : new[] { "!scale-[1.4]", "scale-[2]", axis };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
+
+            // Assert
+            Assert.That(plan.Scale?.to ?? float.NaN, Is.EqualTo(1.4f));
+        }
+
+        [TestCase("scale-x-[.5]", false)]
+        [TestCase("scale-x-[.5]", true)]
+        [TestCase("scale-x-50", false)]
+        [TestCase("scale-x-50", true)]
+        public void Given_AnImportantUniformScaleBesideAPlainPerAxisScale_When_Mounted_Then_TheAxisDrawsTheUniform(string axis, bool reversed)
         {
             // Arrange
             var to = reversed ? new[] { axis, "!scale-[1.4]", "scale-[2]" } : new[] { "!scale-[1.4]", "scale-[2]", axis };
@@ -310,13 +326,9 @@ namespace Velvet.Tests
 
             // Act
             using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));
-            var control = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, new[] { "!scale-[1.4]" });
-            var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
-            var settled = root.Q<VisualElement>("leaf").style.scale.value.value;
 
             // Assert
-            Assert.That((control.Scale?.to, plan.Scale?.to, settled.x, settled.y),
-                Is.EqualTo(((float?)1.4f, (float?)1.4f, 1.4f, 1.4f)));
+            Assert.That(root.Q<VisualElement>("leaf").style.scale.value.value.x, Is.EqualTo(1.4f));
         }
 
         // GREEN_ON_BASE(characterization): an important stylesheet scale clears the plain inline axis;

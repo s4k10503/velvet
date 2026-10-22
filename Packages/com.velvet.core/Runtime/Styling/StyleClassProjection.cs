@@ -82,6 +82,9 @@ namespace Velvet
             }
         }
 
+        internal static bool Suppresses(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.Suppresses(cls) == true;
+
         // Whether element's className declares cls while the projection keeps it off the live class list.
         internal static bool SuppressesDeclared(VisualElement element, string cls)
             => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesDeclared(cls) == true;
@@ -448,6 +451,8 @@ namespace Velvet
                 }
                 return false;
             }
+
+            public bool Suppresses(string cls) => _suppressed?.Contains(cls) == true;
 
             // A payload's class is not the className's own, so only a base entry counts, important or not.
             public bool SuppressesDeclared(string cls)

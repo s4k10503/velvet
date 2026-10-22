@@ -124,7 +124,7 @@ nowhere, Tailwind emitting `translate-y-[10]` after `translate-y-2`; `translate-
 translates along x until hovered and not at all while hovered; and
 `translate-x-4 hover:translate-y-[10] focus:translate-y-2` translates along both axes while hovered and focused,
 the `focus:` value holding. A `drop-shadow-*` colour and size are separate values, as Tailwind writes them, and a colour the browser
-rejects (`drop-shadow-[#ggg]`) counts only where the drawn shadow reads it: `blur-sm drop-shadow-lg drop-shadow-[#ggg]`
+rejects (`drop-shadow-[#ggg]`, `drop-shadow-[#ggg]/50`) counts only where the drawn shadow reads it: `blur-sm drop-shadow-lg drop-shadow-[#ggg]`
 filters nothing, while `blur-sm drop-shadow-[#ggg]` blurs. A
 utility writing both axes (`translate-4`, `translate-[10px]`, `translate-full`, `translate-px`, `translate-1/2`,
 and their negations) holds each axis as an axis utility does, and an axis utility of the same rank holds over it,

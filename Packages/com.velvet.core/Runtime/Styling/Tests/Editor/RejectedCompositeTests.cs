@@ -76,6 +76,7 @@ namespace Velvet.Tests
         [TestCase("drop-shadow-lg hover:blur-[2]", "- - 0")]
         [TestCase("blur-sm drop-shadow-[foo]", "- - 0")]
         [TestCase("blur-sm drop-shadow-lg drop-shadow-[#ggg]", "- - 0")]
+        [TestCase("blur-sm drop-shadow-lg drop-shadow-[#ggg]/50", "- - 0")]
         public void Given_LayersWhereARejectedValueHoldsItsProperty_When_Composed_Then_TheFamilyDrawsNothing(
             string classes, string expected)
         {

@@ -1634,6 +1634,24 @@ namespace Velvet
             return property == slot || property == ArbitraryProperty.Translate;
         }
 
+        // The top layer of property on element that a swap does not write: a layer of a property the swap writes
+        // counts only under a variant, which the swap's own classes never carry.
+        internal static bool TryRestingLayer(VisualElement element, ArbitraryProperty property,
+            HashSet<ArbitraryProperty> swapped, out ArbitraryStyle style, out long key)
+        {
+            style = default;
+            key = 0;
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return false;
+            }
+            if (!TryWinningKey(map, property, out style, out key))
+            {
+                return false;
+            }
+            return !swapped.Contains(property) || StyleLayerPriority.UnderVariant(key);
+        }
+
         // Whether a layer holding slot, as HoldsMotionSlot reads it, is in force under a variant.
         internal static bool HoldsVariantLayer(VisualElement element, ArbitraryProperty slot)
         {

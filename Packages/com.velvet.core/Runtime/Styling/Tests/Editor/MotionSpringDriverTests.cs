@@ -262,17 +262,26 @@ namespace Velvet.Tests
             Assert.That(plan.TranslateY?.to == 32f ? plan.TranslateX?.to ?? float.NaN : float.NaN, Is.EqualTo(16f));
         }
 
-        [TestCase("translate-x-4", "translate-y-4 translate-x-[10]")]
-        [TestCase("scale-50", "scale-y-50 scale-x-[2px]")]
-        public void Given_ATargetWhereARejectedValueHoldsOneAxis_When_Resolved_Then_NoTranslateOrScaleChannelIsPlanned(
-            string from, string to)
+        [Test]
+        public void Given_ATargetWhereARejectedValueHoldsOneTranslateAxis_When_Resolved_Then_TheOtherAxisPlansNoChannel()
         {
             // Act
-            var plan = MotionSpringClassParser.Resolve(from.Split(' '), to.Split(' '));
+            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-4" }, new[] { "translate-y-4", "translate-x-[10]" });
 
             // Assert
-            Assert.That($"{plan.TranslateX.HasValue} {plan.TranslateY.HasValue} {plan.Scale.HasValue}",
-                Is.EqualTo("False False False"));
+            Assert.That(plan.TranslateY.HasValue, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already holds the scale slot unread under a per-axis scale, a rejected
+        // one included.
+        [Test]
+        public void Given_ATargetWhereARejectedValueHoldsOneScaleAxis_When_Resolved_Then_NoScaleChannelIsPlanned()
+        {
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-50" }, new[] { "scale-y-50", "scale-x-[2px]" });
+
+            // Assert
+            Assert.That(plan.Scale.HasValue, Is.False);
         }
 
         [Test]

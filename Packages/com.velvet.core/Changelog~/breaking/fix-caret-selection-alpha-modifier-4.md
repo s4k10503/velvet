@@ -20,7 +20,7 @@
   hovered, and `translate-x-4 hover:translate-y-[10] focus:translate-y-2` translates while hovered and focused.
   `blur-[-2px]` is such a value too, as is a `drop-shadow-[…]` that is no shadow and no colour
   (`blur-sm drop-shadow-[foo]` no longer blurs), and a `drop-shadow-[…]` colour the browser rejects where the drawn
-  shadow reads it (`blur-sm drop-shadow-lg drop-shadow-[#ggg]`).
+  shadow reads it (`blur-sm drop-shadow-lg drop-shadow-[#ggg]`, with or without an alpha modifier).
 - A `scale-[…]` at or above the rank of the `scale-x-*` and `scale-y-*` on an element is now drawn alone, as the
   `scale` it declares replaces theirs: `scale-[1.4] scale-x-[.5]` scales by 1.4, where it used to scale x by 0.5.
   Below an axis utility it no longer stands in for the other axis: `scale-[1.5] hover:scale-x-[2]` scales y by 1

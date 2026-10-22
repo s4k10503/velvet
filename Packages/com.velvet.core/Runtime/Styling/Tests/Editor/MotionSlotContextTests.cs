@@ -222,17 +222,14 @@ namespace Velvet.Tests
             Assert.That(plan.TranslateX?.to == 16f ? plan.TranslateY?.to ?? float.NaN : float.NaN, Is.EqualTo(32f));
         }
 
-        // A base scale-x-[.5] ties with the swapped scale-[1.5], which the element then draws alone; a hover one ranks
-        // above it and composes the scale, which no one magnitude describes.
-        [TestCase(false, 1.5f)]
-        [TestCase(true, -1f)]
-        public void Given_ARestingAxisScaleBesideASwappedScaleBracket_When_Resolved_Then_TheBracketHoldsTheChannelOnlyAtOrAboveIt(
-            bool hover, float expected)
+        // GREEN_ON_BASE(characterization): the base already lets a swapped scale-[1.5] hold the channel beside a resting
+        // scale-x-[.5] of its rank, which it ties with and which the element then draws alone.
+        [Test]
+        public void Given_ARestingBaseAxisScaleBesideASwappedScaleBracket_When_Resolved_Then_TheBracketHoldsTheChannel()
         {
             // Arrange
             var element = MountInFixedParent();
-            StyleArbitraryValueResolver.ApplyClassToken(element, "scale-x-[.5]",
-                hover ? StyleLayerPriority.Hover : StyleLayerPriority.Base);
+            StyleArbitraryValueResolver.ApplyClassToken(element, "scale-x-[.5]", StyleLayerPriority.Base);
             var from = new[] { "scale-[2]" };
             var to = new[] { "scale-[1.5]" };
             var context = MotionSlotContext.Read(element, from, to, _ => false);
@@ -241,7 +238,59 @@ namespace Velvet.Tests
             var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, context);
 
             // Assert — -1 where no scale channel is planned.
-            Assert.That(plan.Scale.HasValue ? plan.Scale.Value.to : -1f, Is.EqualTo(expected));
+            Assert.That(plan.Scale.HasValue ? plan.Scale.Value.to : -1f, Is.EqualTo(1.5f));
+        }
+
+        [Test]
+        public void Given_ARestingHoverAxisScaleBesideASwappedScaleBracket_When_Resolved_Then_NoScaleChannelIsPlanned()
+        {
+            // Arrange — the hover axis ranks above the bracket and composes the scale, which no one magnitude describes.
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "scale-x-[.5]", StyleLayerPriority.Hover);
+            var from = new[] { "scale-[2]" };
+            var to = new[] { "scale-[1.5]" };
+            var context = MotionSlotContext.Read(element, from, to, _ => false);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, context);
+
+            // Assert
+            Assert.That(plan.Scale.HasValue, Is.False);
+        }
+
+        [Test]
+        public void Given_ARestingRejectedAxisTranslate_When_ASwapNamesTheOtherAxis_Then_NoTranslateChannelIsPlanned()
+        {
+            // Arrange — translate-x-[10] holds x with a value the browser rejects, so the element draws no translation.
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "translate-x-[10]", StyleLayerPriority.Base);
+            var from = new string[0];
+            var to = new[] { "translate-y-4" };
+            var context = MotionSlotContext.Read(element, from, to, _ => false);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, context);
+
+            // Assert
+            Assert.That(plan.TranslateY.HasValue, Is.False);
+        }
+
+        [Test]
+        public void Given_ARestingRejectedAxisScale_When_ASwapNamesAUniformClass_Then_NoScaleChannelIsPlanned()
+        {
+            // Arrange — scale-x-[2px] holds x with a value the browser rejects beside the swapped scale-50, so the
+            // element draws no scale.
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "scale-x-[2px]", StyleLayerPriority.Base);
+            var from = new[] { "scale-100" };
+            var to = new[] { "scale-50" };
+            var context = MotionSlotContext.Read(element, from, to, _ => false);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, context);
+
+            // Assert
+            Assert.That(plan.Scale.HasValue, Is.False);
         }
 
         // A focus: scale in force outranks the swap's base scale-[1.5], so the element keeps drawing it: as an inline

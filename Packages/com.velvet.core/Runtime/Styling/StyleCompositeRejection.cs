@@ -44,6 +44,10 @@ namespace Velvet
             {
                 if (OpensBracket(core, negated ? 1 : 0, prefix))
                 {
+                    if (composed == ArbitraryProperty.FilterDropShadow && !TryDropAlphaModifier(ref core, prefix.Length))
+                    {
+                        return false;
+                    }
                     if (!(negates || !negated) || !TryReadValue(core, negated, out var value))
                     {
                         return false;
@@ -56,6 +60,23 @@ namespace Velvet
                 }
             }
             return false;
+        }
+
+        // A drop-shadow-[…] takes a /N alpha, which Tailwind applies to a colour (asColor) and to a shadow's colours
+        // alike, so the value is read without it; a modifier that is no alpha leaves no utility to reject.
+        private static bool TryDropAlphaModifier(ref string core, int from)
+        {
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(core, from);
+            if (slash < 0)
+            {
+                return true;
+            }
+            if (!StyleColorValueParser.TryParseAlphaModifier(core.AsSpan(slash + 1), out _))
+            {
+                return false;
+            }
+            core = core.Substring(0, slash);
+            return true;
         }
 
         // Whether cls is a skew-x-[…] or skew-y-[…] whose angle the browser rejects, and which axis it holds.

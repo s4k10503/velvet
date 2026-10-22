@@ -117,6 +117,51 @@ namespace Velvet
         public bool HasImportantInlineOutsideSwap(ArbitraryProperty slot)
             => StyleArbitraryValueResolver.HasImportantInlineOutside(_element, slot, _importantInlineBySwap);
 
+        // The resting layer holding a translate axis, as the resolver's TryWinningAxis picks between the axis's own
+        // and a both-axis one, the axis taking a tie; false where a running play drives the axis or none rests.
+        public bool TryRestingTranslateHolder(ArbitraryProperty slot, out ArbitraryStyle holder, out long key,
+            out bool axisLayer)
+        {
+            holder = default;
+            key = 0;
+            axisLayer = false;
+            if (_drivenByRunningPlay(slot))
+            {
+                return false;
+            }
+            var owner = Owner(slot);
+            var hasAxis = StyleArbitraryValueResolver.TryRestingLayer(owner, slot, _inlineBySwap, out var axis, out var axisKey);
+            var hasBoth = StyleArbitraryValueResolver.TryRestingLayer(owner, ArbitraryProperty.Translate, _inlineBySwap,
+                out var both, out var bothKey);
+            axisLayer = hasAxis && (!hasBoth || axisKey >= bothKey);
+            holder = axisLayer ? axis : both;
+            key = axisLayer ? axisKey : bothKey;
+            return hasAxis || hasBoth;
+        }
+
+        // The key of a resting scale-x-* or scale-y-* holding a value the browser rejects, which leaves the element no
+        // scale unless a scale-[…] at or above it is drawn alone.
+        public bool TryRestingRejectedScaleAxis(out long key)
+        {
+            key = 0;
+            if (_drivenByRunningPlay(ArbitraryProperty.Scale))
+            {
+                return false;
+            }
+            var owner = Owner(ArbitraryProperty.Scale);
+            foreach (var axis in s_scaleAxes)
+            {
+                if (StyleArbitraryValueResolver.TryRestingLayer(owner, axis, _inlineBySwap, out var style, out key)
+                    && style.Rejected)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static readonly ArbitraryProperty[] s_scaleAxes = { ArbitraryProperty.ScaleX, ArbitraryProperty.ScaleY };
+
         // A swap's tokens carry no variant, so a holder in force under one outranks them: the element draws it
         // whatever the swap writes, as it does a resting hover:scale-x-* that composes the scale.
         public bool HoldsRestingVariant(ArbitraryProperty slot)

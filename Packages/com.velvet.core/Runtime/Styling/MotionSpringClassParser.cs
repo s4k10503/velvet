@@ -599,6 +599,41 @@ namespace Velvet
                 {
                     claims[i] = new SlotClaim { Claimed = true, Precedence = variantRank };
                 }
+                ClaimRestingRejected(context, claims, i, variantRank);
+            }
+        }
+
+        // A resting holder of a value the browser rejects, claimed at the rank the claims above give its kind of holder,
+        // so a token of the swap that outranks it still takes the slot.
+        private static void ClaimRestingRejected(MotionSlotContext context, SlotClaim[] claims, int i, long variantRank)
+        {
+            var slot = s_slots[i];
+            long key;
+            long rank;
+            if (slot == ArbitraryProperty.TranslateX || slot == ArbitraryProperty.TranslateY)
+            {
+                if (!context.TryRestingTranslateHolder(slot, out var holder, out key, out var axisLayer) || !holder.Rejected)
+                {
+                    return;
+                }
+                rank = axisLayer ? RestingAxisTranslateRank : RestingInlineRank;
+            }
+            else if (slot == ArbitraryProperty.Scale)
+            {
+                if (!context.TryRestingRejectedScaleAxis(out key))
+                {
+                    return;
+                }
+                rank = RestingInlineRank;
+            }
+            else
+            {
+                return;
+            }
+            rank = StyleLayerPriority.UnderVariant(key) ? variantRank : rank;
+            if (claims[i].Precedence <= rank)
+            {
+                claims[i] = new SlotClaim { Claimed = true, Precedence = rank, Rejected = true };
             }
         }
 
