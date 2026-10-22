@@ -2749,9 +2749,7 @@ namespace Velvet
             }
             for (var i = 0; i < root.hierarchy.childCount; i++)
             {
-                // A face probe carries copies of its element's classes, the payload's among them.
-                var child = root.hierarchy[i];
-                if (!child.ClassListContains(SilhouetteFaceStash.ProbeMarkerClass) && SubtreeCarriesClass(child, cls))
+                if (SubtreeCarriesClass(root.hierarchy[i], cls))
                 {
                     return true;
                 }

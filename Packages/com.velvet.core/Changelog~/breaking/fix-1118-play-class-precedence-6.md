@@ -47,6 +47,17 @@
   variants and the `while*Class` and drag channels, as any element does. It used to draw none of them, and
   logged a warning for a shadow.
 
+- A `shadow-*` element draws its `border-dashed` / `border-dotted` border dashed or dotted, and a `divide-dashed`
+  or `divide-dotted` divider on a `shadow-*` child dashed or dotted, as Chromium does; both used to be drawn solid.
+  A `skew-*` element still draws them solid.
+
+- A `shadow-*` element whose overflow is hidden keeps its border and background where it used to lose its border
+  and a border-wide ring of its background; its outer shadow layers are still cut at its padding box.
+
+- While a `layoutId` move draws a `shadow-*` or `skew-*` `V.Motion` scaled differently on each axis, the face
+  and border those layers repaint take the corner radii the move draws, a horizontal and a vertical one a corner,
+  as its background does. They used to be drawn square.
+
 - The classes a play shows — a `V.Motion` pose's, an `AnimatePresence` enter or exit class — apply bracket
   values and the utilities Velvet realises itself (`gap-*`, `shadow-*`, `ring-*`, `skew-*`, gradients,
   `animate-*`, `border-dashed`, `uppercase`, …) while the play shows them, and one of the latter that the

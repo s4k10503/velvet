@@ -201,17 +201,16 @@ namespace Velvet
         private void ApplyToChild(VisualElement child, DivideEdge edge, bool isDivider)
         {
             var ownWidth = ChildOutranks(child, WidthSlot(edge), (_spec.Important & DivideImportance.Width) != 0);
-            // A skew silhouette or a drop shadow owns the child's border face and repaints a solid border, so a
-            // dashed divider on the same child would fight it — route it through the solid path (documented known
-            // limitation). Gates on EITHER owner, mirroring the element-level border-dashed gate.
+            // A skew silhouette owns the child's border face and repaints a solid border, so a dashed divider on
+            // the same child would fight it — route it through the solid path (documented known limitation). A drop
+            // shadow leaves the divided edge to the dash (BoxShadowSilhouette.RepaintUprightBorder).
             var style = EdgeStyle(child);
             var dashed = (style == BorderLineStyle.Dashed || style == BorderLineStyle.Dotted)
-                && !_ctx.SkewBindings.ContainsKey(child)
-                && !_ctx.ShadowBindings.ContainsKey(child);
+                && !_ctx.SkewBindings.ContainsKey(child);
 
             if (!dashed || !isDivider)
             {
-                // Solid divider, the last child (no divider), or a child whose face a skew / shadow layer owns:
+                // Solid divider, the last child (no divider), or a child whose face a skew layer owns:
                 // a plain inline border. Detach any stale dash paint (e.g. a divide-dashed → divide-solid flip, or
                 // a colored child reordered to the last slot).
                 var carried = DetachDash(child);

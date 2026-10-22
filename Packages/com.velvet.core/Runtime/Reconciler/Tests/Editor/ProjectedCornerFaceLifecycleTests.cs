@@ -1,5 +1,6 @@
 using System.Linq;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -82,6 +83,25 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(FaceCallbacks(box) + FaceCallbacks(band), Is.Zero);
+        }
+
+        [Test]
+        public void Given_AShadowedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsFaceIsRepainted_Then_ItsCornersTakeTheProjectedRadii()
+        {
+            // Arrange — shadowed, drawn at a quarter across and a half down.
+            s_classes = "rounded-[20px] bg-blue-500 shadow-md";
+            using var mounted = MountAndWiden();
+            Tick();
+            var box = Root.Q<VisualElement>("box");
+            var projected = ProjectedCornerFace.TryGetRadii(box, out var radii) && radii.TopLeft.x != radii.TopLeft.y
+                ? radii.TopLeft
+                : new Vector2(float.NaN, float.NaN);
+
+            // Act — the corners the shadow layer repaints the face with.
+            var drawn = ShearedRoundedRect.ForElement(box, 0f, box.layout.width, box.layout.height, 0f, 0f).Radii.TopLeft;
+
+            // Assert — NaN where the projection draws no uneven corner, which no reading matches.
+            Assert.That(drawn, Is.EqualTo(projected));
         }
 
         // GREEN_ON_BASE(characterization): the base never writes the background-color slot of a moving Motion.

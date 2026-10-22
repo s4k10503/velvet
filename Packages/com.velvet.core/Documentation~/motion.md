@@ -650,7 +650,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   corners are drawn circular; a percent radius, which scales with the box, is left as it is. A style takes one
   length per corner, so while the two axes scale differently the Motion's radius slots hold none and Velvet
   paints its background colour, background image (a `bg-gradient-*` included), border and ring rounded per
-  axis, its colours following its classes and the transitions it declares for them, and its background colour,
+  axis — on a `shadow-*` or `skew-*` Motion the face and border those layers repaint too, though not the shadow
+  itself or a `border-dashed` / `border-dotted` outline, which keep one radius a corner —, its colours following its
+  classes and the transitions it declares for them, and its background colour,
   border colour and background-image slots holding Velvet's values until the move hands them back. A Motion
   that clips its content (`overflow-hidden`) clips it to its rounded border edge then, so a bordered one clips
   at its border edge rather than at its padding edge, and its background-position, background-repeat and

@@ -1050,6 +1050,8 @@ namespace Velvet.Tests
 
         private const string IdRuleSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowFaceIdRule.uss";
 
+        // GREEN_ON_BASE(characterization): the base captures the face from the element's resolved style, an id rule's
+        // colour included. Reading the face off an element that copies the shadowed one's classes reddens this case.
         [Test]
         public void Given_AShadowedElementAnIdRuleColors_When_ThePanelResolves_Then_ItsFaceTakesTheRulesColor()
         {

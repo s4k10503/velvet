@@ -42,6 +42,13 @@ namespace Velvet
         public float BorderLeft;
         public float BorderTop;
 
+        // The line style border-dashed / border-dotted give the repainted border, which FiberBorderStyleApplier
+        // records here while it defers its own layer to this one; Solid otherwise.
+        public BorderLineStyle BorderStyle;
+
+        // Whether a check of who owns the face is waiting to run (BoxShadowSilhouette.SettleFace).
+        public bool FacePending;
+
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
         public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
@@ -129,7 +136,7 @@ namespace Velvet
             {
                 ResolveCornerRadius(element, binding);
                 // Only an upright caster owns the face; a skewed caster's SkewSilhouette already stashed it.
-                if (!binding.CasterSkewed && !binding.Face.HasStash)
+                if (!binding.CasterSkewed && !binding.Face.HasStash && !StyleCascade.ClipsOverflow(element))
                 {
                     binding.Face.TryStash(element);
                 }
@@ -145,7 +152,7 @@ namespace Velvet
             {
                 binding.OnStyleResolved = _ =>
                 {
-                    if (!binding.Face.HasStash)
+                    if (!binding.Face.HasStash && !StyleCascade.ClipsOverflow(element))
                     {
                         binding.Face.TryStash(element);
                     }
@@ -153,7 +160,10 @@ namespace Velvet
                 element.RegisterCallback(binding.OnStyleResolved);
                 // Synchronous attempt: if the resolver's inline bg-[…]/border-[…] are already on the element,
                 // suppress now so there is not even a one-frame ghost. Off-panel with no inline value it bails.
-                binding.Face.TryStash(element);
+                if (!StyleCascade.ClipsOverflow(element))
+                {
+                    binding.Face.TryStash(element);
+                }
             }
 
             s_byElement.AddOrUpdate(element, binding);
@@ -255,13 +265,13 @@ namespace Velvet
                         binding.OnStyleResolved = null;
                     }
                 }
-                else if (!binding.Face.HasStash)
+                else if (!binding.Face.HasStash && !StyleCascade.ClipsOverflow(element))
                 {
                     // No longer skewed: this paint owns the face again — re-capture + suppress.
                     binding.Face.TryStash(element);
                 }
             }
-            else if (!casterSkewed)
+            else if (!casterSkewed && binding.Face.SuppressionApplied)
             {
                 // Steady upright: keep the face stash synced with this patch's styling, exactly as the skew
                 // layer does (the shared inline bg/border slot is also written by the arbitrary-value resolver).
@@ -339,9 +349,47 @@ namespace Velvet
                 return;
             }
 
+            // An element that clips its content cuts this paint at its padding box, which its border lies outside
+            // (styling-variants.md's hidden-overflow table), so such an element keeps its native background and
+            // border, and its layers are painted over them. Who owns the face is settled outside the paint, as
+            // settling it writes the element's inline style.
+            var clips = StyleCascade.ClipsOverflow(ve);
+            if (clips == binding.Face.SuppressionApplied && !binding.FacePending)
+            {
+                binding.FacePending = true;
+                ve.schedule.Execute(() => SettleFace(ve, binding));
+            }
+            if (clips && !binding.Face.SuppressionApplied)
+            {
+                DrawLayers(mgc, binding, box, inset: true);
+                return;
+            }
             RepaintUprightFill(mgc, ve, binding, w, h);
             DrawLayers(mgc, binding, box, inset: true);
             RepaintUprightBorder(mgc, ve, binding, w, h);
+        }
+
+        // Gives the face to the native chrome while the element clips its content, and takes it back once it does
+        // not.
+        private static void SettleFace(VisualElement ve, BoxShadowBinding binding)
+        {
+            binding.FacePending = false;
+            if (binding.CasterSkewed || !ReferenceEquals(TryGet(ve), binding))
+            {
+                return;
+            }
+            if (StyleCascade.ClipsOverflow(ve))
+            {
+                if (binding.Face.SuppressionApplied)
+                {
+                    binding.Face.Yield(ve);
+                }
+            }
+            else if (!binding.Face.SuppressionApplied)
+            {
+                binding.Face.TryStash(ve);
+            }
+            ve.MarkDirtyRepaint();
         }
 
         // Draws the inset layers of a skewed caster's shadow, between the fill and the border its SkewSilhouette
@@ -434,9 +482,44 @@ namespace Velvet
             }
         }
 
+        // The border in the line style the element gives it. A side a dashed divider paints is left to it
+        // (DivideDashPainter), as the dashed layer leaves it (BorderStyleSilhouette.PaintsSide).
         private static void RepaintUprightBorder(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding,
             float w, float h)
-            => SilhouetteFace.PaintBorder(mgc.painter2D, ve, SilhouetteFace.BorderOf(ve, binding.Face),
-                new SilhouetteFace.Shearing(w, h, 0f, 0f));
+        {
+            var sides = SilhouetteFace.BorderOf(ve, binding.Face);
+            var divided = DivideDashPainter.BoundEdge(ve);
+            if (binding.BorderStyle == BorderLineStyle.Solid)
+            {
+                SilhouetteFace.PaintBorder(mgc.painter2D, ve, divided is { } edge ? Without(sides, edge) : sides,
+                    new SilhouetteFace.Shearing(w, h, 0f, 0f));
+                return;
+            }
+            if (BorderStyleSilhouette.BoxOf(ve) is not { } box)
+            {
+                return;
+            }
+            foreach (var side in s_sides)
+            {
+                if (side != divided)
+                {
+                    DashedBorderPainter.PaintSide(mgc.painter2D, side, box, sides.ColorOf(side), binding.BorderStyle);
+                }
+            }
+        }
+
+        private static readonly DivideEdge[] s_sides = { DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom, DivideEdge.Left };
+
+        private static BorderSides Without(in BorderSides sides, DivideEdge edge) => new()
+        {
+            Left = sides.Left,
+            Top = sides.Top,
+            Right = sides.Right,
+            Bottom = sides.Bottom,
+            LeftColor = edge == DivideEdge.Left ? Color.clear : sides.LeftColor,
+            TopColor = edge == DivideEdge.Top ? Color.clear : sides.TopColor,
+            RightColor = edge == DivideEdge.Right ? Color.clear : sides.RightColor,
+            BottomColor = edge == DivideEdge.Bottom ? Color.clear : sides.BottomColor,
+        };
     }
 }

@@ -485,7 +485,7 @@ namespace Velvet.Tests
         {
             // Arrange / Act — two families arrive in the same toggle, here on the ATTACH edge: a responsive
             // payload is still off while the element is built detached, and lights as it joins the panel. The
-            // shadow owns the whole face and repaints a solid border itself, so the dashed layer must stand
+            // shadow owns the whole face and repaints the border itself, so the dashed layer must stand
             // down — which only holds if the two are applied in the reconcile path's order.
             var card = MountAndResolveAt(WidePanel, "bg-[#FFFFFF] md:shadow-lg md:border-dashed");
             var context = _mounted.Root.Reconciler.Context;

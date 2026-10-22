@@ -43,10 +43,9 @@ namespace Velvet
     /// border-dashed</c> composes exactly as CSS width + style + color (width from the untouched resolved
     /// style, color from the captured stash).
     /// <para>
-    /// Limitation: when the element is also skewed or shadowed, that layer owns the whole face (it repaints a
-    /// solid border as part of its silhouette), so the border stays SOLID — the reconciler defers this layer
-    /// while a skew / shadow binding is present, the same tier as the clip + shadow / clip + ring mutual
-    /// exclusions.
+    /// When the element is also skewed or shadowed, that layer owns the whole face and repaints the border as
+    /// part of it, so the reconciler defers this layer while a skew / shadow binding is present. A shadow repaints
+    /// it in this line style (<see cref="BoxShadowBinding.BorderStyle"/>); a skew repaints it SOLID, a limitation.
     /// </para>
     /// </remarks>
     internal static class BorderStyleSilhouette

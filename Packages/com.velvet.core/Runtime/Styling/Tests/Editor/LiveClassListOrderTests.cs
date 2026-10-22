@@ -61,8 +61,6 @@ namespace Velvet.Tests
             + "UnityEngine.UIElements.VisualElement, System.String[])";
         private const string ClipWrapperMirrorReader =
             "System.Void Velvet.ClipPathLayoutBox.SyncClasses(UnityEngine.UIElements.VisualElement)";
-        private const string FaceProbeReader =
-            "System.Void Velvet.SilhouetteFaceStash.SyncProbe(UnityEngine.UIElements.VisualElement)";
         private const string FlexMinSizeScanReader =
             "System.Void Velvet.StyleFlexMinSizeManipulator.Scan(UnityEngine.UIElements.TextElement)";
         private const string OwnSlotReader =
@@ -827,37 +825,6 @@ namespace Velvet.Tests
             string Sorted(VisualElement wrapper) => string.Join(" ", wrapper.GetClasses().OrderBy(c => c, StringComparer.Ordinal));
             Assert.That((Sorted(addedWrapper), Sorted(reversedWrapper)), Is.EqualTo(("self-end w-32", "self-end w-32")),
                 "the wrapper mirrors the set of the element's classes, whatever order they arrived in");
-        }
-
-        // The classes a suppressed face's probe carries once the stash takes the face, on a real panel since the
-        // stash builds a probe only on one (SilhouetteFaceStash.SyncProbe).
-        private static string ProbeClassesOf(HeadlessEditorPanelHost host, params string[] classNames)
-        {
-            var element = Carrying(classNames);
-            host.Root.Add(element);
-            new SilhouetteFaceStash().TryStash(element);
-            var probe = element.hierarchy.Children()
-                .FirstOrDefault(child => child.ClassListContains(SilhouetteFaceStash.ProbeMarkerClass));
-            return probe == null
-                ? "no probe"
-                : string.Join(" ", probe.GetClasses().OrderBy(cls => cls, StringComparer.Ordinal));
-        }
-
-        [Test]
-        [ReaderVerdict(FaceProbeReader)]
-        public void Given_TwoFaceClassesOnASuppressedFace_When_TheOrderTheyWereAddedInIsReversed_Then_ItsProbeCarriesTheSameClasses()
-        {
-            // Arrange
-            using var host = new HeadlessEditorPanelHost();
-
-            // Act
-            var added = ProbeClassesOf(host, "bg-red-500", "border-blue-500");
-            var reversed = ProbeClassesOf(host, "border-blue-500", "bg-red-500");
-
-            // Assert — both named rather than merely equal: two probes carrying nothing would agree too.
-            Assert.That(added + " | " + reversed,
-                Is.EqualTo("bg-red-500 border-blue-500 velvet-face-probe | bg-red-500 border-blue-500 velvet-face-probe"),
-                "a probe copies the set of its element's face classes, whatever order they arrived in");
         }
 
         // What shows the case can fail is Scan taking the last width token in the list again: the two orders

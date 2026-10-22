@@ -383,19 +383,19 @@ without `overflow-hidden` appearing anywhere in its className.
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
 | `overline` | unaffected — the rule sits inside the content box |
 
-**`shadow-*` and `skew-*` on a bordered element cost more than the bleed.** Either one takes ownership of
-the element's face: it suppresses the native background and border and repaints both in its own generated
-content. The padding-box clip then takes that repaint too, so a bordered card carrying `shadow-*` or
-`skew-*` plus a hidden overflow loses **its border and a border-wide ring of its own background**, and
-whatever is behind the card shows through that ring. The same card without the shadow keeps both, because
-a native border is not painted through generated content:
+**`skew-*` on a bordered element costs more than the bleed.** It takes ownership of the element's face: it
+suppresses the native background and border and repaints both in its own generated content. The padding-box
+clip then takes that repaint too, so a bordered card carrying `skew-*` plus a hidden overflow loses **its
+border and a border-wide ring of its own background**, and whatever is behind the card shows through that ring.
+A `shadow-*` card with a hidden overflow leaves its background and border to UI Toolkit, which keeps both, and
+paints its layers over them, of which the clip leaves the inset ones:
 
 ```csharp
 // Border and a border-wide ring of white are missing; the parent shows through.
-V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-black rounded-lg");
+V.Div(className: "-skew-x-6 overflow-hidden bg-white border-2 border-black rounded-lg");
 
-// Same card, border intact.
-V.Div(className: "overflow-hidden bg-white border-2 border-black rounded-lg");
+// Border intact.
+V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-black rounded-lg");
 ```
 
 The nesting below fixes this case too — the border belongs on whichever element is not clipped.

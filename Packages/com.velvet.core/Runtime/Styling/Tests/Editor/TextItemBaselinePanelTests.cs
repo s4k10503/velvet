@@ -291,6 +291,8 @@ namespace Velvet.Tests
             Assert.That(button.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(button, LongWord)));
         }
 
+        // GREEN_ON_BASE(characterization): the base gives a shadowed element no child. Adding a child to the shadowed
+        // element for the face reddens this case.
         [Test]
         public void Given_AShadowedButtonInARow_When_Resolved_Then_ItsMinWidthIsItsWidestWordPlusItsOwnFrame()
         {

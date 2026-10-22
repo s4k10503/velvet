@@ -66,6 +66,15 @@ namespace Velvet
         public static ShearedRoundedRect ForElement(VisualElement ve, float inset,
             float w, float h, float tanX, float tanY)
         {
+            // While a layoutId projection draws the element's corners, its radius slots hold none and the corners
+            // it draws take a radius per axis (ProjectedCornerFace).
+            if (ProjectedCornerFace.TryGetRadii(ve, out var projected))
+            {
+                return new ShearedRoundedRect
+                {
+                    Width = w, Height = h, TanX = tanX, TanY = tanY, Inset = inset, Radii = projected,
+                };
+            }
             var rs = ve.resolvedStyle;
             return new ShearedRoundedRect
             {
@@ -359,28 +368,19 @@ namespace Velvet
     //
     // The inline bg/border slots are shared with the arbitrary-value resolver, and a fresh value there is
     // captured directly. A face a stylesheet rule colours cannot be read off the element while the sentinel
-    // masks it, so it is read off a probe instead: a hidden child carrying the element's face-colouring and
-    // transition classes, which resolves what the element itself would show. The probe
-    // takes the class changes of a reconcile pass (SyncOnPatch), and of a variant payload, a gesture or drag
-    // class and a play (NotifyClassesChanged).
+    // masks it, so it is read from the rules beneath the inline slots (StyleCascade.FaceColor), whichever selector
+    // matched, and carried onto each colour they give on the element's transition of it (ColorCarry). A check
+    // each frame repaints the element while a colour is carried or the rules give a new one.
     //
     // includeBackground gates every background touch: the skew / shadow layers own the whole face (fill +
     // border), so they suppress and repaint both (default true); the border-dashed layer restyles only the
     // border, so it constructs with includeBackground:false and never suppresses or re-captures the fill.
     internal sealed class SilhouetteFaceStash
     {
-        // Marks the probe child, which SilhouetteBoundsSpacer.IsSpacer keeps out of every rendered-child count.
-        internal const string ProbeMarkerClass = "velvet-face-probe";
-
-        private static readonly StyleLonghandSet s_probeLonghands = StyleLonghandSet.Of(StyleLonghand.BackgroundColor)
-            .Union(StyleLonghandSet.Of(StyleLonghand.BorderLeftColor))
-            .Union(StyleLonghandSet.Of(StyleLonghand.BorderTopColor))
-            .Union(StyleLonghandSet.Of(StyleLonghand.BorderRightColor))
-            .Union(StyleLonghandSet.Of(StyleLonghand.BorderBottomColor))
-            .Union(StyleLonghandSet.Of(StyleLonghand.TransitionProperty))
-            .Union(StyleLonghandSet.Of(StyleLonghand.TransitionDuration))
-            .Union(StyleLonghandSet.Of(StyleLonghand.TransitionTimingFunction))
-            .Union(StyleLonghandSet.Of(StyleLonghand.TransitionDelay));
+        // The sides of StyleCascade.FaceColor's border slots, 1 through 4, and the property each slot transitions.
+        private static readonly DivideEdge[] s_slotSides = { DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom, DivideEdge.Left };
+        private static readonly string[] s_slotProperties =
+            { "background-color", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color" };
 
         // The stash whose suppression is on each element's inline slots, so a class change no reconcile pass
         // follows reaches it without a reconciler.
@@ -409,47 +409,53 @@ namespace Velvet
         // Whether this stash owns (suppresses / repaints) the background face. False for a border-only layer.
         private readonly bool _includeBackground;
 
-        private const int RepaintFramesAfterSync = 2;
-
-        private VisualElement? _probe;
-        private int _probeTransitions;
-        private int _repaintFrames;
-        private IVisualElementScheduledItem? _repaintTicker;
+        // The element whose rules colour the face while this suppresses it, each slot's colour carried in
+        // StyleCascade.FaceColor's order, and the per-frame check.
+        private VisualElement? _element;
+        private readonly ColorCarry[] _carries = { new(), new(), new(), new(), new() };
+        private IVisualElementScheduledItem? _watch;
 
         public SilhouetteFaceStash(bool includeBackground = true)
         {
             _includeBackground = includeBackground;
         }
 
-        // The colors to paint: the probe's for a face a stylesheet rule colours once its resolved style reads back the
-        // hidden visibility it is created with (ProbeResolved), the captured one otherwise.
-        public Color CurrentBg => !BgFromInline && ProbeResolved ? _probe!.resolvedStyle.backgroundColor : BgColor;
+        // The colors to paint: where the rules colour the face, theirs as carried, else the captured one.
+        public Color CurrentBg => BgFromInline ? BgColor : Current(0, BgColor);
 
         public Color CurrentBorder => CurrentBorderOf(DivideEdge.Left);
 
         // A side whose captured color came inline, or from a dashed divider's mask, keeps it.
         public Color CurrentBorderOf(DivideEdge side)
-            => !_sideKept[(int)side] && ProbeResolved
-                ? SilhouetteFace.ResolvedBorderColor(_probe!.resolvedStyle, side)
-                : BorderColors[(int)side];
+            => _sideKept[(int)side]
+                ? BorderColors[(int)side]
+                : Current(System.Array.IndexOf(s_slotSides, side) + 1, BorderColors[(int)side]);
 
-        // Indexed like BorderColors: the sides the probe does not stand in for, and of those the ones taken from an
-        // inline value.
+        // Indexed like BorderColors: the sides the rules do not colour, and of those the ones taken from an inline
+        // value.
         private readonly bool[] _sideKept = new bool[4];
         private readonly bool[] _sideInline = new bool[4];
 
-        private bool ProbeResolved
-            => _probe?.panel != null && _probe.resolvedStyle.visibility == Visibility.Hidden;
+        // A slot's colour carried to what the rules give it now, else to captured where they cannot be read; captured
+        // alone while this suppresses no element.
+        private Color Current(int slot, Color captured)
+        {
+            if (_element == null)
+            {
+                return captured;
+            }
+            var target = StyleCascade.FaceColor(_element, slot) ?? captured;
+            return _carries[slot].Step(target, 0f, _element, s_slotProperties[slot], slot == 0 ? null : "border-color");
+        }
 
-        private bool HasStylesheetFace
-            => (_includeBackground && !BgFromInline) || System.Array.IndexOf(_sideKept, false) >= 0;
+        private bool RulesColor(int slot)
+            => slot == 0 ? _includeBackground && !BgFromInline : !_sideKept[(int)s_slotSides[slot - 1]];
 
         // A class on element changed outside a reconcile pass — a variant payload, a gesture or drag class, a
         // play — so the face its suppression hides may have moved.
         // A per-frame driver wrote or released a slot this suppresses (StyleArbitraryValueResolver.ApplyDriven,
         // ReleaseDriven), or the element's own inline values were written back over it as a play ended: the face
-        // takes what the slots hold and the sentinel goes back, as SyncOnPatch does for a resolver write, without
-        // re-pointing the probe, whose classes a drive leaves as they were.
+        // takes what the slots hold and the sentinel goes back, as SyncOnPatch does for a resolver write.
         internal static void Retake(VisualElement element)
         {
             if (s_owners.TryGetValue(element, out var stash) && stash.SuppressionApplied && stash.HasStash
@@ -519,7 +525,7 @@ namespace Velvet
         // are already on the element). Three cases:
         // - an owned inline slot (border always; background only when included) holds a fresh (non-sentinel)
         //   value → the resolver overwrote us (e.g. border-[#fff] → border-[#f00]): re-capture and re-suppress;
-        // - the class list changed → the probe takes the element's classes, so a stylesheet face follows them;
+        // - the class list changed → the element repaints, reading the face its rules now give;
         // - otherwise the stash is current.
         public void SyncOnPatch(VisualElement element, bool classesChanged)
         {
@@ -538,7 +544,7 @@ namespace Velvet
 
             if (classesChanged)
             {
-                SyncProbe(element);
+                element.MarkDirtyRepaint();
             }
         }
 
@@ -602,8 +608,7 @@ namespace Velvet
         //   (inline overrides USS), not the real color. KEEP the previously-captured value instead of clobbering
         //   it with the sentinel — this is what lets a border-only re-capture not wipe a USS-driven fill;
         // - unset → a USS-driven color: read it from resolvedStyle, unless the last style pass still saw the
-        //   sentinel there (an inline value just cleared), which keeps the previous capture until the probe
-        //   resolves.
+        //   sentinel there (an inline value just cleared), which keeps the previous capture.
         private static void CaptureFace(Color inline, Color resolved, ref Color stash, ref bool fromInline)
         {
             if (!SilhouetteFace.IsUnset(inline) && !SilhouetteFace.IsSentinel(inline))
@@ -627,7 +632,7 @@ namespace Velvet
             WriteSentinels(element);
             SuppressionApplied = true;
             s_owners.AddOrUpdate(element, this);
-            SyncProbe(element);
+            Watch(element);
             element.MarkDirtyRepaint();
         }
 
@@ -663,19 +668,44 @@ namespace Velvet
             Abandon(element);
         }
 
-        // Drops the probe and this stash's claim on element without touching the inline slots, for a layer that
-        // hands its suppression on (BorderStyleSilhouette.DetachPreservingSuppression).
+        // Hands the slots back to the element while it stays bound: a colour captured from an inline value is written
+        // back, and the rest are cleared as Release clears them.
+        public void Yield(VisualElement element)
+        {
+            if (_includeBackground)
+            {
+                element.style.backgroundColor = BgFromInline ? BgColor : StyleKeyword.Null;
+            }
+            foreach (var side in s_sides)
+            {
+                WriteBorderColor(element, side,
+                    _sideInline[(int)side] ? BorderColors[(int)side] : new StyleColor(StyleKeyword.Null));
+            }
+            StyleArbitraryValueResolver.ReassertBorderColors(element);
+            SuppressionApplied = false;
+            HasStash = false;
+            Abandon(element);
+        }
+
+        private static void WriteBorderColor(VisualElement element, DivideEdge side, StyleColor value)
+        {
+            if (side == DivideEdge.Left) element.style.borderLeftColor = value;
+            else if (side == DivideEdge.Top) element.style.borderTopColor = value;
+            else if (side == DivideEdge.Right) element.style.borderRightColor = value;
+            else element.style.borderBottomColor = value;
+        }
+
+        // Drops the per-frame check and this stash's claim on element without touching the inline slots, for a layer
+        // that hands its suppression on (BorderStyleSilhouette.DetachPreservingSuppression).
         public void Abandon(VisualElement element)
         {
             if (s_owners.TryGetValue(element, out var owner) && ReferenceEquals(owner, this))
             {
                 s_owners.Remove(element);
             }
-            _repaintTicker?.Pause();
-            _repaintTicker = null;
-            _probeTransitions = 0;
-            _probe?.RemoveFromHierarchy();
-            _probe = null;
+            _watch?.Pause();
+            _watch = null;
+            _element = null;
         }
 
         // Adopts another stash's captured BORDER face for a face-ownership HANDOFF: when a border-only layer
@@ -698,92 +728,48 @@ namespace Velvet
             HasStash = true;
         }
 
-        // Puts the element's face-colouring and transition classes, and its inline transition, on the probe, and
-        // repaints the element once the probe has resolved them. A probe needs a panel to resolve, so an element
-        // off one gets none until its next class change on one; the captured colors paint meanwhile.
-        private void SyncProbe(VisualElement element)
+        // Starts the per-frame check on element, the colours landed where the rules give them now, so that taking the
+        // face is not a change they transition.
+        private void Watch(VisualElement element)
         {
-            if (!SuppressionApplied || !HasStylesheetFace || element.panel == null)
+            if (ReferenceEquals(_element, element))
             {
+                _watch?.Resume();
                 return;
             }
-            var probe = _probe ??= CreateProbe(element);
-            probe.ClearClassList();
-            probe.AddToClassList(ProbeMarkerClass);
-            foreach (var cls in element.GetClasses())
+            _watch?.Pause();
+            _element = element;
+            _carries[0].Land(StyleCascade.FaceColor(element, 0) ?? BgColor);
+            for (var slot = 1; slot < _carries.Length; slot++)
             {
-                if (!StyleUtilityProperties.TryGet(cls, out var rule) || rule.Properties.Overlaps(s_probeLonghands))
+                var side = (int)s_slotSides[slot - 1];
+                _carries[slot].Land(StyleCascade.FaceColor(element, slot) ?? BorderColors[side]);
+            }
+            _watch = element.schedule.Execute(ts => Check(element, ts.deltaTime / 1000f)).Every(0);
+        }
+
+        // Carries each colour the rules give over dtSec more, repainting element while one moves.
+        private void Check(VisualElement element, float dtSec)
+        {
+            var moved = false;
+            for (var slot = 0; slot < _carries.Length; slot++)
+            {
+                var read = RulesColor(slot) ? StyleCascade.FaceColor(element, slot) : null;
+                if (read is not { } target)
                 {
-                    probe.AddToClassList(cls);
+                    continue;
                 }
+                var carry = _carries[slot];
+                if (carry.Landed && carry.Target == target)
+                {
+                    continue;
+                }
+                carry.Step(target, dtSec, element, s_slotProperties[slot], slot == 0 ? null : "border-color");
+                moved = true;
             }
-            probe.style.transitionProperty = element.style.transitionProperty;
-            probe.style.transitionDuration = element.style.transitionDuration;
-            probe.style.transitionTimingFunction = element.style.transitionTimingFunction;
-            probe.style.transitionDelay = element.style.transitionDelay;
-            _repaintFrames = RepaintFramesAfterSync;
-            KeepRepainting(element);
-        }
-
-        private VisualElement CreateProbe(VisualElement element)
-        {
-            var probe = new VisualElement { name = ProbeMarkerClass, pickingMode = PickingMode.Ignore };
-            probe.style.position = Position.Absolute;
-            probe.style.visibility = Visibility.Hidden;
-            probe.style.left = 0f;
-            probe.style.top = 0f;
-            probe.style.width = 0f;
-            probe.style.height = 0f;
-            probe.style.marginLeft = 0f;
-            probe.style.marginRight = 0f;
-            probe.style.marginTop = 0f;
-            probe.style.marginBottom = 0f;
-            probe.style.paddingLeft = 0f;
-            probe.style.paddingRight = 0f;
-            probe.style.paddingTop = 0f;
-            probe.style.paddingBottom = 0f;
-            probe.style.borderLeftWidth = 0f;
-            probe.style.borderRightWidth = 0f;
-            probe.style.borderTopWidth = 0f;
-            probe.style.borderBottomWidth = 0f;
-            probe.RegisterCallback<TransitionRunEvent>(_ =>
+            if (moved)
             {
-                _probeTransitions++;
-                KeepRepainting(element);
-            });
-            probe.RegisterCallback<TransitionEndEvent>(_ => EndTransition());
-            probe.RegisterCallback<TransitionCancelEvent>(_ => EndTransition());
-            element.hierarchy.Add(probe);
-            return probe;
-        }
-
-        private void EndTransition()
-        {
-            _probeTransitions = Mathf.Max(0, _probeTransitions - 1);
-            _repaintFrames = Mathf.Max(_repaintFrames, 1);
-        }
-
-        // Repaints element every frame while the probe has a transition running or a resolve still to land.
-        private void KeepRepainting(VisualElement element)
-        {
-            if (_repaintTicker == null)
-            {
-                _repaintTicker = element.schedule.Execute(() => RepaintTick(element)).Every(0);
-                return;
-            }
-            _repaintTicker.Resume();
-        }
-
-        private void RepaintTick(VisualElement element)
-        {
-            element.MarkDirtyRepaint();
-            if (_probeTransitions > 0)
-            {
-                return;
-            }
-            if (--_repaintFrames <= 0)
-            {
-                _repaintTicker?.Pause();
+                element.MarkDirtyRepaint();
             }
         }
     }

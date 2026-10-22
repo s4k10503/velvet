@@ -1047,19 +1047,17 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_DivideXDashedRow_When_ADividerChildIsShadowed_Then_ThatChildGetsNoDashedPaint()
+        public void Given_DivideXDashedRow_When_ADividerChildIsShadowed_Then_ThatChildGetsItsDashedPaint()
         {
-            // Arrange — a drop shadow owns the child's border face and repaints a solid border, so a dashed
-            // divider on the same child would fight it: the dashed layer must defer to the face owner (a solid
-            // divider, no paint), the same as for a skewed child and as the element-level border-dashed gate does.
+            // Arrange — Chromium dashes the divider of a child with a box-shadow as of any other.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", "shadow-lg") };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
-            // Assert — the shadowed divider child carries no dashed paint binding (it renders a solid divider).
-            Assert.That(scope.Reconciler.Context.DivideDashBindings.ContainsKey(scope.Root[0][1]), Is.False);
+            // Assert
+            Assert.That(scope.Reconciler.Context.DivideDashBindings.ContainsKey(scope.Root[0][1]), Is.True);
         }
 
         #endregion

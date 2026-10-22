@@ -10,9 +10,9 @@ namespace Velvet.Tests
     /// Specifies the <c>border-dashed</c> / <c>border-dotted</c> className → dashed-outline reconciler contract.
     /// The outline is wrapper-less (the element's own <c>generateVisualContent</c>): a bordered element keeps its
     /// DOM slot, gets a tracked <see cref="BorderStyleBinding"/>, suppresses only the border COLOR (the width
-    /// stays real so layout is unchanged), and detaches cleanly. Skew and shadow each own the whole face (they
-    /// repaint a solid border), so a skewed / shadowed element tracks NO border-style binding (the border stays
-    /// solid — a documented v1 limitation). A pooled element sheds the binding so a recycle cannot ghost a
+    /// stays real so layout is unchanged), and detaches cleanly. Skew and shadow each own the whole face and
+    /// repaint its border themselves, so a skewed / shadowed element tracks NO border-style binding (a skewed
+    /// one's border stays solid — a documented limitation). A pooled element sheds the binding so a recycle cannot ghost a
     /// dashed outline. GWT, one assert per case.
     /// </summary>
     [TestFixture]
@@ -78,8 +78,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AShadowedBorderDashedElement_When_Reconciled_Then_NoBorderStyleBindingIsTracked()
         {
-            // Arrange — the upright drop shadow also owns the face (it repaints a solid border over its shadow
-            // quad), so the dashed layer defers to it too.
+            // Arrange — the upright drop shadow also owns the face (it repaints the border over its shadow quad),
+            // so the dashed layer defers to it too.
             using var scope = new ReconcilerScope();
 
             // Act
@@ -149,8 +149,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABorderDashedColoredElement_When_ShadowIsAddedInOnePatch_Then_TheShadowFaceAdoptsTheBorderColor()
         {
-            // Arrange — an upright drop shadow also owns the whole face (it repaints a solid border over its
-            // shadow quad), so it is the second layer this handoff must serve.
+            // Arrange — an upright drop shadow also owns the whole face (it repaints the border over its shadow
+            // quad), so it is the second layer this handoff must serve.
             ColorUtility.TryParseHtmlString("#FF0000", out var red);
             using var scope = new ReconcilerScope();
             var oldTree = new VNode[] { V.Div(className: "border-dashed border-[#FF0000]", name: "card") };
