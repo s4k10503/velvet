@@ -2233,6 +2233,10 @@ namespace Velvet
                 pending.ScheduledItem?.Pause();
                 pending.TimeoutItem?.Pause();
                 if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
+                // No reconciler context: CancelAll runs only from Reconciler.Dispose, after the context is marked
+                // disposed and before its paint and manipulator bindings are torn down, so a context would only
+                // update its gate records and re-run the gated passes over bindings about to go. The classes land on
+                // the same elements either way (StyleVariantPayload.DestinationOf).
                 StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
                 StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
                 RingCoFadeCoordinator.EndRingCoFade(pending);
