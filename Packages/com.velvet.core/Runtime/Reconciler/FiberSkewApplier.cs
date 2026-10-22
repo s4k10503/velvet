@@ -54,11 +54,8 @@ namespace Velvet
         // shadow follows the sheared silhouette without re-parsing the skew classes.
         // classesChanged comes from the caller because the answer depends on which class SOURCE this pass
         // was given: a variant re-sync hands over the same reconciled array both times and the change lives
-        // entirely in what the live class list added, which a comparison here could not see. canReleaseFace is
-        // the caller's separate promise that a re-stash will follow (see SilhouetteFaceStash.SyncOnPatch) —
-        // false on that same re-sync, where nothing would ever re-take the stash.
-        internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] newClassNames, bool classesChanged,
-            bool canReleaseFace)
+        // entirely in what the live class list added, which a comparison here could not see.
+        internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)
         {
             var bound = _ctx.SkewBindings.TryGetValue(element, out var binding);
             var has = StyleSkewClass.TryGetWinningSkewClasses(newClassNames, out var winnerX, out var winnerY);
@@ -72,7 +69,7 @@ namespace Velvet
             // skip the parse, but keep the color stash in sync with this patch's styling.
             if (bound && has && binding.Spec.SourceX == winnerX && binding.Spec.SourceY == winnerY)
             {
-                SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged, canReleaseFace);
+                SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged);
                 // Re-seat the descendant-shear child translate unconditionally (not gated on classesChanged): a
                 // child add / remove / reorder leaves the caster's own skew tokens untouched, so the children
                 // must still re-seat even when this element's class list did not change.
@@ -94,7 +91,7 @@ namespace Velvet
             if (want && bound)
             {
                 binding.Spec = spec;
-                SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged: true, canReleaseFace);
+                SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
                 // The manipulator reads Spec live, so the just-changed angle re-seats the children here.
                 SkewSilhouette.SyncChildTranslate(binding);
                 SyncSkewGradient(element, binding, newClassNames);
@@ -106,7 +103,7 @@ namespace Velvet
             {
                 var fresh = SkewSilhouette.Attach(element, spec);
                 _ctx.SkewBindings[element] = fresh;
-                SkewSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true, canReleaseFace);
+                SkewSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true);
                 SyncSkewGradient(element, fresh, newClassNames);
                 SkewSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
                 return spec;

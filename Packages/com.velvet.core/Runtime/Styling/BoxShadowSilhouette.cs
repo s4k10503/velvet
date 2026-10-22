@@ -229,7 +229,7 @@ namespace Velvet
         // LOST its skew, this paint re-stashes the face it must now own. The skew layer is reconciled before
         // the shadow, so its binding is already in its post-patch state when this runs.
         public static void Sync(VisualElement element, BoxShadowBinding binding,
-            in BoxShadowSyncRequest request, bool canReleaseFace)
+            in BoxShadowSyncRequest request)
         {
             binding.Layers = request.Layers;
             binding.ClassNames = request.ClassNames;
@@ -265,7 +265,7 @@ namespace Velvet
             {
                 // Steady upright: keep the face stash synced with this patch's styling, exactly as the skew
                 // layer does (the shared inline bg/border slot is also written by the arbitrary-value resolver).
-                binding.Face.SyncOnPatch(element, classesChanged: true, canReleaseFace);
+                binding.Face.SyncOnPatch(element, classesChanged: true);
             }
 
             element.MarkDirtyRepaint();
@@ -425,7 +425,7 @@ namespace Velvet
 
             // Pre-stash frame (first paint racing the stash): read the live styles directly — the native chrome
             // is still visible this frame, so the overdraw is identical-colored.
-            var fill = binding.Face.HasStash ? binding.Face.BgColor : ve.resolvedStyle.backgroundColor;
+            var fill = binding.Face.HasStash ? binding.Face.CurrentBg : ve.resolvedStyle.backgroundColor;
             if (fill.a > 0.004f)
             {
                 SilhouetteFace.BuildShearedRoundedRect(p, ShearedRoundedRect.ForElement(ve, 0f, w, h, 0f, 0f));
@@ -438,7 +438,7 @@ namespace Velvet
             float w, float h)
         {
             var p = mgc.painter2D;
-            var borderColor = binding.Face.HasStash ? binding.Face.BorderColor : ve.resolvedStyle.borderLeftColor;
+            var borderColor = binding.Face.HasStash ? binding.Face.CurrentBorder : ve.resolvedStyle.borderLeftColor;
             var borderWidth = ve.resolvedStyle.borderLeftWidth;
             if (borderWidth > 0.01f && borderColor.a > 0.004f)
             {

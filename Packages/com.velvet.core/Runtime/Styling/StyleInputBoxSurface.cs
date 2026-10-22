@@ -201,7 +201,7 @@ namespace Velvet
                 ctx.VariantGateClasses[box] = state;
             }
             state.Reconciled ??= Array.Empty<string>();
-            state.PaintTail ??= true;
+            state.PaintTail = true;
         }
 
         // The classes of a plain class list (a gesture channel's) the box takes, and those the control keeps.

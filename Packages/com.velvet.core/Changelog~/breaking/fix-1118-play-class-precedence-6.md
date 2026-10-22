@@ -42,6 +42,10 @@
   bracket value or a gesture class used to keep the property while the play ran, a divider's color did not
   give way to a class a variant change brought, and did not come back once an enter's class left.
 
+- A `V.Motion` draws `shadow-*`, `skew-*` and `border-dashed` / `border-dotted`, from its className, its
+  variants and the `while*Class` and drag channels, as any element does. It used to draw none of them, and
+  logged a warning for a shadow.
+
 ### Fixed
 
 - A `V.Motion` hovered through a `hover:` rule of its className while its enter played kept the class of the
@@ -51,3 +55,7 @@
 - A `has-[.foo]:` ancestor did not match a `.foo` a play showed on a descendant whose variant payload, such as
   `first:foo`, also put `.foo` there.
 - A variant payload such as `hover:foo` turning off could take `.foo` off the element while a play still showed it.
+
+- A skewed, `shadow-*` or `border-dashed` element kept painting the background and border colours it had when
+  its skew, shadow or dashed border attached after a variant, gesture or drag class, a theme change or a play
+  changed them, until an unrelated re-render.

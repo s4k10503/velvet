@@ -384,16 +384,12 @@ namespace Velvet
         // paint layers' "did the classes change" question is answered by a reference compare.
         public string[]? Resolved;
 
-        // Whether this element's reconcile path runs the wrapper-less paint tail (skew / shadow /
-        // border-style): true for an ElementNode, false for a Motion, which deliberately paints none of the
-        // three. Null while a [&>*]: rule on the parent is the only thing that has ever named this element,
-        // because the child is fully created before that rule runs and so no pass of its own has resolved it.
-        // The re-sync then drives the layout gates alone rather than guess, which is what keeps a payload
-        // from attaching to a Motion what the Motion's own patch would refuse; the element's next patch
-        // records the answer and the paint follows from there. A child that declares any gated payload of its
-        // OWN was recorded at create, so the same [&>*]: payload paints at mount for it — see
-        // FiberNodePatcher.ReSyncVariantGatedPasses for why that inconsistency is preferred to a guess.
-        public bool? PaintTail;
+        // Whether a pass of this element's own has resolved it, which is what lets the re-sync run the
+        // wrapper-less paint tail. False while a [&>*]: rule on the parent is the only thing that has ever named
+        // this element, because the child is fully created before that rule runs; the re-sync then drives the
+        // layout gates alone, and the element's next patch records it. A child that declares any gated payload
+        // of its OWN was recorded at create, so the same [&>*]: payload paints at mount for it.
+        public bool PaintTail;
     }
 
     // Shared infrastructure between Reconciler subsystems.

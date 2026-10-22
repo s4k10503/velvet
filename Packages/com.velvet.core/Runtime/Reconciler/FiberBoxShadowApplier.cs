@@ -57,7 +57,7 @@ namespace Velvet
         // The shadow is a paint, not a wrapper, so a Motion can carry a shadow paint without becoming an
         // AnimatePresence anchor (nothing structural is added).
         internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
-            SkewSpec skew, bool canReleaseFace)
+            SkewSpec skew)
         {
             var bound = _ctx.ShadowBindings.TryGetValue(element, out var binding);
             // Fast path: no shadow anywhere near this element.
@@ -83,7 +83,7 @@ namespace Velvet
                     SkewXDeg = skew.XDeg,
                     SkewYDeg = skew.YDeg,
                     CasterSkewed = casterSkewed,
-                }, canReleaseFace);
+                });
                 BoxShadowSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
             }
             else if (want)

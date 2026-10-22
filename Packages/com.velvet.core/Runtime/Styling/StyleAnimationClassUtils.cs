@@ -20,6 +20,7 @@ namespace Velvet
             }
             ClipPathLayoutBox.SyncClasses(element);
             StyleArbitraryValueResolver.NotifyClassesChanged(element);
+            SilhouetteFaceStash.NotifyClassesChanged(element);
         }
 
         // Ranks classes a play leaves on the element as the element's own from now on.
@@ -56,6 +57,7 @@ namespace Velvet
             }
             ClipPathLayoutBox.SyncClasses(element);
             StyleArbitraryValueResolver.NotifyClassesChanged(element);
+            SilhouetteFaceStash.NotifyClassesChanged(element);
         }
 
         // A class the projection took off the element stays off unless the rank RawAdded gives it outranks what

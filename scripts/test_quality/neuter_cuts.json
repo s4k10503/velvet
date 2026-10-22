@@ -265,8 +265,8 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
-          "anchor": "bool canReleaseFace)",
-          "neuter": "return 0f;"
+          "anchor": "internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)",
+          "neuter": "return default;"
         }
       ]
     },
@@ -299,7 +299,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs",
-          "anchor": "internal void ApplyGradientOnPatch(VisualElement element, string[] classNames, bool skewable)",
+          "anchor": "internal void ApplyGradientOnPatch(VisualElement element, string[] classNames)",
           "neuter": "return;"
         },
         {
@@ -338,7 +338,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs",
-          "anchor": "SkewSpec skew, bool canReleaseFace)",
+          "anchor": "SkewSpec skew)",
           "neuter": "return;"
         }
       ]
@@ -372,7 +372,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs",
-          "anchor": "bool canReleaseFace)",
+          "anchor": "internal void ApplyBorderStyleOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)",
           "neuter": "return;"
         }
       ]

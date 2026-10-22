@@ -448,10 +448,9 @@ Tailwind ranks above that: `focus:` or `active:` against `whileHoverClass`, `dis
 against any of the three, a stacked rule such as `dark:hover:`, and an important utility. Framer Motion
 ranks `whileHover` above `whileFocus`, where `whileFocusClass` outranks `whileHoverClass` here, being ranked
 as the `focus:` variant it stands for. The element's
-own value comes back when the state goes off. Bracket values apply through them, and on an element so do
-`shadow-*`, `ring-*`, `skew-*`, gradients, `animate-*`, `border-dashed`, `gap-*` and `uppercase`:
-`whileHoverClass: "shadow-lg"` paints a shadow while hovered. A `V.Motion` draws no `shadow-*`, `skew-*`
-or `border-dashed` / `border-dotted`, through these channels or through its className. The transient enter
+own value comes back when the state goes off. Bracket values apply through them, and so do `shadow-*`,
+`ring-*`, `skew-*`, gradients, `animate-*`, `border-dashed`, `gap-*` and `uppercase`:
+`whileHoverClass: "shadow-lg"` paints a shadow while hovered. The transient enter
 / exit classes an `AnimatePresence` play applies for the duration of an animation write their utilities
 straight onto the live class list without telling the reconciler, and carry only a utility backed by a
 plain USS rule — `bg-red-500`, `opacity-50`, `px-4`, `border-red-500`, `scale-105`, `rotate-3`. Read that

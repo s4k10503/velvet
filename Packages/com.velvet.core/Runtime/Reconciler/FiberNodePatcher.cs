@@ -260,8 +260,7 @@ namespace Velvet
             // manipulator's container-margin writes are never clobbered by a later inline-style diff on
             // the same element. (No StyleOverrides member writes a margin today, but the invariant must
             // hold if one is ever added.)
-            ApplyPostChildrenClassPasses(element, oldNode.ClassNames, newNode.ClassNames,
-                paintTail: true, clipActive);
+            ApplyPostChildrenClassPasses(element, oldNode.ClassNames, newNode.ClassNames, clipActive);
         }
 
         // Applies the oldNode -> newNode diff when EITHER side is z-managed (FiberZLayerCoordinator.
@@ -369,7 +368,7 @@ namespace Velvet
         // The clip-path wrapper stays with the callers: it is parent surgery on the element's own slot, which
         // only a reconcile pass may perform.
         private void ApplyPostChildrenClassPasses(VisualElement element, string[] oldClassNames,
-            string[] newClassNames, bool paintTail, bool clipActive)
+            string[] newClassNames, bool clipActive)
         {
             // Before gap / divide / grid: on a SHARED style property ([&>*]:ml-[2px] alongside gap-x-4) those
             // three own the edge and must win, exactly as they already win over a child's own explicit margin
@@ -387,12 +386,8 @@ namespace Velvet
             ApplyHasClassVariants(element);
             ApplyHasVariantManipulators(element);
             ApplyTextEffects(element, newClassNames);
-            var resolved = ResolveVariantClasses(element, oldClassNames, newClassNames, paintTail,
-                out var classesChanged);
-            // canReleaseFace: a reconcile pass may let the silhouette stashes release, because this same
-            // sequence runs on the element's next patch and re-takes the stash. The re-sync below cannot.
-            ApplyResolvedClassPasses(element, resolved, classesChanged, paintTail, clipActive,
-                canReleaseFace: true);
+            var resolved = ResolveVariantClasses(element, oldClassNames, newClassNames, out var classesChanged);
+            ApplyResolvedClassPasses(element, resolved, classesChanged, clipActive);
         }
 
         // The ordered paint-pass sequence, shared by the reconcile path and the variant re-sync so the two
@@ -422,28 +417,21 @@ namespace Velvet
         //   one that touches the element's PARENT rather than the element.
         // The particles spacer is here, not in the Particles-settings diff, because it follows the CLASS list
         // (a filter comes and goes via a class swap or a variant).
-        // paintTail is the one per-path knob, and for the three silhouette layers it is the same distinction
-        // the gradient's skewable flag draws: an ElementNode may render a sheared silhouette, a Motion never
-        // does, so a Motion's gradient stays on the straight background-image path and those three stand down
-        // entirely.
         private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
-            bool paintTail, bool clipActive, bool canReleaseFace)
+            bool clipActive)
         {
             if (classesChanged)
             {
                 // A rule can match a descendant by this element's classes, so the loops beneath read theirs again.
                 StyleAnimateDriver.NotifySubtreeStyleChanged(element);
             }
-            _appliers.ApplyGradientOnPatch(element, classNames, skewable: paintTail);
+            _appliers.ApplyGradientOnPatch(element, classNames);
             _appliers.ApplyAnimateOnPatch(element, classNames);
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);
             _appliers.ApplyParticlesSpacer(element, classNames);
-            if (paintTail)
-            {
-                var skew = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
-                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skew, canReleaseFace);
-                _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
-            }
+            var skew = _appliers.ApplySkewOnPatch(element, classNames, classesChanged);
+            _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skew);
+            _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
         }
 
@@ -678,11 +666,8 @@ namespace Velvet
                 new MotionAppliedClassSet(appliedNew, newVariantClasses));
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
-            // children) directly. A Motion never renders skew (the animation node never attaches a sheared
-            // silhouette), so its gradient always takes the straight background-image path even with skew
-            // classes present, and the three silhouette paints stand down (skewable: false). A Motion also
-            // carries no clip wrapper, so nothing can suppress a paint here.
-            ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, paintTail: false, clipActive: false);
+            // children) directly. A Motion carries no clip wrapper, so no clip suppresses a paint here.
+            ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, clipActive: false);
 
             // Shared-element layout animation (layoutId): independent of the variant swap
             // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so
@@ -2762,7 +2747,9 @@ namespace Velvet
             }
             for (var i = 0; i < root.hierarchy.childCount; i++)
             {
-                if (SubtreeCarriesClass(root.hierarchy[i], cls))
+                // A face probe carries copies of its element's classes, the payload's among them.
+                var child = root.hierarchy[i];
+                if (!child.ClassListContains(SilhouetteFaceStash.ProbeMarkerClass) && SubtreeCarriesClass(child, cls))
                 {
                     return true;
                 }
@@ -3286,12 +3273,11 @@ namespace Velvet
             // The second case is temporary for a child rendered as an element — its own next patch runs the
             // class passes and records the array. A V.Text child's patch runs none, ever, which is why the
             // empty array below is its reconciled array rather than a stand-in; the live list stands in for
-            // the layout gates in the element case only. The paint sequence stands down for both, since
-            // PaintTail is unknown and a Motion must not be given a silhouette.
-            // That makes a [&>*]: paint land inconsistently, which is the cost of not guessing: a child that
-            // declares ANY gated payload of its own was recorded at create, so the parent's payload finds
-            // PaintTail set and paints at mount, while a child that declares none paints only from its next
-            // patch. Recording how a child is driven before its parent's rules run would close it.
+            // the layout gates in the element case only. The paint sequence stands down for both: it runs only
+            // from an array a pass of the element's own recorded (VariantGateState.PaintTail).
+            // That makes a [&>*]: paint land inconsistently: a child that declares ANY gated payload of its own
+            // was recorded at create, so the parent's payload finds PaintTail set and paints at mount, while a
+            // child that declares none paints only from its next patch.
             // A TextNode's element applies no class of its own at any render, so an empty array is not a
             // stand-in for its reconciled one — it IS its reconciled one. Without this the two resolvers
             // below stand down for such a child forever, and a container's [&>*]:font-mono or
@@ -3328,18 +3314,15 @@ namespace Velvet
             {
                 StyleTextEffectResolver.Apply(_ctx, element, resolved);
             }
-            var paintTail = state?.PaintTail;
-            if (paintTail == null)
+            if (state == null || !state.PaintTail)
             {
                 return;
             }
-            // Both recorded answers run the sequence — a Motion still carries the gradient, the animate driver
-            // and the filter tween, and only the three silhouette layers stand down. The clip verdict is the
-            // same one the reconcile path forwards from its own clip patch: that call returns exactly its own
-            // wantWrap answer, so reading the predicate here cannot disagree. Only the shadow reads it, so the
-            // Motion path skips the scan the way PatchMotion hard-codes the answer.
-            ApplyResolvedClassPasses(element, resolved, classesChanged, paintTail.Value,
-                paintTail.Value && StyleClipPathClass.WantsClipWrapper(resolved), canReleaseFace: false);
+            // The clip verdict is the same one the reconcile path forwards from its own clip patch: that call
+            // returns exactly its own wantWrap answer, so reading the predicate here cannot disagree. A Motion
+            // carries no clip wrapper, as PatchMotion's own answer says.
+            ApplyResolvedClassPasses(element, resolved, classesChanged,
+                !_ctx.MotionNodes.ContainsKey(element) && StyleClipPathClass.WantsClipWrapper(resolved));
         }
 
         // Records the class array an element that DECLARES a variant-gated payload will need if that payload
@@ -3431,18 +3414,14 @@ namespace Velvet
         // family rank against each other by the priority each was applied at, which VariantGateState keeps
         // the token order in.
         //
-        // changed reports whether the result differs from what this element was last resolved to, which is
-        // what the skew and border-style stashes need: a release-and-re-stash on a pass that changed nothing
-        // would drop the suppression and re-expose the native rectangle behind the silhouette, and the
-        // re-stash depends on events a variant toggle does not fire.
+        // changed reports whether the result differs from what this element was last resolved to.
         //
-        // paintTail records how this element is driven, so the re-sync can read it back and never attach a
-        // silhouette a Motion's own patch would not have attached.
+        // PaintTail records that a pass of the element's own resolved it (VariantGateState.PaintTail).
         //
         // The global Count check keeps a tree that uses no variant-gated class on the reconciled-array path
         // entirely, at one int compare per element per patch.
         private string[] ResolveVariantClasses(VisualElement element, string[] oldClassNames,
-            string[] newClassNames, bool paintTail, out bool changed)
+            string[] newClassNames, out bool changed)
         {
             if (_ctx.VariantGateClasses.Count == 0
                 || !_ctx.VariantGateClasses.TryGetValue(element, out var state))
@@ -3461,7 +3440,7 @@ namespace Velvet
                 || !ReferenceEquals(state.Resolved, resolved);
             state.Reconciled = newClassNames;
             state.Resolved = resolved;
-            state.PaintTail = paintTail;
+            state.PaintTail = true;
             return resolved;
         }
 
@@ -3469,8 +3448,8 @@ namespace Velvet
         // is being attached for the first time, so the change verdict has no reader. Call it at the same
         // point in the create sequence the patch path resolves at: AFTER the structural / has- passes, whose
         // payloads land on this very element.
-        internal string[] ResolveVariantClassesOnCreate(VisualElement element, string[] classNames, bool paintTail)
-            => ResolveVariantClasses(element, classNames, classNames, paintTail, out _);
+        internal string[] ResolveVariantClassesOnCreate(VisualElement element, string[] classNames)
+            => ResolveVariantClasses(element, classNames, classNames, out _);
 
         // The same source for the gates that resolve at their own point in the sequence — the three layout
         // manipulators and the pointer-events scope (ApplyLayoutManipulators), the font layer (ApplyFontLayer)

@@ -40,7 +40,7 @@ namespace Velvet
         // whose gradient classes were removed, or the steady state (spec unchanged), which skips the re-bake
         // and only re-syncs the sizing to whether a StyleOverrides.BackgroundImage shows over the bake (the
         // image itself is ranked by StyleArbitraryValueResolver, so DiffStyles cannot leave it stale).
-        internal void ApplyGradientOnPatch(VisualElement element, string[] classNames, bool skewable)
+        internal void ApplyGradientOnPatch(VisualElement element, string[] classNames)
         {
             var bound = _ctx.GradientBackgrounds.TryGetValue(element, out var current);
             GradientSpec spec = default;
@@ -48,12 +48,10 @@ namespace Velvet
                 && StyleGradientClass.TryExtract(classNames, out spec);
 
             // A skewed element paints its gradient on the sheared mesh (ApplySkewOnPatch runs after this and
-            // feeds it the spec), so the straight background-image path must stand down. Only an element node
-            // is skewable — a Motion never attaches a sheared silhouette, so its gradient stays on the
-            // straight path even with skew classes present. Drop any straight gradient left from a prior
-            // non-skew state so the un-sheared rectangle does not linger behind the slant; the same drop
-            // clears one whose gradient classes were removed.
-            var skewed = skewable && StyleSkewClass.TryExtract(classNames, out _);
+            // feeds it the spec), so the straight background-image path must stand down. Drop any straight
+            // gradient left from a prior non-skew state so the un-sheared rectangle does not linger behind the
+            // slant; the same drop clears one whose gradient classes were removed.
+            var skewed = StyleSkewClass.TryExtract(classNames, out _);
             if (skewed || !want)
             {
                 if (bound)
