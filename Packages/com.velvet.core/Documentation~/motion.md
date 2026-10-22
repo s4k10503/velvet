@@ -413,7 +413,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   play's own pose carries does not, since that pose's end value is what the play drives toward, and neither does
   one of the pose an interrupted exit reverses to. A gap, a grid's included, adds to a driven margin, and to an
   important margin of the element's own that outranks the play
-  ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)).
+  ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)). This holds for a play that is planned; a swap whose
+  target a resting holder under a variant outranks plans none for that slot (*Classes on one side* above), as a
+  class change that leaves the computed value alone starts no transition.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
