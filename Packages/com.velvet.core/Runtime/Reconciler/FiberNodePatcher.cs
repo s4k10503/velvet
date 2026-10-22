@@ -2756,7 +2756,7 @@ namespace Velvet
         private static bool SubtreeCarriesClass(VisualElement root, string cls)
         {
             if ((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
-                || StyleClassProjection.SuppressesDeclared(root, cls))
+                || StyleClassProjection.SuppressesOwnClass(root, cls))
             {
                 return true;
             }

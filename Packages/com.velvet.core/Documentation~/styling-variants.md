@@ -147,6 +147,9 @@ Four consequences worth knowing:
   matches while Velvet keeps it off that descendant's class list, as `:has(.foo)` matches on the web
   however the cascade ranks `.foo`'s declarations. A `.foo` that only a variant payload puts on the
   descendant (`hover:foo`) does not match, as `:has(.foo)` does not match a class the author never wrote.
+  A `.foo` a play writes onto the descendant — a `V.Motion` pose's class, an enter or exit class — matches
+  too, including while Velvet keeps it off the class list for a rule that outranks it, as `:has(.foo)`
+  matches a class a script adds to the element.
 
 An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style rather
 than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority class stands

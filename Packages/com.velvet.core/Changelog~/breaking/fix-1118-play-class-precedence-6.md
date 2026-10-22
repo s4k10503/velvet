@@ -48,3 +48,6 @@
   pose it entered from once the pointer left, and showed that pose instead of the one it entered. A variant
   change played while a `V.Motion` was hovered let the new variant's class take the property from its
   `whileHoverClass` class.
+- A `has-[.foo]:` ancestor did not match a `.foo` a play showed on a descendant whose variant payload, such as
+  `first:foo`, also put `.foo` there.
+- A variant payload such as `hover:foo` turning off could take `.foo` off the element while a play still showed it.

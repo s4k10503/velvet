@@ -610,6 +610,83 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(Color.blue));
         }
 
+        private static object Read(VisualElement element, string property) => property switch
+        {
+            "width" => element.resolvedStyle.width,
+            "paddingTop" => element.resolvedStyle.paddingTop,
+            "backgroundColor" => element.resolvedStyle.backgroundColor,
+            _ => throw new ArgumentOutOfRangeException(nameof(property), property, null),
+        };
+
+        // The row's w-[20px] is the bracket width the w-8 case contends with.
+        [TestCase("", "w-8", "width")]
+        [TestCase("p-[10px]", "p-4", "paddingTop")]
+        public void Given_ABaseBracketValue_When_AHoverClassOfItsFamilyHolds_Then_ItWinsWhileHovered(
+            string baseClass, string hover, string property)
+        {
+            // Arrange
+            var (child, reference) = Mount("", baseClass, hover: hover, reference: hover);
+
+            // Act
+            Hover(child, true);
+
+            // Assert
+            Assert.That(Read(child, property), Is.EqualTo(Read(reference, property)));
+        }
+
+        [TestCase("", "w-8", "width")]
+        [TestCase("p-[10px]", "p-4", "paddingTop")]
+        public void Given_ABaseBracketValue_When_AHoverClassOfItsFamilyHolds_Then_TheBaseComesBackWhenThePointerLeaves(
+            string baseClass, string hover, string property)
+        {
+            // Arrange
+            var (child, _) = Mount("", baseClass, hover: hover, reference: hover);
+            var resting = Read(child, property);
+
+            // Act
+            HoverAndLeave(child);
+
+            // Assert
+            Assert.That(Read(child, property), Is.EqualTo(resting));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets a className hover: class outrank a bracket base value.
+        // The case holds the same verdict for the className's own hover: rule that the gesture channel now shares.
+        [TestCase("", "w-8", "width")]
+        [TestCase("p-[10px]", "p-4", "paddingTop")]
+        [TestCase("bg-[#0000ff]", "bg-red-500", "backgroundColor")]
+        public void Given_ABaseBracketValue_When_AClassNameHoverRuleOfItsFamilyHolds_Then_ItWinsWhileHovered(
+            string baseClass, string hover, string property)
+        {
+            // Arrange
+            var (child, reference) = Mount("", baseClass + " hover:" + hover, reference: hover);
+
+            // Act
+            Hover(child, true);
+
+            // Assert
+            Assert.That(Read(child, property), Is.EqualTo(Read(reference, property)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets a className hover: class outrank a bracket base value.
+        // The case holds the same verdict for the className's own hover: rule that the gesture channel now shares.
+        [TestCase("", "w-8", "width")]
+        [TestCase("p-[10px]", "p-4", "paddingTop")]
+        [TestCase("bg-[#0000ff]", "bg-red-500", "backgroundColor")]
+        public void Given_ABaseBracketValue_When_AClassNameHoverRuleOfItsFamilyHolds_Then_TheBaseComesBackWhenThePointerLeaves(
+            string baseClass, string hover, string property)
+        {
+            // Arrange
+            var (child, _) = Mount("", baseClass + " hover:" + hover, reference: hover);
+            var resting = Read(child, property);
+
+            // Act
+            HoverAndLeave(child);
+
+            // Assert
+            Assert.That(Read(child, property), Is.EqualTo(resting));
+        }
+
         [Test]
         public void Given_AHoverBracketColor_When_Hovered_Then_ItApplies()
         {
