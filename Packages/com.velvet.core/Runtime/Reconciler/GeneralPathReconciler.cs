@@ -118,6 +118,10 @@ namespace Velvet
             if (oldFibers.Count == 0) return;
             foreach (var fiber in oldFibers)
             {
+                if (!newFibers.Contains(fiber)) fiber.IsBeingDeleted = true;
+            }
+            foreach (var fiber in oldFibers)
+            {
                 if (!newFibers.Contains(fiber)) FiberEffects.RunOrphanFiberEffectCleanups(fiber);
             }
         }
@@ -1230,6 +1234,7 @@ namespace Velvet
                 if (!old.Contains(fiber)) (mounted ??= new List<ComponentFiber>()).Add(fiber);
             }
             if (mounted == null) return;
+            foreach (var fiber in mounted) fiber.IsBeingDeleted = true;
             foreach (var fiber in mounted) _ctx.ComponentRegistry.DisposeAndRemove(fiber);
         }
 
@@ -1242,6 +1247,10 @@ namespace Velvet
             }
             if (added == null) return;
             var old = new HashSet<ComponentFiber>(walk.OldFibers);
+            foreach (var fiber in added)
+            {
+                if (!old.Contains(fiber)) fiber.IsBeingDeleted = true;
+            }
             foreach (var fiber in added)
             {
                 walk.NewFibers.Remove(fiber);

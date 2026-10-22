@@ -18,5 +18,9 @@ namespace Velvet
         /// caught.
         /// </summary>
         public string ErrorBoundary { get; init; } = string.Empty;
+
+        // The first ComponentStack line then names the fiber V.Mount made rather than a component of the
+        // application's, so the uncaught-error warning names no component (FiberErrorBoundary.UncaughtErrorWarning).
+        internal bool ThrownByTheMountRoot { get; init; }
     }
 }

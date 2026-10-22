@@ -15,7 +15,8 @@ namespace Velvet.Tests
     /// its elements. <see cref="UncaughtErrorHandlerTests"/> holds the update render error, whose unmount has
     /// cleaned up the effects of the components it unmounts by the time it is reported.</item>
     /// <item>So does an error the reconcile of the tree the root was handed raises below no component.</item>
-    /// <item>Without a handler, the error is logged and followed by a warning naming the component that threw.</item>
+    /// <item>Without a handler, the error is logged and followed by a warning naming the component that threw, or
+    /// naming none where the root itself threw.</item>
     /// <item>A click handler's error unmounts nothing.</item>
     /// </list>
     /// </summary>
@@ -92,6 +93,27 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.childCount, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_NoHandler_When_TheRootRendersANodeTheReconcileRefuses_Then_TheWarningNamesNoComponent()
+        {
+            // Arrange — the refusal is the root's own, and the root is no component of the application's
+            using var mounted = V.Mount(_root, V.Div(name: "kept"));
+            LogAssert.Expect(LogType.Exception,
+                new System.Text.RegularExpressions.Regex("ComponentNode.Body must not be null"));
+            LogAssert.Expect(LogType.Warning,
+                "An error occurred in one of your Velvet components.\n\n"
+                + "Consider adding an error boundary to your tree to customize error handling behavior.");
+
+            // Act
+            mounted.Render(V.Div(name: "kept", children: new VNode[]
+            {
+                new ComponentNode { Body = null, Identity = "no-method" },
+            }));
+
+            // Assert — the expected warning is what fails the case when it is not logged
+            LogAssert.NoUnexpectedReceived();
         }
 
         [Test]
@@ -179,6 +201,13 @@ namespace Velvet.Tests
                 V.Component(CleanupProbeRender, key: "probe"),
                 V.Component(ThrowingRender, key: "thrower"),
             });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        internal static VNode BoundaryAroundAThrowingCleanupRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "boundary-fallback"));
+            return V.Component(ThrowingCleanupRender, key: "cleanup");
+        }
 
         [Component(Compiler = false)]
         internal static VNode TwoThrowingCleanupsRender()

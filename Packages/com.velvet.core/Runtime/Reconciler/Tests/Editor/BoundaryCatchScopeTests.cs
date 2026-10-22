@@ -43,7 +43,8 @@ namespace Velvet.Tests
     /// and the siblings ahead of the boundary rendered.</item>
     /// <item>An error out of the disposal of a boundary's failed output, or of the cleanup of a child its fallback
     /// replaces, is the boundary's own: it is reported after the error the boundary caught, and nothing above it
-    /// catches.</item>
+    /// catches. A boundary removed together with the component whose cleanup throws catches nothing; the boundary
+    /// above the removal does.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -110,6 +111,7 @@ namespace Velvet.Tests
             s_swapReports.Clear();
             s_setListTick = null;
             s_setSwapThrowerTick = null;
+            s_setDeletedPanelTick = null;
             s_setOrderedExitTick = null;
             s_exitOrder.Clear();
         }
@@ -2105,6 +2107,57 @@ namespace Velvet.Tests
             s_setSwapThrowerTick = setTick;
             if (tick > 0) throw new InvalidOperationException("Swap render throw");
             return V.Label(text: "thrower");
+        }
+
+        // React's commit-phase capture of a deletion's error starts at the nearest ancestor outside the deletion,
+        // so a boundary removed with the component whose cleanup throws does not catch it.
+        [Test]
+        public void Given_ABoundaryRemovedWithAChildWhoseCleanupThrows_When_ARenderRemovesIt_Then_TheBoundaryAboveTheRemovalCatches()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DeletedPanelOuterRender, key: "outer"),
+                new MountOptions { OnCaughtError = (_, info) => s_swapReports.Add(info.ErrorBoundary) });
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setDeletedPanelTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(",", s_swapReports), Is.EqualTo("BoundaryCatchScopeTests.DeletedPanelOuterRender"));
+        }
+
+        private static Action<int> s_setDeletedPanelTick;
+
+        [Component(Compiler = false)]
+        private static VNode DeletedPanelWidgetRender()
+        {
+            Hooks.UseEffect(
+                (Func<Action>)(() => () => throw new InvalidOperationException("Deleted panel cleanup throw")),
+                Array.Empty<object>());
+            return V.Label(text: "widget");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode DeletedPanelRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "panel-fallback"));
+            return V.Component(DeletedPanelWidgetRender, key: "widget");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DeletedPanelHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setDeletedPanelTick = setTick;
+            return V.Div(children: new VNode[] { tick == 0 ? V.Component(DeletedPanelRender, key: "panel") : null });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode DeletedPanelOuterRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return V.Component(DeletedPanelHostRender, key: "host");
         }
 
         [Component(Compiler = false, IsErrorBoundary = true)]

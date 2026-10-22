@@ -69,10 +69,11 @@ namespace Velvet
                 // AFTER TryCatch returns would follow that now-severed link and stop short of any candidate
                 // beyond current, even though this walk's own job is to keep searching past current.
                 var next = current.Parent;
-                // A fiber already torn down when the walk reaches it catches nothing, and the walk goes on to the
-                // nearest one still mounted, where React's captureCommitPhaseError starts. The mount root is not
-                // passed over: being disposed is how MountedTree.Dispose reaches it (FiberErrorBoundary.TryCatch).
-                if (current.IsDisposed && !current.IsMountRoot)
+                // A fiber already torn down, or one the same deletion is about to tear down, catches nothing, and the
+                // walk goes on to the nearest one outside it, where React's captureCommitPhaseError starts. The mount
+                // root is not passed over: being disposed is how MountedTree.Dispose reaches it
+                // (FiberErrorBoundary.TryCatch).
+                if ((current.IsDisposed || current.IsBeingDeleted) && !current.IsMountRoot)
                 {
                     current = next;
                     continue;

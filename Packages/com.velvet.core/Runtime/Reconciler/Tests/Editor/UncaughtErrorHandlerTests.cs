@@ -12,7 +12,8 @@ namespace Velvet.Tests
     /// <item>It is called once the tree has unmounted, its effects cleaned up, with an empty boundary name and the
     /// component stack starting at the component that threw.</item>
     /// <item>An effect cleanup that throws during that unmount is reported after the error the unmount is for, and
-    /// those that throw while the handle is disposed are reported once every cleanup has run.</item>
+    /// those that throw while the handle is disposed are reported once every cleanup has run, a boundary the
+    /// disposal tears down catching none of them.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -113,6 +114,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" / ", _reports), Is.EqualTo("2 / 2"));
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseChildsCleanupThrows_When_TheTreeIsDisposed_Then_TheHandlerIsHandedIt()
+        {
+            // Arrange — the boundary is torn down by the same disposal, so it is no ancestor left to catch
+            var mounted = V.Mount(_root, V.Div(children: new VNode[]
+                {
+                    V.Component(UncaughtErrorRootTests.BoundaryAroundAThrowingCleanupRender, key: "boundary"),
+                }),
+                new MountOptions { OnUncaughtError = (exception, _) => _reports.Add(exception.Message) });
+            mounted.FlushEffectsForTest();
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo(UncaughtErrorRootTests.CleanupMessage));
         }
     }
 }

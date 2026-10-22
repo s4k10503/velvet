@@ -847,6 +847,10 @@ namespace Velvet
 
         internal bool CatchesErrors => IsErrorBoundary || IsMountRoot;
 
+        // Set on every fiber of a deletion before the first of their cleanups runs, so an error one of them throws
+        // passes over the rest of the deletion in the boundary search (ComponentBoundarySearch.PropagateFrom).
+        internal bool IsBeingDeleted { get; set; }
+
         private ErrorBoundaryReset? _errorBoundaryReset;
 
         internal ErrorBoundaryReset ResetHandle => _errorBoundaryReset ??= new ErrorBoundaryReset(this);
