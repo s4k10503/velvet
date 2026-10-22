@@ -553,8 +553,10 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   the element declares for that property, as UI Toolkit would run it; one already running as the tween starts
   writing the slot runs on from where it had got, and one still running as the tween lands runs on to its end,
   through any tween that starts on the Motion meanwhile.
-  A translate given as a percent of the element's size follows a change of that size at once, which UI Toolkit
-  transitions nothing for. While the tween runs, the transitions the element's classes
+  A translate given as a percent of the element's size is drawn at that percent of the size the element has
+  on each frame, as UI Toolkit draws it, rather than transitioning towards a new pixel value when the size
+  changes. A change of either axis of the translate, or of the scale, starts both axes over on the
+  transition, as UI Toolkit runs each as one value. While the tween runs, the transitions the element's classes
   declare go on running for every property but the ones the tween writes, as Framer leaves the CSS
   transitions of what a layout animation does not animate, and take a change of those classes as it comes.
   A Motion that leaves its panel without being unmounted has its tween ended on its panel's next frame.

@@ -2083,8 +2083,9 @@ namespace Velvet.Tests
             Tick();
             Tick();
 
-            // Assert — half its new height down at once, as UI Toolkit transitions nothing for a change of the box alone; the
-            // move adds nothing down about a top edge it keeps where it was.
+            // Assert — half its new height down at once, the box being laid out at its new size at once: a percent translate
+            // follows the box rather than transitioning towards a new pixel value. The move adds nothing down about a top
+            // edge it keeps where it was.
             var element = Root.Q<VisualElement>("shared");
             Assert.That(element.style.translate.value.y.value, Is.EqualTo(150f).Within(0.01f));
         }
@@ -5026,25 +5027,27 @@ namespace Velvet.Tests
         }
 
 
-        [Test]
-        public void Given_AMotionTranslatingOnATransition_When_ItTakesAHeldId_Then_ItsOwnTranslateRunsAsTheEngineRunsIt()
+        [TestCase("translate-y-[40px]", 12f, 28f)]
+        [TestCase("translate-y-1/2", 15f, 35f)]
+        public void Given_AMotionTranslatingOnATransition_When_ItTakesAHeldId_Then_ItsOwnTranslateRunsAsTheEngineRunsIt(string to, float low,
+            float high)
         {
             // Arrange / Act — "a" and "b" one size and one top, so that the move writes "a"'s translate across alone and
-            // its own down is what the slot holds down.
-            var (own, control) = TakeOverAsItTurns("translate-y-[40px]", e => e.resolvedStyle.translate.y,
-                (_, a) => a.style.translate.value.y.value);
+            // its own down is what the slot holds down. UI Toolkit runs a translate to a percent of the box in percent.
+            var (own, control) = TakeOverAsItTurns(to, e => e.resolvedStyle.translate.y, (_, a) => a.style.translate.value.y.value);
 
             // Assert — within a frame of the control, which is about half way down.
-            Assert.That(own, Is.EqualTo(control > 12f && control < 28f ? control : float.NaN).Within(1f));
+            Assert.That(own, Is.EqualTo(control > low && control < high ? control : float.NaN).Within(1f));
         }
 
 
-        [TestCase("scale-150", true, false, 1.3f, 1.48f)]
-        [TestCase("translate-y-[40px]", false, false, 24f, 38f)]
-        [TestCase("scale-150", true, true, 1.2f, 1.45f)]
-        [TestCase("translate-y-[40px]", false, true, 16f, 36f)]
+        [TestCase("scale-150", true, false, null, 1.3f, 1.48f)]
+        [TestCase("translate-y-[40px]", false, false, null, 24f, 38f)]
+        [TestCase("scale-150", true, true, null, 1.2f, 1.45f)]
+        [TestCase("translate-y-[40px]", false, true, null, 16f, 36f)]
+        [TestCase("translate-y-[40px]", false, false, "translate-y-[0px]", 6f, 19f)]
         public void Given_ALeadWhoseTransformChangesLateInItsMove_When_TheMoveLands_Then_ItRunsOnAsTheEngineRunsIt(string to, bool scale,
-            bool movesAgain, float low, float high)
+            bool movesAgain, string later, float low, float high)
         {
             // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
             // second; "b" takes the id from "a" on a one-second tween, from "a" twice its side for a scale, so that the move
@@ -5059,12 +5062,13 @@ namespace Velvet.Tests
             (s_bClasses, s_controlClasses) = ($"{transitioning} {to}", $"{transitioning} {to}");
             RenderShared(mounted);
 
-            // Act — the move lands some 0.4 s on; some 0.4 s past it, or, where it moves again, 100px further right just
-            // past its landing and some 0.2 s into that move.
-            for (var i = 0; i < (movesAgain ? 30 : 50); i++) Tick();
-            if (movesAgain)
+            // Act — the move lands some 0.4 s on; some 0.4 s past it, or just past its landing either "b" moves 100px
+            // further right or both take the class later in place of to, and some 0.2 s on.
+            for (var i = 0; i < (movesAgain || later != null ? 30 : 50); i++) Tick();
+            if (movesAgain || later != null)
             {
-                s_bLeft = 400;
+                s_bLeft = movesAgain ? 400 : s_bLeft;
+                (s_bClasses, s_controlClasses) = later != null ? ($"{transitioning} {later}", $"{transitioning} {later}") : (s_bClasses, s_controlClasses);
                 RenderShared(mounted);
                 for (var i = 0; i < 12; i++) Tick();
             }
@@ -5079,25 +5083,105 @@ namespace Velvet.Tests
         }
 
 
+        // GREEN_ON_BASE(characterization): the base hands the scale slot back as the move lands. Running a translate on
+        // past the landing must still hand back a scale that has landed.
         [Test]
-        public void Given_ALeadMovingOnATransitionOfItsOwn_When_ItsTranslateChanges_Then_ItRunsAsTheEngineRunsIt()
+        public void Given_ALeadWhoseTranslateRunsOnPastItsLanding_When_ItsScaleHasLanded_Then_TheScaleSlotIsHandedBack()
+        {
+            // Arrange — the bundled sheet; "b", transitioning everything linearly over a second, takes the id from "a", twice
+            // its side, on a one-second tween, so that the move draws "b" scaled; some 0.6 s in it takes a translate down.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aSize, s_bClasses) = (200, "transition-all duration-1000 ease-linear");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            s_bClasses += " translate-y-[40px]";
+            RenderShared(mounted);
+
+            // Act — the move lands with the translate still running; some 0.1 s past it.
+            for (var i = 0; i < 32; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("b").style.scale.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+
+        [TestCase("translate-y-[40px]", null, false, 4f, 20f)]
+        [TestCase("scale-[1.5]", "scale-[1.5] scale-x-[2]", true, 1.28f, 1.37f)]
+        public void Given_ALeadMovingOnATransitionOfItsOwn_When_ItsTransformChanges_Then_ItRunsAsTheEngineRunsIt(string change, string then,
+            bool scale, float low, float high)
         {
             // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
-            // second; "b" takes the id from "a", its size and top, on a one-second tween; some 0.1 s on.
+            // second; "b" takes the id on a one-second tween from "a", twice its side for a scale, so that the move draws "b"
+            // scaled, and its size and top for a translate, so that the move writes "b"'s translate across alone; some 0.1 s
+            // on.
+            const string transitioning = "transition-all duration-1000 ease-linear";
             VelvetStyleUtilities.AttachTo(Root);
-            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            s_aSize = scale ? 200 : 100;
+            (s_bClasses, s_controlClasses) = (transitioning, transitioning);
             using var mounted = MountBOverA();
             for (var i = 0; i < 6; i++) Tick();
 
-            // Act — both translated 40px down by a class; some 0.3 s on.
-            (s_bClasses, s_controlClasses) = (s_bClasses + " translate-y-[40px]", s_controlClasses + " translate-y-[40px]");
+            // Act — both take the class change; where then is given, both take it in its place some 0.5 s on, which changes
+            // one axis of the value alone; some 0.3 s on.
+            (s_bClasses, s_controlClasses) = ($"{transitioning} {change}", $"{transitioning} {change}");
             RenderShared(mounted);
+            if (then != null)
+            {
+                for (var i = 0; i < 30; i++) Tick();
+                (s_bClasses, s_controlClasses) = ($"{transitioning} {then}", $"{transitioning} {then}");
+                RenderShared(mounted);
+            }
             for (var i = 0; i < 18; i++) Tick();
 
-            // Assert — the slot holds "b"'s own down where the control stands, part way down: the move writes nothing down.
-            var control = Root.Q<VisualElement>("control").resolvedStyle.translate.y;
-            var b = Root.Q<VisualElement>("b").style.translate.value.y.value;
-            Assert.That(b, Is.EqualTo(control > 4f && control < 20f ? control : float.NaN).Within(1f));
+            // Assert — "b"'s own translate down, or own scale down, where the control stands: UI Toolkit starts a translate or
+            // a scale over as one value, both axes on the full duration, when either axis changes. 1px of a translate, 0.015
+            // of a scale.
+            var b = Root.Q<VisualElement>("b");
+            var control = Root.Q<VisualElement>("control").resolvedStyle;
+            var expected = scale ? control.scale.value.y : control.translate.y;
+            var own = !mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(b, out var projection) ? float.NaN
+                : scale ? b.style.scale.value.value.y / projection.Scale.y : b.style.translate.value.y.value;
+            Assert.That(own, Is.EqualTo(expected > low && expected < high ? expected : float.NaN).Within(scale ? 0.015f : 1f));
+        }
+
+
+        [Test]
+        public void Given_AFollowerDrawnOverAGrowingLead_When_TheLeadLeaves_Then_ItMovesFromItsOwnScale()
+        {
+            // Arrange — the bundled sheet; "a", transitioning everything linearly over a second, drawn over "b", twice its
+            // side, as "b" grows from a's box on a one-second tween; some 0.2 s in.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bSize, s_aClasses) = (200, "transition-all duration-1000 ease-linear");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Act — "b" leaves, handing "a" the lead back from b's box; the frame after.
+            s_bMounted = false;
+            RenderShared(mounted);
+
+            // Assert — the slot holds "a"'s own scale of one times what its move draws it at, rather than the scale it was
+            // drawn over "b" at.
+            var a = Root.Q<VisualElement>("a");
+            var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection);
+            Assert.That(moving ? a.style.scale.value.value.x / projection.Scale.x : float.NaN, Is.EqualTo(1f).Within(0.015f));
+        }
+
+
+        // GREEN_ON_BASE(characterization): the base reads a percent of a box with no extent as no translate. Carrying
+        // the percent must not divide by that extent.
+        [Test]
+        public void Given_AMotionTranslatedByAFractionOfNoHeight_When_ItMoves_Then_ItIsTranslatedByNone()
+        {
+            // Arrange — the bundled sheet; "b", of no extent, translated down by half its height and transitioning everything
+            // linearly over a second.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bSize, s_bClasses) = (0, "translate-y-1/2 transition-all duration-1000 ease-linear");
+
+            // Act — "b" takes the id from "a" 300px left of it; the frame after.
+            using var mounted = MountBOverA();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("b").style.translate.value.y.value, Is.EqualTo(0f).Within(0.01f));
         }
 
 
