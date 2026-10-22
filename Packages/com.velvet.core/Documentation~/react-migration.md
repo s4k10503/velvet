@@ -801,7 +801,9 @@ public static class PointerSurface
 |-------|--------|------|
 | `{cond && <X/>}` | `cond ? V.X() : null` or `V.When(cond, () => V.X())` | `null` is the "render nothing" child, and it holds its slot — see [what a position is](#what-a-position-is). `V.When` takes a factory that runs only while `cond` holds |
 | `items.map(x => <X key={k}/>)` | `V.List(items, keySelector, renderer)` | Gives each node the selector's key |
-| `items.map(x => <X/>)` | `items.Select(x => V.X()).ToArray()` | Unkeyed nodes, matched by index |
+| `items.map(x => <X/>)` | `items.Select(x => V.X()).ToArray()` | Unkeyed nodes, matched by index. VEL600 warns, as React warns about a list child with no key |
+
+VEL600 is a compile-time warning at each `V.*` factory call a `Select` selector returns without a `key:`, or with a null one: returned directly, through a cast, from either branch of a `?:`, or as the node a `V.When`'s factory builds. `V.Text` is not reported, as a string child takes no key in React. React warns at run time about a keyless element in an array; a list `Select` built and children written out at the call site both reach Velvet's runtime as a `VNode?[]`, so the warning is read off the source, and only off a `Select` selector. A node a method of your own builds, one handed back through a call, and one added to a list built some other way, such as a loop adding to a `List<VNode>`, draw no warning.
 
 ### 2-3. Components
 

@@ -20,6 +20,7 @@ namespace Velvet.SourceGenerators.Shared
         public const string ComponentAttributeFullName = "Velvet.ComponentAttribute";
         public const string MemoizeMethodAttributeFullName = "Velvet.MemoizeMethodAttribute";
         public const string VNodeFullName = "global::Velvet.VNode";
+        public const string TextNodeFullName = "global::Velvet.TextNode";
         public const string HooksTypeFullName = "Velvet.Hooks";
         public const string VTypeFullName = "Velvet.V";
         public const string UseEffectMethodName = "UseEffect";

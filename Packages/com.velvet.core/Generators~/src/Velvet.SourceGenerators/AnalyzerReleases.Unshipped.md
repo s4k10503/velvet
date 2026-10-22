@@ -9,6 +9,7 @@
 ;   VEL400-VEL499  Velvet.Style         (reserved)
 ;   VEL500-VEL599  Velvet.Shape         Mechanical code-shape rules (nesting depth, branch count, parameters,
 ;                                       tolerance on a tuple comparison)
+;   VEL600-VEL699  Velvet.Reconciler   How the reconciler matches the children a call site builds
 ; New IDs follow the convention so IDE category filtering (e.g.
 ; `dotnet_analyzer_diagnostic.category-Velvet.Memoize.severity = none`) doesn't accidentally
 ; silence diagnostics from unrelated subsystems. The bulk key is `dotnet_analyzer_diagnostic`;
@@ -36,3 +37,4 @@ VEL500 | Velvet.Shape | Error | Member body nests control flow more than 4 level
 VEL501 | Velvet.Shape | Error | Member body makes more than 20 branching decisions
 VEL502 | Velvet.Shape | Error | Member demands more than 6 arguments from every caller
 VEL503 | Velvet.Shape | Warning | Tolerance chained onto an NUnit equality whose expected value is a tuple
+VEL600 | Velvet.Reconciler | Warning | Child of a list built with Select has no key
