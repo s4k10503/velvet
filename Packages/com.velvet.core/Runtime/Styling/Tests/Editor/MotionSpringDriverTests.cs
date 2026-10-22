@@ -188,18 +188,18 @@ namespace Velvet.Tests
             Assert.That(plan.Rotate, Is.EqualTo(((float, float)?)(45f, -45f)));
         }
 
-        [Test]
-        public void Given_APercentTranslateClassPair_When_Resolved_Then_NoTranslateChannelIsPlanned()
+        [TestCase("translate-x-1/2", "translate-x-full")]
+        [TestCase("translate-1/2", "translate-full")]
+        public void Given_APercentTranslateClassPair_When_Resolved_Then_NoTranslateChannelIsPlanned(string from, string to)
         {
-            // Arrange — the gate carries the fact that these two spellings ARE real translate utilities,
-            // resolving onto TranslateX in percent. Without it the case would pass just as well on a class
-            // nothing recognizes, pinning the scope hole in name only.
+            // Arrange — the gate carries the fact that the from-side spelling IS a real utility, resolving in
+            // percent. Without it the case would pass just as well on a class nothing recognizes, pinning the
+            // scope hole in name only.
             var resolvesAsPercentTranslate =
-                StyleArbitraryValueResolver.TryParse("translate-x-1/2", out var half)
-                && half.Property == ArbitraryProperty.TranslateX && half.Unit == LengthUnit.Percent;
+                StyleArbitraryValueResolver.TryParse(from, out var half) && half.Unit == LengthUnit.Percent;
 
             // Act
-            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-1/2" }, new[] { "translate-x-full" });
+            var plan = MotionSpringClassParser.Resolve(new[] { from }, new[] { to });
 
             // Assert
             Assert.That((resolvesAsPercentTranslate, plan.TranslateX.HasValue), Is.EqualTo((true, false)));
@@ -218,6 +218,35 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((resolvesAsPerAxisScale, plan.Scale.HasValue), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ABothAxisTranslateClassPair_When_SteppedUntilSettled_Then_EachAxisRestsAtTheTarget()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "translate-0" }, new[] { "translate-8" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 20f, mass: 1f);
+            if (state != null)
+            {
+                MotionSpringDriver.ApplyCurrentValues(element, state);
+            }
+
+            // Act — NaN stands in for no channel, a spring that never settles, and an x axis left short of 32.
+            var restingY = float.NaN;
+            if (state != null)
+            {
+                var settled = false;
+                for (var i = 0; i < 600 && !settled; i++)
+                {
+                    settled = MotionSpringDriver.Step(element, state, FixedDeltaSec);
+                }
+                var translate = element.style.translate.value;
+                restingY = settled && Mathf.Abs(translate.x.value - 32f) < 0.01f ? translate.y.value : float.NaN;
+            }
+
+            // Assert
+            Assert.That(restingY, Is.EqualTo(32f).Within(0.01f));
         }
 
         [Test]

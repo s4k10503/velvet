@@ -348,7 +348,8 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   utilities write. Naming one on one side of the delta is enough. When only the from-side names
   it and no resting class supplies a target, the target is its identity value (opacity 1, scale 1,
   translate 0, rotate 0deg). When only the to-side names it, the play samples the current value;
-  on an off-panel element it starts at identity.
+  on an off-panel element it starts at identity. A both-axis `translate-8` or `translate-[10px]` drives the
+  x and y channels with its one value.
 - **Colors.** `background-color`, `color` and `border-color`, from palette utilities
   (`bg-red-500`), the alpha modifier (`bg-red-500/50`) and the bracket forms (`bg-[#1e293b]`).
   Interpolation is straight RGBA, the same path UI Toolkit's own color transition takes, so
@@ -406,7 +407,7 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   parser, so a ratio change snaps.
 - A target-only uniform scale or border color lands instantly when the sampled x/y scale values
   or border edge colors differ.
-- **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`) **and per-axis `scale-x-` /
+- **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`, `translate-1/2`, `translate-full`) **and per-axis `scale-x-` /
   `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.
   Both families resolve as ordinary utilities; they just apply as plain classes, so the swap lands
   them instantly.

@@ -183,6 +183,15 @@ namespace Velvet
             return false;
         }
 
+        private static bool TryParseBothTranslateAxes(string className, out float value)
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(className, out _);
+            var parsed = StyleArbitraryValueResolver.TryParse(core, out var arbitrary)
+                && arbitrary.Property == ArbitraryProperty.Translate && arbitrary.Unit == LengthUnit.Pixel;
+            value = parsed ? arbitrary.Value : 0f;
+            return parsed;
+        }
+
         /// <summary>
         /// Builds the spring plan for a from/to class-array swap — see <see cref="PairAxis"/> for the five fixed
         /// axes and <see cref="PairProperties"/> for the property channels. <paramref name="context"/>, when the
@@ -613,6 +622,8 @@ namespace Velvet
                 return;
             }
             var hasAxisValue = TryParseAxisValue(className, out var readAxis, out var axisValue);
+            // TryRank leaves a both-axis translate's TranslateAxis unset, so the token writes exactly the two translate slots.
+            var bothTranslateAxes = TryParseBothTranslateAxes(className, out var bothAxesValue);
             var property = default(ArbitraryStyle);
             var hasProperty = !hasAxisValue && MotionPropertyClassParser.TryParse(className, out property);
             for (var i = 0; i < claims.Length; i++)
@@ -626,11 +637,11 @@ namespace Velvet
                 }
                 claims[i] = new SlotClaim { Claimed = true, Precedence = token.Precedence, Swapped = swapped };
                 // MUTANT_SURVIVES(equivalent, clause removed): deleting the slot comparison changes no admitted write.
-                // Axis-readable opacity/scale/rotate tokens write one axis; translates set TranslateAxis.
-                if (hasAxisValue && slot == AxisSlot(readAxis))
+                // Axis-readable opacity/scale/rotate tokens write one axis; per-axis translates set TranslateAxis.
+                if ((hasAxisValue && slot == AxisSlot(readAxis)) || bothTranslateAxes)
                 {
                     claims[i].Readable = true;
-                    claims[i].Value = new ArbitraryStyle(slot, axisValue, LengthUnit.Pixel);
+                    claims[i].Value = new ArbitraryStyle(slot, bothTranslateAxes ? bothAxesValue : axisValue, LengthUnit.Pixel);
                 }
                 else if (hasProperty && i >= AxisSlotCount
                     && IsSubset(slotLonghands, StyleArbitraryLonghands.Of(property.Property)))
