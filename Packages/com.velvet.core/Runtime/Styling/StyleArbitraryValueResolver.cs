@@ -1630,18 +1630,29 @@ namespace Velvet
             return property == slot || property == ArbitraryProperty.Translate;
         }
 
-        // The rank of property's highest layer on element without its rule's place, or the lowest rank for none.
-        internal static long TopRankOf(VisualElement element, ArbitraryProperty property)
+        // Whether a layer holding slot, as HoldsMotionSlot reads it, is in force under a variant.
+        internal static bool HoldsVariantLayer(VisualElement element, ArbitraryProperty slot)
         {
             if (!s_layers.TryGetValue(element, out var map))
             {
-                return long.MinValue;
+                return false;
             }
-            if (!map.TryGetValue(property, out var layers))
+            var written = StyleArbitraryLonghands.Of(slot);
+            foreach (var pair in map)
             {
-                return long.MinValue;
+                if (!HoldsMotionSlot(pair.Key, slot, written))
+                {
+                    continue;
+                }
+                foreach (var key in pair.Value.Keys)
+                {
+                    if (StyleLayerPriority.UnderVariant(key))
+                    {
+                        return true;
+                    }
+                }
             }
-            return layers.Count > 0 ? StyleLayerPriority.RankOf(layers.Keys[layers.Count - 1]) : long.MinValue;
+            return false;
         }
 
         // Reports every registered layer as (property, priority) so the projection can rank inline layers

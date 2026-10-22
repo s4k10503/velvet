@@ -244,6 +244,51 @@ namespace Velvet.Tests
             Assert.That(plan.Scale.HasValue ? plan.Scale.Value.to : -1f, Is.EqualTo(expected));
         }
 
+        // A focus: scale in force outranks the swap's base scale-[1.5], so the element keeps drawing it: as an inline
+        // scale-[1.2] layer, or as the class scale-50 the projection holds at the focus rank.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AFocusScaleInForceBesideASwappedScaleBracket_When_Resolved_Then_NoScaleChannelIsPlanned(
+            bool classHolder)
+        {
+            // Arrange
+            var element = MountInFixedParent();
+            if (classHolder)
+            {
+                StyleClassProjection.Add(element, "scale-50", StyleLayerPriority.Focus);
+            }
+            else
+            {
+                StyleArbitraryValueResolver.ApplyClassToken(element, "scale-[1.2]", StyleLayerPriority.Focus);
+            }
+            var from = new[] { "scale-[2]" };
+            var to = new[] { "scale-[1.5]" };
+            var context = MotionSlotContext.Read(element, from, to, _ => false);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, context);
+
+            // Assert — -1 where no scale channel is planned.
+            Assert.That(plan.Scale.HasValue ? plan.Scale.Value.to : -1f, Is.EqualTo(-1f));
+        }
+
+        [Test]
+        public void Given_AFocusBothAxisTranslateInForceBesideASwappedAxisTranslate_When_Resolved_Then_NoTranslateChannelIsPlanned()
+        {
+            // Arrange — focus:translate-8 outranks the swap's base translate-x-4, so x stays at 32.
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "translate-8", StyleLayerPriority.Focus);
+            var from = new string[0];
+            var to = new[] { "translate-x-4" };
+            var context = MotionSlotContext.Read(element, from, to, _ => false);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 32f, 32f, context);
+
+            // Assert — -1 where no translate channel is planned.
+            Assert.That(plan.TranslateX.HasValue ? plan.TranslateX.Value.to : -1f, Is.EqualTo(-1f));
+        }
+
         [Test]
         public void Given_ANullLeavingClassArray_When_AWidthTargetIsResolved_Then_ItStartsFromTheCurrentWidth()
         {

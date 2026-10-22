@@ -397,8 +397,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   class no number is read from (`rounded-tl-full` beside `rounded-3xl`, `!scale-x-[.5]` beside
   `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. A `scale-[…]` of the
   per-axis utilities' importance or above holds the scale channel, as the element draws it alone, so
-  `scale-x-[.5] scale-[1.4]` animates toward 1.4, while a resting `hover:scale-x-[.5]` in force ranks above
-  the `scale-[1.4]` and the swap lands. A resting `translate-x-*` or `translate-y-*`, important or not, keeps its
+  `scale-x-[.5] scale-[1.4]` animates toward 1.4. A resting translate or scale in force under a variant
+  (`hover:scale-x-[.5]`, `focus:scale-50`, `focus:scale-[1.2]`, `focus:translate-8`) ranks above the swap's
+  classes, so the slots it holds land with the swap, the element drawing the resting value. A resting `translate-x-*` or `translate-y-*`, important or not, keeps its
   axis beside a `translate-<n>` the swap adds, and the other axis animates, as the element draws them. A target whose translate holds
   a value the browser rejects (`translate-x-[10]`) lands both translate axes with the swap, the element drawing no
   translation ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#a-rejected-value)).

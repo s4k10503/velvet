@@ -401,6 +401,20 @@ namespace Velvet
                 return strongest;
             }
 
+            // Whether cls is held, alive, under a variant and writing any of longhands.
+            public bool HoldsUnderVariant(string cls, StyleLonghandSet longhands)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (entry.Class == cls && !entry.Dead && StyleLayerPriority.UnderVariant(entry.Priority)
+                        && entry.Properties.Overlaps(longhands))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             public bool HasImportantClass(string cls)
             {
                 foreach (var entry in _entries)

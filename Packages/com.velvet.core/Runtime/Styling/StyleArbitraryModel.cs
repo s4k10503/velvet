@@ -101,6 +101,9 @@ namespace Velvet
         // The rank a layer's key carries, without the rule's place.
         public static long RankOf(long key) => key & ~RuleMask;
 
+        // Whether key's rank carries a variant, its important flag aside.
+        public static bool UnderVariant(long key) => (RankOf(key) & ~Important) != Base;
+
         #region Important
         // The important band (!utility / utility!) sits above every ordinary rank while important-versus-
         // important keeps the ordinary order: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats

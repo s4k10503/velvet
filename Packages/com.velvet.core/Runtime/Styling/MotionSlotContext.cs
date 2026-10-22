@@ -117,20 +117,39 @@ namespace Velvet
         public bool HasImportantInlineOutsideSwap(ArbitraryProperty slot)
             => StyleArbitraryValueResolver.HasImportantInlineOutside(_element, slot, _importantInlineBySwap);
 
-        // A scale-x-* or scale-y-* the swap does not write, at a rank above the base a swapped scale-[…] lands at,
-        // composes the scale the element draws over that bracket, which no one scale magnitude describes.
-        public bool HoldsRestingAxisScaleAbove(ArbitraryProperty slot)
+        // A swap's tokens carry no variant, so a translate or scale holder in force under one outranks them: the
+        // element draws it whatever the swap writes, as it does a resting hover:scale-x-* that composes the scale.
+        public bool HoldsRestingVariant(ArbitraryProperty slot)
         {
-            if (slot != ArbitraryProperty.Scale || _drivenByRunningPlay(slot))
+            if (slot != ArbitraryProperty.Scale && slot != ArbitraryProperty.TranslateX
+                && slot != ArbitraryProperty.TranslateY)
             {
                 return false;
             }
-            return HoldsRestingAxisAbove(ArbitraryProperty.ScaleX) || HoldsRestingAxisAbove(ArbitraryProperty.ScaleY);
+            if (_drivenByRunningPlay(slot))
+            {
+                return false;
+            }
+            var owner = Owner(slot);
+            if (StyleArbitraryValueResolver.HoldsVariantLayer(owner, slot))
+            {
+                return true;
+            }
+            var projection = StyleArbitraryValueResolver.TryGetProjection(owner);
+            if (projection == null)
+            {
+                return false;
+            }
+            var longhands = StyleArbitraryLonghands.Of(slot);
+            foreach (var cls in owner.GetClasses())
+            {
+                if (!_swapped.Contains(cls) && projection.HoldsUnderVariant(cls, longhands))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
-
-        private bool HoldsRestingAxisAbove(ArbitraryProperty axis)
-            => !_inlineBySwap.Contains(axis)
-                && StyleArbitraryValueResolver.TopRankOf(Owner(ArbitraryProperty.Scale), axis) > StyleLayerPriority.Base;
 
         // Unlike the running-play predicate, a held play does not count: it rests at its start and the next play
         // takes that from StartFromHeld, in the held play's own unit.
