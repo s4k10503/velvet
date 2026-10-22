@@ -480,7 +480,7 @@ namespace Velvet.Tests
             Assert.That(roster, Is.EqualTo(new[] { "2:PaddingTop:5", "3:Padding:40" }));
         }
 
-        // GREEN_ON_BASE(characterization): this adjacent-radius sequence already leaves the bottom writer on its corner.
+        // GREEN_ON_BASE(refactor): only the reflected call changed, so it fits a resolver that also hands back the longhands it wrote; the bottom writer already kept its corner.
         [Test]
         public void Given_EqualKeyAdjacentRadiusWriters_When_ResolvingAConnectedCorner_Then_TheLaterBottomWriterKeepsItsCorner()
         {
@@ -501,6 +501,7 @@ namespace Velvet.Tests
             Assert.That(element.style.borderBottomLeftRadius.value.value, Is.EqualTo(30f));
         }
 
+        // GREEN_ON_BASE(refactor): only the reflected call changed, so it fits a resolver that also hands back the longhands it wrote.
         [Test]
         public void Given_AnEqualKeyRadiusRootInsertedFirst_When_ResolvingItsLonghands_Then_TheLaterWritersStayInPlace()
         {
