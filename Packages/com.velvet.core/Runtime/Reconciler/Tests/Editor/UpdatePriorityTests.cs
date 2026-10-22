@@ -306,6 +306,8 @@ namespace Velvet.Tests
             Assert.AreEqual(1, s_simpleRenderCount, "A Transition update does not render before the flush");
         }
 
+        // GREEN_ON_BASE(refactor): the second flush finds the fiber clean on the base, where the first drained
+        // the transition's lane.
         [Test]
         public void Given_TransitionUpdate_When_Flushed_Then_RendersTheNewValue()
         {
@@ -314,12 +316,48 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
             s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
 
-            // Act
+            // Act — the pending render drains first, then the transition's lane
+            mounted.FlushStateForTest();
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.AreEqual((3, "transition-update"), (s_simpleRenderCount, s_simpleLastValue),
-                "The transition content render is followed by the render that observes isPending cleared");
+            Assert.AreEqual("transition-update", s_simpleLastValue);
+        }
+
+        [Test]
+        public void Given_TransitionUpdate_When_Flushed_Then_RendersThePendingStateTheContentAndTheClear()
+        {
+            // Arrange
+            s_simpleInitial = "initial";
+            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
+            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
+
+            // Act
+            mounted.FlushStateForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.AreEqual(4, s_simpleRenderCount,
+                "The transition content render follows the pending render and is followed by the render that observes isPending cleared");
+        }
+
+        // GREEN_ON_BASE(refactor): the second flush finds the fiber clean on the base, where the first drained
+        // the transition's lane.
+        [Test]
+        public void Given_TransitionUpdate_When_StartedTwiceAndFlushed_Then_CommitsTheLastValue()
+        {
+            // Arrange
+            s_simpleInitial = "initial";
+            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
+            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-1"));
+            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-2"));
+
+            // Act — the pending render both calls asked for drains first, then the transition's lane
+            mounted.FlushStateForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.AreEqual("transition-2", s_simpleLastValue);
         }
 
         [Test]
@@ -331,12 +369,13 @@ namespace Velvet.Tests
             s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-1"));
             s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-2"));
 
-            // Act
+            // Act — the pending render both calls asked for drains first, then the transition's lane
+            mounted.FlushStateForTest();
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.AreEqual((3, "transition-2"), (s_simpleRenderCount, s_simpleLastValue),
-                "Multiple Transition updates share one content render before the pending-clear render");
+            Assert.AreEqual(4, s_simpleRenderCount,
+                "Multiple Transition updates share one content render between the pending render and the pending-clear render");
         }
 
         [Test]
@@ -367,6 +406,8 @@ namespace Velvet.Tests
                 + "render leaves no lane queued");
         }
 
+        // GREEN_ON_BASE(refactor): only the first pass calls the starter, whose Urgent pending render the base has
+        // not got; the later passes re-add the lane directly, which is the coalesced re-add the case is about.
         [Test]
         public void Given_SustainedTransitionRescheduling_When_NormalPreemptionReachesThreshold_Then_TransitionLaneIsPromoted()
         {
@@ -383,7 +424,14 @@ namespace Velvet.Tests
             // threshold flush must still promote and drain the starved lane.
             for (var i = 0; i < threshold; i++)
             {
-                s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke($"transition-{i}"));
+                if (i == 0)
+                {
+                    s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-0"));
+                }
+                else
+                {
+                    s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+                }
                 s_simpleSetValue.Invoke($"normal-{i}");
                 mounted.FlushStateForTest();
             }
@@ -605,47 +653,6 @@ namespace Velvet.Tests
                 "The render loop is bounded by RenderPhaseUpdateLimit");
         }
 
-        [Test]
-        public void Given_RenderPhaseSetStateThenThrow_When_FiberSurvives_Then_CounterResets()
-        {
-            // A render-phase setState bumps the counter, then the re-run throws. The fiber is not unmounted
-            // (root-path exception preserves the previous tree), so the counter must reset on the exception path.
-            // Arrange
-            ResetThrowAfterBump();
-            s_throwAfterBumpTarget = "normalized";
-            s_throwAfterBumpShouldThrow = true;
-            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*ThrowAfterBump boom"));
-
-            // Act
-            using var mounted = V.Mount(_root, V.Component(ThrowAfterBumpRender, key: "throw-after-bump"));
-
-            // Assert — LogAssert.Expect verifies the re-run threw
-            Assert.AreEqual(0, mounted.Root.RenderPhaseSetStateCounter,
-                "The render-phase counter resets even when the loop exits via an exception");
-        }
-
-        [Test]
-        public void Given_RecoveredFiber_When_NextRenderNormalizes_Then_SettlesWithoutTrippingTheLimit()
-        {
-            // Arrange — drive the fiber through the throwing render, then stop throwing
-            ResetThrowAfterBump();
-            s_throwAfterBumpTarget = "normalized";
-            s_throwAfterBumpShouldThrow = true;
-            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*ThrowAfterBump boom"));
-            using var mounted = V.Mount(_root, V.Component(ThrowAfterBumpRender, key: "throw-after-bump"));
-            Assume.That(mounted.Root.RenderPhaseSetStateCounter, Is.EqualTo(0), "Precondition: the counter reset after the throw");
-
-            // Act — a fresh render that itself does a render-phase setState (normalizes once)
-            s_throwAfterBumpShouldThrow = false;
-            s_throwAfterBumpTarget = "renormalized";
-            s_throwAfterBumpSetRaw.Invoke("dirty");
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.AreEqual(("renormalized", 0), (s_throwAfterBumpLastValue, mounted.Root.RenderPhaseSetStateCounter),
-                "The recovery render settles its normalization and returns the counter to zero");
-        }
-
         #endregion
 
         #region Discrete event priority
@@ -800,43 +807,6 @@ namespace Velvet.Tests
             // Unconditional render-phase setState: never bails out, so the render loop hits the limit.
             setValue.Invoke(value + 1);
             return V.Label(text: value.ToString());
-        }
-
-        #endregion
-
-        #region ThrowAfterBump component (render-phase setState then throw on the re-run)
-
-        private static string s_throwAfterBumpTarget;
-        private static bool s_throwAfterBumpShouldThrow;
-        private static string s_throwAfterBumpLastValue;
-        private static Action<string> s_throwAfterBumpSetRaw;
-
-        private static void ResetThrowAfterBump()
-        {
-            s_throwAfterBumpTarget = null;
-            s_throwAfterBumpShouldThrow = false;
-            s_throwAfterBumpLastValue = null;
-            s_throwAfterBumpSetRaw = null;
-        }
-
-        [Component]
-        private static VNode ThrowAfterBumpRender()
-        {
-            var (value, setValue) = Hooks.UseState("initial");
-            s_throwAfterBumpSetRaw = setValue;
-            if (value != s_throwAfterBumpTarget)
-            {
-                // First attempt: render-phase setState bumps the counter before the re-run.
-                setValue.Invoke(s_throwAfterBumpTarget);
-            }
-            else if (s_throwAfterBumpShouldThrow)
-            {
-                // Re-run attempt (value already normalized): throw with a non-zero counter so the exception path
-                // is exercised while the fiber stays mounted (root-path recovery).
-                throw new InvalidOperationException("ThrowAfterBump boom");
-            }
-            s_throwAfterBumpLastValue = value;
-            return V.Label(text: value);
         }
 
         #endregion

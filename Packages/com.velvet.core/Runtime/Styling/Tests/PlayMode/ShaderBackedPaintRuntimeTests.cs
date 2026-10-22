@@ -90,12 +90,13 @@ namespace Velvet.Tests
         private int CountDesaturatedFill() => CountPixels(p => Mathf.Abs(p.r - p.g) < 12
             && Mathf.Abs(p.r - p.b) < 12 && p.r > 0x20 && p.r < 0xc0);
 
+        // GREEN_ON_BASE(refactor): only the case and its panel are renamed for the box-shadow pipeline's rename.
         [UnityTest]
-        public IEnumerator Given_ADropShadowCaster_When_RenderedOnARuntimePanel_Then_TheShadowPaintsItsColour()
+        public IEnumerator Given_ABoxShadowCaster_When_RenderedOnARuntimePanel_Then_TheShadowPaintsItsColour()
         {
             // Arrange — a caster the same colour as the backdrop, so the only thing that can put red on the
             // frame is the shadow. Offset rather than spread, so the halo lands clear of the caster's own box.
-            yield return MountOverBackdrop("DropShadowPanel", V.Div(
+            yield return MountOverBackdrop("BoxShadowPanel", V.Div(
                 className: "w-[40px] h-[40px] bg-[#0000ff] shadow-[10px_10px_0px_0px_#ff0000]"));
 
             // Act
@@ -104,6 +105,76 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((backdrop > 0, shadow > 0), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already tilts a shadow on a caster skewed on y alone with its face; the product shear differs from it only where both axes are skewed.
+        [UnityTest]
+        public IEnumerator Given_ABoxShadowCasterSkewedOnY_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes()
+        {
+            // Arrange — a green face over the blue backdrop with a red shadow below it. Across the 30px between
+            // the sampled columns a 20deg y shear moves an edge by tan(20deg)·30 ≈ 11px; an upright shadow moves
+            // it by 0, so the product of the two tilts is positive only where both slant, the same way.
+            yield return MountOverBackdrop("SkewedBoxShadowPanel", V.Div(
+                className: "w-[40px] h-[30px] bg-[#00ff00] skew-y-[20deg] shadow-[0px_14px_10px_0px_#ff0000]"));
+            var pixels = RenderTexturePixelReader.ReadPixels(
+                _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
+
+            // The last row, in the reader's order, at which column x holds a pixel the predicate takes; -1 for
+            // none. Read the same way for both paints, it compares their edges whichever way up the frame comes back.
+            int LastRow(int x, Func<Color32, bool> predicate)
+            {
+                var last = -1;
+                for (var y = 0; y < PanelSize; y++)
+                {
+                    if (predicate(pixels[(y * PanelSize) + x]))
+                    {
+                        last = y;
+                    }
+                }
+                return last;
+            }
+
+            // Act
+            var faceTilt = LastRow(65, p => p.g > 200 && p.r < 60 && p.b < 60)
+                - LastRow(35, p => p.g > 200 && p.r < 60 && p.b < 60);
+            var shadowTilt = LastRow(65, p => p.r > 120 && p.g < 100 && p.b < 140)
+                - LastRow(35, p => p.r > 120 && p.g < 100 && p.b < 140);
+
+            // Assert
+            Assert.That(faceTilt * shadowTilt, Is.GreaterThan(0), $"face tilt {faceTilt}, shadow tilt {shadowTilt}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnInsetShadowOnAnElementUnderEightPixelsTall_When_RenderedOnARuntimePanel_Then_NothingIsPaintedBelowIt()
+        {
+            // Arrange — a 4px caster is under the 8px floor of a bake texture, and an inset layer with a 2px
+            // spread covers its whole padding box in red. The rows are derived from the caster's measured box.
+            yield return MountOverBackdrop("ThinInsetShadowPanel", V.Div(
+                name: "caster", className: "w-[40px] h-[4px] shadow-[inset_0px_0px_0px_2px_#ff0000]"));
+            var box = UnityEngine.UIElements.UQueryExtensions
+                .Q<UnityEngine.UIElements.VisualElement>(_host.Root, "caster").worldBound;
+            var pixels = RenderTexturePixelReader.ReadPixels(
+                _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
+
+            // Act
+            var inside = 0;
+            var below = 0;
+            for (var row = 0; row < PanelSize; row++)
+            {
+                for (var col = 0; col < PanelSize; col++)
+                {
+                    var p = pixels[((PanelSize - 1 - row) * PanelSize) + col];
+                    if (p.r > 120 && p.b < 140)
+                    {
+                        inside += row >= box.yMin && row < box.yMax ? 1 : 0;
+                        below += row >= box.yMax + 1f ? 1 : 0;
+                    }
+                }
+            }
+
+            // Assert — the red inside the caster gates the count below it, so a frame with no shadow at all
+            // cannot read as one that stayed inside.
+            Assert.That(inside > 0 ? below : -1, Is.EqualTo(0));
         }
 
         [UnityTest]

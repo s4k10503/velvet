@@ -61,12 +61,13 @@ namespace Velvet
         // Attaches the fiber to mountPoint and runs the initial render + layout effects.
         // fiber: Fiber to mount. Must not already be mounted.
         // mountPoint: VisualElement that hosts the rendered tree. Must not be null.
-        // sharedContext, onCaughtError, motionClock: see SetupMount.
+        // sharedContext, onCaughtError, onUncaughtError, motionClock: see SetupMount.
         public static void Mount(
             ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null,
-            Action<Exception, ErrorInfo>? onCaughtError = null, MotionClock? motionClock = null)
+            Action<Exception, ErrorInfo>? onCaughtError = null, MotionClock? motionClock = null,
+            Action<Exception, ErrorInfo>? onUncaughtError = null)
         {
-            SetupMount(fiber, mountPoint, sharedContext, onCaughtError, motionClock);
+            SetupMount(fiber, mountPoint, sharedContext, onCaughtError, motionClock, onUncaughtError);
             var context = fiber.Reconciler!.Context;
             RenderAndReconcile(fiber);
             FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
@@ -74,8 +75,11 @@ namespace Velvet
             // The setState-in-commit guarantee is entry-point-agnostic: a callback ref or layout
             // effect that writes state during THIS mount (the measure-in-ref pattern) must commit
             // before the caller regains control, exactly as a drain-driven flush loops until quiet —
-            // otherwise the first painted frame shows the pre-write state.
-            fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
+            // otherwise the first painted frame shows the pre-write state. A mount inside a VirtualList
+            // range render has no write to flush, its layout work being held for the range
+            // (IReconcilerBridge.HoldRowLayoutEffects), and what the queue holds there — the updates the
+            // range's own passive flush scheduled among them — is the scheduler's to drain, not this row's.
+            if (context.HeldRowLayoutEffects.Count == 0) fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
         }
 
         // Inline-mount variant for wrapper-less fibers. The fiber's render output is held on the
@@ -211,11 +215,12 @@ namespace Velvet
         // Reconciler+ReconcilerContext there silently detaches the fiber from the caller's registries /
         // FiberStack / IsAborted flag. Left null only by V.Mount's direct root-fiber path,
         // which has no context to join and must bootstrap its own (this fiber becomes the owner).
-        // onCaughtError and motionClock are written only onto a context this call bootstraps, before the render
-        // that follows it, since that first render can already throw into a boundary and start a mount enter.
+        // onCaughtError, onUncaughtError and motionClock are written only onto a context this call bootstraps, before
+        // the render that follows it, since that first render can already throw into a boundary and start a mount enter.
         private static void SetupMount(
             ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null,
-            Action<Exception, ErrorInfo>? onCaughtError = null, MotionClock? motionClock = null)
+            Action<Exception, ErrorInfo>? onCaughtError = null, MotionClock? motionClock = null,
+            Action<Exception, ErrorInfo>? onUncaughtError = null)
         {
             if (fiber.IsMounted)
             {
@@ -243,6 +248,7 @@ namespace Velvet
             {
                 fiber.Reconciler.Context.BatchScheduler.SetAnchor(mountPoint);
                 if (onCaughtError != null) fiber.Reconciler.Context.OnCaughtError = onCaughtError;
+                if (onUncaughtError != null) fiber.Reconciler.Context.OnUncaughtError = onUncaughtError;
                 if (motionClock != null) fiber.Reconciler.Context.StyleAnimationScheduler.MountOn(motionClock);
             }
 
@@ -396,6 +402,10 @@ namespace Velvet
             {
                 return;
             }
+
+            // React flushes a root's pending passive effects before the render that unmounts it, so an exit settling
+            // in that flush completes before the tree goes.
+            if (fiber.Reconciler is { OwnsContext: true } root) FiberEffects.RunPassiveCompletions(root.Context);
 
             // Make remaining setters / store subscriptions / async OnCompleted into no-ops.
             // Closures captured by Hooks.UseXxx are gated through this flag.

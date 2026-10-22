@@ -559,5 +559,39 @@ namespace Velvet.Tests
             var tags = Root.Q<VisualElement>("item").GetClasses().Where(c => c.StartsWith("tag-")).OrderBy(c => c);
             Assert.That(string.Join(" ", tags), Is.EqualTo("tag-next"));
         }
+
+        // GREEN_ON_BASE(characterization): main writes a reversal's frames without reading the element's layers.
+        // Giving way to the important pose the reversal heads back to would snap the width to that pose instead.
+        [TestCase(TransitionType.Spring, TestName = "Given_ASpringExitAwayFromAnImportantWidthPose_When_TheKeyReturnsMidExit_Then_TheWidthReversesFromWhereItWas")]
+        [TestCase(TransitionType.Bezier, TestName = "Given_ABezierExitAwayFromAnImportantWidthPose_When_TheKeyReturnsMidExit_Then_TheWidthReversesFromWhereItWas")]
+        public void Given_AnExitAwayFromAnImportantWidthPose_When_TheKeyReturnsMidExit_Then_TheWidthReversesFromWhereItWas(
+            TransitionType type)
+        {
+            // Arrange — three frames into an exit from 200px toward 0px.
+            var poses = new Dictionary<string, MotionVariant> { ["shown"] = "!w-[200px]", ["hidden"] = "w-[0px]" };
+            var transition = new StyleTransitionConfig
+            {
+                Type = type, DurationSec = 0.5f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            using var store = new PresenceStore("lit");
+            s_store = store;
+            s_child = (state, key) => V.Motion(key: key, name: "item", variants: poses, animate: "shown", exit: "hidden",
+                transition: transition);
+            using var mounted = V.Mount(Root, V.Component(PresenceHost, key: "root"));
+            Tick();
+            store.SetKeys(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Tick();
+            Tick();
+            Tick();
+
+            // Act — the key returns, and the reversal draws one frame.
+            store.SetKeys("a");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Tick();
+
+            // Assert — short of the pose it heads back to, and still a width the play writes.
+            Assert.That(Root.Q<VisualElement>("item").style.width.value.value, Is.InRange(1f, 199f));
+        }
     }
 }

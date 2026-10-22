@@ -154,8 +154,10 @@ namespace Velvet
                 var spaced = i != lastIndex;
                 var spaceX = spaced ? _spec.Space.X : 0f;
                 var spaceY = spaced ? _spec.Space.Y : 0f;
-                var left = col == 0 ? 0f : _spec.ColumnGap;
-                var top = row == 0 ? 0f : _spec.RowGap;
+                var columnGap = col == 0 ? 0f : _spec.ColumnGap;
+                var rowGap = row == 0 ? 0f : _spec.RowGap;
+                var left = columnGap;
+                var top = rowGap;
                 var right = 0f;
                 var bottom = 0f;
                 if (_spec.Space.XReverse)
@@ -184,8 +186,8 @@ namespace Velvet
                 {
                     StyleArbitraryValueResolver.HandBack(child, HeldSlot.Width);
                 }
-                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginLeft, new StyleLength(left));
-                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginTop, new StyleLength(top));
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginLeft, new StyleLength(left), columnGap);
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginTop, new StyleLength(top), rowGap);
                 StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginRight, new StyleLength(right));
                 StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginBottom, new StyleLength(bottom));
                 StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);

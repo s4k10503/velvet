@@ -66,7 +66,8 @@ namespace Velvet
                 WritePlain(element, to);
                 return;
             }
-            if (TransitionsWithheld)
+            if (TransitionsWithheld
+                || StyleFilterTransitionDriver.ChangeIsDiscrete(element.style.filter.value, element.resolvedStyle.filter, to))
             {
                 WriteSuspended(element, to);
                 return;

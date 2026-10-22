@@ -12,25 +12,23 @@ namespace Velvet.Tests
     /// Specifies what happens when a functional component's Render() throws, both with and without an
     /// enclosing Error Boundary.
     /// <list type="bullet">
-    /// <item>An exception thrown during Render() of a component with no fallback is caught and emitted via
-    /// the log; it is not rethrown to the mount caller.</item>
-    /// <item>A throw does not increment the component's render count and does not replace the previously
-    /// committed DOM — the prior subtree is retained.</item>
-    /// <item>After a throw, a subsequent successful render renders again and increments the render count from
-    /// the last successful render.</item>
+    /// <item>An exception thrown during Render() of a component with no boundary above it is emitted via the
+    /// log and is not rethrown to the mount caller; the root unmounts the committed DOM.</item>
+    /// <item>A throw does not increment the component's render count.</item>
+    /// <item>After a throw on mount, the root rendering the tree again renders it.</item>
     /// <item>When a fallback factory registered via <see cref="Hooks.UseFallback"/> itself throws, the
     /// boundary logs the factory failure and bubbles the original child exception up to the next enclosing
     /// boundary, which catches the child's exception (not the fallback's).</item>
     /// <item>A fallback factory receives the original exception thrown by the child, and when it also takes an
     /// <see cref="ErrorInfo"/> it sees a component stack that lists the throwing fiber first and walks up
-    /// through ancestors to the catching boundary.</item>
+    /// through ancestors to the catching boundary, ending at the outermost component rather than the root.</item>
     /// </list>
     /// </summary>
     /// <remarks>
     /// Uses the <c>[Component] static VNode</c> + <c>V.Mount</c> + static-field exposure pattern. Exceptions
-    /// thrown in components without a fallback reach the root path and are emitted via
-    /// <c>Debug.LogException</c>, so they are asserted with <see cref="LogAssert"/> rather than
-    /// <c>Assert.Throws</c>. Per-region static fields are reset by <c>Reset{Region}()</c> helpers.
+    /// thrown in components without a fallback reach the root, which reports them through
+    /// <see cref="MountOptions.OnUncaughtError"/>'s default, <c>Debug.LogException</c>, so they are asserted with
+    /// <see cref="LogAssert"/> rather than <c>Assert.Throws</c>. Per-region static fields are reset by <c>Reset{Region}()</c> helpers.
     /// </remarks>
     [TestFixture]
     internal sealed class FunctionalComponentErrorTests
@@ -58,11 +56,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_SuccessfullyMountedComponent_When_NextRenderThrows_Then_PreviousDomIsRetained()
+        public void Given_SuccessfullyMountedComponent_When_NextRenderThrows_Then_TheRootUnmountsTheCommittedDom()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ThrowingRender, key: "throw"));
-            Assume.That(_root.childCount, Is.EqualTo(1), "Precondition: the first render committed one child");
+            var committedChildren = _root.childCount;
             s_throwingShouldThrow = true;
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Test exception"));
 
@@ -70,8 +68,8 @@ namespace Velvet.Tests
             s_throwingSetTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(_root.childCount, Is.EqualTo(1), "The previous DOM is retained after a render error");
+            // Assert — -1 where the mount committed no child, so a mount that committed nothing cannot pass
+            Assert.That(committedChildren == 1 ? _root.childCount : -1, Is.EqualTo(0));
         }
 
         [Test]
@@ -91,25 +89,22 @@ namespace Velvet.Tests
             Assert.That(s_throwingRenderCount, Is.EqualTo(1), "A throw does not increment the render count");
         }
 
+        // GREEN_ON_BASE(characterization): the base never stops rendering the root's tree, so it renders a new one too.
+        // Deleting the reset of the root's caught error in MountedTree.Render reddens this.
         [Test]
-        public void Given_ComponentThatThrewOnMount_When_RecoversAndReRenders_Then_RendersAgain()
+        public void Given_ComponentThatThrewOnMount_When_TheRootRendersItAgain_Then_RendersAgain()
         {
             // Arrange
             s_throwingShouldThrow = true;
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Test exception"));
             using var mounted = V.Mount(_root, V.Component(ThrowingRender, key: "throw"));
-            Assume.That(s_throwingRenderCount, Is.EqualTo(0), "Precondition: the mount throw left the render count at zero");
 
-            // Act
+            // Act — React's root.render after an uncaught error
             s_throwingShouldThrow = false;
-            s_throwingSetTick.Invoke(1);
-            mounted.FlushStateForTest();
+            mounted.Render(V.Component(ThrowingRender, key: "throw"));
 
             // Assert
-            Assert.That(
-                (_root.childCount, s_throwingRenderCount),
-                Is.EqualTo((1, 1)),
-                "A successful render after an error commits one child and yields a render count of one");
+            Assert.That(_root.childCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -196,6 +191,21 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_errorInfoLastInfo.ComponentStack, Does.Contain("ErrorInfoCaptureEbRender"),
                 "The component stack walks up the parent chain to include the catching boundary");
+        }
+
+        [Test]
+        public void Given_FallbackReceivesErrorInfo_When_ChildThrows_Then_TheStacksLastLineIsTheOutermostComponent()
+        {
+            // Arrange
+            ResetErrorInfoCapture();
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Child error"));
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(ErrorInfoCaptureEbRender, key: "info-eb"), CaughtErrors.Unlogged);
+
+            // Assert — the root V.Mount makes is not listed below it, as React's stack leaves out the root
+            Assert.That(s_errorInfoLastInfo?.ComponentStack.Split('\n')[^1],
+                Is.EqualTo("    at FunctionalComponentErrorTests.ErrorInfoCaptureEbRender"));
         }
 
         [Test]

@@ -13,6 +13,6 @@ namespace Velvet.TestUtilities
         public static Action<Exception, ErrorInfo> Ignore { get; } = static (_, _) => { };
 
         /// <summary>Mount options carrying <see cref="Ignore"/>.</summary>
-        public static MountOptions Unlogged { get; } = new(Ignore);
+        public static MountOptions Unlogged { get; } = new() { OnCaughtError = Ignore };
     }
 }

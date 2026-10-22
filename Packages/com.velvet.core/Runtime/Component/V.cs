@@ -2503,7 +2503,8 @@ namespace Velvet
 
         /// <summary>
         /// Container that supports mount / unmount animations.
-        /// When a keyed child becomes null, removal is deferred until the exit animation completes.
+        /// When a keyed child becomes null, removal is deferred until its exit completes, and always to a later
+        /// render than the one that removed it.
         /// </summary>
         /// <param name="children">Child VNodes whose enter / exit transitions are tracked.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -2512,11 +2513,11 @@ namespace Velvet
         /// presence's children.</param>
         /// <param name="staggerSec">Delay (seconds) staggered between sequential children.</param>
         /// <param name="mode">Exit / enter sequencing. <see cref="AnimatePresenceMode.Sync"/> (default) overlaps
-        /// exit and enter; <see cref="AnimatePresenceMode.Wait"/> holds a brand-new child back until in-flight
+        /// exit and enter; <see cref="AnimatePresenceMode.Wait"/> renders only the exiting children until in-flight
         /// exits finish (suited to single-child route / screen swaps); <see cref="AnimatePresenceMode.PopLayout"/>
         /// pulls an exiting child out of layout flow so still-present siblings reflow immediately.</param>
-        /// <param name="onExitComplete">Invoked once when every in-flight exit animation has finished;
-        /// not fired for cancelled exits or animation-less removals.</param>
+        /// <param name="onExitComplete">Invoked once the exits of the removed children have all completed, an exit
+        /// with nothing to animate after the commit that removed its child; not fired for cancelled exits.</param>
         /// <param name="propagate">Set on an inner presence: while the enclosing presence's keyed child holding it is
         /// leaving, every child of this presence exits too, and the enclosing presence keeps that child mounted until
         /// they have completed. A presence between the two that does not propagate stops it.</param>
@@ -2567,7 +2568,8 @@ namespace Velvet
         /// transition preset (e.g. setting only the duration while keeping the preset's other fields).
         /// To disable animation entirely (immediate mount / unmount), pass <c>transition: StyleTransitionConfig.None</c>.
         /// Note: when <c>DurationSec</c> is 0 (including <c>StyleTransitionConfig.None</c>), <c>delay</c> is ignored
-        /// and completion is immediate.
+        /// and completion is immediate, except for a <c>Spring</c> with no <c>RepeatDelaySec</c>, which is instant
+        /// but waits out <c>delay</c> before it lands (see <c>motion.md</c>).
         /// </summary>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -2576,7 +2578,8 @@ namespace Velvet
         /// <paramref name="variants"/> entry naming its own replaces it for swaps into that pose.</param>
         /// <param name="duration">Override the transition duration (seconds).</param>
         /// <param name="easing">Override the transition easing mode.</param>
-        /// <param name="delay">Override the transition delay (seconds). Ignored when <c>DurationSec</c> is 0.</param>
+        /// <param name="delay">Override the transition delay (seconds). Ignored when <c>DurationSec</c> is 0, unless the
+        /// transition is a <c>Spring</c> with no <c>RepeatDelaySec</c>, which waits it out.</param>
         /// <param name="onEnterComplete">Callback invoked when the enter transition finishes.</param>
         /// <param name="children">Child VNodes rendered inside the motion element.</param>
         /// <param name="props">Optional FiberElementProps (text / tooltip / enabled / etc.) bag.</param>

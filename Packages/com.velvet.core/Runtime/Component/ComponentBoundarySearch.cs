@@ -53,8 +53,8 @@ namespace Velvet
         internal static void PropagateFromOwner(ComponentFiber? owner, Exception exception, bool isRenderError = false)
             => PropagateFrom(owner?.CaughtError == null ? owner : owner.Parent, owner, exception, isRenderError);
 
-        // Where an error no boundary takes goes, and one Velvet hands no boundary, as Framer Motion's completion
-        // callbacks run in a promise no boundary sees.
+        // Where an error goes whose walk ends with neither a boundary nor the root V.Mount made taking it, and one Velvet
+        // hands no boundary, as Framer Motion's completion callbacks run in a promise no boundary sees.
         internal static void ReportUncaught(Exception exception) => Debug.LogException(exception);
 
         private static void PropagateFrom(
@@ -69,7 +69,16 @@ namespace Velvet
                 // AFTER TryCatch returns would follow that now-severed link and stop short of any candidate
                 // beyond current, even though this walk's own job is to keep searching past current.
                 var next = current.Parent;
-                if (current.IsErrorBoundary && FiberErrorBoundary.TryCatch(current, throwingFiber, exception, isRenderError))
+                // A fiber already torn down, or one the same deletion is about to tear down, catches nothing, and the
+                // walk goes on to the nearest one outside it, where React's captureCommitPhaseError starts. The mount
+                // root is not passed over: being disposed is how MountedTree.Dispose reaches it
+                // (FiberErrorBoundary.TryCatch).
+                if ((current.IsDisposed || current.IsBeingDeleted) && !current.IsMountRoot)
+                {
+                    current = current.IsBeingDeleted ? current.NearestAncestorOutsideTheDeletion : next;
+                    continue;
+                }
+                if (current.CatchesErrors && FiberErrorBoundary.TryCatch(current, throwingFiber, exception, isRenderError))
                 {
                     return;
                 }

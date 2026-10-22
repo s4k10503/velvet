@@ -31,7 +31,8 @@ namespace Velvet.Tests
     /// <item>Boundaries reporting in one commit report in tree order, whatever order they caught in, each after
     /// the layout effects of its own fallback.</item>
     /// <item>A boundary a parked transition has mounted reports in the commit that completes the transition, and
-    /// one the transition parked short of reports without waiting for it.</item>
+    /// one the transition parked short of reports without waiting for it. The passive effect of a child the
+    /// parked pass mounted is held with the pass, so its error is caught only once the pass has completed.</item>
     /// <item>Once a chain of follow-up commits reaches its bound, the next entry neither runs the chain again
     /// nor delivers the report it left, and a parked transition still runs the layout effects it held.</item>
     /// </list>
@@ -73,9 +74,9 @@ namespace Velvet.Tests
             _host?.Dispose();
         }
 
-        private static MountOptions RecordingOrder { get; } = new((_, _) => s_order.Add("caught"));
+        private static MountOptions RecordingOrder { get; } = new MountOptions { OnCaughtError = (_, _) => s_order.Add("caught") };
 
-        private static MountOptions CountingReports { get; } = new((_, _) => s_reportCount++);
+        private static MountOptions CountingReports { get; } = new MountOptions { OnCaughtError = (_, _) => s_reportCount++ };
 
         private MountedTree Mount(Func<VNode> child)
         {
@@ -83,11 +84,13 @@ namespace Velvet.Tests
             return V.Mount(
                 _root,
                 V.Component(BoundaryRender, key: "boundary"),
-                new MountOptions((exception, _) => _calls.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => _calls.Add(exception.Message) });
         }
 
         private string Outcome() => $"{string.Join(", ", _calls)} | {_root.FindFirstLabel()?.text}";
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnOnCaughtErrorHandler_When_ABoundaryCatches_Then_ItReceivesTheCaughtExceptionAndTheComponentStack()
         {
@@ -100,7 +103,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(
                 _root,
                 V.Component(BoundaryRender, key: "boundary"),
-                new MountOptions((exception, info) => received = (exception, info)));
+                new MountOptions { OnCaughtError = (exception, info) => received = (exception, info) });
 
             // Assert
             Assert.That(
@@ -231,6 +234,8 @@ namespace Velvet.Tests
             Assert.That(Outcome(), Is.EqualTo("fallback content boom | fallback"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnOnCaughtErrorHandlerThatThrows_When_ABoundaryCatchesALayoutEffectsError_Then_TheMountCompletesWithTheFallback()
         {
@@ -244,7 +249,7 @@ namespace Velvet.Tests
                 _mounted = V.Mount(
                     _root,
                     V.Component(BoundaryRender, key: "boundary"),
-                    new MountOptions((_, _) => throw new InvalidOperationException("handler boom")));
+                    new MountOptions { OnCaughtError = (_, _) => throw new InvalidOperationException("handler boom") });
             }
             catch (InvalidOperationException)
             {
@@ -331,6 +336,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("other, fallback, caught"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryThatCaughtALayoutEffectsError_When_AnOuterBoundaryReplacesItInTheSameCommit_Then_OnlyTheOuterBoundaryReports()
         {
@@ -338,7 +345,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(
                 _root,
                 V.Component(OuterBoundaryRender, key: "outer"),
-                new MountOptions((exception, _) => _calls.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => _calls.Add(exception.Message) });
 
             // Assert
             Assert.That(string.Join(", ", _calls), Is.EqualTo("two"));
@@ -379,6 +386,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_SiblingBoundariesCatchingInReverseTreeOrderInOnePassiveDrain_When_TheirFallbacksCommit_Then_TheReportsFollowTreeOrderAndEachFallbacksLayoutEffects()
         {
@@ -387,7 +396,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(
                 _root,
                 V.Component(PassiveBoundaryPairRender, key: "pair"),
-                new MountOptions((exception, _) => s_order.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => s_order.Add(exception.Message) });
             _mounted.FlushEffectsForTest();
             s_setFirstTick.Invoke(1);
             s_setSecondTick.Invoke(1);
@@ -401,10 +410,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionMounted_When_ItCatchesAPassiveEffectsErrorBeforeThePassCompletes_Then_ItReportsInTheCommitThatCompletesThePass()
+        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionMounted_When_ItsChildsPassiveEffectThrowsOnlyOnceThePassHasCompleted_Then_ItReportsInTheCommitThatFollows()
         {
             // Arrange — the boundary's row is the first the transition builds, and its child's render outlasts
-            // the slice's budget, so the batch drain's slice parks right after that row.
+            // the slice's budget, so the batch drain's slice parks right after that row. The child's passive
+            // effect is held with the pass, so the flush that finds the pass parked runs nothing.
             s_child = () => V.Component(SlowThrowInPassiveEffectRender, key: "child");
             _mounted = V.Mount(_root, V.Component(BoundaryFirstListRender, key: "list"), RecordingOrder);
             s_listTick = 1;
@@ -415,23 +425,70 @@ namespace Velvet.Tests
 
             // Act
             s_listFiber.DrainTimeSlicedReconcileForTest();
+            _mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(
                 $"{beforeCompletion}; {string.Join(", ", s_order)}",
-                Is.EqualTo("True | fallback; fallback, caught"));
+                Is.EqualTo("True | ; fallback, caught"));
         }
 
+        // GREEN_ON_BASE(characterization): the base holds the report the same way. Drop
+        // `&& !HasLayoutEffectsWaiting(ctx, boundary)` from DeliverCaughtErrors and this reddens.
+        [Test]
+        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionReRendered_When_ItsChildReRendersAloneAndThrowsBeforeThePassCompletes_Then_NoReportIsMadeYet()
+        {
+            // Arrange — the boundary's row is in the committed tree from the mount, since a row the parked pass
+            // created is not placed until the pass completes, and its slow render parks the pass right after the row
+            _mounted = V.Mount(_root, V.Component(TickedFirstBoundaryListRender, key: "list"), RecordingOrder);
+            s_listTick = 1;
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_setTick.Invoke(1);
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_order, Does.Not.Contain("caught"),
+                "The boundary's own layout effects wait for the pass, so what it caught is reported with them");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reports at the same commit. The case before it holds the
+        // report back, and this one shows the catch happened and the report followed the pass.
+        [Test]
+        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionReRendered_When_ItsChildReRenderedAloneAndThrewAndThePassCompletes_Then_TheReportFollowsTheFallback()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(TickedFirstBoundaryListRender, key: "list"), RecordingOrder);
+            s_listTick = 1;
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_setTick.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_listFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reports a passive error caught while the pass is parked the same way.
+        // The throwing effect is staged by the child's own commit after the pass parks, since an effect the mount
+        // left pending would run before the transition renders and be caught before there is a parked pass.
         [Test]
         public void Given_ABoundaryCommittedBeforeATransitionThatParksAheadOfIt_When_ItCatchesAPassiveEffectsErrorWhileThePassIsParked_Then_ItReportsAfterItsFallbacksLayoutEffectWithoutWaitingForThePass()
         {
             // Arrange — the transition puts a slow row ahead of the boundary's, so its slice parks before it
-            // reaches the boundary.
-            s_child = () => V.Component(ThrowInPassiveEffectRender, key: "child");
+            // reaches the boundary; the child then commits on its own, staging an effect that throws.
+            s_child = () => V.Component(ThrowInPassiveSetupOnUpdateRender, key: "child");
             _mounted = V.Mount(_root, V.Component(SlowRowAheadOfBoundaryListRender, key: "list"), RecordingOrder);
             s_listTick = 1;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_setFirstTick.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
             var parked = s_listFiber.HasPendingReconcileWorkForTest();
 
             // Act
@@ -527,14 +584,19 @@ namespace Velvet.Tests
                 Is.EqualTo("True | nothing thrown | 0 reported"));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the row's layout effect across the bound's drop the same way.
+        // The chain starts from an effect the boundary's child stages by its own commit after the pass parks, since
+        // one the mount left pending now runs, and reaches the bound, before the transition renders at all.
         [Test]
         public void Given_AParkedTransitionHoldingARowsLayoutEffect_When_TheFollowUpBoundStopsAChainElsewhere_Then_TheRowsLayoutEffectRunsWhenThePassCompletes()
         {
             // Arrange
-            _mounted = V.Mount(_root, V.Component(RefallingBesideASlowListRender, key: "host"), CaughtErrors.Unlogged);
+            _mounted = V.Mount(_root, V.Component(RefallingOnUpdateBesideASlowListRender, key: "host"), CaughtErrors.Unlogged);
             s_listTick = 1;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_setFirstTick.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
             var parked = s_listFiber.HasPendingReconcileWorkForTest();
             var bounded = false;
             try
@@ -569,6 +631,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryHoldingAReportFromARender_When_AnEarlierSiblingsLayoutEffectThrowsIntoAnOuterBoundaryInTheSameCommit_Then_OnlyTheOuterBoundaryReports()
         {
@@ -580,7 +644,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(
                 _root,
                 V.Component(OuterAroundSiblingAndInnerBoundaryRender, key: "outer"),
-                new MountOptions((exception, _) => _calls.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => _calls.Add(exception.Message) });
 
             // Assert
             Assert.That(string.Join(", ", _calls), Is.EqualTo("two"));
@@ -659,6 +723,8 @@ namespace Velvet.Tests
                 Is.EqualTo("1 kept before | 0 kept after"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_SiblingBoundariesWhoseFallbacksBothHaveLayoutEffectsCatchingInReverseTreeOrder_When_TheirFallbacksCommit_Then_EachReportFollowsItsOwnFallbacksLayoutEffect()
         {
@@ -666,7 +732,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(
                 _root,
                 V.Component(NamedFallbackBoundaryPairRender, key: "pair"),
-                new MountOptions((exception, _) => s_order.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => s_order.Add(exception.Message) });
             _mounted.FlushEffectsForTest();
             s_setFirstTick.Invoke(1);
             s_setSecondTick.Invoke(1);
@@ -679,8 +745,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback one, one, fallback two, two"));
         }
 
-        // GREEN_ON_BASE(characterization): the base reports both catches in catch order at the catch, and the
-        // queue that now holds them must keep the second while it delivers the first.
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_TwoBoundariesCatchingLayoutEffectsErrorsInOneCommit_When_Mounted_Then_EachReportsOnceInCatchOrder()
         {
@@ -688,7 +754,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(
                 _root,
                 V.Component(BoundaryPairRender, key: "pair"),
-                new MountOptions((exception, _) => _calls.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => _calls.Add(exception.Message) });
 
             // Assert
             Assert.That(string.Join(", ", _calls), Is.EqualTo("one, two"));
@@ -854,6 +920,44 @@ namespace Velvet.Tests
             return V.Fragment(children: rows.ToArray());
         }
 
+        // The boundary's row leads, and the boundary takes the tick, so the transition re-renders it first and its
+        // slow render parks the pass before the rows behind it.
+        [Component(Compiler = false)]
+        private static VNode TickedFirstBoundaryListRender()
+        {
+            s_listFiber = FiberAmbientStack.Current;
+            var rows = new List<VNode>
+            {
+                V.Div(key: "boundary", children: new VNode[]
+                {
+                    V.Component(TickedLayoutBoundaryRender, s_listTick, key: "boundary"),
+                }),
+            };
+            for (var i = 0; i < 3; i++)
+            {
+                rows.Add(V.Div(key: "item" + i, children: new VNode[] { V.Label(text: "item-" + i + "-" + s_listTick) }));
+            }
+            return V.Fragment(children: rows.ToArray());
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode TickedLayoutBoundaryRender(int tick)
+        {
+            System.Threading.Thread.Sleep(SlowRenderMs);
+            Hooks.UseFallback(_ => V.Component(FallbackWithLayoutEffectRender, key: "fallback"));
+            return V.Component(SlowThrowOnUpdateRender, key: "child");
+        }
+
+        [Component]
+        private static VNode SlowThrowOnUpdateRender()
+        {
+            System.Threading.Thread.Sleep(SlowRenderMs);
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            if (tick > 0) throw new InvalidOperationException("boom");
+            return V.Label(text: "ok");
+        }
+
         [Component]
         private static VNode SlowThrowInPassiveEffectRender()
         {
@@ -939,12 +1043,24 @@ namespace Velvet.Tests
                 name: "rows");
 
         [Component]
-        private static VNode RefallingBesideASlowListRender()
+        private static VNode RefallingOnUpdateBesideASlowListRender()
             => V.Div(children: new VNode[]
             {
-                V.Component(RefallingBoundaryRender, key: "boundary"),
+                V.Component(RefallingOnUpdateBoundaryRender, key: "boundary"),
                 V.Component(SlowLayoutListRender, key: "list"),
             });
+
+        // RefallingBoundaryRender's chain, started by a child whose effect throws only once it has re-rendered.
+        [Component(IsErrorBoundary = true)]
+        private static VNode RefallingOnUpdateBoundaryRender()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                var mount = s_fallbackMounts++;
+                return V.Component(RefallingFallbackRender, mount, key: "fallback-" + mount);
+            });
+            return V.Component(ThrowInPassiveSetupOnUpdateRender, key: "child");
+        }
 
         [Component(Compiler = false)]
         private static VNode SlowLayoutListRender()

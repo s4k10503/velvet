@@ -283,6 +283,9 @@ namespace Velvet
                 }
             }
 
+            // CSS paints an inset shadow above the background and below the border.
+            BoxShadowSilhouette.DrawInsetLayers(mgc, ve, w, h);
+
             var borderColor = binding.HasStash ? binding.BorderColor : ve.resolvedStyle.borderLeftColor;
             var borderWidth = ve.resolvedStyle.borderLeftWidth;
             if (borderWidth > 0.01f && borderColor.a > 0.004f)

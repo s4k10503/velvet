@@ -609,12 +609,13 @@ namespace Velvet
         }
 
         // A bracketed length for a from-/via-/to- position, read as a list-bracket position is. A bare 0 is
-        // declined: Tailwind's length test requires a unit.
+        // declined: Tailwind's length test (TailwindDataTypes.IsLength) requires a unit, and in its own case.
         private static bool TryParseBracketedPixels(string suffix, out float px)
         {
             px = 0f;
             return suffix.Length > 2 && suffix[0] == '[' && suffix[suffix.Length - 1] == ']'
-                && suffix != "[0]" && TryParseStopLength(suffix.Substring(1, suffix.Length - 2), out px);
+                && TailwindDataTypes.IsLength(suffix.AsSpan(1, suffix.Length - 2))
+                && TryParseStopLength(suffix.Substring(1, suffix.Length - 2), out px);
         }
 
         // A stop position's length, with the unit StyleArbitraryValueResolver.TryParseValue reads (a bare
@@ -640,6 +641,11 @@ namespace Velvet
 
         private static StopToken ParseStopToken(string suffix)
         {
+            var hint = StyleArbitraryValueResolver.TypeHintOf(suffix);
+            if (hint != null)
+            {
+                return ParseHintedStopToken(suffix, hint);
+            }
             if ((suffix.Length > 0 && suffix[0] == '[' || IsBarePercent(suffix)) && TryParsePercent(suffix, out var p))
             {
                 return new StopToken { IsPosition = true, Position = p, PositionPx = float.NaN };
@@ -650,6 +656,28 @@ namespace Velvet
             }
             return VelvetPalette.TryResolveColorToken(suffix, out var c)
                 ? new StopToken { IsColor = true, Color = c }
+                : default;
+        }
+
+        // A type hint picks the branch in place of Tailwind's tests: a length or percentage hint the position,
+        // read without the case test, and any other the colour.
+        private static StopToken ParseHintedStopToken(string suffix, string hint)
+        {
+            var plain = StyleArbitraryValueResolver.WithoutTypeHint(suffix);
+            if (plain == null)
+            {
+                return default;
+            }
+            if (!StyleColorValueParser.HintSelectsNonColour("from", hint))
+            {
+                return VelvetPalette.TryResolveColorToken(plain, out var c) ? new StopToken { IsColor = true, Color = c } : default;
+            }
+            if (TryParsePercent(plain, out var p))
+            {
+                return new StopToken { IsPosition = true, Position = p, PositionPx = float.NaN };
+            }
+            return TryParseStopLength(plain.Substring(1, plain.Length - 2), out var px)
+                ? new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px }
                 : default;
         }
 
@@ -1114,6 +1142,18 @@ namespace Velvet
             return s == "0";
         }
 
+        private static bool IsLowerCaseAngle(string s)
+        {
+            foreach (var (unit, _) in AngleUnits)
+            {
+                if (s.EndsWith(unit, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static readonly (string Unit, float Degrees)[] AngleUnits =
         {
             ("deg", 1f), ("grad", 0.9f), ("rad", 180f / Mathf.PI), ("turn", 360f),
@@ -1226,14 +1266,16 @@ namespace Velvet
             }
         }
 
-        // bg-conic-{int} (start degrees) or bg-conic-[from_{deg}] / bg-conic-[{deg}].
+        // bg-conic-{int} (start degrees) or bg-conic-[from_{angle}]. A bracket without `from` is no start angle:
+        // conic-gradient() takes an angle only after it.
         private static bool TryParseConicStart(string s, out float deg)
         {
             if (s.StartsWith("[from_", StringComparison.Ordinal) && s[s.Length - 1] == ']')
             {
-                return TryParseAngleValue("[" + s.Substring(6), out deg);
+                return TryParseAngleValue("[" + s.Substring(6), negative: false, out deg);
             }
-            return TryParseAngleValue(s, out deg);
+            deg = 0f;
+            return s.Length > 0 && s[0] != '[' && TryParseAngleValue(s, negative: false, out deg);
         }
 
         // Reads the position tokens of an at_ position into a UV centre, which may lie outside the box.
@@ -1319,7 +1361,7 @@ namespace Velvet
                 {
                     return !negative && TryDirectionAngle(rest.Substring(3), out angleDeg, out toCorner);
                 }
-                if (TryParseAngleValue(rest, out var deg))
+                if (TryParseAngleValue(rest, negative, out var deg))
                 {
                     angleDeg = negative ? -deg : deg;
                     return true;
@@ -1347,8 +1389,9 @@ namespace Velvet
             }
         }
 
-        // {int} (degrees) or [{float}deg] / [{float}] (arbitrary).
-        private static bool TryParseAngleValue(string s, out float deg)
+        // {int} (degrees) or a bracketed CSS angle (arbitrary). A negated bracket is read only where Tailwind's
+        // angle test passes it, which takes the unit in lower case and no bare 0; anything else it does not negate.
+        private static bool TryParseAngleValue(string s, bool negative, out float deg)
         {
             deg = 0f;
             if (string.IsNullOrEmpty(s))
@@ -1357,12 +1400,14 @@ namespace Velvet
             }
             if (StyleArbitraryValueResolver.TryStripBrackets(s, 0, out var inner))
             {
-                if (inner.EndsWith("deg", StringComparison.Ordinal))
+                // An `angle:` hint passes the angle test whatever it holds; any other hint fails it.
+                if (!StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner))
                 {
-                    inner = inner.Slice(0, inner.Length - 3);
+                    return false;
                 }
-                return float.TryParse(inner, NumberStyles.Float, CultureInfo.InvariantCulture, out deg)
-                    && !float.IsNaN(deg) && !float.IsInfinity(deg);
+                var text = inner.ToString();
+                return TryParseCssAngle(text, out deg)
+                    && (!negative || (hint != null ? hint == "angle" : IsLowerCaseAngle(text)));
             }
             if (int.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out var whole))
             {

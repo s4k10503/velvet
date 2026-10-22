@@ -48,14 +48,14 @@ namespace Velvet.Tests
                 "React shows the fallback again, and an unrelated update still commits in the next drain");
         }
 
-        // GREEN_ON_BASE(characterization): the base already routes this faulted read to the error boundary. What
-        // this pins, read as the displayed labels, is that the error fallback is all a user sees.
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AChildWhoseOwnUpdateSuspendedARevealedBoundary_When_ItsResourceFaults_Then_TheErrorBoundaryShowsItsFallback()
         {
             // Arrange
             using var mounted = V.Mount(
-                _root, V.Component(ErrorBoundaryRender, key: "error-boundary"), new MountOptions((_, _) => { }));
+                _root, V.Component(ErrorBoundaryRender, key: "error-boundary"), new MountOptions { OnCaughtError = (_, _) => { } });
             var scheduler = mounted.GetSchedulerForTest();
             s_setOwn.Invoke(1);
             scheduler.DrainImmediateForTest();

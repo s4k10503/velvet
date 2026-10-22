@@ -33,6 +33,8 @@
       href: guides/styling-backgrounds.md
     - name: Filters
       href: guides/styling-filters.md
+    - name: Shadows
+      href: guides/styling-shadows.md
     - name: Drag and drop
       href: guides/drag-and-drop.md
     - name: Focus

@@ -27,7 +27,8 @@ namespace Velvet.Tests
     /// still commits.</item>
     /// <item>A <c>z-*</c> placement resolves no target and sits outside that containment: an application
     /// throw from the insert that lands its element escapes the render pass, so an Error Boundary above
-    /// the component whose update began that pass shows its fallback.</item>
+    /// the component whose update began that pass shows its fallback, and a layer container that pass emptied is
+    /// still removed.</item>
     /// </list>
     /// Host accounting reads through Resources.FindObjectsOfTypeAll, which sees hidden objects.
     /// </summary>
@@ -363,6 +364,57 @@ namespace Velvet.Tests
             Assert.That((s_attachRuns, s_attachedIntoALayerContainer,
                     _host.Root.Q<VisualElement>("fallback") != null),
                 Is.EqualTo((1, true, true)));
+        }
+
+        private static StateUpdater<bool> s_swapStacked;
+        private static bool? s_backLayerAtUnmount;
+
+        // A field, so every render hands the element the same callback and only the unmount runs its cleanup.
+        private static readonly System.Func<VisualElement, System.Action> s_recordBackLayerAtUnmount =
+            element => () => s_backLayerAtUnmount = HasBackLayerContainer(element);
+
+        [Component]
+        private static VNode StackedSwapHost()
+        {
+            var (swapped, setSwapped) = Hooks.UseState(false);
+            s_swapStacked = setSwapped;
+            return V.Div(name: "swap-root", className: "relative", refCallback: s_recordBackLayerAtUnmount,
+                children: new VNode[]
+            {
+                swapped ? null : V.Div(name: "behind", className: "absolute -z-10", key: "behind"),
+                swapped
+                    ? V.Custom<LayerAttachThrower>(className: "absolute z-10", name: "stacked", key: "stacked")
+                    : null,
+            });
+        }
+
+        [Test]
+        public void Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsInThePassThatEmptiedAnotherLayer_Then_TheEmptiedContainerIsStillRemoved()
+        {
+            // Arrange — the back container's only member leaves in the same pass the front placement throws from.
+            // No boundary takes the throw, so the root unmounts the tree in a pass of its own; the stacking parent's
+            // ref cleanup reads its layers as that unmount removes it, ahead of that pass's own teardown drain.
+            // The expected exception fails the case when the arrangement stops throwing from that placement.
+            s_backLayerAtUnmount = null;
+            MountAndLayout(V.Component(StackedSwapHost, key: "host"));
+            var hadABackContainer = HasBackLayerContainer(_host.Root.Q<VisualElement>("swap-root"));
+            LogAssert.Expect(LogType.Exception, new Regex("attach callback"));
+
+            // Act
+            s_swapStacked.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — null where the mount made no back container to tear down, or where the tree never unmounted
+            Assert.That(hadABackContainer ? s_backLayerAtUnmount : null, Is.False);
+        }
+
+        private static bool HasBackLayerContainer(VisualElement parent)
+        {
+            foreach (var child in parent.Children())
+            {
+                if (FiberZLayerCoordinator.IsBackLayerContainer(child)) return true;
+            }
+            return false;
         }
 
         // GREEN_ON_BASE(characterization): the base sorts these two layers the same way, so the case

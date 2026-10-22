@@ -67,10 +67,9 @@ namespace Velvet
         internal readonly struct Channel
         {
             public readonly FilterFunctionType Type;
-            // The bound definition for a Custom function — first-party brightness/saturate or a user
-            // filter-[name:args]; null for a native filter type. ApplyFrame rebuilds the function through it so
-            // a rebuilt Custom rebinds its shader material instead of collapsing to a definition-less Custom
-            // that renders nothing.
+            // The bound definition for a Custom function (first-party brightness/saturate); null for a native
+            // filter type. ApplyFrame rebuilds the function through it so a rebuilt Custom rebinds its shader
+            // material instead of collapsing to a definition-less Custom that renders nothing.
             public readonly FilterFunctionDefinition? Definition;
             public readonly FilterParameter[] From;
             public readonly FilterParameter[] To;
@@ -93,6 +92,15 @@ namespace Velvet
             => s_bindings.GetValue(element, _ => new StyleFilterTransitionBinding());
 
         public static void Unregister(VisualElement element) => s_bindings.Remove(element);
+
+        // Detach for whatever binding the element's tweens run on, the write hook's included.
+        public static void DetachBound(VisualElement element)
+        {
+            if (s_bindings.TryGetValue(element, out var b))
+            {
+                Detach(element, b);
+            }
+        }
 
         // Stops whatever tween the element has without writing to it, for an element about to serve another consumer.
         public static void Release(VisualElement element)
@@ -136,7 +144,8 @@ namespace Velvet
                 && TryFindTransition(element, FilterPropertyName, null, out durationMs, out delayMs, out easing);
             // Read the CURRENT applied list as the from-side. During an in-flight tween this is last frame's
             // interpolated list, so a redirect starts from where the eye is — not the tween's original start.
-            if (!runs || !TryBuildChannels(element.style.filter.value, to, out channels))
+            if (!runs || ChangeIsDiscrete(element.style.filter.value, element.resolvedStyle.filter, to)
+                || !TryBuildChannels(element.style.filter.value, to, out channels))
             {
                 // Nothing runs for the tween, or the change does not interpolate: a discrete instant write.
                 if (bound != null)
@@ -261,7 +270,7 @@ namespace Velvet
             return false;
         }
 
-        private static int Milliseconds(TimeValue time)
+        internal static int Milliseconds(TimeValue time)
             => Mathf.RoundToInt(time.unit == TimeUnit.Millisecond ? time.value : time.value * 1000f);
 
         // Indexed rather than foreach'd: the resolved lists are typed as interfaces, so enumerating one boxes an
@@ -289,15 +298,13 @@ namespace Velvet
             {
                 // A Custom channel whose definition was destroyed mid-tween compares equal to null (a dead
                 // asset). The engine's FilterFunction constructor throws on one, and a Custom rebuilt without
-                // its definition would render nothing anyway, so drop the channel — the same degrade the
-                // resolver takes when a registered definition dies under it.
+                // its definition would render nothing anyway, so drop the channel.
                 if (channel.Type == FilterFunctionType.Custom && channel.Definition == null)
                 {
                     continue;
                 }
-                // A Custom (the first-party brightness/saturate, or a user filter-[name:args]) must be rebuilt
-                // through its definition so it rebinds its shader; a native type is rebuilt by its
-                // FilterFunctionType.
+                // A Custom must be rebuilt through its definition so it rebinds its shader; a native type is
+                // rebuilt by its FilterFunctionType.
                 var fn = channel.Definition != null
                     ? new FilterFunction(channel.Definition)
                     : new FilterFunction(channel.Type);
@@ -345,8 +352,7 @@ namespace Velvet
         // Writes the EXACT composed static list the tween was heading for (null = clear the inline filter) and
         // stops ticking. The target is the resolver's own value, written the way the resolver writes it, so the
         // tween lands where an instant write would have. NOTE the target is the list composed when the tween
-        // started: a definition destroyed since then is still in it, and is skipped by the resolver's next compose
-        // rather than here.
+        // started, so a definition destroyed since then is still in it.
         private static void Settle(VisualElement element, StyleFilterTransitionBinding b)
         {
             StyleFilterEngineWrite.Write(element, b.Target);
@@ -381,15 +387,16 @@ namespace Velvet
 
         // Builds the interpolation slots for from→to by the Filter Effects rule: functions pair by position, the
         // longer list's tail fades from or to its neutral, and the change does not interpolate (false: write
-        // instantly) where a paired position holds a different channel or parameters that do not line up. A null
-        // from is treated as an empty list (a freshly-mounted element with no inline filter reads null, not []).
+        // instantly) where either side holds a url() (HoldsUrl), or a paired position holds a different channel
+        // or parameters that do not line up. A null from is treated as an empty list (a freshly-mounted element
+        // with no inline filter reads null, not []).
         internal static bool TryBuildChannels(List<FilterFunction>? from, List<FilterFunction>? to,
             out Channel[] channels)
         {
             channels = Array.Empty<Channel>();
             var fromCount = from?.Count ?? 0;
             var toCount = to?.Count ?? 0;
-            if (fromCount == 0 && toCount == 0)
+            if ((fromCount == 0 && toCount == 0) || HoldsUrl(from) || HoldsUrl(to))
             {
                 return false;
             }
@@ -408,7 +415,7 @@ namespace Velvet
                 {
                     var f = from![k];
                     var t = to![k];
-                    if (!SameChannel(f, t) || f.parameterCount != t.parameterCount || !ParameterTypesAlign(f, t))
+                    if (!SameChannel(f, t) || f.parameterCount != t.parameterCount)
                     {
                         return false;
                     }
@@ -419,6 +426,19 @@ namespace Velvet
             return true;
         }
 
+        // A user filter-[name:args] is CSS's url() reference, and Filter Effects interpolates a list holding one
+        // discretely, whatever else the list holds. The first-party brightness/saturate customs are CSS's
+        // brightness() and saturate(), which interpolate.
+        internal static bool HoldsUrl(IEnumerable<FilterFunction>? list)
+            => list != null
+                && list.Any(f => f.type == FilterFunctionType.Custom && !BuiltInFilterDefinitions.IsFirstParty(f.customDefinition));
+
+        // The url() rule over a whole change. Before it, the element shows its stylesheet's filter wherever the inline
+        // list is empty, so the shown list is read beside the inline one.
+        internal static bool ChangeIsDiscrete(List<FilterFunction>? inline, IEnumerable<FilterFunction>? shown,
+            List<FilterFunction>? to)
+            => HoldsUrl(inline) || HoldsUrl(shown) || HoldsUrl(to);
+
         // A filter present only in the to-list fades IN from its neutral value; one present only in from fades
         // OUT to it. Matches CSS filter-list padding.
         private static Channel FadeIn(FilterFunction f) => new Channel(f.type, DefinitionOf(f), IdentityParams(f), Snapshot(f));
@@ -428,20 +448,6 @@ namespace Velvet
         // built-in custom, null for a native type (ApplyFrame rebuilds that by FilterFunctionType).
         private static FilterFunctionDefinition? DefinitionOf(FilterFunction f)
             => f.type == FilterFunctionType.Custom ? f.customDefinition : null;
-
-        // Two paired functions interpolate only when each slot holds the same kind of value: a definition may
-        // declare a color slot where its counterpart declares a float, and lerping across those is meaningless.
-        private static bool ParameterTypesAlign(FilterFunction a, FilterFunction b)
-        {
-            for (var k = 0; k < a.parameterCount; k++)
-            {
-                if (a.GetParameter(k).type != b.GetParameter(k).type)
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
 
         // Two functions share a channel when they are the same native filter type, or both Custom bound to the
         // SAME definition — brightness, saturate and each user filter-[name:args] are distinct channels even
@@ -471,14 +477,15 @@ namespace Velvet
         // only one side fades from or to. A CUSTOM function declares its own per-slot neutral, and that
         // declaration is the same value the engine pads a filter-list transition with, so it is read straight
         // off the definition rather than guessed from the function's shape. For a native type the neutral
-        // follows the CSS definition: contrast is off at 1, every other float filter (blur, grayscale,
-        // hue-rotate, invert, sepia) is off at 0, and a color parameter's identity is white.
+        // follows the CSS definition: contrast and opacity are off at 1, every other float filter (blur, grayscale,
+        // hue-rotate, invert, sepia) is off at 0, and a color parameter's identity is white. Velvet composes no
+        // opacity or tint, but a one-sided channel can come from a filter Velvet did not write.
         private static FilterParameter[] IdentityParams(FilterFunction f)
         {
             var count = f.parameterCount;
             var arr = new FilterParameter[count];
             var declarations = f.type == FilterFunctionType.Custom ? f.customDefinition?.parameters : null;
-            var floatIdentity = f.type == FilterFunctionType.Contrast ? 1f : 0f;
+            var floatIdentity = f.type is FilterFunctionType.Contrast or FilterFunctionType.Opacity ? 1f : 0f;
             for (var k = 0; k < count; k++)
             {
                 // A declaration shorter than the live parameter list leaves that slot without a declared

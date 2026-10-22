@@ -149,8 +149,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_FirstOfTwoSubscriptionsThrowsOnUnsubscribe_When_Unmounted_Then_TheSecondIsStillRemoved()
         {
-            // Arrange — a whole-tree dispose marks the root disposed before unmounting it, so the contained
-            // exception's walk toward a boundary stops at the root and logs nothing
+            // Arrange — the root being disposed reports the contained exception as uncaught
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: unsubscribe failed");
             s_sourceA = new ExternalSource<int>(0) { ThrowOnUnsubscribe = true };
             s_sourceB = new ExternalSource<int>(0);
             var mounted = V.Mount(_root, V.Component(TwoStoresRender, key: "two"));
@@ -166,7 +166,7 @@ namespace Velvet.Tests
         public void Given_UnsubscribeThatThrows_When_TheReaderAloneUnmounts_Then_TheExceptionIsLogged()
         {
             // Arrange — with the host still mounted, the contained exception's walk reaches the live root, which
-            // is no boundary, and is logged
+            // unmounts the tree and logs it
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: unsubscribe failed");
             s_sourceA = new ExternalSource<int>(0) { ThrowOnUnsubscribe = true };
             using var mounted = V.Mount(_root, V.Component(ToggledReaderHostRender, key: "host"));
@@ -366,6 +366,8 @@ namespace Velvet.Tests
             Assert.AreEqual(6, s_readerValue);
         }
 
+        // GREEN_ON_BASE(refactor): the immediate drain after the call renders the pending state on the head and
+        // finds the tier empty on the base, where the transition lane stays queued for the flush that parks.
         [Test]
         public void Given_StoreChangedWhileASliceIsParked_When_ThePassResumes_Then_ReadersItCommittedEarlierShowTheSnapshotALaterRowRenders()
         {
@@ -373,6 +375,7 @@ namespace Velvet.Tests
             s_resumeSource = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(ResumeListHost, key: "resume-list"));
             s_resumeStart.Invoke(() => s_resumeSetGen.Invoke(1));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_resumeListFiber.FlushStateWithTinyBudgetForTest();
             var parked = s_resumeListFiber.HasPendingReconcileWorkForTest();
             s_resumeSource.Set(1);

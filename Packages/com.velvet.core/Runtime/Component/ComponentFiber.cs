@@ -457,7 +457,7 @@ namespace Velvet
 
         /// <summary>
         /// Asks the component that declared <paramref name="slot"/> for the render that observes its now-false
-        /// <c>isPending</c>. Nothing renders a component because its flag moved, so a clear reached from a path
+        /// <c>isPending</c>. Clearing the flag renders nothing by itself, so a clear reached from a path
         /// that renders nobody — a drain of some other component's tree, an async action's completion — leaves
         /// the indicator on screen without this.
         /// </summary>
@@ -839,6 +839,41 @@ namespace Velvet
         // A boundary the framework renders for its own purposes (RouteErrorBoundary, an Await's), which
         // Hooks.UseErrorBoundary passes over as react-error-boundary's context passes over React Router's.
         internal bool IsFrameworkErrorBoundary { get; set; }
+
+        // The fiber V.Mount creates. It takes an error no boundary below it caught by rendering nothing, as React's
+        // root renders null, and reports it to MountOptions.OnUncaughtError rather than OnCaughtError. It is not an
+        // IsErrorBoundary, which is public and which Hooks.UseErrorBoundary looks for.
+        internal bool IsMountRoot { get; set; }
+
+        internal bool CatchesErrors => IsErrorBoundary || IsMountRoot;
+
+        // Set on every fiber of a deletion before the first of their cleanups runs, so an error one of them throws
+        // passes over the rest of the deletion in the boundary search (ComponentBoundarySearch.PropagateFrom), to
+        // NearestAncestorOutsideTheDeletion. That is recorded for every fiber of the deletion once all of them are
+        // marked and before any is disposed: disposing one detaches it from its parent, so a search reaching it
+        // through the parent chain afterwards would stop there.
+        internal bool IsBeingDeleted { get; private set; }
+
+        internal ComponentFiber? NearestAncestorOutsideTheDeletion { get; private set; }
+
+        internal void MarkBeingDeleted() => IsBeingDeleted = true;
+
+        internal void RecordTheNearestAncestorOutsideTheDeletion()
+        {
+            var ancestor = Parent;
+            while (ancestor is { IsMountRoot: false } && (ancestor.IsBeingDeleted || ancestor.IsDisposed))
+            {
+                ancestor = ancestor.Parent;
+            }
+            NearestAncestorOutsideTheDeletion = ancestor;
+        }
+
+        // Every fiber of one deletion, marked and then given its nearest ancestor outside it.
+        internal static void BeginDeletion(List<ComponentFiber> fibers)
+        {
+            foreach (var fiber in fibers) fiber.MarkBeingDeleted();
+            foreach (var fiber in fibers) fiber.RecordTheNearestAncestorOutsideTheDeletion();
+        }
 
         private ErrorBoundaryReset? _errorBoundaryReset;
 

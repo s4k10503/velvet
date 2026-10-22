@@ -1994,8 +1994,8 @@ namespace Velvet
         /// Boundary path, so it is effectively a no-op. Do not call this hook from non-EB components.
         /// <para/>
         /// <b>Bubble-up</b>: when the factory returns <c>null</c> or itself throws, the exception
-        /// bubbles to the next enclosing Error Boundary, ultimately reaching the root as an
-        /// unhandled exception when no boundary catches it.
+        /// bubbles to the next enclosing Error Boundary, ultimately reaching the root, which unmounts the tree
+        /// and reports it to <see cref="MountOptions.OnUncaughtError"/> when no boundary catches it.
         /// <para/>
         /// Once the component has caught, each later render of it invokes the factory again with the error
         /// it caught and renders what it returns in place of its children, until the component remounts —
@@ -2136,7 +2136,8 @@ namespace Velvet
         /// 2-tuple in the order (<c>isPending</c>, <c>startTransition</c>):
         /// - <c>isPending</c>: true while an update this starter's callback scheduled is queued or being
         ///   committed — through the terminal reconcile slice, wherever the state it wrote lives — and across
-        ///   an async transition's awaits.
+        ///   an async transition's awaits. The component renders it true on the Urgent lane as soon as the
+        ///   call returns with it lit, ahead of the transition's own render.
         /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>, reference-stable across renders. Call
         ///   <c>startTransition.Invoke(() =&gt; ...)</c>
         ///   for synchronous updates or <c>startTransition.Invoke(async () =&gt; ...)</c> for async actions whose
@@ -2275,6 +2276,7 @@ namespace Velvet
                 OnError: options.OnError)
             {
                 OnSettled = options.OnSettled is { } onSettled ? (_, ex, v) => onSettled(ex, v) : null,
+                Retry = options.Retry,
             });
         }
 
@@ -2296,6 +2298,7 @@ namespace Velvet
                 OnError: options.OnError is { } onError ? (ex, _) => onError(ex) : null)
             {
                 OnSettled = options.OnSettled is { } onSettled ? (_, ex, _) => onSettled(ex) : null,
+                Retry = options.Retry,
             });
         }
 
@@ -2362,7 +2365,18 @@ namespace Velvet
                 // After MarkPending and inside the try, which is TanStack's order: OnMutate reads the handle
                 // as this call's pending one, and a throw from it fails the call before MutationFn is reached.
                 context = slot.InvokeOnMutate(variables);
-                var data = await slot.InvokeMutationFn(variables, token);
+                // Each attempt reads the slot's MutationFn, so a re-render during the wait is the one
+                // that runs. The token is the caller's: unmount retires the slot and leaves the wait running.
+                var data = await (slot.Retry ?? RetryPolicy.NoRetry).RunWithStateAsync(
+                    static (call, attemptToken) => call.Slot.InvokeMutationFn(call.Variables, attemptToken),
+                    new MutationCall<TVariables, TData, TContext>(fiber, slot, variables, mine),
+                    new RetryCallbacks<MutationCall<TVariables, TData, TContext>>
+                    {
+                        OnFail = static (call, error) => call.ShowIfOwned(result => result.MarkRetrying(error)),
+                        OnPause = static call => call.ShowIfOwned(static result => result.MarkPaused()),
+                        OnContinue = static call => call.ShowIfOwned(static result => result.MarkContinued()),
+                    },
+                    token);
                 // The handlers run before this call's outcome is committed, which is where TanStack
                 // dispatches it: what OnSuccess and OnSettled read is the handle as it stands rather than
                 // their own result. Either one throwing leaves the call a failure with nothing of its own
@@ -2440,6 +2454,35 @@ namespace Velvet
             }
             RequestRender(fiber);
             return owns;
+        }
+
+        private readonly struct MutationCall<TVariables, TData, TContext>
+        {
+            public ComponentFiber Fiber { get; }
+            public HookMutationSlot<TVariables, TData, TContext> Slot { get; }
+            public TVariables Variables { get; }
+            public long Generation { get; }
+
+            public MutationCall(
+                ComponentFiber fiber,
+                HookMutationSlot<TVariables, TData, TContext> slot,
+                TVariables variables,
+                long generation)
+            {
+                Fiber = fiber;
+                Slot = slot;
+                Variables = variables;
+                Generation = generation;
+            }
+
+            // A call writes the handle only while it still owns it, as at its outcome: a retired slot is a
+            // mount that has gone, which Fiber.IsDisposed no longer says once a remount has cleared it.
+            public void ShowIfOwned(Action<MutationResult<TVariables, TData>> write)
+            {
+                if (IsMutationOwnerGone(Fiber, Slot) || Generation != Slot.Generation) return;
+                write(Slot.Result);
+                RequestRender(Fiber);
+            }
         }
 
         private static void ResetMutation<TVariables, TData, TContext>(

@@ -286,7 +286,7 @@ utilities have to be re-derived when the variant toggles.
 utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`; the picking
 Velvet writes down a subtree — `pointer-events-none` / `pointer-events-auto`
 ([styling-pointer-events.md](styling-pointer-events.md)); the wrapper-less paints — `skew-*`,
-`shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its `from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
+`shadow-*`, gradients (`bg-gradient-*` and its `from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
 `outline-*`; the inline font layer — `font-<family>`, `font-<weight>`, `italic` / `not-italic` and the
 `font-[…]` forms; and the axes Velvet writes into the displayed string — `uppercase` / `lowercase` /
 `capitalize` / `normal-case`, `underline` / `line-through` / `overline` / `no-underline`,
@@ -307,6 +307,12 @@ band takes that element's own paint position, so overlapping `-space-x-*` avatar
 bands on one parent is their elements' order rather than the order the bands happened to be attached —
 two `focus:ring-2` siblings render the same whichever was focused first. `ring-inset` paints **over**
 an opaque full-bleed child, where CSS paints an inset box-shadow under the element's children.
+
+A band is drawn by a class that names one, as in Tailwind v4: `ring` (1px), `ring-<n>`, `ring-[…]`, `outline`
+(1px), `outline-<n>` and `outline-[…]`. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
+colours only its own family's band, so `outline ring-red-500` is an outline in the text colour. A band whose
+family names no colour is drawn in the element's text colour and follows it as it changes. Velvet still
+draws one band where CSS draws a ring and an outline together.
 
 What the ringed element's own subtree would carry reaches the band as well. Its transform —
 `translate-*`, `scale-*`, `rotate-*` about any `origin-*`, a transition or a `V.Motion` animating those,
@@ -372,7 +378,7 @@ without `overflow-hidden` appearing anywhere in its className.
 
 | Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
-| `shadow-*` / `drop-shadow-*` | the whole shadow is gone. The paint is not removed — it is cut at the padding box like every other — but the only part of it you see is the halo outside the box, the interior being hidden under the element's own fill by design |
+| `shadow-*` | an outer layer is gone but for the anti-aliased edge of its cut-out, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) survives. The paint is not removed — it is cut at the padding box like every other — but an outer layer is cut out where the border box lies ([styling-shadows.md](styling-shadows.md)), so the clip leaves at most that edge of it, while an inset layer is drawn inside the padding box |
 | `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders. Children are clipped to the upright box, not to the sheared face CSS clips them to |
 | `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
@@ -459,8 +465,20 @@ these to the box:
   the nine-slice ones (`slice-*`, [styling-backgrounds.md](styling-backgrounds.md));
 - borders, including the line style (`border`, `border-*`, `border-solid` / `-dashed` / `-dotted`);
 - radius (`rounded`, `rounded-*`) and padding (`p-*`, `px-*`, `py-*`, `pt-*` … `pe-*`);
-- `shadow-*`, `drop-shadow-*`, `ring-*` and `outline-*`;
+- `shadow-*`, `ring-*` and `outline-*`;
+- the filter utilities, `drop-shadow-*` and `filter-[…]` among them
+  ([styling-filters.md](styling-filters.md));
+- the text colour (`text-<color>`, `text-[<color>]`) and `opacity-*`;
+- the text styling: `font-*`, `italic`, the text size (`text-sm`, `text-[14px]`), the alignment
+  (`text-left` / `-center` / `-right`), `tracking-*`, and the text effects (`uppercase`, `underline`,
+  `leading-*`, `whitespace-*`, …), and `truncate`, `text-ellipsis` and `text-clip`, which also land on the
+  element that draws the input's text, with `overflow-hidden` on it and on the box, as an `<input>` always clips;
+  an unfocused field elides that text (`TruncatedFieldEllipsisPlaybackTests`);
+- the transforms (`translate-*`, `rotate-*`, `scale-*`, `skew-*`, `origin-*`) and `animate-*`;
 - the caret and selection colours, `caret-*`, `selection:bg-*` and `selection:text-*`.
+
+The transition utilities (`transition-*`, `duration-*`, `ease-*`) go to both, so a change on either element
+tweens.
 
 **A text input's caret and selection colours follow CSS and Tailwind.**
 - **Values:** each utility takes a palette colour, `white`, `black`, `transparent`, a bracketed value

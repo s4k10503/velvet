@@ -37,7 +37,7 @@ namespace Velvet
     /// </para>
     /// <para>
     /// Painting the band in the element's OWN <c>generateVisualContent</c> (the wrapper-less model
-    /// <see cref="DropShadowSilhouette"/> uses) costs no layout at all, but was measured to lose the band
+    /// <see cref="BoxShadowSilhouette"/> uses) costs no layout at all, but was measured to lose the band
     /// entirely on an element that also carries <c>overflow: hidden</c>: an element's own overflow clip applies
     /// to its own generated content, not merely to its children. <c>overflow-hidden rounded-full ring-2</c> is
     /// the avatar pattern, so that is not an edge case. CSS clips neither an outline nor a box-shadow by the
@@ -62,7 +62,7 @@ namespace Velvet
         // SIBLING of that element, so UI Toolkit's opacity compositing — which reaches every overlay
         // belonging to a descendant — does not reach this one, and only an explicit co-fade can fade it with
         // its element. Auto-drops entries when an element is GC'd; Detach removes eagerly so a pooled element
-        // cannot ghost a prior consumer's band. Mirrors DropShadowSilhouette's per-element side-channel.
+        // cannot ghost a prior consumer's band. Mirrors BoxShadowSilhouette's per-element side-channel.
         private static readonly ConditionalWeakTable<VisualElement, RingBinding> s_byElement = new();
 
         public static RingBinding? TryGet(VisualElement element)
@@ -86,7 +86,7 @@ namespace Velvet
             overlay.AddToClassList(MarkerClass);
 
             var binding = new RingBinding(overlay) { ClassNames = classNames, Spec = spec };
-            ApplySpec(overlay, spec);
+            ApplySpec(overlay, spec, element);
 
             binding.OnGeometry = _ => Place(element, binding);
             element.RegisterCallback(binding.OnGeometry);
@@ -143,7 +143,7 @@ namespace Velvet
         {
             binding.Spec = spec;
             binding.ClassNames = classNames;
-            ApplySpec(binding.Overlay, spec);
+            ApplySpec(binding.Overlay, spec, element);
             Place(element, binding);
         }
 
@@ -166,16 +166,21 @@ namespace Velvet
 
         // Native border on all four sides is the whole band; its geometry (position / size / radii) is set by
         // SyncGeometry once the element is laid out.
-        private static void ApplySpec(VisualElement overlay, RingSpec spec)
+        private static void ApplySpec(VisualElement overlay, RingSpec spec, VisualElement element)
         {
             overlay.style.borderTopWidth = spec.Width;
             overlay.style.borderRightWidth = spec.Width;
             overlay.style.borderBottomWidth = spec.Width;
             overlay.style.borderLeftWidth = spec.Width;
-            overlay.style.borderTopColor = spec.Color;
-            overlay.style.borderRightColor = spec.Color;
-            overlay.style.borderBottomColor = spec.Color;
-            overlay.style.borderLeftColor = spec.Color;
+            ApplyColor(overlay, spec.CurrentColor ? element.resolvedStyle.color : spec.Color);
+        }
+
+        private static void ApplyColor(VisualElement overlay, Color color)
+        {
+            overlay.style.borderTopColor = color;
+            overlay.style.borderRightColor = color;
+            overlay.style.borderBottomColor = color;
+            overlay.style.borderLeftColor = color;
         }
 
         // Re-homes the overlay onto the element's CURRENT parent and re-sizes it. The host is re-derived on
@@ -270,6 +275,11 @@ namespace Velvet
         {
             var rs = element.resolvedStyle;
             var style = binding.Overlay.style;
+            // A band in the element's text colour follows it as it changes, as currentcolor does.
+            if (binding.Spec.CurrentColor)
+            {
+                ApplyColor(binding.Overlay, rs.color);
+            }
             style.opacity = rs.opacity;
             style.visibility = rs.visibility;
             style.display = rs.display;

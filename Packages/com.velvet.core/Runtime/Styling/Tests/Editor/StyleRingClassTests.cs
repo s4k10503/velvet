@@ -29,10 +29,13 @@ namespace Velvet.Tests
             => StyleRingClass.TryExtract(classNames, out var spec) ? spec : NoRing;
 
         [Test]
-        public void Given_BareRing_When_Extracted_Then_UsesDefaultThreePixelWidth()
+        public void Given_BareRing_When_Extracted_Then_UsesTheOnePixelDefaultWidth()
         {
-            // The DEFAULT ring is 3px.
-            Assert.That(Extract("ring").Width, Is.EqualTo(3f));
+            // Act
+            var width = Extract("ring").Width;
+
+            // Assert: Tailwind v4's --default-ring-width.
+            Assert.That(width, Is.EqualTo(1f));
         }
 
         [Test]
@@ -48,10 +51,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_RingColorOnly_When_Extracted_Then_KeepsDefaultWidth()
+        public void Given_RingColorOnly_When_Extracted_Then_NoRingIsDrawn()
         {
-            // A color-only ring still implies the DEFAULT ring width (3px).
-            Assert.That(Extract("ring-red-500").Width, Is.EqualTo(3f));
+            // Act
+            var extracted = StyleRingClass.TryExtract(new[] { "ring-red-500" }, out _);
+
+            // Assert: a ring colour writes only --tw-ring-color.
+            Assert.That(extracted, Is.False);
         }
 
         [Test]
@@ -82,10 +88,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADefaultColorRing_When_Extracted_Then_TheColorIsHalfAlpha()
+        public void Given_ADefaultColorRing_When_Extracted_Then_ItTakesTheTextColour()
         {
-            // Tailwind's default ring color is blue-500 at 0.5 alpha, not full opacity.
-            Assert.That(Extract("ring-2").Color.a, Is.EqualTo(0.5f).Within(1e-4f));
+            // Act
+            var spec = Extract("ring-2");
+
+            // Assert: Tailwind v4's ring is var(--tw-ring-color, currentcolor).
+            Assert.That(RingSpecReader.TakesTextColour(spec), Is.True);
         }
 
         [Test]
@@ -96,10 +105,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABareOutline_When_Extracted_Then_TheColorStaysOpaque()
+        public void Given_ABareOutline_When_Extracted_Then_ItTakesTheTextColour()
         {
-            // The 0.5-alpha default is ring-only; a color-less outline keeps its opaque band color.
-            Assert.That(Extract("outline").Color.a, Is.EqualTo(1f).Within(1e-4f));
+            // Act
+            var spec = Extract("outline");
+
+            // Assert: outline-color's initial value is the text colour.
+            Assert.That(RingSpecReader.TakesTextColour(spec), Is.True);
         }
 
         [Test]
@@ -119,18 +131,39 @@ namespace Velvet.Tests
                 Is.EqualTo((2f, false)));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the outline width under a ring colour too; the case holds the width apart from the colour fact in the case below, which the base's one tuple assertion packed together.
         [Test]
         public void Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineDefaultWidthSurvives()
         {
-            // A COLOR names no width, so it must not decide which family's default width applies. It used to:
-            // the colour token re-flagged the spec as the ring family, silently widening a bare `outline`
-            // from the outline default to the 3px ring default. Only reachable now that a colour can arrive
-            // from a variant, which is why it is pinned rather than left as a latent parser quirk.
-            // The colour is asserted alongside: a parser that ignored the token outright also leaves the
-            // width at the outline default, and that is not what the case is about.
-            VelvetPalette.TryResolveColorToken("red-500", out var red);
+            // Act
+            var width = Extract("outline", "ring-red-500").Width;
+
+            // Assert: a colour names no width, so it must not decide which family's default width applies.
+            Assert.That(width, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineStillTakesTheTextColour()
+        {
+            // Act
             var spec = Extract("outline", "ring-red-500");
-            Assert.That((spec.Width, spec.Color), Is.EqualTo((1f, red)));
+
+            // Assert: a ring colour is --tw-ring-color, which an outline does not read.
+            Assert.That(RingSpecReader.TakesTextColour(spec), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base colours an outline with its own colour class too; this is the control for the case above.
+        [Test]
+        public void Given_OutlineWithAnOutlineColorToken_When_Extracted_Then_TheOutlineIsThatColour()
+        {
+            // Arrange
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+
+            // Act
+            var spec = Extract("outline", "outline-red-500");
+
+            // Assert
+            Assert.That(spec.Color, Is.EqualTo(red));
         }
 
         [Test]

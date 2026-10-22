@@ -3,10 +3,9 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the parsing contract for Velvet's <c>shadow-*</c> and <c>drop-shadow-*</c> utility classes
-    /// (<see cref="StyleShadowClass"/>): preset resolution for both families, CSS-cascade "last class wins"
-    /// (including <c>-none</c> overriding an earlier preset from either family — because Velvet renders both
-    /// shadow families through one silhouette-following element, they share a single cascade slot), the
+    /// Specifies the parsing contract for Velvet's <c>shadow-*</c> utility classes
+    /// (<see cref="StyleShadowClass"/>): preset resolution, CSS-cascade "last class wins" (including
+    /// <c>shadow-none</c> overriding an earlier preset), that <c>drop-shadow-*</c> stays out of it, the
     /// companion <c>rounded-*</c> corner-radius resolution the shadow silhouette follows, and that the C#
     /// corner-radius mirror stays in lockstep with the <c>--radius-*</c> token scale in <c>_tokens.uss</c> (a
     /// token re-alignment that forgets to update this mirror would bake the old corner into the silhouette).
@@ -16,30 +15,114 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ShadowClassParityTests
     {
-        [Test]
-        public void Given_ShadowLg_When_Extracted_Then_ResolvesTheLgPresetBlur()
-        {
-            // Arrange
-            var classes = new[] { "rounded-2xl", "shadow-lg" };
+        // Each layer as "x y blur spread alpha", first on top, in the order CSS lists them.
+        private static string Describe(ShadowSpec[] layers)
+            => string.Join(", ", System.Array.ConvertAll(layers,
+                l => System.FormattableString.Invariant($"{l.OffsetX} {l.OffsetY} {l.Blur} {l.Spread} {l.Color.a:0.##}")));
 
+        // Tailwind v4.1.11's theme.css --shadow-* values, and --shadow for the bare `shadow`; every preset colour
+        // is black.
+        [TestCase("shadow-2xs", "0 1 0 0 0.05")]
+        [TestCase("shadow-xs", "0 1 2 0 0.05")]
+        [TestCase("shadow", "0 1 3 0 0.1, 0 1 2 -1 0.1")]
+        [TestCase("shadow-sm", "0 1 3 0 0.1, 0 1 2 -1 0.1")]
+        [TestCase("shadow-md", "0 4 6 -1 0.1, 0 2 4 -2 0.1")]
+        [TestCase("shadow-lg", "0 10 15 -3 0.1, 0 4 6 -4 0.1")]
+        [TestCase("shadow-xl", "0 20 25 -5 0.1, 0 8 10 -6 0.1")]
+        [TestCase("shadow-2xl", "0 25 50 -12 0.25")]
+        public void Given_ATailwindPreset_When_Extracted_Then_ItsLayersAreTheV4Theme(string cls, string expected)
+        {
             // Act
-            var found = StyleShadowClass.TryExtract(classes, out var spec);
+            var found = StyleShadowClass.TryExtract(new[] { "rounded-2xl", cls }, out var spec);
 
             // Assert
-            Assert.That(found && spec.Blur == 34f, Is.True);
+            Assert.That(found ? Describe(spec) : "none", Is.EqualTo(expected));
         }
 
         [Test]
-        public void Given_BareShadow_When_Extracted_Then_ResolvesTheDefaultPreset()
+        public void Given_ShadowInner_When_Extracted_Then_ItIsTheV4ThemeLayer()
         {
-            // Arrange
-            var classes = new[] { "shadow" };
+            // Act — theme.css's --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05).
+            var found = StyleShadowClass.TryExtract(new[] { "shadow-inner" }, out var spec);
+
+            // Assert
+            Assert.That(found ? Describe(spec) : "none", Is.EqualTo("0 2 4 0 0.05"));
+        }
+
+        [Test]
+        public void Given_ShadowInner_When_Extracted_Then_ItsLayerIsInset()
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(new[] { "shadow-inner" }, out var spec);
+
+            // Assert
+            Assert.That(found && spec[0].Inset, Is.True);
+        }
+
+        [TestCase(0, true, TestName = "Given_AnArbitraryShadowWithTheInsetKeyword_When_Extracted_Then_ThatLayerIsInset")]
+        [TestCase(1, false, TestName = "Given_AnArbitraryShadowWithTheInsetKeyword_When_Extracted_Then_TheLayerWithoutItIsOuter")]
+        public void Given_AnArbitraryShadowWithTheInsetKeyword_When_Extracted_Then_OnlyThatLayerIsInset(
+            int layer, bool expected)
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(new[] { "shadow-[inset_0_2px_4px_#000000,0_1px_2px_#000000]" },
+                out var spec);
+
+            // Assert
+            Assert.That(found && spec.Length == 2 ? spec[layer].Inset : !expected, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ATailwindPreset_When_Extracted_Then_ItsLayersAreBlack()
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(new[] { "shadow-lg" }, out var spec);
+
+            // Assert
+            Assert.That(found
+                    ? System.Array.FindAll(spec, l => l.Color.r != 0f || l.Color.g != 0f || l.Color.b != 0f).Length
+                    : -1,
+                Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AnArbitraryShadowList_When_Extracted_Then_EachLayerIsReadInOrder()
+        {
+            // Arrange — two layers, the first on top.
+            var classes = new[] { "shadow-[0_1px_2px_#000000,3px_4px_5px_-1px_rgba(0,0,0,0.5)]" };
 
             // Act
             var found = StyleShadowClass.TryExtract(classes, out var spec);
 
             // Assert
-            Assert.That(found && spec.Blur == 14f, Is.True);
+            Assert.That(found ? Describe(spec) : "none", Is.EqualTo("0 1 2 0 1, 3 4 5 -1 0.5"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rejects this bracket too.
+        [Test]
+        public void Given_AnArbitraryShadowListWithAMalformedLayer_When_Extracted_Then_TheWholeListIsRejected()
+        {
+            // Arrange — the browser drops a box-shadow value it cannot read, every layer with it.
+            var classes = new[] { "shadow-[0_1px_2px_#000000,1px]" };
+
+            // Act
+            var found = StyleShadowClass.TryExtract(classes, out _);
+
+            // Assert
+            Assert.That(found, Is.False);
+        }
+
+        [Test]
+        public void Given_AnArbitraryShadowWithANegativeBlur_When_Extracted_Then_ItIsRejected()
+        {
+            // Arrange — CSS rejects a negative blur radius.
+            var classes = new[] { "shadow-[0_1px_-2px_#000000]" };
+
+            // Act
+            var found = StyleShadowClass.TryExtract(classes, out _);
+
+            // Assert
+            Assert.That(found, Is.False);
         }
 
         [Test]
@@ -60,12 +143,13 @@ namespace Velvet.Tests
         {
             // Arrange
             var classes = new[] { "shadow-none", "shadow-lg" };
+            StyleShadowClass.TryExtract(new[] { "shadow-lg" }, out var lg);
 
             // Act
             var found = StyleShadowClass.TryExtract(classes, out var spec);
 
             // Assert
-            Assert.That(found && spec.Blur == 34f, Is.True);
+            Assert.That(found ? Describe(spec) : "none", Is.EqualTo(Describe(lg)));
         }
 
         [Test]
@@ -130,7 +214,7 @@ namespace Velvet.Tests
             var found = StyleShadowClass.TryExtract(classes, out var spec);
 
             // Assert
-            Assert.That(found && spec.Blur == 8f, Is.True);
+            Assert.That(found && spec[0].Blur == 8f, Is.True);
         }
 
         [Test]
@@ -143,7 +227,7 @@ namespace Velvet.Tests
             var found = StyleShadowClass.TryExtract(classes, out var spec);
 
             // Assert
-            Assert.That(found && spec.OffsetX == 2f && spec.OffsetY == 4f, Is.True);
+            Assert.That(found && spec[0].OffsetX == 2f && spec[0].OffsetY == 4f, Is.True);
         }
 
         [Test]
@@ -156,10 +240,9 @@ namespace Velvet.Tests
             var found = StyleShadowClass.TryExtract(classes, out var spec);
 
             // Assert
-            Assert.That(found && spec.Color.a == 0.5f, Is.True);
+            Assert.That(found && spec[0].Color.a == 0.5f, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): runs of spaces read as one separator before and still do.
         [Test]
         public void Given_AnArbitraryShadowWithDoubledSpaces_When_Extracted_Then_TheEmptyTokensAreSkipped()
         {
@@ -170,68 +253,14 @@ namespace Velvet.Tests
             var found = StyleShadowClass.TryExtract(classes, out var spec);
 
             // Assert
-            Assert.That(found && spec.OffsetY == 4f, Is.True);
+            Assert.That(found && spec[0].OffsetY == 4f, Is.True);
         }
 
         [Test]
-        public void Given_ADropShadowPreset_When_Extracted_Then_AShadowIsWanted()
+        public void Given_ADropShadowPreset_When_Extracted_Then_NoBoxShadowIsWanted()
         {
-            // Arrange
+            // Arrange — drop-shadow-* is a filter, painted by no box shadow.
             var classes = new[] { "w-full", "drop-shadow-md" };
-
-            // Act
-            var want = StyleShadowClass.TryExtract(classes, out _);
-
-            // Assert
-            Assert.That(want, Is.True);
-        }
-
-        [Test]
-        public void Given_ADropShadowPreset_When_Extracted_Then_ItUsesTheDropScaleNotTheBoxScale()
-        {
-            // Arrange — drop-shadow-md is tighter than shadow-md (the filter scale).
-            var classes = new[] { "drop-shadow-md" };
-            StyleShadowClass.TryExtract(new[] { "shadow-md" }, out var boxSpec);
-
-            // Act
-            StyleShadowClass.TryExtract(classes, out var dropSpec);
-
-            // Assert
-            Assert.That(dropSpec.Blur, Is.LessThan(boxSpec.Blur));
-        }
-
-        [Test]
-        public void Given_ABareDropShadow_When_Extracted_Then_TheDefaultPresetResolves()
-        {
-            // Arrange
-            var classes = new[] { "drop-shadow" };
-
-            // Act
-            var want = StyleShadowClass.TryExtract(classes, out var spec);
-
-            // Assert
-            Assert.That(want && spec.Blur > 0f, Is.True);
-        }
-
-        [Test]
-        public void Given_AShadowThenADropShadow_When_Extracted_Then_TheLaterFamilyWins()
-        {
-            // Arrange — one cascade slot across both families: the later utility wins.
-            var classes = new[] { "shadow-md", "drop-shadow-lg" };
-            StyleShadowClass.TryExtract(new[] { "drop-shadow-lg" }, out var expected);
-
-            // Act
-            StyleShadowClass.TryExtract(classes, out var spec);
-
-            // Assert
-            Assert.That(spec.Blur, Is.EqualTo(expected.Blur));
-        }
-
-        [Test]
-        public void Given_AShadowThenADropShadowNone_When_Extracted_Then_NoShadowIsWanted()
-        {
-            // Arrange — drop-shadow-none must be able to kill an earlier shadow-lg, like CSS resets.
-            var classes = new[] { "shadow-lg", "drop-shadow-none" };
 
             // Act
             var want = StyleShadowClass.TryExtract(classes, out _);
@@ -241,16 +270,29 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADropShadowClass_When_Gated_Then_HasShadowClassSeesIt()
+        public void Given_ADropShadowClass_When_Gated_Then_HasShadowClassPassesItBy()
         {
-            // Arrange — the cheap early-out gate must not skip drop-shadow-only elements.
+            // Arrange — drop-shadow-* is a filter, which the painted shadow has no part in.
             var classes = new[] { "drop-shadow-xl" };
 
             // Act
             var has = StyleShadowClass.HasShadowClass(classes);
 
             // Assert
-            Assert.That(has, Is.True);
+            Assert.That(has, Is.False);
+        }
+
+        [Test]
+        public void Given_AShadowThenADropShadowNone_When_Extracted_Then_TheBoxShadowStillApplies()
+        {
+            // Arrange — CSS's box-shadow and filter are separate properties, so neither family's none resets the other.
+            var classes = new[] { "shadow-lg", "drop-shadow-none" };
+
+            // Act
+            var want = StyleShadowClass.TryExtract(classes, out _);
+
+            // Assert
+            Assert.That(want, Is.True);
         }
 
         [Test]

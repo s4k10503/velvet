@@ -7,7 +7,7 @@ namespace Velvet
     // Bakes a ClipPathSpec into a runtime VectorImage at a concrete element size. This is the
     // clip-path parity mechanism UI Toolkit (6000.3) actually supports: USS has no clip-path/mask, and
     // a live per-element custom material (style.unityMaterial, the 6.3 UI Shader Graph path) is both
-    // URP-only and subject to the draw-command-order freeze that already forced DropShadowBaker off
+    // URP-only and subject to the draw-command-order freeze that already forced BoxShadowBaker off
     // it. Instead, an element with `overflow: hidden` whose background-image is a VECTOR image is
     // stencil-clipped by UITK to the vector geometry (UIR's RequiresStencilMask path — the officially
     // documented arbitrary-shape mask). Velvet wraps the clipped element in a container carrying this

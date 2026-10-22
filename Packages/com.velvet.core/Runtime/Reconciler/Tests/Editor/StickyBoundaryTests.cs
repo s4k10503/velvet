@@ -253,8 +253,8 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("child,loaded:value"));
         }
 
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryInASuspensePrimaryThatSuspends_When_ItCaughtInThatRender_Then_NothingIsReported()
         {
@@ -265,7 +265,7 @@ namespace Velvet.Tests
 
             // Act
             using var mounted = V.Mount(_root, V.Component(SuspenseHostRender, key: "host"),
-                new MountOptions((_, _) => reports++));
+                new MountOptions { OnCaughtError = (_, _) => reports++ });
             mounted.FlushEffectsForTest();
 
             // Assert — the Suspense fallback is read with it, since a primary that never suspended reports its catch

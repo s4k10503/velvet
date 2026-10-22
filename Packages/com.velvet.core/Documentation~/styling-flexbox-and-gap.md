@@ -34,8 +34,8 @@ Two family-specific facts apply on top of that:
   declares them `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse`, so
   `"flex-col flex-row"` and `"flex-row flex-col"` both lay out as a row. Write one, or mark the winner
   important — `"flex-row !flex-col"` lays out as a column. Neither Tailwind nor Velvet has a bracket form for the
-  direction: Tailwind's `flex-[…]` is the `flex` shorthand, so its `flex-[column]` writes a declaration
-  the browser drops, and Velvet's changes nothing either.
+  direction: `flex-[…]` is the `flex` shorthand in both (see "Proportional splits" below), so
+  `flex-[column]` is a value the shorthand rejects and changes nothing.
 - **`.flex` and `.grid` set `flex-direction: row` alongside `display`**, so a direction utility never
   displaces them — it holds only part of what they write — and takes the direction from them by
   declaration order instead, both being declared before all four.
@@ -295,6 +295,11 @@ child margins it wrote before the arriving one writes its own. A `space-*` on a 
 rule rather than a column gap: the grid writes it on its children beside the gap, and a horizontal one
 comes out of the child's column width, as a CSS grid item stretched to its cell gives up its margins.
 
+`grid-cols-<n>` takes any positive `n`. Tailwind writes a bracket as the track list itself, so
+`grid-cols-[repeat(5,minmax(0,1fr))]`, the list `grid-cols-5` writes, is five columns, while `grid-cols-[5]` is
+a declaration the browser rejects and leaves the class inert. Any other track list is inert as well: the grid
+here lays out equal columns only.
+
 ```csharp
 // Wrapping grid: gap-4 now spaces BOTH the row direction and between wrapped rows.
 V.Div(className: "flex flex-row flex-wrap gap-4", children: ...);
@@ -314,7 +319,11 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   tell base from gap. Only native UITK `gap` composes the two. Workaround: use padding, an inner
   wrapper, or a different axis when a child needs its own margin on the gap edge. A `V.Motion` animating
   that margin is the exception: while it drives the margin, the gap is added to the driven value, as CSS
-  adds an item's margin to the gap. Margins on a
+  adds an item's margin to the gap, and so is an important margin of the child's own that outranks the
+  animation. An important margin that names no length, `ml-auto` or a `calc()` bracket, takes no gap; a
+  spacing step is read off Velvet's scale rather than `--space-*`, the limit
+  [styling-arbitrary-lengths.md](styling-arbitrary-lengths.md) gives for its rewrites. A grid adds its column and row gaps to a child's driven margin the same way, and takes the
+  driven margin out of the child's column width, so the child moves inside its column. Margins on a
   **different** edge than the gap are preserved, so `mt-2` on a child under a non-wrap `gap-x-4` row
   is untouched. (Under the wrap half-margin path every side a gap spaces belongs to it, so an explicit child
   margin there is overwritten.)
@@ -330,7 +339,7 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   avoids it. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of padding
   on the parent, or wrap the grid, if the overlap matters.
 
-## Proportional splits: `grow-N` / `shrink-N`
+## Proportional splits: `grow-N` / `shrink-N` and `flex-N`
 
 `grow` / `shrink` set a factor of 1, `grow-0` / `shrink-0` a factor of 0, and `grow-<N>` / `shrink-<N>`
 any other whole number, as Tailwind's bare values do: a sidebar carrying `grow` beside a content pane
@@ -341,8 +350,23 @@ The value is a plain number. `grow-1.5`, `grow-02`, `grow-[50%]`, `grow-[2rem]` 
 recognized — a factor has no unit and no sign, the bare form is a whole number spelled as Tailwind
 spells it, and the percent form especially would otherwise read as a factor of fifty.
 
-`basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
-two divide what is left over after every sibling's basis is taken.
+The `flex` shorthand takes Tailwind v4's forms: `flex-<N>` is `flex: <N>` (grow N, shrink 1, basis 0%),
+`flex-<a>/<b>` is `flex: calc(<a>/<b> * 100%)` (grow and shrink 1, that percentage as the basis), and
+`flex-[…]` is `flex: …` with `_` for each space — `flex-[2_1_120px]`, `flex-[none]`, `flex-[1_1_0]`, with
+the keywords in any case and `unset` and `revert` reading as `initial`. A basis is `auto`, a unitless `0`
+after the factors, or any non-negative length `basis-[…]` takes, those the element measures (`2em`, `50vw`,
+`calc(50%+10px)`) included. `flex-1` (`flex: 1`, a 0% basis like every other `flex-<N>`), `flex-auto`, `flex-initial` and
+`flex-none` are USS classes.
+
+Tailwind declares `flex` before `flex-shrink`, `flex-grow` and `flex-basis`, so a longhand beside the
+shorthand takes its own part whichever is listed first, a class or a bracket value alike: `flex-2 shrink-0`
+grows at 2 and does not shrink, and `basis-4 flex-2` has a 16px basis. Two utilities of the shorthand's
+own family, a bundled class beside a `flex-<N>`, `flex-<a>/<b>` or `flex-[…]`, resolve as Tailwind orders
+their names, the later one winning: `flex-none flex-2` neither grows nor shrinks, and `flex-2 flex-1` grows
+at 2.
+
+`basis-[..]` and `w-[..]` are a different thing and do not substitute for the grow and shrink factors:
+they fix a size, where the factors divide what is left over after every sibling's basis is taken.
 
 ## A text item's margin, padding, wrapping and minimum size
 

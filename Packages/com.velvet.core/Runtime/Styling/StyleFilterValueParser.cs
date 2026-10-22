@@ -19,7 +19,7 @@ namespace Velvet
         // mean something different from the blur-* utilities defined here.
         internal static readonly string[] BuiltInFamilyNames =
         {
-            "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia",
+            "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia", "drop-shadow",
         };
 
         // The named filter presets (the suffix after the filter prefix). These have no USS class — they
@@ -28,7 +28,7 @@ namespace Velvet
         // the only filter with a negative preset (-hue-rotate-90).
         private static readonly Dictionary<string, float> s_blurPreset = new()
         {
-            ["none"] = 0f, ["sm"] = 4f, ["md"] = 12f, ["lg"] = 16f, ["xl"] = 24f, ["2xl"] = 40f, ["3xl"] = 64f,
+            ["none"] = 0f, ["xs"] = 4f, ["sm"] = 8f, ["md"] = 12f, ["lg"] = 16f, ["xl"] = 24f, ["2xl"] = 40f, ["3xl"] = 64f,
         };
 
         private static readonly Dictionary<string, float> s_contrastPreset = new()
@@ -88,7 +88,7 @@ namespace Velvet
             {
                 if (!StyleArbitraryValueResolver.TryParseAngleDegrees(valueSpan, out var deg)) return false;
                 // CSS takes an angle here, and a number only where it is zero.
-                if (deg != 0f && IsUnitless(valueSpan))
+                if (deg != 0f && StyleArbitraryValueResolver.IsUnitlessAngle(valueSpan))
                 {
                     return false;
                 }
@@ -136,8 +136,177 @@ namespace Velvet
             return StyleArbitraryValueResolver.TryParseFloat(valueSpan, out amount);
         }
 
-        // Called only on a value TryParseAngleDegrees accepted, which is never empty.
-        private static bool IsUnitless(ReadOnlySpan<char> valueSpan) => !char.IsLetter(valueSpan[valueSpan.Length - 1]);
+        // Tailwind's --drop-shadow-* theme, and the bare drop-shadow's deprecated --drop-shadow.
+        private static readonly Dictionary<string, DropShadowLayer[]> s_dropShadowPreset = new()
+        {
+            ["xs"] = new[] { Black(0f, 1f, 1f, 0.05f) },
+            ["sm"] = new[] { Black(0f, 1f, 2f, 0.15f) },
+            ["md"] = new[] { Black(0f, 3f, 3f, 0.12f) },
+            ["lg"] = new[] { Black(0f, 4f, 4f, 0.15f) },
+            ["xl"] = new[] { Black(0f, 9f, 7f, 0.1f) },
+            ["2xl"] = new[] { Black(0f, 25f, 25f, 0.15f) },
+        };
+
+        private static readonly DropShadowLayer[] s_bareDropShadow = { Black(0f, 1f, 2f, 0.1f), Black(0f, 1f, 1f, 0.06f) };
+
+        private static DropShadowLayer Black(float x, float y, float deviation, float alpha)
+            => new(x, y, deviation, new Color(0f, 0f, 0f, alpha));
+
+        // drop-shadow, drop-shadow-<size>, drop-shadow-none, drop-shadow-[<shadow>(,<shadow>)*], each but none
+        // taking a /N alpha, and drop-shadow-<color>(/N) or drop-shadow-[<color>](/N). Which of Tailwind's rules
+        // write their own colours follows its utility: the bare token and a theme size with no modifier do, an
+        // arbitrary shadow never.
+        internal static bool TryParseDropShadow(string className, out ArbitraryStyle result)
+        {
+            result = default;
+            const string family = "drop-shadow";
+            if (!className.StartsWith(family, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(className, family.Length);
+            var value = className.AsSpan(family.Length, (slash < 0 ? className.Length : slash) - family.Length);
+            float? alpha = null;
+            if (slash >= 0)
+            {
+                if (!StyleColorValueParser.TryParseAlphaModifier(className.AsSpan(slash + 1), out var modifier))
+                {
+                    return false;
+                }
+                alpha = modifier;
+            }
+            if (value.Length == 0)
+            {
+                result = DropShadowSize(s_bareDropShadow, true, alpha);
+                return true;
+            }
+            if (value.Length < 2 || value[0] != '-')
+            {
+                return false;
+            }
+            var suffix = value.Slice(1).ToString();
+            if (suffix == "none")
+            {
+                if (alpha != null)
+                {
+                    return false;
+                }
+                result = DropShadowSize(Array.Empty<DropShadowLayer>(), true, null);
+                return true;
+            }
+            if (s_dropShadowPreset.TryGetValue(suffix, out var preset))
+            {
+                result = DropShadowSize(preset, alpha == null, alpha);
+                return true;
+            }
+            Color color;
+            // currentcolor is no colour the shared grammar resolves, so it is read before the bracket would hand it
+            // to the shadow list.
+            if (suffix == "current" || suffix == "[currentcolor]")
+            {
+                color = DropShadowLayer.CurrentColor;
+            }
+            else if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                && !StyleColorValueParser.TryParseColor(inner, out color))
+            {
+                if (!TryParseShadowList(inner, out var shadows))
+                {
+                    return false;
+                }
+                result = DropShadowSize(shadows, false, alpha);
+                return true;
+            }
+            else if (!VelvetPalette.TryResolveColorToken(suffix, out color))
+            {
+                return false;
+            }
+            // Tailwind mixes the colour with transparent at the modifier's percentage, which scales its alpha.
+            color.a *= alpha ?? 1f;
+            result = new ArbitraryStyle(ArbitraryProperty.FilterDropShadowColor, color);
+            return true;
+        }
+
+        private static ArbitraryStyle DropShadowSize(DropShadowLayer[] shadows, bool literal, float? alpha)
+            => new(ArbitraryProperty.FilterDropShadow, new DropShadowValue(shadows, literal, alpha));
+
+        // Comma-separated shadows, each two or three lengths and an optional colour, separated by '_'. A shadow
+        // with no colour takes currentcolor, as CSS's default, which DropShadowLayer.CurrentColor stands for.
+        private static bool TryParseShadowList(ReadOnlySpan<char> list, out DropShadowLayer[] shadows)
+        {
+            shadows = Array.Empty<DropShadowLayer>();
+            var parsed = new List<DropShadowLayer>();
+            foreach (var shadow in SplitOutsideParens(list, ','))
+            {
+                if (!TryParseShadow(shadow.AsSpan(), out var layer))
+                {
+                    return false;
+                }
+                parsed.Add(layer);
+            }
+            shadows = parsed.ToArray();
+            return true;
+        }
+
+        private static bool TryParseShadow(ReadOnlySpan<char> shadow, out DropShadowLayer layer)
+        {
+            layer = default;
+            Span<float> lengths = stackalloc float[3];
+            var lengthCount = 0;
+            Color? color = null;
+            foreach (var token in SplitOutsideParens(shadow, '_'))
+            {
+                if (token.Length == 0)
+                {
+                    continue;
+                }
+                if (StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out var length, out var unit))
+                {
+                    if (unit != LengthUnit.Pixel || lengthCount == 3)
+                    {
+                        return false;
+                    }
+                    lengths[lengthCount++] = length;
+                    continue;
+                }
+                if (color != null || !StyleColorValueParser.TryParseColor(token.AsSpan(), out var parsed))
+                {
+                    return false;
+                }
+                color = parsed;
+            }
+            if (lengthCount < 2 || lengths[2] < 0f)
+            {
+                return false;
+            }
+            layer = new DropShadowLayer(lengths[0], lengths[1], lengths[2], color ?? DropShadowLayer.CurrentColor);
+            return true;
+        }
+
+        // The pieces of value between separators lying outside any parentheses.
+        private static List<string> SplitOutsideParens(ReadOnlySpan<char> value, char separator)
+        {
+            var pieces = new List<string>();
+            var depth = 0;
+            var start = 0;
+            for (var i = 0; i < value.Length; i++)
+            {
+                if (value[i] == '(')
+                {
+                    depth++;
+                }
+                else if (value[i] == ')')
+                {
+                    depth--;
+                }
+                else if (value[i] == separator && depth == 0)
+                {
+                    pieces.Add(value.Slice(start, i - start).ToString());
+                    start = i + 1;
+                }
+            }
+            pieces.Add(value.Slice(start).ToString());
+            return pieces;
+        }
 
         // Warn-once bookkeeping for a filter-[name:...] token whose name was never registered with
         // VelvetFilters: logging once per NAME (not once per resolve) keeps a class re-resolved on every
@@ -161,10 +330,14 @@ namespace Velvet
         // rest. Each colon-separated segment fills the next declared slot and is parsed by that slot's
         // declared type — a float slot takes a signed float, a color slot the shared color grammar — and
         // the missing tail is padded from the declared defaults, so the resolved argument list always
-        // carries the full declared parameter count. Rejects (the whole token falls through as an inert
-        // class): more segments than declared slots, a segment failing its slot's grammar, or an empty
-        // segment — a registered name must not half-apply. Never negated: "-filter-[..]" has no meaning
-        // for a named reference.
+        // carries the full declared parameter count. More segments than declared slots, a segment failing
+        // its slot's grammar, or an empty segment refuse the arguments, and the layer composes nothing — a
+        // registered name must not half-apply. A name nothing is registered under resolves to a reference
+        // with no definition, the url() to a missing filter that makes CSS ignore the whole chain. Either
+        // keeps its bracket body for a registration change to read again. A body whose name is not a name the
+        // registry accepts (CSS's own filter syntax: a function, url(), none) is not claimed, so it stays an
+        // inert class beside the rest of the chain. Never negated: "-filter-[..]" has
+        // no meaning for a named reference.
         internal static bool? TryParseCustomFilter(string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
@@ -175,7 +348,7 @@ namespace Velvet
 
             var colon = valueSpan.IndexOf(':');
             var nameSpan = colon < 0 ? valueSpan : valueSpan.Slice(0, colon);
-            if (nameSpan.Length == 0)
+            if (!VelvetFilters.IsNameShape(nameSpan))
             {
                 return false;
             }
@@ -185,11 +358,24 @@ namespace Velvet
             {
                 if (!QuietUnregistered && s_warnedUnregistered.Add(name))
                 {
-                    Debug.LogWarning($"[VelvetFilters] \"{name}\" is not registered; the filter-[{name}:...] class is inert.");
+                    Debug.LogWarning($"[VelvetFilters] \"{name}\" is not registered; an element carrying filter-[{name}:...] draws no filter until it is.");
                 }
-                return false;
+                result = new ArbitraryStyle(ArbitraryProperty.FilterCustom,
+                    new CustomFilterValue(name, null!, Array.Empty<FilterParameter>(), valueSpan.ToString()));
+                return true;
             }
 
+            var token = valueSpan.ToString();
+            result = new ArbitraryStyle(ArbitraryProperty.FilterCustom, TryReadArguments(definition, valueSpan, colon, out var args)
+                ? new CustomFilterValue(name, definition, args, token)
+                : new CustomFilterValue(name, null!, Array.Empty<FilterParameter>(), token, rejected: true));
+            return true;
+        }
+
+        private static bool TryReadArguments(FilterFunctionDefinition definition, ReadOnlySpan<char> valueSpan, int colon,
+            out FilterParameter[] args)
+        {
+            args = Array.Empty<FilterParameter>();
             var declarations = definition.parameters;
             var declaredCount = declarations?.Length ?? 0;
             // Registration rejects a declaration of more than the 4 parameters a filter function can
@@ -217,13 +403,13 @@ namespace Velvet
                 return false;
             }
 
-            var args = declaredCount == 0 ? Array.Empty<FilterParameter>() : new FilterParameter[declaredCount];
+            var read = declaredCount == 0 ? Array.Empty<FilterParameter>() : new FilterParameter[declaredCount];
             var remaining = colon < 0 ? ReadOnlySpan<char>.Empty : valueSpan.Slice(colon + 1);
             for (var slot = 0; slot < suppliedCount; slot++)
             {
                 var next = remaining.IndexOf(':');
                 var segment = next < 0 ? remaining : remaining.Slice(0, next);
-                if (!TryParseFilterArg(segment, declarations![slot].interpolationDefaultValue.type, out args[slot]))
+                if (!TryParseFilterArg(segment, declarations![slot].interpolationDefaultValue.type, out read[slot]))
                 {
                     return false;
                 }
@@ -235,10 +421,9 @@ namespace Velvet
             // leaving stale material-property state where the declared default should be.
             for (var slot = suppliedCount; slot < declaredCount; slot++)
             {
-                args[slot] = declarations![slot].interpolationDefaultValue;
+                read[slot] = declarations![slot].interpolationDefaultValue;
             }
-
-            result = new ArbitraryStyle(ArbitraryProperty.FilterCustom, new CustomFilterValue(name, definition, args));
+            args = read;
             return true;
         }
 
@@ -272,32 +457,6 @@ namespace Velvet
             return true;
         }
 
-        // Extracts the NAME from a token of the filter-[name(:args)] shape — purely syntactic: no
-        // registry lookup, no warning, no argument validation. The CLEAR paths resolve names through
-        // this instead of TryParseCustomFilter: a layer applied while its name was registered must stay
-        // locatable (and removable) after the name is unregistered, and resolution-for-apply is
-        // registry-gated while resolution-for-clear must not be.
-        internal static bool TryExtractCustomFilterName(string cls, out string name)
-        {
-            name = null!;
-            const string shape = "filter-[";
-            if (cls == null || cls.Length < shape.Length + 2
-                || !cls.StartsWith(shape, StringComparison.Ordinal)
-                || cls[cls.Length - 1] != ']')
-            {
-                return false;
-            }
-            var body = cls.AsSpan(shape.Length, cls.Length - shape.Length - 1);
-            var colon = body.IndexOf(':');
-            var nameSpan = colon < 0 ? body : body.Slice(0, colon);
-            if (nameSpan.Length == 0)
-            {
-                return false;
-            }
-            name = nameSpan.ToString();
-            return true;
-        }
-
         // Cheap dispatch gate (prefix-only): true when cls MIGHT be a named filter preset, so the reconciler
         // routes it to TryParseFilterPreset instead of the class list. Loose by design — an unrecognized
         // suffix (blur-foo) fails the precise parse and falls through to the class list, same as any unknown
@@ -313,7 +472,8 @@ namespace Velvet
             {
                 return true;
             }
-            return cls.StartsWith("blur-", StringComparison.Ordinal)
+            return cls.StartsWith("drop-shadow", StringComparison.Ordinal)
+                || cls.StartsWith("blur-", StringComparison.Ordinal)
                 || cls.StartsWith("contrast-", StringComparison.Ordinal)
                 || cls.StartsWith("hue-rotate-", StringComparison.Ordinal)
                 || cls.StartsWith("-hue-rotate-", StringComparison.Ordinal)
