@@ -221,6 +221,29 @@ namespace Velvet.Tests
             Assert.That(resolved, Is.EqualTo(3f));
         }
 
+        // outline-offset may be negative, drawing the outline inside the border edge.
+        [TestCase("-outline-offset-2", -2f)]
+        [TestCase("-outline-offset-[3px]", -3f)]
+        [TestCase("outline-offset-[-2px]", -2f)]
+        public void Given_ANegativeOutlineOffset_When_Extracted_Then_TheOffsetIsNegative(string offset, float expected)
+        {
+            // Act
+            var resolved = Extract("outline-2", offset).Offset;
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ANegatedOutlineOffset_When_Gated_Then_HasRingClassLetsItThrough()
+        {
+            // Act
+            var has = StyleRingClass.HasRingClass(new[] { "-outline-offset-2" });
+
+            // Assert
+            Assert.That(has, Is.True);
+        }
+
         [TestCase("ring-2", "ring-offset-3")]
         [TestCase("outline-2", "outline-offset-3")]
         public void Given_ABareOffsetOffTheSuggestedScale_When_Extracted_Then_ItIsThatManyPixels(string band, string offset)

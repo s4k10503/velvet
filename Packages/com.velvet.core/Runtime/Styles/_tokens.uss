@@ -62,34 +62,35 @@
      * bg-surface inside another one resolves to the same colour rather than compositing to a brighter
      * one. --color-white-*, --color-overlay* and --color-shadow name a colour and a strength rather
      * than a role: compositing over whatever is behind them is what a scrim and a shadow are for, so
-     * they keep their alpha and are declared once, below, for both themes.
+     * they keep their alpha and are declared once, below, for both themes. The role tokens
+     * SemanticTokenPaletteTests names hold the palette colour it pairs each with.
      */
     --color-background: rgb(255, 255, 255);
     --color-surface: rgb(241, 245, 249);
     --color-surface-strong: rgb(215, 223, 233);
-    --color-highlight: rgb(203, 213, 225);
+    --color-highlight: rgb(202, 213, 226);
     --color-border: rgb(226, 232, 240);
     --color-border-strong: rgb(176, 190, 207);
-    --color-accent: rgb(2, 132, 199);
-    --color-accent-strong: rgb(3, 105, 161);
-    --color-text: rgb(15, 23, 42);
-    --color-text-subtle: rgb(100, 116, 139);
-    --color-primary: rgb(37, 99, 235);
-    --color-primary-hover: rgb(29, 78, 216);
-    --color-primary-active: rgb(30, 64, 175);
+    --color-accent: rgb(0, 132, 209);
+    --color-accent-strong: rgb(0, 105, 168);
+    --color-text: rgb(15, 23, 43);
+    --color-text-subtle: rgb(98, 116, 142);
+    --color-primary: rgb(21, 93, 252);
+    --color-primary-hover: rgb(20, 71, 230);
+    --color-primary-active: rgb(25, 60, 184);
     --color-primary-soft: rgb(219, 234, 254);
     --color-primary-faint: rgb(239, 246, 255);
-    --color-danger: rgb(220, 38, 38);
-    --color-danger-hover: rgb(185, 28, 28);
-    --color-danger-active: rgb(153, 27, 27);
-    --color-success: rgb(22, 163, 74);
-    --color-success-hover: rgb(21, 128, 61);
-    --color-success-active: rgb(22, 101, 52);
+    --color-danger: rgb(231, 0, 11);
+    --color-danger-hover: rgb(193, 0, 7);
+    --color-danger-active: rgb(159, 7, 18);
+    --color-success: rgb(0, 166, 62);
+    --color-success-hover: rgb(0, 130, 54);
+    --color-success-active: rgb(1, 102, 48);
     --color-neutral: rgb(248, 250, 252);
     --color-surface-hover: rgb(226, 232, 240);
     --color-surface-active: rgb(233, 238, 244);
-    --color-border-hover: rgb(148, 163, 184);
-    --color-border-active: rgb(203, 213, 225);
+    --color-border-hover: rgb(144, 161, 185);
+    --color-border-active: rgb(202, 213, 226);
 
     --color-white-soft: rgba(255, 255, 255, 0.8);
     --color-white-strong: rgba(255, 255, 255, 0.95);
@@ -133,7 +134,7 @@
  * Documentation~/styling-variants.md owns that mechanism.
  */
 .dark {
-    --color-background: rgb(15, 23, 42);
+    --color-background: rgb(15, 23, 43);
     --color-surface: rgb(44, 51, 68);
     --color-surface-strong: rgb(63, 69, 85);
     --color-highlight: rgb(99, 104, 117);

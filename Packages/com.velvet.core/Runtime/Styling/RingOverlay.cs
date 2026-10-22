@@ -234,8 +234,8 @@ namespace Velvet
         }
 
         // Sizes and positions the overlay over the element's laid-out box. Outset (the default): the band sits
-        // OUTSIDE the element edge by Offset, so the overlay inflates by (Offset + Width) per side and each
-        // outer corner radius is that corner's radius plus the same amount. Inset (ring-inset): the overlay
+        // OUTSIDE the element edge by Offset, or inside it by a negative outline offset, so the overlay inflates by
+        // (Offset + Width) per side and each outer corner radius is that corner's radius plus the same amount. Inset (ring-inset): the overlay
         // matches the element's box exactly, at the element's own radii.
         private static void SyncGeometry(VisualElement element, RingBinding binding, VisualElement host)
         {
@@ -267,15 +267,15 @@ namespace Velvet
             var grow = spec.Inset ? 0f : spec.Offset + spec.Width;
             overlay.style.left = originX - grow - hostBorderLeft;
             overlay.style.top = originY - grow - hostBorderTop;
-            overlay.style.width = width + (grow * 2f);
-            overlay.style.height = height + (grow * 2f);
+            overlay.style.width = Mathf.Max(0f, width + (grow * 2f));
+            overlay.style.height = Mathf.Max(0f, height + (grow * 2f));
 
             var outerGrow = spec.Inset ? 0f : spec.Offset + spec.Width;
             ResolveRadii(element, binding, out var tl, out var tr, out var br, out var bl);
-            overlay.style.borderTopLeftRadius = tl + outerGrow;
-            overlay.style.borderTopRightRadius = tr + outerGrow;
-            overlay.style.borderBottomRightRadius = br + outerGrow;
-            overlay.style.borderBottomLeftRadius = bl + outerGrow;
+            overlay.style.borderTopLeftRadius = Mathf.Max(0f, tl + outerGrow);
+            overlay.style.borderTopRightRadius = Mathf.Max(0f, tr + outerGrow);
+            overlay.style.borderBottomRightRadius = Mathf.Max(0f, br + outerGrow);
+            overlay.style.borderBottomLeftRadius = Mathf.Max(0f, bl + outerGrow);
         }
 
         // Gives the band what the element's own subtree would have given it had it been inside: its opacity,

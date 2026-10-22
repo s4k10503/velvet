@@ -191,7 +191,8 @@ namespace Velvet
 
         // Same list: the ring's box-shadow properties come before the outline ones.
         private static int RingLane(string core)
-            => core == "outline" || core.StartsWith("outline-", StringComparison.Ordinal) ? 1 : 0;
+            => core == "outline" || core.StartsWith("outline-", StringComparison.Ordinal)
+                || core.StartsWith("-outline-", StringComparison.Ordinal) ? 1 : 0;
 
         // A colour stop declares its own variables and is ordered apart. A shape that declares its position variable
         // once inside @supports as well (a keyword or integer bg-linear-*) counts three declarations, and

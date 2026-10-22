@@ -25,10 +25,20 @@ follows a transform on the element, as a CSS box-shadow does. `drop-shadow-*` is
 | `inset-shadow-sm` | `inset 0 2px 4px` black at 5% |
 | `inset-shadow-none` | none |
 | `inset-shadow-[<shadow>(,<shadow>)*]` | as `shadow-[…]` without the `inset`, which is written ahead of every shadow: `inset-shadow-[0_2px_4px_#0004]` |
+| `inset-ring`, `inset-ring-<n>`, `inset-ring-[<length>]` | `inset 0 0 0` and the width: 1px, `<n>` px, or the bracket's length |
 
-The presets are Tailwind v4's `--shadow-*` and `--inset-shadow-*` theme values. An `inset-shadow-*` and a `shadow-*`
-on one element are both drawn, the `inset-shadow-*` layers listed first, and each `-none` removes its own family's
-layers alone. A layer of a bracketed shadow without a colour takes
+## Colours
+
+| Utility | Colour |
+|---|---|
+| `shadow-<color>`, `inset-shadow-<color>`, `inset-ring-<color>` | a palette name, `transparent`, `current` (the element's text colour) or a bracketed colour (`shadow-[#f00]`), taking the place of the colour of every layer of its own family; `/N` scales its alpha (`shadow-red-500/40`) |
+| `shadow-<size>/N`, `inset-shadow-<size>/N` | sets the alpha of every layer of the size to N%, or, beside a colour class, scales that colour's alpha by it (`shadow-lg/50`) |
+
+An `inset-ring-*` with no colour class is drawn in the element's text colour, as CSS's `currentColor`.
+
+The presets are Tailwind v4's `--shadow-*` and `--inset-shadow-*` theme values. An `inset-shadow-*`, an
+`inset-ring-*` and a `shadow-*` on one element are all drawn, listed in that order, and each `-none` (or
+`inset-ring-0`) removes its own family's layers alone. A layer of a bracketed shadow without a colour takes
 `rgb(4 12 24 / 0.2)`, where CSS takes `currentColor`. A negative blur, a percentage, or any layer that does not
 read rejects the whole bracket, as the browser drops a `box-shadow` value it cannot read.
 
@@ -61,6 +71,5 @@ each border off its own axis and leaves an elliptical corner.
 
 These classes read as no shadow, so they are inert and an earlier `shadow-*` stays in force:
 
-- `shadow-<color>`, `inset-shadow-<color>` and `shadow-lg/50`: the colour of a preset layer cannot be changed. Write
-  the layers out in `shadow-[…]` or `inset-shadow-[…]` with a colour.
-- `shadow-[#f00]`: a bracket must hold at least the two offset lengths.
+- `shadow-inherit`, `inset-shadow-inherit` and `inset-ring-inherit`: a colour is not inherited from the parent's
+  shadow colour.

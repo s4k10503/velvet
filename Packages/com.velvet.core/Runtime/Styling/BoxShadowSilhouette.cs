@@ -517,8 +517,14 @@ namespace Velvet
         private static void DrawShadowQuad(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowSpec layer,
             in ShadowBox box, Vector2 unscale)
         {
-            var alpha = layer.Color.a;
-            if (alpha <= 0.004f)
+            var tint = layer.Color;
+            if (float.IsNaN(tint.r))
+            {
+                var current = mgc.visualElement.resolvedStyle.color;
+                current.a *= tint.a;
+                tint = current;
+            }
+            if (tint.a <= 0.004f)
             {
                 return;
             }
@@ -541,8 +547,6 @@ namespace Velvet
             // UVs are raw 0..1 (UI Toolkit remaps them into the atlas slot); the texture's alpha carries the
             // SDF antialiasing. texUV.y is flipped (box top samples v = 1) to match the bake orientation and
             // SkewSilhouette's gradient quad, so a skewed caster's shadow slants the same direction on screen.
-            var tint = layer.Color;
-            tint.a = alpha;
             var mwd = mgc.Allocate(4, 6, tex);
             mwd.SetNextVertex(new Vertex { position = new Vector3(minX, minY, Vertex.nearZ), tint = tint, uv = new Vector2(0f, 1f) }); // top-left
             mwd.SetNextVertex(new Vertex { position = new Vector3(maxX, minY, Vertex.nearZ), tint = tint, uv = new Vector2(1f, 1f) }); // top-right

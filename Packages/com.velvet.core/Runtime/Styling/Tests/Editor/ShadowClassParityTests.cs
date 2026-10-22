@@ -317,6 +317,77 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnInsetRingClass_When_Gated_Then_HasShadowClassLetsItThrough()
+        {
+            // Act
+            var has = StyleShadowClass.HasShadowClass(new[] { "inset-ring" });
+
+            // Assert
+            Assert.That(has, Is.True);
+        }
+
+        // Each layer's colour as RGBA, or "current" and its alpha for the element's text colour.
+        private static string Colours(ShadowSpec[] layers)
+            => string.Join(", ", System.Array.ConvertAll(layers, l => float.IsNaN(l.Color.r)
+                ? System.FormattableString.Invariant($"current {l.Color.a:0.##}")
+                : UnityEngine.ColorUtility.ToHtmlStringRGBA(l.Color)));
+
+        // A colour class takes the place of every layer's colour, its /N scaling the colour's alpha; a size's /N
+        // replaces each layer's alpha, and scales a colour class's instead.
+        [TestCase("shadow-md shadow-red-500", "FB2C36FF, FB2C36FF")]
+        [TestCase("shadow-md shadow-red-500/40", "FB2C3666, FB2C3666")]
+        [TestCase("shadow-md/40", "00000066, 00000066")]
+        [TestCase("shadow-md/50 shadow-red-500/40", "FB2C3633, FB2C3633")]
+        [TestCase("shadow-sm shadow-current/50", "current 0.5, current 0.5")]
+        [TestCase("inset-shadow-sm inset-shadow-blue-500", "2B7FFFFF")]
+        public void Given_AShadowColourOrAlpha_When_Extracted_Then_ItColoursTheLayers(string classes, string expected)
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(classes.Split(' '), out var spec);
+
+            // Assert
+            Assert.That(found ? Colours(spec) : "none", Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AShadowColour_When_Extracted_Then_ItDoesNotColourTheInsetShadow()
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(new[] { "inset-shadow-2xs", "shadow-red-500" }, out var spec);
+
+            // Assert
+            Assert.That(found ? Colours(spec) : "none", Is.EqualTo("0000000D"));
+        }
+
+        // inset-ring writes `inset 0 0 0 <width> <colour>`, in the element's text colour where it names none.
+        [TestCase("inset-ring", "0 0 0 1 current 1")]
+        [TestCase("inset-ring-2 inset-ring-red-500/40", "0 0 0 2 FB2C3666")]
+        [TestCase("inset-ring-[3px]", "0 0 0 3 current 1")]
+        public void Given_AnInsetRing_When_Extracted_Then_ItIsAnInsetLayerOfItsWidth(string classes, string expected)
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(classes.Split(' '), out var spec);
+
+            // Assert
+            Assert.That(
+                found && spec.Length == 1 && spec[0].Inset
+                    ? System.FormattableString.Invariant($"{spec[0].OffsetX} {spec[0].OffsetY} {spec[0].Blur} {spec[0].Spread} ")
+                        + Colours(spec)
+                    : "none",
+                Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AnInsetShadowAnInsetRingAndAShadow_When_Extracted_Then_TheyAreListedInThatOrder()
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(new[] { "shadow-2xl", "inset-ring-2", "inset-shadow-sm" }, out var spec);
+
+            // Assert
+            Assert.That(found ? Describe(spec) : "none", Is.EqualTo("0 2 4 0 0.05, 0 0 0 2 1, 0 25 50 -12 0.25"));
+        }
+
+        [Test]
         public void Given_ADropShadowClass_When_Gated_Then_HasShadowClassPassesItBy()
         {
             // Arrange — drop-shadow-* is a filter, which the painted shadow has no part in.
