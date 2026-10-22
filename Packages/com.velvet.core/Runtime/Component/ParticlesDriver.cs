@@ -1,37 +1,52 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
+    // What one of a renderer's materials draws its triangles with: the texture they sample and the faces its
+    // shader culls.
+    internal readonly struct ParticleLayer
+    {
+        public readonly Texture? Texture;
+        public readonly CullMode Cull;
+
+        public ParticleLayer(Texture? texture, CullMode cull)
+        {
+            Texture = texture;
+            Cull = cull;
+        }
+    }
+
     // One particle system inside the hidden host — the root or a child, a sub-emitter among them — as
     // captured at clone time: the framework owns the clone, so no one changes these settings on it
     // afterwards.
     internal sealed class HostedParticleSystem
     {
         public readonly ParticleSystem System;
-        // Null for a system that draws nothing: its renderer was off in the source, or rendered in
-        // ParticleSystemRenderMode.None. Otherwise it grows to the live count as the draw finds it.
-        public ParticleSystem.Particle[]? Buffer;
-        public readonly Texture? Texture;
-        public readonly ParticleSystemSimulationSpace Space;
-        public readonly Transform? CustomSpace;
+        // Null for a system that draws nothing: its renderer was off in the source, rendered in
+        // ParticleSystemRenderMode.None, or rendered meshes without one.
+        public readonly ParticleSystemRenderer? Renderer;
+        public readonly ParticleLayer Particles;
+        public readonly bool DrawsTrails;
+        public readonly ParticleLayer Trails;
         // A sub-emitter emits only when its parent's particles trigger it, and a disabled emission
         // module never does, so neither keeps the effect alive on its own clock.
         public readonly bool EmitsOnItsOwn;
         // Seconds after play at which the system's own emission ends: never, for a looping one.
         public readonly float EmitsUntil;
 
-        public HostedParticleSystem(ParticleSystem system, ParticleSystem.Particle[]? buffer, Texture? texture,
-            bool emitsOnItsOwn, float emitsUntil)
+        public HostedParticleSystem(ParticleSystem system, ParticleSystemRenderer? renderer, ParticleLayer particles,
+            ParticleLayer trails, bool emitsOnItsOwn, float emitsUntil)
         {
             System = system;
-            Buffer = buffer;
-            Texture = texture;
-            var main = system.main;
-            Space = main.simulationSpace;
-            CustomSpace = main.customSimulationSpace;
+            Renderer = renderer;
+            Particles = particles;
+            DrawsTrails = system.trails.enabled;
+            Trails = trails;
             EmitsOnItsOwn = emitsOnItsOwn;
             EmitsUntil = emitsUntil;
         }
@@ -54,6 +69,10 @@ namespace Velvet
         // exactly once instead of re-triggering on every unrelated diff.
         public PlayTrigger AppliedPlayOn;
         public HostedParticleSystem[]? Systems;
+        // The disabled camera the renderers bake their geometry for, a child of the host, and the mesh they
+        // bake into.
+        public Camera? BakeCamera;
+        public Mesh? BakedMesh;
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<AttachToPanelEvent>? OnAttach;
         public IVisualElementScheduledItem? RepaintTick;
@@ -66,7 +85,7 @@ namespace Velvet
         // Mode — the clock HostedParticleSystem.EmitsUntil is read against there.
         public float SimulatedSeconds;
         // An inline filter renders the element through an offscreen tree sized to its layout boundingBox, so
-        // the particle quads drawn beyond the host rect clip; a last-child spacer widens the boundingBox to
+        // the particle geometry drawn beyond the host rect clips; a last-child spacer widens the boundingBox to
         // cover them (shared with the skew / shadow paints via SilhouetteBoundsSpacer). Unlike those static
         // AABBs the particles move every frame, hence the quantize + last-applied cache below: without them
         // the spacer would re-layout (and the filter texture reallocate) on every tick.
@@ -87,21 +106,39 @@ namespace Velvet
 
     /// <summary>
     /// Drives a <see cref="ParticlesElement"/>'s display: the source effect is cloned into a hidden,
-    /// framework-owned simulation host (renderer disabled — only the simulation is consumed, the
-    /// source system is never mutated) and the live particles are drawn as textured quads in the
-    /// element's own visual content — no camera, no world-space canvas, no render-pipeline coupling.
+    /// framework-owned simulation host (renderers disabled — the source system is never mutated), each
+    /// renderer's geometry is baked every repaint, and the baked triangles are drawn in the element's own
+    /// visual content — no RenderTexture, no world-space canvas, no render-pipeline coupling.
     /// </summary>
     internal static class ParticlesDriver
     {
-        // The quads one mesh allocation carries. A UI Toolkit mesh allocation is bounded by its vertex
-        // budget and each particle costs 4 vertices, so a denser system is drawn as several
-        // allocations of at most this many quads rather than one unbounded one.
-        private const int MaxQuadsPerAllocation = 2048;
+        // The triangles one mesh allocation carries, at three vertices each. A UI Toolkit mesh allocation is
+        // bounded by its vertex budget, so a denser bake is drawn as several allocations of at most this many
+        // triangles rather than one unbounded one.
+        private const int MaxTrianglesPerAllocation = 4096;
 
-        // Where the hidden host parks: far below any plausible scene content so a stray scene camera
-        // (or the scene view) never composes the simulation twice even before the renderer disable
-        // lands on unusual setups.
-        private static readonly Vector3 HostParkingPosition = new(0f, -10000f, 0f);
+        private const float BakeCameraDistance = 1000f;
+
+        private const ParticleSystemBakeMeshOptions WorldSpace =
+            ParticleSystemBakeMeshOptions.BakePosition | ParticleSystemBakeMeshOptions.BakeRotationAndScale;
+
+        private const string CullProperty = "_Cull";
+
+        // What the draw reads of each baked vertex, whatever streams the source's shader asked for.
+        private static readonly List<ParticleSystemVertexStream> s_bakedStreams = new()
+        {
+            ParticleSystemVertexStream.Position,
+            ParticleSystemVertexStream.Color,
+            ParticleSystemVertexStream.UV,
+        };
+
+        // Scratch for Draw, reused rather than allocated on every repaint.
+        private static readonly List<Vector3> s_positions = new();
+        private static readonly List<Color32> s_colors = new();
+        private static readonly List<Vector2> s_uvs = new();
+        private static readonly List<int> s_triangles = new();
+        private static readonly List<Vector2> s_local = new();
+        private static readonly List<int> s_kept = new();
 
         // Wires the particle painter onto the element and returns the binding; a non-null effect gets
         // its hidden host immediately (the simulation needs no panel or layout — only the DRAW does,
@@ -272,22 +309,21 @@ namespace Velvet
             }
         }
 
-        // Clones the source effect into the hidden simulation host: each particle system's renderer
-        // disabled (no camera may draw it — only GetParticles is consumed), hidden from the hierarchy
-        // and excluded from editor scene saves, parked far out of scene content. Each system's draw
-        // texture is its renderer material's main texture (a disabled renderer keeps sharedMaterial
-        // readable).
+        // Clones the source effect into the hidden simulation host, at the source's world position and
+        // rotation so its collisions and triggers meet the colliders and planes the source's would: each
+        // particle system's renderer disabled (only its baked geometry is drawn), hidden from the hierarchy
+        // and excluded from editor scene saves. A disabled renderer keeps its materials readable.
         private static void CreateHost(ParticlesBinding binding)
         {
             var source = binding.Settings.Effect!;
-            var host = UnityEngine.Object.Instantiate(source, HostParkingPosition, source.transform.rotation);
+            var host = UnityEngine.Object.Instantiate(source, source.transform.position, source.transform.rotation);
             // Cloning preserves activeSelf, and an inactive host never simulates; a pooled prefab kept
             // inactive until spawned must still drive a live element.
             host.gameObject.SetActive(true);
             VelvetObjectUtil.HideFrameworkSceneObject(host.gameObject);
             CloneExternalSubEmitters(host);
             var systems = host.GetComponentsInChildren<ParticleSystem>();
-            var subEmitters = new System.Collections.Generic.HashSet<ParticleSystem>();
+            var subEmitters = new HashSet<ParticleSystem>();
             foreach (var system in systems)
             {
                 var module = system.subEmitters;
@@ -301,39 +337,87 @@ namespace Velvet
             {
                 var system = systems[i];
                 var main = system.main;
-                // The renderers are disabled and the host sits far from every camera, so Unity's
-                // automatic culling would judge a system offscreen and PAUSE a looping simulation,
-                // freezing the drawn output — every system must always simulate.
+                // The renderers are disabled, and automatic culling must not pause a looping simulation and
+                // freeze the drawn output, so every system always simulates.
                 main.cullingMode = ParticleSystemCullingMode.AlwaysSimulate;
-                ParticleSystem.Particle[]? buffer = null;
-                Texture? texture = null;
+                ParticleSystemRenderer? drawn = null;
+                var particles = default(ParticleLayer);
+                var trails = default(ParticleLayer);
                 if (system.TryGetComponent<ParticleSystemRenderer>(out var renderer))
                 {
                     if (Draws(renderer))
                     {
-                        buffer = Array.Empty<ParticleSystem.Particle>();
-                        texture = renderer.sharedMaterial != null ? renderer.sharedMaterial.mainTexture : null;
+                        drawn = renderer;
+                        renderer.SetActiveVertexStreams(s_bakedStreams);
+                        renderer.SetActiveTrailVertexStreams(s_bakedStreams);
+                        particles = new ParticleLayer(ParticleTexture(system, renderer.sharedMaterial), CullOf(renderer.sharedMaterial));
+                        trails = LayerOf(renderer.trailMaterial);
                     }
                     renderer.enabled = false;
                 }
                 var emitsOnItsOwn = system.emission.enabled && !subEmitters.Contains(system);
                 var emitsUntil = main.loop ? float.PositiveInfinity : main.startDelay.constantMax + main.duration;
-                hosted[i] = new HostedParticleSystem(system, buffer, texture, emitsOnItsOwn, emitsUntil);
+                hosted[i] = new HostedParticleSystem(system, drawn, particles, trails, emitsOnItsOwn, emitsUntil);
             }
             binding.Systems = hosted;
+            binding.BakeCamera = CreateBakeCamera(host);
+            binding.BakedMesh = new Mesh
+            {
+                name = "velvet-particles-baked-mesh",
+                hideFlags = HideFlags.HideAndDontSave,
+                indexFormat = IndexFormat.UInt32,
+            };
             binding.SourceId = source.GetEntityId();
             binding.Host = host;
             ApplyPlayTrigger(binding);
         }
 
+        // Looks down the host's forward axis with the host's up as its own, so a billboard facing it lies in
+        // the host's local xy plane, the plane the element draws.
+        private static Camera CreateBakeCamera(ParticleSystem host)
+        {
+            var go = new GameObject("velvet-particles-bake-camera");
+            VelvetObjectUtil.HideFrameworkSceneObject(go);
+            go.transform.SetParent(host.transform, false);
+            go.transform.localPosition = new Vector3(0f, 0f, -BakeCameraDistance);
+            var camera = go.AddComponent<Camera>();
+            camera.enabled = false;
+            camera.orthographic = true;
+            return camera;
+        }
+
+        // A texture-sheet animation in Sprites mode draws from its first sprite's texture in place of the
+        // material's.
+        private static Texture? ParticleTexture(ParticleSystem system, Material? material)
+        {
+            var sheet = system.textureSheetAnimation;
+            var sprite = sheet.enabled && sheet.mode == ParticleSystemAnimationMode.Sprites && sheet.spriteCount != 0
+                ? sheet.GetSprite(0)
+                : null;
+            if (sprite != null)
+            {
+                return sprite.texture;
+            }
+            return material != null ? material.mainTexture : null;
+        }
+
+        private static ParticleLayer LayerOf(Material? material)
+            => new(material != null ? material.mainTexture : null, CullOf(material));
+
+        // A shader declaring no _Cull property is read as culling nothing.
+        private static CullMode CullOf(Material? material)
+            => material != null && material.HasProperty(CullProperty)
+                ? (CullMode)Mathf.RoundToInt(material.GetFloat(CullProperty))
+                : CullMode.Off;
+
         // A sub-emitter outside the host's hierarchy is cloned under the host (once, however many
-        // systems name it), at the host's origin, and the reference re-pointed at the clone, so the
-        // clone's particles are the ones drawn. The queue also visits the clones, so a sub-emitter's
-        // own external sub-emitters follow.
+        // systems name it), at the target's own world position and rotation, and the reference
+        // re-pointed at the clone, so the clone's particles are the ones drawn. The queue also visits
+        // the clones, so a sub-emitter's own external sub-emitters follow.
         private static void CloneExternalSubEmitters(ParticleSystem host)
         {
-            var clones = new System.Collections.Generic.Dictionary<ParticleSystem, ParticleSystem>();
-            var pending = new System.Collections.Generic.Queue<ParticleSystem>(host.GetComponentsInChildren<ParticleSystem>());
+            var clones = new Dictionary<ParticleSystem, ParticleSystem>();
+            var pending = new Queue<ParticleSystem>(host.GetComponentsInChildren<ParticleSystem>());
             while (pending.Count > 0)
             {
                 var module = pending.Dequeue().subEmitters;
@@ -360,19 +444,18 @@ namespace Velvet
 
         private static ParticleSystem CloneUnderHost(ParticleSystem target, ParticleSystem host)
         {
-            var clone = UnityEngine.Object.Instantiate(target, host.transform);
-            clone.transform.localPosition = Vector3.zero;
-            clone.transform.localRotation = Quaternion.identity;
+            var clone = UnityEngine.Object.Instantiate(target, target.transform.position, target.transform.rotation, host.transform);
             clone.gameObject.SetActive(true);
             VelvetObjectUtil.HideFrameworkSceneObject(clone.gameObject);
             return clone;
         }
 
-        // What the scene would draw of the source system: nothing with its renderer off or set to
-        // render nothing.
+        // Nothing is drawn of a system whose renderer is off or set to render nothing, as in the scene, nor
+        // of one rendering meshes with no mesh assigned, which is never baked.
         private static bool Draws(ParticleSystemRenderer renderer)
         {
-            return renderer.enabled && renderer.renderMode != ParticleSystemRenderMode.None;
+            return renderer.enabled && renderer.renderMode != ParticleSystemRenderMode.None
+                && (renderer.renderMode != ParticleSystemRenderMode.Mesh || renderer.mesh != null);
         }
 
         // Applies the CURRENT settings' play trigger to the live host and records it so Sync can
@@ -399,6 +482,7 @@ namespace Velvet
             {
                 VelvetObjectUtil.Destroy(binding.Host.gameObject);
             }
+            VelvetObjectUtil.Destroy(binding.BakedMesh);
             binding.Host = null;
             binding.SourceId = EntityId.None;
             binding.Systems = null;
@@ -438,12 +522,11 @@ namespace Velvet
             }
         }
 
-        // Emits one textured quad per live particle of every drawn system into the element's own visual
-        // content: positions taken into the root's local space, centered on the element rect center,
-        // x/y mapped through PixelsPerUnit with y flipped (up = element up; UI Toolkit y grows downward),
-        // scaled by the particle's current size, rotated by its rotation, tinted by its current color.
-        // Quads are NOT clipped to the rect — overflow is visible by default like any painted content,
-        // and overflow-hidden composes through the usual utilities on the element.
+        // Draws every drawn system's baked geometry into the element's own visual content: its particles,
+        // then its trails. Vertices are taken into the root's local space, centered on the element rect
+        // center, x/y mapped through PixelsPerUnit with y flipped (up = element up; UI Toolkit y grows
+        // downward). Triangles are NOT clipped to the rect — overflow is visible by default like any
+        // painted content, and overflow-hidden composes through the usual utilities on the element.
         private static void Draw(MeshGenerationContext mgc, VisualElement element, ParticlesBinding binding)
         {
             // Reset first so every early return leaves no extent: the spacer collapses back to the box on
@@ -461,16 +544,20 @@ namespace Velvet
                 return;
             }
 
-            var toHost = host.transform.worldToLocalMatrix;
-            // Only a filtered element consumes the extent, so the far more common no-filter case skips the
-            // per-particle reach work and the Rect write entirely. With nothing drawn the bounds stay
-            // inverted, a negative size SyncBoundsSpacer treats as no extent.
-            var frame = new QuadFrame
+            var ppu = binding.Settings.PixelsPerUnit;
+            var camera = binding.BakeCamera!;
+            var mesh = binding.BakedMesh!;
+            // The bake camera's view is as tall as the element, so a renderer's limits on a particle's share
+            // of the view are taken against the element; ParticlesPlaybackTests'
+            // Given_AParticleLargerThanItsRendererAllows_When_Drawn_Then_ItIsClampedAgainstTheElement pins that.
+            camera.orthographicSize = h / (2f * ppu);
+            // With nothing drawn the bounds stay inverted, a negative size SyncBoundsSpacer treats as no extent.
+            var frame = new DrawFrame
             {
+                ToHost = host.transform.worldToLocalMatrix,
                 Cx = w * 0.5f,
                 Cy = h * 0.5f,
-                Ppu = binding.Settings.PixelsPerUnit,
-                Track = binding.WantSpacer,
+                Ppu = ppu,
                 MinX = float.MaxValue,
                 MinY = float.MaxValue,
                 MaxX = float.MinValue,
@@ -478,96 +565,106 @@ namespace Velvet
             };
             foreach (var hosted in binding.Systems!)
             {
-                // A child whose stop action destroyed it is gone while the host lives on.
-                if (hosted.Buffer != null && hosted.System != null)
+                // Null for a system that draws nothing, and for a child whose stop action destroyed it
+                // while the host lives on.
+                if (hosted.Renderer == null)
                 {
-                    DrawSystem(mgc, hosted, toHost * SimulationToWorld(hosted), ref frame);
+                    continue;
+                }
+                hosted.Renderer.BakeMesh(mesh, camera, WorldSpace);
+                DrawBaked(mgc, mesh, hosted.Particles, ref frame);
+                if (hosted.DrawsTrails)
+                {
+                    hosted.Renderer.BakeTrailsMesh(mesh, camera, WorldSpace);
+                    DrawBaked(mgc, mesh, hosted.Trails, ref frame);
                 }
             }
-            if (frame.Track)
-            {
-                binding.LiveExtentLocal = Rect.MinMaxRect(frame.MinX, frame.MinY, frame.MaxX, frame.MaxY);
-            }
+            binding.LiveExtentLocal = Rect.MinMaxRect(frame.MinX, frame.MinY, frame.MaxX, frame.MaxY);
         }
 
         // The element-space mapping every system shares within one Draw, and the extent it accumulates.
-        private struct QuadFrame
+        private struct DrawFrame
         {
+            public Matrix4x4 ToHost;
             public float Cx;
             public float Cy;
             public float Ppu;
-            public bool Track;
             public float MinX;
             public float MinY;
             public float MaxX;
             public float MaxY;
         }
 
-        private static void DrawSystem(MeshGenerationContext mgc, HostedParticleSystem hosted, Matrix4x4 toDrawSpace, ref QuadFrame frame)
+        private static void DrawBaked(MeshGenerationContext mgc, Mesh mesh, ParticleLayer layer, ref DrawFrame frame)
         {
-            var system = hosted.System;
-            var alive = system.particleCount;
-            // MUTANT_SURVIVES(equivalent, boundary): regrowing a buffer that already fits reads the same particles into it.
-            if (alive > hosted.Buffer!.Length)
+            mesh.GetVertices(s_positions);
+            mesh.GetColors(s_colors);
+            mesh.GetUVs(0, s_uvs);
+            s_local.Clear();
+            foreach (var position in s_positions)
             {
-                hosted.Buffer = new ParticleSystem.Particle[Mathf.NextPowerOfTwo(alive)];
+                s_local.Add(frame.ToHost.MultiplyPoint3x4(position));
             }
-            var count = system.GetParticles(hosted.Buffer);
-            // MUTANT_SURVIVES(equivalent, boundary): the extra pass `<=` adds allocates zero quads, which Allocate returns without drawing.
-            for (var first = 0; first < count; first += MaxQuadsPerAllocation)
+            for (var sub = 0; sub < mesh.subMeshCount; sub++)
             {
-                DrawQuads(mgc, hosted, toDrawSpace, first, Mathf.Min(count - first, MaxQuadsPerAllocation), ref frame);
+                mesh.GetTriangles(s_triangles, sub);
+                s_kept.Clear();
+                for (var t = 0; t < s_triangles.Count; t += 3)
+                {
+                    if (Keeps(layer.Cull, s_local[s_triangles[t]], s_local[s_triangles[t + 1]], s_local[s_triangles[t + 2]]))
+                    {
+                        s_kept.Add(t);
+                    }
+                }
+                // MUTANT_SURVIVES(equivalent, boundary): the extra pass `<=` adds allocates zero triangles, which Allocate returns without drawing.
+                for (var first = 0; first < s_kept.Count; first += MaxTrianglesPerAllocation)
+                {
+                    DrawTriangles(mgc, layer.Texture, first, Mathf.Min(s_kept.Count - first, MaxTrianglesPerAllocation), ref frame);
+                }
             }
         }
 
-        private static void DrawQuads(MeshGenerationContext mgc, HostedParticleSystem hosted, Matrix4x4 toDrawSpace, int first, int quads, ref QuadFrame frame)
+        // Whether a triangle survives its material's culling. A front face's corners turn clockwise in the
+        // host's local xy plane, which is how the bake camera sees it; ParticlesPlaybackTests'
+        // Given_AMeshParticleUnderABackCullingMaterial_When_Drawn_Then_OnlyItsFrontFaceRenders pins that.
+        private static bool Keeps(CullMode cull, Vector2 a, Vector2 b, Vector2 c)
         {
-            var system = hosted.System;
-            var buffer = hosted.Buffer!;
+            var turn = ((b.x - a.x) * (c.y - a.y)) - ((b.y - a.y) * (c.x - a.x));
+            // MUTANT_SURVIVES(equivalent, boundary): a triangle whose corners turn neither way has no area, so keeping it draws no pixel.
+            return cull switch
+            {
+                CullMode.Back => turn < 0f,
+                CullMode.Front => turn > 0f,
+                _ => true,
+            };
+        }
+
+        private static void DrawTriangles(MeshGenerationContext mgc, Texture? texture, int first, int triangles, ref DrawFrame frame)
+        {
             var cx = frame.Cx;
             var cy = frame.Cy;
             var ppu = frame.Ppu;
-            var track = frame.Track;
             var minX = frame.MinX;
             var minY = frame.MinY;
             var maxX = frame.MaxX;
             var maxY = frame.MaxY;
-            var mwd = mgc.Allocate(4 * quads, 6 * quads, hosted.Texture);
-            for (var q = 0; q < quads; q++)
+            var mwd = mgc.Allocate(3 * triangles, 3 * triangles, texture);
+            for (var k = 0; k < triangles; k++)
             {
-                var p = buffer[first + q];
-                p.position = toDrawSpace.MultiplyPoint3x4(p.position);
-                var center = new Vector2(cx + (p.position.x * ppu), cy - (p.position.y * ppu));
-                var half = p.GetCurrentSize(system) * ppu * 0.5f;
-                var rad = p.rotation * Mathf.Deg2Rad;
-                var cos = Mathf.Cos(rad);
-                var sin = Mathf.Sin(rad);
-                Color32 tint = p.GetCurrentColor(system);
-
-                if (track)
+                var t = s_kept[first + k];
+                for (var corner = 0; corner < 3; corner++)
                 {
-                    // A `half`-half-extent square rotated by the particle's rotation reaches half*(|cos| + |sin|)
-                    // on each axis — the bound the filter spacer must cover to keep the quad from clipping.
-                    var reach = half * (Mathf.Abs(cos) + Mathf.Abs(sin));
-                    if (center.x - reach < minX) { minX = center.x - reach; }
-                    if (center.y - reach < minY) { minY = center.y - reach; }
-                    if (center.x + reach > maxX) { maxX = center.x + reach; }
-                    if (center.y + reach > maxY) { maxY = center.y + reach; }
+                    var v = s_triangles[t + corner];
+                    var local = s_local[v];
+                    var x = cx + (local.x * ppu);
+                    var y = cy - (local.y * ppu);
+                    minX = Mathf.Min(minX, x);
+                    minY = Mathf.Min(minY, y);
+                    maxX = Mathf.Max(maxX, x);
+                    maxY = Mathf.Max(maxY, y);
+                    mwd.SetNextVertex(new Vertex { position = new Vector3(x, y, Vertex.nearZ), tint = s_colors[v], uv = s_uvs[v] });
+                    mwd.SetNextIndex((ushort)((3 * k) + corner));
                 }
-
-                // Corner offsets rotated around the particle center; UVs raw 0..1 with v flipped at the
-                // top (UI Toolkit remaps them into the atlas slot), matching the sibling quad painters.
-                mwd.SetNextVertex(new Vertex { position = Corner(center, -half, -half, cos, sin), tint = tint, uv = new Vector2(0f, 1f) }); // top-left
-                mwd.SetNextVertex(new Vertex { position = Corner(center, half, -half, cos, sin), tint = tint, uv = new Vector2(1f, 1f) }); // top-right
-                mwd.SetNextVertex(new Vertex { position = Corner(center, half, half, cos, sin), tint = tint, uv = new Vector2(1f, 0f) }); // bottom-right
-                mwd.SetNextVertex(new Vertex { position = Corner(center, -half, half, cos, sin), tint = tint, uv = new Vector2(0f, 0f) }); // bottom-left
-                var b = q * 4;
-                mwd.SetNextIndex((ushort)(b + 0));
-                mwd.SetNextIndex((ushort)(b + 1));
-                mwd.SetNextIndex((ushort)(b + 2));
-                mwd.SetNextIndex((ushort)(b + 0));
-                mwd.SetNextIndex((ushort)(b + 2));
-                mwd.SetNextIndex((ushort)(b + 3));
             }
             frame.MinX = minX;
             frame.MinY = minY;
@@ -575,25 +672,7 @@ namespace Velvet
             frame.MaxY = maxY;
         }
 
-        // The frame a system's particle positions are expressed in, as a matrix into world space. A
-        // Custom space with no transform assigned is read as World.
-        private static Matrix4x4 SimulationToWorld(HostedParticleSystem hosted)
-        {
-            switch (hosted.Space)
-            {
-                case ParticleSystemSimulationSpace.Local:
-                    return hosted.System.transform.localToWorldMatrix;
-                case ParticleSystemSimulationSpace.Custom:
-                    return hosted.CustomSpace != null ? hosted.CustomSpace.localToWorldMatrix : Matrix4x4.identity;
-                default:
-                    return Matrix4x4.identity;
-            }
-        }
-
-        private static Vector3 Corner(Vector2 center, float dx, float dy, float cos, float sin)
-            => new(center.x + (dx * cos) - (dy * sin), center.y + (dx * sin) + (dy * cos), Vertex.nearZ);
-
-        // The quads are REBUILT inside generateVisualContent, so the element must be marked dirty
+        // The triangles are REBUILT inside generateVisualContent, so the element must be marked dirty
         // every frame while the simulation can move — on BOTH panel context types: even an
         // every-frame-rendering runtime panel reuses the cached mesh unless something dirties it
         // (unlike SceneView, whose static mesh samples a texture that updates underneath). The
@@ -619,7 +698,7 @@ namespace Velvet
             var playing = Application.isPlaying;
             // A drained simulation — a finished burst, a stopped Manual host, a host killed by a scene
             // unload — must not keep dirtying the element at tick rate forever: park the tick (Sync
-            // and Play() re-arm it) after one final dirty, so the last live frame's quads are
+            // and Play() re-arm it) after one final dirty, so the last live frame's triangles are
             // regenerated away instead of lingering. Liveness spans the children, since the draw
             // samples their particles too.
             if (host == null || !AnySystemLive(binding, playing))
@@ -642,7 +721,7 @@ namespace Velvet
                     binding.SimulatedSeconds += Mathf.Min(dt, Time.maximumDeltaTime);
                 }
                 // Draw stashed the extent last repaint, one frame behind the particles — invisible after the
-                // quantize + slack, and it saves a second GetParticles here.
+                // quantize + slack, and it saves a second bake here.
                 SyncBoundsSpacer(element, binding);
             }
             element.MarkDirtyRepaint();

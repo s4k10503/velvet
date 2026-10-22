@@ -926,13 +926,13 @@ namespace Velvet
 
         /// <summary>
         /// Creates a SceneView element displaying <paramref name="camera"/>'s output — the canvas-parity
-        /// element. The framework owns the RenderTexture: it is sized to the element's laid-out pixel
-        /// size (times <paramref name="resolutionScale"/>), rounded up to reuse the existing texture
+        /// element. The framework owns the RenderTexture: it is sized to the element's content box in
+        /// pixels (times <paramref name="resolutionScale"/>), rounded up to reuse the existing texture
         /// across minor resizes (preserving the element's aspect ratio), resized when the element's
         /// geometry changes,
         /// assigned to <c>camera.targetTexture</c> while mounted, and released on unmount (restoring the
-        /// camera's target only if it is still the framework's own texture). The output arrives through
-        /// the element's background image, so background utilities and rounded corners apply to it.
+        /// camera's target only if it is still the framework's own texture). The output covers the
+        /// content box, above the element's own background and clipped to its rounded corners.
         /// </summary>
         /// <param name="camera">Camera whose output the element displays. Null renders nothing (the
         /// element mounts as an empty box until a camera is supplied).</param>

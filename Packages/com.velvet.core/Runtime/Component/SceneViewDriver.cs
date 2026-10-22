@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -6,13 +7,17 @@ namespace Velvet
 {
     // Reconciler-side bookkeeping for one SceneView element, keyed in
     // ReconcilerContext.SceneViewBindings by the element itself. Holds the current settings (camera +
-    // resolution scale), the framework-owned RenderTexture the camera renders into, the registered
-    // geometry callback (so it can be unregistered on detach), and the recurring tick (see
-    // SyncRepaintTick) so it can be paused whenever the texture is released.
+    // resolution scale), the framework-owned RenderTexture the camera renders into, the child that shows
+    // it, the registered geometry callback (so it can be unregistered on detach), and the recurring tick
+    // (see SyncRepaintTick) so it can be paused whenever the texture is released.
     internal sealed class SceneViewBinding
     {
         public SceneViewSettings Settings;
         public RenderTexture? Texture;
+        public VisualElement? Feed;
+        // The camera this element switched off while a positive-priority UseFrame callback in its panel
+        // renders in its place, so the element switches back on that camera and no other.
+        public Camera? HeldCamera;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
         public IVisualElementScheduledItem? RepaintTick;
         // An explicit camera/settings pass (attach, props update) claims the camera even from a
@@ -33,14 +38,23 @@ namespace Velvet
 
     /// <summary>
     /// Drives a <see cref="SceneViewElement"/>'s camera-output display: a framework-owned
-    /// RenderTexture sized to the element's laid-out pixel size (times the resolution scale, rounded
+    /// RenderTexture sized to the element's content box in pixels (times the resolution scale, rounded
     /// up to reuse the existing texture across minor resizes — see <see cref="TryComputePixelSize"/>),
-    /// assigned to <c>camera.targetTexture</c>, and shown through the element's background image. The
-    /// element samples the LIVE texture — the camera keeps rendering into it and UI Toolkit's command
-    /// list samples it at draw time, so new frames appear with no Velvet re-render and no pixel copy.
+    /// assigned to <c>camera.targetTexture</c>, and shown through the background image of a child laid
+    /// over that content box, above the element's own background. The child samples the LIVE texture —
+    /// the camera keeps rendering into it and UI Toolkit's command list samples it at draw time, so new
+    /// frames appear with no Velvet re-render and no pixel copy.
     /// </summary>
     internal static class SceneViewDriver
     {
+        // Marks the child showing the camera output as a reconciler-invisible child of its element
+        // (SilhouetteBoundsSpacer.IsSpacer).
+        internal const string FeedMarkerClass = "velvet-scene-view-feed";
+
+        // Every texture a live SceneView shows, so an element whose camera targets another element's
+        // texture can tell a camera it shares with that element from one user code took over.
+        private static readonly HashSet<RenderTexture> s_feedTextures = new();
+
         // Repaint cadence (~60fps), matching the recurring-tick interval the style animation drivers
         // schedule with. Shared with the sibling per-frame element driver (ParticlesDriver).
         internal const long RepaintIntervalMs = 16;
@@ -90,6 +104,7 @@ namespace Velvet
             if (previousCamera != settings.Camera)
             {
                 ReleaseCameraTarget(previousCamera, binding.Texture);
+                ReleaseHeldCamera(binding);
             }
             binding.ClaimOnNextSync = true;
             SyncTexture(element, binding);
@@ -137,9 +152,9 @@ namespace Velvet
                     && (claim || camera.targetTexture == null))
                 {
                     camera.targetTexture = binding.Texture;
-                    // The texture object shown by the background is unchanged, so nothing else marks
-                    // the element dirty on a bare camera swap — without this a dirty-on-demand panel
-                    // would keep showing the old camera's last frame.
+                    // The texture object the feed shows is unchanged, so nothing else marks the element
+                    // dirty on a bare camera swap — without this a dirty-on-demand panel would keep
+                    // showing the old camera's last frame.
                     element.MarkDirtyRepaint();
                 }
                 SyncRepaintTick(element, binding);
@@ -167,27 +182,59 @@ namespace Velvet
             // dead texture in between (the re-target is itself the polite release of our own texture).
             var texture = new RenderTexture(pw, ph, 24);
             binding.Texture = texture;
+            s_feedTextures.Add(texture);
             camera.targetTexture = texture;
-            if (element is SceneViewElement sceneView)
-            {
-                // Taking the slot captures whatever the element was showing (a poster, a baked
-                // gradient) as the deferred restore target; class/style writers keep updating that
-                // deferred value through the ownership gate instead of clobbering the live feed.
-                sceneView.BeginCameraOwnership();
-            }
-            element.style.backgroundImage = Background.FromRenderTexture(texture);
+            binding.Feed ??= CreateFeed();
+            binding.Feed.style.backgroundImage = Background.FromRenderTexture(texture);
+            SyncFeed(element, binding);
             element.MarkDirtyRepaint();
             if (previous != null)
             {
+                // MUTANT_SURVIVES(equivalent): a destroyed texture left in the set equals no live camera target, so only the set's size changes.
+                s_feedTextures.Remove(previous);
                 previous.Release();
                 VelvetObjectUtil.Destroy(previous);
             }
             SyncRepaintTick(element, binding);
         }
 
+        private static VisualElement CreateFeed()
+        {
+            var feed = new VisualElement { name = FeedMarkerClass, pickingMode = PickingMode.Ignore };
+            feed.AddToClassList(FeedMarkerClass);
+            feed.style.position = Position.Absolute;
+            return feed;
+        }
+
+        // Lays the feed over the element's content box and rounds its corners along the content edge: each
+        // corner's radius less the border and padding beside it, the larger side's where the two differ.
+        // Absolute offsets are taken from the padding box, so the padding alone insets the feed; SceneViewTests'
+        // Given_ABorderedPaddedSceneView_When_LayoutResolves_Then_TheFeedCoversTheContentBox pins that.
+        private static void SyncFeed(VisualElement element, SceneViewBinding binding)
+        {
+            var feed = binding.Feed!;
+            if (feed.parent != element)
+            {
+                element.Add(feed);
+            }
+            var s = element.resolvedStyle;
+            feed.style.left = s.paddingLeft;
+            feed.style.top = s.paddingTop;
+            feed.style.right = s.paddingRight;
+            feed.style.bottom = s.paddingBottom;
+            var left = s.borderLeftWidth + s.paddingLeft;
+            var top = s.borderTopWidth + s.paddingTop;
+            var right = s.borderRightWidth + s.paddingRight;
+            var bottom = s.borderBottomWidth + s.paddingBottom;
+            feed.style.borderTopLeftRadius = Mathf.Max(0f, s.borderTopLeftRadius - Mathf.Max(left, top));
+            feed.style.borderTopRightRadius = Mathf.Max(0f, s.borderTopRightRadius - Mathf.Max(right, top));
+            feed.style.borderBottomRightRadius = Mathf.Max(0f, s.borderBottomRightRadius - Mathf.Max(right, bottom));
+            feed.style.borderBottomLeftRadius = Mathf.Max(0f, s.borderBottomLeftRadius - Mathf.Max(left, bottom));
+        }
+
         // Derives the texture's target pixel size from the CURRENT layout, scale and pixel density —
         // shared by the sync and the editor tick's staleness probe so the two can never disagree
-        // about what "current" means. Size in device pixels: layout points times the resolution
+        // about what "current" means. Size in device pixels: content-box points times the resolution
         // scale times the panel's pixel density, so a scaled panel (HiDPI editor, runtime panel
         // scaling) gets pixel-sharp output. The floor keeps a sub-pixel rect from rounding to a
         // zero-dimension texture (which RenderTexture creation rejects); the ceiling bounds the VRAM
@@ -230,8 +277,8 @@ namespace Velvet
             pw = 0;
             ph = 0;
             usedWidthAsBasis = false;
-            var w = element.layout.width;
-            var h = element.layout.height;
+            var w = element.contentRect.width;
+            var h = element.contentRect.height;
             if (w <= 0f || h <= 0f || float.IsNaN(w) || float.IsNaN(h))
             {
                 return false;
@@ -309,13 +356,14 @@ namespace Velvet
 
         // The tick is the staleness probe: a pixel-density change (a monitor-DPI move, a runtime
         // panel-scale tweak) alters the derived pixel size without moving the element's geometry, so
-        // no geometry event re-derives the texture.
-        // Outside Play Mode the tick then renders the camera — after the probe, so a texture it just
-        // re-derived is rendered into before it is shown. A camera user code borrowed renders where
-        // that code decides, and a disabled one is the caller's way of saying its output is
-        // unnecessary. The probe releases the texture only for a camera that is gone, so the target
-        // comparison never matches a camera that targets nothing — which would render it to the
-        // screen.
+        // no geometry event re-derives the texture. It also re-lays the feed, which a padding or radius
+        // change reshapes without re-deriving the texture.
+        // The tick then renders the camera, after the probe, so a texture it just re-derived is rendered
+        // into before it is shown: into this element's texture outside Play Mode. A camera pointed at
+        // another SceneView's texture is rendered into this element's in Play Mode too and pointed back,
+        // and one pointed at nothing is claimed back, as a resync claims it. A camera user code pointed
+        // at a texture of its own renders where that code decides, and a disabled one is the caller's
+        // way of saying its output is unnecessary.
         // An Editor-context panel repaints only when something marks it dirty (nothing in UI Toolkit
         // knows the sampled texture's CONTENTS changed); a runtime panel draws every frame.
         private static void OnRepaintTick(VisualElement element, SceneViewBinding binding)
@@ -330,16 +378,68 @@ namespace Velvet
             {
                 SyncTexture(element, binding);
             }
-            var camera = binding.Settings.Camera;
-            if (!Application.isPlaying && camera != null && camera.isActiveAndEnabled
-                && camera.targetTexture == binding.Texture)
+            if (binding.Texture == null)
             {
-                camera.Render();
+                return;
+            }
+            SyncFeed(element, binding);
+            SyncHeldCamera(element, binding);
+            var camera = binding.Settings.Camera;
+            if (camera != null && camera.isActiveAndEnabled)
+            {
+                var target = camera.targetTexture;
+                if (target == binding.Texture)
+                {
+                    if (!Application.isPlaying)
+                    {
+                        camera.Render();
+                    }
+                }
+                else if (target == null)
+                {
+                    camera.targetTexture = binding.Texture;
+                }
+                else if (s_feedTextures.Contains(target))
+                {
+                    camera.targetTexture = binding.Texture;
+                    camera.Render();
+                    camera.targetTexture = target;
+                }
             }
             if (element.panel?.contextType == ContextType.Editor)
             {
                 element.MarkDirtyRepaint();
             }
+        }
+
+        // A positive-priority UseFrame callback in the element's panel renders in place of the camera's
+        // own rendering, as react-three-fiber's root skips its own render while a useFrame subscriber with
+        // a positive renderPriority is registered: the element holds its camera disabled, which also stops
+        // the tick above rendering it, until no such callback is left.
+        private static void SyncHeldCamera(VisualElement element, SceneViewBinding binding)
+        {
+            var camera = binding.Settings.Camera;
+            if (element.panel != null && UseFrameDispatcher.TakesOverRendering(element.panel))
+            {
+                if (binding.HeldCamera == null && camera != null && camera.enabled)
+                {
+                    camera.enabled = false;
+                    binding.HeldCamera = camera;
+                }
+            }
+            else
+            {
+                ReleaseHeldCamera(binding);
+            }
+        }
+
+        private static void ReleaseHeldCamera(SceneViewBinding binding)
+        {
+            if (binding.HeldCamera != null)
+            {
+                binding.HeldCamera.enabled = true;
+            }
+            binding.HeldCamera = null;
         }
 
         private static void StopRepaintTick(SceneViewBinding binding)
@@ -354,10 +454,13 @@ namespace Velvet
         {
             StopRepaintTick(binding);
             ReleaseCameraTarget(binding.Settings.Camera, binding.Texture);
+            ReleaseHeldCamera(binding);
             if (binding.Texture == null)
             {
                 return;
             }
+            // MUTANT_SURVIVES(equivalent): a destroyed texture left in the set equals no live camera target, so only the set's size changes.
+            s_feedTextures.Remove(binding.Texture);
             binding.Texture.Release();
             VelvetObjectUtil.Destroy(binding.Texture);
             binding.Texture = null;
@@ -365,14 +468,7 @@ namespace Velvet
             // resizes; once the texture itself is gone there is nothing left to stay continuous with,
             // so the next texture this binding creates derives its basis fresh from that size alone.
             binding.WidthWasQuantizedAxis = null;
-            if (element is SceneViewElement sceneView)
-            {
-                // Releasing the feed returns the slot to whatever writer was deferred while the
-                // camera owned it (a poster, a baked gradient) — or clears it when none was. Every
-                // binding is keyed by a SceneViewElement (the applier type-gates), so this is the
-                // only live branch.
-                sceneView.EndCameraOwnership();
-            }
+            binding.Feed!.RemoveFromHierarchy();
             element.MarkDirtyRepaint();
         }
 

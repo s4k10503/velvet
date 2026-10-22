@@ -16,6 +16,8 @@ namespace Velvet.Tests
     /// through a pixelsPerUnit change on the same effect.</item>
     /// <item>A null effect mounts an inert element with no host. Every system under the effect is
     /// hosted: each child's renderer is disabled and each always simulates.</item>
+    /// <item>The host stands at the source's world position and rotation, and a sub-emitter cloned from
+    /// outside the effect keeps its offset from it. The host holds no camera that renders.</item>
     /// <item>An invalid pixelsPerUnit fails fast at the factory.</item>
     /// <item>The filter bounds-spacer (<see cref="SilhouetteBoundsSpacer"/>) also applies at the
     /// Particles reconcile boundary: a filter would clip the particle quads that draw beyond the host
@@ -635,6 +637,90 @@ namespace Velvet.Tests
 
             // Assert — the root and its one child.
             Assert.That(host.GetComponentsInChildren<ParticleSystem>().Length, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AnEffectAwayFromTheOrigin_When_Mounted_Then_TheHostStandsWhereTheSourceDoes()
+        {
+            // Arrange
+            var effect = CreateEffectSource("fx-posed-root");
+            effect.transform.SetPositionAndRotation(new Vector3(4f, -2f, 1f), Quaternion.Euler(0f, 0f, 30f));
+
+            // Act
+            var host = MountEffect(effect, "px-posed").Host;
+
+            // Assert
+            Assert.That(
+                (Vector3.Distance(host.transform.position, effect.transform.position) < 1e-4f,
+                    Quaternion.Angle(host.transform.rotation, effect.transform.rotation) < 0.01f),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AnExternalSubEmitterAwayFromTheEffect_When_Mounted_Then_TheCloneKeepsItsOffsetFromTheHost()
+        {
+            // Arrange
+            var external = CreateExternalSystem("fx-offset-sub");
+            external.transform.position = new Vector3(3f, 0.5f, 0f);
+            var effect = CreateEffectSource("fx-offset-root");
+            effect.transform.position = new Vector3(1f, 0f, 0f);
+            AddBirthSubEmitter(effect, external);
+
+            // Act
+            var host = MountEffect(effect, "px-offset").Host;
+
+            // Assert
+            var offset = host.transform.InverseTransformPoint(host.subEmitters.GetSubEmitterSystem(0).transform.position);
+            Assert.That(Vector3.Distance(offset, new Vector3(2f, 0.5f, 0f)), Is.LessThan(1e-4f));
+        }
+
+        // GREEN_ON_BASE(characterization): the hidden host holds no camera that renders on its own, as before.
+        [Test]
+        public void Given_AMountedEffect_When_Attached_Then_TheHostHoldsNoEnabledCamera()
+        {
+            // Arrange
+            var effect = CreateEffectSource("fx-cameraless");
+
+            // Act
+            var host = MountEffect(effect, "px-cameraless").Host;
+
+            // Assert
+            Assert.That(host.GetComponentsInChildren<Camera>(true).Count(camera => camera.enabled), Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): every object under the hidden host stays out of the hierarchy and scene saves, as before.
+        [Test]
+        public void Given_AMountedEffect_When_Attached_Then_EveryObjectUnderTheHostIsHidden()
+        {
+            // Arrange
+            var effect = CreateEffectSource("fx-all-hidden");
+
+            // Act
+            var host = MountEffect(effect, "px-all-hidden").Host;
+
+            // Assert
+            Assert.That(host.GetComponentsInChildren<Transform>(true)
+                    .All(t => t.gameObject.hideFlags == (HideFlags.HideInHierarchy | HideFlags.DontSaveInEditor)),
+                Is.True);
+        }
+
+        [Test]
+        public void Given_AMountedEffect_When_TheTreeDisposes_Then_ItsBakedMeshGoesWithIt()
+        {
+            // Arrange
+            static int BakedMeshes() =>
+                Resources.FindObjectsOfTypeAll<Mesh>().Count(mesh => mesh.name == "velvet-particles-baked-mesh");
+            var before = BakedMeshes();
+            var effect = CreateEffectSource("fx-baked-mesh");
+            MountEffect(effect, "px-baked-mesh");
+            var mounted = BakedMeshes() - before;
+
+            // Act
+            _mounted.Dispose();
+            _mounted = null;
+
+            // Assert — counted while mounted too, since a base that bakes nothing has none to leave.
+            Assert.That((mounted, BakedMeshes() - before), Is.EqualTo((1, 0)));
         }
 
         [Test]
