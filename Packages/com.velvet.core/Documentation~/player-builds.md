@@ -105,7 +105,9 @@ is running and which longhands a shorthand covers, used by
 [layoutId moves](motion.md#shared-element-layout-animation-layoutid), native transition activity, and the timing and
 values of a running one, used by [current-value starts](motion.md#driven-channels-spring-and-bezier), a spring's
 inherited velocity and the opacity, rotate, translate and scale a layoutId move carries on
-(`RunningStyleTransition.TakeOverRotate` reads the running rotate), the border colors an element's matching style
+(`RunningStyleTransition.TakeOverRotate` reads the running rotate), the cancel of an element's filter transition, used
+to write a filter change past a running transform-origin transition ([styling-filters.md](styling-filters.md#transitions)),
+the border colors an element's matching style
 rules give it, which a [dashed divider](styling-flexbox-and-gap.md) paints in,
 and a panel's version, layout-phase flag, style updater and that updater's traversal flag, an element's layout
 node, last layout and version increment, and the node's layout computation, dirty flag and new-layout flag, which

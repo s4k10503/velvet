@@ -101,8 +101,14 @@ namespace Velvet
             }
             if (prefix == "blur-")
             {
-                if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var blurPx, out var blurUnit) || blurUnit != LengthUnit.Pixel) return false;
-                result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, blurPx, LengthUnit.Pixel);
+                if (StyleArbitraryValueResolver.TryParseValue(valueSpan, out var blurPx, out var blurUnit))
+                {
+                    if (blurUnit != LengthUnit.Pixel) return false;
+                    result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, blurPx, LengthUnit.Pixel);
+                    return true;
+                }
+                if (!TryParseMeasuredLength(valueSpan, out var measured)) return false;
+                result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, measured!);
                 return true;
             }
             if (prefix == null)
@@ -123,6 +129,11 @@ namespace Velvet
             result = new ArbitraryStyle(property, Mathf.Min(amount, ceiling), LengthUnit.Pixel);
             return true;
         }
+
+        // A length only the element can measure: an em, a viewport unit, or a math function reading one, which
+        // StyleRelativeLengths.TryMeasure measures. blur() and drop-shadow() take no percentage.
+        private static bool TryParseMeasuredLength(ReadOnlySpan<char> value, out StyleLengthExpression? expression)
+            => StyleLengthExpression.TryParse(value, out expression) && expression!.IsFinite() && !expression.ReadsPercentage;
 
         // A number, or a percentage of 1, as each of these CSS functions takes.
         private static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
@@ -251,6 +262,7 @@ namespace Velvet
         {
             layer = default;
             Span<float> lengths = stackalloc float[3];
+            var measured = new StyleLengthExpression?[3];
             var lengthCount = 0;
             Color? color = null;
             foreach (var token in SplitOutsideParens(shadow, '_'))
@@ -268,17 +280,28 @@ namespace Velvet
                     lengths[lengthCount++] = length;
                     continue;
                 }
+                if (TryParseMeasuredLength(token.AsSpan(), out var expression))
+                {
+                    if (lengthCount == 3)
+                    {
+                        return false;
+                    }
+                    measured[lengthCount++] = expression;
+                    continue;
+                }
                 if (color != null || !StyleColorValueParser.TryParseColor(token.AsSpan(), out var parsed))
                 {
                     return false;
                 }
                 color = parsed;
             }
+            // A deviation the element measures is clamped at 0 when it is measured (AppendDropShadows).
             if (lengthCount < 2 || lengths[2] < 0f)
             {
                 return false;
             }
-            layer = new DropShadowLayer(lengths[0], lengths[1], lengths[2], color ?? DropShadowLayer.CurrentColor);
+            layer = new DropShadowLayer(lengths[0], lengths[1], lengths[2], color ?? DropShadowLayer.CurrentColor,
+                Array.TrueForAll(measured, m => m == null) ? null : measured);
             return true;
         }
 

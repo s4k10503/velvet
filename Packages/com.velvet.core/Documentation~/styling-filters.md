@@ -17,7 +17,7 @@ Every filter utility on an element — built-in or custom — composes into the 
 
 | Utility | Values | Notes |
 |---|---|---|
-| `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`xs`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/8/12/16/24/40/64px | bracket: `px`, `rem` (at 16px), an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`) or a bare `0`; no `%`, as CSS `blur()` takes none. A math function that comes to pixels is read; `em`, `vw` and the other lengths only an element can measure are not ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)) |
+| `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`xs`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/8/12/16/24/40/64px | bracket: `px`, `rem` (at 16px), an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`), a bare `0`, `em`, a viewport unit, or a math function over them; no `%`, as CSS `blur()` takes none. `em` and the viewport units are measured on the element ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#lengths-only-an-element-can-measure)) |
 | `contrast-<n>` / `contrast-[N]` | presets 0–200 (× 0.01); bracket ≥ 0, or a percentage | |
 | `grayscale` / `grayscale-0` / `grayscale-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
 | `invert` / `invert-0` / `invert-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
@@ -149,6 +149,12 @@ instant write — is made with transitions suspended, so a list naming `backgrou
 utility's change on its behalf. The tween eases by the same curve a USS transition takes for each `ease-*` value,
 and a change back to where a running tween started reverses it over the shortened duration and negative delay
 the engine gives a reversed transition.
+
+A filter change that lands at once leaves a transform-origin transition running on the element, as in CSS, although
+UI Toolkit's inline-filter setter cancels that transition on such a write (Group G of `FilterTransitionPanelTests`):
+while one runs, Velvet writes the change past the cancel. Onto an element showing no filter, that write starts a
+filter transition and cancels it at once, so the element dispatches a `TransitionRunEvent` for `filter` that CSS
+does not.
 
 While `animate-hue` drives an element's filter, the motion shows: a filter utility's change under it starts no
 transition and is not painted, and a filter transition already running keeps its clock unseen. When the motion

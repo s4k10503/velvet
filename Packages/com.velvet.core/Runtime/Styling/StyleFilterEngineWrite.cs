@@ -35,6 +35,8 @@ namespace Velvet
             }
         }
 
+        private static readonly StylePropertyName s_backgroundSize = new("background-size");
+
         private static int s_withheld;
 
         internal static bool TransitionsWithheld => s_withheld > 0;
@@ -88,15 +90,18 @@ namespace Velvet
                 {
                     return;
                 }
+                WritePlain(element, to);
             }
             // The tween has settled or declined this change, or no transition runs for filter, so an animation the
             // setter would start here is one CSS does not run.
             else if (SetterAnimates(element, to))
             {
                 WriteSuspended(element, to);
-                return;
             }
-            WritePlain(element, to);
+            else
+            {
+                WriteUnanimated(element, to);
+            }
         }
 
         // A frame of Velvet's tween, written past the animation the setter would start for it.
@@ -108,7 +113,7 @@ namespace Velvet
             }
             else
             {
-                element.style.filter = frame;
+                WriteUnanimated(element, frame);
             }
         }
 
@@ -188,6 +193,10 @@ namespace Velvet
         // value instead (FilterTransitionPanelTests' mid-transition contrast case).
         private static void WriteSuspended(VisualElement element, List<FilterFunction>? list)
         {
+            if (TryWritePastTransformOrigin(element, list))
+            {
+                return;
+            }
             var restore = CornerRadiusFit.DetachedCopy(element.style.transitionProperty);
             element.style.transitionProperty = s_noTransition;
             try
@@ -202,6 +211,98 @@ namespace Velvet
             {
                 element.style.transitionProperty = restore;
             }
+        }
+
+        // A write no transition animates.
+        private static void WriteUnanimated(VisualElement element, List<FilterFunction>? list)
+        {
+            if (!TryWritePastTransformOrigin(element, list))
+            {
+                WritePlain(element, list);
+            }
+        }
+
+        // UI Toolkit's inline-filter setter, on a write no transition entry animates, cancels the element's
+        // transform-origin transition rather than its filter one, landing the origin on its end. While one runs, the
+        // write is made instead under an entry the setter animates it by, the element's own entries kept so the
+        // transform-origin one stays covered, and still lands at once: where the shown list and the written one both
+        // hold a function, through a list whose first function's type is in neither, which pairs with neither and so
+        // starts no transition; otherwise by cancelling the filter transition the write starts. One still running is
+        // cancelled first, since a write that pairs with nothing leaves it running. False for a clear, which leaves the
+        // transform-origin transition running, and where none runs or the engine's members do not resolve. Group G of
+        // FilterTransitionPanelTests holds each of these.
+        private static bool TryWritePastTransformOrigin(VisualElement element, List<FilterFunction>? list)
+        {
+            if (list == null || !MotionSlotContext.CancelsNativeTransition(StyleLonghand.Filter)
+                || !MotionSlotContext.HasRunningNativeTransition(element, StyleLonghand.TransformOrigin))
+            {
+                return false;
+            }
+            var style = element.style;
+            var resolved = element.resolvedStyle;
+            var saved = (CornerRadiusFit.DetachedCopy(style.transitionProperty), MotionTweenTiming.Copy(style.transitionDuration),
+                MotionTweenTiming.Copy(style.transitionDelay), MotionTweenTiming.Copy(style.transitionTimingFunction));
+            var properties = resolved.transitionProperty.ToList();
+            var durations = Spread(resolved.transitionDuration.ToList(), properties.Count, new TimeValue(1f, TimeUnit.Second));
+            var delays = Spread(resolved.transitionDelay.ToList(), properties.Count, new TimeValue(0f));
+            var curves = Spread(resolved.transitionTimingFunction.ToList(), properties.Count, new EasingFunction(EasingMode.Ease));
+            properties.Add(s_backgroundSize);
+            style.transitionProperty = properties;
+            style.transitionDuration = durations;
+            style.transitionDelay = delays;
+            style.transitionTimingFunction = curves;
+            try
+            {
+                MotionSlotContext.CancelNativeTransition(element, StyleLonghand.Filter);
+                var shown = element.resolvedStyle.filter?.ToList();
+                if (shown is { Count: > 0 } && list.Count > 0)
+                {
+                    style.filter = new List<FilterFunction> { Unpaired(shown[0].type, list[0].type) };
+                    style.filter = list;
+                }
+                else
+                {
+                    // The setter takes the list it already holds for no change.
+                    style.filter = ReferenceEquals(style.filter.value, list) ? new List<FilterFunction>(list) : list;
+                }
+                MotionSlotContext.CancelNativeTransition(element, StyleLonghand.Filter);
+            }
+            finally
+            {
+                (style.transitionProperty, style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) = saved;
+            }
+            return true;
+        }
+
+        // A resolved timing list, wrapped as UI Toolkit wraps a list shorter than the properties, over the entries
+        // before the one added, followed by the added entry's own.
+        private static List<T> Spread<T>(List<T> list, int entries, T added)
+        {
+            var spread = new List<T>(entries + 1);
+            for (var i = 0; i < entries; i++)
+            {
+                spread.Add(list.Count == 0 ? default! : list[i % list.Count]);
+            }
+            spread.Add(added);
+            return spread;
+        }
+
+        // A function of neither type.
+        private static FilterFunction Unpaired(FilterFunctionType a, FilterFunctionType b)
+        {
+            var type = a != FilterFunctionType.Tint && b != FilterFunctionType.Tint ? FilterFunctionType.Tint
+                : a != FilterFunctionType.Opacity && b != FilterFunctionType.Opacity ? FilterFunctionType.Opacity
+                : FilterFunctionType.Invert;
+            var function = new FilterFunction(type);
+            if (type == FilterFunctionType.Tint)
+            {
+                function.AddParameter(new FilterParameter(UnityEngine.Color.white));
+            }
+            else
+            {
+                function.AddParameter(new FilterParameter(1f));
+            }
+            return function;
         }
 
         private static void OnTransitionEnd(TransitionEndEvent evt)
