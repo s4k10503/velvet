@@ -1318,6 +1318,10 @@ namespace Velvet
         // — removing an entry here always accompanies detaching the real element from its container.
         public Dictionary<VisualElement, VisualElement> ZLayerPlaceholders { get; } = new();
 
+        // The elements whose class list FiberZLayerCoordinator.TryClassify last classified, keyed by the element
+        // carrying the classes, so a z a custom property supplies can stack one that its patch left unstacked.
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> ZLayerCandidates { get; } = new();
+
         // Real element -> its z-layer bookkeeping. A pure side-table (its own teardown is a plain Remove — the
         // container detach and placeholder bookkeeping live in ZLayerPlaceholders/ZLayerHosts instead), so it
         // is enrolled in _pureElementSideTables: a departing real element (however it is reached — its own

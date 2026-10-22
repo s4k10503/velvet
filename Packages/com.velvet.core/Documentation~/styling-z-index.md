@@ -27,7 +27,7 @@ does.
 | `z-<n>` | a whole number spelled without a sign or a leading zero (`z-0`, `z-15`, `z-999`) |
 | `z-[N]` / `z-[-N]` | arbitrary integer (the bracket carries its own sign) |
 | `-z-<n>` / `-z-[N]` | the negation of either form above (`-z-15`, `-z-[5]`) |
-| `z-[var(--z)]` / `z-(--z)` | the custom property's integer, restacking the element when it changes ([styling-custom-properties.md](styling-custom-properties.md)); 0 while it resolves to nothing or to no integer, `auto` included |
+| `z-[var(--z)]` / `z-(--z)` | the custom property's integer, restacking the element when it changes ([styling-custom-properties.md](styling-custom-properties.md)); unstacked, as `z-auto` leaves it, while it resolves to nothing, to `auto` or to no integer |
 
 `z-05`, `z-1.5` and `z-+5` are not whole numbers as Tailwind spells them and leave the class unresolved. A value
 beyond the 32-bit integer range stacks at that end of it, as CSS clamps it (`z-2147483648` stacks as

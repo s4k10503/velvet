@@ -53,7 +53,7 @@ namespace Velvet.Tests
             });
         }
 
-        // Two absolute siblings under outer: inner stacked by --z, lit at z-10.
+        // inner and an absolute sibling at z-10, lit, under outer.
         [Component]
         private static VNode RenderStacked()
         {
@@ -61,15 +61,29 @@ namespace Velvet.Tests
             s_setOuter = setOuter;
             return V.Div(name: "outer", className: outer, children: new VNode?[]
             {
-                V.Div(name: "inner", className: "absolute z-(--z)"),
+                V.Div(name: "inner", className: s_inner),
                 V.Div(name: "lit", className: "absolute z-10"),
             });
         }
 
-        // The order inner and lit paint in within lit's layer.
+        private VisualElement MountStacked(string outer, string inner)
+        {
+            (s_outer, s_inner) = (outer, inner);
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderStacked));
+            return _window.rootVisualElement.Q<VisualElement>("inner");
+        }
+
+        // The order inner, or the wrapper holding it, and lit paint in within lit's layer.
         private string PaintOrder()
-            => string.Join(",", _window.rootVisualElement.Q<VisualElement>("lit").parent.Children()
-                .Select(child => child.name).Where(name => name is "inner" or "lit"));
+        {
+            var inner = _window.rootVisualElement.Q<VisualElement>("inner");
+            var slot = inner.parent.name == "outer" || inner.parent.ClassListContains(FiberZLayerCoordinator.FrontMarkerClass)
+                ? inner
+                : inner.parent;
+            var lit = _window.rootVisualElement.Q<VisualElement>("lit");
+            return string.Join(",", lit.parent.Children().Where(child => child == slot || child == lit)
+                .Select(child => child == lit ? "lit" : "inner"));
+        }
 
         private static (StyleKeyword, float) Width(VisualElement element)
             => (element.style.width.keyword, element.style.width.value.value);
@@ -436,10 +450,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_AZIndexReadingADeclaration_When_TheDeclarationChanges_Then_TheElementRestacks()
         {
-            // Arrange — the declaration reaches the reader once it is attached, at the panel's next scheduler tick.
-            s_outer = "[--z:20]";
-            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderStacked));
-            EditorPanelTestHelpers.DriveSchedulerOnce(_window.rootVisualElement.panel);
+            // Arrange — the declaration reaches the reader once it is attached, at the panel's next scheduler tick,
+            // and until then the element is unstacked, as z-auto leaves it.
+            var child = MountStacked("[--z:20]", "absolute z-(--z)");
+            var unresolved = child.parent.name;
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
             var raised = PaintOrder();
 
             // Act
@@ -447,7 +462,34 @@ namespace Velvet.Tests
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
             // Assert
-            Assert.That((raised, PaintOrder()), Is.EqualTo(("lit,inner", "inner,lit")));
+            Assert.That((unresolved, raised, PaintOrder()), Is.EqualTo(("outer", "lit,inner", "inner,lit")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no z-* bracket holding a var(), so it leaves this element unstacked too.
+        [Test]
+        public void Given_AZIndexReadingAuto_When_Resolved_Then_TheElementIsUnstacked()
+        {
+            // Arrange
+            var child = MountStacked("[--z:auto]", "absolute z-(--z)");
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+
+            // Assert
+            Assert.That(child.parent.name, Is.EqualTo("outer"));
+        }
+
+        [Test]
+        public void Given_AClipPathWrappedZIndexReadingADeclaration_When_Resolved_Then_TheWrapperRestacks()
+        {
+            // Arrange
+            var child = MountStacked("[--z:20]", "absolute clip-path-[circle(40%)] z-(--z)");
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+
+            // Assert
+            Assert.That(PaintOrder(), Is.EqualTo("lit,inner"));
         }
 
         [Test]

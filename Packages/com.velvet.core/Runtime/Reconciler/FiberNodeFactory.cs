@@ -247,7 +247,8 @@ namespace Velvet
             // at the cost of one cheap prefix scan. Gated on the OUTERMOST element — a clip-path-*/
             // ring/wrapElement wrapper is what physically occupies the slot, so it (not the inner
             // `element`) is what must relocate.
-            if (FiberZLayerCoordinator.TryClassify(elementNode.ClassNames, elementNode.Props, out var resolvedZ))
+            var classified = FiberZLayerCoordinator.TryClassify(elementNode.ClassNames, elementNode.Props, out var resolvedZ);
+            if (FiberZLayerCoordinator.Stacks(_ctx, element, classified, ref resolvedZ))
             {
                 return FiberZLayerCoordinator.EnqueueMount(_ctx, outer, resolvedZ);
             }
@@ -429,7 +430,8 @@ namespace Velvet
                 MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId, LayoutIdTiming.From(motionNode.TransitionDefaulted ? null : motionNode.Transition), _ctx);
             }
             // Classified from the applied classes, the set FiberNodePatcher.PatchMotionSlot reads back.
-            if (FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out var resolvedZ))
+            var classified = FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out var resolvedZ);
+            if (FiberZLayerCoordinator.Stacks(_ctx, element, classified, ref resolvedZ))
             {
                 return FiberZLayerCoordinator.EnqueueMount(_ctx, element, resolvedZ);
             }

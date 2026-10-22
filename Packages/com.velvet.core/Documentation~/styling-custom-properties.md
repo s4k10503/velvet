@@ -54,8 +54,8 @@ writes the colour, so
 weight. A type hint picks the other property: `text-[length:var(--size)]`, `text-(length:--size)`,
 `font-(family-name:--f)`.
 
-A `z-*` reading a `var()` stacks the element at the integer it resolves to, and moves it within or between its
-parent's layers when that changes ([styling-z-index.md](styling-z-index.md)).
+A `z-*` reading a `var()` stacks the element at the integer it resolves to, leaves it unstacked while that is no
+integer, and moves it when that changes ([styling-z-index.md](styling-z-index.md)).
 
 A modifier read from a `var()` is the percentage Tailwind hands `color-mix()`: `--alpha: 50%` is half alpha,
 and a bare number is not a percentage, so `--alpha: 0.5` does not resolve.
@@ -102,6 +102,5 @@ and a font weight, a font family and a line height are the parent's.
 ## Not supported
 
 - An arbitrary property not named above writes nothing.
-- A `z-*` reading a `var()` on an element a `clip-path-*` wrapper holds stacks at 0 whatever the property holds.
 - A stylesheet's custom property holding an asset reference is read as undeclared, and one holding a `resource()`
   or a function other than `var()` has no utility that reads it: no Velvet bracket takes an image.

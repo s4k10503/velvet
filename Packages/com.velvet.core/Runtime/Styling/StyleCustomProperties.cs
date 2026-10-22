@@ -74,7 +74,7 @@ namespace Velvet
             public readonly string[]? Sides;
             // Whether a modifier bracket reads a var(), whose value is a color-mix() percentage.
             public readonly bool ModifierReadsVariable;
-            // A z-* reader, whose value restacks the element (VariableZ) rather than being applied as a payload.
+            // A z-* reader, whose value restacks the element (TryVariableZ) rather than being applied as a payload.
             public readonly bool StacksZ;
             // The resolution the applied state came from, null when the last one resolved nothing.
             public string? Source;
@@ -474,7 +474,7 @@ namespace Velvet
             {
                 consumer.Source = source;
                 consumer.Resolved = true;
-                if (consumer.Context != null && VariableZ(target) is { } z)
+                if (consumer.Context != null && TryVariableZ(target, out var z))
                 {
                     FiberZLayerCoordinator.Restack(consumer.Context, target, z);
                 }
@@ -509,28 +509,31 @@ namespace Velvet
             SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
         }
 
-        // The z a custom property gives element where the z-* class that wins on it reads one: what the reader
-        // resolves to, and 0 where that is nothing or no integer. Null where a literal z-* class wins, and where no
-        // class list is recorded for element.
-        public static int? VariableZ(VisualElement element)
+        // Whether the z-* class that wins on element reads a custom property, and z the integer that resolves to,
+        // null where it resolves to none: nothing, `auto` or a value that is no integer. False where a literal
+        // z-* class wins, and where no class list is recorded for element.
+        public static bool TryVariableZ(VisualElement element, out int? z)
         {
+            z = null;
             if (!s_classes.TryGetValue(element, out var classes) || !StyleZIndexClass.TryExtract(classes, out _, out var winner)
                 || winner == null
                 || StyleZIndexClass.VariableUtility(StyleArbitraryValueResolver.StripImportant(winner, out _)) is not { } utility)
             {
-                return null;
+                return false;
             }
             if (s_consumers.TryGetValue(element, out var consumers))
             {
                 foreach (var consumer in consumers.Entries)
                 {
-                    if (consumer.Utility == utility && consumer.Source != null)
+                    if (consumer.Utility == utility && consumer.Source != null
+                        && StyleZIndexClass.TryParse(consumer.Source, out var parsed))
                     {
-                        return StyleZIndexClass.TryParse(consumer.Source, out var z) ? z ?? 0 : 0;
+                        z = parsed;
+                        break;
                     }
                 }
             }
-            return 0;
+            return true;
         }
 
         // A consumer on the base layer shares it with the literal base utilities writing the same property, so

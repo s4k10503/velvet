@@ -24,6 +24,10 @@ namespace Velvet
         // FiberZLayerCoordinator.CaptureFocusForRescue / RestoreRescuedFocus. Null when nothing was focused (the
         // common case) or for a genuinely fresh mount (nothing to rescue — the element never existed before).
         public VisualElement? RescueFocus;
+
+        // Set when a custom property the z reads stopped resolving to an integer before the drain placed Real,
+        // which then takes the placeholder's slot instead (FiberZLayerCoordinator.Restack).
+        public bool Unstacked;
     }
 
     // Owns the reconciler-side mechanics of the z-* stacking feature: classifying which absolute elements
@@ -121,7 +125,6 @@ namespace Velvet
         // this one has committed.
         internal static VisualElement EnqueueMount(ReconcilerContext ctx, VisualElement real, int resolvedZ)
         {
-            resolvedZ = StyleCustomProperties.VariableZ(real) ?? resolvedZ;
             var placeholder = CreatePlaceholder();
             ctx.ZLayerPlaceholders[placeholder] = real;
             ctx.PendingPortalMounts.Enqueue(
@@ -143,6 +146,11 @@ namespace Velvet
             {
                 return;
             }
+            if (node.Unstacked)
+            {
+                RelocateToOrdinarySlot(ctx, placeholder, node.Real);
+                return;
+            }
             var container = GetOrCreateContainer(ctx, stackingParent, node.ResolvedZ);
             Place(ctx, placeholder, container, stackingParent, node.Real, node.ResolvedZ, node.RescueFocus);
         }
@@ -153,7 +161,6 @@ namespace Velvet
         // where this parent's FIRST member of the opposite sign has just appeared.
         internal static void Reposition(ReconcilerContext ctx, VisualElement placeholder, VisualElement real, int newResolvedZ)
         {
-            newResolvedZ = StyleCustomProperties.VariableZ(real) ?? newResolvedZ;
             if (!ctx.ZLayerMembers.TryGetValue(real, out var member) || member.ResolvedZ == newResolvedZ)
             {
                 return;
@@ -183,41 +190,127 @@ namespace Velvet
                     null, null, null));
         }
 
-        // A z a custom property supplies (StyleCustomProperties.VariableZ) changed with no patch of real: a queued
-        // mount takes it when it drains, and inside a pass a member is Repositioned, whose deferred half that
-        // pass's drain places. Outside a pass no drain follows, so the destination layer is created here and the
-        // layers are settled at once.
-        internal static void Restack(ReconcilerContext ctx, VisualElement real, int resolvedZ)
+        private static readonly object s_candidate = new();
+
+        // Whether an element whose class list classified it (TryClassify, passed as classified) is stacked, and at
+        // which z. A winning z-* class reading a custom property stacks at the integer that resolves to, and
+        // leaves the element unstacked, as z-auto does, while it resolves to none. classElement carries the
+        // classes, which a clip-path wrapper does not.
+        internal static bool Stacks(ReconcilerContext ctx, VisualElement classElement, bool classified, ref int resolvedZ)
         {
-            if (!ctx.ZLayerMembers.TryGetValue(real, out var member))
+            ctx.ZLayerCandidates.Remove(classElement);
+            if (!classified)
             {
-                foreach (var queued in ctx.PendingPortalMounts)
+                return false;
+            }
+            ctx.ZLayerCandidates.Add(classElement, s_candidate);
+            if (!StyleCustomProperties.TryVariableZ(classElement, out var variable))
+            {
+                return true;
+            }
+            if (variable is not { } z)
+            {
+                return false;
+            }
+            resolvedZ = z;
+            return true;
+        }
+
+        // The element occupying classElement's slot: its clip-path wrapper where one holds it.
+        internal static VisualElement SlotOf(ReconcilerContext ctx, VisualElement classElement)
+            => ctx.ClipPathBindings.TryGetValue(classElement, out var binding) ? binding.Wrapper : classElement;
+
+        // SlotOf's inverse.
+        internal static VisualElement ClassElementOf(ReconcilerContext ctx, VisualElement slot)
+        {
+            if (slot.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass))
+            {
+                foreach (var binding in ctx.ClipPathBindings.Values)
                 {
-                    if (queued.Node is ZLayerMountNode node && ReferenceEquals(node.Real, real))
+                    if (ReferenceEquals(binding.Wrapper, slot))
                     {
-                        node.ResolvedZ = resolvedZ;
+                        return binding.Inner;
                     }
                 }
+            }
+            return slot;
+        }
+
+        // The z a custom property supplies classElement changed with no patch of it; null is no integer, which
+        // unstacks it. A queued mount takes the change when it drains. Inside a pass a stacked element is
+        // Repositioned, whose deferred half that pass's drain places; outside one no drain follows, so a layer
+        // that does not exist yet is created here and the layers are settled at once.
+        internal static void Restack(ReconcilerContext ctx, VisualElement classElement, int? resolvedZ)
+        {
+            var real = SlotOf(ctx, classElement);
+            var outOfPass = ctx.SharedReconcileDepth == 0;
+            if (ctx.ZLayerMembers.TryGetValue(real, out var member))
+            {
+                if (resolvedZ is not { } z)
+                {
+                    RelocateToOrdinarySlot(ctx, member.Placeholder, real);
+                }
+                else if (!outOfPass)
+                {
+                    Reposition(ctx, member.Placeholder, real, z);
+                }
+                else if (member.ResolvedZ != z)
+                {
+                    var rescue = CaptureFocusForRescue(real);
+                    var container = GetOrCreateContainer(ctx, member.StackingParent, z);
+                    if (!ReferenceEquals(container, member.Container))
+                    {
+                        DetachFromContainer(ctx, member.Container, real);
+                    }
+                    Place(ctx, member.Placeholder, container, member.StackingParent, real, z, rescue);
+                }
+            }
+            else if (Queued(ctx, real) is { } node)
+            {
+                node.Unstacked = resolvedZ == null;
+                node.ResolvedZ = resolvedZ ?? node.ResolvedZ;
                 return;
             }
-            if (ctx.SharedReconcileDepth > 0)
+            else if (resolvedZ is { } stacked && ctx.ZLayerCandidates.TryGetValue(classElement, out _)
+                && real.parent != null && !IsLayerContainer(real.parent))
             {
-                Reposition(ctx, member.Placeholder, real, resolvedZ);
-                return;
+                RelocateFromOrdinarySlot(ctx, real, stacked, createLayer: outOfPass);
             }
-            if (member.ResolvedZ == resolvedZ)
+            if (outOfPass)
             {
-                return;
+                DrainTeardowns(ctx);
+                ResortLayers(ctx);
             }
-            var rescue = CaptureFocusForRescue(real);
-            var container = GetOrCreateContainer(ctx, member.StackingParent, resolvedZ);
-            if (!ReferenceEquals(container, member.Container))
+        }
+
+        private static ZLayerMountNode? Queued(ReconcilerContext ctx, VisualElement real)
+        {
+            foreach (var queued in ctx.PendingPortalMounts)
             {
-                DetachFromContainer(ctx, member.Container, real);
+                if (queued.Node is ZLayerMountNode node && ReferenceEquals(node.Real, real))
+                {
+                    return node;
+                }
             }
-            Place(ctx, member.Placeholder, container, member.StackingParent, real, resolvedZ, rescue);
-            DrainTeardowns(ctx);
-            ResortLayers(ctx);
+            return null;
+        }
+
+        // The placeholder standing at real's declared slot while it is z-managed, placed or still queued; null
+        // while real is in that slot itself.
+        internal static VisualElement? PlaceholderOf(ReconcilerContext ctx, VisualElement real)
+        {
+            if (ctx.ZLayerMembers.TryGetValue(real, out var member))
+            {
+                return member.Placeholder;
+            }
+            foreach (var pair in ctx.ZLayerPlaceholders)
+            {
+                if (ReferenceEquals(pair.Value, real))
+                {
+                    return pair.Key;
+                }
+            }
+            return null;
         }
 
         // Patch-time none-to-z: `real` is still ordinary (physically at its declared slot under
@@ -225,9 +318,9 @@ namespace Velvet
         // index (an in-place swap, like a WrapElement type-flip — parent childCount/order is unchanged, so
         // the caller's post-patch re-fetch-at-the-same-index picks up the new occupant). Synchronous when
         // the destination layer already exists; defers only when it must be created for the first time.
-        internal static VisualElement RelocateFromOrdinarySlot(ReconcilerContext ctx, VisualElement real, int resolvedZ)
+        internal static VisualElement RelocateFromOrdinarySlot(ReconcilerContext ctx, VisualElement real, int resolvedZ,
+            bool createLayer = false)
         {
-            resolvedZ = StyleCustomProperties.VariableZ(real) ?? resolvedZ;
             var stackingParent = real.parent!;
             var idx = stackingParent.IndexOf(real);
             // Captured before the detach two lines below drops it — see Reposition's own comment on why this
@@ -237,7 +330,8 @@ namespace Velvet
             stackingParent.Insert(idx, placeholder);
             real.RemoveFromHierarchy();
 
-            var existing = TryGetExistingContainer(ctx, stackingParent, resolvedZ);
+            var existing = createLayer ? GetOrCreateContainer(ctx, stackingParent, resolvedZ)
+                : TryGetExistingContainer(ctx, stackingParent, resolvedZ);
             if (existing != null)
             {
                 Place(ctx, placeholder, existing, stackingParent, real, resolvedZ, rescueFocus: rescue);

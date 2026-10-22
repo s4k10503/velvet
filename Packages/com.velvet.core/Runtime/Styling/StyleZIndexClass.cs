@@ -100,8 +100,8 @@ namespace Velvet
             z = null;
             // StripImportant leaves the bang of "-!z-10" in place, so that stays rejected.
             cls = StyleArbitraryValueResolver.StripImportant(cls, out important);
-            // Its value is the custom property's, which StyleCustomProperties.VariableZ reads on the element; here
-            // the class makes the element z-managed, at 0 until that is read.
+            // Its value is the custom property's, which StyleCustomProperties.TryVariableZ reads on the element;
+            // here the class is a candidate (FiberZLayerCoordinator.Stacks decides whether it stacks).
             if (!string.IsNullOrEmpty(cls) && VariableUtility(cls) != null)
             {
                 z = 0;

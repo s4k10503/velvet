@@ -290,36 +290,29 @@ namespace Velvet
         // picks up the new occupant without any change to those call sites.
         private void PatchZLayerElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
         {
-            var oldIsZ = FiberZLayerCoordinator.TryClassify(oldNode.ClassNames, oldNode.Props, out _);
-            var newIsZ = FiberZLayerCoordinator.TryClassify(newNode.ClassNames, newNode.Props, out var newResolvedZ);
-
-            if (!oldIsZ)
-            {
-                // none -> z: `element` is still the ordinary, in-flow element.
-                PatchElement(element, oldNode, newNode);
-                FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, element, newResolvedZ);
-                return;
-            }
-
-            // `element` is the placeholder for both remaining branches (oldIsZ is true): the real element
-            // lives elsewhere and must be resolved before it can be patched.
-            if (!_ctx.ZLayerPlaceholders.TryGetValue(element, out var real))
-            {
-                // Defensive: a live tree should never reach a z-managed placeholder with no registered real
-                // element. Patching the placeholder itself would be wrong (it is not the declared content),
-                // so at minimum do not silently drop the node's props/children.
-                PatchElement(element, oldNode, newNode);
-                return;
-            }
-
+            // Read off the placeholder registry rather than the old class list: a z-* class reading a custom
+            // property stacks or unstacks the element as that resolves, with no patch (FiberZLayerCoordinator.
+            // Restack), and the patch below can do the same before the relocation is decided.
+            var real = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
             PatchElement(real, oldNode, newNode);
-            if (newIsZ)
+            var classified = FiberZLayerCoordinator.TryClassify(newNode.ClassNames, newNode.Props, out var newResolvedZ);
+            var isZ = FiberZLayerCoordinator.Stacks(_ctx, FiberZLayerCoordinator.ClassElementOf(_ctx, real), classified,
+                ref newResolvedZ);
+            var placeholder = FiberZLayerCoordinator.PlaceholderOf(_ctx, real);
+            if (placeholder == null)
             {
-                FiberZLayerCoordinator.Reposition(_ctx, element, real, newResolvedZ);
+                if (isZ)
+                {
+                    FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, real, newResolvedZ);
+                }
+            }
+            else if (isZ)
+            {
+                FiberZLayerCoordinator.Reposition(_ctx, placeholder, real, newResolvedZ);
             }
             else
             {
-                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, element, real);
+                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, placeholder, real);
             }
         }
 
@@ -327,12 +320,14 @@ namespace Velvet
         // resolves, so the old side is read off the placeholder registry and the new side once the patch ran.
         private void PatchMotionSlot(VisualElement element, MotionNode oldNode, MotionNode newNode)
         {
-            var wasZ = _ctx.ZLayerPlaceholders.TryGetValue(element, out var real);
-            var motion = wasZ ? real : element;
+            var motion = _ctx.ZLayerPlaceholders.TryGetValue(element, out var real) ? real : element;
             PatchMotion(motion, oldNode, newNode);
-            var isZ = FiberZLayerCoordinator.TryClassify(
+            var classified = FiberZLayerCoordinator.TryClassify(
                 RestingClassSet(motion, newNode.ClassNames).Merged, newNode.Props, out var resolvedZ);
-            if (!wasZ)
+            var isZ = FiberZLayerCoordinator.Stacks(_ctx, motion, classified, ref resolvedZ);
+            // Read again after the patch, for the reason PatchZLayerElement gives.
+            var placeholder = FiberZLayerCoordinator.PlaceholderOf(_ctx, motion);
+            if (placeholder == null)
             {
                 if (isZ)
                 {
@@ -341,11 +336,11 @@ namespace Velvet
             }
             else if (isZ)
             {
-                FiberZLayerCoordinator.Reposition(_ctx, element, motion, resolvedZ);
+                FiberZLayerCoordinator.Reposition(_ctx, placeholder, motion, resolvedZ);
             }
             else
             {
-                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, element, motion);
+                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, placeholder, motion);
             }
         }
 
