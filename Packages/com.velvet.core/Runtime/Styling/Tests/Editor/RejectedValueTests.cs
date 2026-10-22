@@ -26,13 +26,15 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): the base drew these rings, which hold no value the browser rejects.
+        // GREEN_ON_BASE(characterization): the base drew these rings, whose box-shadow holds no value the browser rejects.
         [TestCase("ring ring-[var(--brand)]")]
         [TestCase("ring-2 ring-[oklch(62.3%_0.214_259.815)]")]
         [TestCase("ring ring-[currentColor]")]
         [TestCase("ring ring-[rebeccapurple]")]
         [TestCase("ring ring-[length:var(--w)]")]
         [TestCase("ring shadow-[var(--shadow)]")]
+        [TestCase("ring shadow-[var(--shadow)] shadow-[#ggg]")]
+        [TestCase("ring inset-ring-[length:0]")]
         public void Given_ARingValueVelvetDoesNotRead_When_Extracted_Then_TheRingIsDrawn(string classes)
         {
             // Act
@@ -53,21 +55,20 @@ namespace Velvet.Tests
             Assert.That(ok, Is.True);
         }
 
-        [Test]
-        public void Given_AShadowBesideARejectedRingColour_When_Extracted_Then_TheShadowIsDiscardedToo()
+        [TestCase("ring-2 shadow-lg ring-[5PX]")]
+        [TestCase("shadow-lg ring-[length:2]")]
+        [TestCase("shadow-lg ring-[length:0]")]
+        [TestCase("shadow-lg ring-[length:50%]")]
+        [TestCase("shadow-md shadow-[#ggg]")]
+        [TestCase("shadow-md inset-ring-[length:2]")]
+        [TestCase("shadow-md inset-ring inset-ring-[2]")]
+        [TestCase("shadow-md inset-shadow-[4px]")]
+        [TestCase("shadow-md inset-shadow-[inset_0_2px_4px_red]")]
+        [TestCase("shadow-md inset-shadow-sm inset-shadow-[#ggg]")]
+        public void Given_AShadowBesideAValueTheBrowserRejects_When_Extracted_Then_TheShadowIsDiscarded(string classes)
         {
             // Act
-            var ok = StyleShadowClass.TryExtract(new[] { "ring-2", "shadow-lg", "ring-[5PX]" }, out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        [Test]
-        public void Given_AShadowBesideARejectedRingWidth_When_Extracted_Then_TheShadowIsDiscarded()
-        {
-            // Act
-            var ok = StyleShadowClass.TryExtract(new[] { "shadow-lg", "ring-[length:2]" }, out _);
+            var ok = StyleShadowClass.TryExtract(classes.Split(' '), out _);
 
             // Assert
             Assert.That(ok, Is.False);

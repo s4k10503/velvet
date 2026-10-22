@@ -80,7 +80,7 @@ namespace Velvet
             ["text"] = new[] { "size", "length", "percentage", "absolute-size", "relative-size" },
             ["border"] = new[] { "length", "line-width" },
             ["bg"] = new[] { "percentage", "position", "bg-size", "length", "size", "image", "url" },
-            ["ring"] = new[] { "length" }, ["ring-offset"] = new[] { "length" },
+            ["ring"] = new[] { "length" }, ["ring-offset"] = new[] { "length" }, ["inset-ring"] = new[] { "length" },
             ["outline"] = new[] { "length", "number", "percentage" },
             ["from"] = new[] { "length", "percentage" }, ["via"] = new[] { "length", "percentage" },
             ["to"] = new[] { "length", "percentage" },

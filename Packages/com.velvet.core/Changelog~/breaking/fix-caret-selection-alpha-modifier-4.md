@@ -2,8 +2,10 @@
 
 - A value Tailwind composes into an element's box-shadow and the browser rejects now discards the box-shadow,
   as the browser does: a ring colour or offset colour that is no colour (`ring ring-[5PX]`), a ring width that
-  is no length (`ring-[length:2]`) and a `shadow-[…]` that is no box-shadow (`shadow-[0_4_8_#000]`,
-  `shadow-[4px]`) take the ring and every `shadow-*` on the element with them, where the ring used to draw. A
+  is no length (`ring-[length:2]`, `ring-[length:0]`, `ring-[length:50%]`), a `shadow-[…]` that is no box-shadow
+  (`shadow-[0_4_8_#000]`, `shadow-[4px]`), a shadow colour that is no colour where a shadow reads it
+  (`shadow-md shadow-[#ggg]`), and the same values written through `inset-ring-*` and `inset-shadow-*`, take the
+  ring and every `shadow-*` on the element with them, where the ring used to draw. A
   `from-` / `via-` / `to-` colour that is no colour leaves its stop transparent, and a position that is no length
   or percentage returns the stop to its initial one. A function, `var()`, `currentColor`, a colour name or a unit
   Velvet does not read is not taken for a rejected value.
@@ -12,4 +14,5 @@
   shared declaration: `translate-x-4 translate-y-[10]` and `!translate-y-[10] translate-x-4` no longer translate
   along x, and `drop-shadow-lg blur-[2]` no longer draws its drop shadow. Only the value each property holds
   counts, so `blur-[2] blur-md` still blurs. Under a variant the family is off while the variant applies:
-  `translate-x-4 hover:translate-y-[10]` stops translating while hovered. `blur-[-2px]` is declined.
+  `translate-x-4 hover:translate-y-[10]` stops translating while hovered, and
+  `dark:translate-x-4 hover:translate-y-[10]` while hovered in dark mode. `blur-[-2px]` is declined.

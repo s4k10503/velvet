@@ -74,8 +74,10 @@ namespace Velvet
                     return true;
                 }
             }
-            return s_namedColors.Contains(value);
+            return IsNamedColor(value);
         }
+
+        public static bool IsNamedColor(string value) => s_namedColors.Contains(value);
 
         private static readonly string[] s_colorFunctions =
         {

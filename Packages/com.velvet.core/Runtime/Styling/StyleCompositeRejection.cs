@@ -7,17 +7,17 @@ namespace Velvet
     // Tailwind writes translate-*, scale-x-* / scale-y-* and the uniform scale-*, skew-*, and the filter
     // utilities as custom properties that one declaration per family composes (translate: var(--tw-translate-x)
     // var(--tw-translate-y), filter: var(--tw-blur,) var(--tw-brightness,) …). A value the browser rejects in one
-    // of them makes that declaration invalid at computed-value time, so the family's other utilities go with it, as
-    // measured in Chromium against Tailwind's own CSS; RejectedCompositeTests pins the families.
+    // of them makes that declaration invalid at computed-value time, so the family's other utilities go with it;
+    // RejectedCompositeTests pins the families.
     //
     // The custom properties are the element's: a variant or an important modifier decides only which rule's value a
-    // property holds. So a family is judged once per variant set its tokens are written under, over the tokens of
-    // that set and of every set it contains, and on the value holding each property alone. Where it is rejected
+    // property holds. So a family is judged once per variant set its tokens are written under and per union of
+    // those sets, over the tokens of every set it contains, and on the value holding each property alone. Where it is rejected
     // under a variant set, its tokens there give way to tokens under the same variants that write each property the
     // contained sets hold back to a value that does nothing (translate-x-0, blur-none), so the family is off while
     // those variants apply; where it is accepted, a holding value that a rejection below took out is written again
-    // under its variants. Two variant sets neither of which contains the other are judged apart. A [&>*]: scope
-    // styles the children rather than the element, and is judged on its own tokens.
+    // under its variants. A [&>*]: scope styles the children rather than the element, and is judged on its own
+    // tokens.
     internal static class StyleCompositeRejection
     {
         private enum Family
@@ -98,11 +98,26 @@ namespace Velvet
                     scopes.Add(member);
                 }
             }
-            var rejected = scopes.FindAll(scope => Holding(members, scope).Exists(holder => holder.Reading.Rejected));
-            if (rejected.Count == 0)
+            if (!scopes.Exists(scope => Holding(members, scope).Exists(holder => holder.Reading.Rejected)))
             {
                 return;
             }
+            // A rejection under one variant set has to take out what another holds while both apply, so each union
+            // of the sets is judged too, under the stacked variants that apply only while all of its sets do.
+            var plain = scopes.FindAll(scope => !scope.Child && scope.Parts.Count > 0);
+            for (var i = 0; i < plain.Count; i++)
+            {
+                for (var j = 0; j < i; j++)
+                {
+                    var union = Union(plain[j], plain[i]);
+                    if (!plain.Exists(scope => scope.Scope == union.Scope))
+                    {
+                        plain.Add(union);
+                        scopes.Add(union);
+                    }
+                }
+            }
+            var rejected = scopes.FindAll(scope => Holding(members, scope).Exists(holder => holder.Reading.Rejected));
             foreach (var member in members)
             {
                 if (rejected.Exists(scope => scope.Scope == member.Scope))
@@ -121,9 +136,33 @@ namespace Velvet
                     : Restoring(members, scope, removed);
                 if (tokens.Count > 0)
                 {
-                    written[scope.Index] = tokens;
+                    if (written.TryGetValue(scope.Index, out var before))
+                    {
+                        before.AddRange(tokens);
+                    }
+                    else
+                    {
+                        written[scope.Index] = tokens;
+                    }
                 }
             }
+        }
+
+        // The variant set holding the variants of both a and z, which has no token of its own; its tokens are written
+        // ahead of the later of the two sets' first tokens.
+        private static Reading Union(Reading a, Reading z)
+        {
+            var parts = new List<string>(a.Parts);
+            parts.AddRange(z.Parts.FindAll(part => !a.Parts.Contains(part)));
+            var variants = string.Concat(parts.ConvertAll(part => part + ":"));
+            return new Reading
+            {
+                Index = Math.Max(a.Index, z.Index),
+                Family = a.Family,
+                Variants = variants,
+                Parts = parts,
+                Scope = StyleSpacingPrecedence.VariantSetOf(variants),
+            };
         }
 
         // The tokens under scope's variants that write each property a set it contains, and the family is accepted
@@ -398,7 +437,7 @@ namespace Velvet
             => TailwindDataTypes.NumberEnd(value, withExponent: true) == value.Length
                 || TailwindDataTypes.NumberEnd(value, withExponent: false) == value.Length;
 
-        private static bool IsZero(string value) => IsNumber(value) && float.TryParse(value,
+        internal static bool IsZero(string value) => IsNumber(value) && float.TryParse(value,
             System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n) && n == 0f;
 
         private static bool IsPercentage(string value)
