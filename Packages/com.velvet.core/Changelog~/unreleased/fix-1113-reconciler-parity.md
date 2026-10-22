@@ -2,8 +2,9 @@
 
 - `V.Fragment(a, b, …)` takes its children as `params` arguments, the counterpart of `<>{a}{b}</>`, so a
   Fragment needs no `new VNode?[] { … }` around them.
-- VEL600 warns at a `V.*` factory call without a `key:` whose node reaches a list built by `Select` or by
-  `List<VNode>.Add`, through locals, helper methods and delegates, as React warns about a list child with no key.
+- VEL600 warns at a `V.*` factory call without a `key:` whose node reaches a list built by `Select`, by
+  `yield return`, by storing into an array element or by `List<VNode>.Add`, through locals, helper methods and
+  delegates, as React warns about a list child with no key.
 
 ### Fixed
 

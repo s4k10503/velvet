@@ -81,10 +81,14 @@ namespace Velvet
 
     public sealed class RouteDefinition { }
 
+    public sealed class FragmentNode : VNode { }
+
     public static partial class V
     {
         public static TextNode Text(string text) => new() { Text = text ?? string.Empty };
         public static RouteDefinition[] Routes(params RouteDefinition[] routes) => routes;
+        public static FragmentNode Fragment(VNode[] children, string key = null) => null;
+        public static FragmentNode Fragment(params VNode[] children) => null;
         public static VNode When(bool condition, global::System.Func<VNode> factory) =>
             condition ? factory() : null;
         public static ComponentNode Component(global::System.Func<VNode> body, string key = null) => null;

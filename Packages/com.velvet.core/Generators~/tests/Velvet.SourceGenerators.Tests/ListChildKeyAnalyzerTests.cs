@@ -5,15 +5,15 @@ using Xunit;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// Tests for <see cref="ListChildKeyAnalyzer"/>. Each sample builds a list in the body of <c>Rows</c>,
-    /// and the case reads back the VEL600 messages it draws.
+    /// Tests for <see cref="ListChildKeyAnalyzer"/>. Each sample builds a list in the body of <c>Rows</c>, beside the
+    /// helpers the case declares on <c>Page</c>, and the case reads back the VEL600 messages it draws.
     /// </summary>
     public sealed class ListChildKeyAnalyzerTests
     {
         private const string UnkeyedComponentMessage =
             "'V.Component' builds a child of a list without a key; each child in a list should have a unique key";
 
-        private static string Vel600Messages(string rows)
+        private static string Vel600Messages(string rows, string helpers = "")
         {
             var source = @"
 using System.Collections.Generic;
@@ -38,6 +38,8 @@ namespace MyApp
     public static class Page
     {
         internal static VNode Row() => null;
+
+" + helpers + @"
 
         public static object Rows(int[] items)
         {
@@ -291,6 +293,114 @@ namespace MyApp
 
             // Act
             var messages = Vel600Messages(rows);
+
+            // Assert
+            Assert.Equal(string.Empty, messages);
+        }
+
+        [Fact]
+        public void Given_AnArrayElementAssignedAnUnkeyedComponent_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange
+            const string rows = "var rows = new VNode[items.Length]; for (var i = 0; i < rows.Length; i++) rows[i] = V.Component(Row); return rows;";
+            // Act
+            var messages = Vel600Messages(rows);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
+        public void Given_AnArrayFilledWithUnkeyedComponentsAndHandedToNoFactory_When_Analyzed_Then_NothingIsReported()
+        {
+            // Arrange — the array holds nodes for some other use, never as children.
+            const string rows = "var rows = new VNode[items.Length]; for (var i = 0; i < rows.Length; i++) rows[i] = V.Component(Row); return rows.Length;";
+
+            // Act
+            var messages = Vel600Messages(rows);
+
+            // Assert
+            Assert.Equal(string.Empty, messages);
+        }
+
+        [Fact]
+        public void Given_AnArrayFilledWithUnkeyedComponentsAndHandedToAFactory_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange
+            const string rows = "var rows = new VNode[items.Length]; for (var i = 0; i < rows.Length; i++) rows[i] = V.Component(Row); return V.Fragment(rows);";
+
+            // Act
+            var messages = Vel600Messages(rows);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
+        public void Given_AnIteratorYieldingAnUnkeyedComponent_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange
+            const string rows = "return Each(items).ToArray();";
+            const string helpers = "static IEnumerable<VNode> Each(int[] items) { foreach (var item in items) yield return V.Component(Row); }";
+
+            // Act
+            var messages = Vel600Messages(rows, helpers);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
+        public void Given_AHelperAddingAPassedNodeToAListItsCallerMakesAnArray_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange — the node reaches the helper's parameter from the call that passes the list.
+            const string rows = "var rows = new List<VNode>(); foreach (var item in items) Append(rows, V.Component(Row)); return rows.ToArray();";
+            const string helpers = "static void Append(List<VNode> list, VNode node) => list.Add(node);";
+
+            // Act
+            var messages = Vel600Messages(rows, helpers);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
+        public void Given_AHelperAddingToAListItsCallerNeverMakesAnArray_When_Analyzed_Then_NothingIsReported()
+        {
+            // Arrange
+            const string rows = "var rows = new List<VNode>(); foreach (var item in items) Append(rows, V.Component(Row)); return rows.Count;";
+            const string helpers = "static void Append(List<VNode> list, VNode node) => list.Add(node);";
+
+            // Act
+            var messages = Vel600Messages(rows, helpers);
+
+            // Assert
+            Assert.Equal(string.Empty, messages);
+        }
+
+        [Fact]
+        public void Given_AnUnkeyedComponentAtTheDeepestPathTheTraceFollows_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange — the selector and fifteen helpers hold the guide's sixteen.
+            const string rows = "return items.Select(item => H1()).ToArray();";
+            const string helpers = "static VNode H1() => H2(); static VNode H2() => H3(); static VNode H3() => H4(); static VNode H4() => H5(); static VNode H5() => H6(); static VNode H6() => H7(); static VNode H7() => H8(); static VNode H8() => H9(); static VNode H9() => H10(); static VNode H10() => H11(); static VNode H11() => H12(); static VNode H12() => H13(); static VNode H13() => H14(); static VNode H14() => H15(); static VNode H15() => V.Component(Row);";
+
+            // Act
+            var messages = Vel600Messages(rows, helpers);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
+        public void Given_AnUnkeyedComponentOnePastTheDeepestPathTheTraceFollows_When_Analyzed_Then_NothingIsReported()
+        {
+            // Arrange — the selector and sixteen helpers are one past the guide's sixteen.
+            const string rows = "return items.Select(item => H1()).ToArray();";
+            const string helpers = "static VNode H1() => H2(); static VNode H2() => H3(); static VNode H3() => H4(); static VNode H4() => H5(); static VNode H5() => H6(); static VNode H6() => H7(); static VNode H7() => H8(); static VNode H8() => H9(); static VNode H9() => H10(); static VNode H10() => H11(); static VNode H11() => H12(); static VNode H12() => H13(); static VNode H13() => H14(); static VNode H14() => H15(); static VNode H15() => H16(); static VNode H16() => V.Component(Row);";
+
+            // Act
+            var messages = Vel600Messages(rows, helpers);
 
             // Assert
             Assert.Equal(string.Empty, messages);
