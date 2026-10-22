@@ -9,8 +9,10 @@
 - What a render reads through either hook reaches a store-change notification and the passive effects only once
   that render settles, so a later render of the component that does not settle no longer changes the store,
   `subscribe` or selector an earlier commit's pending effects use.
-- A `UseSyncExternalStore` re-render that a passive effect asks for as a sync-lane commit ends renders in that same
-  drain and counts toward its update-depth limit, as React renders a sync-lane update before it yields. It used to
-  wait for the next drain.
+- The re-render `UseSyncExternalStore` or `UseStore` forces when its subscription or snapshot check finds the store
+  changed takes the sync lane and renders before the passive flush that ran the check returns, the scheduled
+  post-paint flush included, counting toward the drain's update-depth limit, as React renders sync-lane work before
+  its passive flush returns. It used to wait for a later drain. An ordinary update the same flush schedules still
+  waits for the next drain.
 - Under StrictMode in the Editor, `subscribe` is called, unsubscribed and called again when a component mounts, as
   React double-invokes a mount effect.

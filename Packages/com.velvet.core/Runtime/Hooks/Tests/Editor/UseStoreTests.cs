@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -45,6 +46,7 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             ResetStoreRead();
+            s_clickStore = null;
             ResetSelectorPartial();
             ResetCustomComparer();
             ResetThrowingSelector();
@@ -213,6 +215,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.AreEqual(renderCountBefore + 1, s_selectorPartialRenderCount);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's render subscribed, so the layout effect's write rendered in the click.
+        // On the head the subscription that finds the write forces a sync-lane render, which the click's drain renders.
+        [Test]
+        public void Given_AClickMountingAReaderWhoseLayoutEffectWritesTheStore_When_TheClickFlushes_Then_TheReaderShowsTheWrite()
+        {
+            // Arrange
+            using var store = new TestCounterStore(initial: 0);
+            s_clickStore = store;
+            using var mounted = V.Mount(_root, V.Component(ClickMountStoreHostRender, key: "click-host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            _root.Q<Button>("show").SimulateClick();
+
+            // Assert
+            Assert.AreEqual("7", _root.Q<Label>("layout-store-reader").text);
         }
 
         // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
@@ -468,6 +488,35 @@ namespace Velvet.Tests
             public bool Equals(int x, int y) => x == y;
             public int GetHashCode(int obj) => obj.GetHashCode();
         }
+
+        #region ClickMount components (a reader a click mounts, writing the store from its layout effect)
+
+        private static TestCounterStore s_clickStore;
+
+        [Component]
+        private static VNode ClickMountStoreHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "show", onClick: () => setShown.Invoke(true)),
+                shown ? V.Component(LayoutWritingStoreReaderRender, key: "reader") : null,
+            });
+        }
+
+        [Component]
+        private static VNode LayoutWritingStoreReaderRender()
+        {
+            var value = Hooks.UseStore(s_clickStore, s => s);
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (s_clickStore.Current == 0) s_clickStore.SetValue(7);
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(name: "layout-store-reader", text: value.ToString());
+        }
+
+        #endregion
 
         #region StoreRead component (UseStore identity selector)
 

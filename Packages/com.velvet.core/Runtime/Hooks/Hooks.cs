@@ -203,18 +203,25 @@ namespace Velvet
         }
 
         // The notification between the render and this effect reached no subscriber, so the selection is
-        // compared once more against the live snapshot after subscribing.
+        // compared once more against the live snapshot after subscribing. A change found there re-renders as
+        // UseSyncExternalStore's does, on the sync lane, so it renders before the passive flush returns.
         private static Action SubscribeStore<TStore, TSel>(ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot)
         {
-            slot.Subscription = slot.Store.Subscribe(snapshot => OnStoreSnapshot(fiber, slot, snapshot));
-            OnStoreSnapshot(fiber, slot, slot.Store.Current);
+            slot.Subscription = slot.Store.Subscribe(snapshot =>
+            {
+                if (SelectionChanged(fiber, slot, snapshot)) RequestRender(fiber);
+            });
+            if (SelectionChanged(fiber, slot, slot.Store.Current)) FiberWorkLoop.RequestExternalStoreRender(fiber);
             return slot.Dispose;
         }
 
-        private static void OnStoreSnapshot<TStore, TSel>(
+        // Whether snapshot asks the component for a render, recording the selection it compared against. A
+        // throwing selector is not swallowed: the render it asks for repeats the call, so the exception reaches the
+        // ErrorBoundary, symmetric with the unguarded render path.
+        private static bool SelectionChanged<TStore, TSel>(
             ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot, TStore snapshot)
         {
-            if (fiber.IsDisposed) return;
+            if (fiber.IsDisposed) return false;
             TSel next;
             try
             {
@@ -222,16 +229,12 @@ namespace Velvet
             }
             catch
             {
-                // A throwing selector is not swallowed in
-                // the subscription path. Re-render so the render-phase selector re-throws and the
-                // exception reaches the ErrorBoundary, symmetric with the unguarded render path.
-                RequestRender(fiber);
-                return;
+                return true;
             }
 
-            if (slot.Comparer.Equals(slot.LastValue, next)) return;
+            if (slot.Comparer.Equals(slot.LastValue, next)) return false;
             slot.LastValue = next;
-            RequestRender(fiber);
+            return true;
         }
 
         // A pin older than the store leaves a reader whose selection the mutation changed behind it with no

@@ -231,6 +231,38 @@ namespace Velvet.Tests
             Assert.AreEqual(rendersBefore, s_pairRenders);
         }
 
+        [Test]
+        public void Given_StoreChangedBeforeTheMountsEffects_When_ThePassiveFlushRuns_Then_TheChangeRendersBeforeItReturns()
+        {
+            // Arrange
+            s_counter = new ExternalSource<int>(0);
+            using var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+            s_counter.Set(5);
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.AreEqual(5, s_readerValue);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's sync-lane drain already left an effect's ordinary update queued.
+        // On the head a store check in the same flush asks for a sync-lane render, and the drain renders that alone.
+        [Test]
+        public void Given_AClickMountingAStoreCheckAndAnEffectWrite_When_TheClickFlushes_Then_TheEffectsOrdinaryUpdateWaits()
+        {
+            // Arrange — the reader's layout effect changes the store before its subscription exists
+            s_counter = new ExternalSource<int>(0);
+            using var mounted = V.Mount(_root, V.Component(ClickMountHostRender, key: "click-host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            _root.Q<Button>("show").SimulateClick();
+
+            // Assert
+            Assert.AreEqual("0", _root.Q<Label>("effect-setter").text);
+        }
+
         // GREEN_ON_BASE(characterization): the base's render subscribed, so the change reached it as a notification.
         // On the head nothing is subscribed until the passive effects run, and the comparison the subscription
         // makes once it exists is what finds the change.
@@ -765,6 +797,42 @@ namespace Velvet.Tests
         {
             var value = Hooks.UseSyncExternalStore(s_sourceA.Subscribe, s_sourceA.GetSnapshot);
             return V.Label(text: value.ToString());
+        }
+
+        [Component]
+        private static VNode ClickMountHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "show", onClick: () => setShown.Invoke(true)),
+                shown ? V.Component(LayoutWritingReaderRender, key: "reader") : null,
+                shown ? V.Component(EffectSetterRender, key: "setter") : null,
+            });
+        }
+
+        [Component]
+        private static VNode LayoutWritingReaderRender()
+        {
+            var value = Hooks.UseSyncExternalStore(s_counter.Subscribe, s_counter.GetSnapshot);
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (s_counter.GetSnapshot() == 0) s_counter.Set(1);
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(name: "layout-reader", text: value.ToString());
+        }
+
+        [Component]
+        private static VNode EffectSetterRender()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            Hooks.UseEffect(() =>
+            {
+                setCount.Invoke(1);
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(name: "effect-setter", text: count.ToString());
         }
 
         // The first attempt reads A and asks for a render while it renders, so that attempt is discarded.
