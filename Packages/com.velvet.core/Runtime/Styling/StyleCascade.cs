@@ -163,10 +163,42 @@ namespace Velvet
             return Of(element) is { } style && TryReadRotate(style, out var rotate) ? rotate.angle.ToDegrees() : float.NaN;
         }
 
+        // The translate and the scale the rules declare; null where the cached style cannot be read. Read by accessors
+        // compiled once, as Rotate is, since a layoutId projection can read both on every pass.
+        public static Translate? Translate(VisualElement element)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledTranslate != null)
+            {
+                var read = s_compiledTranslate(element);
+                return float.IsNaN(read.z) ? null : read;
+            }
+#endif
+            return Of(element) is { } style && TryReadTranslate(style, out var translate) ? translate : null;
+        }
+
+        public static Scale? Scale(VisualElement element)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledScale != null)
+            {
+                var read = s_compiledScale(element);
+                return float.IsNaN(read.value.x) ? null : read;
+            }
+#endif
+            return Of(element) is { } style && TryReadScale(style, out var scale) ? scale : null;
+        }
+
 #if !ENABLE_IL2CPP
         // A NaN angle where the element's style is not cached.
         private static readonly Func<VisualElement, Rotate>? s_compiledRotate =
             s_rotate == null ? null : Compile<Rotate>(s_rotate, new Rotate(new Angle(float.NaN)));
+
+        // A NaN depth, and a NaN scale, where the element's style is not cached.
+        private static readonly Func<VisualElement, Translate>? s_compiledTranslate =
+            s_translate == null ? null : Compile<Translate>(s_translate, new Translate(new Length(0f), new Length(0f), float.NaN));
+        private static readonly Func<VisualElement, Scale>? s_compiledScale =
+            s_scale == null ? null : Compile<Scale>(s_scale, new Scale(new UnityEngine.Vector3(float.NaN, float.NaN, float.NaN)));
 
         // A reader of one member of the element's cached style, giving fallback where the style is not cached; null where
         // the members it goes through do not resolve or it cannot be compiled.

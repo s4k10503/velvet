@@ -2036,6 +2036,31 @@ namespace Velvet.Tests
             Assert.That(new[] { translate.x.value, translate.y.value }, Is.EqualTo(new[] { -200f, -20f }).Within(1f));
         }
 
+        [Test]
+        public void Given_ALayoutIdMotionTranslatedByItsRulesMidMove_When_ItsClassesTranslateItElsewhere_Then_TheMoveAddsToTheNewTranslate()
+        {
+            // Arrange — the bundled sheet lifting the box 20px; widened to 200px with its top-left corner fixed, so its
+            // move translates it across and not down.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_resizeOrigin, s_resizeTo) = ("anim-slide-up-exit-to", new Vector2Int(200, 100));
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Act — its rules drop it 20px instead, its box unchanged; the frame the styles take it and the next.
+            s_resizeOrigin = "anim-slide-down-exit-to";
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+            Tick();
+
+            // Assert — its own 20px down, to which the move adds nothing.
+            var element = Root.Q<VisualElement>("shared");
+            Assert.That(element.style.translate.value.y.value, Is.EqualTo(20f).Within(0.01f));
+        }
+
         private static string s_ownClasses;
 
         // Step 1 moves the box 200px right; s_ownClasses are its own transform classes.
@@ -2855,6 +2880,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
+        }
+
+        [Test]
+        public void Given_AHolderScaledByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatRescalesIt_Then_ItsMoveIsDrawnAtTheNewScale()
+        {
+            // Arrange — the bundled sheet scaling "a" by one and a half; "b", twice its side, has taken the id from it and
+            // landed.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aSize, s_bSize, s_aClasses) = (100, 200, "scale-150");
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+
+            // Act — one render takes "b" away, which hands "a" the lead from b's box before the style pass, and rescales
+            // "a"; the frame after it and two more.
+            (s_bMounted, s_aClasses) = (false, "scale-125");
+            RenderShared(mounted);
+            Tick();
+            Tick();
+
+            // Assert — the slot holds its own one and a quarter times the scale its move draws it at.
+            var a = Root.Q<VisualElement>("a");
+            var moving = mounted.Root.Reconciler.Context.LayoutIdProjections.TryGetValue(a, out var projection);
+            Assert.That(moving ? a.style.scale.value.value.x / projection.Scale.x : float.NaN, Is.EqualTo(1.25f).Within(0.01f));
         }
 
         [Test]

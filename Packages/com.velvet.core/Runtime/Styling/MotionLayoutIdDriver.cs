@@ -225,18 +225,18 @@ namespace Velvet
             var translate = element.style.translate;
             var scale = element.style.scale;
             var resolved = element.resolvedStyle;
-            var ownTranslate = translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : resolved.translate;
-            var ownScale = scale.keyword == StyleKeyword.Undefined ? scale.value.value : resolved.scale.value;
+            var startTranslate = translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : resolved.translate;
+            var startScale = scale.keyword == StyleKeyword.Undefined ? scale.value.value : resolved.scale.value;
             // A running bounce or ping has its frame in the slot, and the frame is the loop's rather than the element's.
             if (StyleAnimateDriver.TryReadBounceOwn(element, translate, out var bounceInline, out var bounceOwn))
             {
-                (translate, ownTranslate) = (bounceInline, Pixels(bounceOwn, element.layout));
+                (translate, startTranslate) = (bounceInline, Pixels(bounceOwn, element.layout));
             }
             if (StyleAnimateDriver.TryReadPingOwn(element, scale, out var pingInline, out var pingOwn))
             {
-                (scale, ownScale) = (pingInline, pingOwn);
+                (scale, startScale) = (pingInline, pingOwn);
             }
-            var projection = new LayoutIdProjection(host, translate, scale, ownTranslate, ownScale)
+            var projection = new LayoutIdProjection(host, translate, scale, startTranslate, startScale)
             {
                 From = element.layout,
             };
@@ -454,7 +454,7 @@ namespace Velvet
                     MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Translate);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
-                var own = projection.OwnTranslate;
+                var own = OwnTranslate(element, projection);
                 // A running bounce's lift is in the element's own frame, so the projection's scale carries it too.
                 var lift = StyleAnimateDriver.CurrentLiftPx(element) * projection.Scale.y;
                 element.style.translate = new Translate(
@@ -469,7 +469,7 @@ namespace Velvet
                     MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Scale);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
-                var own = projection.OwnScale;
+                var own = OwnScale(element, projection);
                 var ping = StyleAnimateDriver.CurrentPingFactor(element);
                 element.style.scale = new Scale(
                     new Vector3(own.x * projection.Scale.x * ping, own.y * projection.Scale.y * ping, own.z));
@@ -489,17 +489,31 @@ namespace Velvet
         private static void AdoptForeignWrites(VisualElement element, LayoutIdProjection projection)
         {
             var translate = element.style.translate;
-            if (projection.WritesTranslate && translate != projection.WrittenTranslate)
-            {
-                projection.OwnInlineTranslate = translate;
-                projection.OwnTranslate = translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : Vector3.zero;
-            }
+            if (projection.WritesTranslate && translate != projection.WrittenTranslate) projection.OwnInlineTranslate = translate;
             var scale = element.style.scale;
-            if (projection.WritesScale && scale != projection.WrittenScale)
-            {
-                projection.OwnInlineScale = scale;
-                projection.OwnScale = scale.keyword == StyleKeyword.Undefined ? scale.value.value : Vector3.one;
-            }
+            if (projection.WritesScale && scale != projection.WrittenScale) projection.OwnInlineScale = scale;
+        }
+
+        // The element's own translate as it is now: the inline value the projection took over, else what its rules
+        // declare, else the one it had as the projection began. The rules are read again whenever the slot is written
+        // rather than once as the projection begins, since its classes can change during the move and a projection can be
+        // created before the style pass has resolved a change
+        // (Given_AHolderScaledByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatRescalesIt_Then_ItsMoveIsDrawnAtTheNewScale).
+        private static Vector3 OwnTranslate(VisualElement element, LayoutIdProjection projection)
+        {
+            var inline = projection.OwnInlineTranslate;
+            if (inline.keyword == StyleKeyword.Undefined) return Pixels(inline.value, element.layout);
+            if (inline.keyword != StyleKeyword.Null) return Vector3.zero;
+            return StyleCascade.Translate(element) is { } declared ? Pixels(declared, element.layout) : projection.StartTranslate;
+        }
+
+        // As OwnTranslate, for the scale.
+        private static Vector3 OwnScale(VisualElement element, LayoutIdProjection projection)
+        {
+            var inline = projection.OwnInlineScale;
+            if (inline.keyword == StyleKeyword.Undefined) return inline.value.value;
+            if (inline.keyword != StyleKeyword.Null) return Vector3.one;
+            return StyleCascade.Scale(element) is { } declared ? declared.value : projection.StartScale;
         }
 
         private static void EnsureFrame(VisualElement host, ReconcilerContext ctx)
@@ -1000,13 +1014,13 @@ namespace Velvet
     internal sealed class LayoutIdProjection
     {
         public LayoutIdProjection(VisualElement host, StyleTranslate ownInlineTranslate, StyleScale ownInlineScale,
-            Vector3 ownTranslate, Vector3 ownScale)
+            Vector3 startTranslate, Vector3 startScale)
         {
             Host = host;
             OwnInlineTranslate = ownInlineTranslate;
             OwnInlineScale = ownInlineScale;
-            OwnTranslate = ownTranslate;
-            OwnScale = ownScale;
+            StartTranslate = startTranslate;
+            StartScale = startScale;
         }
 
         // The panel whose frame steps and ends this projection.
@@ -1025,8 +1039,9 @@ namespace Velvet
 
         public StyleTranslate OwnInlineTranslate;
         public StyleScale OwnInlineScale;
-        public Vector3 OwnTranslate;
-        public Vector3 OwnScale;
+        // The translate, in pixels, and the scale the element had as the projection began.
+        public readonly Vector3 StartTranslate;
+        public readonly Vector3 StartScale;
 
         public bool WritesTranslate;
         public bool WritesScale;
