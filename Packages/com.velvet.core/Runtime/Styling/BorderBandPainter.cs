@@ -43,12 +43,14 @@ namespace Velvet
 
     /// <summary>
     /// Fills a border as CSS draws one: the band between the border edge and the padding edge, each side its own
-    /// width and colour, each inner corner's radius the outer one less the widths of the two sides meeting there, and
-    /// two sides of different colours meeting halfway round the corner between them.
+    /// width and colour, each inner corner's radius the outer one less the widths of the two sides meeting there. Two
+    /// sides of different colours meet on a line across the corner from its outer arc to its inner one, which divides
+    /// each arc in proportion to the two widths: the wider side takes the larger part, and a side of no width leaves
+    /// the whole corner to the other.
     /// </summary>
     internal static class BorderBandPainter
     {
-        // Points each corner's arc is sampled at, ends included; odd, so a corner has a middle sample.
+        // Points each corner's arc is sampled at, ends included.
         internal const int CornerSamples = 17;
 
         private static readonly List<Vector2> s_outer = new();
@@ -61,12 +63,14 @@ namespace Velvet
             var h = box.Height;
             var shear = new SilhouetteFace.Shearing(w, h, box.TanX, box.TanY);
             var outer = Fitted(box.Radii, w, h);
+            var borderEdge = new Rect(0f, 0f, w, h);
             var paddingEdge = Rect.MinMaxRect(sides.Left, sides.Top, w - sides.Right, h - sides.Bottom);
-            BuildContour(s_outer, new Rect(0f, 0f, w, h), outer, shear);
-            BuildContour(s_inner, paddingEdge, InnerRadii(outer, sides), shear);
+            var inner = InnerRadii(outer, sides);
             if (sides.Uniform)
             {
                 if (sides.Left <= 0f || sides.LeftColor.a <= 0.004f) return;
+                BuildContour(s_outer, borderEdge, outer, shear);
+                BuildContour(s_inner, paddingEdge, inner, shear);
                 painter.BeginPath();
                 Trace(painter, s_outer);
                 if (paddingEdge.width > 0f && paddingEdge.height > 0f) Trace(painter, s_inner);
@@ -78,7 +82,11 @@ namespace Velvet
             {
                 if (sides.Width(side) <= 0f || sides.ColorOf(side).a <= 0.004f) continue;
                 painter.BeginPath();
-                TraceSide(painter, side);
+                BuildSide(s_outer, new Edge(borderEdge, outer, sides, shear), side);
+                BuildSide(s_inner, new Edge(paddingEdge, inner, sides, shear), side);
+                s_inner.Reverse();
+                s_outer.AddRange(s_inner);
+                Trace(painter, s_outer);
                 painter.fillColor = sides.ColorOf(side);
                 painter.Fill();
             }
@@ -125,23 +133,88 @@ namespace Velvet
             AddCorner(points, rect, radii.BottomLeft, 3, shear);
         }
 
-        // A quarter of the ellipse centred inward of corner (0 the top-left, then clockwise) by radius, a quarter turn
-        // clockwise in a y-down box from where the side before it ends.
+        // A quarter of the ellipse centred inward of corner (0 the top-left, then clockwise) by radius, sampled from where
+        // the side before it ends to where the side after it starts.
         private static void AddCorner(List<Vector2> points, Rect rect, Vector2 radius, int corner,
             in SilhouetteFace.Shearing shear)
+        {
+            for (var i = 0; i < CornerSamples; i++)
+            {
+                points.Add(OnCorner(rect, radius, corner, (float)i / (CornerSamples - 1), shear));
+            }
+        }
+
+        // The point a fraction t of the way round corner's arc, clockwise in a y-down box; the corner itself where it is
+        // square.
+        private static Vector2 OnCorner(Rect rect, Vector2 radius, int corner, float t, in SilhouetteFace.Shearing shear)
         {
             var right = corner is 1 or 2;
             var bottom = corner is 2 or 3;
             var at = new Vector2(right ? rect.xMax : rect.xMin, bottom ? rect.yMax : rect.yMin);
-            var rounded = radius.x > 0f && radius.y > 0f;
-            var centre = rounded ? at + new Vector2(right ? -radius.x : radius.x, bottom ? -radius.y : radius.y) : at;
-            var startAngle = Mathf.PI * (1f + (0.5f * corner));
-            for (var i = 0; i < CornerSamples; i++)
+            if (radius.x > 0f && radius.y > 0f)
             {
-                var angle = startAngle + (Mathf.PI * 0.5f * i / (CornerSamples - 1));
-                var point = rounded ? centre + new Vector2(radius.x * Mathf.Cos(angle), radius.y * Mathf.Sin(angle)) : at;
-                points.Add(shear.Apply(point.x, point.y));
+                var centre = at + new Vector2(right ? -radius.x : radius.x, bottom ? -radius.y : radius.y);
+                var angle = Mathf.PI * (1f + (0.5f * corner) + (0.5f * t));
+                at = centre + new Vector2(radius.x * Mathf.Cos(angle), radius.y * Mathf.Sin(angle));
             }
+            return shear.Apply(at.x, at.y);
+        }
+
+        // One edge of the band, the border edge or the padding edge, with the widths that divide its corners.
+        private readonly struct Edge
+        {
+            public Edge(Rect rect, in CornerRadii radii, in BorderSides sides, in SilhouetteFace.Shearing shear)
+            {
+                Rect = rect;
+                Radii = radii;
+                Sides = sides;
+                Shear = shear;
+            }
+
+            public Rect Rect { get; }
+            public CornerRadii Radii { get; }
+            public BorderSides Sides { get; }
+            public SilhouetteFace.Shearing Shear { get; }
+
+            public Vector2 RadiusOf(int corner) => corner switch
+            {
+                0 => Radii.TopLeft,
+                1 => Radii.TopRight,
+                2 => Radii.BottomRight,
+                _ => Radii.BottomLeft,
+            };
+
+            // How far round corner's arc the side before it gives way to the side after it: the share of their widths
+            // the side before holds.
+            public float Split(int corner)
+            {
+                var before = Sides.Width((corner + 3) % 4);
+                var after = Sides.Width(corner);
+                return before + after > 0f ? before / (before + after) : 0.5f;
+            }
+        }
+
+        // Side 0 (the top), then clockwise: along its edge from where the corner before it divides to where the corner
+        // after it does.
+        private static void BuildSide(List<Vector2> points, in Edge edge, int side)
+        {
+            points.Clear();
+            var next = (side + 1) % 4;
+            AddArc(points, edge, side, edge.Split(side), 1f);
+            AddArc(points, edge, next, 0f, edge.Split(next));
+        }
+
+        // The arc of corner from from to to, at its ends and at every sample between them.
+        private static void AddArc(List<Vector2> points, in Edge edge, int corner, float from, float to)
+        {
+            var radius = edge.RadiusOf(corner);
+            points.Add(OnCorner(edge.Rect, radius, corner, from, edge.Shear));
+            for (var i = 1; i < CornerSamples - 1; i++)
+            {
+                var t = (float)i / (CornerSamples - 1);
+                if (t > from && t < to) points.Add(OnCorner(edge.Rect, radius, corner, t, edge.Shear));
+            }
+            points.Add(OnCorner(edge.Rect, radius, corner, to, edge.Shear));
         }
 
         private static void Trace(Painter2D painter, List<Vector2> contour)
@@ -159,28 +232,6 @@ namespace Velvet
         {
             if (to != from) painter.LineTo(to);
             return to;
-        }
-
-        // Side 0 (the top) runs from the middle of the top-left corner to the middle of the top-right one, and so on
-        // clockwise: along the border edge, then back along the padding edge.
-        private static void TraceSide(Painter2D painter, int side)
-        {
-            const int mid = CornerSamples / 2;
-            var count = s_outer.Count;
-            var from = (side * CornerSamples) + mid;
-            var to = (((side + 1) % 4) * CornerSamples) + mid;
-            var steps = ((to - from) + count) % count;
-            var last = s_outer[from];
-            painter.MoveTo(last);
-            for (var i = 1; i <= steps; i++)
-            {
-                last = LineTo(painter, last, s_outer[(from + i) % count]);
-            }
-            for (var i = steps; i >= 0; i--)
-            {
-                last = LineTo(painter, last, s_inner[(from + i) % count]);
-            }
-            painter.ClosePath();
         }
     }
 }

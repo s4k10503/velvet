@@ -15,8 +15,8 @@ namespace Velvet
     /// overflow clip with it, so a corner it draws under such a scale is elliptical. While the projection draws one,
     /// its radius slots hold none (<see cref="LayoutIdLook.WriteRadii"/>), and the native background colour, border
     /// colours and background image are hidden and painted here instead, in the element's own
-    /// generateVisualContent, ahead of anything the element paints there itself. A background or border a silhouette
-    /// layer already repaints (<see cref="SilhouetteFace"/>) is left to it, and it reads the radii here.
+    /// generateVisualContent. What is painted is the element's own: an inline value it holds, else what its rules give
+    /// beneath the slot written here, carried as UI Toolkit would carry the slot by the element's transition of it.
     /// <para>
     /// An element that clips its content is given, in its background-image slot, a VectorImage of its border edge,
     /// which UI Toolkit stencils the content to. It is the border edge rather than the padding edge UI Toolkit clips to
@@ -37,37 +37,54 @@ namespace Velvet
         // Written to a hidden colour slot: nothing drawn, and distinct from an unset slot (SilhouetteFace.IsSentinel).
         internal static readonly Color Cleared = new(0f, 0f, 1f / 255f, 0f);
 
-        private const int Sides = 4;
+        // The colour slots, in StyleCascade.FaceColor's order: the background, then the top, right, bottom and left borders.
+        private const int SlotCount = 5;
+        private static readonly string[] s_properties =
+            { "background-color", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color" };
+        private static readonly string?[] s_shorthands = { null, "border-color", "border-color", "border-color", "border-color" };
+
+        // One colour slot hidden here: what it held of the element's own, what was last written to it here, and the
+        // colour painted in its place.
+        private sealed class ColorSlot
+        {
+            public StyleColor Own;
+            public StyleColor Written;
+            // A layer's suppression sentinel stands in the slot (SilhouetteFace.SuppressedColor), and that layer paints it.
+            public bool Layer;
+            public readonly LayoutIdCarry[] Channels = { new(), new(), new(), new() };
+
+            public Color Value => new(Channels[0].Value, Channels[1].Value, Channels[2].Value, Channels[3].Value);
+
+            public bool Landed => LayoutIdLook.Landed(Channels);
+        }
 
         private sealed class State
         {
             public CornerRadii Radii;
             public System.Action<MeshGenerationContext> OnGenerate = null!;
-
-            // What each colour slot held before this wrote it, and the colour painted for it here. A slot a silhouette
-            // layer holds its sentinel in is painted by that layer.
-            public StyleColor OwnBackground;
-            public bool PaintsBackground;
-            public Color Background;
-            public readonly StyleColor[] OwnBorders = new StyleColor[Sides];
-            public bool PaintsBorder;
-            public readonly Color[] Borders = new Color[Sides];
+            public readonly ColorSlot[] Colors = { new(), new(), new(), new(), new() };
 
             public FaceImage? Image;
             public bool Clips;
-            public bool TakesImageSlot;
-            public StyleBackground OwnImage;
-            public StyleBackgroundPosition OwnPositionX;
-            public StyleBackgroundPosition OwnPositionY;
-            public StyleBackgroundRepeat OwnRepeat;
-            public StyleBackgroundSize OwnSize;
+            // The image slot and, where the face clips, its placement slots: what each held of the element's own and what
+            // was last written to it here.
+            public readonly InlineSlots Own = new();
             public StyleBackground WrittenImage;
+            public StyleBackgroundPosition WrittenPositionX;
+            public StyleBackgroundPosition WrittenPositionY;
+            public StyleBackgroundRepeat WrittenRepeat;
+            public StyleBackgroundSize WrittenSize;
+            // The placement the element was drawn with as the face began, for a pass that cannot read its rules.
+            public BackgroundLayer Begun;
 
             // The clip is baked into one of two images in turn, so that the slot's value changes with each bake.
             public readonly VectorImage?[] ClipImages = new VectorImage?[2];
             public int ClipIndex;
             public Vector2 BakedSize = new(float.NaN, float.NaN);
             public CornerRadii BakedRadii;
+
+            // Painting stopped and the colours run on to the element's own (End), stepped by this.
+            public IVisualElementScheduledItem? Tail;
         }
 
         // A background image as painted here: the texture, the part of it the image is, the size it is drawn from,
@@ -95,7 +112,7 @@ namespace Velvet
         // The radii the element is drawn with while this paints it, in its own box.
         public static bool TryGetRadii(VisualElement element, out CornerRadii radii)
         {
-            if (s_states.TryGetValue(element, out var state))
+            if (s_states.TryGetValue(element, out var state) && state.Tail == null)
             {
                 radii = state.Radii;
                 return true;
@@ -104,21 +121,29 @@ namespace Velvet
             return false;
         }
 
-        public static bool Paints(VisualElement element) => s_states.TryGetValue(element, out _);
-
-        // Paints the element's face with the given radii, fitted to its box, from now until End. Returns false, having
-        // ended any face it painted, where the element's background image is one this does not paint.
-        public static bool Draw(VisualElement element, in CornerRadii radii)
+        // Paints the element's face with the given radii, fitted to its box, until End, its colours carried over dtSec
+        // more. Returns false, having ended any face it painted, where the element's background image is one this does
+        // not paint.
+        public static bool Draw(VisualElement element, in CornerRadii radii, float dtSec)
         {
             if (!s_states.TryGetValue(element, out var state))
             {
-                if (!TryReadImage(element.resolvedStyle, out var image)) return false;
-                state = Begin(element, image);
+                if (!TryReadImage(OwnLayer(element, new InlineSlots().Take(element.style)), element.resolvedStyle, out _)) return false;
+                state = Begin(element);
             }
-            else if (!Resync(element, state))
+            else if (state.Tail != null)
+            {
+                Resume(element, state);
+            }
+            if (!SyncImage(element, state))
             {
                 End(element);
                 return false;
+            }
+            for (var slot = 0; slot < SlotCount; slot++)
+            {
+                StepColor(element, state.Colors[slot], slot, dtSec);
+                WriteColor(element, state.Colors[slot], slot, Cleared);
             }
             state.Radii = radii;
             if (state.Clips) SyncClip(element, state);
@@ -126,38 +151,101 @@ namespace Velvet
             return true;
         }
 
-        // Hands back every slot written here and stops painting.
+        // Stops painting and hands back the image slots at once; the colours run on from where they are drawn to the
+        // element's own, written inline, and are handed back as they land.
         public static void End(VisualElement element)
         {
-            if (!s_states.TryGetValue(element, out var state)) return;
-            s_states.Remove(element);
+            if (!s_states.TryGetValue(element, out var state) || state.Tail != null) return;
             element.generateVisualContent -= state.OnGenerate;
-            var style = element.style;
-            style.backgroundColor = state.OwnBackground;
-            style.borderTopColor = state.OwnBorders[0];
-            style.borderRightColor = state.OwnBorders[1];
-            style.borderBottomColor = state.OwnBorders[2];
-            style.borderLeftColor = state.OwnBorders[3];
-            if (state.TakesImageSlot)
+            HandBackImage(element, state);
+            if (StepTail(element, state, 0f)) return;
+            var last = 0L;
+            state.Tail = element.schedule.Execute(timer =>
             {
-                style.backgroundImage = state.OwnImage;
-                if (state.Clips)
-                {
-                    style.backgroundPositionX = state.OwnPositionX;
-                    style.backgroundPositionY = state.OwnPositionY;
-                    style.backgroundRepeat = state.OwnRepeat;
-                    style.backgroundSize = state.OwnSize;
-                }
-            }
-            foreach (var image in state.ClipImages)
-            {
-                if (image != null) ClipPathVectorImageBaker.DestroyImage(image);
-            }
-            ReleaseOnceRestored(element, state);
+                var dtSec = last == 0L ? 0f : (timer.now - last) / 1000f;
+                last = timer.now;
+                StepTail(element, state, dtSec);
+            }).Every(StyleAnimateDriver.TickMs);
             element.MarkDirtyRepaint();
         }
 
-        // The element's transitions take the face's slots back only once a style pass has drawn what End handed back, so
+        // Hands back every slot written here at once, for an element torn down.
+        public static void Forget(VisualElement element)
+        {
+            if (!s_states.TryGetValue(element, out var state)) return;
+            s_states.Remove(element);
+            state.Tail?.Pause();
+            element.generateVisualContent -= state.OnGenerate;
+            HandBackImage(element, state);
+            for (var slot = 0; slot < SlotCount; slot++)
+            {
+                Write(element.style, slot, state.Colors[slot].Own);
+            }
+            MotionNativeTransitionGuard.Release(element, state);
+            element.MarkDirtyRepaint();
+        }
+
+        private static State Begin(VisualElement element)
+        {
+            var state = new State { Clips = StyleCascade.ClipsOverflow(element) };
+            var resolved = element.resolvedStyle;
+            state.Begun = new BackgroundLayer(resolved.backgroundImage, resolved.backgroundPositionX, resolved.backgroundPositionY,
+                resolved.backgroundRepeat, resolved.backgroundSize);
+            // Before any slot is written, so that hiding it is not a change the element's transitions run.
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, state, MotionTransitionSlots.Face);
+            for (var slot = 0; slot < SlotCount; slot++)
+            {
+                var color = state.Colors[slot];
+                color.Own = color.Written = Read(element.style, slot);
+                color.Layer = IsLayerSentinel(color.Own);
+                // From where it is drawn, which a transition of it running now has carried part way.
+                var drawn = Resolved(resolved, slot);
+                for (var channel = 0; channel < 4; channel++) color.Channels[channel].Land(drawn[channel]);
+            }
+            var style = element.style;
+            state.Own.Take(style);
+            state.WrittenImage = style.backgroundImage;
+            state.WrittenPositionX = style.backgroundPositionX;
+            state.WrittenPositionY = style.backgroundPositionY;
+            state.WrittenRepeat = style.backgroundRepeat;
+            state.WrittenSize = style.backgroundSize;
+            state.OnGenerate = mgc => Paint(mgc, element, state);
+            InsertBeforeOwnPaint(element, state.OnGenerate);
+            s_states.Add(element, state);
+            return state;
+        }
+
+        // Takes the face back from a tail that was running its colours on to the element's own.
+        private static void Resume(VisualElement element, State state)
+        {
+            state.Tail!.Pause();
+            state.Tail = null;
+            var style = element.style;
+            state.Own.Image = state.WrittenImage = style.backgroundImage;
+            state.BakedSize = new Vector2(float.NaN, float.NaN);
+            InsertBeforeOwnPaint(element, state.OnGenerate);
+        }
+
+        // Steps the colours on to the element's own, writing each inline until it lands and then its own; true once
+        // every one has, when the face is done with the element.
+        private static bool StepTail(VisualElement element, State state, float dtSec)
+        {
+            var landed = true;
+            for (var slot = 0; slot < SlotCount; slot++)
+            {
+                var color = state.Colors[slot];
+                StepColor(element, color, slot, dtSec);
+                landed &= color.Layer || color.Landed;
+                WriteColor(element, color, slot, color.Layer || color.Landed ? color.Own : new StyleColor(color.Value));
+            }
+            if (!landed) return false;
+            state.Tail?.Pause();
+            s_states.Remove(element);
+            ReleaseOnceRestored(element, state);
+            return true;
+        }
+
+        // The element's transitions take the face's slots back only once a style pass has drawn what was handed back, so
         // that the change from a hidden slot to the element's own colour is not one they run.
         private static void ReleaseOnceRestored(VisualElement element, State state)
         {
@@ -176,118 +264,150 @@ namespace Velvet
             }).Every(0).Until(() => released);
         }
 
-        private static State Begin(VisualElement element, FaceImage? image)
+        // Takes the slot back as the element's own where something else wrote it since this did, and carries the colour
+        // painted for it on towards the element's own over dtSec more.
+        private static void StepColor(VisualElement element, ColorSlot color, int slot, float dtSec)
         {
-            var state = new State { Image = image, Clips = StyleCascade.ClipsOverflow(element) };
-            var resolved = element.resolvedStyle;
-            // Before any slot is written, so that hiding it is not a change the element's transitions run.
-            MotionNativeTransitionGuard.NarrowIfIntercepted(element, state, MotionTransitionSlots.Face);
-            TakeBackground(element, state, resolved.backgroundColor);
-            TakeBorders(element, state, resolved, begin: true);
-            state.TakesImageSlot = image != null || state.Clips;
-            if (state.TakesImageSlot)
+            var held = Read(element.style, slot);
+            if (held != color.Written)
             {
-                var style = element.style;
-                state.OwnImage = style.backgroundImage;
-                state.OwnPositionX = style.backgroundPositionX;
-                state.OwnPositionY = style.backgroundPositionY;
-                state.OwnRepeat = style.backgroundRepeat;
-                state.OwnSize = style.backgroundSize;
-                if (!state.Clips) WriteImage(element, state, new StyleBackground(StyleKeyword.None));
+                color.Own = held;
+                color.Layer = IsLayerSentinel(held);
             }
-            state.OnGenerate = mgc => Paint(mgc, element, state);
-            InsertBeforeOwnPaint(element, state.OnGenerate);
-            s_states.Add(element, state);
-            return state;
+            if (color.Layer) return;
+            var target = OwnColor(element, color, slot);
+            for (var channel = 0; channel < 4; channel++)
+            {
+                color.Channels[channel].Step(target[channel], dtSec, element, s_properties[slot], s_shorthands[slot]);
+            }
         }
 
-        // Takes back each slot something else wrote since the last pass, reading what it holds as the element's own.
-        // False where the background image it now holds is one this does not paint.
-        private static bool Resync(VisualElement element, State state)
+        // An inline value the element holds, else what its rules give beneath the slot, else where it is carried to now.
+        private static Color OwnColor(VisualElement element, ColorSlot color, int slot)
         {
-            var style = element.style;
-            if (!IsCleared(style.backgroundColor)) TakeBackground(element, state, element.resolvedStyle.backgroundColor);
-            if (!IsCleared(style.borderTopColor) || !IsCleared(style.borderRightColor) || !IsCleared(style.borderBottomColor)
-                || !IsCleared(style.borderLeftColor))
-            {
-                TakeBorders(element, state, element.resolvedStyle, begin: false);
-            }
-            if (!state.TakesImageSlot || style.backgroundImage == state.WrittenImage) return true;
-            var slot = style.backgroundImage;
-            state.OwnImage = slot;
-            if (slot.keyword == StyleKeyword.Undefined)
-            {
-                if (!TryReadImage(slot.value, element.resolvedStyle, out var image)) return false;
-                state.Image = image;
-            }
-            else if (slot.keyword is StyleKeyword.None or StyleKeyword.Initial)
-            {
-                state.Image = null;
-            }
-            if (state.Clips) state.BakedSize = new Vector2(float.NaN, float.NaN);
-            else WriteImage(element, state, new StyleBackground(StyleKeyword.None));
-            return true;
+            if (color.Own.keyword == StyleKeyword.Undefined) return color.Own.value;
+            if (StyleCascade.FaceColor(element, slot) is { } cascaded) return cascaded;
+            return new Color(color.Channels[0].Target, color.Channels[1].Target, color.Channels[2].Target, color.Channels[3].Target);
         }
 
-        private static bool IsCleared(StyleColor slot) => slot.keyword == StyleKeyword.Undefined && SameColor(slot.value, Cleared);
+        private static void WriteColor(VisualElement element, ColorSlot color, int slot, StyleColor value)
+        {
+            Write(element.style, slot, value);
+            color.Written = value;
+        }
+
+        private static StyleColor Read(IStyle style, int slot) => slot switch
+        {
+            0 => style.backgroundColor,
+            1 => style.borderTopColor,
+            2 => style.borderRightColor,
+            3 => style.borderBottomColor,
+            _ => style.borderLeftColor,
+        };
+
+        private static void Write(IStyle style, int slot, StyleColor value)
+        {
+            switch (slot)
+            {
+                case 0: style.backgroundColor = value; break;
+                case 1: style.borderTopColor = value; break;
+                case 2: style.borderRightColor = value; break;
+                case 3: style.borderBottomColor = value; break;
+                default: style.borderLeftColor = value; break;
+            }
+        }
+
+        private static Color Resolved(IResolvedStyle style, int slot) => slot switch
+        {
+            0 => style.backgroundColor,
+            1 => style.borderTopColor,
+            2 => style.borderRightColor,
+            3 => style.borderBottomColor,
+            _ => style.borderLeftColor,
+        };
 
         private static bool SameColor(Color a, Color b) => a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
-
-        // resolved: the colour the element is drawn with, read only where the slot gives none of its own and it is not
-        // one a hidden slot holds, which a style pass that has not run since the slot was written still shows.
-        private static void TakeBackground(VisualElement element, State state, Color resolved)
-        {
-            var slot = element.style.backgroundColor;
-            state.OwnBackground = slot;
-            state.PaintsBackground = !IsLayerSentinel(slot);
-            if (state.PaintsBackground) state.Background = OwnColor(slot, resolved, state.Background);
-            element.style.backgroundColor = Cleared;
-        }
-
-        // Each side whose slot this has not cleared, or every side as the face begins.
-        private static void TakeBorders(VisualElement element, State state, IResolvedStyle resolved, bool begin)
-        {
-            var style = element.style;
-            TakeBorder(state, 0, style.borderTopColor, resolved.borderTopColor, begin);
-            TakeBorder(state, 1, style.borderRightColor, resolved.borderRightColor, begin);
-            TakeBorder(state, 2, style.borderBottomColor, resolved.borderBottomColor, begin);
-            TakeBorder(state, 3, style.borderLeftColor, resolved.borderLeftColor, begin);
-            state.PaintsBorder = !IsLayerSentinel(state.OwnBorders[3]);
-            style.borderTopColor = Cleared;
-            style.borderRightColor = Cleared;
-            style.borderBottomColor = Cleared;
-            style.borderLeftColor = Cleared;
-        }
-
-        private static void TakeBorder(State state, int side, StyleColor slot, Color resolved, bool begin)
-        {
-            if (!begin && IsCleared(slot)) return;
-            state.OwnBorders[side] = slot;
-            if (!IsLayerSentinel(slot)) state.Borders[side] = OwnColor(slot, resolved, state.Borders[side]);
-        }
 
         private static bool IsLayerSentinel(StyleColor slot) =>
             slot.keyword == StyleKeyword.Undefined && SameColor(slot.value, SilhouetteFace.SuppressedColor);
 
-        private static Color OwnColor(StyleColor slot, Color resolved, Color previous)
+        // Takes back each image slot something else wrote since this did, reads the element's own image off its own
+        // slots and, beneath them, its rules, and writes the slots this holds: none in the image slot, or the clip with
+        // its placement. False where the element's own image is one this does not paint.
+        private static bool SyncImage(VisualElement element, State state)
         {
-            if (slot.keyword == StyleKeyword.Undefined) return slot.value;
-            return SilhouetteFace.IsSentinel(resolved) ? previous : resolved;
+            var style = element.style;
+            var own = state.Own;
+            if (style.backgroundImage != state.WrittenImage) own.Image = style.backgroundImage;
+            if (style.backgroundPositionX != state.WrittenPositionX) own.X = style.backgroundPositionX;
+            if (style.backgroundPositionY != state.WrittenPositionY) own.Y = style.backgroundPositionY;
+            if (style.backgroundRepeat != state.WrittenRepeat) own.Repeat = style.backgroundRepeat;
+            if (style.backgroundSize != state.WrittenSize) own.Size = style.backgroundSize;
+            if (!TryReadImage(OwnLayer(element, own, state.Begun), element.resolvedStyle, out var image)) return false;
+            state.Image = image;
+            if (!state.Clips)
+            {
+                style.backgroundImage = state.WrittenImage = new StyleBackground(StyleKeyword.None);
+            }
+            return true;
         }
 
-        private static void WriteImage(VisualElement element, State state, StyleBackground value)
+        // An element's own inline image slot and placement slots.
+        private sealed class InlineSlots
         {
-            element.style.backgroundImage = value;
-            state.WrittenImage = value;
+            public StyleBackground Image;
+            public StyleBackgroundPosition X;
+            public StyleBackgroundPosition Y;
+            public StyleBackgroundRepeat Repeat;
+            public StyleBackgroundSize Size;
+
+            public InlineSlots Take(IStyle style)
+            {
+                (Image, X, Y) = (style.backgroundImage, style.backgroundPositionX, style.backgroundPositionY);
+                (Repeat, Size) = (style.backgroundRepeat, style.backgroundSize);
+                return this;
+            }
         }
 
-        // A background image this paints, or none where the element has no image; false for one it does not paint.
-        private static bool TryReadImage(IResolvedStyle resolved, out FaceImage? image) =>
-            TryReadImage(resolved.backgroundImage, resolved, out image);
+        // The element's own image and placement: each inline slot it holds, else what its rules give, else what it is
+        // drawn with, or was as the face began.
+        private static BackgroundLayer OwnLayer(VisualElement element, InlineSlots own, BackgroundLayer? drawn = null)
+        {
+            var resolved = element.resolvedStyle;
+            var rules = StyleCascade.BackgroundOf(element) ?? drawn ?? new BackgroundLayer(resolved.backgroundImage,
+                resolved.backgroundPositionX, resolved.backgroundPositionY, resolved.backgroundRepeat, resolved.backgroundSize);
+            var image = own.Image.keyword == StyleKeyword.Undefined ? own.Image.value
+                : own.Image.keyword is StyleKeyword.None or StyleKeyword.Initial ? default : rules.Image;
+            return new BackgroundLayer(image,
+                own.X.keyword == StyleKeyword.Undefined ? own.X.value : rules.X,
+                own.Y.keyword == StyleKeyword.Undefined ? own.Y.value : rules.Y,
+                own.Repeat.keyword == StyleKeyword.Undefined ? own.Repeat.value : rules.Repeat,
+                own.Size.keyword == StyleKeyword.Undefined ? own.Size.value : rules.Size);
+        }
 
-        private static bool TryReadImage(Background background, IResolvedStyle resolved, out FaceImage? image)
+        private static void HandBackImage(VisualElement element, State state)
+        {
+            var style = element.style;
+            style.backgroundImage = state.Own.Image;
+            if (state.Clips)
+            {
+                style.backgroundPositionX = state.Own.X;
+                style.backgroundPositionY = state.Own.Y;
+                style.backgroundRepeat = state.Own.Repeat;
+                style.backgroundSize = state.Own.Size;
+            }
+            for (var i = 0; i < state.ClipImages.Length; i++)
+            {
+                if (state.ClipImages[i] is { } image) ClipPathVectorImageBaker.DestroyImage(image);
+                state.ClipImages[i] = null;
+            }
+        }
+
+        // A background image this paints, or none where the layer holds no image; false for one it does not paint.
+        private static bool TryReadImage(in BackgroundLayer layer, IResolvedStyle resolved, out FaceImage? image)
         {
             image = null;
+            var background = layer.Image;
             if (background.vectorImage != null) return false;
             Texture texture;
             var uv = new Rect(0f, 0f, 1f, 1f);
@@ -323,15 +443,14 @@ namespace Velvet
             {
                 return false;
             }
-            var mode = BackgroundPropertyHelper.ResolveUnityBackgroundScaleMode(resolved.backgroundPositionX,
-                resolved.backgroundPositionY, resolved.backgroundRepeat, resolved.backgroundSize, out var valid);
+            var mode = BackgroundPropertyHelper.ResolveUnityBackgroundScaleMode(layer.X, layer.Y, layer.Repeat, layer.Size, out var valid);
             if (!valid || size.x <= 0f || size.y <= 0f) return false;
             image = new FaceImage(texture, uv, size, mode, resolved.unityBackgroundImageTintColor);
             return true;
         }
 
-        // Ahead of the first paint the element registered itself, as a TextElement's text and an Image's picture are, and
-        // of every callback after it, so that the face lies beneath them; after the callbacks before it.
+        // Ahead of the first callback whose target is the element itself, and of every callback after it, so that the
+        // face lies beneath what the element paints through such a callback; after the callbacks before it.
         private static void InsertBeforeOwnPaint(VisualElement element, System.Action<MeshGenerationContext> paint)
         {
             System.Action<MeshGenerationContext>? before = null;
@@ -371,11 +490,11 @@ namespace Velvet
             state.BakedSize = size;
             state.BakedRadii = radii;
             var style = element.style;
-            WriteImage(element, state, Background.FromVectorImage(image));
-            style.backgroundPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, 0f);
-            style.backgroundPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, 0f);
-            style.backgroundRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
-            style.backgroundSize = new BackgroundSize(size.x, size.y);
+            style.backgroundImage = state.WrittenImage = Background.FromVectorImage(image);
+            style.backgroundPositionX = state.WrittenPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, 0f);
+            style.backgroundPositionY = state.WrittenPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, 0f);
+            style.backgroundRepeat = state.WrittenRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
+            style.backgroundSize = state.WrittenSize = new BackgroundSize(size.x, size.y);
         }
 
         // Within a hundredth of a pixel.
@@ -392,19 +511,20 @@ namespace Velvet
             if (!(w > 0f && h > 0f)) return;
             var box = new ShearedRoundedRect { Width = w, Height = h, Radii = state.Radii };
             var painter = mgc.painter2D;
-            if (state.PaintsBackground && state.Background.a > 0.004f)
+            var background = state.Colors[0];
+            if (!background.Layer && background.Value.a > 0.004f)
             {
                 SilhouetteFace.BuildShearedRoundedRect(painter, box);
-                painter.fillColor = state.Background;
+                painter.fillColor = background.Value;
                 painter.Fill();
             }
             if (state.Image is { } image) PaintImage(mgc, image, box);
-            if (state.PaintsBorder)
-            {
-                BorderBandPainter.Paint(painter, box, BorderSides.Of(element.resolvedStyle, state.Borders[3], state.Borders[0],
-                    state.Borders[1], state.Borders[2]));
-            }
+            BorderBandPainter.Paint(painter, box, BorderSides.Of(element.resolvedStyle, Painted(state.Colors[4]),
+                Painted(state.Colors[1]), Painted(state.Colors[2]), Painted(state.Colors[3])));
         }
+
+        // A side a layer paints is left to it.
+        private static Color Painted(ColorSlot color) => color.Layer ? Color.clear : color.Value;
 
         private static readonly List<Vector2> s_contour = new();
         private static readonly List<Vector2> s_clipped = new();
@@ -432,7 +552,7 @@ namespace Velvet
         }
 
         // The outline of the part of rect inside the border edge of box, clockwise, into outline.
-        internal static void ImageOutline(in ShearedRoundedRect box, Rect rect, List<Vector2> outline)
+        private static void ImageOutline(in ShearedRoundedRect box, Rect rect, List<Vector2> outline)
         {
             BorderBandPainter.BuildContour(s_contour, new Rect(0f, 0f, box.Width, box.Height),
                 BorderBandPainter.Fitted(box.Radii, box.Width, box.Height), SilhouetteFace.Shearing.None);
@@ -484,7 +604,7 @@ namespace Velvet
 
         // The rect the image is drawn in: the box, or the image's own proportions covering or contained by the box,
         // centred.
-        internal static Rect ImageRect(in FaceImage image, float width, float height)
+        private static Rect ImageRect(in FaceImage image, float width, float height)
         {
             if (image.Mode == ScaleMode.StretchToFill) return new Rect(0f, 0f, width, height);
             var fit = image.Mode == ScaleMode.ScaleAndCrop

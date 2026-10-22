@@ -126,6 +126,37 @@ namespace Velvet
         internal static readonly EngineMember ComputedStyleBorderBottomLeftRadius =
             ReadProperty(UIElements, ComputedStyleType, "borderBottomLeftRadius", "UnityEngine.UIElements.Length");
 
+        // ProjectedCornerFace's reading of the face its rules give an element beneath the inline slots it writes.
+        internal static readonly EngineMember ComputedStyleBackgroundColor =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundColor", "UnityEngine.Color");
+
+        internal static readonly EngineMember ComputedStyleBorderTopColor =
+            ReadProperty(UIElements, ComputedStyleType, "borderTopColor", "UnityEngine.Color");
+
+        internal static readonly EngineMember ComputedStyleBorderRightColor =
+            ReadProperty(UIElements, ComputedStyleType, "borderRightColor", "UnityEngine.Color");
+
+        internal static readonly EngineMember ComputedStyleBorderBottomColor =
+            ReadProperty(UIElements, ComputedStyleType, "borderBottomColor", "UnityEngine.Color");
+
+        internal static readonly EngineMember ComputedStyleBorderLeftColor =
+            ReadProperty(UIElements, ComputedStyleType, "borderLeftColor", "UnityEngine.Color");
+
+        internal static readonly EngineMember ComputedStyleBackgroundImage =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundImage", "UnityEngine.UIElements.Background");
+
+        internal static readonly EngineMember ComputedStyleBackgroundPositionX =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundPositionX", "UnityEngine.UIElements.BackgroundPosition");
+
+        internal static readonly EngineMember ComputedStyleBackgroundPositionY =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundPositionY", "UnityEngine.UIElements.BackgroundPosition");
+
+        internal static readonly EngineMember ComputedStyleBackgroundRepeat =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundRepeat", "UnityEngine.UIElements.BackgroundRepeat");
+
+        internal static readonly EngineMember ComputedStyleBackgroundSize =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundSize", "UnityEngine.UIElements.BackgroundSize");
+
         // ProjectedCornerFace's reading of whether an element clips its content: the element's own computed style, inline
         // style included, since IResolvedStyle carries no overflow.
         internal static readonly EngineMember ComputedStyleOverflow =

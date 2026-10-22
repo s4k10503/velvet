@@ -158,7 +158,7 @@ namespace Velvet
                 element.UnregisterCallback(binding.OnAttach);
             }
             binding.StateTick?.Pause();
-            ProjectedCornerFace.End(binding.Overlay);
+            ProjectedCornerFace.Forget(binding.Overlay);
             // The overlay lives in the element's PARENT, so it does not leave with the element's own subtree
             // the way the old wrapper-hosted one did — a detach that skipped this would strand a live band.
             binding.Overlay.RemoveFromHierarchy();
@@ -316,7 +316,7 @@ namespace Velvet
                 TopRight = fitted.TopRight + g,
                 BottomRight = fitted.BottomRight + g,
                 BottomLeft = fitted.BottomLeft + g,
-            });
+            }, 0f);
         }
 
         // The four corner radii the band rounds to. Laid out, the resolved values are authoritative per

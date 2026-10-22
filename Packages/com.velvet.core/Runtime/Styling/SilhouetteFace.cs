@@ -33,28 +33,25 @@ namespace Velvet
         // Each of these four sets both axes of its corner.
         public float RadiusTopLeft
         {
-            get => _radii.TopLeft.x;
             init => _radii = _radii with { TopLeft = new Vector2(value, value) };
         }
 
         public float RadiusTopRight
         {
-            get => _radii.TopRight.x;
             init => _radii = _radii with { TopRight = new Vector2(value, value) };
         }
 
         public float RadiusBottomRight
         {
-            get => _radii.BottomRight.x;
             init => _radii = _radii with { BottomRight = new Vector2(value, value) };
         }
 
         public float RadiusBottomLeft
         {
-            get => _radii.BottomLeft.x;
             init => _radii = _radii with { BottomLeft = new Vector2(value, value) };
         }
 
+        // Each corner's horizontal radius in x and its vertical one in y.
         public CornerRadii Radii
         {
             get => _radii;
@@ -62,15 +59,22 @@ namespace Velvet
         }
 
         public static ShearedRoundedRect ForElement(VisualElement ve, float inset,
-            float w, float h, float tanX, float tanY) => new()
+            float w, float h, float tanX, float tanY)
         {
-            Width = w,
-            Height = h,
-            TanX = tanX,
-            TanY = tanY,
-            Inset = inset,
-            Radii = SilhouetteFace.RadiiOf(ve),
-        };
+            var rs = ve.resolvedStyle;
+            return new ShearedRoundedRect
+            {
+                Width = w,
+                Height = h,
+                TanX = tanX,
+                TanY = tanY,
+                Inset = inset,
+                RadiusTopLeft = rs.borderTopLeftRadius,
+                RadiusTopRight = rs.borderTopRightRadius,
+                RadiusBottomRight = rs.borderBottomRightRadius,
+                RadiusBottomLeft = rs.borderBottomLeftRadius,
+            };
+        }
     }
 
     // Shared face-painting kernel for the wrapper-less silhouette layers (skew + drop shadow). Both layers
@@ -93,8 +97,8 @@ namespace Velvet
         // authored color landing in that narrow band around the sentinel would be misread as "our suppression is
         // still in place" and dropped. The suppression write stores SuppressedColor verbatim, so a per-channel
         // == compare still matches our own sentinel exactly while rejecting any near color.
-        // A slot ProjectedCornerFace has cleared reads as suppressed as well: it holds no colour of the element's own,
-        // and the face is painted, by ProjectedCornerFace or by the layer whose sentinel it cleared.
+        // A slot ProjectedCornerFace has cleared reads as suppressed as well, holding no colour of the element's own: a
+        // divide-dashed child's border slot it clears keeps the colour StyleDivideManipulator captured.
         internal static bool IsSentinel(Color c)
             => Same(c, SuppressedColor) || Same(c, ProjectedCornerFace.Cleared);
 
@@ -149,12 +153,11 @@ namespace Velvet
                 : BorderSides.Of(rs, rs.borderLeftColor, rs.borderTopColor, rs.borderRightColor, rs.borderBottomColor);
         }
 
-        // Repaints a border over the face. One the same on every side, of a box rounded alike on both axes, is a stroke
-        // centred on a half-width-inset path, approximating CSS's inside border; any other is filled side by side
-        // (BorderBandPainter).
+        // Repaints a border over the face. One the same on every side is a stroke centred on a half-width-inset path,
+        // approximating CSS's inside border; any other is filled side by side (BorderBandPainter).
         internal static void PaintBorder(Painter2D p, VisualElement ve, in BorderSides sides, in Shearing box)
         {
-            if (!sides.Uniform || ProjectedCornerFace.Paints(ve))
+            if (!sides.Uniform)
             {
                 BorderBandPainter.Paint(p, ShearedRoundedRect.ForElement(ve, 0f, box.Width, box.Height, box.TanX, box.TanY), sides);
                 return;
@@ -166,17 +169,6 @@ namespace Velvet
             p.lineWidth = sides.Left;
             p.lineJoin = LineJoin.Miter;
             p.Stroke();
-        }
-
-        // The radii an element's face is painted with, each corner's horizontal one in x and its vertical one in y: a
-        // layoutId projection's while it draws the element scaled differently on each axis (ProjectedCornerFace), else
-        // the resolved ones, which UI Toolkit holds as one length a corner.
-        internal static CornerRadii RadiiOf(VisualElement ve)
-        {
-            if (ProjectedCornerFace.TryGetRadii(ve, out var projected)) return projected;
-            var rs = ve.resolvedStyle;
-            return CornerRadii.Circular(rs.borderTopLeftRadius, rs.borderTopRightRadius, rs.borderBottomRightRadius,
-                rs.borderBottomLeftRadius);
         }
 
         // Emits the rounded-rect outline (inset on all sides) into a sink, shearing every point — a shear is

@@ -25,13 +25,11 @@ Shader "Velvet/BoxShadow"
         _BlurRadius("Blur Radius", Range(0, 100)) = 40
         // xy: the shape's half-size; zw: its centre relative to the quad's centre.
         _Shape("Shape", Vector) = (50, 50, 0, 0)
-        // Per-corner radii, top-left, top-right, bottom-right, bottom-left: horizontal, then vertical.
+        // Per-corner radii, top-left, top-right, bottom-right, bottom-left.
         _ShapeRadii("Shape Radii", Vector) = (0, 0, 0, 0)
-        _ShapeRadiiY("Shape Radii Y", Vector) = (0, 0, 0, 0)
         // xy: the clip box's half-size; zw: its centre relative to the quad's centre.
         _Clip("Clip", Vector) = (50, 50, 0, 0)
         _ClipRadii("Clip Radii", Vector) = (0, 0, 0, 0)
-        _ClipRadiiY("Clip Radii Y", Vector) = (0, 0, 0, 0)
         // xy: the quad's size.
         _ElementSize("Element Size", Vector) = (100, 100, 0, 0)
         // 1 for an inset layer, 0 for an outer one.
@@ -87,10 +85,8 @@ Shader "Velvet/BoxShadow"
             float _BlurRadius;
             float4 _Shape;
             float4 _ShapeRadii;
-            float4 _ShapeRadiiY;
             float4 _Clip;
             float4 _ClipRadii;
-            float4 _ClipRadiiY;
             float4 _ElementSize;
             float _Inset;
             float _SkewX;
@@ -114,31 +110,13 @@ Shader "Velvet/BoxShadow"
                 return p.y < 0.0 ? top : bottom;
             }
 
-            // Signed distance to a rounded box with a radius per corner, each corner's horizontal radius in radii and
-            // its vertical one in radiiY. A corner round on both axes alike is measured exactly; one rounded
-            // differently on each, by the first-order approximation to an ellipse's distance, which is zero on the
-            // curve itself.
+            // Signed distance to a rounded box with a radius per corner.
             // Ref: Inigo Quilez - https://iquilezles.org/articles/distfunctions2d/
-            float sdRoundedBox(float2 p, float2 b, float4 radii, float4 radiiY)
+            float sdRoundedBox(float2 p, float2 b, float4 radii)
             {
-                float rx = cornerOf(p, radii);
-                float ry = cornerOf(p, radiiY);
-                if (rx == ry)
-                {
-                    float r = min(rx, min(b.x, b.y));
-                    float2 q = abs(p) - b + r;
-                    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
-                }
-                float2 e = min(float2(rx, ry), b);
-                float2 d = abs(p) - b + e;
-                if (d.x > 0.0 && d.y > 0.0 && e.x > 0.0 && e.y > 0.0)
-                {
-                    float k0 = length(d / e);
-                    float k1 = length(d / (e * e));
-                    return k0 * (k0 - 1.0) / k1;
-                }
-                float2 o = abs(p) - b;
-                return length(max(o, 0.0)) + min(max(o.x, o.y), 0.0);
+                float r = min(cornerOf(p, radii), min(b.x, b.y));
+                float2 q = abs(p) - b + r;
+                return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
             }
 
             // A Gaussian-blurred rounded box, after Evan Wallace's "Fast Rounded Rectangle Shadows": exact along
@@ -164,26 +142,16 @@ Shader "Velvet/BoxShadow"
                 return halfSize.x - corner + sqrt(max(0.0, corner * corner - delta * delta));
             }
 
-            // As extentAt, for a corner of horizontal radius cx and vertical radius cy.
-            float ellipticalExtentAt(float y, float cx, float cy, float2 halfSize)
+            float blurredRowX(float x, float y, float sigma, float4 radii, float2 halfSize)
             {
-                if (cx == cy) return extentAt(y, min(cx, min(halfSize.x, halfSize.y)), halfSize);
-                cx = min(cx, halfSize.x);
-                cy = min(cy, halfSize.y);
-                if (cx <= 0.0 || cy <= 0.0) return halfSize.x;
-                float delta = min(halfSize.y - cy - abs(y), 0.0) / cy;
-                return halfSize.x - cx + cx * sqrt(max(0.0, 1.0 - delta * delta));
-            }
-
-            float blurredRowX(float x, float y, float sigma, float4 radii, float4 radiiY, float2 halfSize)
-            {
-                float left = ellipticalExtentAt(y, y < 0.0 ? radii.x : radii.w, y < 0.0 ? radiiY.x : radiiY.w, halfSize);
-                float right = ellipticalExtentAt(y, y < 0.0 ? radii.y : radii.z, y < 0.0 ? radiiY.y : radiiY.z, halfSize);
+                float cap = min(halfSize.x, halfSize.y);
+                float left = extentAt(y, min(y < 0.0 ? radii.x : radii.w, cap), halfSize);
+                float right = extentAt(y, min(y < 0.0 ? radii.y : radii.z, cap), halfSize);
                 float2 integral = 0.5 + 0.5 * erf2(float2(x - right, x + left) * (0.70710678 / sigma));
                 return integral.y - integral.x;
             }
 
-            float blurredRoundedBox(float2 p, float2 halfSize, float4 radii, float4 radiiY, float sigma)
+            float blurredRoundedBox(float2 p, float2 halfSize, float4 radii, float sigma)
             {
                 float low = p.y - halfSize.y;
                 float high = p.y + halfSize.y;
@@ -194,7 +162,7 @@ Shader "Velvet/BoxShadow"
                 float value = 0.0;
                 for (int i = 0; i < 4; i++)
                 {
-                    value += blurredRowX(p.x, p.y - y, sigma, radii, radiiY, halfSize) * gaussian(y, sigma) * step;
+                    value += blurredRowX(p.x, p.y - y, sigma, radii, halfSize) * gaussian(y, sigma) * step;
                     y += step;
                 }
                 return value;
@@ -216,13 +184,13 @@ Shader "Velvet/BoxShadow"
                 float shape;
                 if (sigma < 0.01)
                 {
-                    shape = saturate(0.5 - sdRoundedBox(shapeP, _Shape.xy, _ShapeRadii, _ShapeRadiiY));
+                    shape = saturate(0.5 - sdRoundedBox(shapeP, _Shape.xy, _ShapeRadii));
                 }
                 else
                 {
-                    shape = saturate(blurredRoundedBox(shapeP, _Shape.xy, _ShapeRadii, _ShapeRadiiY, sigma));
+                    shape = saturate(blurredRoundedBox(shapeP, _Shape.xy, _ShapeRadii, sigma));
                 }
-                float clip = saturate(0.5 - sdRoundedBox(p - _Clip.zw, _Clip.xy, _ClipRadii, _ClipRadiiY));
+                float clip = saturate(0.5 - sdRoundedBox(p - _Clip.zw, _Clip.xy, _ClipRadii));
 
                 float alpha = _Inset > 0.5 ? clip * (1.0 - shape) : shape * (1.0 - clip);
                 return float4(1.0, 1.0, 1.0, alpha);

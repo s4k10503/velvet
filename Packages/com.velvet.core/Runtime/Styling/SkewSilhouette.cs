@@ -313,11 +313,9 @@ namespace Velvet
 
             var tanX = Mathf.Tan(binding.Spec.XDeg * Mathf.Deg2Rad);
             var tanY = Mathf.Tan(binding.Spec.YDeg * Mathf.Deg2Rad);
-            // The bake rounds each corner alike on both axes, so one a layoutId projection rounds per axis takes the
-            // geometric mean of its two, which the projection's own fallback divides a radius by.
-            var radii = SilhouetteFace.RadiiOf(element);
-            float tl = Mean(radii.TopLeft), tr = Mean(radii.TopRight);
-            float br = Mean(radii.BottomRight), bl = Mean(radii.BottomLeft);
+            var rs = element.resolvedStyle;
+            float tl = rs.borderTopLeftRadius, tr = rs.borderTopRightRadius;
+            float br = rs.borderBottomRightRadius, bl = rs.borderBottomLeftRadius;
             var key = (Mathf.RoundToInt(w), Mathf.RoundToInt(h),
                 Mathf.RoundToInt(tanX * 100f), Mathf.RoundToInt(tanY * 100f),
                 Mathf.RoundToInt(tl), Mathf.RoundToInt(tr), Mathf.RoundToInt(br), Mathf.RoundToInt(bl));
@@ -337,8 +335,6 @@ namespace Velvet
             binding.GradBaked = true;
             element.MarkDirtyRepaint();
         }
-
-        private static float Mean(Vector2 radius) => Mathf.Sqrt(radius.x * radius.y);
 
         // Draws the baked silhouette as a quad covering the element's sheared bounding box (centred on the
         // box centre, matching the bake) in the element's own generateVisualContent, so the slant pokes
