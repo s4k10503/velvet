@@ -172,7 +172,7 @@ namespace Velvet
         public static void RequestExternalStoreRender(ComponentFiber fiber)
         {
             RequestRenderFromHook(fiber, joinsTransition: false, forceUrgent: true);
-            if (fiber.IsDirty) fiber.Reconciler?.Context.BatchScheduler.OweExternalStoreFlush(fiber);
+            if (fiber.IsDirty) fiber.Reconciler?.Context.BatchScheduler.OweExternalStoreFlush();
         }
 
         private static void RequestRenderFromHook(ComponentFiber fiber, bool joinsTransition, bool forceUrgent = false)

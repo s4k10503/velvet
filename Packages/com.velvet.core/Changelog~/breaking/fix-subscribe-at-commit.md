@@ -12,7 +12,8 @@
 - The re-render `UseSyncExternalStore` or `UseStore` forces when its subscription or snapshot check finds the store
   changed takes the sync lane and renders before the passive flush that ran the check returns, the scheduled
   post-paint flush included, counting toward the drain's update-depth limit, as React renders sync-lane work before
-  its passive flush returns. It used to wait for a later drain. An ordinary update the same flush schedules still
+  its passive flush returns. It used to wait for a later drain. An ordinary update the same flush schedules renders
+  with it, as React's sync flush renders the default lane too; one a flush schedules without such a re-render still
   waits for the next drain.
 - Under StrictMode in the Editor, `subscribe` is called, unsubscribed and called again when a component mounts, as
   React double-invokes a mount effect.

@@ -113,11 +113,6 @@ namespace Velvet
         // else, a passive effect's included, leaves it as it is.
         private bool _syncLaneQueued;
 
-        // The queued fibers whose intake set _syncLaneQueued. A drain that has rendered the whole tier and flushed
-        // its passive effects goes on to render these alone, as React's sync flush renders only sync-lane work.
-        private readonly HashSet<ComponentFiber> _syncFibers = new();
-        private readonly List<ComponentFiber> _syncDrainOrder = new();
-
         // Raised while DrainImmediate runs, whose own passes render the sync-lane work its passive flushes queue.
         private bool _inImmediateDrain;
 
@@ -189,16 +184,8 @@ namespace Velvet
             // unmount, a subsume) or when the write dedups onto a fiber already queued.
             if (_draining) _immediateWorkArrivedMidDrain = true;
             // An empty tier holds no sync-lane work, whatever left it empty: a drain, a Remove, a drop or a Clear.
-            if (_immediateOrder.Count == 0)
-            {
-                _syncLaneQueued = false;
-                _syncFibers.Clear();
-            }
-            if (FiberWorkLoop.IsInDiscreteEvent || fiber.Reconciler?.Context.InLayoutCommit == true)
-            {
-                _syncLaneQueued = true;
-                _syncFibers.Add(fiber);
-            }
+            if (_immediateOrder.Count == 0) _syncLaneQueued = false;
+            if (FiberWorkLoop.IsInDiscreteEvent || fiber.Reconciler?.Context.InLayoutCommit == true) _syncLaneQueued = true;
             _immediateIntake++;
             if (_immediateSet.Add(fiber)) _immediateOrder.Add(fiber);
             ArmImmediateDrain();
@@ -209,10 +196,9 @@ namespace Velvet
         // thread's posted work, which is also where FiberWorkLoop.ScheduleDeferredAwaitContinuations posts
         // what it defers, and ahead of a time-sliced pass's next slice (FlushOwedExternalStoreRenders). The
         // frame-boundary callback ScheduleImmediate registered still commits it when neither has.
-        internal void OweExternalStoreFlush(ComponentFiber fiber)
+        internal void OweExternalStoreFlush()
         {
             _syncLaneQueued = true;
-            _syncFibers.Add(fiber);
             if (_externalStoreRenderQueued) return;
             VelvetMainThread.Post(static scheduler => ((FiberBatchScheduler)scheduler!).FlushOwedExternalStoreRenders(), this);
             _externalStoreRenderQueued = true;
@@ -340,16 +326,14 @@ namespace Velvet
             }
         }
 
-        private void DrainImmediate() => DrainImmediate(syncOnly: false);
-
-        private void DrainImmediate(bool syncOnly)
+        private void DrainImmediate()
         {
             var completed = false;
             var wasInImmediateDrain = _inImmediateDrain;
             _inImmediateDrain = true;
             try
             {
-                DrainImmediatePasses(syncOnly);
+                DrainImmediatePasses();
                 completed = true;
             }
             finally
@@ -376,7 +360,7 @@ namespace Velvet
             }
         }
 
-        private void DrainImmediatePasses(bool syncOnly)
+        private void DrainImmediatePasses()
         {
             var renderedSyncLane = false;
             // Commit-phase state writes (a callback ref invoked during the patch, an event
@@ -389,8 +373,7 @@ namespace Velvet
             // another frame callback for one would only fire an empty drain next frame (dead
             // scheduler churn that also skews the coalescing counter).
             var totalPasses = 0;
-            var capped = DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane, syncOnly);
-            _lastDrainCapped = false;
+            var capped = DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane);
             while (true)
             {
                 _lastDrainCapped = capped;
@@ -401,41 +384,33 @@ namespace Velvet
                 // for again by the very effects that kept asking for it.
                 if (!renderedSyncLane || capped) return;
                 renderedSyncLane = false;
-                // React flushes the passive effects of a sync-lane commit as that commit ends, and then renders the
-                // sync-lane work they queued — a store hook's forced re-render — before it yields. The passes below
-                // render only that work and count toward the same cap; an ordinary update the flush queued waits
-                // for the tier's next drain, as a default-lane update waits for React's next task.
+                // React flushes the passive effects of a sync-lane commit as that commit ends, then flushes sync
+                // work: when those effects queued a store hook's forced re-render, it renders the root at every
+                // pending lane of its sync set, the default lane an effect's update takes included. So the passes
+                // below render the whole tier and count toward the same cap. A flush that forced no re-render leaves
+                // what it scheduled for the tier's next drain, as a default-lane update waits for React's next task.
                 FlushPendingPassiveEffects();
-                capped = DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane, syncOnly: true);
+                if (!_syncLaneQueued) return;
+                capped = DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane);
             }
         }
 
-        // Renders the sync-lane work a passive drain queued, then flushes what those renders' commits leave pending
-        // in turn. Called once a passive drain outside every immediate drain has run, as React's passive flush ends
-        // by flushing sync work. Returns whether the nested-update cap ended it, which leaves the passive effects
-        // the runaway's last commit queued pending.
+        // Renders the immediate tier when a passive drain queued sync-lane work, then flushes what those renders'
+        // commits leave pending in turn. Called once a passive drain outside every immediate drain has run, as
+        // React's passive flush ends by flushing sync work. Returns whether the nested-update cap ended it, which
+        // leaves the passive effects the runaway's last commit queued pending.
         internal bool FlushSyncWorkAfterPassiveEffects()
         {
             if (_inImmediateDrain || _draining || (_reconcileActiveProbe?.Invoke() ?? false)) return false;
-            if (!HoldsSyncWork()) return false;
-            DrainImmediate(syncOnly: true);
+            if (!_syncLaneQueued || _immediateOrder.Count == 0) return false;
+            DrainImmediate();
             return _lastDrainCapped;
         }
 
-        private bool HoldsSyncWork()
+        // Returns whether the nested-update cap ended the passes.
+        private bool DrainImmediatePassesUpTo(ref int totalPasses, ref bool renderedSyncLane)
         {
-            foreach (var fiber in _syncFibers)
-            {
-                if (_immediateSet.Contains(fiber)) return true;
-            }
-            return false;
-        }
-
-        // Returns whether the nested-update cap ended the passes. With syncOnly, each pass takes only the queued
-        // fibers in _syncFibers and leaves the rest of the tier queued.
-        private bool DrainImmediatePassesUpTo(ref int totalPasses, ref bool renderedSyncLane, bool syncOnly)
-        {
-            while (syncOnly ? HoldsSyncWork() : _immediateOrder.Count > 0)
+            while (_immediateOrder.Count > 0)
             {
                 if (totalPasses > NestedUpdateLimit)
                 {
@@ -461,40 +436,11 @@ namespace Velvet
                     return true;
                 }
                 totalPasses++;
-                if (syncOnly)
-                {
-                    renderedSyncLane = true;
-                    TakeSyncFibers();
-                    Drain(_syncDrainOrder, null, immediateTier: true);
-                    continue;
-                }
                 renderedSyncLane |= _syncLaneQueued;
                 _syncLaneQueued = false;
                 Drain(_immediateOrder, _immediateSet, immediateTier: true);
             }
             return false;
-        }
-
-        // Moves the queued sync-lane fibers out of the tier, in their queue order, into _syncDrainOrder.
-        private void TakeSyncFibers()
-        {
-            _syncDrainOrder.Clear();
-            var kept = 0;
-            for (var i = 0; i < _immediateOrder.Count; i++)
-            {
-                var fiber = _immediateOrder[i];
-                if (_syncFibers.Contains(fiber))
-                {
-                    _syncDrainOrder.Add(fiber);
-                    _immediateSet.Remove(fiber);
-                }
-                else
-                {
-                    _immediateOrder[kept++] = fiber;
-                }
-            }
-            _immediateOrder.RemoveRange(kept, _immediateOrder.Count - kept);
-            if (_immediateOrder.Count == 0) _syncLaneQueued = false;
         }
 
         // Which lanes go, and why only these, is the nested-update cap's comment in DrainImmediatePassesUpTo.
@@ -504,7 +450,6 @@ namespace Velvet
             var droppedFibers = _immediateOrder.ToArray();
             _immediateOrder.Clear();
             _immediateSet.Clear();
-            _syncFibers.Clear();
             for (var i = 0; i < droppedFibers.Length; i++)
             {
                 var dropped = droppedFibers[i];
@@ -626,7 +571,6 @@ namespace Velvet
                 _drainBuffer.AddRange(order);
                 order.Clear();
                 set?.Clear();
-                if (immediateTier) _syncFibers.ExceptWith(_drainBuffer);
                 StableSortByTreeDepth(_drainBuffer);
                 for (var i = 0; i < _drainBuffer.Count; i++)
                 {
@@ -763,7 +707,6 @@ namespace Velvet
         internal void Remove(ComponentFiber fiber)
         {
             if (_immediateSet.Remove(fiber)) _immediateOrder.Remove(fiber);
-            _syncFibers.Remove(fiber);
             if (_delayedEntries.Remove(fiber)) _delayedOrder.Remove(fiber);
             if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
         }
@@ -774,7 +717,6 @@ namespace Velvet
         {
             _immediateOrder.Clear();
             _immediateSet.Clear();
-            _syncFibers.Clear();
             _delayedOrder.Clear();
             _delayedEntries.Clear();
             _unadmitted = null;

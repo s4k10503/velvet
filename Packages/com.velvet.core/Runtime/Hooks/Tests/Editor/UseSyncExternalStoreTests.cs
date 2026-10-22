@@ -30,6 +30,7 @@ namespace Velvet.Tests
             FiberStrictMode.Enabled = false;
             FiberWorkLoop.IsInDiscreteEvent = false;
             ResetReader();
+            s_mountStoreCheck = false;
             ResetPair();
             ResetSwitching();
             ResetThrowing();
@@ -246,13 +247,30 @@ namespace Velvet.Tests
             Assert.AreEqual(5, s_readerValue);
         }
 
-        // GREEN_ON_BASE(characterization): the base's sync-lane drain already left an effect's ordinary update queued.
-        // On the head a store check in the same flush asks for a sync-lane render, and the drain renders that alone.
         [Test]
-        public void Given_AClickMountingAStoreCheckAndAnEffectWrite_When_TheClickFlushes_Then_TheEffectsOrdinaryUpdateWaits()
+        public void Given_AClickMountingAStoreCheckAndAnEffectWrite_When_TheClickFlushes_Then_TheEffectsOrdinaryUpdateRendersWithTheCheck()
         {
             // Arrange — the reader's layout effect changes the store before its subscription exists
             s_counter = new ExternalSource<int>(0);
+            s_mountStoreCheck = true;
+            using var mounted = V.Mount(_root, V.Component(ClickMountHostRender, key: "click-host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            _root.Q<Button>("show").SimulateClick();
+
+            // Assert
+            Assert.AreEqual("1", _root.Q<Label>("effect-setter").text);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's sync-lane drain already left an effect's ordinary update queued.
+        // Without a store check forcing a re-render in that flush, nothing asks the drain to render again.
+        [Test]
+        public void Given_AClickMountingOnlyAnEffectWrite_When_TheClickFlushes_Then_TheEffectsOrdinaryUpdateWaits()
+        {
+            // Arrange
+            s_counter = new ExternalSource<int>(0);
+            s_mountStoreCheck = false;
             using var mounted = V.Mount(_root, V.Component(ClickMountHostRender, key: "click-host"));
             mounted.FlushEffectsForTest();
 
@@ -799,6 +817,8 @@ namespace Velvet.Tests
             return V.Label(text: value.ToString());
         }
 
+        private static bool s_mountStoreCheck;
+
         [Component]
         private static VNode ClickMountHostRender()
         {
@@ -806,7 +826,7 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Button(name: "show", onClick: () => setShown.Invoke(true)),
-                shown ? V.Component(LayoutWritingReaderRender, key: "reader") : null,
+                shown && s_mountStoreCheck ? V.Component(LayoutWritingReaderRender, key: "reader") : null,
                 shown ? V.Component(EffectSetterRender, key: "setter") : null,
             });
         }
