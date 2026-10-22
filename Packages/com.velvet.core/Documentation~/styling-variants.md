@@ -217,7 +217,8 @@ after all of them, ranks below row 9, and loses to `dark:focus:`, because `focus
 
 Prefix or suffix any utility with `!` (`!bg-red-500`, `bg-red-500!`) to raise it into the **important
 band**, the class equivalent of CSS `!important`. It applies to a variant payload too
-(`dark:!bg-red-500`, `hover:bg-red-500!`).
+(`dark:!bg-red-500`, `hover:bg-red-500!`). A `!` ahead of the variants (`!dark:bg-red-500`) leaves the class
+inert, as Tailwind generates no rule for it.
 
 Two rules:
 
