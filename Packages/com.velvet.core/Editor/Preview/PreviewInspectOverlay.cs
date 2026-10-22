@@ -13,8 +13,9 @@ namespace Velvet.Editor.Preview
     /// <item><b>Measure</b>: the box model (content + padding + margin bands, with px labels) of the deepest
     /// element under the pointer.</item>
     /// </list>
-    /// All geometry is computed from each element's <c>worldBound</c> (which already composes the zoomed canvas
-    /// transform) mapped into this overlay's local space, so outlines and boxes stay aligned at any zoom.
+    /// Each element's box is read in the preview panel's coordinates and mapped through the canvas that shows
+    /// the panel, whose world transform carries the zoom, into this overlay's local space, so outlines and
+    /// boxes stay aligned at any zoom.
     /// </summary>
     internal sealed class PreviewInspectOverlay : VisualElement
     {
@@ -24,17 +25,19 @@ namespace Velvet.Editor.Preview
         private static readonly Color MarginColor = new(0.95f, 0.65f, 0.30f, 0.30f);
         private const float LabelFontSize = 10f;
 
-        // The element the story is mounted under; its descendants are what gets outlined / measured.
-        private readonly VisualElement _storyRoot;
+        // The canvas showing the preview panel; the panel root's descendants are what gets outlined / measured.
+        private readonly VisualElement _canvas;
+        private readonly PreviewPanelBridge _bridge;
         private readonly Label _label;
 
         private bool _outline;
         private bool _measure;
         private VisualElement _measured;
 
-        public PreviewInspectOverlay(VisualElement storyRoot)
+        public PreviewInspectOverlay(VisualElement canvas, PreviewPanelBridge bridge)
         {
-            _storyRoot = storyRoot;
+            _canvas = canvas;
+            _bridge = bridge;
 
             style.position = Position.Absolute;
             style.left = 0;
@@ -60,21 +63,21 @@ namespace Velvet.Editor.Preview
             };
             Add(_label);
 
-            // Listen for pointer movement over the story so measure can track the element under the cursor. The
+            // Listen for pointer movement over the canvas so measure can track the element under the cursor. The
             // handlers are named (not lambdas) so they can be unregistered on detach — see OnDetachFromPanel.
-            _storyRoot.RegisterCallback<PointerMoveEvent>(OnPointerMove);
-            _storyRoot.RegisterCallback<PointerLeaveEvent>(OnPointerLeave);
+            _canvas.RegisterCallback<PointerMoveEvent>(OnPointerMove);
+            _canvas.RegisterCallback<PointerLeaveEvent>(OnPointerLeave);
             RegisterCallback<DetachFromPanelEvent>(OnDetachFromPanel);
         }
 
         private void OnPointerLeave(PointerLeaveEvent evt) => ClearMeasured();
 
-        // Symmetric teardown: drop the callbacks this overlay registered on the (separate) story-root element so
+        // Symmetric teardown: drop the callbacks this overlay registered on the (separate) canvas element so
         // they do not outlive the overlay when the window closes / the panel detaches.
         private void OnDetachFromPanel(DetachFromPanelEvent evt)
         {
-            _storyRoot.UnregisterCallback<PointerMoveEvent>(OnPointerMove);
-            _storyRoot.UnregisterCallback<PointerLeaveEvent>(OnPointerLeave);
+            _canvas.UnregisterCallback<PointerMoveEvent>(OnPointerMove);
+            _canvas.UnregisterCallback<PointerLeaveEvent>(OnPointerLeave);
             UnregisterCallback<DetachFromPanelEvent>(OnDetachFromPanel);
         }
 
@@ -110,10 +113,11 @@ namespace Velvet.Editor.Preview
         private void OnPointerMove(PointerMoveEvent evt)
         {
             if (!_measure) return;
-            // Pick is panel-space and transform-aware, so it returns the deepest element actually under the
-            // pointer at the current zoom. Keep it only when it is part of the story subtree.
-            var picked = panel?.Pick(evt.position);
-            var next = IsInStory(picked) ? picked : null;
+            // Picked on the preview panel at the pointer's position there. Kept only when it is part of the story
+            // subtree.
+            var root = _bridge.Root;
+            var picked = root?.panel?.Pick(_bridge.ToPanel(evt.localPosition));
+            var next = IsInStory(root, picked) ? picked : null;
             // Only repaint when the hovered element actually changes; a pointer move within one element would
             // otherwise repaint the whole overlay every frame for no visual change.
             if (ReferenceEquals(next, _measured)) return;
@@ -129,11 +133,11 @@ namespace Velvet.Editor.Preview
             MarkDirtyRepaint();
         }
 
-        private bool IsInStory(VisualElement element)
+        private static bool IsInStory(VisualElement root, VisualElement element)
         {
             for (var e = element; e != null; e = e.parent)
             {
-                if (e == _storyRoot) return element != _storyRoot; // the root frame itself is not a useful pick
+                if (e == root) return element != root; // the root frame itself is not a useful pick
             }
 
             return false;
@@ -141,11 +145,12 @@ namespace Velvet.Editor.Preview
 
         private void OnGenerateVisualContent(MeshGenerationContext ctx)
         {
-            if (_storyRoot == null) return;
+            var root = _bridge.Root;
+            if (root == null) return;
 
             if (_outline)
             {
-                foreach (var element in Descendants(_storyRoot))
+                foreach (var element in Descendants(root))
                 {
                     StrokeRect(ctx, ToLocalRect(element.worldBound), OutlineColor);
                 }
@@ -158,26 +163,28 @@ namespace Velvet.Editor.Preview
         }
 
         // Draws the hovered element's box model: margin band (outermost), then the bordered box, then the
-        // content rect inset by padding. Labels the content size and reports padding/margin in px.
+        // content rect inset by padding. Labels the content size and reports padding/margin in the panel's units.
         private void DrawMeasure(MeshGenerationContext ctx, VisualElement element)
         {
             var rs = element.resolvedStyle;
-            var border = ToLocalRect(element.worldBound); // worldBound is the border box
+            var panelBorder = element.worldBound; // worldBound is the border box
+            var panelContent = Rect.MinMaxRect(
+                panelBorder.xMin + rs.paddingLeft, panelBorder.yMin + rs.paddingTop,
+                panelBorder.xMax - rs.paddingRight, panelBorder.yMax - rs.paddingBottom);
 
-            var marginRect = Rect.MinMaxRect(
-                border.xMin - rs.marginLeft, border.yMin - rs.marginTop,
-                border.xMax + rs.marginRight, border.yMax + rs.marginBottom);
-            var contentRect = Rect.MinMaxRect(
-                border.xMin + rs.paddingLeft, border.yMin + rs.paddingTop,
-                border.xMax - rs.paddingRight, border.yMax - rs.paddingBottom);
+            var border = ToLocalRect(panelBorder);
+            var marginRect = ToLocalRect(Rect.MinMaxRect(
+                panelBorder.xMin - rs.marginLeft, panelBorder.yMin - rs.marginTop,
+                panelBorder.xMax + rs.marginRight, panelBorder.yMax + rs.marginBottom));
+            var contentRect = ToLocalRect(panelContent);
 
             FillBand(ctx, marginRect, border, MarginColor);     // margin ring
             FillRect(ctx, border, PaddingColor);                 // padding box (under content)
             FillRect(ctx, contentRect, ContentColor);            // content rect
             StrokeRect(ctx, border, OutlineColor);
 
-            var w = Mathf.RoundToInt(contentRect.width);
-            var h = Mathf.RoundToInt(contentRect.height);
+            var w = Mathf.RoundToInt(panelContent.width);
+            var h = Mathf.RoundToInt(panelContent.height);
             var pad = $"p {Px(rs.paddingTop)} {Px(rs.paddingRight)} {Px(rs.paddingBottom)} {Px(rs.paddingLeft)}";
             var mar = $"m {Px(rs.marginTop)} {Px(rs.marginRight)} {Px(rs.marginBottom)} {Px(rs.marginLeft)}";
             _label.text = $"{w}×{h}   {pad}   {mar}";
@@ -190,11 +197,12 @@ namespace Velvet.Editor.Preview
 
         private static int Px(float v) => Mathf.RoundToInt(v);
 
-        // Converts a world-space rect (already including the zoomed canvas transform) into this overlay's local
-        // coordinates by mapping its two corners; the overlay itself is unscaled, so this yields screen-aligned
+        // Converts a rect in the preview panel's coordinates into this overlay's local coordinates by mapping
+        // its two corners through the canvas; the overlay itself is unscaled, so this yields screen-aligned
         // pixels at any zoom.
-        private Rect ToLocalRect(Rect world)
+        private Rect ToLocalRect(Rect panelRect)
         {
+            var world = _canvas.LocalToWorld(_bridge.ToCanvas(panelRect));
             var min = this.WorldToLocal(new Vector2(world.xMin, world.yMin));
             var max = this.WorldToLocal(new Vector2(world.xMax, world.yMax));
             return Rect.MinMaxRect(min.x, min.y, max.x, max.y);

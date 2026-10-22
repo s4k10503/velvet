@@ -57,14 +57,14 @@ namespace Velvet
         };
 #pragma warning restore CS8524
 
-        // One empty theme shared by every host whose declaring panel resolves none: panel creation
-        // warns loudly about a missing theme, and per-host instances would pile up one
-        // ScriptableObject per host for identical default styling. Never destroyed (records do not
-        // own it); HideAndDontSave keeps it out of scenes and saves, and a domain reload simply
-        // recreates it on demand.
+        // One empty theme shared by every host whose declaring panel resolves none, and by a
+        // VelvetPreviewPanel built without a theme: panel creation warns loudly about a
+        // missing theme, and per-panel instances would pile up one ScriptableObject per panel for
+        // identical default styling. Never destroyed (no panel owns it); HideAndDontSave keeps it out
+        // of scenes and saves, and a domain reload simply recreates it on demand.
         private static ThemeStyleSheet? s_sharedEmptyTheme;
 
-        private static ThemeStyleSheet SharedEmptyTheme
+        internal static ThemeStyleSheet SharedEmptyTheme
         {
             get
             {

@@ -2,10 +2,12 @@
 
 Velvet ships an editor-time preview suite — the **Storybook + Fast-Refresh equivalent** for
 Velvet UI. You declare a *story* (a named, self-contained snippet of UI) once, and the preview
-window mounts it onto a real UI Toolkit panel and live-renders it **without entering Play
-Mode**. Pointer / focus events flow into the mounted tree's hooks and re-render in place, and
-while the window is visible the editor ticks the panel scheduler each frame, so Velvet's
-coalesced re-renders drain and Motion / AnimatePresence timers fire — animation runs live.
+window mounts it onto a runtime UI Toolkit panel — the kind the game renders through — and
+live-renders it **without entering Play Mode**, showing the texture that panel renders into.
+Pointer, wheel, keyboard and navigation events on that texture are sent on to the panel, so they
+flow into the mounted tree's hooks and re-render in place, and while the window is visible it
+queues a player-loop update each tick, so Velvet's coalesced re-renders drain and Motion /
+AnimatePresence timers fire — animation runs live.
 
 The same story source feeds the **headless screenshot capture** path, so the set you eyeball
 interactively and the set captured for visual regression never drift apart.
@@ -52,7 +54,7 @@ capture set. The story list's **Refresh** button discovers the stories again rat
 set found last.
 
 A story carries no environment of its own. A method's explicit `Width`/`Height` always wins
-and is shown at its real footprint; a story with no explicit size fills the canvas (and is the
+and is shown at its real footprint; a story with no explicit size fills the screen (and is the
 one a fixed viewport can simulate — see [Viewport](#viewport)).
 
 ## Shared environment — `[VelvetPreviewSetup]`
@@ -138,8 +140,26 @@ internal static class AppPreviews
 }
 ```
 
-The live window and headless capture use the same story definitions and mount lifecycle. Their
-panel, viewport, font, backdrop, and theme conditions can differ, so their pixels need not match.
+The live window and headless capture use the same story definitions and mount lifecycle, and
+can use the same panel: the window shows a story through a `VelvetPreviewPanel`, so a capture
+taken through one built from the same `PanelSettings` at the same size holds the window's pixels.
+See [Rendering](#rendering) for what that panel is and
+[Headless screenshot capture](#headless-screenshot-capture) for building one.
+
+## Rendering
+
+The window mounts the selected story onto a `VelvetPreviewPanel`: a runtime panel built from a
+copy of the `PanelSettings` chosen in the toolbar (see [Panel scale](#panel-scale)), rendering into
+a texture the size of the screen it simulates, with Velvet's utility stylesheet attached to its
+root. The panel's theme, text settings and scaling are therefore the game's own, and the canvas
+shows the texture the panel renders. With no `PanelSettings` chosen
+the panel is a constant-pixel-size panel at a scale of one with an empty theme.
+
+The copy renders into its own texture whatever target the chosen settings name, clears its color
+to transparent, and maps every screen position off the panel; the window sends it the events its
+canvas receives. A world-space `PanelSettings` is copied as a screen panel at a scale of
+one. The stage backdrop ([Backgrounds](#backgrounds)) is drawn behind the canvas and is not part of
+the texture.
 
 ## Addons
 
@@ -190,21 +210,19 @@ nullable value type.
 
 The **Viewport** addon simulates responsive widths. "Full" (the default) lets the canvas fill
 the stage. Typing a size into the toolbar's width/height fields switches the viewport to
-**Custom** and sizes the canvas to that exact reference px, clamped to 1–8192 (the fields start
-at 1920×1080 the first time the window opens, and remember the last value entered). A sized
-(Custom) viewport makes the canvas a **viewport scope** (it applies `VelvetResponsive.ViewportClass`)
-so the mounted story's `sm:`/`md:`/… breakpoints evaluate against the simulated width rather
-than the panel root. A story's `@md:`-style container variants are unaffected: they read the
-`@container` the story marks. See [styling-variants.md](styling-variants.md#simulating-a-viewport-velvet-viewport).
+**Custom** and makes the screen that exact size in pixels, clamped to 1–8192 (the fields start
+at 1920×1080 the first time the window opens, and remember the last value entered). The panel is
+the screen, so the mounted story's `sm:`/`md:`/… breakpoints read the panel root's width the way
+they read a game panel's, with no viewport scope marked. A story's `@md:`-style container
+variants read the `@container` the story marks.
 
 Two behaviors are worth knowing:
 
-- **Re-mount on change.** Changing the viewport re-applies the canvas size (toggling the
-  viewport marker) **and re-mounts the story**, so its descendants attach afresh and resolve
-  their width source against the new scope.
+- **Re-mount on change.** Changing the viewport resizes the panel **and re-mounts the story**.
 - **A story's explicit size wins.** A story with an explicit `Width`/`Height` is always shown
-  at its real footprint and is **not** treated as a viewport scope — the viewport
-  simulation applies only to fill-canvas stories (no explicit size).
+  at its real footprint: its panel is that footprint, so its breakpoints read the footprint's
+  width. The viewport then sets the screen whose scale that panel takes (see
+  [Panel scale](#panel-scale)), and the size of an axis the story leaves at `0`.
 
 ### Theme
 
@@ -225,20 +243,22 @@ and **Checkerboard** (a transparency grid behind the canvas).
 
 The **Zoom** menu scales the canvas: **Fit** (the largest scale at which the canvas fits
 inside the stage), 50%, 100%, 200%. Fit recomputes against the stage and canvas sizes as they
-resize.
+resize. At 100% the canvas draws one texture pixel per editor point; zoom scales the texture the
+panel rendered and does not re-render it, each texel drawn whole.
 
 ### Panel scale
 
 The toolbar's **PanelSettings** field takes the game's `PanelSettings` asset, and the choice is remembered
-per object, so a `PanelSettings` stored as a sub-asset stays the one chosen. With one chosen, the window
+per object, so a `PanelSettings` stored as a sub-asset stays the one chosen. The window builds its panel
+from a copy of the chosen settings, rebuilding it and remounting the story when the choice changes. It
 treats the viewport as a screen of that many pixels (the stage itself under **Full**), or the settings'
-target texture as the screen when they have one, and resolves the scale a runtime panel on those settings
-takes for it — `ConstantPixelSize`, `ConstantPhysicalSize` at `Screen.dpi`, or `ScaleWithScreenSize` with
-its reference resolution and screen match mode; a world-space panel takes 1. It lays the canvas out in
-that panel's units, painted at that scale under the zoom, and makes the canvas the viewport scope under
-**Full** as a Custom viewport does, remounting the story when the choice changes. So a story's explicit
+target texture as the screen when they have one, and renders a story without an explicit size into a
+texture that size, where the copy resolves its own scale — `ConstantPixelSize`, `ConstantPhysicalSize`
+at `Screen.dpi`, or `ScaleWithScreenSize` with its reference resolution and screen match mode. A story
+with an explicit `Width`/`Height` is laid out at that size in the panel's units, at the scale the settings
+resolve for the screen, so its texture is the footprint times that scale. So a story's explicit
 `Width`/`Height`, and the breakpoints of a story without one, are read in the panel's units, and the
-status line shows the scale. With the field empty the canvas keeps the editor panel's own scale.
+status line shows the scale. With the field empty the panel's scale is one.
 
 ### Outline / Measure
 
@@ -250,8 +270,9 @@ underneath):
 - **Measure** — the box model (content + padding + margin bands, with px labels) of the
   deepest element under the pointer.
 
-All overlay geometry is computed from each element's `worldBound`, which already composes the
-zoomed canvas transform, so outlines and boxes stay aligned at any zoom level.
+All overlay geometry is read from each element's box in the panel and mapped through the
+canvas's transform, which carries the zoom, so outlines and boxes stay aligned at any zoom
+level. Measure's labels are in the panel's units.
 
 ## Smoke test
 
@@ -274,10 +295,12 @@ exits 1 when a story fails, discovery is refused or no story is found, and 0 whe
 
 The same `[VelvetPreview]` registry also works as the data source for a headless, off-screen
 **visual-regression** capture pattern that a consumer project can build on top of Velvet's public
-building blocks: discover every story via `VelvetPreviewRegistry.DiscoverStories()`, mount each
-through a `VelvetPreviewHost` (which runs the story's `[VelvetPreviewSetup]` environment), and
-render it into a `RenderTexture` on an instantiated `PanelSettings` with a real
-`referenceResolution`, writing one PNG per story. In Edit Mode the panel writes the texture on a later
+building blocks: discover every story via `VelvetPreviewRegistry.DiscoverStories()`, build a
+`new VelvetPreviewPanel(settings, width, height)` from the game's `PanelSettings`, mount each story
+onto its `Root` through a `VelvetPreviewHost` (which runs the story's `[VelvetPreviewSetup]`
+environment), and read its `Texture` back, writing one PNG per story. That is the panel the window
+shows a story through, so at the window's screen size a capture holds the window's pixels for a
+story without an explicit size. In Edit Mode the panel writes the texture on a later
 editor frame, not during `VelvetPreviewHost.Mount`, so a harness waits for frames before reading
 back — a `[UnityTest]` yields `null`; `EditModeStoryCaptureTests` holds that path.
 `StoryCaptureTests` captures every registered story in Play Mode, waiting frames the same way.

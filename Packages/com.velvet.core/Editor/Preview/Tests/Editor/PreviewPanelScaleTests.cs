@@ -166,6 +166,19 @@ namespace Velvet.Tests
         private object MountedTree() =>
             typeof(VelvetPreviewHost).GetField("_mounted", Private)?.GetValue(Field<VelvetPreviewHost>("_host"));
 
+        private Vector2 StageInWholePixels()
+        {
+            var stage = Field<VisualElement>("_stage");
+            return new Vector2(Mathf.Round(stage.resolvedStyle.width), Mathf.Round(stage.resolvedStyle.height));
+        }
+
+        // (0, 0) when the canvas shows no texture.
+        private (int Width, int Height) ShownTextureSize()
+        {
+            var texture = Field<VisualElement>("_canvas")?.style.backgroundImage.value.renderTexture;
+            return texture == null ? (0, 0) : (texture.width, texture.height);
+        }
+
         private void SetCustomViewport(int width, int height)
         {
             Field<IntegerField>("_viewportWidthField").SetValueWithoutNotify(width);
@@ -211,13 +224,30 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheCanvasIsTheResponsiveScope()
+        public void Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheCanvasShowsATextureTheStagesSize()
         {
+            // Arrange
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
+            var stage = StageInWholePixels();
+
             // Act
             Choose(_settings);
 
             // Assert
-            Assert.That(Field<VisualElement>("_canvas").ClassListContains(VelvetResponsive.ViewportClass), Is.True);
+            Assert.That(ShownTextureSize(), Is.EqualTo(((int)stage.x, (int)stage.y)));
+        }
+
+        [Test]
+        public void Given_AViewportTwiceThePanelsReference_When_ThePanelSettingsAreChosen_Then_TheCanvasShowsATextureTheViewportsSize()
+        {
+            // Arrange
+            SetCustomViewport(2560, 1440);
+
+            // Act
+            Choose(_settings);
+
+            // Assert
+            Assert.That(ShownTextureSize(), Is.EqualTo((2560, 1440)));
         }
 
         [Test]

@@ -8,10 +8,9 @@
   `-executeMethod Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand.RunAndExit` runs it in a batch-mode
   editor and exits 1 when a story fails or none is found.
 
-- The preview window's toolbar takes the game's `PanelSettings`. With one chosen, the canvas is laid out in
-  the units a runtime panel on those settings uses for the viewport's screen size, or for their target
-  texture's size when they have one, and painted at that panel's scale; the canvas is the responsive scope
-  under Full as well. The window used to render at the editor panel's own scale only.
+- The preview window's toolbar takes the game's `PanelSettings`, and the window renders a story at the scale a
+  runtime panel on those settings takes for the viewport's screen size, or for their target texture's size
+  when they have one. The window used to render at the editor panel's own scale only.
 
 ### Changed
 
