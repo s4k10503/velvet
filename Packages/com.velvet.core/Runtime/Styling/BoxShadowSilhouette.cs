@@ -436,20 +436,7 @@ namespace Velvet
 
         private static void RepaintUprightBorder(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding,
             float w, float h)
-        {
-            var p = mgc.painter2D;
-            var borderColor = binding.Face.HasStash ? binding.Face.BorderColor : ve.resolvedStyle.borderLeftColor;
-            var borderWidth = ve.resolvedStyle.borderLeftWidth;
-            if (borderWidth > 0.01f && borderColor.a > 0.004f)
-            {
-                // Stroke centered on a half-width-inset path ≈ CSS's inside border, matching the skew layer.
-                SilhouetteFace.BuildShearedRoundedRect(p,
-                    ShearedRoundedRect.ForElement(ve, borderWidth * 0.5f, w, h, 0f, 0f));
-                p.strokeColor = borderColor;
-                p.lineWidth = borderWidth;
-                p.lineJoin = LineJoin.Miter;
-                p.Stroke();
-            }
-        }
+            => SilhouetteFace.PaintBorder(mgc.painter2D, ve, SilhouetteFace.BorderOf(ve, binding.Face),
+                new SilhouetteFace.Shearing(w, h, 0f, 0f));
     }
 }

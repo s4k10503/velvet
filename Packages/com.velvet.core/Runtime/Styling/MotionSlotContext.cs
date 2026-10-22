@@ -80,11 +80,12 @@ namespace Velvet
             var longhands = StyleArbitraryLonghands.Of(slot);
             var owner = Owner(slot);
             var style = owner.style;
+            // A projected face's hidden slot holds none of the element's own (ProjectedCornerFace.InlineOf).
             var hasInline = slot == ArbitraryProperty.BorderColor
-                ? HoldsBorderEdge(owner, StyleLonghand.BorderTopColor, style.borderTopColor)
-                    || HoldsBorderEdge(owner, StyleLonghand.BorderRightColor, style.borderRightColor)
-                    || HoldsBorderEdge(owner, StyleLonghand.BorderBottomColor, style.borderBottomColor)
-                    || HoldsBorderEdge(owner, StyleLonghand.BorderLeftColor, style.borderLeftColor)
+                ? HoldsBorderEdge(owner, StyleLonghand.BorderTopColor, ProjectedCornerFace.InlineOf(owner, 1, style.borderTopColor))
+                    || HoldsBorderEdge(owner, StyleLonghand.BorderRightColor, ProjectedCornerFace.InlineOf(owner, 2, style.borderRightColor))
+                    || HoldsBorderEdge(owner, StyleLonghand.BorderBottomColor, ProjectedCornerFace.InlineOf(owner, 3, style.borderBottomColor))
+                    || HoldsBorderEdge(owner, StyleLonghand.BorderLeftColor, ProjectedCornerFace.InlineOf(owner, 4, style.borderLeftColor))
                 : TryReadInline(slot, out _) && !HasRunningNativeTransition(slot);
             if (!hasInline) return false;
             foreach (var property in _inlineBySwap)
@@ -235,6 +236,12 @@ namespace Velvet
             {
                 return TryReadBorderColor(out value);
             }
+            // A projected face draws the colour its hidden slot does not hold.
+            if (slot == ArbitraryProperty.BackgroundColor && ProjectedCornerFace.Drawn(Owner(slot), 0) is { } drawn)
+            {
+                value = new ArbitraryStyle(slot, drawn);
+                return true;
+            }
             if (HasRunningNativeTransition(slot))
             {
                 return TryReadResolved(slot, out value)
@@ -360,7 +367,7 @@ namespace Velvet
                 case ArbitraryProperty.TextColor:
                     return Color(slot, style.color, out value);
                 case ArbitraryProperty.BackgroundColor:
-                    return Color(slot, style.backgroundColor, out value);
+                    return Color(slot, ProjectedCornerFace.InlineOf(Owner(slot), 0, style.backgroundColor), out value);
                 case ArbitraryProperty.BorderTopWidth:
                     return Float(slot, style.borderTopWidth, out value);
                 case ArbitraryProperty.BorderRightWidth:
@@ -410,10 +417,14 @@ namespace Velvet
             var style = owner.style;
             var resolved = owner.resolvedStyle;
             var native = !_drivenByRunningPlay(ArbitraryProperty.BorderColor);
-            var top = ReadBorderEdge(owner, native, StyleLonghand.BorderTopColor, style.borderTopColor, resolved.borderTopColor);
-            var right = ReadBorderEdge(owner, native, StyleLonghand.BorderRightColor, style.borderRightColor, resolved.borderRightColor);
-            var bottom = ReadBorderEdge(owner, native, StyleLonghand.BorderBottomColor, style.borderBottomColor, resolved.borderBottomColor);
-            var left = ReadBorderEdge(owner, native, StyleLonghand.BorderLeftColor, style.borderLeftColor, resolved.borderLeftColor);
+            var top = ProjectedCornerFace.Drawn(owner, 1)
+                ?? ReadBorderEdge(owner, native, StyleLonghand.BorderTopColor, style.borderTopColor, resolved.borderTopColor);
+            var right = ProjectedCornerFace.Drawn(owner, 2)
+                ?? ReadBorderEdge(owner, native, StyleLonghand.BorderRightColor, style.borderRightColor, resolved.borderRightColor);
+            var bottom = ProjectedCornerFace.Drawn(owner, 3)
+                ?? ReadBorderEdge(owner, native, StyleLonghand.BorderBottomColor, style.borderBottomColor, resolved.borderBottomColor);
+            var left = ProjectedCornerFace.Drawn(owner, 4)
+                ?? ReadBorderEdge(owner, native, StyleLonghand.BorderLeftColor, style.borderLeftColor, resolved.borderLeftColor);
             value = new ArbitraryStyle(ArbitraryProperty.BorderColor, top);
             return top.Equals(right) && top.Equals(bottom) && top.Equals(left);
         }

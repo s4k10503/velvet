@@ -248,9 +248,10 @@ namespace Velvet
 
         // Draws the element with the given radii, or its own for null, so that the scale it is drawn at leaves them as
         // given, as Framer's correctBorderRadius does. A percent radius is of the box and scales with it, so it is
-        // written as it is. A pixel one is divided by the scale; IStyle takes one length for a corner, where a scale
-        // different on each axis would need one per axis, so it is divided by the geometric mean of the two, and a box
-        // drawn with no extent on an axis is written none.
+        // written as it is. A pixel one is divided by the scale, on each axis by that axis's own as Framer divides it
+        // (`x% y%`). IStyle takes one length for a corner, so where the two axes differ the slots are written none and
+        // ProjectedCornerFace paints the face with a radius per axis; where it declines the element's background, a
+        // pixel radius is divided by the geometric mean of the two. A box drawn with no extent on an axis is written none.
         public static void WriteRadii(VisualElement element, LayoutIdProjection projection, Length[]? radii, Vector2 scale, float dtSec)
         {
             var divisor = Mathf.Sqrt(scale.x * scale.y);
@@ -258,7 +259,7 @@ namespace Velvet
             {
                 var own = Declared(element, s_own);
                 var target = radii ?? own;
-                if (IsNone(own) && IsNone(target) || Same(target, own) && Mathf.Approximately(divisor, 1f)) return;
+                if (IsNone(own) && IsNone(target) || Same(target, own) && Unscaled(scale)) return;
                 projection.WritesRadii = true;
                 projection.OwnInlineRadii = new StyleLength[4];
                 projection.InlineRadii = new bool[4];
@@ -281,6 +282,17 @@ namespace Velvet
                 MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Radius);
             }
             Array.Copy(radii ?? OwnRadii(element, projection, dtSec, projection.OwnRadiiBuffer), projection.DrawnRadii, 4);
+            if (!Uniform(scale) && HasPixelRadius(projection.DrawnRadii)
+                && ProjectedCornerFace.Draw(element, PerAxis(projection.DrawnRadii, scale, element.layout), dtSec))
+            {
+                for (var corner = 0; corner < 4; corner++)
+                {
+                    projection.WrittenRadii[corner] = new Length(0f);
+                    Write(element.style, corner, projection.WrittenRadii[corner]);
+                }
+                return;
+            }
+            ProjectedCornerFace.End(element);
             var written = s_written;
             for (var corner = 0; corner < 4; corner++)
             {
@@ -290,7 +302,7 @@ namespace Velvet
             }
             // Scaled down together where adjacent ones overlap on a side, as CSS scales radii, in the element's own box, which
             // is the drawn box divided by the scale on each axis: the corners CornerRadiusFit fits at rest, as it fits them
-            // there (Given_ALayoutIdMotionRoundedFullStartingAtAQuarterOfItsWidth_When_ItsTweenStarts_Then_ItsCornersFitItsBox).
+            // there (Given_ALayoutIdMotionWithUnequalArbitraryRadiiThatOverlapAsItsTweenStarts_When_ItStarts_Then_TheyAreScaledDownTogether).
             var fit = CornerRadiusFit.ScaleFactor(element.layout.width, element.layout.height, Extent(written, element.layout));
             for (var corner = 0; corner < 4; corner++)
             {
@@ -298,6 +310,24 @@ namespace Velvet
                 projection.WrittenRadii[corner] = written[corner] = new Length(written[corner].value * scaled, written[corner].unit);
                 Write(element.style, corner, written[corner]);
             }
+        }
+
+        private static bool Unscaled(Vector2 scale) => Mathf.Approximately(scale.x, 1f) && Mathf.Approximately(scale.y, 1f);
+
+        // Within a ten-thousandth of each other, which moves a 100px radius a hundredth of a pixel.
+        private static bool Uniform(Vector2 scale) =>
+            Mathf.Abs(scale.x - scale.y) <= 1e-4f * Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y));
+
+        private static bool HasPixelRadius(Length[] radii) => Array.Exists(radii, r => r.unit != LengthUnit.Percent && r.value > 0f);
+
+        // Each corner's radius in the element's own box, horizontal and vertical: a pixel one divided by the scale on
+        // that axis, or none on an axis drawn with no extent, and a percent one of the box's width and height.
+        internal static CornerRadii PerAxis(Length[] radii, Vector2 scale, Rect box)
+        {
+            Vector2 Of(Length radius) => radius.unit == LengthUnit.Percent
+                ? new Vector2(radius.value / 100f * box.width, radius.value / 100f * box.height)
+                : new Vector2(scale.x > 0f ? radius.value / scale.x : 0f, scale.y > 0f ? radius.value / scale.y : 0f);
+            return new CornerRadii { TopLeft = Of(radii[0]), TopRight = Of(radii[1]), BottomRight = Of(radii[2]), BottomLeft = Of(radii[3]) };
         }
 
         // Scratch for a single pass, which no caller keeps.
@@ -444,6 +474,7 @@ namespace Velvet
             if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
             if (!projection.WritesRadii) return;
+            ProjectedCornerFace.End(element);
             for (var corner = 0; corner < 4; corner++)
             {
                 Write(element.style, corner, projection.OwnInlineRadii[corner]);

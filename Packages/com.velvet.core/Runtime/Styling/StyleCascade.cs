@@ -39,10 +39,56 @@ namespace Velvet
             EngineMember.ComputedStyleBorderBottomRightRadius.ResolveProperty(),
             EngineMember.ComputedStyleBorderBottomLeftRadius.ResolveProperty(),
         };
+        // ProjectedCornerFace's colour slots, in its order: the background, then the top, right, bottom and left borders.
+        private static readonly PropertyInfo?[] s_faceColors =
+        {
+            EngineMember.ComputedStyleBackgroundColor.ResolveProperty(), s_borderTopColor, s_borderRightColor,
+            s_borderBottomColor, s_borderLeftColor,
+        };
+        private static readonly PropertyInfo? s_backgroundImage = EngineMember.ComputedStyleBackgroundImage.ResolveProperty();
+        private static readonly PropertyInfo? s_backgroundPositionX = EngineMember.ComputedStyleBackgroundPositionX.ResolveProperty();
+        private static readonly PropertyInfo? s_backgroundPositionY = EngineMember.ComputedStyleBackgroundPositionY.ResolveProperty();
+        private static readonly PropertyInfo? s_backgroundRepeat = EngineMember.ComputedStyleBackgroundRepeat.ResolveProperty();
+        private static readonly PropertyInfo? s_backgroundSize = EngineMember.ComputedStyleBackgroundSize.ResolveProperty();
         private static readonly bool s_readsTransitions = Array.TrueForAll(
             new MemberInfo?[] { s_opacity, s_property, s_duration, s_delay, s_curve }, m => m != null);
 
         private static readonly object?[] s_args = new object?[2];
+
+        private static readonly PropertyInfo? s_overflow = EngineMember.ComputedStyleOverflow.ResolveProperty();
+
+        // Whether the element clips its content, by its own computed style; by its inline overflow alone where that
+        // cannot be read.
+        public static bool ClipsOverflow(VisualElement element)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledOverflow != null) return s_compiledOverflow(element) != 0;
+#endif
+            if (s_style == null || s_overflow == null) return element.style.overflow.value == Overflow.Hidden;
+            return Convert.ToInt32(s_overflow.GetValue(s_style.GetValue(element))) != 0;
+        }
+
+#if !ENABLE_IL2CPP
+        // Read by an accessor compiled once, as RulesHash is, since a projected face asks on every pass.
+        private static readonly Func<VisualElement, int>? s_compiledOverflow = CompileOverflow();
+
+        private static Func<VisualElement, int>? CompileOverflow()
+        {
+            if (s_style == null || s_overflow == null) return null;
+            try
+            {
+                var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
+                var overflow = System.Linq.Expressions.Expression.Property(
+                    System.Linq.Expressions.Expression.Field(element, s_style), s_overflow);
+                return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, int>>(
+                    System.Linq.Expressions.Expression.Convert(overflow, typeof(int)), element).Compile();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+#endif
 
         // The cached ComputedStyle boxed, or null where it cannot be read. Members of it are read off the result
         // by their PropertyInfo.
@@ -153,6 +199,67 @@ namespace Velvet
         {
             var readers = Array.ConvertAll(s_radii, radius => radius == null ? null : Compile(radius, new Length(float.NaN)));
             return Array.IndexOf(readers, null) >= 0 ? null : readers!;
+        }
+#endif
+
+        // A colour slot of ProjectedCornerFace's as the rules give it; null where the cached style cannot be read. Read by
+        // accessors compiled once, as Radius is, since the face reads them on every pass.
+        public static UnityEngine.Color? FaceColor(VisualElement element, int slot)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledFaceColors is { } compiled)
+            {
+                var read = compiled[slot](element);
+                return float.IsNaN(read.a) ? null : read;
+            }
+#endif
+            return s_faceColors[slot] is { } color && Of(element) is { } style ? (UnityEngine.Color)color.GetValue(style) : null;
+        }
+
+        // The background image and its placement as the rules give them; null where the cached style cannot be read.
+        public static BackgroundLayer? BackgroundOf(VisualElement element)
+        {
+            if (FaceColor(element, 0) == null) return null;
+#if !ENABLE_IL2CPP
+            if (s_compiledLayer is { } layer) return layer(element);
+#endif
+            if (s_backgroundImage == null || s_backgroundPositionX == null || s_backgroundPositionY == null
+                || s_backgroundRepeat == null || s_backgroundSize == null || Of(element) is not { } style)
+            {
+                return null;
+            }
+            return new BackgroundLayer((Background)s_backgroundImage.GetValue(style),
+                (BackgroundPosition)s_backgroundPositionX.GetValue(style), (BackgroundPosition)s_backgroundPositionY.GetValue(style),
+                (BackgroundRepeat)s_backgroundRepeat.GetValue(style), (BackgroundSize)s_backgroundSize.GetValue(style));
+        }
+
+#if !ENABLE_IL2CPP
+        // Each slot's reader gives a NaN colour where the element's style is not cached.
+        private static readonly Func<VisualElement, UnityEngine.Color>[]? s_compiledFaceColors = CompileFaceColors();
+
+        private static Func<VisualElement, UnityEngine.Color>[]? CompileFaceColors()
+        {
+            var readers = Array.ConvertAll(s_faceColors, color =>
+                color == null ? null : Compile(color, new UnityEngine.Color(float.NaN, float.NaN, float.NaN, float.NaN)));
+            return Array.IndexOf(readers, null) >= 0 ? null : readers!;
+        }
+
+        private static readonly Func<VisualElement, BackgroundLayer>? s_compiledLayer = CompileLayer();
+
+        private static Func<VisualElement, BackgroundLayer>? CompileLayer()
+        {
+            if (s_backgroundImage == null || s_backgroundPositionX == null || s_backgroundPositionY == null
+                || s_backgroundRepeat == null || s_backgroundSize == null)
+            {
+                return null;
+            }
+            var image = Compile(s_backgroundImage, default(Background));
+            var x = Compile(s_backgroundPositionX, default(BackgroundPosition));
+            var y = Compile(s_backgroundPositionY, default(BackgroundPosition));
+            var repeat = Compile(s_backgroundRepeat, default(BackgroundRepeat));
+            var size = Compile(s_backgroundSize, default(BackgroundSize));
+            if (image == null || x == null || y == null || repeat == null || size == null) return null;
+            return element => new BackgroundLayer(image(element), x(element), y(element), repeat(element), size(element));
         }
 #endif
 
@@ -369,5 +476,25 @@ namespace Velvet
             }
             return key == UnreadableKey ? 0 : key;
         }
+    }
+
+    // A background image and its placement.
+    internal readonly struct BackgroundLayer
+    {
+        public BackgroundLayer(Background image, BackgroundPosition x, BackgroundPosition y, BackgroundRepeat repeat,
+            BackgroundSize size)
+        {
+            Image = image;
+            X = x;
+            Y = y;
+            Repeat = repeat;
+            Size = size;
+        }
+
+        public Background Image { get; }
+        public BackgroundPosition X { get; }
+        public BackgroundPosition Y { get; }
+        public BackgroundRepeat Repeat { get; }
+        public BackgroundSize Size { get; }
     }
 }

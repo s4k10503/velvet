@@ -138,6 +138,31 @@ namespace Velvet
         internal static readonly EngineMember ComputedStyleBorderBottomLeftRadius =
             ReadProperty(UIElements, ComputedStyleType, "borderBottomLeftRadius", "UnityEngine.UIElements.Length");
 
+        // ProjectedCornerFace's reading of the face its rules give an element beneath the inline slots it writes, with the
+        // border colours above.
+        internal static readonly EngineMember ComputedStyleBackgroundColor =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundColor", "UnityEngine.Color");
+
+        internal static readonly EngineMember ComputedStyleBackgroundImage =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundImage", "UnityEngine.UIElements.Background");
+
+        internal static readonly EngineMember ComputedStyleBackgroundPositionX =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundPositionX", "UnityEngine.UIElements.BackgroundPosition");
+
+        internal static readonly EngineMember ComputedStyleBackgroundPositionY =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundPositionY", "UnityEngine.UIElements.BackgroundPosition");
+
+        internal static readonly EngineMember ComputedStyleBackgroundRepeat =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundRepeat", "UnityEngine.UIElements.BackgroundRepeat");
+
+        internal static readonly EngineMember ComputedStyleBackgroundSize =
+            ReadProperty(UIElements, ComputedStyleType, "backgroundSize", "UnityEngine.UIElements.BackgroundSize");
+
+        // ProjectedCornerFace's reading of whether an element clips its content: the element's own computed style, inline
+        // style included, since IResolvedStyle carries no overflow.
+        internal static readonly EngineMember ComputedStyleOverflow =
+            ReadProperty(UIElements, ComputedStyleType, "overflow", "enum:UnityEngine.UIElements.OverflowInternal");
+
         internal static readonly EngineMember IsMatchingShorthand = Method(UIElements,
             "UnityEngine.UIElements.StyleSheets.StylePropertyUtil", "IsMatchingShorthand", "System.Boolean",
             StylePropertyIdShape, StylePropertyIdShape);

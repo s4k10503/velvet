@@ -135,15 +135,22 @@ namespace Velvet
             }
         }
 
-        // Outer corner, outer corner, inner corner, inner corner, wound the same way for every side.
-        private static void SideQuad(DivideEdge side, in BorderBox box, Vector2[] quad)
+        // Outer corner, outer corner, inner corner, inner corner, wound the same way for every side. Where two
+        // opposite widths add up to more than the box, the inner edge they leave is empty: it is taken as having no
+        // extent on that axis, at the left or top width held inside the box, so the four quads stay convex and do
+        // not overlap.
+        internal static void SideQuad(DivideEdge side, in BorderBox box, Vector2[] quad)
         {
             var w = box.Size.x;
             var h = box.Size.y;
-            var innerTopLeft = new Vector2(box.Left, box.Top);
-            var innerTopRight = new Vector2(w - box.Right, box.Top);
-            var innerBottomRight = new Vector2(w - box.Right, h - box.Bottom);
-            var innerBottomLeft = new Vector2(box.Left, h - box.Bottom);
+            var left = Mathf.Min(box.Left, w);
+            var top = Mathf.Min(box.Top, h);
+            var right = Mathf.Max(w - box.Right, left);
+            var bottom = Mathf.Max(h - box.Bottom, top);
+            var innerTopLeft = new Vector2(left, top);
+            var innerTopRight = new Vector2(right, top);
+            var innerBottomRight = new Vector2(right, bottom);
+            var innerBottomLeft = new Vector2(left, bottom);
 #pragma warning disable CS8524 // no discard arm: a new edge has to name its quad
             (quad[0], quad[1], quad[2], quad[3]) = side switch
             {
@@ -179,11 +186,16 @@ namespace Velvet
 
         // Sutherland-Hodgman: subject cut by each edge of the convex clip polygon in turn, keeping the side the
         // clip polygon's centre lies on, so the winding of either polygon does not matter.
-        private static void ClipConvex(List<Vector2> subject, Vector2[] clip, List<Vector2> output)
+        internal static void ClipConvex(List<Vector2> subject, Vector2[] clip, List<Vector2> output)
         {
             output.Clear();
             output.AddRange(subject);
-            var centre = (clip[0] + clip[1] + clip[2] + clip[3]) * 0.25f;
+            var centre = Vector2.zero;
+            foreach (var corner in clip)
+            {
+                centre += corner;
+            }
+            centre /= clip.Length;
             for (var e = 0; e < clip.Length && output.Count > 0; e++)
             {
                 var a = clip[e];

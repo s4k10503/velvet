@@ -201,11 +201,10 @@ c47542686f03	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDr
 c4a765cba52b	Runtime/AssemblyInfo.cs,TestUtilities/AssemblyInfo.cs
 c558e6e07155	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 c57dbfd08295	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
-c5987eea9427	Runtime/Reconciler/DndActiveDrag.cs,Runtime/Reconciler/DndTypes.cs,Runtime/Reconciler/FiberCrossPanelInput.cs,Runtime/Styling/MotionLayoutIdDriver.cs,Runtime/Styling/VelvetFilters.cs
+c5987eea9427	Runtime/Reconciler/DndActiveDrag.cs,Runtime/Reconciler/DndTypes.cs,Runtime/Reconciler/FiberCrossPanelInput.cs,Runtime/Styling/MotionLayoutIdDriver.cs,Runtime/Styling/ProjectedCornerFace.cs,Runtime/Styling/VelvetFilters.cs
 c59af2e8a41e	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 c76dd6edc42a	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 c94c8f2ea433	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
-c9f790dfa90e	Runtime/Styling/BoxShadowSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 cac89a4a4dc6	Runtime/Reconciler/FiberNodeFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 cc381ea7a71d	Runtime/Reconciler/ReconcilerContext.cs,Runtime/Styling/StyleClassProjection.cs
 ccfb87d0b12b	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
