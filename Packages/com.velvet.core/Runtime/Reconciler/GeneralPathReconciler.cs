@@ -2678,7 +2678,8 @@ namespace Velvet
             {
                 frame = FiberNodePatcher.ResolveChildOrchestration(motion, exitTransition,
                     childLabelChanged: label != null, frame, claimSec,
-                    V.ParseClassNames(RestingVariantClass(element)), V.ParseClassNames(exitPoseClass));
+                    V.ParseClassNames(RestingVariantClass(element)), V.ParseClassNames(exitPoseClass), element,
+                    _ctx.StyleAnimationScheduler);
             }
             return plays;
         }
@@ -3115,11 +3116,11 @@ namespace Velvet
                         break;
                     default:
                         _ctx.PresenceDescendantExitWaits.Remove(element);
-                        StyleAnimationClassUtils.RemoveClasses(element, exit.Config.ExitToClasses);
+                        StyleAnimationClassUtils.RemoveClasses(element, exit.Config.ExitToClasses, ctx: _ctx);
                         var restored = exit.RestoresResting
                             ? _patcher.RestingClassSet(element, baseClasses).VariantClasses
                             : Array.Empty<string>();
-                        StyleAnimationClassUtils.AddClasses(element, restored);
+                        StyleAnimationClassUtils.AddClasses(element, restored, ctx: _ctx);
                         _patcher.RestoreInlineAfterExit(element, baseClasses);
                         break;
                 }
@@ -3201,7 +3202,8 @@ namespace Velvet
                 // A completed classic exit leaves its to classes on the anchor it played on.
                 if (motion?.Transition != null)
                 {
-                    StyleAnimationClassUtils.RemoveClasses(ClassicTarget(anchor, motionElement), motion.Transition.ExitToClasses);
+                    StyleAnimationClassUtils.RemoveClasses(ClassicTarget(anchor, motionElement), motion.Transition.ExitToClasses,
+                        ctx: _ctx);
                 }
                 return;
             }
@@ -3215,8 +3217,8 @@ namespace Velvet
             // re-add that also changed the variants map may leave the old exit class
             // behind, or skip this restoration entirely when the exit label no longer
             // resolves — the same staleness any heuristic over the new declaration has.
-            StyleAnimationClassUtils.RemoveClasses(motionElement, completedExit.ExitToClasses);
-            StyleAnimationClassUtils.AddClasses(motionElement, completedExit.ExitFromClasses);
+            StyleAnimationClassUtils.RemoveClasses(motionElement, completedExit.ExitToClasses, ctx: _ctx);
+            StyleAnimationClassUtils.AddClasses(motionElement, completedExit.ExitFromClasses, ctx: _ctx);
             _patcher.RestoreInlineAfterExit(motionElement, motion?.ClassNames);
         }
 

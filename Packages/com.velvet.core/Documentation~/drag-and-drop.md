@@ -109,10 +109,10 @@ cover styling with zero re-renders, and structural state goes through the callba
 `UseState` — dnd-kit's own recipe. Escape cancels an active drag; a cancelled (or torn-down) drag
 restores the source's inline translate and every applied class by construction.
 
-The zero-re-render price is that these channels carry ordinary USS utilities only, not the few
-Velvet realises itself (`shadow-*`, gradients, `skew-*`, `gap-*`, …) — see
-[styling-variants.md](styling-variants.md#payloads-velvet-realises-itself) for the full list and what
-to use instead.
+These channels apply their utilities as a payload does, so a bracket value and the utilities Velvet realises
+itself (`shadow-*`, gradients, `skew-*`, `gap-*`, …) apply through them, ranked as
+[styling-variants.md](styling-variants.md#payloads-velvet-realises-itself) gives: `whileDraggingClass` as a
+gesture state, `whileOverClass` and `whileDragActiveClass` at `data-[…]:`'s rank.
 
 ## Scope cuts (each deliberate, with its dnd-kit name)
 

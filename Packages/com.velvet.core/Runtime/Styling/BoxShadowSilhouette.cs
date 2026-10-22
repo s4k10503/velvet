@@ -42,6 +42,13 @@ namespace Velvet
         public float BorderLeft;
         public float BorderTop;
 
+        // The line style border-dashed / border-dotted give the repainted border, which FiberBorderStyleApplier
+        // records here while it defers its own layer to this one; Solid otherwise.
+        public BorderLineStyle BorderStyle;
+
+        // Whether a check of who owns the face is waiting to run (BoxShadowSilhouette.SettleFace).
+        public bool FacePending;
+
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
         public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
@@ -129,7 +136,7 @@ namespace Velvet
             {
                 ResolveCornerRadius(element, binding);
                 // Only an upright caster owns the face; a skewed caster's SkewSilhouette already stashed it.
-                if (!binding.CasterSkewed && !binding.Face.HasStash)
+                if (!binding.CasterSkewed && !binding.Face.HasStash && !NativeFace(element, binding))
                 {
                     binding.Face.TryStash(element);
                 }
@@ -145,7 +152,7 @@ namespace Velvet
             {
                 binding.OnStyleResolved = _ =>
                 {
-                    if (!binding.Face.HasStash)
+                    if (!binding.Face.HasStash && !NativeFace(element, binding))
                     {
                         binding.Face.TryStash(element);
                     }
@@ -153,7 +160,10 @@ namespace Velvet
                 element.RegisterCallback(binding.OnStyleResolved);
                 // Synchronous attempt: if the resolver's inline bg-[…]/border-[…] are already on the element,
                 // suppress now so there is not even a one-frame ghost. Off-panel with no inline value it bails.
-                binding.Face.TryStash(element);
+                if (!NativeFace(element, binding))
+                {
+                    binding.Face.TryStash(element);
+                }
             }
 
             s_byElement.AddOrUpdate(element, binding);
@@ -179,6 +189,7 @@ namespace Velvet
             {
                 binding.Face.Release(element);
             }
+            FaceBorderOverlay.Remove(element);
             SilhouetteBoundsSpacer.Remove(element, ref binding.BoundsSpacer);
             s_byElement.Remove(element);
             element.MarkDirtyRepaint();
@@ -229,7 +240,7 @@ namespace Velvet
         // LOST its skew, this paint re-stashes the face it must now own. The skew layer is reconciled before
         // the shadow, so its binding is already in its post-patch state when this runs.
         public static void Sync(VisualElement element, BoxShadowBinding binding,
-            in BoxShadowSyncRequest request, bool canReleaseFace)
+            in BoxShadowSyncRequest request)
         {
             binding.Layers = request.Layers;
             binding.ClassNames = request.ClassNames;
@@ -243,11 +254,14 @@ namespace Velvet
                 binding.CasterSkewed = casterSkewed;
                 if (casterSkewed)
                 {
-                    // Now skewed: hand the face to SkewSilhouette. Release our suppression (it re-stashes via
-                    // its own attach), and drop the OnStyleResolved retry — the skew layer owns the face now.
+                    // Now skewed: hand the face to SkewSilhouette. Release our suppression, and drop the
+                    // OnStyleResolved retry — the skew layer owns the face now. The skew attached earlier in this
+                    // patch, while this layer's sentinel stood in the slots, so it takes the colours Release writes
+                    // back (Retake).
                     if (binding.Face.SuppressionApplied)
                     {
                         binding.Face.Release(element);
+                        SilhouetteFaceStash.Retake(element);
                     }
                     if (binding.OnStyleResolved != null)
                     {
@@ -255,17 +269,17 @@ namespace Velvet
                         binding.OnStyleResolved = null;
                     }
                 }
-                else if (!binding.Face.HasStash)
+                else if (!binding.Face.HasStash && !NativeFace(element, binding))
                 {
                     // No longer skewed: this paint owns the face again — re-capture + suppress.
                     binding.Face.TryStash(element);
                 }
             }
-            else if (!casterSkewed)
+            else if (!casterSkewed && binding.Face.SuppressionApplied)
             {
                 // Steady upright: keep the face stash synced with this patch's styling, exactly as the skew
                 // layer does (the shared inline bg/border slot is also written by the arbitrary-value resolver).
-                binding.Face.SyncOnPatch(element, classesChanged: true, canReleaseFace);
+                binding.Face.SyncOnPatch(element, classesChanged: true);
             }
 
             element.MarkDirtyRepaint();
@@ -281,6 +295,14 @@ namespace Velvet
         // class stands for all four, so a value is always set.
         private static void ResolveCornerRadius(VisualElement element, BoxShadowBinding binding)
         {
+            // A layoutId projection drawing the element at a different scale on each axis holds its radius slots
+            // at none and draws a radius per axis (ProjectedCornerFace); the horizontal one stands for the corner.
+            if (ProjectedCornerFace.TryGetRadii(element, out var projected))
+            {
+                binding.CornerRadii = new Vector4(projected.TopLeft.x, projected.TopRight.x, projected.BottomRight.x,
+                    projected.BottomLeft.x);
+                return;
+            }
             var style = element.resolvedStyle;
             if (element.panel != null && !float.IsNaN(style.borderTopLeftRadius))
             {
@@ -301,6 +323,9 @@ namespace Velvet
         // corner; RoundedFullSilhouettePlaybackTests pins the halo an unbounded --radius-full bakes away.
         private static ShadowBox BoxOf(VisualElement ve, BoxShadowBinding binding, float w, float h)
         {
+            // Read again on each paint, since a layoutId projection hands the radius slots back with no geometry
+            // change to re-read them on.
+            ResolveCornerRadius(ve, binding);
             var bound = SilhouetteFace.MaxRadius(w, h);
             var r = binding.CornerRadii;
             var style = ve.resolvedStyle;
@@ -328,20 +353,111 @@ namespace Velvet
                 return;
             }
 
-            var box = BoxOf(ve, binding, w, h);
-            DrawLayers(mgc, binding, box, inset: false);
+            var (box, unscale) = LayerBox(ve, binding, w, h);
 
             // A skewed caster's face is owned (suppressed + repainted, sheared) by its SkewSilhouette, which
             // paints just after this callback. Painting an upright fill here would double the face and undo the
             // shear, so only paint the outer layers.
             if (binding.CasterSkewed)
             {
+                DrawLayers(mgc, binding, box, inset: false, unscale);
                 return;
             }
 
+            // An element that clips its content cuts this paint at its padding box (styling-variants.md's
+            // hidden-overflow table), which its border and its outer layers lie outside, and CSS clips neither. Such
+            // an element's outer layers are painted on a sibling over it (FaceBorderOverlay), where they never
+            // overlap the element's own box, being cut out there; it keeps its native background and solid border,
+            // and a dashed or dotted border, which the native chrome cannot draw, is painted with the background
+            // beneath it on that sibling too. Who owns the face is settled outside the paint, as settling it writes
+            // the element's inline style and the hierarchy.
+            var clips = StyleCascade.ClipsOverflow(ve);
+            var native = clips && binding.BorderStyle == BorderLineStyle.Solid;
+            if ((native == binding.Face.SuppressionApplied || clips != FaceBorderOverlay.Has(ve)) && !binding.FacePending)
+            {
+                binding.FacePending = true;
+                ve.schedule.Execute(() => SettleFace(ve, binding));
+            }
+            if (!clips)
+            {
+                DrawLayers(mgc, binding, box, inset: false, unscale);
+            }
+            if (native && !binding.Face.SuppressionApplied)
+            {
+                DrawLayers(mgc, binding, box, inset: true, unscale);
+                return;
+            }
             RepaintUprightFill(mgc, ve, binding, w, h);
-            DrawLayers(mgc, binding, box, inset: true);
-            RepaintUprightBorder(mgc, ve, binding, w, h);
+            DrawLayers(mgc, binding, box, inset: true, unscale);
+            if (!clips)
+            {
+                RepaintUprightBorder(mgc, ve, binding, w, h);
+            }
+        }
+
+        // The box the layers are baked against and the scale that draws it back onto the element's own
+        // (ProjectedBox).
+        private static (ShadowBox Box, Vector2 Unscale) LayerBox(VisualElement ve, BoxShadowBinding binding, float w, float h)
+        {
+            var box = BoxOf(ve, binding, w, h);
+            var projection = binding.CasterSkewed ? null : ProjectedBox(ve, w, h);
+            return projection is { } projected
+                ? (projected.Box, new Vector2(1f / projected.Scale.x, 1f / projected.Scale.y))
+                : (box, Vector2.one);
+        }
+
+        // Whether the element's native chrome draws its face: while it clips its content and its border is solid.
+        private static bool NativeFace(VisualElement element, BoxShadowBinding binding)
+            => StyleCascade.ClipsOverflow(element) && binding.BorderStyle == BorderLineStyle.Solid;
+
+        // Gives the face to the native chrome while it draws it (NativeFace), else takes it back, and puts the border
+        // of a clipping element on its overlay.
+        private static void SettleFace(VisualElement ve, BoxShadowBinding binding)
+        {
+            binding.FacePending = false;
+            if (binding.CasterSkewed || !ReferenceEquals(TryGet(ve), binding))
+            {
+                return;
+            }
+            if (NativeFace(ve, binding))
+            {
+                if (binding.Face.SuppressionApplied)
+                {
+                    binding.Face.Release(ve);
+                }
+            }
+            else if (!binding.Face.SuppressionApplied)
+            {
+                binding.Face.TryStash(ve);
+            }
+            FaceBorderOverlay.Sync(ve, StyleCascade.ClipsOverflow(ve), (mgc, w, h) => PaintOverlay(mgc, ve, binding, w, h));
+        }
+
+        // A clipping element's outer layers, and a border the native chrome cannot draw with the background beneath it.
+        private static void PaintOverlay(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding, float w,
+            float h)
+        {
+            var (box, unscale) = LayerBox(ve, binding, w, h);
+            DrawLayers(mgc, binding, box, inset: false, unscale);
+            var shearing = new SilhouetteFace.Shearing(w, h, 0f, 0f);
+            if (binding.Face.SuppressionApplied)
+            {
+                SilhouetteFace.PaintBand(mgc.painter2D, ve, binding.Face.CurrentBg, SilhouetteFace.BorderOf(ve, binding.Face),
+                    binding.BorderStyle, shearing);
+                return;
+            }
+            // The layers' anti-aliased cut-out edge reaches a pixel into the box, which the element's own fill covers
+            // where the layers are painted with it; here the native face beneath shows it, so its outermost pixel is
+            // painted over again as the native chrome draws it.
+            var rs = ve.resolvedStyle;
+            Color Rim(float width, Color border) => width >= 1f ? border : rs.backgroundColor;
+            BorderBandPainter.Paint(mgc.painter2D, ShearedRoundedRect.ForElement(ve, 0f, w, h, 0f, 0f), new BorderSides
+            {
+                Left = 1f, Top = 1f, Right = 1f, Bottom = 1f,
+                LeftColor = Rim(rs.borderLeftWidth, rs.borderLeftColor), TopColor = Rim(rs.borderTopWidth, rs.borderTopColor),
+                RightColor = Rim(rs.borderRightWidth, rs.borderRightColor),
+                BottomColor = Rim(rs.borderBottomWidth, rs.borderBottomColor),
+            });
         }
 
         // Draws the inset layers of a skewed caster's shadow, between the fill and the border its SkewSilhouette
@@ -350,19 +466,44 @@ namespace Velvet
         {
             if (s_byElement.TryGetValue(ve, out var binding) && binding.CasterSkewed)
             {
-                DrawLayers(mgc, binding, BoxOf(ve, binding, w, h), inset: true);
+                DrawLayers(mgc, binding, BoxOf(ve, binding, w, h), inset: true, Vector2.one);
             }
         }
 
-        private static void DrawLayers(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowBox box, bool inset)
+        // unscale maps the box the layers are baked against back onto the element's own: Vector2.one but while a
+        // layoutId projection draws the element scaled differently on each axis (ProjectedBox).
+        private static void DrawLayers(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowBox box, bool inset,
+            Vector2 unscale)
         {
             for (var i = binding.Layers.Length - 1; i >= 0; i--)
             {
                 if (binding.Layers[i].Inset == inset)
                 {
-                    DrawShadowQuad(mgc, binding, binding.Layers[i], box);
+                    DrawShadowQuad(mgc, binding, binding.Layers[i], box, unscale);
                 }
             }
+        }
+
+        // While a layoutId projection draws the element at a different scale on each axis (ProjectedCornerFace), the
+        // box as drawn on screen, its corners the projection's radii there, and that scale: the layers are baked
+        // against it and drawn back at the element's own size, so the scale leaves their corners circular and their
+        // offset, blur and spread as written (motion.md, where this differs from Framer's correctBoxShadow). Null
+        // otherwise.
+        private static (ShadowBox Box, Vector2 Scale)? ProjectedBox(VisualElement ve, float w, float h)
+        {
+            if (!ProjectedCornerFace.TryGetProjection(ve, out var radii, out var s))
+            {
+                return null;
+            }
+            var sw = w * s.x;
+            var sh = h * s.y;
+            var bound = SilhouetteFace.MaxRadius(sw, sh);
+            float Corner(Vector2 r) => Mathf.Min(Mathf.Min(r.x * s.x, r.y * s.y), bound);
+            var style = ve.resolvedStyle;
+            return (new ShadowBox(sw, sh,
+                new Vector4(Corner(radii.TopLeft), Corner(radii.TopRight), Corner(radii.BottomRight), Corner(radii.BottomLeft)),
+                new Vector4(Finite(style.borderLeftWidth) * s.x, Finite(style.borderTopWidth) * s.y,
+                    Finite(style.borderRightWidth) * s.x, Finite(style.borderBottomWidth) * s.y)), s);
         }
 
         // Draws the baked shadow silhouette quad. Returns early if the shadow color is transparent or the bake
@@ -374,7 +515,7 @@ namespace Velvet
         // pinned by ShadowFadeOpacityPlaybackTests — so restoring a multiplier means refuting those rather
         // than re-deriving a measurement.
         private static void DrawShadowQuad(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowSpec layer,
-            in ShadowBox box)
+            in ShadowBox box, Vector2 unscale)
         {
             var alpha = layer.Color.a;
             if (alpha <= 0.004f)
@@ -392,10 +533,10 @@ namespace Velvet
             // The quad is the rect the bake's UVs span, at its real size: the texture is sized by QuadSize, which
             // clamps, so a quad at the texture's size would not match the rect the UVs span.
             var rect = BoxShadowBaker.ShadowRect(box, layer, skew);
-            var minX = rect.x;
-            var minY = rect.y;
-            var maxX = rect.xMax;
-            var maxY = rect.yMax;
+            var minX = rect.x * unscale.x;
+            var minY = rect.y * unscale.y;
+            var maxX = rect.xMax * unscale.x;
+            var maxY = rect.yMax * unscale.y;
 
             // UVs are raw 0..1 (UI Toolkit remaps them into the atlas slot); the texture's alpha carries the
             // SDF antialiasing. texUV.y is flipped (box top samples v = 1) to match the bake orientation and
@@ -425,7 +566,7 @@ namespace Velvet
 
             // Pre-stash frame (first paint racing the stash): read the live styles directly — the native chrome
             // is still visible this frame, so the overdraw is identical-colored.
-            var fill = binding.Face.HasStash ? binding.Face.BgColor : ve.resolvedStyle.backgroundColor;
+            var fill = binding.Face.HasStash ? binding.Face.CurrentBg : ve.resolvedStyle.backgroundColor;
             if (fill.a > 0.004f)
             {
                 SilhouetteFace.BuildShearedRoundedRect(p, ShearedRoundedRect.ForElement(ve, 0f, w, h, 0f, 0f));
@@ -436,7 +577,7 @@ namespace Velvet
 
         private static void RepaintUprightBorder(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding,
             float w, float h)
-            => SilhouetteFace.PaintBorder(mgc.painter2D, ve, SilhouetteFace.BorderOf(ve, binding.Face),
+            => SilhouetteFace.PaintBorder(mgc.painter2D, ve, SilhouetteFace.BorderOf(ve, binding.Face), binding.BorderStyle,
                 new SilhouetteFace.Shearing(w, h, 0f, 0f));
     }
 }

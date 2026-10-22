@@ -85,7 +85,9 @@ cleared.
 `StyleOverrides` is Velvet's `style` prop, and it ranks against the utilities as React's `style` does
 against `className`: a member wins over a utility writing the same property whichever was written last,
 including a variant one (`hover:bg-[#…]`) — except an important one (`!bg-[#…]`), which wins as an
-`!important` rule wins over a `style` attribute. An override that goes away hands the property back to the
+`!important` rule wins over a `style` attribute, a class a play shows while it runs, as a CSS animation
+wins over one ([motion.md](motion.md)), and a gesture channel's class (`whileHoverClass` and its siblings), as
+a Framer Motion gesture state wins over a `style` value ([styling-variants.md](styling-variants.md)). An override that goes away hands the property back to the
 utility. That holds for every member, a keyword value (`StyleKeyword.Initial`, …) included:
 `BackgroundRepeat` and `UnitySliceType` lose to an important stylesheet utility (`!bg-no-repeat`,
 `!slice-sliced`), and `BackgroundImage` ranks against `bg-[addr:…]` (which `!bg-[addr:…]` makes important),

@@ -9,12 +9,15 @@ namespace Velvet
     /// snaps back toward on an exit-cancel hand-off (its <see cref="From"/> at construction — same semantics as
     /// <see cref="SpringChannel.RestingTarget"/>).
     /// </summary>
-    internal sealed class BezierTweenChannel
+    internal sealed class BezierTweenChannel : IGestureMaskable
     {
         // From is not readonly: Retarget freezes the channel's current sampled value here to begin a reversal
         // from wherever the forward tween had reached.
         public float From;
         public float To;
+        // Set while a gesture channel holds the property (GestureChannelMask.MaskChannels): the channel runs on and
+        // writes nothing.
+        public bool Masked { get; set; }
         // Not readonly: a play continuing from one it interrupts (BezierTweenDriver.ContinueFrom) starts elsewhere.
         public float RestingTarget;
         // Set on a driven Tween's channel whose property a PropertyOverrides entry names (DrivenTweenTiming), and on
@@ -34,12 +37,15 @@ namespace Velvet
     /// endpoints — the bezier sibling of <see cref="SpringColorChannel"/>, whose doc carries the rationale for
     /// interpolating one progress value rather than four per-component ones.
     /// </summary>
-    internal sealed class BezierColorChannel
+    internal sealed class BezierColorChannel : IPropertyChannel
     {
         public readonly ArbitraryProperty Property;
         public readonly Color From;
         public readonly Color To;
         public readonly BezierTweenChannel Progress;
+
+        ArbitraryProperty IPropertyChannel.Property => Property;
+        IGestureMaskable IPropertyChannel.Channel => Progress;
 
         public BezierColorChannel(ArbitraryProperty property, Color from, Color to)
         {
@@ -54,11 +60,14 @@ namespace Velvet
     /// One bezier-driven length channel: the property to write, the unit both endpoints share, and the
     /// magnitude channel itself. The bezier sibling of <see cref="SpringLengthChannel"/>.
     /// </summary>
-    internal sealed class BezierLengthChannel
+    internal sealed class BezierLengthChannel : IPropertyChannel
     {
         public readonly ArbitraryProperty Property;
         public readonly LengthUnit Unit;
         public readonly BezierTweenChannel Value;
+
+        ArbitraryProperty IPropertyChannel.Property => Property;
+        IGestureMaskable IPropertyChannel.Channel => Value;
 
         public BezierLengthChannel(ArbitraryProperty property, float from, float to, LengthUnit unit)
         {
@@ -76,8 +85,18 @@ namespace Velvet
     /// recurring tick handle, and the completion callback. Owned by <c>StyleAnimationScheduler</c>'s
     /// <c>PendingAnimation</c>.
     /// </summary>
-    internal sealed class BezierTweenState
+    internal sealed class BezierTweenState : IGestureMaskableState
     {
+        bool IGestureMaskableState.IsExit { set => Exit = value; }
+
+        (IGestureMaskable? Opacity, IGestureMaskable? TranslateX, IGestureMaskable? TranslateY, IGestureMaskable? Scale,
+            IGestureMaskable? Rotate) IGestureMaskableState.Scalars => (Opacity, TranslateX, TranslateY, Scale, Rotate);
+
+        IReadOnlyList<IPropertyChannel>? IGestureMaskableState.ColorChannels => Colors;
+        IReadOnlyList<IPropertyChannel>? IGestureMaskableState.LengthChannels => Lengths;
+
+        // As MotionSpringState.Exit.
+        public bool Exit;
         public BezierTweenChannel? Opacity;
         public BezierTweenChannel? TranslateX;
         public BezierTweenChannel? TranslateY;
@@ -273,17 +292,9 @@ namespace Velvet
                 state.NativeLayoutOwner, state.Lengths, static channel => channel.Property, DrivenSlots(state));
 
         // The slot groups this play writes — the bezier sibling of MotionSpringDriver's own.
+        // The slots the play writes: a channel a gesture state holds writes nothing (GestureChannelMask).
         private static MotionTransitionSlots DrivenSlots(BezierTweenState state)
-        {
-            var slots = MotionTransitionSlots.None;
-            if (state.Opacity != null) slots |= MotionTransitionSlots.Opacity;
-            if (state.TranslateX != null || state.TranslateY != null) slots |= MotionTransitionSlots.Translate;
-            if (state.Scale != null) slots |= MotionTransitionSlots.Scale;
-            if (state.Rotate != null) slots |= MotionTransitionSlots.Rotate;
-            if (state.Colors != null) slots |= MotionTransitionSlots.Color;
-            if (state.Lengths != null) slots |= MotionTransitionSlots.Length;
-            return slots;
-        }
+            => GestureChannelMask.DrivenSlots(state);
 
         /// <summary>
         /// Advances elapsed time by <paramref name="dtSec"/> and re-applies the inline styles at the newly eased
@@ -335,7 +346,7 @@ namespace Velvet
         public static void ClearInlineOverrides(VisualElement element, BezierTweenState state)
         {
             if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
-            if (state.TranslateX != null || state.TranslateY != null) element.style.translate = StyleKeyword.Null;
+            if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
             if (state.Colors != null)
@@ -369,7 +380,7 @@ namespace Velvet
             {
                 state.TranslateX = null;
                 state.TranslateY = null;
-                element.style.translate = StyleKeyword.Null;
+                SeatedTranslate.Write(element, StyleKeyword.Null);
             }
             if (state.Scale != null && named.Contains(StyleLonghand.Scale))
             {
@@ -387,6 +398,96 @@ namespace Velvet
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
             SyncLayoutOwner(element, state);
+        }
+
+        /// <summary>
+        /// Hands the channels <see cref="GestureChannelMask.MaskChannels"/> held for a gesture, among <paramref name="named"/>, back to
+        /// the play from what <paramref name="shown"/> reads the element showing: each runs from there to its target
+        /// over the play's duration again, from now, on its easing or its curve, and the play runs until it lands, as
+        /// Framer Motion animates a value a gesture state lets go of back to its animate target on that target's
+        /// transition.
+        /// </summary>
+        public static void ReturnChannels(VisualElement element, BezierTweenState state, StyleLonghandSet named,
+            MotionSlotContext shown)
+        {
+            var returned = Restart(state, state.Opacity, named, (StyleLonghand.Opacity, ArbitraryProperty.Opacity), shown);
+            returned |= Restart(state, state.TranslateX, named, (StyleLonghand.Translate, ArbitraryProperty.TranslateX), shown)
+                | Restart(state, state.TranslateY, named, (StyleLonghand.Translate, ArbitraryProperty.TranslateY), shown);
+            returned |= Restart(state, state.Scale, named, (StyleLonghand.Scale, ArbitraryProperty.Scale), shown);
+            returned |= Restart(state, state.Rotate, named, (StyleLonghand.Rotate, ArbitraryProperty.Rotate), shown);
+            for (var i = 0; i < (state.Colors?.Count ?? 0); i++)
+            {
+                returned |= ReturnColor(state, i, (named, shown));
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths)
+                {
+                    if (!GestureChannelMask.ReturnsProperty(l.Value, l.Property, named, shown))
+                    {
+                        continue;
+                    }
+                    if (shown.TryReadShown(l.Property, l.Unit, out var length))
+                    {
+                        l.Value.From = length.Value;
+                    }
+                    Restart(state, l.Value);
+                    returned = true;
+                }
+            }
+            if (returned)
+            {
+                ApplyEased(element, state);
+            }
+        }
+
+        // Returns the colour channel at index from what the element shows, as a fresh channel, since a colour
+        // channel's endpoints are fixed.
+        private static bool ReturnColor(BezierTweenState state, int index, (StyleLonghandSet Named, MotionSlotContext Shown) gesture)
+        {
+            var colors = state.Colors!;
+            var channel = colors[index];
+            if (!GestureChannelMask.ReturnsProperty(channel.Progress, channel.Property, gesture.Named, gesture.Shown))
+            {
+                return false;
+            }
+            var from = gesture.Shown.TryReadShown(channel.Property, LengthUnit.Pixel, out var shown) ? shown.Color
+                : MotionPropertyInterpolation.LerpColor(channel.From, channel.To,
+                    Mathf.LerpUnclamped(channel.Progress.From, channel.Progress.To,
+                        Eased(state, channel.Progress, SharedEased(state))));
+            var fresh = new BezierColorChannel(channel.Property, from, channel.To);
+            Restart(state, fresh.Progress, channel.Progress.Timing);
+            colors[index] = fresh;
+            return true;
+        }
+
+        private static bool Restart(BezierTweenState state, BezierTweenChannel? channel, StyleLonghandSet named,
+            (StyleLonghand Longhand, ArbitraryProperty Slot) slot, MotionSlotContext shown)
+        {
+            if (!GestureChannelMask.Returns(channel, named, slot.Longhand, slot.Slot, shown))
+            {
+                return false;
+            }
+            if (shown.TryReadShown(slot.Slot, LengthUnit.Pixel, out var value))
+            {
+                channel!.From = value.Value;
+            }
+            Restart(state, channel!);
+            return true;
+        }
+
+        // Runs the channel from its start over its duration again from now — its own timing's where it has one (a
+        // PropertyOverrides entry, a reversal), else the play's — on that easing or the play's curve, and keeps the
+        // play running until it lands.
+        private static void Restart(BezierTweenState state, BezierTweenChannel channel, TweenChannelTiming? own = null)
+        {
+            var timing = own ?? channel.Timing;
+            var duration = timing?.DurationSec ?? state.DurationSec;
+            channel.Timing = timing is { } given
+                ? new TweenChannelTiming(state.ElapsedSec, duration, given.Easing, given.Curve)
+                : new TweenChannelTiming(state.ElapsedSec, duration, state.Easing ?? EasingMode.Linear,
+                    curve: !state.Easing.HasValue);
+            state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, state.ElapsedSec + duration);
         }
 
         // The bezier sibling of MotionSpringDriver.HoldTranslate.
@@ -578,9 +679,16 @@ namespace Velvet
         // shared, the state's curve at the state's delay and duration (SharedEased), evaluated once a frame for
         // every channel taking it.
         private static float Eased(BezierTweenState state, BezierTweenChannel channel, float shared)
-            => channel.Timing is { } own
-                ? UssEasing.Evaluate(own.Easing, Progress(state, state.ElapsedSec - own.DelaySec, own.DurationSec))
-                : shared;
+        {
+            if (channel.Timing is not { } own)
+            {
+                return shared;
+            }
+            var progress = Progress(state, state.ElapsedSec - own.DelaySec, own.DurationSec);
+            return own.Curve
+                ? CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress)
+                : UssEasing.Evaluate(own.Easing, progress);
+        }
 
         // A zero duration reads as complete once its delay has passed rather than dividing by zero — the scheduler
         // builds one only from a PropertyOverrides entry of no positive duration or a reversal at its very start,
@@ -619,22 +727,22 @@ namespace Velvet
         {
             SyncLayoutOwner(element, state);
             var shared = SharedEased(state);
-            if (state.Opacity != null)
+            if (state.Opacity is { Masked: false })
             {
                 MotionOpacity.Write(element, Value(state, state.Opacity, shared));
             }
-            if (state.TranslateX != null || state.TranslateY != null)
+            if ((state.TranslateX != null || state.TranslateY != null) && state.TranslateX?.Masked != true)
             {
                 var x = state.TranslateX != null ? Value(state, state.TranslateX, shared) : 0f;
                 var y = state.TranslateY != null ? Value(state, state.TranslateY, shared) : 0f;
-                element.style.translate = new Translate(new Length(x), new Length(y));
+                SeatedTranslate.Write(element, new Translate(new Length(x), new Length(y)));
             }
-            if (state.Scale != null)
+            if (state.Scale is { Masked: false })
             {
                 var v = Value(state, state.Scale, shared);
                 element.style.scale = new Scale(new Vector2(v, v));
             }
-            if (state.Rotate != null)
+            if (state.Rotate is { Masked: false })
             {
                 var v = Value(state, state.Rotate, shared);
                 element.style.rotate = new Rotate(Angle.Degrees(v));
@@ -643,17 +751,25 @@ namespace Velvet
             {
                 foreach (var c in state.Colors)
                 {
-                    var progress = Value(state, c.Progress, shared);
-                    StyleArbitraryValueResolver.ApplyDriven(element,
-                        new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, progress)));
+                    if (!c.Progress.Masked)
+                    {
+                        var progress = Value(state, c.Progress, shared);
+                        StyleArbitraryValueResolver.ApplyDriven(element,
+                            new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, progress)),
+                            state.Exit);
+                    }
                 }
             }
             if (state.Lengths != null)
             {
                 foreach (var l in state.Lengths)
                 {
-                    var v = MotionPropertyInterpolation.LerpLength(l.Property, l.Value.From, l.Value.To, Eased(state, l.Value, shared));
-                    StyleArbitraryValueResolver.ApplyDriven(element, new ArbitraryStyle(l.Property, v, l.Unit));
+                    if (!l.Value.Masked)
+                    {
+                        var v = MotionPropertyInterpolation.LerpLength(l.Property, l.Value.From, l.Value.To,
+                            Eased(state, l.Value, shared));
+                        StyleArbitraryValueResolver.ApplyDriven(element, new ArbitraryStyle(l.Property, v, l.Unit), state.Exit);
+                    }
                 }
             }
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));

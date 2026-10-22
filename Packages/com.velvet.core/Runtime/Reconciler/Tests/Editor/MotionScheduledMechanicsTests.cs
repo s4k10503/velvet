@@ -7754,6 +7754,53 @@ namespace Velvet.Tests
             Assert.That((beforeSlot, afterSlot), Is.EqualTo(((false, false), (true, true))));
         }
 
+        private static readonly Dictionary<string, MotionVariant> s_widths = new()
+        {
+            ["hidden"] = "w-[10px]",
+            ["visible"] = "w-[120px]",
+        };
+
+        // A parent whose BeforeChildren bezier animates a width alone, which its own !w-[40px] keeps out of the
+        // play, so the play lands at once; above one inheriting child.
+        private static VNode[] HeldWidthTree(string label, string initial = null) => new VNode[]
+        {
+            V.Motion(key: "p", name: "p", className: "!w-[40px]", variants: s_widths, initial: initial, animate: label,
+                transition: new StyleTransitionConfig
+                {
+                    Type = TransitionType.Bezier, DurationSec = 0.4f, When = TransitionWhen.BeforeChildren,
+                },
+                children: new VNode[]
+                {
+                    V.Motion(key: "c0", name: "c0", variants: s_fade, transition: new StyleTransitionConfig { DurationSec = 0.15f }),
+                }),
+        };
+
+        [Test]
+        public void Given_ABeforeChildrenSwapAnImportantWidthKeepsOut_When_TheParentLabelFlips_Then_TheChildSwapsAtOnce()
+        {
+            // Arrange
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), HeldWidthTree("hidden"));
+            AdvancePast(0f);
+
+            // Act — well short of the 400ms the parent's transition declares.
+            _reconciler.Reconcile(Root, HeldWidthTree("hidden"), HeldWidthTree("visible"));
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("c0").ClassListContains("opacity-100"), Is.True);
+        }
+
+        [Test]
+        public void Given_ABeforeChildrenEnterAnImportantWidthKeepsOut_When_Mounted_Then_TheChildEntersAtOnce()
+        {
+            // Act — well short of the 400ms the parent's transition declares.
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), HeldWidthTree("visible", initial: "hidden"));
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("c0").ClassListContains("opacity-100"), Is.True);
+        }
+
         [Test]
         public void Given_WhenIsBeforeChildren_When_TheParentLabelFlips_Then_TheChildDoesNotSwapUntilTheParentsOwnDurationElapses()
         {

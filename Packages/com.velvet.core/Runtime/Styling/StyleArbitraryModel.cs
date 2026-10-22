@@ -104,6 +104,9 @@ namespace Velvet
         // Whether key's rank carries a variant, its important flag aside.
         public static bool UnderVariant(long key) => (RankOf(key) & ~Important) != Base;
 
+        // priority, placed after every rule a className declares at that rank.
+        public static long AfterEveryRule(long priority) => priority | RuleMask;
+
         #region Important
         // The important band (!utility / utility!) sits above every ordinary rank while important-versus-
         // important keeps the ordinary order: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats
@@ -114,9 +117,29 @@ namespace Velvet
         public static long ImportantOf(long priority) => Important | priority;
         #endregion
 
+        // A gesture or drag channel's class (whileHoverClass, whileTapClass, whileFocusClass, whileDraggingClass),
+        // ranked as its variant within a band above every play but an exit: Framer Motion's variantPriorityOrder
+        // protects a value a gesture state sets from the element's animate and variants while the state is on.
+        public const long Gesture = 1L << 61;
+
+        public static long GestureOf(long priority) => Gesture | priority;
+
+        // A class an exit shows, above every gesture channel's and below every important declaration, as
+        // variantPriorityOrder ranks exit above whileDrag.
+        public const long Exit = Important - 1;
+
+        public static bool IsGesture(long key) => (key & Gesture) != 0 && (key & ~Important) != Exit;
+
+        // The band a play's classes show in.
+        public static long PlayOf(bool exit) => exit ? Exit : Animation;
+
+        // A class a running play shows. CSS ranks an animation's declarations above every normal one, the style
+        // attribute's included, and below every important one; a gesture channel ranks above it (Gesture).
+        public const long Animation = Gesture - 1;
+
         // StyleOverrides, Velvet's style attribute. CSS ranks a declaration there above every rule that is not
-        // important and below every important one, so this is the top of the ordinary band.
-        public const long InlineStyle = Important - 1;
+        // important, below every important one and below an animation's.
+        public const long InlineStyle = Animation - 1;
 
         internal static long ForVariant(StyleVariantKind kind) => s_forVariant[kind];
 

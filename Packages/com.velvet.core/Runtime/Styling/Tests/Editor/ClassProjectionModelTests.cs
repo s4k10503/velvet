@@ -25,6 +25,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APlayClassAPayloadAlsoAdds_When_ThePayloadAndThenAnOutrankingOneComeAndGo_Then_ItStaysOn()
+        {
+            // Arrange — bg-blue-500 is both a hover: payload and a class a play put on itself.
+            var element = WithBaseClasses("my-card");
+            StyleClassProjection.Add(element, "bg-blue-500", StyleLayerPriority.Hover);
+            StyleAnimationClassUtils.AddClasses(element, new[] { "bg-blue-500" });
+
+            // Act — the payload goes, then one that outranks the play's class comes and goes.
+            StyleClassProjection.Remove(element, "bg-blue-500", StyleLayerPriority.Hover);
+            StyleClassProjection.Add(element, "bg-red-500", StyleLayerPriority.Focus);
+            StyleClassProjection.Remove(element, "bg-red-500", StyleLayerPriority.Focus);
+
+            // Assert
+            Assert.IsTrue(element.ClassListContains("bg-blue-500"));
+        }
+
+        [Test]
         public void Given_TwoUserAuthoredClassesOnDifferentLayers_When_TheUpperOneApplies_Then_TheLowerOneSurvives()
         {
             // Arrange — neither class carries a bundled USS rule, so the projection knows nothing about what

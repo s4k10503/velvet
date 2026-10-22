@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -65,6 +66,15 @@ namespace Velvet
         public static ShearedRoundedRect ForElement(VisualElement ve, float inset,
             float w, float h, float tanX, float tanY)
         {
+            // While a layoutId projection draws the element's corners, its radius slots hold none and the corners
+            // it draws take a radius per axis (ProjectedCornerFace).
+            if (ProjectedCornerFace.TryGetRadii(ve, out var projected))
+            {
+                return new ShearedRoundedRect
+                {
+                    Width = w, Height = h, TanX = tanX, TanY = tanY, Inset = inset, Radii = projected,
+                };
+            }
             var rs = ve.resolvedStyle;
             return new ShearedRoundedRect
             {
@@ -174,6 +184,59 @@ namespace Velvet
                 ? face.Border(rs)
                 : BorderSides.Of(rs, rs.borderLeftColor, rs.borderTopColor, rs.borderRightColor, rs.borderBottomColor);
         }
+
+        // Paints the background beneath the border, the band between the border edge and the padding edge, in fill,
+        // then the border over it (PaintBorder): what a clipping element's own paint loses (FaceBorderOverlay).
+        internal static void PaintBand(Painter2D p, VisualElement ve, Color fill, in BorderSides sides,
+            BorderLineStyle style, in Shearing box)
+        {
+            if (fill.a > 0.004f)
+            {
+                BorderBandPainter.Paint(p, ShearedRoundedRect.ForElement(ve, 0f, box.Width, box.Height, box.TanX, box.TanY),
+                    BorderSides.Of(ve.resolvedStyle, fill, fill, fill, fill));
+            }
+            PaintBorder(p, ve, sides, style, box);
+        }
+
+        // Repaints a border over the face in the line style the element gives it, a dashed or dotted one side by side
+        // (DashedBorderPainter). A side a dashed divider paints is left to it (DivideDashPainter), as the dashed layer
+        // leaves it (BorderStyleSilhouette.PaintsSide).
+        internal static void PaintBorder(Painter2D p, VisualElement ve, in BorderSides sides, BorderLineStyle style,
+            in Shearing box)
+        {
+            var divided = DivideDashPainter.BoundEdge(ve);
+            if (style == BorderLineStyle.Solid)
+            {
+                PaintBorder(p, ve, divided is { } edge ? Without(sides, edge) : sides, box);
+                return;
+            }
+            if (BorderStyleSilhouette.BoxOf(ve) is not { } outline)
+            {
+                return;
+            }
+            foreach (var side in s_borderSides)
+            {
+                if (side != divided)
+                {
+                    DashedBorderPainter.PaintSide(p, side, outline, sides.ColorOf(side), style, box);
+                }
+            }
+        }
+
+        private static readonly DivideEdge[] s_borderSides =
+            { DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom, DivideEdge.Left };
+
+        private static BorderSides Without(in BorderSides sides, DivideEdge edge) => new()
+        {
+            Left = sides.Left,
+            Top = sides.Top,
+            Right = sides.Right,
+            Bottom = sides.Bottom,
+            LeftColor = edge == DivideEdge.Left ? Color.clear : sides.LeftColor,
+            TopColor = edge == DivideEdge.Top ? Color.clear : sides.TopColor,
+            RightColor = edge == DivideEdge.Right ? Color.clear : sides.RightColor,
+            BottomColor = edge == DivideEdge.Bottom ? Color.clear : sides.BottomColor,
+        };
 
         // Repaints a border over the face. One the same on every side is a stroke centred on a half-width-inset path,
         // approximating CSS's inside border; any other is filled side by side (BorderBandPainter).
@@ -351,20 +414,32 @@ namespace Velvet
         }
     }
 
-    // The captured native-face colors of one element, with the sentinel-suppression machinery that hides the
-    // native rectangular background/border so a silhouette layer can repaint them. The inline bg/border slots
-    // are shared with the arbitrary-value resolver, so the stash must re-sync on every patch: a fresh resolver
-    // value re-stashes directly; a USS-DRIVEN stash releases the sentinel on a class change and re-stashes on
-    // the next style resolution, while an INLINE-driven stash is kept (an inline color only changes through a
-    // resolver write, which the re-stash branch already catches). Owned by a SkewBinding / BoxShadowBinding /
-    // BorderStyleBinding; its lifecycle (TryStash on attach, SyncOnPatch on patch, Release on detach) is driven
-    // by that binding.
+    // The face colors of one element, with the sentinel-suppression machinery that hides the native rectangular
+    // background/border so a silhouette layer can repaint them. Owned by a SkewBinding / BoxShadowBinding /
+    // BorderStyleBinding; its lifecycle (TryStash on attach, SyncOnPatch on a class change, Release on detach) is
+    // driven by that binding.
+    //
+    // The inline bg/border slots are shared with the arbitrary-value resolver, and a fresh value there is
+    // captured directly. A face a stylesheet rule colours cannot be read off the element while the sentinel
+    // masks it, so it is read from the rules beneath the inline slots (StyleCascade.FaceColor), whichever selector
+    // matched, and carried onto each colour they give on the element's transition of it (ColorCarry). The
+    // colours are read again only once the rules matched to the element change (StyleCascade.RulesHash), and the
+    // panel's check repaints the element while a colour is carried or the rules give a new one.
     //
     // includeBackground gates every background touch: the skew / shadow layers own the whole face (fill +
     // border), so they suppress and repaint both (default true); the border-dashed layer restyles only the
     // border, so it constructs with includeBackground:false and never suppresses or re-captures the fill.
     internal sealed class SilhouetteFaceStash
     {
+        // The sides of StyleCascade.FaceColor's border slots, 1 through 4, and the property each slot transitions.
+        private static readonly DivideEdge[] s_slotSides = { DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom, DivideEdge.Left };
+        private static readonly string[] s_slotProperties =
+            { "background-color", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color" };
+
+        // The stash whose suppression is on each element's inline slots, so a class change no reconcile pass
+        // follows reaches it without a reconciler.
+        private static readonly ConditionalWeakTable<VisualElement, SilhouetteFaceStash> s_owners = new();
+
         // The captured face colors (valid while HasStash), the border's one per side and indexed by DivideEdge;
         // BorderColor is the left side's. Widths are never suppressed, so a painter reads them off the resolved
         // style rather than from here.
@@ -375,15 +450,11 @@ namespace Velvet
         public Color BorderColor => BorderColors[(int)DivideEdge.Left];
 
         // Whether the captured background came from an INLINE value (the resolver's bg-[…] write) rather than a
-        // USS rule. An inline color is authoritative and only ever changes via another resolver write — which
-        // overwrites the sentinel and is caught by the "resolver overwrote us" branch — so an inline-driven stash
-        // must NOT be released just because some unrelated class changed (doing so dropped the fill and brought
-        // the native-rectangle double image back). Only a USS-driven stash can change beneath the sentinel.
+        // USS rule. An inline color is authoritative and only ever changes via another resolver write, which
+        // overwrites the sentinel and is caught by SyncOnPatch's re-capture branch.
         public bool BgFromInline;
 
-        // The border equivalent of BgFromInline: whether any side's captured border came from an inline
-        // border-[…] write rather than a USS rule. Same authority rule — an inline-driven border stash is kept
-        // across an unrelated class change (it only changes via a resolver write, caught by the re-stash branch).
+        // The border equivalent of BgFromInline, true where any side's is inline.
         public bool BorderFromInline;
 
         // Whether the sentinel suppression is currently written to the element's inline style.
@@ -392,9 +463,128 @@ namespace Velvet
         // Whether this stash owns (suppresses / repaints) the background face. False for a border-only layer.
         private readonly bool _includeBackground;
 
+        // The element whose rules colour the face while this suppresses it, each slot's colour carried in
+        // StyleCascade.FaceColor's order, the key of the rules matched to it when those colours were last read
+        // (StyleCascade.RulesHash; null where it cannot be read, which reads them every time), and the panel whose
+        // per-frame check carries them.
+        private VisualElement? _element;
+        private readonly ColorCarry[] _carries = { new(), new(), new(), new(), new() };
+        private long? _rulesHash;
+        private IPanel? _checkedBy;
+
         public SilhouetteFaceStash(bool includeBackground = true)
         {
             _includeBackground = includeBackground;
+        }
+
+        // The colors to paint: where the rules colour the face, theirs as carried, else the captured one.
+        public Color CurrentBg => BgFromInline ? BgColor : Current(0, BgColor);
+
+        public Color CurrentBorder => CurrentBorderOf(DivideEdge.Left);
+
+        // A side whose captured color came inline, or from a dashed divider's mask, keeps it.
+        public Color CurrentBorderOf(DivideEdge side)
+            => _sideKept[(int)side]
+                ? BorderColors[(int)side]
+                : Current(System.Array.IndexOf(s_slotSides, side) + 1, BorderColors[(int)side]);
+
+        // Indexed like BorderColors: the sides the rules do not colour, and of those the ones taken from an inline
+        // value.
+        private readonly bool[] _sideKept = new bool[4];
+        private readonly bool[] _sideInline = new bool[4];
+
+        // A slot's colour carried to what the rules give it, else to captured where they cannot be read; captured
+        // alone while this suppresses no element.
+        private Color Current(int slot, Color captured)
+        {
+            if (_element == null)
+            {
+                return captured;
+            }
+            Refresh(_element);
+            return _carries[slot].Value;
+        }
+
+        // Reads the colours the rules give the face again where the rules matched to element changed since the
+        // last read, each then carried on the element's transition of it; true where it read them.
+        private bool Refresh(VisualElement element)
+        {
+            EnsureChecked(element);
+            var hash = StyleCascade.RulesHash(element);
+            if (hash != null && hash == _rulesHash)
+            {
+                return false;
+            }
+            _rulesHash = hash;
+            for (var slot = 0; slot < _carries.Length; slot++)
+            {
+                if (RulesColor(slot))
+                {
+                    _carries[slot].Step(StyleCascade.FaceColor(element, slot) ?? Captured(slot), 0f, element,
+                        s_slotProperties[slot], Shorthand(slot));
+                }
+            }
+            return true;
+        }
+
+        private Color Captured(int slot) => slot == 0 ? BgColor : BorderColors[(int)s_slotSides[slot - 1]];
+
+        private static string? Shorthand(int slot) => slot == 0 ? null : "border-color";
+
+        private bool RulesColor(int slot)
+            => slot == 0 ? _includeBackground && !BgFromInline : !_sideKept[(int)s_slotSides[slot - 1]];
+
+        // A class on element changed outside a reconcile pass — a variant payload, a gesture or drag class, a
+        // play — so the face its suppression hides may have moved.
+        // A per-frame driver wrote or released a slot this suppresses (StyleArbitraryValueResolver.ApplyDriven,
+        // ReleaseDriven), or the element's own inline values were written back over it as a play ended: the face
+        // takes what the slots hold and the sentinel goes back, as SyncOnPatch does for a resolver write.
+        internal static void Retake(VisualElement element)
+        {
+            if (s_owners.TryGetValue(element, out var stash) && stash.SuppressionApplied && stash.HasStash
+                && stash.Reclaimed(element))
+            {
+                stash.Capture(element);
+                stash.WriteSentinels(element);
+                element.MarkDirtyRepaint();
+            }
+        }
+
+        // The colour the face shows in place of side, or of the background where side is null, while its sentinel
+        // stands in that slot, and whether the face took it from an inline value; false where no face suppresses it.
+        internal static bool TryReadFace(VisualElement element, DivideEdge? side, out Color color, out bool fromInline)
+        {
+            color = default;
+            fromInline = false;
+            if (!s_owners.TryGetValue(element, out var stash) || !stash.SuppressionApplied || !stash.HasStash)
+            {
+                return false;
+            }
+            if (side is not { } edge)
+            {
+                if (!stash._includeBackground || !SilhouetteFace.IsSentinel(element.style.backgroundColor.value))
+                {
+                    return false;
+                }
+                color = stash.CurrentBg;
+                fromInline = stash.BgFromInline;
+                return true;
+            }
+            if (!SilhouetteFace.IsSentinel(SilhouetteFace.InlineBorderColor(element, edge).value))
+            {
+                return false;
+            }
+            color = stash.CurrentBorderOf(edge);
+            fromInline = stash._sideInline[(int)edge];
+            return true;
+        }
+
+        internal static void NotifyClassesChanged(VisualElement element)
+        {
+            if (s_owners.TryGetValue(element, out var stash))
+            {
+                stash.SyncOnPatch(element, classesChanged: true);
+            }
         }
 
         // First capture: prefers a meaningful inline value (the resolver's bg-[…] write), falls back to the
@@ -414,25 +604,13 @@ namespace Velvet
             ApplySuppression(element);
         }
 
-        // Patch-time stash sync, running AFTER the per-patch styling is applied (so the resolver's inline writes
-        // for this patch are already on the element). Three cases:
+        // Class-change stash sync, running AFTER the change's styling is applied (so the resolver's inline writes
+        // are already on the element). Three cases:
         // - an owned inline slot (border always; background only when included) holds a fresh (non-sentinel)
         //   value → the resolver overwrote us (e.g. border-[#fff] → border-[#f00]): re-capture and re-suppress;
-        // - the owned slots still hold our sentinel, the class list changed, AND the stash is USS-driven → a
-        //   USS-side color may have changed beneath the sentinel: release it and let the next style resolution
-        //   re-stash;
-        // - otherwise the stash is current. In particular an INLINE-driven stash is NEVER released here: an inline
-        //   bg-[…]/border-[…] is authoritative and only changes through a resolver write (the first branch), so
-        //   releasing it on an unrelated add-only class change would drop the fill and re-expose the native
-        //   rectangle (the double-image regression), since the resolver does not re-write an inline value that was
-        //   not itself removed.
-        // canReleaseFace is the caller's promise that a re-stash will in fact follow, which only a reconcile pass
-        // can make: this method runs on EVERY patch, so a later one re-enters with HasStash false and
-        // re-captures. A variant re-sync cannot promise it — it moves no rect, so no GeometryChangedEvent fires;
-        // Velvet's utilities consume var(--…) without declaring a custom property, so UI Toolkit dispatches no
-        // CustomStyleResolvedEvent either; and no further patch need ever come. A release taken there is
-        // permanent, and the native rectangle paints behind the silhouette for good.
-        public void SyncOnPatch(VisualElement element, bool classesChanged, bool canReleaseFace)
+        // - the class list changed → the element repaints, reading the face its rules now give;
+        // - otherwise the stash is current.
+        public void SyncOnPatch(VisualElement element, bool classesChanged)
         {
             if (!HasStash)
             {
@@ -440,33 +618,30 @@ namespace Velvet
                 return;
             }
 
-            var borderReclaimed = false;
-            foreach (var side in s_sides)
-            {
-                borderReclaimed |= !SilhouetteFace.IsSentinel(SilhouetteFace.InlineBorderColor(element, side).value);
-            }
-            var bgReclaimed = _includeBackground && !SilhouetteFace.IsSentinel(element.style.backgroundColor.value);
-            if (borderReclaimed || bgReclaimed)
+            if (Reclaimed(element))
             {
                 Capture(element);
                 ApplySuppression(element);
                 return;
             }
 
-            // Release-and-re-stash ONLY when NEITHER owned face is inline-driven: releasing nulls the shared
-            // inline slots, so for an inline-driven face that would drop the authored color (the double-image
-            // regression). Documented limitation of the shared-slot scheme: a MIXED element (one inline face +
-            // one USS face) whose USS face color changes beneath the sentinel is not picked up until the next
-            // resolver write — a full per-face release would need separable suppression. (For a border-only
-            // stash BgFromInline stays false, so this reduces to the border authority test.) Withholding the
-            // release costs only that same delay. The release is two-phase even where it IS allowed: the patch
-            // taking it only clears the stash, and the re-capture lands on the patch AFTER, which is the first
-            // to re-enter with HasStash false.
-            if (classesChanged && canReleaseFace && !BgFromInline && !BorderFromInline)
+            if (classesChanged)
             {
-                Release(element);
                 element.MarkDirtyRepaint();
             }
+        }
+
+        // Whether something other than this stash's sentinel stands in a slot it suppresses.
+        private bool Reclaimed(VisualElement element)
+        {
+            foreach (var side in s_sides)
+            {
+                if (!SilhouetteFace.IsSentinel(SilhouetteFace.InlineBorderColor(element, side).value))
+                {
+                    return true;
+                }
+            }
+            return _includeBackground && !SilhouetteFace.IsSentinel(element.style.backgroundColor.value);
         }
 
         public void Capture(VisualElement element)
@@ -483,16 +658,20 @@ namespace Velvet
                 var fromInline = false;
                 // A dashed divider's mask is not this stash's suppression, so a first capture under it takes the
                 // color the divider paints there rather than keeping a stash it never had.
+                var underDash = false;
                 if (!HasStash && SilhouetteFace.IsSentinel(inline)
                     && DivideDashPainter.ColorUnderMask(element, side) is { } underMask)
                 {
                     BorderColors[(int)side] = underMask;
+                    underDash = true;
                 }
                 else
                 {
                     CaptureFace(inline, SilhouetteFace.ResolvedBorderColor(element.resolvedStyle, side),
                         ref BorderColors[(int)side], ref fromInline);
                 }
+                _sideKept[(int)side] = fromInline || underDash;
+                _sideInline[(int)side] = fromInline;
                 anyInline |= fromInline;
             }
             BorderFromInline = anyInline;
@@ -501,17 +680,18 @@ namespace Velvet
 
         private static readonly DivideEdge[] s_sides = { DivideEdge.Left, DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom };
 
-        // The captured border, at the widths the element is laid out with.
+        // The border to paint, at the widths the element is laid out with.
         public BorderSides Border(IResolvedStyle resolved) => BorderSides.Of(resolved,
-            BorderColors[(int)DivideEdge.Left], BorderColors[(int)DivideEdge.Top], BorderColors[(int)DivideEdge.Right],
-            BorderColors[(int)DivideEdge.Bottom]);
+            CurrentBorderOf(DivideEdge.Left), CurrentBorderOf(DivideEdge.Top), CurrentBorderOf(DivideEdge.Right),
+            CurrentBorderOf(DivideEdge.Bottom));
 
         // Captures one face color from its shared inline slot. Three cases:
         // - a fresh non-sentinel inline value → the resolver's bg-[…]/border-[…] write; it is authoritative;
         // - the SENTINEL → our suppression is still on the slot, so resolvedStyle would read back the sentinel
         //   (inline overrides USS), not the real color. KEEP the previously-captured value instead of clobbering
         //   it with the sentinel — this is what lets a border-only re-capture not wipe a USS-driven fill;
-        // - unset → a USS-driven color: read it from resolvedStyle.
+        // - unset → a USS-driven color: read it from resolvedStyle, unless the last style pass still saw the
+        //   sentinel there (an inline value just cleared), which keeps the previous capture.
         private static void CaptureFace(Color inline, Color resolved, ref Color stash, ref bool fromInline)
         {
             if (!SilhouetteFace.IsUnset(inline) && !SilhouetteFace.IsSentinel(inline))
@@ -521,13 +701,25 @@ namespace Velvet
             }
             else if (!SilhouetteFace.IsSentinel(inline))
             {
-                stash = resolved;
+                if (!SilhouetteFace.IsSentinel(resolved))
+                {
+                    stash = resolved;
+                }
                 fromInline = false;
             }
             // else: the sentinel is still applied — keep the existing stash (resolvedStyle is masked by it).
         }
 
         public void ApplySuppression(VisualElement element)
+        {
+            WriteSentinels(element);
+            SuppressionApplied = true;
+            s_owners.AddOrUpdate(element, this);
+            Watch(element);
+            element.MarkDirtyRepaint();
+        }
+
+        private void WriteSentinels(VisualElement element)
         {
             if (_includeBackground)
             {
@@ -537,27 +729,54 @@ namespace Velvet
             element.style.borderRightColor = SilhouetteFace.SuppressedColor;
             element.style.borderTopColor = SilhouetteFace.SuppressedColor;
             element.style.borderBottomColor = SilhouetteFace.SuppressedColor;
-            SuppressionApplied = true;
-            element.MarkDirtyRepaint();
         }
 
-        // Releases the suppression (nulls the shared inline slots so the native chrome resolves again) and
-        // clears the stash. A pooled element thus restores its native background/border on detach.
+        // Releases the suppression and clears the stash, handing the slots back to the element: a colour captured
+        // from an inline value is written back and the rest are nulled, so the native chrome resolves again and an
+        // inline bg-[…] or border-[…] stays the element's (a face handed from a shadow to a skew keeps it).
         public void Release(VisualElement element)
         {
             if (_includeBackground)
             {
-                element.style.backgroundColor = StyleKeyword.Null;
+                element.style.backgroundColor = BgFromInline ? BgColor : StyleKeyword.Null;
             }
-            element.style.borderLeftColor = StyleKeyword.Null;
-            element.style.borderRightColor = StyleKeyword.Null;
-            element.style.borderTopColor = StyleKeyword.Null;
-            element.style.borderBottomColor = StyleKeyword.Null;
+            foreach (var side in s_sides)
+            {
+                WriteBorderColor(element, side,
+                    _sideInline[(int)side] ? BorderColors[(int)side] : new StyleColor(StyleKeyword.Null));
+            }
             // A hold or a driver on a border color slot is not this stash's to drop: a divider's mask or color
             // goes back over the slot it nulled.
             StyleArbitraryValueResolver.ReassertBorderColors(element);
             SuppressionApplied = false;
             HasStash = false;
+            Abandon(element);
+        }
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the slot it writes
+        private static void WriteBorderColor(VisualElement element, DivideEdge side, StyleColor value)
+        {
+            var style = element.style;
+            _ = side switch
+            {
+                DivideEdge.Left => style.borderLeftColor = value,
+                DivideEdge.Top => style.borderTopColor = value,
+                DivideEdge.Right => style.borderRightColor = value,
+                DivideEdge.Bottom => style.borderBottomColor = value,
+            };
+        }
+#pragma warning restore CS8524
+
+        // Drops the per-frame check and this stash's claim on element without touching the inline slots, for a layer
+        // that hands its suppression on (BorderStyleSilhouette.DetachPreservingSuppression).
+        public void Abandon(VisualElement element)
+        {
+            if (s_owners.TryGetValue(element, out var owner) && ReferenceEquals(owner, this))
+            {
+                s_owners.Remove(element);
+            }
+            Unregister();
+            _element = null;
         }
 
         // Adopts another stash's captured BORDER face for a face-ownership HANDOFF: when a border-only layer
@@ -574,8 +793,109 @@ namespace Velvet
                 return;
             }
             source.BorderColors.CopyTo(BorderColors, 0);
+            source._sideKept.CopyTo(_sideKept, 0);
+            source._sideInline.CopyTo(_sideInline, 0);
             BorderFromInline = source.BorderFromInline;
             HasStash = true;
+        }
+
+        // Takes element's face from the rules, the colours landed where they give them now, so that taking the face
+        // is not a change they transition.
+        private void Watch(VisualElement element)
+        {
+            if (ReferenceEquals(_element, element))
+            {
+                return;
+            }
+            _element = element;
+            _rulesHash = StyleCascade.RulesHash(element);
+            for (var slot = 0; slot < _carries.Length; slot++)
+            {
+                _carries[slot].Land(StyleCascade.FaceColor(element, slot) ?? Captured(slot));
+            }
+            EnsureChecked(element);
+        }
+
+        private sealed class PanelCheck
+        {
+            public readonly List<SilhouetteFaceStash> Stashes = new();
+            public IVisualElementScheduledItem Item = null!;
+        }
+
+        private static readonly ConditionalWeakTable<IPanel, PanelCheck> s_checks = new();
+
+        // Every face a panel shows is carried by one check run each frame among the panel's scheduled items, as a
+        // dashed divider's mask is checked (DivideDashPainter.EnsureCheck).
+        private void EnsureChecked(VisualElement element)
+        {
+            var panel = element.panel;
+            if (panel == null || ReferenceEquals(panel, _checkedBy))
+            {
+                return;
+            }
+            Unregister();
+            if (!s_checks.TryGetValue(panel, out var check))
+            {
+                var created = new PanelCheck();
+                created.Item = panel.visualTree.schedule.Execute(ts => Check(panel, created, ts.deltaTime / 1000f))
+                    .Every(0);
+                s_checks.Add(panel, created);
+                check = created;
+            }
+            check.Stashes.Add(this);
+            check.Item.Resume();
+            _checkedBy = panel;
+        }
+
+        private void Unregister()
+        {
+            if (_checkedBy != null)
+            {
+                if (s_checks.TryGetValue(_checkedBy, out var check))
+                {
+                    check.Stashes.Remove(this);
+                }
+            }
+            _checkedBy = null;
+        }
+
+        private static void Check(IPanel panel, PanelCheck check, float dtSec)
+        {
+            for (var i = check.Stashes.Count - 1; i >= 0; i--)
+            {
+                var stash = check.Stashes[i];
+                var element = stash._element;
+                if (element == null || element.panel != panel)
+                {
+                    stash._checkedBy = null;
+                    check.Stashes.RemoveAt(i);
+                    continue;
+                }
+                if (stash.Advance(element, dtSec))
+                {
+                    element.MarkDirtyRepaint();
+                }
+            }
+            if (check.Stashes.Count == 0)
+            {
+                check.Item.Pause();
+            }
+        }
+
+        // Carries each colour the rules give over dtSec more; true where one moved or the rules gave a new one.
+        private bool Advance(VisualElement element, float dtSec)
+        {
+            var moved = Refresh(element);
+            for (var slot = 0; slot < _carries.Length; slot++)
+            {
+                var carry = _carries[slot];
+                if (RulesColor(slot) && !carry.Landed)
+                {
+                    carry.Step(carry.Target, dtSec, element, s_slotProperties[slot], Shorthand(slot));
+                    moved = true;
+                }
+            }
+            return moved;
         }
     }
 }

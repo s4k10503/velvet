@@ -24,7 +24,7 @@ namespace Velvet
         public readonly SilhouetteFaceStash Face = new(includeBackground: false);
 
         // Pass-throughs onto Face so the reconciler / tests read the stash state directly off the binding.
-        public Color BorderColor => Face.BorderColor;
+        public Color BorderColor => Face.CurrentBorder;
         public bool HasStash => Face.HasStash;
         public bool SuppressionApplied => Face.SuppressionApplied;
     }
@@ -43,10 +43,9 @@ namespace Velvet
     /// border-dashed</c> composes exactly as CSS width + style + color (width from the untouched resolved
     /// style, color from the captured stash).
     /// <para>
-    /// Limitation: when the element is also skewed or shadowed, that layer owns the whole face (it repaints a
-    /// solid border as part of its silhouette), so the border stays SOLID — the reconciler defers this layer
-    /// while a skew / shadow binding is present, the same tier as the clip + shadow / clip + ring mutual
-    /// exclusions.
+    /// When the element is also skewed or shadowed, that layer owns the whole face and repaints the border as
+    /// part of it, in this line style (<see cref="BoxShadowBinding.BorderStyle"/>, <see cref="SkewBinding.BorderStyle"/>),
+    /// so the reconciler defers this layer while a skew / shadow binding is present.
     /// </para>
     /// </remarks>
     internal static class BorderStyleSilhouette
@@ -130,14 +129,14 @@ namespace Velvet
             {
                 element.UnregisterCallback(binding.OnGeometryChanged);
             }
+            binding.Face.Abandon(element);
             element.MarkDirtyRepaint();
         }
 
         // Patch-time stash sync, delegated to the shared border-only face stash. Runs AFTER the per-patch
         // styling is applied (the inline border slot is shared with the arbitrary-value resolver).
-        public static void SyncStashOnPatch(VisualElement element, BorderStyleBinding binding, bool classesChanged,
-            bool canReleaseFace)
-            => binding.Face.SyncOnPatch(element, classesChanged, canReleaseFace);
+        public static void SyncStashOnPatch(VisualElement element, BorderStyleBinding binding, bool classesChanged)
+            => binding.Face.SyncOnPatch(element, classesChanged);
 
         // The laid-out border of ve, or null before it has a size.
         internal static BorderBox? BoxOf(VisualElement ve)
@@ -161,6 +160,7 @@ namespace Velvet
                 RadiusTopRight = corners.RadiusTopRight,
                 RadiusBottomRight = corners.RadiusBottomRight,
                 RadiusBottomLeft = corners.RadiusBottomLeft,
+                Radii = ProjectedCornerFace.TryGetRadii(ve, out _) ? corners.Radii : null,
             };
         }
 
@@ -183,7 +183,7 @@ namespace Velvet
                 if (PaintsSide(ve, side))
                 {
                     var color = binding.HasStash
-                        ? binding.Face.BorderColors[(int)side]
+                        ? binding.Face.CurrentBorderOf(side)
                         : SilhouetteFace.ResolvedBorderColor(ve.resolvedStyle, side);
                     DashedBorderPainter.PaintSide(mgc.painter2D, side, box, color, binding.Spec.Style);
                 }

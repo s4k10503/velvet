@@ -11,7 +11,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins, by real GPU pixel readback, that a face a silhouette layer repaints keeps each border side's own colour:
     /// a red border whose top side alone is blue, eight pixels wide, on a box the skew layer repaints and on one the
-    /// shadow layer repaints; and where the two sides meet in a rounded corner, divided by their widths.
+    /// shadow layer repaints; and where the two sides meet in a rounded corner, divided by their widths. A shadowed box
+    /// keeps its border where it clips its content, and dashes a dashed one.
     /// </summary>
     [Timeout(600000)]
     internal sealed class SilhouetteBorderSidesPlaybackTests
@@ -81,6 +82,87 @@ namespace Velvet.Tests
 
             // Assert — halfway along the top band and halfway into it.
             Assert.That(ColourAt(new Vector2(60f, 4f), 0f), Is.EqualTo("blue"));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AShadowedBoxThatClipsItsContent_When_Painted_Then_ItsTopBandIsBlue()
+        {
+            // Arrange / Act
+            yield return Mount("ShadowClipped", $"{Box} overflow-hidden shadow-[0px_0px_8px_#ffffff]");
+            var shadowed = BoxShadowSilhouette.TryGet(_host.Root.Q<VisualElement>("box")) != null;
+
+            // Assert — halfway along the top band and halfway into it; "no shadow" where the shadow never bound,
+            // since the same box unshadowed shows its border natively.
+            Assert.That(shadowed ? ColourAt(new Vector2(60f, 4f), 0f) : "no shadow", Is.EqualTo("blue"));
+        }
+
+        private const string DashedBox = "w-[120px] h-[80px] mt-[60px] ml-[60px] bg-[#000000] border-[8px] "
+            + "border-[#ff0000] border-dashed";
+
+        // What every other pixel along the top band shows, halfway into it, carried by the shear tanX gives.
+        private System.Collections.Generic.HashSet<string> TopBand(float tanX)
+        {
+            var seen = new System.Collections.Generic.HashSet<string>();
+            for (var x = 8f; x <= 112f; x += 2f)
+            {
+                seen.Add(ColourAt(new Vector2(x, 4f), tanX));
+            }
+            return seen;
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AShadowedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps()
+        {
+            // Arrange
+            yield return Mount("ShadowDashed", $"{DashedBox} shadow-[0px_0px_8px_#ffffff]");
+
+            // Act
+            var seen = TopBand(0f);
+
+            // Assert — both dash and gap, which a solid band, or none, would not show.
+            Assert.That((seen.Contains("red"), seen.Contains("other")), Is.EqualTo((true, true)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ASkewedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps()
+        {
+            // Arrange
+            yield return Mount("SkewDashed", $"{DashedBox} skew-x-[10deg]");
+
+            // Act
+            var seen = TopBand(Mathf.Tan(10f * Mathf.Deg2Rad));
+
+            // Assert — both dash and gap, which a solid band, or none, would not show.
+            Assert.That((seen.Contains("red"), seen.Contains("other")), Is.EqualTo((true, true)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ASkewedBoxThatClipsItsContent_When_Painted_Then_ItsTopBandIsBlue()
+        {
+            // Arrange / Act
+            yield return Mount("SkewClipped", $"{Box} overflow-hidden skew-x-[10deg]");
+            var skewed = _mounted.Root.Reconciler.Context.SkewBindings.ContainsKey(_host.Root.Q<VisualElement>("box"));
+
+            // Assert — halfway along the top band and halfway into it; "no skew" where the skew never bound, since the
+            // same box unskewed shows its border natively.
+            Assert.That(skewed ? ColourAt(new Vector2(60f, 4f), Mathf.Tan(10f * Mathf.Deg2Rad)) : "no skew",
+                Is.EqualTo("blue"));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AShadowedBoxWithADashedBorderThatClipsItsContent_When_Painted_Then_ItsTopBandHasGaps()
+        {
+            // Arrange
+            yield return Mount("ShadowDashedClipped", $"{DashedBox} overflow-hidden shadow-[0px_0px_8px_#ffffff]");
+            var shadowed = BoxShadowSilhouette.TryGet(_host.Root.Q<VisualElement>("box")) != null;
+
+            // Act
+            var seen = TopBand(0f);
+
+            // Assert — both dash and gap, which a solid band, or none, would not show; null where the shadow never
+            // bound, since the same box unshadowed loses its dashes to the clip.
+            Assert.That(shadowed ? (seen.Contains("red"), seen.Contains("other")) : ((bool, bool)?)null,
+                Is.EqualTo((true, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base strokes every side in the left one's colour, red here too.

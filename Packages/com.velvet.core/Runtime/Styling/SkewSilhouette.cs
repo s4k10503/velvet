@@ -22,9 +22,12 @@ namespace Velvet
         // colors must be captured before suppression.
         public readonly SilhouetteFaceStash Face = new();
 
+        // The line style border-dashed / border-dotted give the repainted border, as BoxShadowBinding.BorderStyle.
+        public BorderLineStyle BorderStyle;
+
         // Pass-throughs onto Face so the reconciler / tests read the stash state directly off the binding.
-        public Color BgColor => Face.BgColor;
-        public Color BorderColor => Face.BorderColor;
+        public Color BgColor => Face.CurrentBg;
+        public Color BorderColor => Face.CurrentBorder;
         public bool HasStash => Face.HasStash;
         public bool SuppressionApplied => Face.SuppressionApplied;
 
@@ -45,6 +48,13 @@ namespace Velvet
         // to skip a redundant re-bake; GradBaked gates it (SetGradient clears it so a spec change re-bakes).
         public (int w, int h, int sx, int sy, int tl, int tr, int br, int bl) GradKey;
         public bool GradBaked;
+        // The scale on each axis GradientTex was baked at, Vector2.one but under a layoutId projection that draws
+        // the element at a different scale on each axis (SyncGradientBake); and whether a re-bake for that scale
+        // is waiting to run.
+        public Vector2 GradScale = Vector2.one;
+        public bool GradRebakePending;
+        // Whether a check of the face border overlay is waiting to run (SkewSilhouette.SettleOverlay).
+        public bool OverlayPending;
 
         // When the caster carries an inline filter, the sheared silhouette would be clipped to the layout
         // rect by the filter's offscreen render tree (sized to boundingBox, which excludes gVC overflow). A
@@ -76,10 +86,8 @@ namespace Velvet
     /// <remarks>
     /// The native rectangular background/border colors are suppressed with a near-invisible sentinel (the
     /// inline slot is shared with <see cref="StyleArbitraryValueResolver"/>'s <c>bg-[…]</c> / <c>border-[…]</c>
-    /// writes, so suppression re-syncs on every patch: a fresh resolver value re-stashes directly; a USS-driven
-    /// stash releases the sentinel on a class change and re-stashes on the next style resolution, while an
-    /// inline-driven stash is kept — an inline color only changes through a resolver write, which the re-stash
-    /// branch already catches).
+    /// writes, so suppression re-syncs on every class change: a fresh resolver value re-stashes directly, and a
+    /// USS-driven color is read off <see cref="SilhouetteFaceStash"/>'s probe).
     /// <para>
     /// Caveat — this paints ONLY the element's own silhouette; it is NOT a real transform, so the element's
     /// layout box stays axis-aligned (unlike CSS <c>transform: skewX()</c>, which shears descendants too). UI
@@ -180,6 +188,8 @@ namespace Velvet
                 binding.ChildTranslate = null;
             }
             DestroyGradientTex(binding);
+            FaceBorderOverlay.Remove(element);
+            binding.OnGenerate = null;
             SilhouetteBoundsSpacer.Remove(element, ref binding.BoundsSpacer);
             element.MarkDirtyRepaint();
         }
@@ -238,11 +248,9 @@ namespace Velvet
         }
 
         // Patch-time stash sync, delegated to the shared face stash. Runs AFTER SyncClassDrivenStyling (so the
-        // resolver's inline writes for this patch are already on the element); see SilhouetteFaceStash.SyncOnPatch
-        // for the three cases (resolver overwrote us / USS color may have moved beneath the sentinel / current).
-        public static void SyncStashOnPatch(VisualElement element, SkewBinding binding, bool classesChanged,
-            bool canReleaseFace)
-            => binding.Face.SyncOnPatch(element, classesChanged, canReleaseFace);
+        // resolver's inline writes for this patch are already on the element).
+        public static void SyncStashOnPatch(VisualElement element, SkewBinding binding, bool classesChanged)
+            => binding.Face.SyncOnPatch(element, classesChanged);
 
         // Re-seats the direct children's approximate descendant shear from the reconciler, the panel-independent
         // path that also covers a child add / remove / reorder when the caster's own box did not change size (so
@@ -268,6 +276,18 @@ namespace Velvet
                 // (it pokes beyond the box, which a clipped background-image cannot). Baked in the geometry
                 // callback, so on the first frame before layout it is simply not yet present.
                 DrawGradientQuad(mgc, binding, w, h);
+                // A projection moves the scale, and ends, with no geometry change to re-bake on, and a bake cannot run
+                // here.
+                if ((ProjectedCornerFace.TryGetRadii(ve, out _) || binding.GradScale != Vector2.one)
+                    && !binding.GradRebakePending)
+                {
+                    binding.GradRebakePending = true;
+                    ve.schedule.Execute(() =>
+                    {
+                        binding.GradRebakePending = false;
+                        SyncGradientBake(ve, binding);
+                    });
+                }
             }
             else
             {
@@ -285,8 +305,42 @@ namespace Velvet
             // CSS paints an inset shadow above the background and below the border.
             BoxShadowSilhouette.DrawInsetLayers(mgc, ve, w, h);
 
-            // Drawn after the fill so the outline sits on top and follows the shear, keeping the slanted edge crisp.
-            SilhouetteFace.PaintBorder(p, ve, SilhouetteFace.BorderOf(ve, binding.Face),
+            // An element that clips its content cuts this paint at its padding box, which its border lies outside
+            // (styling-variants.md's hidden-overflow table), so its border and the face beneath it are painted on a
+            // sibling over it (FaceBorderOverlay), placed outside the paint since that writes the hierarchy.
+            var clips = StyleCascade.ClipsOverflow(ve);
+            if (clips != FaceBorderOverlay.Has(ve) && !binding.OverlayPending)
+            {
+                binding.OverlayPending = true;
+                ve.schedule.Execute(() => SettleOverlay(ve, binding));
+            }
+            if (!clips)
+            {
+                // Drawn after the fill so the outline sits on top and follows the shear, keeping the slanted edge
+                // crisp.
+                SilhouetteFace.PaintBorder(p, ve, SilhouetteFace.BorderOf(ve, binding.Face), binding.BorderStyle,
+                    new SilhouetteFace.Shearing(w, h, tanX, tanY));
+            }
+        }
+
+        private static void SettleOverlay(VisualElement ve, SkewBinding binding)
+        {
+            binding.OverlayPending = false;
+            if (binding.OnGenerate == null)
+            {
+                return;
+            }
+            FaceBorderOverlay.Sync(ve, StyleCascade.ClipsOverflow(ve), (mgc, w, h) => PaintOverlay(mgc, ve, binding, w, h));
+        }
+
+        private static void PaintOverlay(MeshGenerationContext mgc, VisualElement ve, SkewBinding binding, float w, float h)
+        {
+            var tanX = Mathf.Tan(binding.Spec.XDeg * Mathf.Deg2Rad);
+            var tanY = Mathf.Tan(binding.Spec.YDeg * Mathf.Deg2Rad);
+            // A gradient face's band is the baked silhouette's, which this cannot cut out, so only its border is drawn.
+            var fill = binding.HasGradient ? Color.clear
+                : binding.HasStash ? binding.BgColor : ve.resolvedStyle.backgroundColor;
+            SilhouetteFace.PaintBand(mgc.painter2D, ve, fill, SilhouetteFace.BorderOf(ve, binding.Face), binding.BorderStyle,
                 new SilhouetteFace.Shearing(w, h, tanX, tanY));
         }
 
@@ -316,10 +370,28 @@ namespace Velvet
             var rs = element.resolvedStyle;
             float tl = rs.borderTopLeftRadius, tr = rs.borderTopRightRadius;
             float br = rs.borderBottomRightRadius, bl = rs.borderBottomLeftRadius;
+            // Under a layoutId projection drawing the element at a different scale on each axis the silhouette is
+            // baked as it shows on screen, its corners the projection's radii there and its shear carried by the
+            // scale, and drawn back at the element's own size (DrawGradientQuad), so its corners show circular, as
+            // Framer's correctBorderRadius leaves them.
+            var scale = Vector2.one;
+            if (ProjectedCornerFace.TryGetProjection(element, out var projected, out var s))
+            {
+                scale = s;
+                w *= s.x;
+                h *= s.y;
+                tanX *= s.x / s.y;
+                tanY *= s.y / s.x;
+                float Corner(Vector2 r) => Mathf.Min(r.x * s.x, r.y * s.y);
+                tl = Corner(projected.TopLeft);
+                tr = Corner(projected.TopRight);
+                br = Corner(projected.BottomRight);
+                bl = Corner(projected.BottomLeft);
+            }
             var key = (Mathf.RoundToInt(w), Mathf.RoundToInt(h),
                 Mathf.RoundToInt(tanX * 100f), Mathf.RoundToInt(tanY * 100f),
                 Mathf.RoundToInt(tl), Mathf.RoundToInt(tr), Mathf.RoundToInt(br), Mathf.RoundToInt(bl));
-            if (binding.GradBaked && binding.GradientTex != null && key == binding.GradKey)
+            if (binding.GradBaked && binding.GradientTex != null && key == binding.GradKey && scale == binding.GradScale)
             {
                 return;
             }
@@ -332,6 +404,7 @@ namespace Velvet
             DestroyGradientTex(binding);
             binding.GradientTex = tex;
             binding.GradKey = key;
+            binding.GradScale = scale;
             binding.GradBaked = true;
             element.MarkDirtyRepaint();
         }
@@ -348,8 +421,8 @@ namespace Velvet
             {
                 return;
             }
-            float qw = tex.width;
-            float qh = tex.height;
+            float qw = tex.width / binding.GradScale.x;
+            float qh = tex.height / binding.GradScale.y;
             var minX = (w * 0.5f) - (qw * 0.5f);
             var maxX = (w * 0.5f) + (qw * 0.5f);
             var minY = (h * 0.5f) - (qh * 0.5f);

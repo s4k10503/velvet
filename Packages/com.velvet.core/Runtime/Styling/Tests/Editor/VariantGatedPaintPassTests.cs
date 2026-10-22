@@ -272,9 +272,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADarkGatedGradientOnAMotion_When_TheThemeTurnsDark_Then_TheBakedTextureIsApplied()
         {
-            // Arrange — a Motion paints none of the three silhouette layers, but it does carry the straight
-            // background-image gradient, so a variant has to reach that pass on a Motion exactly as it does
-            // on an element.
+            // Arrange — a variant has to reach the gradient pass on a Motion exactly as it does on an element.
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
                 new VNode[]
@@ -294,10 +292,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADarkGatedShadowOnAMotion_When_TheThemeTurnsDark_Then_NoShadowPaintIsAttached()
+        public void Given_ADarkGatedShadowOnAMotion_When_TheThemeTurnsDark_Then_TheShadowPaintIsAttached()
         {
-            // Arrange — a Motion never paints a drop shadow (the silhouette paints stand down on a Motion, so
-            // nothing would reconcile one afterwards), and a variant must not be a way in.
+            // Arrange — a Motion paints a drop shadow as any element does, through a variant too.
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
                 new VNode[] { V.Motion(className: "bg-[#FFFFFF] dark:shadow-lg", name: "mover") });
@@ -306,7 +303,7 @@ namespace Velvet.Tests
             VelvetTheme.IsDark = true;
 
             // Assert
-            Assert.That(scope.Reconciler.Context.ShadowBindings.Count, Is.EqualTo(0));
+            Assert.That(scope.Reconciler.Context.ShadowBindings.Count, Is.EqualTo(1));
         }
     }
 
@@ -346,20 +343,14 @@ namespace Velvet.Tests
     }
 
     /// <summary>
-    /// A gate toggle must not disturb an ALREADY-ATTACHED silhouette's face suppression. Both silhouette layers
-    /// stash the element's face colours and write a sentinel over the shared inline slot so they can repaint the
-    /// face themselves; on a class change with a USS-driven (not <c>bg-[…]</c>) stash they release that
-    /// suppression and wait to re-stash, because a USS colour can move beneath the sentinel unseen. The re-stash
-    /// runs from <c>CustomStyleResolvedEvent</c> (which UI Toolkit dispatches only for an element declaring
-    /// custom properties — Velvet's utilities consume <c>var(--…)</c> without declaring any), from
-    /// <c>GeometryChangedEvent</c>, or from the next patch. A variant toggle fires none of the three: it changes
-    /// no rect and need never be followed by a patch, so a release taken here is permanent and the native
-    /// rectangle paints behind the silhouette for good.
+    /// A gate toggle must not disturb an ALREADY-ATTACHED silhouette's face suppression. The skew, upright shadow
+    /// and border-dashed layers stash the element's face colours and write a sentinel over the shared inline slot
+    /// so they can repaint the face themselves. A class change re-points the stash's probe and keeps the sentinel:
+    /// a release would let the native rectangle paint behind the silhouette until something re-stashed it.
     /// </summary>
     /// <remarks>
-    /// A real panel is required in both directions: off-panel with no inline colour the stash never forms at
-    /// all, so the release branch is unreachable and the bug invisible. Each case asserts BOTH edges, since an
-    /// element whose suppression never applied would satisfy the post-toggle half on its own.
+    /// A real panel is required: off-panel with no inline colour the stash never forms at all. Each case asserts
+    /// BOTH edges, since an element whose suppression never applied would satisfy the post-toggle half on its own.
     /// </remarks>
     [TestFixture]
     internal sealed class VariantGatedPaintFaceSuppressionPanelTests : PanelTestBase
@@ -389,15 +380,15 @@ namespace Velvet.Tests
         {
             // Arrange — the skew and the face colour are both literal, so the toggle changes neither: only
             // `shadow-lg` arrives. A USS face colour (not a bracket value) is what puts the stash on the
-            // releasing branch.
+            // class-change branch.
             var card = MountAndStash("bg-blue-500 -skew-x-6 dark:shadow-lg");
             var suppressedAtRest = SilhouetteFace.IsSentinel(card.style.backgroundColor.value);
 
             // Act
             VelvetTheme.IsDark = true;
 
-            // Assert — released suppression means the un-sheared blue rectangle resolves again and paints
-            // behind the slant, permanently.
+            // Assert — released suppression would let the un-sheared blue rectangle resolve again and paint
+            // behind the slant.
             Assert.That((suppressedAtRest, SilhouetteFace.IsSentinel(card.style.backgroundColor.value)),
                 Is.EqualTo((true, true)));
         }
@@ -406,14 +397,14 @@ namespace Velvet.Tests
         public void Given_ALiteralUprightShadowOverAUssFace_When_AnUnrelatedGateTokenToggles_Then_TheFaceStaysSuppressed()
         {
             // Arrange — an upright shadow caster owns the whole face too. Its sync passes a hardcoded "classes
-            // changed", so it reaches the releasing branch on EVERY re-sync, not only on a real class change.
+            // changed", so it reaches the class-change branch on EVERY re-sync, not only on a real class change.
             var card = MountAndStash("bg-blue-500 shadow-lg dark:gap-4");
             var suppressedAtRest = SilhouetteFace.IsSentinel(card.style.backgroundColor.value);
 
             // Act
             VelvetTheme.IsDark = true;
 
-            // Assert — a released face lets the native blue rectangle resolve again behind the repainted fill.
+            // Assert — a released face would let the native blue rectangle resolve again behind the repainted fill.
             Assert.That((suppressedAtRest, SilhouetteFace.IsSentinel(card.style.backgroundColor.value)),
                 Is.EqualTo((true, true)));
         }
@@ -421,7 +412,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ALiteralBorderDashedOverAUssBorder_When_AnUnrelatedGateTokenToggles_Then_TheBorderStaysSuppressed()
         {
-            // Arrange — the border-only stash takes the same releasing branch, reached here through a layout
+            // Arrange — the border-only stash takes the same class-change branch, reached here through a layout
             // gate token rather than a paint one, so the trigger is not specific to the paint sequence.
             var card = MountAndStash("border border-gray-300 border-dashed dark:gap-4");
             var suppressedAtRest = SilhouetteFace.IsSentinel(card.style.borderLeftColor.value);
@@ -429,7 +420,7 @@ namespace Velvet.Tests
             // Act
             VelvetTheme.IsDark = true;
 
-            // Assert — a released border lets the native solid stroke resolve again under the dashed paint.
+            // Assert — a released border would let the native solid stroke resolve again under the dashed paint.
             Assert.That((suppressedAtRest, SilhouetteFace.IsSentinel(card.style.borderLeftColor.value)),
                 Is.EqualTo((true, true)));
         }
@@ -526,7 +517,7 @@ namespace Velvet.Tests
         {
             // Arrange / Act — two families arrive in the same toggle, here on the ATTACH edge: a responsive
             // payload is still off while the element is built detached, and lights as it joins the panel. The
-            // shadow owns the whole face and repaints a solid border itself, so the dashed layer must stand
+            // shadow owns the whole face and repaints the border itself, so the dashed layer must stand
             // down — which only holds if the two are applied in the reconcile path's order.
             var card = MountAndResolveAt(WidePanel, "bg-[#FFFFFF] md:shadow-lg md:border-dashed");
             var context = _mounted.Root.Reconciler.Context;

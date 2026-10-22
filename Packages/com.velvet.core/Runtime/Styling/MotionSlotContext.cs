@@ -16,12 +16,18 @@ namespace Velvet
         private readonly HashSet<ArbitraryProperty> _inlineBySwap = new();
         private readonly HashSet<ArbitraryProperty> _importantInlineBySwap = new();
 
-        private MotionSlotContext(VisualElement element, Func<ArbitraryProperty, bool> drivenByRunningPlay)
+        private MotionSlotContext(VisualElement element, Func<ArbitraryProperty, bool> drivenByRunningPlay,
+            bool attached)
         {
             _element = element;
             _drivenByRunningPlay = drivenByRunningPlay;
             _drivenByLivePlay = drivenByRunningPlay;
+            Attached = attached;
         }
+
+        // False for ReadImportant's: a play planned off a panel takes from it only the important declarations of the
+        // element's own, and reads no current value and no other resting holder.
+        public bool Attached { get; }
 
         public static MotionSlotContext? Read(VisualElement element, string[]? fromClasses, string[]? toClasses,
             Func<ArbitraryProperty, bool> drivenByRunningPlay, Func<ArbitraryProperty, bool>? drivenByLivePlay = null)
@@ -30,8 +36,18 @@ namespace Velvet
             {
                 return null;
             }
-            var context = new MotionSlotContext(element, drivenByRunningPlay);
+            var context = new MotionSlotContext(element, drivenByRunningPlay, attached: true);
             if (drivenByLivePlay != null) context._drivenByLivePlay = drivenByLivePlay;
+            return Swapping(context, fromClasses, toClasses);
+        }
+
+        // An important declaration of the element's own holds its slot through a play on a panel or off one, as
+        // !important outranks an animation in CSS.
+        public static MotionSlotContext ReadImportant(VisualElement element, string[]? fromClasses, string[]? toClasses)
+            => Swapping(new MotionSlotContext(element, static _ => false, attached: false), fromClasses, toClasses);
+
+        private static MotionSlotContext Swapping(MotionSlotContext context, string[]? fromClasses, string[]? toClasses)
+        {
             context.NoteSwapped(fromClasses);
             context.NoteSwapped(toClasses);
             return context;
@@ -82,11 +98,11 @@ namespace Velvet
             var style = owner.style;
             // A projected face's hidden slot holds none of the element's own (ProjectedCornerFace.InlineOf).
             var hasInline = slot == ArbitraryProperty.BorderColor
-                ? HoldsBorderEdge(owner, StyleLonghand.BorderTopColor, ProjectedCornerFace.InlineOf(owner, 1, style.borderTopColor))
-                    || HoldsBorderEdge(owner, StyleLonghand.BorderRightColor, ProjectedCornerFace.InlineOf(owner, 2, style.borderRightColor))
-                    || HoldsBorderEdge(owner, StyleLonghand.BorderBottomColor, ProjectedCornerFace.InlineOf(owner, 3, style.borderBottomColor))
-                    || HoldsBorderEdge(owner, StyleLonghand.BorderLeftColor, ProjectedCornerFace.InlineOf(owner, 4, style.borderLeftColor))
-                : TryReadInline(slot, out _) && !HasRunningNativeTransition(slot);
+                ? HoldsBorderEdge(owner, DivideEdge.Top, ProjectedCornerFace.InlineOf(owner, 1, style.borderTopColor))
+                    || HoldsBorderEdge(owner, DivideEdge.Right, ProjectedCornerFace.InlineOf(owner, 2, style.borderRightColor))
+                    || HoldsBorderEdge(owner, DivideEdge.Bottom, ProjectedCornerFace.InlineOf(owner, 3, style.borderBottomColor))
+                    || HoldsBorderEdge(owner, DivideEdge.Left, ProjectedCornerFace.InlineOf(owner, 4, style.borderLeftColor))
+                : TryReadInline(slot, out _) && !HasRunningNativeTransition(slot) && OwnsInline(owner, longhands);
             if (!hasInline) return false;
             foreach (var property in _inlineBySwap)
             {
@@ -98,8 +114,32 @@ namespace Velvet
             return true;
         }
 
-        private static bool HoldsBorderEdge(VisualElement owner, StyleLonghand longhand, StyleColor inline)
-            => inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(owner, longhand);
+        // A face's sentinel holds the edge only where the face took it from an inline value of the element's own.
+        private static bool HoldsBorderEdge(VisualElement owner, DivideEdge edge, StyleColor inline)
+        {
+            var longhand = StyleLonghandOf(edge);
+            return (SilhouetteFaceStash.TryReadFace(owner, edge, out _, out var faceInline)
+                    ? faceInline
+                    : inline.keyword == StyleKeyword.Undefined)
+                && !HasRunningNativeTransition(owner, longhand) && OwnsInline(owner, StyleLonghandSet.Of(longhand));
+        }
+
+        // An inline value a container holds for the element (StyleArbitraryValueResolver.HoldsForContainer) is not
+        // one of the element's own, so it holds no slot against the element's own classes, which it gives way to;
+        // a dash mask over a color of the element's own still stands for that color.
+        private static bool OwnsInline(VisualElement owner, StyleLonghandSet longhands)
+        {
+            foreach (var held in HeldSlotGroups.EverySlot)
+            {
+                if (longhands.Contains(HeldSlotGroups.LonghandOf(held))
+                    && StyleArbitraryValueResolver.HoldsForContainer(owner, held)
+                    && !DivideDashPainter.MasksOwnColor(owner, held))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         // Read off the layers rather than the inline translate, which an axis utility and a both-axis one write alike.
         public bool HoldsRestingAxisTranslate(ArbitraryProperty slot)
@@ -192,6 +232,22 @@ namespace Velvet
             return false;
         }
 
+        // Whether the plan read through this is an exit's, which a gesture channel's value does not keep out.
+        public bool ForExit { get; set; }
+
+        // A gesture channel holds slot: its value is protected from the swap, as Framer Motion keeps a value a gesture
+        // state sets out of the element's animate and variants while the state is on.
+        public bool HoldsGesture(ArbitraryProperty slot)
+        {
+            if (ForExit)
+            {
+                return false;
+            }
+            var owner = Owner(slot);
+            return StyleArbitraryValueResolver.HoldsGestureLayer(owner, slot)
+                || StyleArbitraryValueResolver.TryGetProjection(owner)?.HoldsGesture(StyleArbitraryLonghands.Of(slot)) == true;
+        }
+
         // Unlike the running-play predicate, a held play does not count: it rests at its start and the next play
         // takes that from StartFromHeld, in the held play's own unit.
         public bool DrivenByLivePlay(ArbitraryProperty slot) => _drivenByLivePlay(slot);
@@ -237,7 +293,7 @@ namespace Velvet
                 return TryReadBorderColor(out value);
             }
             // A projected face draws the colour its hidden slot does not hold.
-            if (slot == ArbitraryProperty.BackgroundColor && ProjectedCornerFace.Drawn(Owner(slot), 0) is { } drawn)
+            if (FaceSlotOf(slot) is { } faceSlot && ProjectedCornerFace.Drawn(Owner(slot), faceSlot) is { } drawn)
             {
                 value = new ArbitraryStyle(slot, drawn);
                 return true;
@@ -260,6 +316,20 @@ namespace Velvet
                 return false;
             }
             return MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit);
+        }
+
+        // What the element showed on slot at its last style pass, in unit, a skewed parent's seat taken off a
+        // translate (SeatedTranslate.Unseated); false where it cannot be read so.
+        public bool TryReadShown(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
+        {
+            if (slot == ArbitraryProperty.TranslateX || slot == ArbitraryProperty.TranslateY)
+            {
+                var owner = Owner(slot);
+                var own = SeatedTranslate.Unseated(owner, owner.resolvedStyle.translate);
+                return Pixels(slot, slot == ArbitraryProperty.TranslateX ? own.x : own.y, out value);
+            }
+            return TryReadResolved(slot, out value)
+                && (MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit));
         }
 
         private bool HasRunningNativeTransition(ArbitraryProperty slot) => TryFindRunningNative(slot, out _);
@@ -334,40 +404,27 @@ namespace Velvet
                     return Float(slot, style.opacity, out value);
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
-                {
-                    var translate = style.translate;
-                    if (translate.keyword != StyleKeyword.Undefined)
-                    {
-                        return false;
-                    }
-                    var axis = slot == ArbitraryProperty.TranslateX ? translate.value.x : translate.value.y;
-                    value = new ArbitraryStyle(slot, axis.value, axis.unit);
-                    return true;
-                }
+                    return Translate(slot, SeatedTranslate.Read(Owner(slot)), out value);
                 case ArbitraryProperty.Scale:
-                {
-                    var scale = style.scale;
-                    if (scale.keyword != StyleKeyword.Undefined || !scale.value.value.x.Equals(scale.value.value.y))
-                    {
-                        return false;
-                    }
-                    value = new ArbitraryStyle(slot, scale.value.value.x, LengthUnit.Pixel);
-                    return true;
-                }
+                    return Scale(slot, style.scale, out value);
                 case ArbitraryProperty.Rotate:
-                {
-                    var rotate = style.rotate;
-                    if (rotate.keyword != StyleKeyword.Undefined)
-                    {
-                        return false;
-                    }
-                    value = new ArbitraryStyle(slot, rotate.value.angle.ToDegrees(), LengthUnit.Pixel);
-                    return true;
-                }
+                    return Rotate(slot, style.rotate, out value);
                 case ArbitraryProperty.TextColor:
                     return Color(slot, style.color, out value);
                 case ArbitraryProperty.BackgroundColor:
-                    return Color(slot, ProjectedCornerFace.InlineOf(Owner(slot), 0, style.backgroundColor), out value);
+                    return FaceColor(slot, null, ProjectedCornerFace.InlineOf(Owner(slot), 0, style.backgroundColor), out value);
+                case ArbitraryProperty.BorderTopColor:
+                    return EdgeColor(slot, DivideEdge.Top, ProjectedCornerFace.InlineOf(Owner(slot), 1, style.borderTopColor),
+                        out value);
+                case ArbitraryProperty.BorderRightColor:
+                    return EdgeColor(slot, DivideEdge.Right,
+                        ProjectedCornerFace.InlineOf(Owner(slot), 2, style.borderRightColor), out value);
+                case ArbitraryProperty.BorderBottomColor:
+                    return EdgeColor(slot, DivideEdge.Bottom,
+                        ProjectedCornerFace.InlineOf(Owner(slot), 3, style.borderBottomColor), out value);
+                case ArbitraryProperty.BorderLeftColor:
+                    return EdgeColor(slot, DivideEdge.Left, ProjectedCornerFace.InlineOf(Owner(slot), 4, style.borderLeftColor),
+                        out value);
                 case ArbitraryProperty.BorderTopWidth:
                     return Float(slot, style.borderTopWidth, out value);
                 case ArbitraryProperty.BorderRightWidth:
@@ -404,12 +461,37 @@ namespace Velvet
                     value = new ArbitraryStyle(slot, resolved.color);
                     return true;
                 case ArbitraryProperty.BackgroundColor:
-                    value = new ArbitraryStyle(slot, resolved.backgroundColor);
+                    value = new ArbitraryStyle(slot, Shown(Owner(slot), null, resolved.backgroundColor));
+                    return true;
+                case ArbitraryProperty.BorderTopColor:
+                    value = new ArbitraryStyle(slot, Shown(Owner(slot), DivideEdge.Top, resolved.borderTopColor));
+                    return true;
+                case ArbitraryProperty.BorderRightColor:
+                    value = new ArbitraryStyle(slot, Shown(Owner(slot), DivideEdge.Right, resolved.borderRightColor));
+                    return true;
+                case ArbitraryProperty.BorderBottomColor:
+                    value = new ArbitraryStyle(slot, Shown(Owner(slot), DivideEdge.Bottom, resolved.borderBottomColor));
+                    return true;
+                case ArbitraryProperty.BorderLeftColor:
+                    value = new ArbitraryStyle(slot, Shown(Owner(slot), DivideEdge.Left, resolved.borderLeftColor));
                     return true;
                 default:
                     return s_resolvedLengths.TryGetValue(slot, out var read) && Pixels(slot, read(resolved), out value);
             }
         }
+
+        // The ProjectedCornerFace colour slot (StyleCascade.FaceColor's order) a slot is, or null.
+        private static int? FaceSlotOf(ArbitraryProperty slot)
+        {
+            var index = System.Array.IndexOf(s_faceSlots, slot);
+            return index >= 0 ? index : null;
+        }
+
+        private static readonly ArbitraryProperty[] s_faceSlots =
+        {
+            ArbitraryProperty.BackgroundColor, ArbitraryProperty.BorderTopColor, ArbitraryProperty.BorderRightColor,
+            ArbitraryProperty.BorderBottomColor, ArbitraryProperty.BorderLeftColor,
+        };
 
         private bool TryReadBorderColor(out ArbitraryStyle value)
         {
@@ -418,20 +500,31 @@ namespace Velvet
             var resolved = owner.resolvedStyle;
             var native = !_drivenByRunningPlay(ArbitraryProperty.BorderColor);
             var top = ProjectedCornerFace.Drawn(owner, 1)
-                ?? ReadBorderEdge(owner, native, StyleLonghand.BorderTopColor, style.borderTopColor, resolved.borderTopColor);
+                ?? ReadBorderEdge(owner, native, DivideEdge.Top, style.borderTopColor, resolved.borderTopColor);
             var right = ProjectedCornerFace.Drawn(owner, 2)
-                ?? ReadBorderEdge(owner, native, StyleLonghand.BorderRightColor, style.borderRightColor, resolved.borderRightColor);
+                ?? ReadBorderEdge(owner, native, DivideEdge.Right, style.borderRightColor, resolved.borderRightColor);
             var bottom = ProjectedCornerFace.Drawn(owner, 3)
-                ?? ReadBorderEdge(owner, native, StyleLonghand.BorderBottomColor, style.borderBottomColor, resolved.borderBottomColor);
+                ?? ReadBorderEdge(owner, native, DivideEdge.Bottom, style.borderBottomColor, resolved.borderBottomColor);
             var left = ProjectedCornerFace.Drawn(owner, 4)
-                ?? ReadBorderEdge(owner, native, StyleLonghand.BorderLeftColor, style.borderLeftColor, resolved.borderLeftColor);
+                ?? ReadBorderEdge(owner, native, DivideEdge.Left, style.borderLeftColor, resolved.borderLeftColor);
             value = new ArbitraryStyle(ArbitraryProperty.BorderColor, top);
             return top.Equals(right) && top.Equals(bottom) && top.Equals(left);
         }
 
-        private static Color ReadBorderEdge(VisualElement owner, bool native, StyleLonghand longhand, StyleColor inline, Color resolved)
-            => native && HasRunningNativeTransition(owner, longhand) || inline.keyword != StyleKeyword.Undefined
+        private Color ReadBorderEdge(VisualElement owner, bool native, DivideEdge edge, StyleColor inline, Color resolved)
+        {
+            var longhand = StyleLonghandOf(edge);
+            if (DivideDashPainter.IsMask(inline) && DivideDashPainter.TryReadPainted(_element, longhand, out var painted))
+            {
+                return painted;
+            }
+            if (SilhouetteFaceStash.TryReadFace(owner, edge, out var shown, out _))
+            {
+                return shown;
+            }
+            return native && HasRunningNativeTransition(owner, longhand) || inline.keyword != StyleKeyword.Undefined
                 ? resolved : inline.value;
+        }
 
         private bool TryConvert(ArbitraryProperty slot, ref ArbitraryStyle value, LengthUnit unit)
         {
@@ -457,6 +550,78 @@ namespace Velvet
             value = new ArbitraryStyle(slot, style.value, LengthUnit.Pixel);
             return style.keyword == StyleKeyword.Undefined;
         }
+
+        private static bool Translate(ArbitraryProperty slot, StyleTranslate style, out ArbitraryStyle value)
+        {
+            value = default;
+            if (style.keyword != StyleKeyword.Undefined)
+            {
+                return false;
+            }
+            var axis = slot == ArbitraryProperty.TranslateX ? style.value.x : style.value.y;
+            value = new ArbitraryStyle(slot, axis.value, axis.unit);
+            return true;
+        }
+
+        private static bool Scale(ArbitraryProperty slot, StyleScale style, out ArbitraryStyle value)
+        {
+            value = default;
+            if (style.keyword != StyleKeyword.Undefined || !style.value.value.x.Equals(style.value.value.y))
+            {
+                return false;
+            }
+            value = new ArbitraryStyle(slot, style.value.value.x, LengthUnit.Pixel);
+            return true;
+        }
+
+        private static bool Rotate(ArbitraryProperty slot, StyleRotate style, out ArbitraryStyle value)
+        {
+            value = default;
+            if (style.keyword != StyleKeyword.Undefined)
+            {
+                return false;
+            }
+            value = new ArbitraryStyle(slot, style.value.angle.ToDegrees(), LengthUnit.Pixel);
+            return true;
+        }
+
+        // A masked edge reads as the color its dash takes.
+        private bool EdgeColor(ArbitraryProperty slot, DivideEdge edge, StyleColor style, out ArbitraryStyle value)
+        {
+            if (DivideDashPainter.IsMask(style)
+                && DivideDashPainter.TryReadPainted(_element, StyleLonghandOf(edge), out var painted))
+            {
+                value = new ArbitraryStyle(slot, painted);
+                return true;
+            }
+            return FaceColor(slot, edge, style, out value);
+        }
+
+        // A slot a silhouette face suppresses reads as the colour the face shows, which is an inline value of the
+        // element's own only where the face took it from one (SilhouetteFaceStash.TryReadFace).
+        private bool FaceColor(ArbitraryProperty slot, DivideEdge? side, StyleColor style, out ArbitraryStyle value)
+        {
+            if (SilhouetteFaceStash.TryReadFace(Owner(slot), side, out var shown, out var inline))
+            {
+                value = new ArbitraryStyle(slot, shown);
+                return inline;
+            }
+            return Color(slot, style, out value);
+        }
+
+        // read, or the colour a silhouette face shows in its place where one suppresses the slot.
+        private static Color Shown(VisualElement owner, DivideEdge? side, Color read)
+            => SilhouetteFaceStash.TryReadFace(owner, side, out var shown, out _) ? shown : read;
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to name its longhand
+        private static StyleLonghand StyleLonghandOf(DivideEdge edge) => edge switch
+        {
+            DivideEdge.Top => StyleLonghand.BorderTopColor,
+            DivideEdge.Right => StyleLonghand.BorderRightColor,
+            DivideEdge.Bottom => StyleLonghand.BorderBottomColor,
+            DivideEdge.Left => StyleLonghand.BorderLeftColor,
+        };
+#pragma warning restore CS8524
 
         private static bool Color(ArbitraryProperty slot, StyleColor style, out ArbitraryStyle value)
         {

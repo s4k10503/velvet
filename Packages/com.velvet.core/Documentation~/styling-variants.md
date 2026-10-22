@@ -147,6 +147,9 @@ Four consequences worth knowing:
   matches while Velvet keeps it off that descendant's class list, as `:has(.foo)` matches on the web
   however the cascade ranks `.foo`'s declarations. A `.foo` that only a variant payload puts on the
   descendant (`hover:foo`) does not match, as `:has(.foo)` does not match a class the author never wrote.
+  A `.foo` a play writes onto the descendant — a `V.Motion` pose's class, an enter or exit class — matches
+  too, including while Velvet keeps it off the class list for a rule that outranks it, as `:has(.foo)`
+  matches a class a script adds to the element.
 
 An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style rather
 than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority class stands
@@ -343,7 +346,9 @@ gives 6° on both). A bare value is a whole number of degrees written without a 
 **Where `skew-*` deviates from CSS.** UI Toolkit's transform carries rotation, scale and translation and
 no shear, so a skew here is not a transform: the caster's own face is repainted sheared in its generated
 content, and each direct in-flow child is seated with an inline `translate` that puts its centroid where
-the shear would carry it. Four things follow that a CSS `skewX()` does not do.
+the shear would carry it. The seat composes with the child's own `translate-x-*`, `V.Motion` translation or
+drag offset, as CSS composes the parent's transform with the child's. Three things follow that a CSS
+`skewX()` does not do.
 
 - **The caster's hit region does not lean with its face.** Its layout box stays axis-aligned and that box
   is what answers a pointer, so a click near an edge lands by the upright rectangle while the paint has
@@ -357,13 +362,6 @@ the shear would carry it. Four things follow that a CSS `skewX()` does not do.
 - **Descendants are seated, not sheared.** The seat is exact at each direct child's centroid and constant
   across that child, so a child large relative to the caster reads off at its far corners, and a
   grandchild moves only because its parent did.
-- **The seat shares each direct child's inline `translate` slot.** The seat and a child's own
-  `translate-x-*`, a `V.Motion` translation, or a drag offset follow last-writer-wins behavior. Velvet runs
-  a seat pass when the caster attaches, when its geometry changes, and from caster reconciliation. Attachment
-  resets the pass guard; subsequent passes write only when their signature of caster size, skew angles, and
-  direct-child identity, order, flow state or layout changed. A translate-only write does not change that
-  signature, so it can remain visible until a later seat pass has another reason to write. Use an inner wrapper
-  when both effects must compose.
 
 `origin-*` does not move the skew pivot either: the shear is always taken about the box centre, while
 `rotate-*` and `scale-*` are real USS transforms and do honour it. Velvet therefore exposes the painted
@@ -391,28 +389,26 @@ without `overflow-hidden` appearing anywhere in its className.
 
 | Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
-| `shadow-*` | an outer layer is gone but for the anti-aliased edge of its cut-out, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) survives. The paint is not removed — it is cut at the padding box like every other — but an outer layer is cut out where the border box lies ([styling-shadows.md](styling-shadows.md)), so the clip leaves at most that edge of it, while an inset layer is drawn inside the padding box |
+| `shadow-*` | unaffected: the outer layers are painted on a sibling over the element, outside its clip, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) is drawn inside the padding box |
 | `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders. Children are clipped to the upright box, not to the sheared face CSS clips them to |
 | `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
 | `overline` | unaffected — the rule sits inside the content box |
 
-**`shadow-*` and `skew-*` on a bordered element cost more than the bleed.** Either one takes ownership of
-the element's face: it suppresses the native background and border and repaints both in its own generated
-content. The padding-box clip then takes that repaint too, so a bordered card carrying `shadow-*` or
-`skew-*` plus a hidden overflow loses **its border and a border-wide ring of its own background**, and
-whatever is behind the card shows through that ring. The same card without the shadow keeps both, because
-a native border is not painted through generated content:
+**`skew-*` and `shadow-*` keep a bordered element's border.** Either takes ownership of the element's face: it
+suppresses the native background and border and repaints both in its own generated content, which the
+padding-box clip would cut at the border. While the element clips, a `skew-*` paints its border, and the
+background beneath it, on a sibling placed over the element and outside its clip, and a `shadow-*` leaves a
+solid border and its background to UI Toolkit and paints a dashed or dotted one, and its outer layers, the same
+way, so the border and the shadow are drawn whole, as CSS draws them:
 
 ```csharp
-// Border and a border-wide ring of white are missing; the parent shows through.
-V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-black rounded-lg");
-
-// Same card, border intact.
-V.Div(className: "overflow-hidden bg-white border-2 border-black rounded-lg");
+// Border and the background beneath it intact.
+V.Div(className: "-skew-x-6 overflow-hidden bg-white border-2 border-black rounded-lg");
+V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-dashed border-black rounded-lg");
 ```
 
-The nesting below fixes this case too — the border belongs on whichever element is not clipped.
+The nesting below keeps a skew's overhang, which the clip still cuts.
 
 Put the clip on a child instead of on the painted element:
 
@@ -447,16 +443,26 @@ element has to be handed both every frame, the way the band is. A band was worth
 outset one is wholly outside the padding box and a clip takes all of it; `ring-inset` sits over the box
 and would have survived, but one hosting has to serve both.
 
-**Class channels that are not variants drive none of this.** `whileHoverClass`, `whileTapClass` and
-`whileFocusClass`, the transient enter / exit classes an `AnimatePresence` play applies for the
-duration of an animation, and the drag-and-drop channels (`whileDraggingClass`, `whileOverClass`,
-`whileDragActiveClass`) all write their utilities straight onto the live class list without telling
-the reconciler. So `V.Div(whileHoverClass: "shadow-lg")` toggles a class nothing paints — use
-`hover:shadow-lg`. What these channels *do* carry is any utility backed by a plain USS rule —
-`bg-red-500`, `opacity-50`, `px-4`, `border-red-500`, `scale-105`, `rotate-3`. Read that as the list in
-the first paragraph above versus everything else, not as whole categories: `gap-4` is spacing and
-`skew-x-6` is a transform, yet both are in that list and neither works here. A `V.Motion`'s resting
-`variants` classes go through the reconciler and are unaffected.
+**Class channels that are not variants.** `whileHoverClass`, `whileTapClass`, `whileFocusClass` and a
+draggable's `whileDraggingClass` are Framer Motion's gesture states, and apply their utilities as a payload
+does, ranked above every rule of the element's own short of an important one — a utility the stylesheet
+declares later, a bracket value such as `bg-[#00f]`, a divider's color, `StyleOverrides`, and a className
+variant such as `hover:`, `focus:`, `disabled:` or `dark:hover:` — and above a play's classes but an exit's:
+Framer's `variantPriorityOrder` protects a value a gesture state sets from the element's `animate` and variants
+while the state is on, and not from its `exit`, so a play other than an exit leaves that property where the
+gesture puts it, whatever its driver, and one starting during the state leaves it out. A Spring or Bezier
+play still running as the state ends takes the property back from where it is shown, on the play's spring or
+over its duration again, as Framer animates a value a gesture state lets go of back to its `animate`
+target. Among themselves they rank as `hover:`, `focus:`, `active:` and `data-[…]:` rank in
+Tailwind, so a tap or focus class outranks a hover one; Framer Motion ranks `whileHover` above `whileFocus`.
+A droppable's `whileOverClass` and `whileDragActiveClass` apply theirs at `data-[…]:`'s rank, after every rule
+the className declares with that variant alone, and a play outranks them. An important utility outranks every
+one of these channels. The element's own value comes back when the state goes off. Bracket values apply through them, and so do `shadow-*`,
+`ring-*`, `skew-*`, gradients, `animate-*`, `border-dashed`, `gap-*` and `uppercase`:
+`whileHoverClass: "shadow-lg"` paints a shadow while hovered. The classes a play shows for the duration of
+an animation — a `V.Motion` pose's, an `AnimatePresence` enter or exit class — apply the same set, and a
+pose's class the play takes off for that duration stops applying until it is back: `EnterFromClass:
+"gap-4 shadow-lg w-[40px]"` spaces, shadows and sizes the element until the enter swaps it out.
 
 **`[&>*]:` on a UI Toolkit composite lands on the control's own parts.** The walk is over whatever the
 container redirects its children into. A `V.ScrollView` redirects, so the payload reaches the children
@@ -471,8 +477,8 @@ A declared `label:` seats the label element ahead of the input, and it takes the
 lands on the box the value is shown in; UI Toolkit draws a field as an outer control around a child box (the
 element carrying `unity-base-field__input`, `#unity-text-input` in a text field) that the theme dresses. So
 the field factories — `V.TextField`, `V.IntegerField`, `V.DropdownField` and `V.Custom<T>` for a `T` that is
-a text-input field (`FloatField`, `DoubleField`, `LongField`, …) or a popup field (`PopupField<T>`, …) — send
-these to the box:
+a text-input field (`FloatField`, `DoubleField`, `LongField`, …) or a popup field (`PopupField<T>`, …), and
+`V.Motion` for such an `elementType` — send these to the box:
 
 - backgrounds, including the gradient utilities (`bg-*`, `bg-linear-*`, `from-*` / `via-*` / `to-*`) and
   the nine-slice ones (`slice-*`, [styling-backgrounds.md](styling-backgrounds.md));

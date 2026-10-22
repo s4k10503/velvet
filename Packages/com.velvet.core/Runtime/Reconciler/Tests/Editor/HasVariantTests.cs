@@ -331,6 +331,72 @@ namespace Velvet.Tests
             Assert.That(state, Is.EqualTo((true, true)));
         }
 
+        // A class a play writes onto the descendant is in its class attribute, which is what :has(.bg-white) tests,
+        // whatever the cascade ranks it at.
+        private static (bool DescendantShowsClass, bool ParentPayload) HasWhiteWhileAPlayShowsIt(string leafClassName,
+            bool rested = false)
+        {
+            using var scope = new ReconcilerScope();
+            VNode[] Tree() => new VNode[]
+            {
+                V.Div(className: "has-[.bg-white]:bg-mark", name: "parent", children: new VNode[]
+                {
+                    V.Div(className: leafClassName, name: "leaf"),
+                }),
+            };
+            var first = Tree();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+            var classes = new[] { "bg-white" };
+            StyleAnimationClassUtils.AddClasses(Leaf(scope), classes, StyleLayerPriority.Animation);
+            if (rested)
+            {
+                StyleAnimationClassUtils.Rest(Leaf(scope), classes);
+            }
+            // A render that changes nothing re-derives the parent's payload.
+            scope.Reconciler.Reconcile(scope.Root, first, Tree());
+            return (Leaf(scope).ClassListContains("bg-white"), Parent(scope).ClassListContains("bg-mark"));
+        }
+
+        [Test]
+        public void Given_HasClassParent_When_APlayShowsTheClassAVariantPayloadAlsoAdds_Then_PayloadApplied()
+        {
+            // Act
+            var state = HasWhiteWhileAPlayShowsIt("first:bg-white");
+
+            // Assert
+            Assert.That(state.ParentPayload, Is.True);
+        }
+
+        [Test]
+        public void Given_HasClassParent_When_APlayRestsTheClassAVariantPayloadAlsoAdds_Then_PayloadApplied()
+        {
+            // Act
+            var state = HasWhiteWhileAPlayShowsIt("first:bg-white", rested: true);
+
+            // Assert
+            Assert.That(state.ParentPayload, Is.True);
+        }
+
+        [Test]
+        public void Given_HasClassParent_When_APlaysClassLosesToAnImportantUtility_Then_PayloadApplied()
+        {
+            // Act — !bg-black outranks the play's bg-white, so bg-white leaves the live class list.
+            var state = HasWhiteWhileAPlayShowsIt("!bg-black");
+
+            // Assert
+            Assert.That(state.ParentPayload, Is.True);
+        }
+
+        [Test]
+        public void Given_APlaysClassLosesToAnImportantUtility_When_TheParentReRenders_Then_TheClassStaysOffTheLiveList()
+        {
+            // Act — the case above matches `:has(.bg-white)` through a class the live list does not hold.
+            var state = HasWhiteWhileAPlayShowsIt("!bg-black");
+
+            // Assert
+            Assert.That(state.DescendantShowsClass, Is.False);
+        }
+
         [Test]
         public void Given_HasClassParent_When_TheCarryingDescendantIsRemoved_Then_PayloadClears()
         {

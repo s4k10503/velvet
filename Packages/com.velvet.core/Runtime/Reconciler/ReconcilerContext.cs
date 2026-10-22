@@ -190,11 +190,13 @@ namespace Velvet
 
     // Per-element bookkeeping for the class-driven passes a variant payload can change, held in
     // ReconcilerContext.VariantGateClasses. An entry is opened by whichever comes first: the reconcile pass
-    // that sees the element DECLARE a gated payload (FiberNodePatcher.RecordVariantGateSource), or the
-    // payload toggle itself for an element whose own class list declares none — which only a [&>*]: rule on
-    // its PARENT produces, since every other family (first: and has-[.class]: included) spells its payload on
-    // the subject's own class list. It outlives an emptied token set, because the array it holds is what the
-    // NEXT toggle will need and no reconcile need ever run again to re-record it.
+    // that sees the element DECLARE a gated payload (FiberNodePatcher.RecordVariantGateSource), the create or
+    // patch that sees a gesture or drag channel or a play's classes carry one (ReconcilerContext.ExpectGatePayload,
+    // ExpectPlayGates), or the toggle itself for an element none of those named — a [&>*]: rule on its PARENT,
+    // since every other variant family (first: and has-[.class]: included) spells its payload on the subject's
+    // own class list, or a play on an element ExpectPlayGates did not reach. It outlives an emptied token set,
+    // because the array it holds is what the NEXT toggle will need and no reconcile need ever run again to
+    // re-record it.
     internal sealed class VariantGateState
     {
         // One slot per (token, priority) pair a variant currently has applied — the same slot model
@@ -216,6 +218,32 @@ namespace Velvet
         // These are appended to the reconciled array to form the class source the passes read, and every
         // family there resolves last-token-wins — so ascending is what makes the strongest payload win.
         public List<string> Tokens => _tokens;
+
+        // Gate tokens of the reconciled array a play has taken off the element (StyleAnimationClassUtils), which
+        // the composed source leaves out until the play puts them back.
+        public List<string> Withheld { get; } = new();
+
+        // Whether the composed source differs from the reconciled array.
+        public bool Composes => _tokens.Count != 0 || Withheld.Count != 0;
+
+        // Withholds or restores one reconciled token, reporting whether that changed anything.
+        public bool Withhold(string token, bool on)
+        {
+            var index = Withheld.IndexOf(token);
+            if (on == index >= 0)
+            {
+                return false;
+            }
+            if (on)
+            {
+                Withheld.Add(token);
+            }
+            else
+            {
+                Withheld.RemoveAt(index);
+            }
+            return true;
+        }
 
         // Records / drops one applied payload, reporting whether Tokens changed as a sequence — which is
         // what decides whether the caller re-derives the gated passes. A token another live layer still
@@ -383,16 +411,12 @@ namespace Velvet
         // paint layers' "did the classes change" question is answered by a reference compare.
         public string[]? Resolved;
 
-        // Whether this element's reconcile path runs the wrapper-less paint tail (skew / shadow /
-        // border-style): true for an ElementNode, false for a Motion, which deliberately paints none of the
-        // three. Null while a [&>*]: rule on the parent is the only thing that has ever named this element,
-        // because the child is fully created before that rule runs and so no pass of its own has resolved it.
-        // The re-sync then drives the layout gates alone rather than guess, which is what keeps a payload
-        // from attaching to a Motion what the Motion's own patch would refuse; the element's next patch
-        // records the answer and the paint follows from there. A child that declares any gated payload of its
-        // OWN was recorded at create, so the same [&>*]: payload paints at mount for it — see
-        // FiberNodePatcher.ReSyncVariantGatedPasses for why that inconsistency is preferred to a guess.
-        public bool? PaintTail;
+        // Whether a pass of this element's own has resolved it, which is what lets the re-sync run the
+        // wrapper-less paint tail. False while a [&>*]: rule on the parent is the only thing that has ever named
+        // this element, because the child is fully created before that rule runs; the re-sync then drives the
+        // layout gates alone, and the element's next patch records it. A child that declares any gated payload
+        // of its OWN was recorded at create, so the same [&>*]: payload paints at mount for it.
+        public bool PaintTail;
     }
 
     // Shared infrastructure between Reconciler subsystems.
@@ -821,6 +845,97 @@ namespace Velvet
         // toggle happens outside any reconcile pass (a breakpoint crossing, a theme flip, a pointer state
         // change), so nothing else would re-run those passes. Null until the patcher wires it.
         public System.Action<VisualElement> VariantGatedReSync { get; set; } = null!;
+
+        // A class channel that is not a variant (whileHoverClass, a drag's class) carrying a gate token needs the
+        // element's class source recorded as a declared variant payload does (FiberNodePatcher.RecordVariantGateSource),
+        // so a toggle re-derives its paints. Called ahead of the create path's paint resolution.
+        internal void ExpectGatePayload(VisualElement element, string[] payloads)
+        {
+            if (StyleVariantPayload.CarriesGatePayload(payloads))
+            {
+                VariantGateClasses.TryAdd(element, new VariantGateState());
+            }
+        }
+
+        // A play's class (StyleAnimationClassUtils) as the composed class source sees it: a gate token the play
+        // shows ranks at the play's priority, one a play takes off that the reconciled array names is withheld
+        // from it, and any add restores a withheld token. A class put on at the base priority rests there, so it
+        // is the reconciled array's again. Returns whether the composition changed.
+        internal bool TrackPlayGate(VisualElement element, string token, long priority, bool on)
+        {
+            if (!StyleVariantPayload.IsVariantGateToken(token))
+            {
+                return false;
+            }
+            if (on)
+            {
+                var shown = priority != StyleLayerPriority.Base
+                    && TrackVariantGateClass(element, token, priority, StyleVariantPayload.NoDeclaration, on: true);
+                return RestoreWithheld(element, token) | shown;
+            }
+            var hidden = UntrackPlayGate(element, token);
+            return (VariantGateClasses.TryGetValue(element, out var state) && state.Reconciled != null
+                    && ReconciledNames(state.Reconciled, token) && state.Withhold(token, on: true))
+                | hidden;
+        }
+
+        // A play's class that came to rest: the reconciled array carries it from now on.
+        internal bool RestPlayGate(VisualElement element, string token)
+            => StyleVariantPayload.IsVariantGateToken(token) && UntrackPlayGate(element, token);
+
+        // Drops the slot a play's class holds, at whichever of the two play bands it was shown in.
+        private bool UntrackPlayGate(VisualElement element, string token)
+            => TrackVariantGateClass(element, token, StyleLayerPriority.Animation, StyleVariantPayload.NoDeclaration,
+                    on: false)
+                | TrackVariantGateClass(element, token, StyleLayerPriority.Exit, StyleVariantPayload.NoDeclaration,
+                    on: false);
+
+        private bool RestoreWithheld(VisualElement element, string token)
+            => VariantGateClasses.TryGetValue(element, out var state) && state.Withhold(token, on: false);
+
+        private static bool ReconciledNames(string[] reconciled, string token)
+        {
+            foreach (var cls in reconciled)
+            {
+                if (!string.IsNullOrEmpty(cls) && StyleArbitraryValueResolver.StripImportant(cls, out _) == token)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // ExpectGatePayload for the classes a play can show on element: a Motion's poses and transitions, and the
+        // classes of the transition of the presence child being emitted, whose classic play can land on an
+        // element of that child's ahead of its Motion.
+        internal void ExpectPlayGates(VisualElement element, MotionNode? motion)
+        {
+            if (motion != null)
+            {
+                ExpectTransitionGates(element, motion.Transition);
+                if (motion.Variants != null)
+                {
+                    foreach (var variant in motion.Variants.Values)
+                    {
+                        ExpectGatePayload(element, V.ParseClassNames(variant.ClassName));
+                        ExpectTransitionGates(element, variant.Transition);
+                    }
+                }
+            }
+            ExpectTransitionGates(element, PresenceAnchorMotion?.Transition);
+        }
+
+        private void ExpectTransitionGates(VisualElement element, StyleTransitionConfig? transition)
+        {
+            if (transition == null)
+            {
+                return;
+            }
+            ExpectGatePayload(element, transition.EnterFromClasses);
+            ExpectGatePayload(element, transition.EnterToClasses);
+            ExpectGatePayload(element, transition.ExitFromClasses);
+            ExpectGatePayload(element, transition.ExitToClasses);
+        }
 
         // Records / drops one variant-applied gate token for target at the priority its payload was applied
         // at — the same one StyleClassProjection layers the class itself at, so the token set and the class
@@ -2869,7 +2984,7 @@ namespace Velvet
             FiberElementFactory = new FiberElementFactory(EventManager);
             ComponentRegistry = new ComponentRegistry(this);
             FiberMemoCache = new FiberMemoCache();
-            StyleAnimationScheduler = new StyleAnimationScheduler();
+            StyleAnimationScheduler = new StyleAnimationScheduler { Context = this };
             ComponentContextStack = new ComponentContextStack();
             FiberStack = new FiberStack();
             BufferPool = new ReconcilerBufferPool();

@@ -1679,6 +1679,31 @@ namespace Velvet
             return !swapped.Contains(property) || StyleLayerPriority.UnderVariant(key);
         }
 
+        // Whether a gesture channel's layer (StyleLayerPriority.Gesture) holds a motion slot on element.
+        internal static bool HoldsGestureLayer(VisualElement element, ArbitraryProperty slot)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return false;
+            }
+            var written = StyleArbitraryLonghands.Of(slot);
+            foreach (var pair in map)
+            {
+                if (!HoldsMotionSlot(pair.Key, slot, written))
+                {
+                    continue;
+                }
+                foreach (var key in pair.Value.Keys)
+                {
+                    if (StyleLayerPriority.IsGesture(key))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         // Whether a layer holding slot, as HoldsMotionSlot reads it, is in force under a variant.
         internal static bool HoldsVariantLayer(VisualElement element, ArbitraryProperty slot)
         {
@@ -1750,7 +1775,7 @@ namespace Velvet
                 {
                     if (previous == null || !previous.TryGetValue(pair.Key, out var was) || !was.Equals(pair.Value))
                     {
-                        ResolveAndApply(element, pair.Key, map);
+                        ResolveUndriven(element, pair.Key, map);
                     }
                 }
             }
@@ -1762,9 +1787,30 @@ namespace Velvet
             {
                 if (current == null || !current.ContainsKey(property))
                 {
-                    ResolveAndApply(element, property, map);
+                    ResolveUndriven(element, property, map);
                 }
             }
+        }
+
+        // A class claim moving under a transform or an opacity a Motion driver writes inline leaves the driver's
+        // value standing; the property is resolved again once the driver lets it go (ReapplyLayeredValues).
+        private static void ResolveUndriven(VisualElement element, ArbitraryProperty property, LayerMap map)
+        {
+            if (!StyleAnimateDriver.PlayDrives(element, AxisSlot(property)))
+            {
+                ResolveAndApply(element, property, map);
+            }
+        }
+
+        private static MotionTransitionSlots AxisSlot(ArbitraryProperty property)
+        {
+            if (property == ArbitraryProperty.Opacity) return MotionTransitionSlots.Opacity;
+            if (property == ArbitraryProperty.Rotate) return MotionTransitionSlots.Rotate;
+            if (property == ArbitraryProperty.Scale || property == ArbitraryProperty.ScaleX
+                || property == ArbitraryProperty.ScaleY) return MotionTransitionSlots.Scale;
+            if (property == ArbitraryProperty.Translate || property == ArbitraryProperty.TranslateX
+                || property == ArbitraryProperty.TranslateY) return MotionTransitionSlots.Translate;
+            return MotionTransitionSlots.None;
         }
 
         // A class claiming only some of what a winning layer writes changes no floor, so the floors alone would
@@ -2176,7 +2222,7 @@ namespace Velvet
         // declaration of the element's own stands down for it and comes back on the release, but a mask and the
         // important ones — an important layer or class DrivenWrite does not exempt, an important divide's hold —
         // which keep what they win, as !important outranks an animation in CSS.
-        internal static void ApplyDriven(VisualElement element, in ArbitraryStyle style)
+        internal static void ApplyDriven(VisualElement element, in ArbitraryStyle style, bool exit = false)
         {
             // Recorded from the first write, holds or none: a mount's from-pose is written before the container
             // that holds the slot first applies.
@@ -2194,6 +2240,7 @@ namespace Velvet
                 write.Reversing = false;
             }
             write.Style = style;
+            write.Exit = exit;
             var slots = HeldSlotGroups.SlotsOf(style.Property);
             if (slots != 0)
             {
@@ -2201,6 +2248,8 @@ namespace Velvet
             }
             WriteDriven(element, map, write);
             DivideDashPainter.Drive(element, slots, style.Color);
+            // A face a silhouette layer repaints takes the driven colour, its sentinel staying in the slot.
+            SilhouetteFaceStash.Retake(element);
         }
 
         // Ends a driver's ownership of property and nulls what it wrote. The caller re-asserts the element's own
@@ -2215,6 +2264,7 @@ namespace Velvet
                 map.Driven?.Remove(property);
             }
             ClearInline(element, property);
+            SilhouetteFaceStash.Retake(element);
         }
 
         // A reversal hand-off: the play now heads back to the pose it left, so that pose's important declarations
@@ -2274,6 +2324,9 @@ namespace Velvet
             // Set by Redrive until the play's next frame.
             public bool Reversing;
 
+            // Whether an exit writes this, which a gesture channel does not outrank.
+            public bool Exit;
+
             private readonly StyleLonghandSet _longhands;
             private readonly List<(ArbitraryProperty Property, long Key)> _layers = new();
             private readonly Dictionary<StyleLonghand, long> _claims = new();
@@ -2313,13 +2366,18 @@ namespace Velvet
                 }
             }
 
+            // A gesture channel's layer or class outranks every drive but an exit's, whenever it arrived: a play
+            // leaves a value a gesture state sets alone, as Framer Motion protects it from the element's animate and
+            // variants and not from its exit.
             public bool Outranks(ArbitraryProperty property, long key)
-                => (key & StyleLayerPriority.Important) != 0 && !_layers.Contains((property, key));
+                => (!Exit && StyleLayerPriority.IsGesture(key))
+                    || ((key & StyleLayerPriority.Important) != 0 && !_layers.Contains((property, key)));
 
             public bool Outranks(StyleLonghand longhand, long claim)
             {
                 var known = _claims.TryGetValue(longhand, out var found);
-                return (claim & StyleLayerPriority.Important) != 0 && (!known || claim > found);
+                return (!Exit && StyleLayerPriority.IsGesture(claim))
+                    || ((claim & StyleLayerPriority.Important) != 0 && (!known || claim > found));
             }
         }
 
@@ -2638,6 +2696,12 @@ namespace Velvet
                 map.Holds?.Drop(slot);
             }
         }
+
+        // Whether what element shows inline on slot is a container's rather than a value of its own: a mask, or a
+        // hold giving way to a plain declaration of the element's own (Yield), with no layer of its own over it.
+        internal static bool HoldsForContainer(VisualElement element, HeldSlot slot)
+            => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.HoldsForContainer(slot)
+                && !TryLayeredWinner(map, slot, out _);
 
         // Hands slot back when a gap, grid or divide manipulator holds it on element, and leaves it alone
         // otherwise: an inline value nothing here wrote is not this layer's to clear.
@@ -3030,8 +3094,9 @@ namespace Velvet
                 RemoveCustomFilterHosts(element, map);
             }
             if (element != null) s_layers.Remove(element);
-            // What the fit records the radius layers as declaring goes with them.
+            // What the fit records the radius layers as declaring goes with them, as does the record of a play's.
             if (element != null) CornerRadiusFit.Release(element);
+            if (element != null) StyleAnimationClassUtils.ForgetShownLayers(element);
         }
 
         // Resolves an inline-value class token to inline style — arbitrary value first, then background
@@ -3331,19 +3396,19 @@ namespace Velvet
             var hasY = TryWinningAxis(map, ArbitraryProperty.TranslateY, out var yw);
             if (!hasX && !hasY)
             {
-                element.style.translate = StyleKeyword.Null;
+                SeatedTranslate.Write(element, StyleKeyword.Null);
                 return;
             }
             // Both axes are written by one translate declaration, which a rejected value holding either one makes
             // invalid, leaving no translation.
             if ((hasX && xw.Rejected) || (hasY && yw.Rejected))
             {
-                element.style.translate = new StyleTranslate(StyleKeyword.None);
+                SeatedTranslate.Write(element, new StyleTranslate(StyleKeyword.None));
                 return;
             }
             var x = hasX ? new Length(xw.Value, xw.Unit) : new Length(0f);
             var y = hasY ? new Length(yw.Value, yw.Unit) : new Length(0f);
-            element.style.translate = new Translate(x, y);
+            SeatedTranslate.Write(element, new Translate(x, y));
         }
 
         // The layer holding one translate axis: the winning layer of the axis or of Translate, which writes both,
@@ -4045,7 +4110,7 @@ namespace Velvet
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
                 case ArbitraryProperty.Translate:
-                    element.style.translate = StyleKeyword.Null;
+                    SeatedTranslate.Write(element, StyleKeyword.Null);
                     return true;
                 case ArbitraryProperty.Scale:
                 case ArbitraryProperty.ScaleBoth:

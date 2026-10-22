@@ -291,6 +291,18 @@ namespace Velvet.Tests
             Assert.That(button.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(button, LongWord)));
         }
 
+        // GREEN_ON_BASE(characterization): the base gives a shadowed element no child. Adding a child to the shadowed
+        // element for the face reddens this case.
+        [Test]
+        public void Given_AShadowedButtonInARow_When_Resolved_Then_ItsMinWidthIsItsWidestWordPlusItsOwnFrame()
+        {
+            // Arrange / Act
+            var button = Mount<Button>("flex flex-row w-[20px]", V.Button(text: Sentence, className: "shadow-md"));
+
+            // Assert
+            Assert.That(button.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(button, LongWord)));
+        }
+
         [Test]
         public void Given_ALabelWithCjkText_When_ResolvedInARow_Then_ItsMinWidthIsOneCharacter()
         {

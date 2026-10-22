@@ -12,8 +12,16 @@ namespace Velvet
     // whileFocus uses the element's own Focus signal (backed by FocusEvent / BlurEvent — only focusable
     // elements — buttons, fields — ever trigger it). whileTap maps to the Active signal (pointer-down /
     // pointer-up / pointer-cancel / release-outside-bounds).
+    // Each class array is applied as a variant payload in the gesture band (StyleLayerPriority.Gesture), ordered
+    // among the three as hover:, focus: and active: order, so it outranks every rule of the element's own short
+    // of an important one, and a play's classes, and the element's own value comes back on release.
     internal sealed class StyleGestureClassManipulator : Manipulator, IVariantSettleTarget
     {
+        private static readonly long HoverPriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Hover);
+        private static readonly long ActivePriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Active);
+        private static readonly long FocusPriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Focus);
+
+        private readonly ReconcilerContext? _ctx;
         private string[] _hoverClasses;
         private string[] _tapClasses;
         private string[] _focusClasses;
@@ -25,8 +33,10 @@ namespace Velvet
         // manipulator keeps only the per-state gesture-class bookkeeping below.
         private ElementLocalVariantSignals _signals = null!;
 
-        public StyleGestureClassManipulator(string[] hoverClasses, string[] tapClasses, string[] focusClasses)
+        public StyleGestureClassManipulator(string[] hoverClasses, string[] tapClasses, string[] focusClasses,
+            ReconcilerContext? ctx = null)
         {
+            _ctx = ctx;
             _hoverClasses = hoverClasses ?? Array.Empty<string>();
             _tapClasses = tapClasses ?? Array.Empty<string>();
             _focusClasses = focusClasses ?? Array.Empty<string>();
@@ -48,20 +58,20 @@ namespace Velvet
 
             if (_isHovered)
             {
-                StyleAnimationClassUtils.RemoveClasses(target, oldHover);
-                StyleAnimationClassUtils.AddClasses(target, _hoverClasses);
+                Toggle(oldHover, false, HoverPriority);
+                Toggle(_hoverClasses, true, HoverPriority);
             }
 
             if (_isTapped)
             {
-                StyleAnimationClassUtils.RemoveClasses(target, oldTap);
-                StyleAnimationClassUtils.AddClasses(target, _tapClasses);
+                Toggle(oldTap, false, ActivePriority);
+                Toggle(_tapClasses, true, ActivePriority);
             }
 
             if (_isFocused)
             {
-                StyleAnimationClassUtils.RemoveClasses(target, oldFocus);
-                StyleAnimationClassUtils.AddClasses(target, _focusClasses);
+                Toggle(oldFocus, false, FocusPriority);
+                Toggle(_focusClasses, true, FocusPriority);
             }
         }
 
@@ -88,17 +98,17 @@ namespace Velvet
         {
             if (_isHovered)
             {
-                StyleAnimationClassUtils.RemoveClasses(target, _hoverClasses);
+                Toggle(_hoverClasses, false, HoverPriority);
             }
 
             if (_isTapped)
             {
-                StyleAnimationClassUtils.RemoveClasses(target, _tapClasses);
+                Toggle(_tapClasses, false, ActivePriority);
             }
 
             if (_isFocused)
             {
-                StyleAnimationClassUtils.RemoveClasses(target, _focusClasses);
+                Toggle(_focusClasses, false, FocusPriority);
             }
 
             _isHovered = false;
@@ -121,35 +131,36 @@ namespace Velvet
                     if (on != _isHovered)
                     {
                         _isHovered = on;
-                        ToggleClasses(_hoverClasses, on);
+                        Toggle(_hoverClasses, on, HoverPriority);
                     }
                     break;
                 case VariantSignal.Active:
                     if (on != _isTapped)
                     {
                         _isTapped = on;
-                        ToggleClasses(_tapClasses, on);
+                        Toggle(_tapClasses, on, ActivePriority);
                     }
                     break;
                 case VariantSignal.Focus:
                     if (on != _isFocused)
                     {
                         _isFocused = on;
-                        ToggleClasses(_focusClasses, on);
+                        Toggle(_focusClasses, on, FocusPriority);
                     }
                     break;
             }
         }
 
-        private void ToggleClasses(string[] classes, bool on)
+        private void Toggle(string[] classes, bool on, long priority)
         {
+            StyleVariantPayload.Apply(target, classes, on, priority, _ctx, this);
             if (on)
             {
-                StyleAnimationClassUtils.AddClasses(target, classes);
+                _ctx?.StyleAnimationScheduler.YieldToGesture(target, classes);
             }
             else
             {
-                StyleAnimationClassUtils.RemoveClasses(target, classes);
+                _ctx?.StyleAnimationScheduler.ReturnFromGesture(target, classes);
             }
         }
     }

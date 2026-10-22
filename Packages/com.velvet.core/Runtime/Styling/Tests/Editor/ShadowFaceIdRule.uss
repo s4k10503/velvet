@@ -1,0 +1,4 @@
+/* An id rule, which no utility class spells, coloring a shadowed element. SilhouetteFaceColorPanelTests reads it. */
+#buy {
+    background-color: rgb(0, 128, 0);
+}

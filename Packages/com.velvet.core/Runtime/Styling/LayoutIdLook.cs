@@ -294,7 +294,7 @@ namespace Velvet
             }
             Array.Copy(radii ?? OwnRadii(element, projection, dtSec, projection.OwnRadiiBuffer), projection.DrawnRadii, 4);
             if (!Uniform(scale) && HasPixelRadius(projection.DrawnRadii)
-                && ProjectedCornerFace.Draw(element, PerAxis(projection.DrawnRadii, scale, element.layout), dtSec))
+                && ProjectedCornerFace.Draw(element, PerAxis(projection.DrawnRadii, scale, element.layout), dtSec, scale))
             {
                 for (var corner = 0; corner < 4; corner++)
                 {
@@ -482,7 +482,7 @@ namespace Velvet
         private static void Restore(VisualElement element, LayoutIdProjection projection)
         {
             if (projection.WritesRotate) element.style.rotate = projection.OwnInlineRotate;
-            if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
+            if (projection.WritesTranslate) SeatedTranslate.Write(element, projection.OwnInlineTranslate);
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
             if (!projection.WritesRadii) return;
             ProjectedCornerFace.End(element);

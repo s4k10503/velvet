@@ -377,7 +377,7 @@ namespace Velvet.Tests
             var colors = MotionSpringDriver.Create(plan, Stiffness, 0.1f, Mass)?.Colors;
             float PassOf(ArbitraryProperty property)
                 => colors?.Find(c => c.Property == property)?.Progress.PassSec ?? float.NaN;
-            var passes = (PassOf(ArbitraryProperty.BackgroundColor), PassOf(ArbitraryProperty.BorderColor));
+            var passes = (PassOf(ArbitraryProperty.BackgroundColor), PassOf(ArbitraryProperty.BorderTopColor));
 
             // Assert
             Assert.That(passes, Is.EqualTo((20f, float.PositiveInfinity)));
@@ -548,7 +548,7 @@ namespace Velvet.Tests
 
             // Act — NaN for a plan that resolved no color.
             var pass = float.NaN;
-            if (state?.Colors is { Count: 1 } colors)
+            if (state?.Colors is { Count: 4 } colors)
             {
                 MotionSpringDriver.Step(element, state, 0.05f);
                 MotionSpringDriver.Retarget(state);

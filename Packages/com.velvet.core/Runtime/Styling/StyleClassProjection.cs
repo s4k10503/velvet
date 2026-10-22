@@ -88,9 +88,45 @@ namespace Velvet
         internal static bool Suppresses(VisualElement element, string cls)
             => StyleArbitraryValueResolver.TryGetProjection(element)?.Suppresses(cls) == true;
 
-        // Whether element's className declares cls while the projection keeps it off the live class list.
-        internal static bool SuppressesDeclared(VisualElement element, string cls)
-            => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesDeclared(cls) == true;
+        // A class its own writer (StyleAnimationClassUtils) puts on and takes off the live list, rather than a
+        // payload. The model ranks it at priority while it is on, so a payload above still outranks it and a
+        // play's class outranks the element's own, and a payload's removal leaves it on. The writer's removal
+        // takes it off whatever else wants it, a variant payload in force aside (RawReleased). The base priority
+        // takes the model-free path, as Add's does.
+        public static void RawAdded(VisualElement element, string cls, long priority)
+        {
+            var model = StyleArbitraryValueResolver.TryGetProjection(element);
+            if (model == null)
+            {
+                if (priority == StyleLayerPriority.Base)
+                {
+                    return;
+                }
+                model = StyleArbitraryValueResolver.GetOrCreateProjection(element);
+                model.SeedBaseLayer(element);
+            }
+            model.RawAdded(element, cls, priority);
+        }
+
+        // The removal half of RawAdded. It also forgets the class at the base priority, where a seed adopted it
+        // if the model was built while the class was on.
+        public static void RawRemoved(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawRemoved(element, cls);
+
+        // The writer's removal of a class a variant payload in force still holds, which stays on the list: only
+        // the rank a play gave it above the base goes.
+        public static void RawReleased(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawReleased(element, cls);
+
+        // Ranks a class a play ranked above the base as the element's own from now on. A class the play's rank no
+        // longer holds — taken off since, or never ranked — is left alone, so a rank never outlives its class.
+        public static void RawRested(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawRested(element, cls);
+
+        // Whether cls is element's own while the projection keeps it off the live class list: declared by its
+        // className, or put on by a play (RawAdded).
+        internal static bool SuppressesOwnClass(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesOwnClass(cls) == true;
 
         // Whether cls sits on element's live class list only because a variant payload put it there.
         internal static bool IsHeldOnlyByPayload(VisualElement element, string cls)
@@ -127,7 +163,7 @@ namespace Velvet
             private readonly List<Entry> _entries = new();
             private readonly StyleLonghandSet[] _claimed = new StyleLonghandSet[s_gateCount];
             // Classes this model took off the element. Nothing else may be re-added: a class another
-            // subsystem removed from the live list (the animation scheduler, a gesture manipulator) must stay
+            // subsystem removed from the live list (the animation scheduler, the presence exit) must stay
             // gone even while the model still records the layer that asked for it.
             private HashSet<string>? _suppressed;
             private List<InlineLayer>? _inline;
@@ -177,14 +213,100 @@ namespace Velvet
                 {
                     _entries.RemoveAt(index);
                 }
+                // The className dropping a class takes it off whatever a play wants, as a class attribute the
+                // render rewrites does; a payload is no class of the element's, so its going leaves a play's.
+                var declared = priority == StyleLayerPriority.Base
+                    || priority == StyleLayerPriority.ImportantOf(StyleLayerPriority.Base);
+                var leaves = !Holds(cls) && (declared || IndexOfRaw(cls, null) < 0);
+                if (leaves)
+                {
+                    DropRaw(cls);
+                }
                 Recompute(element);
                 // The last layer wanting this class is gone, so it leaves whether or not it was suppressed —
                 // and the suppression marker leaves with it, or a re-add would find the class already
                 // "restored" and never put it back.
-                if (!Holds(cls))
+                if (leaves)
                 {
                     element.RemoveFromClassList(cls);
                     _suppressed?.Remove(cls);
+                }
+            }
+
+            // A ranking-only entry: its writer puts the class on the live list, and the entry keeps it there only
+            // against a payload's removal (Holds skips it). It lives only while the class is on that list or
+            // suppressed by this model: RawRemoved drops it, and so does the className's Remove once nothing else
+            // holds the class.
+            public void RawAdded(VisualElement element, string cls, long priority)
+            {
+                // A class put on at the base priority rests there, so a play that ranked it higher has ended.
+                if (priority == StyleLayerPriority.Base)
+                {
+                    DropRaisedRaw(cls);
+                }
+                // MUTANT_SURVIVES(equivalent, boundary): IndexOfRaw answers -1 or an index, and at index 0 the mutant
+                // adds a second ranking-only entry to the same slot, which ranks as the first does and is dropped with
+                // it.
+                if (IndexOfRaw(cls, priority) < 0)
+                {
+                    StyleUtilityProperties.TryGet(cls, out var rule);
+                    _entries.Add(new Entry(cls, priority, rule.Properties, (int)rule.Gate, rankOnly: true));
+                }
+                Recompute(element);
+            }
+
+            // The writer's removal stands whatever else wants the class, so its suppression goes with it: a raw
+            // add that finds the class still marked suppressed would leave it on the list however it ranks.
+            public void RawRemoved(VisualElement element, string cls)
+            {
+                DropRaw(cls);
+                _suppressed?.Remove(cls);
+                Recompute(element);
+            }
+
+            public void RawReleased(VisualElement element, string cls)
+            {
+                if (DropRaisedRaw(cls))
+                {
+                    Recompute(element);
+                }
+            }
+
+            public void RawRested(VisualElement element, string cls)
+            {
+                if (DropRaisedRaw(cls))
+                {
+                    RawAdded(element, cls, StyleLayerPriority.Base);
+                }
+            }
+
+            // Drops cls's ranking-only entries above the base priority, reporting whether there were any.
+            private bool DropRaisedRaw(string cls)
+            {
+                var dropped = false;
+                for (var i = _entries.Count - 1; i >= 0; i--)
+                {
+                    if (_entries[i].Class == cls && _entries[i].RankOnly
+                        && _entries[i].Priority != StyleLayerPriority.Base)
+                    {
+                        _entries.RemoveAt(i);
+                        dropped = true;
+                    }
+                }
+                return dropped;
+            }
+
+            // Drops cls's ranking-only entries and its base one: a seed adopts a raw class there if the model is
+            // built while the class is on.
+            private void DropRaw(string cls)
+            {
+                for (var i = _entries.Count - 1; i >= 0; i--)
+                {
+                    var entry = _entries[i];
+                    if (entry.Class == cls && (entry.RankOnly || entry.Priority == StyleLayerPriority.Base))
+                    {
+                        _entries.RemoveAt(i);
+                    }
                 }
             }
 
@@ -429,12 +551,27 @@ namespace Velvet
                 return strongest;
             }
 
-            // Whether cls is held, alive, under a variant and writing any of longhands.
+            // Whether a variant payload holds cls, alive and writing any of longhands. A play's ranking-only entry
+            // is no payload, whatever rank it carries.
             public bool HoldsUnderVariant(string cls, StyleLonghandSet longhands)
             {
                 foreach (var entry in _entries)
                 {
-                    if (entry.Class == cls && !entry.Dead && StyleLayerPriority.UnderVariant(entry.Priority)
+                    if (entry.Class == cls && !entry.Dead && !entry.RankOnly
+                        && StyleLayerPriority.UnderVariant(entry.Priority) && entry.Properties.Overlaps(longhands))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Whether a gesture channel's class (StyleLayerPriority.Gesture) is on, writing any of longhands.
+            public bool HoldsGesture(StyleLonghandSet longhands)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (!entry.Dead && !entry.RankOnly && StyleLayerPriority.IsGesture(entry.Priority)
                         && entry.Properties.Overlaps(longhands))
                     {
                         return true;
@@ -447,7 +584,8 @@ namespace Velvet
             {
                 foreach (var entry in _entries)
                 {
-                    if (entry.Class == cls && !entry.Dead && StyleLayerPriority.UnderVariant(entry.Priority))
+                    if (entry.Class == cls && !entry.Dead && !entry.RankOnly
+                        && StyleLayerPriority.UnderVariant(entry.Priority))
                     {
                         return true;
                     }
@@ -469,22 +607,31 @@ namespace Velvet
 
             public bool Suppresses(string cls) => _suppressed?.Contains(cls) == true;
 
-            // A payload's class is not the className's own, so only a base entry counts, important or not.
-            public bool SuppressesDeclared(string cls)
-                => _suppressed?.Contains(cls) == true
-                    && (IndexOf(cls, StyleLayerPriority.Base) >= 0
-                        || IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) >= 0);
+            public bool SuppressesOwnClass(string cls) => _suppressed?.Contains(cls) == true && IsOwn(cls);
 
-            public bool HeldOnlyByPayload(string cls)
-                => Holds(cls)
-                    && IndexOf(cls, StyleLayerPriority.Base) < 0
-                    && IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) < 0;
+            public bool HeldOnlyByPayload(string cls) => Holds(cls) && !IsOwn(cls);
+
+            // A payload's class is not the element's own, so only a base entry counts, important or not, and a
+            // play's ranking-only one at whatever rank the play holds it: a class written onto the element is in
+            // its class attribute however the cascade ranks it.
+            private bool IsOwn(string cls)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (entry.Class == cls && (entry.RankOnly || entry.Priority == StyleLayerPriority.Base
+                            || entry.Priority == StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
 
             private int FirstIndexOf(string cls)
             {
                 for (var i = 0; i < _entries.Count; i++)
                 {
-                    if (_entries[i].Class == cls)
+                    if (_entries[i].Class == cls && !_entries[i].RankOnly)
                     {
                         return i;
                     }
@@ -492,11 +639,30 @@ namespace Velvet
                 return -1;
             }
 
+            // A payload's or the className's slot, never a play's ranking-only entry at the same key.
             private int IndexOf(string cls, long priority)
             {
                 for (var i = 0; i < _entries.Count; i++)
                 {
-                    if (_entries[i].Priority == priority && _entries[i].Class == cls)
+                    // MUTANT_SURVIVES(equivalent): only the base key holds both kinds, and Add and Remove both read
+                    // here, so the mutant lets a resting play's entry stand for the declared one at both ends: Add
+                    // records none of its own, and Remove takes the play's, which leaves the class as taking the
+                    // declared one would.
+                    if (_entries[i].Priority == priority && _entries[i].Class == cls && !_entries[i].RankOnly)
+                    {
+                        return i;
+                    }
+                }
+                return -1;
+            }
+
+            // cls's ranking-only entry at priority, or at any priority when priority is null.
+            private int IndexOfRaw(string cls, long? priority)
+            {
+                for (var i = 0; i < _entries.Count; i++)
+                {
+                    var entry = _entries[i];
+                    if (entry.RankOnly && entry.Class == cls && (priority == null || entry.Priority == priority))
                     {
                         return i;
                     }
@@ -511,13 +677,15 @@ namespace Velvet
         {
             // MUTANT_SURVIVES(equivalent): every entry is added on a path that recomputes before anything reads
             // it, and Recompute writes each entry's Dead.
-            public Entry(string cls, long priority, StyleLonghandSet properties, int gate, bool dead = false)
+            public Entry(string cls, long priority, StyleLonghandSet properties, int gate, bool dead = false,
+                bool rankOnly = false)
             {
                 Class = cls;
                 Priority = priority;
                 Properties = properties;
                 Gate = gate;
                 Dead = dead;
+                RankOnly = rankOnly;
             }
 
             public string Class { get; }
@@ -532,7 +700,10 @@ namespace Velvet
 
             public bool Dead { get; }
 
-            public Entry WithDead(bool dead) => new Entry(Class, Priority, Properties, Gate, dead);
+            // Added by Model.RawAdded: see there.
+            public bool RankOnly { get; }
+
+            public Entry WithDead(bool dead) => new Entry(Class, Priority, Properties, Gate, dead, RankOnly);
         }
 
         // One registered arbitrary-value layer, as the projection sees it.

@@ -132,6 +132,12 @@ namespace Velvet
                 ctx?.VariantGatedReSync?.Invoke(box!);
             }
 
+            SilhouetteFaceStash.NotifyClassesChanged(control);
+            if (box != null)
+            {
+                SilhouetteFaceStash.NotifyClassesChanged(box);
+            }
+
             // A clipped element's wrapper lays the element out from the same classes, so it takes the toggle too.
             ClipPathLayoutBox.SyncClasses(control);
             ctx?.StyleAnimationScheduler.ReassertHeld(control);
@@ -139,7 +145,7 @@ namespace Velvet
 
         // Where core lands: the control's input box for a surface utility (StyleInputBoxSurface), else the
         // control. A box a gate token reaches is put on the record a paint re-sync reads first.
-        private static VisualElement DestinationOf(ReconcilerContext? ctx, VisualElement control, string core,
+        internal static VisualElement DestinationOf(ReconcilerContext? ctx, VisualElement control, string core,
             bool on)
         {
             var dest = StyleInputBoxSurface.DestinationFor(control, core);
@@ -240,6 +246,19 @@ namespace Velvet
             return false;
         }
 
+        // True when a channel's class array — whileHoverClass, a drag's class — holds a gate token.
+        public static bool CarriesGatePayload(string[] payloads)
+        {
+            foreach (var payload in payloads)
+            {
+                if (IsVariantGateToken(StyleArbitraryValueResolver.StripImportant(payload, out _)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Records a toggled payload that is one of the gate tokens, returning true when the tracked set
         // changed. Returns false without touching anything for the parameterless callers (no context to
         // record into) and for the overwhelmingly common non-gate payload. An important font, text-effect, gap,
@@ -271,7 +290,7 @@ namespace Velvet
         // Deliberately NOT the same set as the re-sync trigger: entering this one also routes the element
         // to the composed class source on every later patch, which costs an array per patch, and that is
         // only worth paying for a token a pass has to READ back out of the class array.
-        private static bool IsVariantGateToken(string core)
+        internal static bool IsVariantGateToken(string core)
             => StyleGapClass.IsGapToken(core)
                 || StyleGridClass.IsGridToken(core)
                 || StyleDivideClass.IsDivideToken(core)

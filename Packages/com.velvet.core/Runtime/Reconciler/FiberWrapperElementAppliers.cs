@@ -47,15 +47,14 @@ namespace Velvet
         internal void ApplySkewOnCreate(VisualElement element, string[] classNames)
             => _skew.ApplySkewOnCreate(element, classNames);
 
-        internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged,
-            bool canReleaseFace)
-            => _skew.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
+        internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged)
+            => _skew.ApplySkewOnPatch(element, classNames, classesChanged);
 
         internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)
             => _gradient.ApplyGradientOnCreate(element, classNames);
 
-        internal void ApplyGradientOnPatch(VisualElement element, string[] classNames, bool skewable)
-            => _gradient.ApplyGradientOnPatch(element, classNames, skewable);
+        internal void ApplyGradientOnPatch(VisualElement element, string[] classNames)
+            => _gradient.ApplyGradientOnPatch(element, classNames);
 
         internal void ApplyAnimateOnCreate(VisualElement element, string[] classNames)
             => _animate.ApplyAnimateOnCreate(element, classNames);
@@ -73,15 +72,14 @@ namespace Velvet
             => _boxShadow.ApplyShadowOnCreate(element, classNames);
 
         internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
-            SkewSpec skew, bool canReleaseFace)
-            => _boxShadow.ApplyShadowOnPatch(element, classNames, clipActive, skew, canReleaseFace);
+            SkewSpec skew)
+            => _boxShadow.ApplyShadowOnPatch(element, classNames, clipActive, skew);
 
         internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)
             => _borderStyle.ApplyBorderStyleOnCreate(element, classNames);
 
-        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] classNames, bool classesChanged,
-            bool canReleaseFace)
-            => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
+        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] classNames, bool classesChanged)
+            => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
 
         internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
             => _ring.ApplyRingOnCreate(element, classNames);
@@ -205,8 +203,35 @@ namespace Velvet
             }
         }
 
+        // The drag channels' share of ReconcilerContext.ExpectGatePayload, for a create path that applies the drag
+        // bindings after it resolves its paints. A patch reaches the same calls through ApplyDraggable and
+        // ApplyDroppable, ahead of the passes that resolve its paints.
+        internal void ExpectDragGates(VisualElement element, FiberElementProps? props)
+        {
+            ExpectDragGates(element, props?.Draggable);
+            ExpectDragGates(element, props?.Droppable);
+        }
+
+        private void ExpectDragGates(VisualElement element, DraggableSettings? settings)
+        {
+            if (settings != null)
+            {
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileDraggingClass));
+            }
+        }
+
+        private void ExpectDragGates(VisualElement element, DroppableSettings? settings)
+        {
+            if (settings != null)
+            {
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileOverClass));
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileDragActiveClass));
+            }
+        }
+
         internal void ApplyDraggable(VisualElement element, DraggableSettings? settings)
         {
+            ExpectDragGates(element, settings);
             if (_ctx.DraggableBindings.TryGetValue(element, out var binding))
             {
                 if (settings == null)
@@ -225,6 +250,7 @@ namespace Velvet
 
         internal void ApplyDroppable(VisualElement element, DroppableSettings? settings)
         {
+            ExpectDragGates(element, settings);
             if (_ctx.DroppableBindings.TryGetValue(element, out var binding))
             {
                 if (settings == null)

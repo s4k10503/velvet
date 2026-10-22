@@ -139,6 +139,15 @@ namespace Velvet
             ctx.PendingRingPlacements.Clear();
         }
 
+        // Places element's band again, after a face border overlay came or went beside it.
+        internal static void Replace(VisualElement element)
+        {
+            if (s_byElement.TryGetValue(element, out var binding))
+            {
+                Place(element, binding);
+            }
+        }
+
         public static void Sync(VisualElement element, RingBinding binding, RingSpec spec, string[] classNames)
         {
             binding.Spec = spec;
@@ -210,12 +219,14 @@ namespace Velvet
             //
             // Re-placing on every sync, not just when the host changes: an insert or a keyed move among the
             // siblings shifts the element without notifying this binding.
-            if (host.IndexOf(binding.Overlay) != host.IndexOf(element) + 1)
+            // A face border overlay (FaceBorderOverlay) sits between the element and its band.
+            var after = FaceBorderOverlay.Has(element) ? 2 : 1;
+            if (host.IndexOf(binding.Overlay) != host.IndexOf(element) + after)
             {
                 // Re-read the element's index AFTER the removal — an overlay currently sitting before it
                 // shifts the element down one when it leaves.
                 binding.Overlay.RemoveFromHierarchy();
-                host.Insert(host.IndexOf(element) + 1, binding.Overlay);
+                host.Insert(Mathf.Min(host.IndexOf(element) + after, host.childCount), binding.Overlay);
             }
 
             SyncGeometry(element, binding, host);

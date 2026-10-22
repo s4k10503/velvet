@@ -102,6 +102,9 @@ namespace Velvet
                 ? _colors[(int)slot].value
                 : null;
 
+        // A held mask, or a hold that gives way to any declaration of the element's own.
+        public bool HoldsForContainer(HeldSlot slot) => (_mask & (_masks | (_yieldMask & ~_importantOnlyMask)) & Bit(slot)) != 0;
+
         public bool IsDriven(HeldSlot slot) => (_driven & Bit(slot)) != 0;
 
         // The pixels a held length carries, and the part of them a gap does not contribute: a space rule's.

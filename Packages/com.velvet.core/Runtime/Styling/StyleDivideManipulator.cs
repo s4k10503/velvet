@@ -34,9 +34,6 @@ namespace Velvet
     // divide-x row) wins there, as it does over Tailwind's zero-specificity divider — see ApplyToChild. An
     // important divide width or color is drawn over the child's own plain one and yields to its important
     // one, as the two !important declarations compare in CSS.
-    // Limitations: a child whose border face is owned by a higher paint layer — a skew
-    // silhouette or a drop shadow — keeps its border owned there, so its dashed divider renders solid (a
-    // documented known limitation, mirroring the element-level border-dashed gate which defers to either).
     // A dashed / dotted divider's color is read when the child paints, not when the container applies — see
     // DivideDashPainter.PaintColor.
     //
@@ -201,17 +198,14 @@ namespace Velvet
         private void ApplyToChild(VisualElement child, DivideEdge edge, bool isDivider)
         {
             var ownWidth = ChildOutranks(child, WidthSlot(edge), (_spec.Important & DivideImportance.Width) != 0);
-            // A skew silhouette or a drop shadow owns the child's border face and repaints a solid border, so a
-            // dashed divider on the same child would fight it — route it through the solid path (documented known
-            // limitation). Gates on EITHER owner, mirroring the element-level border-dashed gate.
+            // A skew or a drop shadow repainting the child's border leaves the divided edge to the dash
+            // (SilhouetteFace.PaintBorder).
             var style = EdgeStyle(child);
-            var dashed = (style == BorderLineStyle.Dashed || style == BorderLineStyle.Dotted)
-                && !_ctx.SkewBindings.ContainsKey(child)
-                && !_ctx.ShadowBindings.ContainsKey(child);
+            var dashed = style == BorderLineStyle.Dashed || style == BorderLineStyle.Dotted;
 
             if (!dashed || !isDivider)
             {
-                // Solid divider, the last child (no divider), or a child whose face a skew / shadow layer owns:
+                // Solid divider, or the last child (no divider):
                 // a plain inline border. Detach any stale dash paint (e.g. a divide-dashed → divide-solid flip, or
                 // a colored child reordered to the last slot).
                 var carried = DetachDash(child);

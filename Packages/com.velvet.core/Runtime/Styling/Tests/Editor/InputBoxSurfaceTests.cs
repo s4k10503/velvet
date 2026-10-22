@@ -23,6 +23,34 @@ namespace Velvet.Tests
 
         private static string Joined(string[] classNames) => string.Join("|", classNames);
 
+        // StyleAnimationClassUtils.ClipStays names the utilities that imply the box's clip; the bundled table is what
+        // decides which those are.
+        [Test]
+        public void Given_TheBundledUtilities_When_TheOnesImplyingTheBoxClipAreCollected_Then_TheyAreTheOnesAPlayKeepsTheClipFor()
+        {
+            // Arrange
+            var table = (System.Collections.IDictionary)typeof(StyleUtilityProperties)
+                .GetField("ByClassName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .GetValue(null);
+            // Empty where the list is missing, which the bundled table's implying utilities never match.
+            var named = typeof(StyleAnimationClassUtils)
+                .GetField("s_clipping", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                ?.GetValue(null) as string[] ?? Array.Empty<string>();
+
+            // Act
+            var implying = new List<string>();
+            foreach (string cls in table.Keys)
+            {
+                if (StyleInputBoxSurface.ImpliesBoxClip(cls)) implying.Add(cls);
+            }
+            implying.Sort(StringComparer.Ordinal);
+            var sorted = new List<string>(named);
+            sorted.Sort(StringComparer.Ordinal);
+
+            // Assert
+            Assert.That(string.Join("|", sorted), Is.EqualTo(string.Join("|", implying)));
+        }
+
         #region Routing
 
         [TestCase("bg-red-500")]
@@ -809,6 +837,21 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Box(scope.Root[0]).Q<TextElement>().ClassListContains("truncate"), Is.True);
+        }
+
+        [Test]
+        public void Given_AFieldMotionRestingAtAPoseWithABackgroundClass_When_Reconciled_Then_ItsInputBoxTakesIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var variants = new Dictionary<string, MotionVariant> { ["on"] = new MotionVariant("bg-red-500", null) };
+            var tree = new VNode[] { V.Motion(elementType: typeof(TextField), variants: variants, animate: "on") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Box(scope.Root[0]).ClassListContains("bg-red-500"), Is.True);
         }
 
         [TestCase("text-ellipsis")]
