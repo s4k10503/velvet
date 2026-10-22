@@ -95,6 +95,18 @@ namespace Velvet
         internal static readonly EngineMember ComputedStyleTranslate =
             ReadProperty(UIElements, ComputedStyleType, "translate", "UnityEngine.UIElements.Translate");
 
+        internal static readonly EngineMember ComputedStyleBorderLeftColor =
+            ReadProperty(UIElements, ComputedStyleType, "borderLeftColor", "UnityEngine.Color");
+
+        internal static readonly EngineMember ComputedStyleBorderRightColor =
+            ReadProperty(UIElements, ComputedStyleType, "borderRightColor", "UnityEngine.Color");
+
+        internal static readonly EngineMember ComputedStyleBorderTopColor =
+            ReadProperty(UIElements, ComputedStyleType, "borderTopColor", "UnityEngine.Color");
+
+        internal static readonly EngineMember ComputedStyleBorderBottomColor =
+            ReadProperty(UIElements, ComputedStyleType, "borderBottomColor", "UnityEngine.Color");
+
         internal static readonly EngineMember ComputedStyleTransitionProperty = ReadProperty(UIElements,
             ComputedStyleType, "transitionProperty", "System.Collections.Generic.List`1[UnityEngine.UIElements.StylePropertyName]");
 

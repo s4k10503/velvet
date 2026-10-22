@@ -83,6 +83,9 @@ namespace Velvet.Tests
             + "UnityEngine.UIElements.TextElement, Velvet.StyleTextInputColors/Winner&)";
         private const string ContainerMarkerReader =
             "System.Boolean Velvet.StyleResponsiveScope.IsContainer(UnityEngine.UIElements.VisualElement)";
+        private const string OwnBorderStyleReader =
+            "System.Nullable`1<Velvet.BorderLineStyle> Velvet.StyleBorderStyleClass.StyleOf("
+            + "UnityEngine.UIElements.VisualElement)";
         private const string DeclaredKindReader =
             "Velvet.StyleRelativeLengths/Declared Velvet.StyleRelativeLengths.DeclaredKind("
             + "UnityEngine.UIElements.VisualElement, Velvet.StyleLonghand, UnityEngine.UIElements.StyleLength)";
@@ -549,6 +552,26 @@ namespace Velvet.Tests
             // Assert
             Assert.That((fromAdded?.Source, fromReversed?.Source), Is.EqualTo((inset, circle)),
                 "this reading resolves whichever clip token the class list hands over last");
+        }
+
+        [Test]
+        [ReaderVerdict(OwnBorderStyleReader)]
+        public void Given_TwoBorderStylesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheStyleThatResolvesIsTheOneAddedLast()
+        {
+            // Arrange — StyleDivideManipulator.EdgeStyle reads this off a divided child. Carrying skips the
+            // parse, so the order here is the one written; a mount and a patch put the base tokens of the list
+            // in Tailwind's order first, which FamilyOrderTests' border-style rows pin.
+            var added = Carrying("border-dotted", "border-dashed");
+            var reversed = Carrying("border-dashed", "border-dotted");
+
+            // Act
+            var fromAdded = StyleBorderStyleClass.StyleOf(added);
+            var fromReversed = StyleBorderStyleClass.StyleOf(reversed);
+
+            // Assert
+            Assert.That((fromAdded, fromReversed),
+                Is.EqualTo(((BorderLineStyle?)BorderLineStyle.Dashed, (BorderLineStyle?)BorderLineStyle.Dotted)),
+                "this reading resolves whichever border-style token the class list hands over last");
         }
 
         [Test]
