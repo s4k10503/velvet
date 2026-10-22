@@ -306,6 +306,10 @@ namespace Velvet
         // color ("gray-200", "white") or an arbitrary "[<color>]" value. Shared by the
         // color-bearing utilities (divide-{c}, from-/via-/to-{c}) so their grammar cannot drift.
         public static bool TryResolveColorToken(string suffix, out Color color)
+            => TryResolveColorToken(suffix, false, out color);
+
+        // longhand is StyleColorValueParser.TryParseColor's: true when the utility is a colour longhand.
+        internal static bool TryResolveColorToken(string suffix, bool longhand, out Color color)
         {
             color = default;
             if (string.IsNullOrEmpty(suffix))
@@ -314,7 +318,9 @@ namespace Velvet
             }
             if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
-                return StyleColorValueParser.TryParseColor(inner, out color);
+                // A type hint is dropped here: the caller has already chosen the colour branch.
+                return StyleArbitraryValueResolver.TrySplitTypeHint(inner, out _, out inner)
+                    && StyleColorValueParser.TryParseColor(inner, longhand, out color);
             }
             return TryGet(suffix, out color);
         }

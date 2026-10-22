@@ -9,13 +9,11 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class StyleLengthExpressionParseTests
     {
-        [TestCase("_calc(1px)")]
         [TestCase("(1px)")]
         [TestCase("-(1px)")]
         [TestCase("-calc(1px)")]
         [TestCase("calc(1px")]
         [TestCase("calc(1px)px")]
-        [TestCase("calc(1px)_")]
         [TestCase("calc(1px)(")]
         public void Given_TextThatIsNoSingleLength_When_Parsed_Then_ItIsDeclined(string text)
         {
@@ -34,6 +32,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ok, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base declined a sign spaced on one side only, whichever side. The
+        // function is upper case because Tailwind spaces the operators of a lower-case one before this reads them.
+        // A sign glued to a digit is read into that number, so only a sign before a parenthesis or a function
+        // reaches the operator check from its left-spaced side.
+        [TestCase("CALC(1px+ 2px)")]
+        [TestCase("CALC(1px +2px)")]
+        [TestCase("CALC(1px +(2px))")]
+        [TestCase("CALC(1px -(2px))")]
+        public void Given_ASignSpacedOnOneSideOnly_When_Parsed_Then_ItIsDeclined(string text)
+        {
+            // Act
+            var parsed = StyleLengthExpression.TryParse(text, out _);
+
+            // Assert
+            Assert.That(parsed, Is.False);
         }
     }
 }

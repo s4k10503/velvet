@@ -11,6 +11,7 @@ namespace Velvet
     {
         private readonly VisualElement _element;
         private readonly Func<ArbitraryProperty, bool> _drivenByRunningPlay;
+        private Func<ArbitraryProperty, bool> _drivenByLivePlay;
         private readonly HashSet<string> _swapped = new(StringComparer.Ordinal);
         private readonly HashSet<ArbitraryProperty> _inlineBySwap = new();
         private readonly HashSet<ArbitraryProperty> _importantInlineBySwap = new();
@@ -19,16 +20,18 @@ namespace Velvet
         {
             _element = element;
             _drivenByRunningPlay = drivenByRunningPlay;
+            _drivenByLivePlay = drivenByRunningPlay;
         }
 
         public static MotionSlotContext? Read(VisualElement element, string[]? fromClasses, string[]? toClasses,
-            Func<ArbitraryProperty, bool> drivenByRunningPlay)
+            Func<ArbitraryProperty, bool> drivenByRunningPlay, Func<ArbitraryProperty, bool>? drivenByLivePlay = null)
         {
             if (element.panel == null)
             {
                 return null;
             }
             var context = new MotionSlotContext(element, drivenByRunningPlay);
+            if (drivenByLivePlay != null) context._drivenByLivePlay = drivenByLivePlay;
             context.NoteSwapped(fromClasses);
             context.NoteSwapped(toClasses);
             return context;
@@ -101,6 +104,44 @@ namespace Velvet
             => StyleArbitraryValueResolver.HasImportantInlineOutside(_element,
                 StyleArbitraryLonghands.Of(slot), _importantInlineBySwap);
 
+        // Unlike the running-play predicate, a held play does not count: it rests at its start and the next play
+        // takes that from StartFromHeld, in the held play's own unit.
+        public bool DrivenByLivePlay(ArbitraryProperty slot) => _drivenByLivePlay(slot);
+
+        public bool NativeTransitionRunning(ArbitraryProperty slot) => HasRunningNativeTransition(slot);
+
+        // The rate per second a running native transition is moving the slot at, in `unit` for a length; null where
+        // none is, where the slot is a color (whose magnitude reads as none), or where the engine does not give it up.
+        public float? NativeVelocity(ArbitraryProperty slot, LengthUnit unit)
+        {
+            return TryFindRunningNative(slot, out var longhand)
+                ? NativeTransitionVelocity.Of(Owner(slot), s_nativePropertyIds[(int)longhand]!,
+                    value => NativeMagnitude(value, slot, unit))
+                : null;
+        }
+
+        internal static float? NativeMagnitude(object value, ArbitraryProperty slot, LengthUnit unit)
+        {
+            switch (value)
+            {
+                case float number:
+                    return number;
+                case Length length:
+                    return length.unit == unit ? length.value : null;
+                case Translate translate:
+                {
+                    var axis = slot == ArbitraryProperty.TranslateX ? translate.x : translate.y;
+                    return axis.unit == unit ? axis.value : null;
+                }
+                case Scale scale:
+                    return scale.value.x;
+                case Rotate rotate:
+                    return rotate.angle.ToDegrees();
+                default:
+                    return null;
+            }
+        }
+
         public bool TryReadCurrent(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
         {
             if (slot == ArbitraryProperty.BorderColor)
@@ -127,8 +168,11 @@ namespace Velvet
             return MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit);
         }
 
-        private bool HasRunningNativeTransition(ArbitraryProperty slot)
+        private bool HasRunningNativeTransition(ArbitraryProperty slot) => TryFindRunningNative(slot, out _);
+
+        private bool TryFindRunningNative(ArbitraryProperty slot, out StyleLonghand found)
         {
+            found = default;
             if (_drivenByRunningPlay(slot)) return false;
             var owner = Owner(slot);
             var longhands = StyleArbitraryLonghands.Of(slot);
@@ -136,7 +180,11 @@ namespace Velvet
             for (var i = 0; i < s_nativePropertyIds.Length; i++)
             {
                 var longhand = (StyleLonghand)i;
-                if (longhands.Contains(longhand) && HasRunningNativeTransition(owner, longhand)) return true;
+                if (longhands.Contains(longhand) && HasRunningNativeTransition(owner, longhand))
+                {
+                    found = longhand;
+                    return true;
+                }
             }
             return false;
         }

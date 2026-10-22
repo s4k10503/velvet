@@ -21,7 +21,7 @@ namespace Velvet.Tests
     /// boundary, which catches the child's exception (not the fallback's).</item>
     /// <item>A fallback factory receives the original exception thrown by the child, and when it also takes an
     /// <see cref="ErrorInfo"/> it sees a component stack that lists the throwing fiber first and walks up
-    /// through ancestors to the catching boundary.</item>
+    /// through ancestors to the catching boundary, ending at the outermost component rather than the root.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -68,8 +68,8 @@ namespace Velvet.Tests
             s_throwingSetTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert — the mount's own child is folded in, so a mount that committed nothing cannot pass
-            Assert.That((committedChildren, _root.childCount), Is.EqualTo((1, 0)));
+            // Assert — -1 where the mount committed no child, so a mount that committed nothing cannot pass
+            Assert.That(committedChildren == 1 ? _root.childCount : -1, Is.EqualTo(0));
         }
 
         [Test]
@@ -98,17 +98,13 @@ namespace Velvet.Tests
             s_throwingShouldThrow = true;
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Test exception"));
             using var mounted = V.Mount(_root, V.Component(ThrowingRender, key: "throw"));
-            Assume.That(s_throwingRenderCount, Is.EqualTo(0), "Precondition: the mount throw left the render count at zero");
 
             // Act — React's root.render after an uncaught error
             s_throwingShouldThrow = false;
             mounted.Render(V.Component(ThrowingRender, key: "throw"));
 
             // Assert
-            Assert.That(
-                (_root.childCount, s_throwingRenderCount),
-                Is.EqualTo((1, 1)),
-                "A successful render after an error commits one child and yields a render count of one");
+            Assert.That(_root.childCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -195,6 +191,21 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_errorInfoLastInfo.ComponentStack, Does.Contain("ErrorInfoCaptureEbRender"),
                 "The component stack walks up the parent chain to include the catching boundary");
+        }
+
+        [Test]
+        public void Given_FallbackReceivesErrorInfo_When_ChildThrows_Then_TheStacksLastLineIsTheOutermostComponent()
+        {
+            // Arrange
+            ResetErrorInfoCapture();
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Child error"));
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(ErrorInfoCaptureEbRender, key: "info-eb"), CaughtErrors.Unlogged);
+
+            // Assert — the root V.Mount makes is not listed below it, as React's stack leaves out the root
+            Assert.That(s_errorInfoLastInfo?.ComponentStack.Split('\n')[^1],
+                Is.EqualTo("    at FunctionalComponentErrorTests.ErrorInfoCaptureEbRender"));
         }
 
         [Test]

@@ -267,7 +267,8 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), Tree(true));
             Assume.That(fired, Is.EqualTo(0), "Precondition: no exit yet");
 
-            // Act — remove the child (instant removal, no exit animation to drive a PlayExit callback).
+            // Act — remove the child (no exit animation to drive a PlayExit callback; its exit settles at the end of
+            // this reconcile).
             scope.Reconciler.Reconcile(scope.Root, Tree(true), Tree(false));
 
             // Assert — onExitComplete still fires even though the removed child had no exit animation.

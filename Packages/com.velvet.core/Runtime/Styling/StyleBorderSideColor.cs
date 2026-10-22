@@ -91,7 +91,11 @@ namespace Velvet
                         && cls.StartsWith(name, System.StringComparison.Ordinal))
                     {
                         family = candidate;
-                        if (!StyleColorValueParser.TryParseColorValue(cls, name.Length + 1, out var color))
+                        // border-x and border-y write the border-inline-color and border-block-color shorthands.
+                        var longhand = candidate.Property != ArbitraryProperty.BorderXColor
+                            && candidate.Property != ArbitraryProperty.BorderYColor;
+                        if (StyleColorValueParser.HintSelectsNonColour("border", StyleArbitraryValueResolver.TypeHintOf(cls))
+                            || !StyleColorValueParser.TryParseColorValue(cls, name.Length + 1, longhand, out var color))
                         {
                             return false;
                         }

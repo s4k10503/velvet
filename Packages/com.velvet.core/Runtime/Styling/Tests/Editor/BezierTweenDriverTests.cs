@@ -29,7 +29,7 @@ namespace Velvet.Tests
     /// never drives — so the tick's own math is exercised by calling <see cref="BezierTweenDriver.Step"/> directly
     /// in a loop. The reference midpoint (0.7756) was computed independently with a Python implementation of the
     /// same WebKit UnitBezier Newton/bisection algorithm every browser's <c>cubic-bezier()</c> is built on. The
-    /// warn-once static is reset before/after every test (reflection, mirroring DropShadowBakeTests) so the
+    /// warn-once static is reset before/after every test (reflection, mirroring BoxShadowBakeTests) so the
     /// out-of-range cases stay deterministic regardless of run order or of another fixture having already tripped
     /// the same one-shot flag. GWT, one assert per case: every fact a case depends on — channel recognition
     /// or a captured intermediate reading — folds into that single assertion via a nullable/NaN/tuple

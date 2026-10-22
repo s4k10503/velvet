@@ -88,7 +88,7 @@ namespace Velvet.Tests
         public void Given_AShaderTheProjectExcluded_When_ThePreprocessInjects_Then_EveryOtherBundledShaderIsIncluded()
         {
             // Arrange
-            VelvetBuildSettings.Change(settings => settings.SetExcluded(VelvetShaders.DropShadow, true));
+            VelvetBuildSettings.Change(settings => settings.SetExcluded(VelvetShaders.BoxShadow, true));
 
             // Act
             new BundledShaderBuildInclusion().OnPreprocessBuild(null);
@@ -97,7 +97,7 @@ namespace Velvet.Tests
             // asked about.
             Assert.That(
                 string.Join(", ", VelvetShaders.Names.Where(AlwaysIncluded)),
-                Is.EqualTo(string.Join(", ", VelvetShaders.Names.Where(n => n != VelvetShaders.DropShadow))));
+                Is.EqualTo(string.Join(", ", VelvetShaders.Names.Where(n => n != VelvetShaders.BoxShadow))));
         }
 
         [Test]
@@ -205,14 +205,14 @@ namespace Velvet.Tests
             // Arrange — the page reads the file when it opens; the change after it is a teammate's, arriving
             // with a pull.
             var page = Page();
-            VelvetBuildSettings.Change(settings => settings.SetExcluded(VelvetShaders.DropShadow, true));
+            VelvetBuildSettings.Change(settings => settings.SetExcluded(VelvetShaders.BoxShadow, true));
 
             // Act
             PageToggle(page, VelvetStyleUtilities.RuntimeAssetsPath).SimulateChange(false);
 
             // Assert
             var saved = VelvetBuildSettings.Read();
-            Assert.That((saved.ExcludeStyleSheet, saved.Excludes(VelvetShaders.DropShadow)), Is.EqualTo((true, true)));
+            Assert.That((saved.ExcludeStyleSheet, saved.Excludes(VelvetShaders.BoxShadow)), Is.EqualTo((true, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base already silences the report for an excluded holder.

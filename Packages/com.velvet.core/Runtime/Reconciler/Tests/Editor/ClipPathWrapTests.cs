@@ -505,16 +505,16 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_BareRing_When_Reconciled_Then_OverlayUsesDefaultBlueRingColor()
+        public void Given_BareRing_When_Reconciled_Then_OverlayCarriesTheOnePixelDefaultWidth()
         {
+            // Arrange
             using var scope = new ReconcilerScope();
-            // Tailwind's default ring color is blue-500 at 0.5 alpha (the palette token resolves opaque).
-            VelvetPalette.TryResolveColorToken("blue-500", out var blue);
-            blue.a = 0.5f;
 
+            // Act
             Mount(scope, new VNode[] { V.Div(className: "ring", name: "card") });
 
-            Assert.That(RingOverlayIn(scope.Root).style.borderTopColor.value, Is.EqualTo(blue));
+            // Assert
+            Assert.That(RingOverlayIn(scope.Root).style.borderTopWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
@@ -561,7 +561,7 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg ring-2", name: "card") });
 
-            Assert.That((RingOverlayIn(scope.Root) != null, DropShadowSilhouette.TryGet(scope.Root[0]) != null),
+            Assert.That((RingOverlayIn(scope.Root) != null, BoxShadowSilhouette.TryGet(scope.Root[0]) != null),
                 Is.EqualTo((true, true)));
         }
 

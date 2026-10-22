@@ -5,7 +5,7 @@ description: Run Velvet's EditMode or PlayMode suites headlessly and read the re
 
 # Running the Unity suites
 
-Where a Unity licence is configured, a pull request's CI already runs both suites, runs the cases the branch wrote on the merge base, and, once it is labelled `automerge`, runs the mutation campaign over its change; [CONTRIBUTING.md ▸ Continuous integration](../../../CONTRIBUTING.md#continuous-integration) lists the jobs. What follows is for a local run: that document's base-red section names the cases whose failure CI cannot show, and for the rest a local run is optional.
+Where a Unity licence is configured, a pull request's CI already runs both suites and runs the cases the branch wrote on the merge base; [CONTRIBUTING.md ▸ Continuous integration](../../../CONTRIBUTING.md#continuous-integration) lists the jobs. What follows is for a local run: that document's base-red section names the cases whose failure CI cannot show, and for the rest a local run is optional.
 
 The editor must be closed — it holds the project lock.
 
@@ -86,15 +86,15 @@ Every one was found by mutating the implementation and confirming a test died �
 - **The attribute never bound.** A `namespace` written above `[assembly: …]` is invalid C#; the attribute does not bind, so a gate keyed on it returns false regardless of what the gate does.
 - **N configurations, one test.** A guard evaluating both `UNITY_EDITOR` and no-symbols needs a case per configuration: each conditional spelling is visible to exactly one, so one case leaves the other deletable with nothing going red.
 - **A static field collapses the covering set.** A fixture caching generated output in `static readonly` gets the whole class attributed to whichever test touched it first, so mutation testing runs one test per mutant and whole regions go unasserted.
-- **An `Assume` gates the behaviour under test.** The regression reports Inconclusive, which the runner does not count. Fold it into the assertion as one tuple comparison.
+- **An `Assume` gates the behaviour under test.** The regression reports Inconclusive, which the runner does not count. [AGENTS.md ▸ Tests](../../../AGENTS.md#tests) owns the two forms that replace it, neither of them a tuple.
 - **An arbitrary value skips the path.** `rounded-tl-[12px]` is not in the scale, so a fallback under test never fires; `rounded-tl-lg` reaches it.
 - **The class under test was inert.** See the stylesheet trap below — the rest of the fixture works, so it looks built.
 - **The arranged condition has no term depending on it.** A case named for a clipped opacity group, or for an inline filter, sets that condition up and then asserts only what is true without it — so it passes with the clip or the filter removed, and pins its context in name only. Two instances in one fixture, found in consecutive review rounds — the second was next door to the first and survived the round that fixed it.
 
-Three traps in the folding itself, each of which passes a count check:
+Two further reasons a tuple stays out of an NUnit assertion, each of which passes a count check:
 
-- **`Is.EqualTo(tuple)` matches a nested collection by reference.** Join to strings instead.
-- **Do not fold a scalar comparison into a tuple — the tolerance stops applying.** `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` fails, and prints the tolerance it did not use, so a passing one looks like proof it applied. `VEL503` reports the shape; it does not see a tuple inside an expected collection, which traps the same way. Keep the compared value a scalar or an array of scalars and fold the control in as a gate substituting `float.NaN`. Rounding does not rescue it: two values inside the tolerance can round to different buckets.
+- **`Is.EqualTo(tuple)` matches a nested collection by reference.**
+- **The tolerance stops applying.** `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` fails, and prints the tolerance it did not use, so a passing one looks like proof it applied. `VEL503` reports the shape; it does not see a tuple inside an expected collection, which traps the same way. Keep the compared value a scalar or an array of scalars and let it carry the control as `float.NaN`, the second of AGENTS.md's two forms. Rounding does not rescue it: two values inside the tolerance can round to different buckets.
 
 ## Neuter at every layer, not at one
 

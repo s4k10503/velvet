@@ -457,7 +457,7 @@ namespace Velvet
 
         /// <summary>
         /// Asks the component that declared <paramref name="slot"/> for the render that observes its now-false
-        /// <c>isPending</c>. Nothing renders a component because its flag moved, so a clear reached from a path
+        /// <c>isPending</c>. Clearing the flag renders nothing by itself, so a clear reached from a path
         /// that renders nobody — a drain of some other component's tree, an async action's completion — leaves
         /// the indicator on screen without this.
         /// </summary>
@@ -543,9 +543,9 @@ namespace Velvet
         /// Opens the window the settle of <c>FiberRenderer.SubsumeFiberIntoThisPass</c> and of
         /// <c>FiberRenderer.NotifyAsyncResourceCompleted</c> reads, resetting both records it consumes: which lanes
         /// the render asks for again, and which transition slots enrolled work here.
-        /// Everything queued before the window is what that render satisfies, so the settle runs ahead of the
-        /// render — as it does in <c>FiberWorkLoop.FlushState</c>, whose commit render is likewise the one
-        /// that observes <c>isPending</c> already false.
+        /// Everything queued before the window is what that render satisfies, except the state updates its lane
+        /// skips, so the settle runs ahead of the render — as it does in <c>FiberWorkLoop.FlushState</c>, whose
+        /// commit render is likewise the one that observes <c>isPending</c> already false.
         /// </summary>
         /// <remarks>
         /// <see cref="Lanes"/> is left unallocated on purpose — a fiber with no <see cref="LaneState"/> has
@@ -555,7 +555,22 @@ namespace Velvet
         internal void OpenSubsumedRenderWindow()
         {
             Lanes?.LanesRequestedSinceReset.Clear();
-            DischargeTransitionEnrolments();
+            // The render skips the state updates queued here beyond its lane, and a transition's write is one of
+            // them, so the enrolments are kept for the render that applies it.
+            if (!HoldsStateUpdateBeyond(FiberWorkLoop.RenderLane))
+            {
+                DischargeTransitionEnrolments();
+            }
+        }
+
+        private bool HoldsStateUpdateBeyond(FiberUpdatePriority lane)
+        {
+            if (StateSlots == null) return false;
+            foreach (var slot in StateSlots)
+            {
+                if (slot.HoldsUpdateBeyond(lane)) return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -831,6 +846,10 @@ namespace Velvet
         internal bool IsMountRoot { get; set; }
 
         internal bool CatchesErrors => IsErrorBoundary || IsMountRoot;
+
+        // Set on every fiber of a deletion before the first of their cleanups runs, so an error one of them throws
+        // passes over the rest of the deletion in the boundary search (ComponentBoundarySearch.PropagateFrom).
+        internal bool IsBeingDeleted { get; set; }
 
         private ErrorBoundaryReset? _errorBoundaryReset;
 

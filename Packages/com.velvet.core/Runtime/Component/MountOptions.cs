@@ -38,9 +38,10 @@ namespace Velvet
         /// <c>onUncaughtError</c>. It is called once the tree has unmounted, with the exception and an
         /// <see cref="ErrorInfo"/> carrying the component stack and an empty <see cref="ErrorInfo.ErrorBoundary"/>.
         /// An error an effect cleanup throws while that unmount runs is reported after it, and one thrown while
-        /// <see cref="MountedTree.Dispose"/> runs is reported as it is thrown. When null, the exception is logged
-        /// with <c>Debug.LogException</c>, and in the Editor and a development build a warning naming the component
-        /// that threw follows it, as React's development build warns. An exception the handler throws is logged.
+        /// <see cref="MountedTree.Dispose"/> runs is reported once every cleanup has run. When null, the exception
+        /// is logged with <c>Debug.LogException</c>, and in the Editor and a development build a warning naming the
+        /// component that threw follows it, as React's development build warns. An exception the handler throws is
+        /// logged.
         /// </summary>
         public Action<Exception, ErrorInfo>? OnUncaughtError { get; init; }
     }

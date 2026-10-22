@@ -6,7 +6,8 @@ namespace Velvet
     // the row / column gaps a grid container owns. UI Toolkit has no CSS Grid (its layout is a Flexbox subset),
     // so `grid` is realized as a flex-wrap row (_layout.uss) and the manipulator sizes each child to a 1/N
     // column. A bare `grid` with no grid-cols-N is a single column (CSS grid-template-columns: none).
-    // Supports grid-cols-1..12 and the integer grid-cols-[N] form.
+    // Supports grid-cols-<n> for any positive n, and the bracket that spells the same columns,
+    // grid-cols-[repeat(n,minmax(0,1fr))].
     internal static class StyleGridClass
     {
         // Single-token half of HasGridClass: true when cls is the bare `grid` marker or a grid-cols
@@ -73,21 +74,28 @@ namespace Velvet
             return false;
         }
 
-        // grid-cols-3 → 3; grid-cols-[5] → 5. Returns false for a non-grid-cols class or a non-positive count.
+        // grid-cols-3 → 3; grid-cols-[repeat(5,minmax(0,1fr))] → 5. Returns false for a non-grid-cols class, a
+        // non-positive count, or any other bracket.
         public static bool TryParse(string cls, out int columns)
         {
             columns = 0;
-            if (string.IsNullOrEmpty(cls) || !cls.StartsWith("grid-cols-", StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(cls) || !cls.StartsWith("grid-cols-", StringComparison.Ordinal)
+                || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }
 
             var suffix = cls.Substring("grid-cols-".Length);
-            // Arbitrary grid-cols-[N] (JIT arbitrary value) — only an integer column COUNT is supported; a CSS track
-            // list (grid-cols-[1fr_200px] / repeat(...)) has no Flexbox equivalent and no-ops here. A malformed or
-            // empty bracket falls through to int.TryParse on the UNSTRIPPED suffix below, which rejects it just
-            // the same (a bracket character is never a valid digit).
-            var numeric = StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner) ? inner : suffix.AsSpan();
+            // Tailwind writes a bracket as grid-template-columns itself, so a bare grid-cols-[5] is a declaration the
+            // browser rejects, and of the track lists only the one grid-cols-<n> writes has an equivalent in the
+            // 1/N columns this emulation lays out. A malformed or empty bracket reaches int.TryParse whole, which
+            // rejects it (a bracket character is never a valid digit).
+            var numeric = suffix.AsSpan();
+            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                && !TryReadEqualColumns(inner.ToString(), out numeric))
+            {
+                return false;
+            }
 
             if (int.TryParse(numeric, out var parsed) && parsed > 0)
             {
@@ -95,6 +103,23 @@ namespace Velvet
                 return true;
             }
             return false;
+        }
+
+        // The n of repeat(n,minmax(0,1fr)), the track list grid-cols-<n> writes, with spaces anywhere and the
+        // function names in any case, as CSS reads them.
+        private static bool TryReadEqualColumns(string tracks, out ReadOnlySpan<char> count)
+        {
+            count = default;
+            var compact = tracks.Replace("_", string.Empty).Replace(" ", string.Empty).ToLowerInvariant();
+            const string open = "repeat(";
+            const string close = ",minmax(0,1fr))";
+            if (!compact.StartsWith(open, StringComparison.Ordinal) || !compact.EndsWith(close, StringComparison.Ordinal)
+                || compact.Length <= open.Length + close.Length)
+            {
+                return false;
+            }
+            count = compact.AsSpan(open.Length, compact.Length - open.Length - close.Length);
+            return true;
         }
 
         // Extracts the column gap and row gap (px) a grid owns from the gap-*/gap-x-*/gap-y-* classes.

@@ -405,9 +405,9 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins the pure centroid-shear math behind <see cref="StyleSkewChildTranslateManipulator"/>: the
     /// approximate descendant-shear offset a skewed caster writes onto a direct child. The model is the one
-    /// <c>SilhouetteBoundsSpacer.ShearedAabb</c> documents — <c>x' = x + (y - h/2)*tanX</c>,
-    /// <c>y' = y + (x - w/2)*tanY</c> — so a child ABOVE the box centre leans one way under positive
-    /// <c>skewX</c> and a child BELOW it the other, the axes never cross-couple, and a child exactly at the
+    /// <c>SilhouetteFace.Shear</c> documents, Tailwind's <c>skewX() skewY()</c>, so a child ABOVE the box centre
+    /// leans one way under positive <c>skewX</c> and a child BELOW it the other, a single axis moves a child along
+    /// that axis alone, and a child exactly at the
     /// centre (or a zero angle) gets no offset. Panel-free and layout-free: it drives
     /// <see cref="StyleSkewChildTranslateManipulator.ComputeOffset"/> directly. GWT, one assert per case.
     /// </summary>
@@ -452,6 +452,21 @@ namespace Velvet.Tests
 
             // Assert — an unskewed frame seats every child at its own position (the post-unskew numeric path).
             Assert.That(offset, Is.EqualTo(Vector2.zero));
+        }
+
+        [Test]
+        public void Given_AChildOffCentreUnderBothSkews_When_ComputingOffset_Then_DxFollowsTheSkewXSkewYProduct()
+        {
+            // Arrange — a child centred at u = 40, v = 10 from the box centre; skewX() skewY() maps x to
+            // x + u·tanX·tanY + v·tanX, so dx = 40·0.125 + 10·0.5 = 10.
+            const float w = 100f, h = 100f, tanX = 0.5f, tanY = 0.25f;
+
+            // Act
+            var offset = StyleSkewChildTranslateManipulator.ComputeOffset((w * 0.5f) + 40f, (h * 0.5f) + 10f, w, h,
+                tanX, tanY);
+
+            // Assert
+            Assert.That(offset.x, Is.EqualTo(10f).Within(1e-4f));
         }
 
         [Test]

@@ -71,6 +71,53 @@ namespace Velvet.Tests
             Assert.That(resolved, Is.EqualTo((true, false)));
         }
 
+        // The declarations above resolve the open generic definitions; the velocity read closes them over the
+        // animation's value type, which is where a retyped container would break it.
+        [Test]
+        public void Given_TheStyleAnimationMembers_When_ClosedOverAFloatAnimation_Then_NoneIsLeftOpen()
+        {
+            // Arrange
+            var values = EngineMember.AnimationValuesRunning.ResolveField()!.DeclaringType!.MakeGenericType(typeof(float));
+            var running = NativeTransitionVelocity.Closed(EngineMember.AnimationValuesRunning.ResolveField()!, values).FieldType;
+            var timing = NativeTransitionVelocity.Closed(EngineMember.AnimationDataSetTiming.ResolveField()!, running)
+                .FieldType.GetElementType();
+            var style = NativeTransitionVelocity.Closed(EngineMember.AnimationDataSetStyle.ResolveField()!, running)
+                .FieldType.GetElementType();
+            var closers = new (string Name, Action Close)[]
+            {
+                ("IndexOf", () => NativeTransitionVelocity.Closed(EngineMember.AnimationDataSetIndexOf.ResolveMethod()!, running)),
+                ("startTime", () => NativeTransitionVelocity.Closed(EngineMember.AnimationTimingStart.ResolveField()!, timing)),
+                ("duration", () => NativeTransitionVelocity.Closed(EngineMember.AnimationTimingDuration.ResolveField()!, timing)),
+                ("easingCurve", () => NativeTransitionVelocity.Closed(EngineMember.AnimationTimingEasing.ResolveField()!, timing)),
+                ("startValue", () => NativeTransitionVelocity.Closed(EngineMember.AnimationStyleStart.ResolveField()!, style)),
+                ("endValue", () => NativeTransitionVelocity.Closed(EngineMember.AnimationStyleEnd.ResolveField()!, style)),
+            };
+
+            // Act
+            var unclosed = closers.Where(closer =>
+            {
+                try { closer.Close(); return false; }
+                catch (ArgumentException) { return true; }
+            }).Select(closer => closer.Name);
+
+            // Assert
+            Assert.That(string.Join(", ", unclosed), Is.Empty);
+        }
+
+        [Test]
+        public void Given_AFieldDeclaredWithTheAnyShape_When_ItsNameIsNotThere_Then_NothingIsFound()
+        {
+            // Arrange
+            var control = Declare("Field", "UnityEngine.UIElements.StyleSheet", "imports", "*");
+            var member = Declare("Field", "UnityEngine.UIElements.StyleSheet", "importsNoSuchField", "*");
+
+            // Act
+            var resolved = (control.Resolve() != null, member.Resolve() != null);
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo((true, false)));
+        }
+
         [Test]
         public void Given_AGetterOnlyPropertyDeclaredWritable_When_Resolved_Then_NothingIsFound()
         {

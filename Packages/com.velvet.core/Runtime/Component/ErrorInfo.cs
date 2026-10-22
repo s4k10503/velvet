@@ -6,7 +6,9 @@ namespace Velvet
     /// <see cref="MountOptions.OnUncaughtError"/> when none does.
     /// </summary>
     /// <param name="ComponentStack">
-    /// Multi-line string listing the throwing fiber and its ancestors up to the root. Each line
+    /// Multi-line string listing the throwing fiber and its ancestors up to the outermost component of the tree
+    /// passed to <c>V.Mount</c>; the root <c>V.Mount</c> makes is not listed, as React's stack leaves out the
+    /// root, and an error the root itself raises has an empty stack. Each line
     /// follows the format <c>    at TypeName.MethodName</c>. The first line is the component the failing
     /// render, effect or callback belongs to; subsequent lines walk up via <c>ComponentFiber.Parent</c>.
     /// </param>

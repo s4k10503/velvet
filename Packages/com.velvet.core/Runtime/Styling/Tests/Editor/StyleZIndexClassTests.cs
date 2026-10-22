@@ -3,11 +3,11 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the <c>z-*</c> utility parser (StyleZIndexClass): any whole number an int holds
-    /// (<c>z-0</c>, <c>z-15</c>), its negated form (<c>-z-10</c>), the arbitrary bracket form
-    /// (<c>z-[999]</c>, <c>z-[-5]</c>), the cascade (last-wins), and rejection of anything that only
-    /// looks like a z-* token (a number spelled with a leading zero or a fraction, a non-integer bracket,
-    /// a bare "z-" prefix). GWT, one assert per case.
+    /// Specifies the <c>z-*</c> utility parser (StyleZIndexClass) against Tailwind v4's z utility: a bare
+    /// non-negative integer (<c>z-15</c>), the arbitrary bracket form (<c>z-[999]</c>, <c>z-[-5]</c>), a leading
+    /// "-" negating either, a value beyond the int range clamped to it, the cascade (last-wins), and rejection
+    /// of anything that only looks like a z-* token (a number spelled with a leading zero or a fraction, a
+    /// non-integer bracket, a bare "z-" prefix). GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class StyleZIndexClassTests
@@ -105,7 +105,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ANegativeArbitraryBracketValue_When_Parsed_Then_ItResolvesToTheNegativeInteger()
         {
-            // Arrange — the bracket itself carries the sign; there is no separate "-z-[5]" form.
+            // Arrange / Act
             StyleZIndexClass.TryParse("z-[-5]", out var z);
 
             // Assert
@@ -137,19 +137,51 @@ namespace Velvet.Tests
             Assert.That((ok, z), Is.EqualTo((true, (int?)expected)));
         }
 
+        [TestCase("-z-[5]", -5)]
+        [TestCase("-z-[-5]", 5)]
+        [TestCase("z-2147483648", int.MaxValue)]
+        [TestCase("z-99999999999", int.MaxValue)]
+        [TestCase("-z-99999999999", int.MinValue)]
+        [TestCase("-z-21474836470", int.MinValue)]
+        [TestCase("z-9007199254740992", int.MaxValue)]
+        [TestCase("z-1152921504606847000", int.MaxValue)]
+        [TestCase("z-1000000000000000", int.MaxValue)]
+        [TestCase("z-98872599063676140", int.MaxValue)]
+        [TestCase("z-66734236632186616", int.MaxValue)]
+        [TestCase("z-[3000000000]", int.MaxValue)]
+        [TestCase("z-[-3000000000]", int.MinValue)]
+        [TestCase("-z-[-2147483648]", int.MaxValue)]
+        public void Given_ANegatedBracketOrAValueBeyondTheIntRange_When_Parsed_Then_ItResolvesAsCssWouldClampIt(string cls, int expected)
+        {
+            // Act — Tailwind v4 emits calc(5 * -1) for -z-[5] and prints a large bare value unchanged; CSS clamps
+            // an integer beyond the range it supports.
+            StyleZIndexClass.TryParse(cls, out var z);
+
+            // Assert — a declined class leaves z null, which no expected value here equals.
+            Assert.That(z, Is.EqualTo((int?)expected));
+        }
+
         // GREEN_ON_BASE(characterization): the base declines each of these spellings too, and a bare number spelled any other way stays declined.
-        // Reading the suffix with int.TryParse reddens `z-05`, `z-+5` and `z-5.0`, and a missing leading-zero
-        // test in `TryParseWhole` reddens `z-05` and `z-00`.
+        // Accepting a leading zero reddens `z-05` and `z-00`, accepting a sign or a dot reddens `z-+5`, `z-5.0`
+        // and `z-1.5`, dropping the round trip through a double reddens `z-9007199254740993` and
+        // `z-1152921504606846976` (2^60, which JavaScript prints as 1152921504606847000), taking 1e21 itself
+        // as printing back unchanged reddens `z-1000000000000000000000`, and passing over a run exactly half a gap
+        // away from a double whose last bit is even reddens `z-477028999999999970000` (JavaScript prints that
+        // double as 477029000000000000000), and taking an empty run of digits as zero reddens `z-[-]`.
         [TestCase("z-05")]
         [TestCase("z-00")]
         [TestCase("z-+5")]
         [TestCase("z-5.0")]
         [TestCase("z-1.5")]
         [TestCase("z-10px")]
-        [TestCase("z-2147483648")]
-        [TestCase("z-99999999999")]
+        [TestCase("z-9007199254740993")]
+        [TestCase("z-1152921504606846976")]
+        [TestCase("z-1000000000000000000000")]
+        [TestCase("z-100000000000000000000000")]
+        [TestCase("z-477028999999999970000")]
         [TestCase("-z-auto")]
         [TestCase("z-")]
+        [TestCase("z-[-]")]
         public void Given_ASuffixThatIsNotACanonicalWholeNumber_When_Parsed_Then_ItIsRejected(string cls)
         {
             // Act

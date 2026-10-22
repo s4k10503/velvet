@@ -6,7 +6,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies <see cref="NetworkSignals"/>' readings: an override replaces each, and without one the
-    /// application counts as visible as <c>Application.isFocused</c> reports, on every platform, and as online
+    /// application counts as visible as <c>ApplicationVisibility</c> reports, and as online
     /// unless <c>Application.internetReachability</c> reports it unreachable; the visibility default itself
     /// cannot be driven from a test.
     /// </summary>

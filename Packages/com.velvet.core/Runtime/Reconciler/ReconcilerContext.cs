@@ -72,12 +72,10 @@ namespace Velvet
     }
 
     // Per-z-managed-element bookkeeping: which placeholder stands in its logical slot, which layer container
-    // currently holds it, the stacking parent both are scoped to, its last resolved z, and the monotonic
-    // mount-order tiebreak for same-z siblings (assigned once, at first entry, then stable — re-sorting on
-    // every patch would contradict "no periodic resort"). Keyed by the REAL element in
-    // ReconcilerContext.ZLayerMembers; the reverse index (placeholder -> real) is ZLayerPlaceholders.
+    // currently holds it, the stacking parent both are scoped to, and its last resolved z. Keyed by the REAL
+    // element in ReconcilerContext.ZLayerMembers; the reverse index (placeholder -> real) is ZLayerPlaceholders.
     internal readonly record struct ZLayerMember(
-        VisualElement Placeholder, VisualElement Container, VisualElement StackingParent, int ResolvedZ, ulong Order);
+        VisualElement Placeholder, VisualElement Container, VisualElement StackingParent, int ResolvedZ);
 
     // Shared helpers for maintaining the multi-Portal slot range invariant.
     internal static class PortalSlotTracker
@@ -950,13 +948,13 @@ namespace Velvet
         public Dictionary<VisualElement, LayoutIdProjection> LayoutIdProjections { get; } = new();
         public Dictionary<VisualElement, IVisualElementScheduledItem> LayoutIdFrames { get; } = new();
 
-        // Per-element drop-shadow bookkeeping for the shadow-* className layer, keyed by the element
+        // Per-element box-shadow bookkeeping for the shadow-* className layer, keyed by the element
         // itself — the shadow needs NO structural wrapper. Like skew and gradient, the shadow is painted
-        // by the element's own generateVisualContent (DropShadowSilhouette draws the baked shadow texture
+        // by the element's own generateVisualContent (BoxShadowSilhouette draws the baked shadow texture
         // BEHIND the content, bleeding outside the box), so it composes as a paint, not a wrapper —
         // matching CSS box-shadow (non-structural: it neither alters layout nor escapes a transform on the
         // element). Maintained by FiberNodePatcher's shadow methods and torn down by FiberElementCleaner.
-        public Dictionary<VisualElement, DropShadowBinding> ShadowBindings { get; } = new();
+        public Dictionary<VisualElement, BoxShadowBinding> ShadowBindings { get; } = new();
 
         // Per-element clip-path bookkeeping for the clip-path-* className layer, keyed by the INNER
         // (real) element. An entry means the element is wrapped in a stencil-masking clip wrapper
@@ -1075,6 +1073,8 @@ namespace Velvet
         public Dictionary<VisualElement, DndScopeBinding> DndScopeBindings { get; } = new();
         public Dictionary<VisualElement, DndDraggableBinding> DraggableBindings { get; } = new();
         public Dictionary<VisualElement, DndDroppableBinding> DroppableBindings { get; } = new();
+        // Next DndDroppableBinding.Order; only ever increases.
+        public long NextDroppableOrder;
         public Dictionary<VisualElement, DndOverlayBinding> DragOverlayBindings { get; } = new();
         // Elements carrying FiberElementProps.NoDrag. A side-table only: nothing is written to the element.
         public HashSet<VisualElement> NoDragElements { get; } = new();
@@ -1209,13 +1209,16 @@ namespace Velvet
         // of a LEADING back container would shift every ordinary sibling index a live Common/Keyed loop is
         // still iterating by absolute position). Pure membership changes within an ALREADY-EXISTING container
         // never touch this set — they run synchronously, from anywhere. Drained (and cleared) by
-        // FiberZLayerCoordinator.DrainTeardowns, called from the same Reconciler.Reconcile top-level finally as
+        // FiberZLayerCoordinator.DrainTeardowns, called from Reconciler.FinishTopLevelPass's finally, after
         // DrainPendingPortalMounts.
         public HashSet<VisualElement> PendingZLayerTeardownChecks { get; } = new();
 
-        // Monotonic tiebreak counter for same-resolved-z siblings under one layer container, handed out once
-        // per element at its first entry into a layer (see ZLayerMember.Order).
-        internal ulong NextZOrder;
+        // Stacking parents a member was placed under or whose children a pass reconciled; drained by
+        // FiberZLayerCoordinator.ResortLayers at the end of each top-level pass, after the teardown checks above.
+        public HashSet<VisualElement> PendingZLayerResorts { get; } = new();
+
+        // FiberZLayerCoordinator's placeholder -> declared index, filled and cleared within one layer check.
+        internal Dictionary<VisualElement, int> ZLayerDeclaredIndex { get; } = new();
 
         // Guards FiberCrossPanelPointerRouter.AttachToMainPanel against attaching twice on the same
         // main panel — V.Mount is idempotent-safe to call from a component's own render (uncommon but
@@ -1440,7 +1443,28 @@ namespace Velvet
         // pass has ended — see CompleteEnterAfterThePass. RemovedBy is the commit whose removals an exit's child
         // waits on: that exit completes from the passive-effect flush after the pass, and the commit takes it
         // back if its removals never run (DropCompletionsRemovedBy).
-        internal readonly record struct PendingCompletion(System.Action Complete, ComponentFiber? Boundary, object? RemovedBy);
+        internal readonly record struct PendingCompletion(
+            System.Action Complete, ComponentFiber? Boundary, object? RemovedBy, ExitSettlePhase Phase = ExitSettlePhase.Effect,
+            bool Urgent = false);
+
+        // The two ways an exit that animates nothing settles in Framer Motion: a child holding a motion component
+        // from the promise of its exit, which resolves at once when the exit names no target or one reached with a
+        // zero-duration or `type: false` transition and no delay, and a child holding none from PresenceChild's
+        // passive effect. Which settles last decides how onExitComplete's error is routed
+        // (GeneralPathReconciler.CompletePresenceExit).
+        //
+        // The order between the two follows the removing commit's lane. React flushes the passive effects of a
+        // commit whose lanes include SyncLane at the end of that commit (react-dom
+        // commitRootImpl: includesSomeLane(pendingPassiveEffectsLanes, SyncLane) then flushPassiveEffects), before
+        // any promise reaction runs, so the Urgent lane settles Effect before Promise. Any other lane flushes its
+        // passive effects later and the promise reactions run first. The zero-duration skip is motion-dom
+        // animateMotionValue: shouldSkip schedules frame.update(onComplete) and returns undefined, so
+        // animateTarget collects no animation and its Promise.all([]) resolves like an exit with no target.
+        internal enum ExitSettlePhase
+        {
+            Promise,
+            Effect,
+        }
 
         internal readonly List<PendingCompletion> PendingCompletions = new();
 
@@ -1463,23 +1487,28 @@ namespace Velvet
         }
 
         // An AnimatePresence's onExitComplete completes as an enter does, and for the same reason. Framer Motion
-        // calls PresenceChild's from a passive effect once a child with nothing to animate has left, whose error
+        // calls PresenceChild's from a passive effect once a child with nothing to animate is removed, whose error
         // React gives a boundary from the presence's owner, and from the exit's promise for a V.Motion child, whose
-        // error no boundary sees. removedBy is the commit that removes the child: an exit that waits on its removals
-        // completes from the passive-effect flush that follows the pass, and one that waits on an animation, with
-        // removedBy null, when the animation ends.
-        internal void CompleteExitAfterThePass(
-            System.Action? onExitComplete, ComponentFiber? owner, bool fromAMotion, object? removedBy = null)
+        // error no boundary sees.
+        internal void CompleteExitAfterThePass(System.Action? onExitComplete, ComponentFiber? owner, bool fromAMotion)
         {
             if (onExitComplete == null) return;
             CompleteAfterThePass(
-                () => GeneralPathReconciler.InvokeExitComplete(onExitComplete, owner, fromAMotion), owner, removedBy);
+                () => GeneralPathReconciler.InvokeExitComplete(onExitComplete, owner, fromAMotion), owner, removedBy: null);
         }
 
-        private void CompleteAfterThePass(System.Action complete, ComponentFiber? boundary, object? removedBy)
+        // An exit that animates nothing settles from the passive-effect flush that follows the pass whose commit
+        // removedBy is, and that commit takes it back if its removals never run.
+        internal void CompleteAfterTheRemovals(
+            System.Action settle, ComponentFiber? boundary, object removedBy, ExitSettlePhase phase)
+            => CompleteAfterThePass(settle, boundary, removedBy, phase);
+
+        private void CompleteAfterThePass(System.Action complete, ComponentFiber? boundary, object? removedBy,
+            ExitSettlePhase phase = ExitSettlePhase.Effect)
         {
             if (SharedReconcileDepth == 0 && removedBy == null) complete();
-            else PendingCompletions.Add(new PendingCompletion(complete, boundary, removedBy));
+            else PendingCompletions.Add(new PendingCompletion(
+                complete, boundary, removedBy, phase, FiberWorkLoop.RenderLane == FiberUpdatePriority.Urgent));
         }
 
         // The entries a render below boundary queued: read before a catch detaches what that render created, since
@@ -1521,10 +1550,17 @@ namespace Velvet
             // Copied out first: a callback can start a pass whose own end reaches this list.
             var completions = PendingCompletions.ToArray();
             PendingCompletions.Clear();
+            List<PendingCompletion>? staged = null;
             foreach (var entry in completions)
             {
                 if (entry.RemovedBy == null) entry.Complete();
-                else FiberEffects.StagePassiveCompletion(this, entry.Complete);
+                else (staged ??= new List<PendingCompletion>()).Add(entry);
+            }
+            if (staged == null) return;
+            // In ExitSettlePhase order for the entry's lane, tree order within a phase.
+            foreach (var entry in System.Linq.Enumerable.OrderBy(staged, entry => entry.Urgent ? 1 - (int)entry.Phase : (int)entry.Phase))
+            {
+                FiberEffects.StagePassiveCompletion(this, entry.Complete);
             }
         }
 
@@ -1539,9 +1575,17 @@ namespace Velvet
         // FiberErrorBoundary.RecordCatch queues behind the report of the error the swap is for.
         internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info)> ErrorsDuringFallbackSwap = new();
 
+        // Errors the root took while MountedTree.Dispose unmounted its tree, which it reports once the unmount is done.
+        internal readonly List<(System.Exception Error, ErrorInfo Info)> ErrorsDuringRootDisposal = new();
+
         // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
         // it (FiberEffects.CommitStrandedLayoutWork).
         internal int EffectCommitDepth;
+
+        // The passive drains among EffectCommitDepth, so a layout commit nested in one still reads as running.
+        internal int PassiveDrainDepth;
+
+        internal bool InLayoutCommit => EffectCommitDepth > PassiveDrainDepth;
 
         // Fibers with pending passive (UseEffect) effects awaiting the next post-paint drain. Unlike
         // layout effects (committed synchronously, bottom-up, before paint) passive effects fire
@@ -1560,6 +1604,11 @@ namespace Velvet
         // one drain per paint-tick even when many fibers stage passive effects in one reconcile pass.
         // Reset when the drain runs.
         public bool PassiveEffectDrainScheduled { get; set; }
+
+        // Staged fibers the passive drain took out of PendingPassiveEffectFibers because a parked time-sliced
+        // pass rendered them (FiberEffects.HoldWhileParked). Their EffectFlushScheduled stays set, so nothing
+        // stages them again until FiberEffects.StageReleasedPassiveEffects does.
+        internal readonly List<ComponentFiber> PassiveEffectFibersHeldByParkedPass = new();
         public Dictionary<VisualElement, FiberVirtualListController> VirtualListControllers { get; } = new();
         // Keyed on the Outlet's own ComponentFiber; FiberOutletScope owns what an entry holds and when
         // it is released.
@@ -2107,7 +2156,8 @@ namespace Velvet
                 (added ??= new()).Add(key);
             }
             if (added == null) return;
-            foreach (var key in added) RetirePresenceState(key);
+            // A render the boundary took back committed none of these presences, so none of their exits settles.
+            foreach (var key in added) RetirePresenceState(key, settlesExits: false);
         }
 
         internal readonly record struct SuspenseFallbackRecord(SuspenseNode Node, bool HidesPrimary);
@@ -2177,6 +2227,20 @@ namespace Velvet
             _suspenseFallbackKeys.Remove(boundary);
         }
 
+        // An exit's settle waiting for a commit to run after. Equal only to itself: a key's later exit puts another
+        // in its place, which GeneralPathReconciler.TakeIfStillPending tells apart by reference.
+        internal sealed class PendingSettle
+        {
+            internal PendingSettle(System.Action settle, ExitSettlePhase phase)
+            {
+                Settle = settle;
+                Phase = phase;
+            }
+
+            internal System.Action Settle { get; }
+            internal ExitSettlePhase Phase { get; }
+        }
+
         // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed as PresenceStates below
         // is. The keyed children are expanded directly into the parent's slot range (no wrapper element);
         // this state records, per AnimatePresence, the leaf composition currently committed to the DOM so
@@ -2199,6 +2263,10 @@ namespace Velvet
             // diff removes their leaves.
             public readonly HashSet<string> ExitComplete = new();
 
+            // Per exiting key, the settle that waits for a commit to run after
+            // (GeneralPathReconciler.SettleAfterTheRemovingCommit). A re-entry drops it.
+            public readonly Dictionary<string, PendingSettle> PendingSettles = new();
+
             // Anchor element of each exiting ghost (its first emitted leaf). Once a Motion's exit detaches
             // its element, the old-side reproduction can no longer recurse into the ghost's subtree, so its
             // inline fibers escape the orphan sweep. Keeping the anchor lets the drop path dispose them
@@ -2211,7 +2279,7 @@ namespace Velvet
             // patch that would re-record the element (PresenceAnchorMotionElement) bails on reference
             // equality and never runs; this per-key memo, written whenever an emission DOES record the
             // element, is what the ghost's exit dispatch falls back to. Entries retire with their key
-            // (exit-complete drop / instant removal) so a pooled element is never resurrected as a target.
+            // (exit-complete drop) so a pooled element is never resurrected as a target.
             public readonly Dictionary<string, VisualElement> MotionElements = new();
 
             // The top-level elements each key's last committing emission placed, a z-managed placeholder
@@ -2247,9 +2315,10 @@ namespace Velvet
             public readonly HashSet<string> LeavingMounts = new();
 
             // Whether an expansion of this presence is under way, and the exit completions that fired meanwhile,
-            // which run once it has finished its bookkeeping (GeneralPathReconciler.ExpandAnimatePresenceInline).
+            // each with its key, staged once it has finished its bookkeeping
+            // (GeneralPathReconciler.ExpandAnimatePresenceInline).
             public bool Expanding;
-            public List<System.Action>? DeferredCompletions;
+            public List<(string Key, System.Action Settle)>? DeferredCompletions;
 
             // Whether the key is on its way out, not yet dropped: an exit running, or finished and awaiting the
             // render that drops it.
@@ -2346,6 +2415,7 @@ namespace Velvet
 
             private readonly DescendantStatus[] _statuses;
             private int _pending;
+            private bool _settled;
             private readonly System.Action _onSettled;
             private readonly System.Action<VisualElement?> _onSettledByTeardown;
 
@@ -2379,9 +2449,28 @@ namespace Velvet
                 return registrations;
             }
 
+            // Settles a wait that has not settled yet, whatever is still pending, and leaves nothing for a slot
+            // completing after it to settle. A wait that has settled is not settled again: the exit's own count in
+            // StartPresenceExit holds a layoutId landing's slot apart from it, and that one is still owed.
+            internal void SettleForTeardown()
+            {
+                if (!TrySettle()) return;
+                _pending = 0;
+                _onSettled();
+            }
+
+            // Claims the wait's one settle. Reaching a pending count of zero does not claim it: a teardown's settle is
+            // deferred, and a retirement in between has to find the wait still owed.
+            internal bool TrySettle()
+            {
+                if (_settled) return false;
+                _settled = true;
+                return true;
+            }
+
             internal void CompleteRegistration()
             {
-                if (Settles()) _onSettled();
+                if (Settles() && TrySettle()) _onSettled();
             }
 
             internal void TearDownRegistration()
@@ -2393,13 +2482,13 @@ namespace Velvet
 
             internal void CompleteAnchor()
             {
-                if (Settles()) _onSettled();
+                if (Settles() && TrySettle()) _onSettled();
             }
 
             internal void CompleteDescendant(VisualElement element)
             {
                 _statuses[IndexOf(element)] = DescendantStatus.Completed;
-                if (Settles()) _onSettled();
+                if (Settles() && TrySettle()) _onSettled();
             }
 
             // A descendant leaving the tree is marked whatever its exit had reached, so nothing touches its
@@ -2497,9 +2586,12 @@ namespace Velvet
         // The one place an AnimatePresence entry leaves PresenceStates before the whole table is dropped. An inner
         // presence retired while an enclosing child waits on it stops holding that child, as a descendant Motion
         // torn down does (FiberElementCleaner).
-        private void RetirePresenceState((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
+        private void RetirePresenceState(
+            (ComponentFiber? boundary, VisualElement? parent, long presenceKey) key, bool settlesExits = true)
         {
-            if (PresenceStates.Remove(key, out var state)) state.Registration?.Gone();
+            if (!PresenceStates.Remove(key, out var state)) return;
+            if (settlesExits) SettleExitsOf(state);
+            state.Registration?.Gone();
         }
 
         // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a boundary that
@@ -2729,6 +2821,25 @@ namespace Velvet
         // Signal used to abort processing of the remaining sibling nodes in the same Reconcile batch.
         // Reset to false when the top-level Reconcile completes.
         public bool IsAborted { get; internal set; }
+
+        // Framer lets the exit animations of an AnimatePresence unmounted with its tree, or by its parent, run out and
+        // then calls its onExitComplete; Velvet ends those animations with the presence, so its exits settle as it is
+        // retired. An exit also waiting on a layoutId landing stays owed, as Framer's relegated node is removed only
+        // by its lead's layout animation, which the unmount stops reaching it.
+        private static void SettleExitsOf(PresenceBoundaryState state)
+        {
+            foreach (var entry in new List<KeyValuePair<string, PresenceExitWait>>(state.ExitWaits))
+            {
+                if (state.Exiting.Contains(entry.Key)) entry.Value.SettleForTeardown();
+            }
+        }
+
+        // Retires the whole table, as the owning Reconciler's disposal does.
+        internal void RetireAllPresenceStates()
+        {
+            foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values)) SettleExitsOf(state);
+            PresenceStates.Clear();
+        }
 
         internal void MarkDisposed()
         {

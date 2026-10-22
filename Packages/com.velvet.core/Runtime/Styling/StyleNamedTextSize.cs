@@ -161,16 +161,5 @@ namespace Velvet
             }
             return false;
         }
-
-        // text-[length:<value>] is text-[<value>], Tailwind's type hint for a length; any other class is returned as it is.
-        public static string WithoutLengthHint(string className)
-        {
-            const string hinted = "text-[length:";
-            if (!className.StartsWith(hinted, StringComparison.Ordinal))
-            {
-                return className;
-            }
-            return "text-[" + className.Substring(hinted.Length);
-        }
     }
 }

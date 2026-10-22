@@ -241,6 +241,27 @@ namespace Velvet.Tests
                 Is.EqualTo("opacity|350ms|EaseIn|200ms"));
         }
 
+        // GREEN_ON_BASE(characterization): the base's All names no radius, so a held list keeps one there. A driven Tween's
+        // swap suspends All, and a pose swap's change of radius must stay on the list it transitions by.
+        [Test]
+        public void Given_APerPropertyTweenListNamingACornerRadius_When_ADrivenTweenSuspendsAllSlots_Then_TheRadiusStaysInTheList()
+        {
+            // Arrange — the list a per-property swap writes, a corner's radius beside opacity.
+            var element = new VisualElement();
+            element.style.transitionProperty = new List<StylePropertyName> { new("border-top-left-radius"), new("opacity") };
+            element.style.transitionDuration = new List<TimeValue>
+            {
+                new(350, TimeUnit.Millisecond), new(350, TimeUnit.Millisecond),
+            };
+
+            // Act — the suspension BezierTweenDriver.ApplyCurrentValues asks for on a driven Tween.
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, new object(), MotionTransitionSlots.All,
+                StyleLonghandSet.Empty);
+
+            // Assert — opacity, which the play's channels may write, left the list and the radius did not.
+            Assert.That(string.Join(",", element.style.transitionProperty.value), Is.EqualTo("border-top-left-radius"));
+        }
+
         // GREEN_ON_BASE(characterization): the base writes the suspension over a keyword in the slot, which the
         // narrowing a held list gets must not replace with a throw.
         [Test]

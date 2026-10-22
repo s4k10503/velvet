@@ -22,12 +22,8 @@ namespace Velvet
     /// cannot be a string rewrite; <see cref="TextOverlinePainter"/> computes the rule's geometry.
     /// </summary>
     /// <remarks>
-    /// v1 scope: ONE rule, positioned above the FIRST line and sized to the text's natural
-    /// single-line-equivalent width (clamped to the content width). Per-line metrics of wrapped text are not
-    /// publicly reachable in a way usable synchronously from <c>generateVisualContent</c> (there is a public
-    /// per-glyph vertex hook, <c>TextElement.PostProcessTextVertices</c>, but it runs job-dependent and out
-    /// of sync with <c>generateVisualContent</c>), so a multi-line label gets one rule above its top line
-    /// only — a documented limitation, not a bug; per-line placement is future work.
+    /// One rule, above the first line, sized to the text's single-line width clamped to the content width.
+    /// TextLineBoxSurfaceTests pins the public surface that leaves a wrapped label on that one rule.
     /// </remarks>
     internal static class TextOverlineSilhouette
     {

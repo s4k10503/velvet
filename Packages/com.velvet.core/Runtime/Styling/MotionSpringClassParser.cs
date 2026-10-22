@@ -268,7 +268,7 @@ namespace Velvet
             {
                 return null;
             }
-            if (fromValue.HasValue && (context == null || from.WasSwapped(axis)))
+            if (fromValue.HasValue && HoldsExplicitStart(context, from.WasSwapped(axis), axis))
             {
                 return (fromValue.Value, toValue ?? identity);
             }
@@ -280,6 +280,12 @@ namespace Velvet
             }
             return from.HeldUnread(axis) ? null : (identity, toValue ?? identity);
         }
+
+        // A slot a running play or a native transition is moving starts from the value on screen; the swapped-out
+        // class value is where that slot rests, not where it is.
+        private static bool HoldsExplicitStart(MotionSlotContext? context, bool swapped, ArbitraryProperty slot)
+            => context == null
+                || (swapped && !context.DrivenByLivePlay(slot) && !context.NativeTransitionRunning(slot));
 
         private readonly struct SideScan
         {
@@ -356,7 +362,8 @@ namespace Velvet
                 var isColor = MotionPropertyClassParser.IsColor(property);
                 ArbitraryStyle from = default;
                 var hasFrom = fromProperties != null && fromProperties.TryGetValue(property, out from)
-                    && (context == null || fromSide.SwappedProperties.Overlaps(StyleArbitraryLonghands.Of(property))) && (isColor || from.Unit == to.Unit);
+                    && HoldsExplicitStart(context, fromSide.SwappedProperties.Overlaps(StyleArbitraryLonghands.Of(property)), property)
+                    && (isColor || from.Unit == to.Unit);
                 if (!hasFrom && (context == null || !context.TryReadCurrent(property, to.Unit, out from)))
                 {
                     continue;
@@ -479,9 +486,12 @@ namespace Velvet
             }
             if (classes != null)
             {
+                // The place in Tailwind's order, not the position written: two inline tokens of one property settle as
+                // the mounted element settles them (StyleInlineSheetOrder).
+                var places = StyleRuleOrder.OrdinalsOf(classes);
                 for (var i = 0; i < classes.Length; i++)
                 {
-                    Claim(classes[i], i, claims, in importantClasses, swapped: true);
+                    Claim(classes[i], places[i], claims, in importantClasses, swapped: true);
                 }
             }
 

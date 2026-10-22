@@ -60,23 +60,27 @@ namespace Velvet
         {
             info = null;
             if (fiber?.FallbackFactory == null) return null;
-            info = new ErrorInfo(BuildComponentStack(throwingFiber))
-            {
-                ErrorBoundary = fiber.IsMountRoot ? string.Empty : Hooks.ComponentName(fiber),
-            };
+            info = InfoFor(fiber, throwingFiber);
             return TryInvokeFactory(fiber, exception, info);
         }
 
+        private static ErrorInfo InfoFor(ComponentFiber boundary, ComponentFiber? throwingFiber)
+            => new(BuildComponentStack(throwingFiber))
+            {
+                ErrorBoundary = boundary.IsMountRoot ? string.Empty : Hooks.ComponentName(boundary),
+            };
+
         // Walks the throwing fiber's Parent chain to produce a component stack
         // (one line per fiber, deepest first), honoring [Component(DisplayName)] overrides
-        // via Hooks.ComponentName.
+        // via Hooks.ComponentName. It stops below the fiber V.Mount made, as React's stack leaves out the HostRoot,
+        // so an error the root itself raises has an empty stack.
         private const string StackLinePrefix = "    at ";
 
         private static string BuildComponentStack(ComponentFiber? throwingFiber)
         {
             if (throwingFiber == null) return string.Empty;
             var sb = new System.Text.StringBuilder();
-            for (var current = throwingFiber; current != null; current = current.Parent)
+            for (var current = throwingFiber; current is { IsMountRoot: false }; current = current.Parent)
             {
                 if (sb.Length > 0) sb.Append('\n');
                 sb.Append(StackLinePrefix).Append(Hooks.ComponentName(current));
@@ -205,8 +209,9 @@ namespace Velvet
             if (!fiber.CatchesErrors || fiber.Reconciler == null) return false;
             if (fiber.IsMountRoot && fiber.IsDisposed)
             {
-                // MountedTree.Dispose is unmounting the tree, and no catch follows to deliver a report.
-                ReportUncaughtError(fiber.Reconciler.Context, exception, new ErrorInfo(BuildComponentStack(throwingFiber)));
+                // MountedTree.Dispose is unmounting the tree, and no catch follows to deliver a report. It reports
+                // what was thrown once every cleanup of the unmount has run (ReportErrorsDuringDisposal).
+                fiber.Reconciler.Context.ErrorsDuringRootDisposal.Add((exception, InfoFor(fiber, throwingFiber)));
                 return true;
             }
             if (fiber.IsShowingFallback)
@@ -263,10 +268,7 @@ namespace Velvet
         // reports that one from the layout phase of the swap's commit and this one from a later commit.
         private static void TakeDuringTheSwap(ComponentFiber boundary, ComponentFiber? throwingFiber, Exception exception)
         {
-            var info = new ErrorInfo(BuildComponentStack(throwingFiber))
-            {
-                ErrorBoundary = boundary.IsMountRoot ? string.Empty : Hooks.ComponentName(boundary),
-            };
+            var info = InfoFor(boundary, throwingFiber);
             boundary.Reconciler!.Context.ErrorsDuringFallbackSwap.Add((boundary, exception, info));
         }
 
@@ -385,6 +387,16 @@ namespace Velvet
             {
                 Debug.LogException(handlerException);
             }
+        }
+
+        internal static void ReportErrorsDuringDisposal(ReconcilerContext ctx)
+        {
+            var thrown = ctx.ErrorsDuringRootDisposal;
+            for (var i = 0; i < thrown.Count; i++)
+            {
+                ReportUncaughtError(ctx, thrown[i].Error, thrown[i].Info);
+            }
+            thrown.Clear();
         }
 
         internal static void ReportUncaughtError(ReconcilerContext ctx, Exception exception, ErrorInfo info)
