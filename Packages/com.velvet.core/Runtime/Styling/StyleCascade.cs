@@ -27,6 +27,14 @@ namespace Velvet
         private static readonly PropertyInfo? s_duration = EngineMember.ComputedStyleTransitionDuration.ResolveProperty();
         private static readonly PropertyInfo? s_delay = EngineMember.ComputedStyleTransitionDelay.ResolveProperty();
         private static readonly PropertyInfo? s_curve = EngineMember.ComputedStyleTransitionTimingFunction.ResolveProperty();
+        // In LayoutIdLook's corner order.
+        private static readonly PropertyInfo?[] s_radii =
+        {
+            EngineMember.ComputedStyleBorderTopLeftRadius.ResolveProperty(),
+            EngineMember.ComputedStyleBorderTopRightRadius.ResolveProperty(),
+            EngineMember.ComputedStyleBorderBottomRightRadius.ResolveProperty(),
+            EngineMember.ComputedStyleBorderBottomLeftRadius.ResolveProperty(),
+        };
         private static readonly bool s_readsTransitions = Array.TrueForAll(
             new MemberInfo?[] { s_opacity, s_property, s_duration, s_delay, s_curve }, m => m != null);
 
@@ -115,6 +123,32 @@ namespace Velvet
             var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
             var hash = System.Linq.Expressions.Expression.Field(System.Linq.Expressions.Expression.Field(element, s_style), s_hash);
             return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, long>>(hash, element).Compile();
+        }
+#endif
+
+        // A corner's radius as the rules declare it, in LayoutIdLook's corner order; null where the cached style cannot
+        // be read. Read by an accessor compiled once, as RulesHash is, since a layoutId projection can read it on every pass
+        // (Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated).
+        public static Length? Radius(VisualElement element, int corner)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledRadii is { } compiled)
+            {
+                var read = compiled[corner](element);
+                return float.IsNaN(read.value) ? null : read;
+            }
+#endif
+            return s_radii[corner] is { } radius && Of(element) is { } style ? (Length)radius.GetValue(style) : null;
+        }
+
+#if !ENABLE_IL2CPP
+        private static readonly Func<VisualElement, Length>[]? s_compiledRadii = CompileRadii();
+
+        // Each corner's reader gives a NaN length where the element's style is not cached.
+        private static Func<VisualElement, Length>[]? CompileRadii()
+        {
+            var readers = Array.ConvertAll(s_radii, radius => radius == null ? null : Compile(radius, new Length(float.NaN)));
+            return Array.IndexOf(readers, null) >= 0 ? null : readers!;
         }
 #endif
 
