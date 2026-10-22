@@ -161,13 +161,23 @@ namespace Velvet
             return projection.RotateCarry.Step(declared.angle.ToDegrees(), Tag(declared), dtSec, element, "rotate", null);
         }
 
+        // Before the projection writes the slot, the element's own is what a class change the style pass has yet to take
+        // gives it rather than the rotate it is drawn at
+        // (Given_AnUnturnedHolderTakingTheLeadBackInTheRenderThatTurnsIt_When_ThatFrameIsDrawn_Then_ItIsMixedFromThePreviousHoldersRotate).
+        public static float MixTarget(VisualElement element, LayoutIdProjection projection, float dtSec) =>
+            !projection.WritesRotate && Unstyled(element) is { } unstyled ? unstyled : OwnRotate(element, projection, dtSec);
+
+        // Null where an inline rotate outranks the classes.
+        private static float? Unstyled(VisualElement element) =>
+            element.style.rotate.keyword == StyleKeyword.Null ? BundledClassTransform.DeclaredRotate(element)?.angle.ToDegrees() : null;
+
         // The rotate the element is given while the projection writes the slot, which the slot holds once it is handed back.
         public static Rotate DeclaredRotate(VisualElement element, LayoutIdProjection projection)
         {
             var inline = projection.OwnInlineRotate;
             if (inline.keyword == StyleKeyword.Undefined) return inline.value;
             if (inline.keyword != StyleKeyword.Null) return UnityEngine.UIElements.Rotate.None();
-            return StyleCascade.Rotation(element) ?? new Rotate(new Angle(projection.StartRotate));
+            return BundledClassTransform.DeclaredRotate(element) ?? StyleCascade.Rotation(element) ?? new Rotate(new Angle(projection.StartRotate));
         }
 
         // A rotate tagged as LayoutIdCarry.TargetTag reads it.
@@ -227,7 +237,8 @@ namespace Velvet
             if (!projection.WritesRotate)
             {
                 var own = OwnRotate(element, projection, 0f);
-                if (float.IsNaN(rotate) || Mathf.Approximately(rotate, own)) return;
+                // Left alone, the slot shows a class change once the style pass takes it.
+                if (float.IsNaN(rotate) || Mathf.Approximately(rotate, Unstyled(element) ?? own)) return;
                 // A running spin's frame in the slot is the spin's; what it turns from is the element's own.
                 projection.OwnInlineRotate = StyleAnimateDriver.TryReadSpinOwn(element, element.style.rotate, out var spinOwn, out _)
                     ? spinOwn

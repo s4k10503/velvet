@@ -74,6 +74,31 @@ namespace Velvet
         internal static readonly EngineMember ImportedStyleSheet =
             Field(UIElements, StyleSheetType + "+ImportStruct", "styleSheet", StyleSheetType);
 
+        // BundledClassTransform's scan of the rules a stylesheet declares transforms in.
+        internal static readonly EngineMember StyleSheetRules =
+            ReadProperty(UIElements, StyleSheetType, "rules", "UnityEngine.UIElements.StyleRule[]");
+
+        internal static readonly EngineMember StyleRuleProperties = ReadProperty(UIElements, "UnityEngine.UIElements.StyleRule",
+            "properties", "UnityEngine.UIElements.StyleProperty[]");
+
+        internal static readonly EngineMember StyleRuleComplexSelectors = ReadProperty(UIElements,
+            "UnityEngine.UIElements.StyleRule", "complexSelectors", "UnityEngine.UIElements.StyleComplexSelector[]");
+
+        internal static readonly EngineMember StylePropertyName =
+            ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "name", "System.String");
+
+        internal static readonly EngineMember StyleComplexSelectorSelectors = ReadProperty(UIElements,
+            "UnityEngine.UIElements.StyleComplexSelector", "selectors", "UnityEngine.UIElements.StyleSelector[]");
+
+        internal static readonly EngineMember StyleSelectorParts = ReadProperty(UIElements,
+            "UnityEngine.UIElements.StyleSelector", "parts", "UnityEngine.UIElements.StyleSelectorPart[]");
+
+        internal static readonly EngineMember StyleSelectorPartValue =
+            ReadProperty(UIElements, "UnityEngine.UIElements.StyleSelectorPart", "value", "System.String");
+
+        internal static readonly EngineMember StyleSelectorPartType = ReadProperty(UIElements,
+            "UnityEngine.UIElements.StyleSelectorPart", "type", "enum:UnityEngine.UIElements.StyleSelectorType");
+
         internal static readonly EngineMember ElementComputedStyle =
             Field(UIElements, VisualElementType, "m_Style", ComputedStyleType);
 

@@ -457,6 +457,11 @@ namespace Velvet
             return false;
         }
 
+        // Whether sheet is the bundled utility sheet, compared as Reaches compares them.
+        internal static bool IsUtilities(StyleSheet sheet) => TryResolve() is { } utilities && Signature(sheet) == Signature(utilities);
+
+        internal static List<StyleSheet> ImportsOf(StyleSheet sheet) => Imports(sheet);
+
         // The name and the imports' names rather than the reference, because an asset bundle carries its own copy
         // of the sheet, and of each partial, beside the ones the holder resolves.
         private static string Signature(StyleSheet sheet) => Facts(sheet).Signature;
