@@ -15,4 +15,5 @@
 - A `V.Motion` pose whose translate holds a value the browser rejects (`translate-x-[10]`) plans no translate
   channel, so the swap lands at once rather than springing one axis and then dropping the translation.
 - A `V.Motion` swap adding a `translate-<n>` beside a resting `translate-x-*` or `translate-y-*` leaves that axis
-  where the element draws it, instead of springing it to the both-axis value and snapping back.
+  where the element draws it, important or not, instead of springing it to the both-axis value and snapping back;
+  beside an important one the other axis now animates where it used to land.

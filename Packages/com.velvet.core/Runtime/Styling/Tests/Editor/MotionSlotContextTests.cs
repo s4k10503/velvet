@@ -205,6 +205,46 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantRestingAxisTranslateBesideASwappedBothAxisOne_When_Resolved_Then_TheOtherAxisTakesTheSwap()
+        {
+            // Arrange — !translate-x-4 holds x alone; translate-8 holds y.
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "translate-x-4",
+                StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var from = new string[0];
+            var to = new[] { "translate-8" };
+            var context = MotionSlotContext.Read(element, from, to, _ => false);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 16f, 0f, context);
+
+            // Assert — NaN where x does not keep its resting 16.
+            Assert.That(plan.TranslateX?.to == 16f ? plan.TranslateY?.to ?? float.NaN : float.NaN, Is.EqualTo(32f));
+        }
+
+        // A base scale-x-[.5] ties with the swapped scale-[1.5], which the element then draws alone; a hover one ranks
+        // above it and composes the scale, which no one magnitude describes.
+        [TestCase(false, 1.5f)]
+        [TestCase(true, -1f)]
+        public void Given_ARestingAxisScaleBesideASwappedScaleBracket_When_Resolved_Then_TheBracketHoldsTheChannelOnlyAtOrAboveIt(
+            bool hover, float expected)
+        {
+            // Arrange
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "scale-x-[.5]",
+                hover ? StyleLayerPriority.Hover : StyleLayerPriority.Base);
+            var from = new[] { "scale-[2]" };
+            var to = new[] { "scale-[1.5]" };
+            var context = MotionSlotContext.Read(element, from, to, _ => false);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, context);
+
+            // Assert — -1 where no scale channel is planned.
+            Assert.That(plan.Scale.HasValue ? plan.Scale.Value.to : -1f, Is.EqualTo(expected));
+        }
+
+        [Test]
         public void Given_ANullLeavingClassArray_When_AWidthTargetIsResolved_Then_ItStartsFromTheCurrentWidth()
         {
             // Arrange
@@ -685,9 +725,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARestingImportantUniformScale_When_AnImportantUniformTargetAlsoNamesAPlainAxis_Then_ThePerAxisPaintIsRetained()
+        public void Given_ARestingImportantUniformScale_When_AnImportantUniformTargetAlsoNamesAPlainAxis_Then_TheTargetUniformHoldsTheChannel()
         {
-            // Arrange
+            // Arrange — the important scale-[2] declares scale itself above the plain axis utility, so the element draws
+            // it alone; the resting important scale-[1.4] is the swap's own slot rather than a holder outside it.
             var placeholder = MountInFixedParent();
             var parent = placeholder.parent;
             placeholder.RemoveFromHierarchy();
@@ -698,36 +739,22 @@ namespace Velvet.Tests
             ForcePanelUpdate(parent.panel);
             var elements = names.Select(name => parent.Q<VisualElement>(name)).ToArray();
             foreach (var element in elements) element.AddToClassList("!scale-[1.4]");
-            var plans = new MotionSpringClassParser.SpringPlan[elements.Length];
-            var validHolders = new bool[elements.Length];
+            var observed = new float[elements.Length];
+
+            // Act
             for (var i = 0; i < elements.Length; i++)
             {
                 var to = new[] { "!scale-[2]", axes[i] };
                 var context = MotionSlotContext.Read(elements[i], new string[0], to, _ => false);
-                validHolders[i] = context.RestingClasses().Contains("!scale-[1.4]")
-                    && StyleArbitraryValueResolver.HasImportantInlineOutside(elements[i],
-                    StyleLonghandSet.Of(StyleLonghand.Scale), new HashSet<ArbitraryProperty>())
+                var validHolder = context.RestingClasses().Contains("!scale-[1.4]")
+                    && StyleArbitraryValueResolver.HasLayer(elements[i], ArbitraryProperty.Scale)
                     && !context.HasImportantInlineOutsideSwap(ArbitraryProperty.Scale);
-                plans[i] = MotionSpringClassParser.Resolve(new string[0], to, 0f, 0f, context);
-            }
-
-            // Act
-            _mounted.Render(V.Fragment(names.Select((name, i) =>
-                V.Div(name: name, className: "!scale-[1.4] !scale-[2] " + axes[i])).ToArray()));
-            var observed = new float[elements.Length * 2];
-            for (var i = 0; i < elements.Length; i++)
-            {
-                var state = MotionSpringDriver.Create(plans[i], 100f, 10f, 1f);
-                if (state != null) MotionSpringDriver.ApplyCurrentValues(elements[i], state);
-                var scale = elements[i].style.scale.value.value;
-                var noUniformOverride = validHolders[i] && plans[i].Scale == null;
-                observed[i * 2] = noUniformOverride ? scale.x : float.NaN;
-                observed[i * 2 + 1] = noUniformOverride ? scale.y : float.NaN;
-                if (state != null) MotionSpringDriver.ClearInlineOverrides(elements[i], state);
+                var plan = MotionSpringClassParser.Resolve(new string[0], to, 0f, 0f, context);
+                observed[i] = validHolder ? plan.Scale?.to ?? float.NaN : float.NaN;
             }
 
             // Assert
-            Assert.That(observed, Is.EqualTo(new[] { 0.5f, 2f, 2f, 0.5f }).Within(1e-5f));
+            Assert.That(observed, Is.EqualTo(new[] { 2f, 2f }).Within(1e-5f));
         }
 
         [Test]

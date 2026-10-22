@@ -586,6 +586,12 @@ namespace Velvet
                 {
                     claims[i] = new SlotClaim { Claimed = true, Precedence = RestingInlineRank };
                 }
+                if (claims[i].Precedence < RestingAxisScaleRank
+                    && !IsSubset(StyleArbitraryLonghands.Of(s_slots[i]), importantClasses)
+                    && context.HoldsRestingAxisScaleAbove(s_slots[i]))
+                {
+                    claims[i] = new SlotClaim { Claimed = true, Precedence = RestingAxisScaleRank };
+                }
                 if (claims[i].Precedence < RestingAxisTranslateRank
                     && !IsSubset(StyleArbitraryLonghands.Of(s_slots[i]), importantClasses)
                     && context.HoldsRestingAxisTranslate(s_slots[i]))
@@ -600,6 +606,10 @@ namespace Velvet
         // A resting translate-x-* or translate-y-* holds its axis over a both-axis translate the swap writes at the
         // same importance, as the resolver's TryWinningAxis gives the axis a tie; it still yields to an important one.
         private const long RestingAxisTranslateRank = InlineRank + (1L << 30);
+
+        // A resting scale-x-* or scale-y-* above the base holds the scale slot over a plain scale-[…] the swap adds, as
+        // the resolver draws the bracket alone only at or above every axis layer; an important bracket still wins.
+        private const long RestingAxisScaleRank = AxisScaleRank + (1L << 30);
 
         // The five axes lead s_slots.
         private const int AxisSlotCount = 5;

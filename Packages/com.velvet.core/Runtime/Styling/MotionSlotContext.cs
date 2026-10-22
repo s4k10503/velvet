@@ -115,8 +115,22 @@ namespace Velvet
         }
 
         public bool HasImportantInlineOutsideSwap(ArbitraryProperty slot)
-            => StyleArbitraryValueResolver.HasImportantInlineOutside(_element,
-                StyleArbitraryLonghands.Of(slot), _importantInlineBySwap);
+            => StyleArbitraryValueResolver.HasImportantInlineOutside(_element, slot, _importantInlineBySwap);
+
+        // A scale-x-* or scale-y-* the swap does not write, at a rank above the base a swapped scale-[…] lands at,
+        // composes the scale the element draws over that bracket, which no one scale magnitude describes.
+        public bool HoldsRestingAxisScaleAbove(ArbitraryProperty slot)
+        {
+            if (slot != ArbitraryProperty.Scale || _drivenByRunningPlay(slot))
+            {
+                return false;
+            }
+            return HoldsRestingAxisAbove(ArbitraryProperty.ScaleX) || HoldsRestingAxisAbove(ArbitraryProperty.ScaleY);
+        }
+
+        private bool HoldsRestingAxisAbove(ArbitraryProperty axis)
+            => !_inlineBySwap.Contains(axis)
+                && StyleArbitraryValueResolver.TopRankOf(Owner(ArbitraryProperty.Scale), axis) > StyleLayerPriority.Base;
 
         // Unlike the running-play predicate, a held play does not count: it rests at its start and the next play
         // takes that from StartFromHeld, in the held play's own unit.

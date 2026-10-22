@@ -1591,16 +1591,17 @@ namespace Velvet
         internal static StyleClassProjection.Model? TryGetProjection(VisualElement element)
             => element != null && s_layers.TryGetValue(element, out var map) ? map.Projection : null;
 
-        internal static bool HasImportantInlineOutside(VisualElement element, StyleLonghandSet written,
+        internal static bool HasImportantInlineOutside(VisualElement element, ArbitraryProperty slot,
             HashSet<ArbitraryProperty> swapped)
         {
             if (!s_layers.TryGetValue(element, out var map))
             {
                 return false;
             }
+            var written = StyleArbitraryLonghands.Of(slot);
             foreach (var pair in map)
             {
-                if (!StyleArbitraryLonghands.Of(pair.Key).Overlaps(written))
+                if (!HoldsMotionSlot(pair.Key, slot, written))
                 {
                     continue;
                 }
@@ -1616,6 +1617,31 @@ namespace Velvet
                 }
             }
             return false;
+        }
+
+        // A translate axis is held by its own layers and the both-axis ones, which share its longhand with the other
+        // axis's layers; every other slot by the layers writing its longhands.
+        private static bool HoldsMotionSlot(ArbitraryProperty property, ArbitraryProperty slot, StyleLonghandSet written)
+        {
+            if (slot != ArbitraryProperty.TranslateX && slot != ArbitraryProperty.TranslateY)
+            {
+                return StyleArbitraryLonghands.Of(property).Overlaps(written);
+            }
+            return property == slot || property == ArbitraryProperty.Translate;
+        }
+
+        // The rank of property's highest layer on element without its rule's place, or the lowest rank for none.
+        internal static long TopRankOf(VisualElement element, ArbitraryProperty property)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return long.MinValue;
+            }
+            if (!map.TryGetValue(property, out var layers))
+            {
+                return long.MinValue;
+            }
+            return layers.Count > 0 ? StyleLayerPriority.RankOf(layers.Keys[layers.Count - 1]) : long.MinValue;
         }
 
         // Reports every registered layer as (property, priority) so the projection can rank inline layers
