@@ -118,7 +118,11 @@ namespace Velvet
             if (oldFibers.Count == 0) return;
             foreach (var fiber in oldFibers)
             {
-                if (!newFibers.Contains(fiber)) fiber.IsBeingDeleted = true;
+                if (!newFibers.Contains(fiber)) fiber.MarkBeingDeleted();
+            }
+            foreach (var fiber in oldFibers)
+            {
+                if (!newFibers.Contains(fiber)) fiber.RecordTheNearestAncestorOutsideTheDeletion();
             }
             foreach (var fiber in oldFibers)
             {
@@ -1234,7 +1238,7 @@ namespace Velvet
                 if (!old.Contains(fiber)) (mounted ??= new List<ComponentFiber>()).Add(fiber);
             }
             if (mounted == null) return;
-            foreach (var fiber in mounted) fiber.IsBeingDeleted = true;
+            ComponentFiber.BeginDeletion(mounted);
             foreach (var fiber in mounted) _ctx.ComponentRegistry.DisposeAndRemove(fiber);
         }
 
@@ -1247,10 +1251,7 @@ namespace Velvet
             }
             if (added == null) return;
             var old = new HashSet<ComponentFiber>(walk.OldFibers);
-            foreach (var fiber in added)
-            {
-                if (!old.Contains(fiber)) fiber.IsBeingDeleted = true;
-            }
+            ComponentFiber.BeginDeletion(added.FindAll(fiber => !old.Contains(fiber)));
             foreach (var fiber in added)
             {
                 walk.NewFibers.Remove(fiber);
