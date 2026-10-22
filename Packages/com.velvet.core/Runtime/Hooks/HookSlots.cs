@@ -743,6 +743,7 @@ namespace Velvet
         public TSel RenderedValue = default!;
         public IDisposable? Subscription;
         public HookEffectSlot SubscribeEffect = null!;
+        public HookEffectSlot? CatchUpEffect;
 
         public void Render(Func<TStore, TSel> selector, IEqualityComparer<TSel> comparer, TSel value)
         {

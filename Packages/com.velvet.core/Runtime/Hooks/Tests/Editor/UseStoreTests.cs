@@ -429,6 +429,29 @@ namespace Velvet.Tests
                 "A reader that read a pin older than the store renders again and catches up with it");
         }
 
+        // GREEN_ON_BASE(characterization): the base's render asked for the catch-up render, which its drain then ran.
+        // The catch-up is now the commit's passive check, which forces a sync-lane render the same drain runs.
+        [Test]
+        public void Given_AReaderTheMidPassMutationLeavesUnnotified_When_ItRendersThePinBehindTheStore_Then_TheDrainCatchesItUp()
+        {
+            // Arrange — the reader committed 1 and is queued by the change to 0; the mutator, queued ahead of it,
+            // moves the store back to 1, which leaves the reader's committed selection equal and notifies it of nothing
+            using var store = new TestCounterStore(initial: 1);
+            s_store = store;
+            using var mounted = MountMidPassMutation();
+            mounted.FlushEffectsForTest();
+            s_midPassMutateOnRender = true;
+            s_midPassFirstFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_midPassMutatorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            store.SetValue(0);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("mid-pass-reader").text, Is.EqualTo("1"));
+        }
+
         [Test]
         public void Given_NullSnapshot_When_StoreMutatesPartwayThroughADrainPass_Then_ALaterReaderObservesThePinnedNull()
         {

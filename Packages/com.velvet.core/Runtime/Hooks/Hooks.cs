@@ -170,7 +170,7 @@ namespace Velvet
 
                 fiber.StoreSlots.Add(slot);
                 QueueStoreSubscription(fiber, slot);
-                CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, selected);
+                QueueCatchUpIfPinnedBehind(fiber, slot, snapshot);
                 return selected;
             }
 
@@ -190,7 +190,7 @@ namespace Velvet
             var value = selector(snapshot);
             typed.Render(selector, cmp, value);
             QueueStoreSubscription(fiber, typed);
-            CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, value);
+            QueueCatchUpIfPinnedBehind(fiber, typed, snapshot);
             return value;
         }
 
@@ -239,15 +239,26 @@ namespace Velvet
         }
 
         // A pin older than the store leaves a reader whose selection the mutation changed behind it with no
-        // notification still to come: the mutation notified before this render overwrote LastValue, or before
-        // this reader subscribed. The render this asks for reads the store in a later pass, which pins afresh.
-        private static void CatchUpIfPinnedBehind<TStore, TSel>(
-            ComponentFiber fiber, Store<TStore> store, TStore snapshot, Func<TStore, TSel> selector,
-            IEqualityComparer<TSel> comparer, TSel selected)
+        // notification still to come: the mutation notified before this render read the pin, or before this reader
+        // subscribed. As UseSyncExternalStore's check does, the passive effects of the commit compare the committed
+        // selection with the live store and force a sync-lane re-render, which reads the store in a later pass that
+        // pins afresh; a render that never commits queues nothing.
+        private static void QueueCatchUpIfPinnedBehind<TStore, TSel>(
+            ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot, TStore snapshot)
         {
-            var live = store.Current;
-            if (ObjectIs.AreEqual(snapshot, live) || comparer.Equals(selected, selector(live))) return;
-            FiberWorkLoop.ScheduleRerender(fiber, FiberUpdatePriority.Normal);
+            var live = slot.Store.Current;
+            if (ObjectIs.AreEqual(snapshot, live) || IsStrictDiagnosticPass(fiber)) return;
+            if (slot.RenderedComparer.Equals(slot.RenderedValue, slot.RenderedSelector(live))) return;
+            slot.CatchUpEffect ??= new HookEffectSlot
+            {
+                EffectFactory = () =>
+                {
+                    if (SelectionChanged(fiber, slot, slot.Store.Current)) FiberWorkLoop.RequestExternalStoreRender(fiber);
+                    return null;
+                },
+            };
+            var pending = fiber.PendingEffects ??= new List<HookEffectSlot>();
+            if (!pending.Contains(slot.CatchUpEffect)) pending.Add(slot.CatchUpEffect);
         }
 
         // Returns the store snapshot pinned for the current batch drain wave (see

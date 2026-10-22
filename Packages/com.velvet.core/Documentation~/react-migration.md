@@ -612,8 +612,9 @@ For a Velvet `Store<T>`, `Hooks.UseStore` stays the shorter form, with a selecto
 subscribes in the commit's passive effects in the same way, so a change made before they run re-renders
 the component once they do, and a change it is notified of re-renders it as `UseSyncExternalStore`'s does,
 as Zustand's `useStore` builds on `useSyncExternalStore`: on the Urgent lane, inside `startTransition` too,
-flushed from the main thread's posted work. A `startTransition` callback that only writes a store queues
-no transition work, so its `isPending` settles as the callback returns.
+flushed from the main thread's posted work. A reader whose render read a pin the store has moved past asks for
+that re-render in its passive effects, as `UseSyncExternalStore` does. A `startTransition` callback that only
+writes a store queues no transition work, so its `isPending` settles as the callback returns.
 
 ### 1-4. What a dependency list means
 

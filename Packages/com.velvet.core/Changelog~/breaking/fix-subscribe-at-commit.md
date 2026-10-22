@@ -19,6 +19,8 @@
   `Hooks.UseSyncExternalStore` notification does and as Zustand's `useStore` does on React's
   `useSyncExternalStore`, including inside `startTransition`, and is flushed from the main thread's posted work. It
   used to take the caller's lane, so a store write inside `startTransition` was deferred to the Transition lane and
-  held the transition's `isPending`; such a callback now queues no transition work and settles as it returns.
+  held the transition's `isPending`; such a callback now queues no transition work and settles as it returns. A
+  reader whose render read a drain pass's pin the store had moved past asks for its catch-up render the same way,
+  from the commit's passive effects, where it used to ask for a Normal-lane render from the render itself.
 - Under StrictMode in the Editor, `subscribe` is called, unsubscribed and called again when a component mounts, as
   React double-invokes a mount effect.
