@@ -407,6 +407,112 @@ namespace MyApp
         }
 
         [Fact]
+        public void Given_AListFieldAddedToAndMadeAnArrayElsewhere_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange
+            const string rows = "s_rows.Add(V.Component(Row)); return null;";
+            const string helpers = "static readonly List<VNode> s_rows = new List<VNode>(); static VNode[] Snapshot() => s_rows.ToArray();";
+
+            // Act
+            var messages = Vel600Messages(rows, helpers);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
+        public void Given_AListFieldAddedToAndNeverMadeAnArray_When_Analyzed_Then_NothingIsReported()
+        {
+            // Arrange
+            const string rows = "s_rows.Add(V.Component(Row)); return s_rows.Count;";
+            const string helpers = "static readonly List<VNode> s_rows = new List<VNode>();";
+
+            // Act
+            var messages = Vel600Messages(rows, helpers);
+
+            // Assert
+            Assert.Equal(string.Empty, messages);
+        }
+
+        [Fact]
+        public void Given_AnArrayFieldFilledAndReturnedThroughAProperty_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange
+            const string rows = "s_rows[0] = V.Component(Row); return null;";
+            const string helpers = "static readonly VNode[] s_rows = new VNode[1]; static VNode[] Current => s_rows;";
+
+            // Act
+            var messages = Vel600Messages(rows, helpers);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
+        public void Given_AnArrayFieldFilledAndHandedToAFactory_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange
+            const string rows = "s_rows[0] = V.Component(Row); return V.Fragment(s_rows);";
+            const string helpers = "static readonly VNode[] s_rows = new VNode[1];";
+
+            // Act
+            var messages = Vel600Messages(rows, helpers);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
+        public void Given_AnArrayFieldFilledAndNeverHandedOn_When_Analyzed_Then_NothingIsReported()
+        {
+            // Arrange
+            const string rows = "s_rows[0] = V.Component(Row); return s_rows.Length;";
+            const string helpers = "static readonly VNode[] s_rows = new VNode[1];";
+
+            // Act
+            var messages = Vel600Messages(rows, helpers);
+
+            // Assert
+            Assert.Equal(string.Empty, messages);
+        }
+
+        [Fact]
+        public void Given_AListGivenAnUnkeyedComponentByInsert_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange
+            const string rows = "var rows = new List<VNode>(); rows.Insert(0, V.Component(Row)); return rows.ToArray();";
+            // Act
+            var messages = Vel600Messages(rows);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
+        public void Given_AListGivenAnUnkeyedComponentByAddRange_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange
+            const string rows = "var rows = new List<VNode>(); rows.AddRange(new[] { V.Component(Row) }); return rows.ToArray();";
+            // Act
+            var messages = Vel600Messages(rows);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
+        public void Given_AListGivenAnUnkeyedComponentByInsertRange_When_Analyzed_Then_Vel600NamesTheComponent()
+        {
+            // Arrange
+            const string rows = "var rows = new List<VNode>(); rows.InsertRange(0, new[] { V.Component(Row) }); return rows.ToArray();";
+            // Act
+            var messages = Vel600Messages(rows);
+
+            // Assert
+            Assert.Equal(UnkeyedComponentMessage, messages);
+        }
+
+        [Fact]
         public void Given_ASelectThatIsNotLinq_When_Analyzed_Then_NothingIsReported()
         {
             // Arrange

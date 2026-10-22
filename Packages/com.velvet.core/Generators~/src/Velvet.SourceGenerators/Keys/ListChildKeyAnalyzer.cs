@@ -35,6 +35,7 @@ namespace Velvet.SourceGenerators.Keys
                 start.RegisterOperationAction(ctx => sinks.AddInvocation((IInvocationOperation)ctx.Operation), OperationKind.Invocation);
                 start.RegisterOperationAction(ctx => sinks.AddItem(((IReturnOperation)ctx.Operation).ReturnedValue), OperationKind.YieldReturn);
                 start.RegisterOperationAction(ctx => sinks.AddAssignment((ISimpleAssignmentOperation)ctx.Operation), OperationKind.SimpleAssignment);
+                start.RegisterOperationAction(ctx => sinks.AddReturn((IReturnOperation)ctx.Operation), OperationKind.Return);
                 start.RegisterCompilationEndAction(end => Report(end, bodies, sinks));
             });
         }
@@ -57,24 +58,48 @@ namespace Velvet.SourceGenerators.Keys
 
     /// <summary>
     /// The places a list of children is built: a <c>Select</c> selector's return, a <c>yield return</c>, a value
-    /// stored into an element of an array that is handed on, and a <c>List&lt;T&gt;.Add</c> whose list is made an array.
+    /// stored into an element of an array that is handed on, and an item a <c>List&lt;T&gt;</c> adder puts into a list
+    /// that is made an array; a list may be held in a local, a parameter or a field, and an array in a local or a field.
     /// </summary>
     internal sealed class ListSinks
     {
         private const string ListFullName = "System.Collections.Generic.List<T>";
 
+        // The List<T> methods that put an item, or a range of them, into the list.
+        private static readonly ImmutableHashSet<string> Adders = ImmutableHashSet.Create(
+            nameof(List<object>.Add), nameof(List<object>.AddRange),
+            nameof(List<object>.Insert), nameof(List<object>.InsertRange));
+
         private readonly ConcurrentBag<IInvocationOperation> _selects = new();
         private readonly ConcurrentBag<IInvocationOperation> _adds = new();
+        private readonly ConcurrentBag<ISimpleAssignmentOperation> _stores = new();
         private readonly ConcurrentBag<IOperation> _items = new();
 
         // Calls that pass a List<T>, read when an Add's list is a parameter of the method it sits in.
         private readonly ConcurrentBag<IInvocationOperation> _listCalls = new();
 
+        // A field is read anywhere in the compilation, so whether it is made an array, handed to a V factory or
+        // returned (by a property's getter as well) is known only at the end.
+        private readonly ConcurrentDictionary<ISymbol, byte> _fieldsMadeArrays = new(SymbolEqualityComparer.Default);
+        private readonly ConcurrentDictionary<ISymbol, byte> _fieldsHandedOn = new(SymbolEqualityComparer.Default);
+
         public void AddInvocation(IInvocationOperation invocation)
         {
             if (IsLinqSelect(invocation.TargetMethod)) _selects.Add(invocation);
-            else if (IsListAdd(invocation)) _adds.Add(invocation);
+            else if (IsListAdder(invocation)) _adds.Add(invocation);
             if (invocation.TargetMethod.Parameters.Any(parameter => IsList(parameter.Type))) _listCalls.Add(invocation);
+            if (IsToArray(invocation) && FieldRead(ToArraySource(invocation)) is { } listField)
+                _fieldsMadeArrays.TryAdd(listField, 0);
+            if (!IsVFactory(invocation)) return;
+            foreach (var argument in invocation.Arguments)
+            {
+                if (FieldRead(argument.Value) is { } arrayField) _fieldsHandedOn.TryAdd(arrayField, 0);
+            }
+        }
+
+        public void AddReturn(IReturnOperation operation)
+        {
+            if (FieldRead(operation.ReturnedValue) is { } field) _fieldsHandedOn.TryAdd(field, 0);
         }
 
         public void AddItem(IOperation? value)
@@ -82,30 +107,88 @@ namespace Velvet.SourceGenerators.Keys
             if (value is not null) _items.Add(value);
         }
 
-        // An array is children once it is handed to a V factory or returned, so one filled for some other use, such as
-        // a pool's, is not a sink.
         public void AddAssignment(ISimpleAssignmentOperation assignment)
         {
-            if (assignment.Target is IArrayElementReferenceOperation { ArrayReference: ILocalReferenceOperation array }
-                && IsHandedOn(array))
-                _items.Add(assignment.Value);
+            if (assignment.Target is IArrayElementReferenceOperation) _stores.Add(assignment);
         }
 
-        private static bool IsHandedOn(ILocalReferenceOperation array)
+        public void Trace(NodeTrace trace)
         {
-            foreach (var operation in NodeTrace.Root(array).DescendantsAndSelf())
+            foreach (var select in _selects) trace.Selector(select);
+            foreach (var item in _items) trace.Item(item, null);
+            foreach (var store in _stores)
+            {
+                if (IsHandedOn(((IArrayElementReferenceOperation)store.Target).ArrayReference)) trace.Item(store.Value, null);
+            }
+            var callers = _listCalls.ToLookup(
+                call => call.TargetMethod.OriginalDefinition, SymbolEqualityComparer.Default);
+            foreach (var add in _adds)
+            {
+                foreach (var via in ReachingCalls(add.Instance, callers, new HashSet<ISymbol>(SymbolEqualityComparer.Default)))
+                {
+                    foreach (var argument in add.Arguments)
+                    {
+                        foreach (var item in ItemsOf(argument.Value)) trace.Item(item, via);
+                    }
+                }
+            }
+        }
+
+        // A range written as an array initializer puts each of its elements into the list.
+        private static IEnumerable<IOperation> ItemsOf(IOperation value)
+        {
+            var unwrapped = value;
+            while (unwrapped is IConversionOperation conversion) unwrapped = conversion.Operand;
+            return unwrapped is IArrayCreationOperation { Initializer: { } initializer }
+                ? initializer.ElementValues
+                : new[] { value };
+        }
+
+        private static bool IsLinqSelect(IMethodSymbol method) =>
+            method.Name == nameof(Enumerable.Select)
+            && method.ContainingType.ToDisplayString() == typeof(Enumerable).FullName;
+
+        private static bool IsVFactory(IInvocationOperation invocation) =>
+            invocation.TargetMethod.ContainingType.ToDisplayString() == VelvetWellKnownNames.VTypeFullName;
+
+        private static bool IsToArray(IInvocationOperation invocation) =>
+            invocation.TargetMethod.Name == nameof(Enumerable.ToArray);
+
+        private static IOperation? ToArraySource(IInvocationOperation call) =>
+            call.Instance ?? (call.Arguments.Length > 0 ? call.Arguments[0].Value : null);
+
+        // A collection initializer's Add is implicit: like an array initializer, it is children written out.
+        private static bool IsListAdder(IInvocationOperation invocation) =>
+            !invocation.IsImplicit
+            && Adders.Contains(invocation.TargetMethod.Name)
+            && IsList(invocation.TargetMethod.ContainingType);
+
+        private static bool IsList(ITypeSymbol type) =>
+            type.OriginalDefinition.ToDisplayString() == ListFullName;
+
+        // An array is children once it is handed to a V factory or returned, so one filled for some other use, such as
+        // a pool's, is not a sink.
+        private bool IsHandedOn(IOperation array)
+        {
+            if (FieldRead(array) is { } field) return _fieldsHandedOn.ContainsKey(field);
+            if (array is not ILocalReferenceOperation local) return false;
+            foreach (var operation in NodeTrace.Root(local).DescendantsAndSelf())
             {
                 var handed = operation switch
                 {
                     IReturnOperation { ReturnedValue: { } value } => value,
-                    IArgumentOperation { Parent: IInvocationOperation call } argument
-                        when call.TargetMethod.ContainingType.ToDisplayString() == VelvetWellKnownNames.VTypeFullName
-                        => argument.Value,
+                    IArgumentOperation { Parent: IInvocationOperation call } argument when IsVFactory(call) => argument.Value,
                     _ => null,
                 };
-                if (Reads(handed, array.Local)) return true;
+                if (Reads(handed, local.Local)) return true;
             }
             return false;
+        }
+
+        private static IFieldSymbol? FieldRead(IOperation? value)
+        {
+            while (value is IConversionOperation conversion) value = conversion.Operand;
+            return (value as IFieldReferenceOperation)?.Field.OriginalDefinition;
         }
 
         private static bool Reads(IOperation? value, ILocalSymbol local)
@@ -114,41 +197,18 @@ namespace Velvet.SourceGenerators.Keys
             return value is ILocalReferenceOperation read && SymbolEqualityComparer.Default.Equals(read.Local, local);
         }
 
-        public void Trace(NodeTrace trace)
-        {
-            foreach (var select in _selects) trace.Selector(select);
-            foreach (var item in _items) trace.Item(item, null);
-            var callers = _listCalls.ToLookup(
-                call => call.TargetMethod.OriginalDefinition, SymbolEqualityComparer.Default);
-            foreach (var add in _adds)
-            {
-                foreach (var via in ReachingCalls(add.Instance, callers, new HashSet<ISymbol>(SymbolEqualityComparer.Default)))
-                {
-                    foreach (var argument in add.Arguments) trace.Item(argument.Value, via);
-                }
-            }
-        }
-
-        private static bool IsLinqSelect(IMethodSymbol method) =>
-            method.Name == nameof(Enumerable.Select)
-            && method.ContainingType.ToDisplayString() == typeof(Enumerable).FullName;
-
-        // A collection initializer's Add is implicit: like an array initializer, it is children written out.
-        private static bool IsListAdd(IInvocationOperation invocation) =>
-            !invocation.IsImplicit
-            && invocation.TargetMethod.Name == nameof(List<object>.Add)
-            && IsList(invocation.TargetMethod.ContainingType);
-
-        private static bool IsList(ITypeSymbol type) =>
-            type.OriginalDefinition.ToDisplayString() == ListFullName;
-
         // A list is children only once it is made an array, so one kept to hold nodes for some other use is not a
-        // sink. A list that is a parameter is followed to each call passing it; the Add's own arguments are then read
-        // through that call, whose arguments a parameter among them stands for.
-        private static IEnumerable<IInvocationOperation?> ReachingCalls(
+        // sink. A list that is a parameter is followed to each call passing it; the adder's own arguments are then
+        // read through that call, whose arguments a parameter among them stands for.
+        private IEnumerable<IInvocationOperation?> ReachingCalls(
             IOperation? list, ILookup<ISymbol?, IInvocationOperation> callers, HashSet<ISymbol> path)
         {
             while (list is IConversionOperation conversion) list = conversion.Operand;
+            if (FieldRead(list) is { } field)
+            {
+                if (_fieldsMadeArrays.ContainsKey(field)) yield return null;
+                yield break;
+            }
             if (list is ILocalReferenceOperation local)
             {
                 if (IsMadeAnArray(local)) yield return null;
@@ -175,8 +235,7 @@ namespace Velvet.SourceGenerators.Keys
         {
             foreach (var operation in NodeTrace.Root(list).DescendantsAndSelf())
             {
-                if (operation is not IInvocationOperation { TargetMethod.Name: nameof(Enumerable.ToArray) } call) continue;
-                if (Reads(call.Instance ?? (call.Arguments.Length > 0 ? call.Arguments[0].Value : null), list.Local))
+                if (operation is IInvocationOperation call && IsToArray(call) && Reads(ToArraySource(call), list.Local))
                     return true;
             }
             return false;
