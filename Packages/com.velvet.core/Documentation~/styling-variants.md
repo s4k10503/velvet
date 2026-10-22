@@ -377,7 +377,7 @@ without `overflow-hidden` appearing anywhere in its className.
 
 | Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
-| `shadow-*` | an outer layer is gone but for the anti-aliased edge of its cut-out, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) survives. The paint is not removed — it is cut at the padding box like every other — but an outer layer is cut out where the border box lies ([styling-shadows.md](styling-shadows.md)), so the clip leaves at most that edge of it, while an inset layer is drawn inside the padding box |
+| `shadow-*` | unaffected: the outer layers are painted on a sibling over the element, outside its clip, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) is drawn inside the padding box |
 | `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders. Children are clipped to the upright box, not to the sheared face CSS clips them to |
 | `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
@@ -387,8 +387,8 @@ without `overflow-hidden` appearing anywhere in its className.
 suppresses the native background and border and repaints both in its own generated content, which the
 padding-box clip would cut at the border. While the element clips, a `skew-*` paints its border, and the
 background beneath it, on a sibling placed over the element and outside its clip, and a `shadow-*` leaves a
-solid border and its background to UI Toolkit and paints a dashed or dotted one the same way, so the border is
-drawn whole, as CSS draws it:
+solid border and its background to UI Toolkit and paints a dashed or dotted one, and its outer layers, the same
+way, so the border and the shadow are drawn whole, as CSS draws them:
 
 ```csharp
 // Border and the background beneath it intact.
@@ -396,7 +396,7 @@ V.Div(className: "-skew-x-6 overflow-hidden bg-white border-2 border-black round
 V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-dashed border-black rounded-lg");
 ```
 
-The nesting below keeps a shadow's outer layers and a skew's overhang, which the clip still cuts.
+The nesting below keeps a skew's overhang, which the clip still cuts.
 
 Put the clip on a child instead of on the painted element:
 

@@ -55,8 +55,8 @@
   dotted, as Chromium does; both used to be drawn solid.
 
 - A `shadow-*` or `skew-*` element whose overflow is hidden keeps its border, dashed or dotted included, and the
-  background beneath it, where it used to lose its border and a border-wide ring of its background; its outer
-  shadow layers and a skew's overhang are still cut at its padding box.
+  background beneath it, and a `shadow-*` one its outer shadow layers, where they used to lose their border, a
+  border-wide ring of their background and the shadow; a skew's overhang is still cut at the padding box.
 
 - While a `layoutId` move draws a `shadow-*`, `skew-*` or `border-dashed` `V.Motion` scaled differently on each
   axis, the face, border, dashed outline and skewed gradient those layers paint take the corner radii the move

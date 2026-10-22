@@ -629,11 +629,12 @@ namespace Velvet.Tests
 
         [TestCase(TransitionType.Spring)]
         [TestCase(TransitionType.Bezier)]
-        public void Given_ADrivenSwapRunningUnderAHoverOpacityLayer_When_AZeroDurationPoseNamingOpacityFollows_Then_TheHoverOpacityShows(
+        public void Given_ADrivenSwapRunningUnderAHoverOpacityLayer_When_AZeroDurationPoseNamingOpacityFollows_Then_ThePlaysOpacityShowsOverTheHoverLayer(
             TransitionType type)
         {
             // Arrange — the landing pose repeats the play's opacity class, so the class sync leaves opacity alone, and
-            // leaves translate to the play, so it does not settle on the next tick.
+            // leaves translate to the play, so it does not settle on the next tick. While the play runs its class
+            // outranks a hover: rule, as Framer Motion's inline animated value outranks a :hover one.
             var (box, _, mounted) = PlayThenLand(new Poses(Driver(type), "opacity-0 translate-x-[0px]",
                 "opacity-100 translate-x-[40px]", "opacity-100 tag-c"),
                 Opacity,
@@ -644,8 +645,7 @@ namespace Velvet.Tests
             Tick();
 
             // Assert
-            var inline = box.style.opacity.keyword == StyleKeyword.Undefined ? box.style.opacity.value : float.NaN;
-            Assert.That(inline, Is.EqualTo(0.3f).Within(1e-3f));
+            Assert.That(Opacity(box), Is.EqualTo(1f).Within(1e-3f));
         }
 
         [TestCase(TransitionType.Spring)]

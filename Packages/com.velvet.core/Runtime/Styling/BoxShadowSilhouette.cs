@@ -353,37 +353,34 @@ namespace Velvet
                 return;
             }
 
-            var box = BoxOf(ve, binding, w, h);
-            var unscale = Vector2.one;
-            var projection = binding.CasterSkewed ? null : ProjectedBox(ve, w, h);
-            if (projection is { } projected)
-            {
-                box = projected.Box;
-                unscale = new Vector2(1f / projected.Scale.x, 1f / projected.Scale.y);
-            }
-            DrawLayers(mgc, binding, box, inset: false, unscale);
+            var (box, unscale) = LayerBox(ve, binding, w, h);
 
             // A skewed caster's face is owned (suppressed + repainted, sheared) by its SkewSilhouette, which
             // paints just after this callback. Painting an upright fill here would double the face and undo the
             // shear, so only paint the outer layers.
             if (binding.CasterSkewed)
             {
+                DrawLayers(mgc, binding, box, inset: false, unscale);
                 return;
             }
 
-            // An element that clips its content cuts this paint at its padding box, which its border lies outside
-            // (styling-variants.md's hidden-overflow table). Such an element keeps its native background and solid
-            // border, and its layers are painted over them; a dashed or dotted border, which the native chrome
-            // cannot draw, is painted with the background beneath it on a sibling over the element
-            // (FaceBorderOverlay). Who owns the face is settled outside the paint, as settling it writes the
-            // element's inline style and the hierarchy.
+            // An element that clips its content cuts this paint at its padding box (styling-variants.md's
+            // hidden-overflow table), which its border and its outer layers lie outside, and CSS clips neither. Such
+            // an element's outer layers are painted on a sibling over it (FaceBorderOverlay), where they never
+            // overlap the element's own box, being cut out there; it keeps its native background and solid border,
+            // and a dashed or dotted border, which the native chrome cannot draw, is painted with the background
+            // beneath it on that sibling too. Who owns the face is settled outside the paint, as settling it writes
+            // the element's inline style and the hierarchy.
             var clips = StyleCascade.ClipsOverflow(ve);
             var native = clips && binding.BorderStyle == BorderLineStyle.Solid;
-            if ((native == binding.Face.SuppressionApplied || (clips && !native) != FaceBorderOverlay.Has(ve))
-                && !binding.FacePending)
+            if ((native == binding.Face.SuppressionApplied || clips != FaceBorderOverlay.Has(ve)) && !binding.FacePending)
             {
                 binding.FacePending = true;
                 ve.schedule.Execute(() => SettleFace(ve, binding));
+            }
+            if (!clips)
+            {
+                DrawLayers(mgc, binding, box, inset: false, unscale);
             }
             if (native && !binding.Face.SuppressionApplied)
             {
@@ -396,6 +393,17 @@ namespace Velvet
             {
                 RepaintUprightBorder(mgc, ve, binding, w, h);
             }
+        }
+
+        // The box the layers are baked against and the scale that draws it back onto the element's own
+        // (ProjectedBox).
+        private static (ShadowBox Box, Vector2 Unscale) LayerBox(VisualElement ve, BoxShadowBinding binding, float w, float h)
+        {
+            var box = BoxOf(ve, binding, w, h);
+            var projection = binding.CasterSkewed ? null : ProjectedBox(ve, w, h);
+            return projection is { } projected
+                ? (projected.Box, new Vector2(1f / projected.Scale.x, 1f / projected.Scale.y))
+                : (box, Vector2.one);
         }
 
         // Whether the element's native chrome draws its face: while it clips its content and its border is solid.
@@ -422,15 +430,35 @@ namespace Velvet
             {
                 binding.Face.TryStash(ve);
             }
-            FaceBorderOverlay.Sync(ve, StyleCascade.ClipsOverflow(ve) && !NativeFace(ve, binding),
-                (mgc, w, h) => PaintOverlay(mgc, ve, binding, new SilhouetteFace.Shearing(w, h, 0f, 0f)));
+            FaceBorderOverlay.Sync(ve, StyleCascade.ClipsOverflow(ve), (mgc, w, h) => PaintOverlay(mgc, ve, binding, w, h));
         }
 
-        private static void PaintOverlay(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding,
-            in SilhouetteFace.Shearing box)
-            => SilhouetteFace.PaintBand(mgc.painter2D, ve,
-                binding.Face.HasStash ? binding.Face.CurrentBg : ve.resolvedStyle.backgroundColor,
-                SilhouetteFace.BorderOf(ve, binding.Face), binding.BorderStyle, box);
+        // A clipping element's outer layers, and a border the native chrome cannot draw with the background beneath it.
+        private static void PaintOverlay(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding, float w,
+            float h)
+        {
+            var (box, unscale) = LayerBox(ve, binding, w, h);
+            DrawLayers(mgc, binding, box, inset: false, unscale);
+            var shearing = new SilhouetteFace.Shearing(w, h, 0f, 0f);
+            if (binding.Face.SuppressionApplied)
+            {
+                SilhouetteFace.PaintBand(mgc.painter2D, ve, binding.Face.CurrentBg, SilhouetteFace.BorderOf(ve, binding.Face),
+                    binding.BorderStyle, shearing);
+                return;
+            }
+            // The layers' anti-aliased cut-out edge reaches a pixel into the box, which the element's own fill covers
+            // where the layers are painted with it; here the native face beneath shows it, so its outermost pixel is
+            // painted over again as the native chrome draws it.
+            var rs = ve.resolvedStyle;
+            Color Rim(float width, Color border) => width >= 1f ? border : rs.backgroundColor;
+            BorderBandPainter.Paint(mgc.painter2D, ShearedRoundedRect.ForElement(ve, 0f, w, h, 0f, 0f), new BorderSides
+            {
+                Left = 1f, Top = 1f, Right = 1f, Bottom = 1f,
+                LeftColor = Rim(rs.borderLeftWidth, rs.borderLeftColor), TopColor = Rim(rs.borderTopWidth, rs.borderTopColor),
+                RightColor = Rim(rs.borderRightWidth, rs.borderRightColor),
+                BottomColor = Rim(rs.borderBottomWidth, rs.borderBottomColor),
+            });
+        }
 
         // Draws the inset layers of a skewed caster's shadow, between the fill and the border its SkewSilhouette
         // paints. A no-op for an element with no shadow or no inset layer.

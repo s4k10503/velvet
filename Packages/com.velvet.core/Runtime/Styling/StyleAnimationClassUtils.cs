@@ -120,7 +120,7 @@ namespace Velvet
                     // A clip the element's own classes still name or imply stays, as the class it came with would.
                     if (also.Clip != null)
                     {
-                        var keepClip = keep || ClipStays(dest, kept);
+                        var keepClip = keep || ClipStays(dest, also.Text, kept);
                         Settle(also.Text, also.Clip, keepClip);
                         Settle(dest, also.Clip, keepClip);
                     }
@@ -133,8 +133,9 @@ namespace Velvet
         private static readonly string[] s_clipping = { "truncate", "text-ellipsis", "text-clip" };
 
         // Whether the box's clip has a source besides the class being taken off: a class the element keeps that is
-        // the clip or implies it, or a text-overflow utility still on the box.
-        private static bool ClipStays(VisualElement box, string[]? kept)
+        // the clip or implies it, or a text-overflow utility still on the box or the text it draws, where a
+        // reconciled one lands (StyleInputBoxSurface.TryGetBoxText).
+        private static bool ClipStays(VisualElement box, VisualElement text, string[]? kept)
         {
             if (kept != null)
             {
@@ -149,7 +150,7 @@ namespace Velvet
             }
             foreach (var cls in s_clipping)
             {
-                if (box.ClassListContains(cls))
+                if (box.ClassListContains(cls) || text.ClassListContains(cls))
                 {
                     return true;
                 }

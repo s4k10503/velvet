@@ -56,6 +56,15 @@ namespace Velvet.Tests
             ForcePanelUpdate(element.panel);
         }
 
+        // Runs the panel's transitions half a second on, past the 0.2 s a change of the element's styles transitions
+        // over, without running the scheduler that would complete a play.
+        private static void RunTransitions(VisualElement element)
+        {
+            UseFrameFakeClockHost.Ms += 500;
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            ForcePanelUpdate(element.panel);
+        }
+
         [Test]
         public void Given_ABaseBracketOpacity_When_AnEnterShowsAnOpacityClass_Then_TheClassWinsWhileItShows()
         {
@@ -359,6 +368,7 @@ namespace Velvet.Tests
             s_setLit.Invoke(true);
             _mounted.FlushStateForTest();
             Step(element);
+            RunTransitions(element);
             return element;
         }
 
@@ -659,6 +669,7 @@ namespace Velvet.Tests
 
             // Act
             Step(element);
+            RunTransitions(element);
 
             // Assert — read as NaN or null where the arrangement did not hold, which the expected value is not.
             Assert.That(shown ? element.resolvedStyle.paddingTop : float.NaN,

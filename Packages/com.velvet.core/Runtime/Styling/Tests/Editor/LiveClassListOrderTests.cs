@@ -490,9 +490,8 @@ namespace Velvet.Tests
             var reversed = Carrying("w-80", "w-40");
             StyleClassProjection.Add(added, "opacity-50", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
             StyleClassProjection.Add(reversed, "opacity-50", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
-            var constructor = typeof(MotionSlotContext).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic).Single();
-            var fromAdded = (MotionSlotContext)constructor.Invoke(new object[] { added, (Func<ArbitraryProperty, bool>)(_ => false) });
-            var fromReversed = (MotionSlotContext)constructor.Invoke(new object[] { reversed, (Func<ArbitraryProperty, bool>)(_ => false) });
+            var fromAdded = AttachedContext(added);
+            var fromReversed = AttachedContext(reversed);
 
             // Act
             var addedClasses = fromAdded.RestingClasses().ToArray();
@@ -519,9 +518,8 @@ namespace Velvet.Tests
             var reversed = Carrying();
             StyleClassProjection.Add(reversed, "scale-50", StyleLayerPriority.Focus);
             StyleClassProjection.Add(reversed, "p-2", StyleLayerPriority.Base);
-            var constructor = typeof(MotionSlotContext).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic).Single();
-            var fromAdded = (MotionSlotContext)constructor.Invoke(new object[] { added, (Func<ArbitraryProperty, bool>)(_ => false) });
-            var fromReversed = (MotionSlotContext)constructor.Invoke(new object[] { reversed, (Func<ArbitraryProperty, bool>)(_ => false) });
+            var fromAdded = AttachedContext(added);
+            var fromReversed = AttachedContext(reversed);
 
             // Act
             var holdsBothWays = fromAdded.HoldsRestingVariant(ArbitraryProperty.Scale)
@@ -1332,6 +1330,21 @@ namespace Velvet.Tests
                 }
             }
             return false;
+        }
+
+        // Fills the constructor by parameter type, with MotionSlotContext.Read's values, so a parameter it gains does
+        // not break the call; Read itself returns null for an element on no panel, as these are.
+        private static MotionSlotContext AttachedContext(VisualElement element)
+        {
+            var constructor = typeof(MotionSlotContext).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic).Single();
+            var arguments = constructor.GetParameters().Select(parameter => parameter.ParameterType switch
+            {
+                var type when type == typeof(VisualElement) => (object?)element,
+                var type when type == typeof(Func<ArbitraryProperty, bool>) => (Func<ArbitraryProperty, bool>)(_ => false),
+                var type when type == typeof(bool) => true,
+                var type => type.IsValueType ? Activator.CreateInstance(type) : null,
+            }).ToArray();
+            return (MotionSlotContext)constructor.Invoke(arguments);
         }
 
         private static IEnumerable<MethodInfo> CasesHere()

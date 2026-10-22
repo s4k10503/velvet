@@ -62,6 +62,37 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_BorderDashedOnMotion_When_Reconciled_Then_ABorderStyleBindingIsCreated()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Motion("border-2 border-dashed", key: "m") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.BorderStyleBindings.ContainsKey(scope.Root[0]), Is.True);
+        }
+
+        [Test]
+        public void Given_AMotion_When_BorderDashedAddedByPatch_Then_ABorderStyleBindingIsCreated()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var before = new VNode[] { V.Motion("border-2", key: "m") };
+            Mount(scope, before);
+            // Whether the create path bound nothing for a Motion with a solid border.
+            var unbound = !scope.Reconciler.Context.BorderStyleBindings.ContainsKey(scope.Root[0]);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Motion("border-2 border-dotted", key: "m") });
+
+            // Assert — read as null where the create path had bound one already, so the patch is what binds it.
+            Assert.That(unbound ? scope.Reconciler.Context.BorderStyleBindings.ContainsKey(scope.Root[0]) : (bool?)null,
+                Is.True);
+        }
+
+        [Test]
         public void Given_ASkewedBorderDashedElement_When_Reconciled_Then_NoBorderStyleBindingIsTracked()
         {
             // Arrange — skew owns the whole face (it repaints the border as part of the sheared silhouette), so the

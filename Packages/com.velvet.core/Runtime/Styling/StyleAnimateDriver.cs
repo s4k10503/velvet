@@ -117,6 +117,24 @@ namespace Velvet
         // The slots each driver on the element writes over its loop, by driver.
         private static readonly ConditionalWeakTable<VisualElement, Dictionary<object, MotionTransitionSlots>> s_held = new();
 
+        // Every slot each Motion driver reports driving through HoldAgainstLoop, the ones it keeps from the loop or
+        // not (PlayDrives).
+        private static readonly ConditionalWeakTable<VisualElement, Dictionary<object, MotionTransitionSlots>> s_driving = new();
+
+        // Whether a Motion driver writes slot on element.
+        internal static bool PlayDrives(VisualElement element, MotionTransitionSlots slot)
+        {
+            if (!s_driving.TryGetValue(element, out var driving))
+            {
+                return false;
+            }
+            foreach (var slots in driving.Values)
+            {
+                if ((slots & slot) != 0) return true;
+            }
+            return false;
+        }
+
         // The slots a layoutId projection writes, whose frame the loop's share is added to instead of the loop writing
         // them. Kept apart from s_held, which stops the loop computing a frame at all.
         private static readonly ConditionalWeakTable<VisualElement, Dictionary<object, MotionTransitionSlots>> s_yielded = new();
@@ -136,6 +154,12 @@ namespace Velvet
         /// </summary>
         public static void HoldAgainstLoop(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
         {
+            var driving = s_driving.GetValue(element, static _ => new Dictionary<object, MotionTransitionSlots>());
+            driving.Remove(owner);
+            if (drivenSlots != MotionTransitionSlots.None)
+            {
+                driving[owner] = drivenSlots;
+            }
             var held = s_held.GetValue(element, static _ => new Dictionary<object, MotionTransitionSlots>());
             held.Remove(owner);
             var kept = drivenSlots & MotionHeldSlots;
@@ -152,6 +176,7 @@ namespace Velvet
         public static void ForgetHolds(VisualElement element)
         {
             s_held.Remove(element);
+            s_driving.Remove(element);
             s_yielded.Remove(element);
         }
 

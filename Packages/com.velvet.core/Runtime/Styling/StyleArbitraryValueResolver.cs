@@ -1768,7 +1768,7 @@ namespace Velvet
                 {
                     if (previous == null || !previous.TryGetValue(pair.Key, out var was) || !was.Equals(pair.Value))
                     {
-                        ResolveAndApply(element, pair.Key, map);
+                        ResolveUndriven(element, pair.Key, map);
                     }
                 }
             }
@@ -1780,9 +1780,30 @@ namespace Velvet
             {
                 if (current == null || !current.ContainsKey(property))
                 {
-                    ResolveAndApply(element, property, map);
+                    ResolveUndriven(element, property, map);
                 }
             }
+        }
+
+        // A class claim moving under a transform or an opacity a Motion driver writes inline leaves the driver's
+        // value standing; the property is resolved again once the driver lets it go (ReapplyLayeredValues).
+        private static void ResolveUndriven(VisualElement element, ArbitraryProperty property, LayerMap map)
+        {
+            if (!StyleAnimateDriver.PlayDrives(element, AxisSlot(property)))
+            {
+                ResolveAndApply(element, property, map);
+            }
+        }
+
+        private static MotionTransitionSlots AxisSlot(ArbitraryProperty property)
+        {
+            if (property == ArbitraryProperty.Opacity) return MotionTransitionSlots.Opacity;
+            if (property == ArbitraryProperty.Rotate) return MotionTransitionSlots.Rotate;
+            if (property == ArbitraryProperty.Scale || property == ArbitraryProperty.ScaleX
+                || property == ArbitraryProperty.ScaleY) return MotionTransitionSlots.Scale;
+            if (property == ArbitraryProperty.Translate || property == ArbitraryProperty.TranslateX
+                || property == ArbitraryProperty.TranslateY) return MotionTransitionSlots.Translate;
+            return MotionTransitionSlots.None;
         }
 
         // A class claiming only some of what a winning layer writes changes no floor, so the floors alone would
