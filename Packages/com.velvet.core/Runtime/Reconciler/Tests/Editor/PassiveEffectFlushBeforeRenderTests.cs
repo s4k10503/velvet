@@ -68,8 +68,8 @@ namespace Velvet.Tests
             return V.Button(name: "idle", onClick: () => { });
         }
 
-        // Committed through a drain rather than FlushStateForTest, which leaves the fiber queued, so the
-        // immediate tier is empty afterwards and no stale entry flushes effect:d1 ahead of what a case's Act does.
+        // Committed through a drain, so the immediate tier is empty afterwards and no stale entry flushes effect:d1
+        // ahead of what a case's Act does.
         private void MountCounterWithAPendingEffect()
         {
             _mounted = V.Mount(_root, V.Component(Counter, key: "c"));
