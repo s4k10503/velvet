@@ -205,8 +205,10 @@ namespace Velvet
             if (!fiber.CatchesErrors || fiber.Reconciler == null) return false;
             if (fiber.IsMountRoot && fiber.IsDisposed)
             {
-                // MountedTree.Dispose is unmounting the tree, and no catch follows to deliver a report.
-                ReportUncaughtError(fiber.Reconciler.Context, exception, new ErrorInfo(BuildComponentStack(throwingFiber)));
+                // MountedTree.Dispose is unmounting the tree, and no catch follows to deliver a report. It reports
+                // what was thrown once every cleanup of the unmount has run (ReportErrorsDuringDisposal).
+                fiber.Reconciler.Context.ErrorsDuringRootDisposal.Add(
+                    (exception, new ErrorInfo(BuildComponentStack(throwingFiber))));
                 return true;
             }
             if (fiber.IsShowingFallback)
@@ -385,6 +387,16 @@ namespace Velvet
             {
                 Debug.LogException(handlerException);
             }
+        }
+
+        internal static void ReportErrorsDuringDisposal(ReconcilerContext ctx)
+        {
+            var thrown = ctx.ErrorsDuringRootDisposal;
+            for (var i = 0; i < thrown.Count; i++)
+            {
+                ReportUncaughtError(ctx, thrown[i].Error, thrown[i].Info);
+            }
+            thrown.Clear();
         }
 
         internal static void ReportUncaughtError(ReconcilerContext ctx, Exception exception, ErrorInfo info)

@@ -156,7 +156,9 @@ namespace Velvet
             // continuations must not resurrect the tree. FiberRenderer.Dispose sets IsDisposed
             // before unmounting so IsDisposed-gated closures (UseMutation continuations,
             // optimistic update commits) short-circuit instead of mutating a torn-down fiber.
+            var context = Root.Reconciler?.Context;
             FiberRenderer.Dispose(Root);
+            if (context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(context);
         }
     }
 }

@@ -1575,6 +1575,9 @@ namespace Velvet
         // FiberErrorBoundary.RecordCatch queues behind the report of the error the swap is for.
         internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info)> ErrorsDuringFallbackSwap = new();
 
+        // Errors the root took while MountedTree.Dispose unmounted its tree, which it reports once the unmount is done.
+        internal readonly List<(System.Exception Error, ErrorInfo Info)> ErrorsDuringRootDisposal = new();
+
         // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
         // it (FiberEffects.CommitStrandedLayoutWork).
         internal int EffectCommitDepth;

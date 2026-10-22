@@ -9,10 +9,10 @@ namespace Velvet.Tests
     /// Specifies <see cref="MountOptions.OnUncaughtError"/>, over the components <see cref="UncaughtErrorRootTests"/>
     /// declares.
     /// <list type="bullet">
-    /// <item>It is called once the tree has unmounted, with the error, an empty boundary name and the component stack
-    /// starting at the component that threw.</item>
+    /// <item>It is called once the tree has unmounted, its effects cleaned up, with an empty boundary name and the
+    /// component stack starting at the component that threw.</item>
     /// <item>An effect cleanup that throws during that unmount is reported after the error the unmount is for, and
-    /// one that throws while the handle is disposed is reported too.</item>
+    /// those that throw while the handle is disposed are reported once every cleanup has run.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -29,46 +29,57 @@ namespace Velvet.Tests
             UncaughtErrorRootTests.ResetComponents();
         }
 
-        [Test]
-        public void Given_AnOnUncaughtErrorHandler_When_AChildsUpdateRenderThrows_Then_ItIsHandedTheErrorNoBoundaryAndTheStack()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(UncaughtErrorRootTests.ThrowerBesideProbeRender, key: "host"),
-                new MountOptions
-                {
-                    OnUncaughtError = (exception, info) => _reports.Add(
-                        $"{exception.Message} | {info.ErrorBoundary} | {info.ComponentStack.Split('\n')[0]}"),
-                });
-            UncaughtErrorRootTests.s_throws = true;
+        private MountedTree MountThrowerBesideProbe(System.Action<System.Exception, ErrorInfo> onUncaughtError)
+            => V.Mount(_root, V.Component(UncaughtErrorRootTests.ThrowerBesideProbeRender, key: "host"),
+                new MountOptions { OnUncaughtError = onUncaughtError });
 
-            // Act
+        private static void RenderAnUpdate(MountedTree mounted)
+        {
             UncaughtErrorRootTests.s_setTick.Invoke(1);
             mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(string.Join(" / ", _reports),
-                Is.EqualTo($"{UncaughtErrorRootTests.RenderMessage} |  |     at UncaughtErrorRootTests.ThrowingRender"));
         }
 
         [Test]
-        public void Given_AnOnUncaughtErrorHandler_When_AChildsUpdateRenderThrows_Then_TheTreeHasUnmountedWhenItIsCalled()
+        public void Given_AnOnUncaughtErrorHandler_When_AChildsUpdateRenderThrows_Then_ItIsHandedNoBoundaryName()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(UncaughtErrorRootTests.ThrowerBesideProbeRender, key: "host"),
-                new MountOptions
-                {
-                    OnUncaughtError = (_, _) =>
-                        _reports.Add($"{_root.childCount} children, {UncaughtErrorRootTests.s_cleanups} cleanups"),
-                });
+            using var mounted = MountThrowerBesideProbe((_, info) => _reports.Add($"[{info.ErrorBoundary}]"));
+            UncaughtErrorRootTests.s_throws = true;
+
+            // Act
+            RenderAnUpdate(mounted);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("[]"));
+        }
+
+        [Test]
+        public void Given_AnOnUncaughtErrorHandler_When_AChildsUpdateRenderThrows_Then_ItsStackStartsAtTheComponentThatThrew()
+        {
+            // Arrange
+            using var mounted = MountThrowerBesideProbe((_, info) => _reports.Add(info.ComponentStack.Split('\n')[0]));
+            UncaughtErrorRootTests.s_throws = true;
+
+            // Act
+            RenderAnUpdate(mounted);
+
+            // Assert
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("    at UncaughtErrorRootTests.ThrowingRender"));
+        }
+
+        [Test]
+        public void Given_AnOnUncaughtErrorHandler_When_AChildsUpdateRenderThrows_Then_ASiblingsEffectHasBeenCleanedUpWhenItIsCalled()
+        {
+            // Arrange
+            using var mounted = MountThrowerBesideProbe((_, _) => _reports.Add($"{UncaughtErrorRootTests.s_cleanups}"));
             mounted.FlushEffectsForTest();
             UncaughtErrorRootTests.s_throws = true;
 
             // Act
-            UncaughtErrorRootTests.s_setTick.Invoke(1);
-            mounted.FlushStateForTest();
+            RenderAnUpdate(mounted);
 
             // Assert
-            Assert.That(string.Join(" / ", _reports), Is.EqualTo("0 children, 1 cleanups"));
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("1"));
         }
 
         [Test]
@@ -82,8 +93,7 @@ namespace Velvet.Tests
             UncaughtErrorRootTests.s_throws = true;
 
             // Act
-            UncaughtErrorRootTests.s_setTick.Invoke(1);
-            mounted.FlushStateForTest();
+            RenderAnUpdate(mounted);
 
             // Assert
             Assert.That(string.Join(" / ", _reports),
@@ -91,18 +101,18 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnEffectCleanupThatThrows_When_TheTreeIsDisposed_Then_TheHandlerIsHandedIt()
+        public void Given_TwoEffectCleanupsThatThrow_When_TheTreeIsDisposed_Then_EachIsReportedOnceBothHaveRun()
         {
-            // Arrange — the component is the root's own child, so the walk from it reaches the root directly
-            var mounted = V.Mount(_root, V.Component(UncaughtErrorRootTests.ThrowingCleanupRender, key: "cleanup"),
-                new MountOptions { OnUncaughtError = (exception, _) => _reports.Add(exception.Message) });
+            // Arrange — each entry is how many cleanups had run when the handler was called
+            var mounted = V.Mount(_root, V.Component(UncaughtErrorRootTests.TwoThrowingCleanupsRender, key: "host"),
+                new MountOptions { OnUncaughtError = (_, _) => _reports.Add($"{UncaughtErrorRootTests.s_cleanups}") });
             mounted.FlushEffectsForTest();
 
             // Act
             mounted.Dispose();
 
             // Assert
-            Assert.That(string.Join(" / ", _reports), Is.EqualTo(UncaughtErrorRootTests.CleanupMessage));
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("2 / 2"));
         }
     }
 }
