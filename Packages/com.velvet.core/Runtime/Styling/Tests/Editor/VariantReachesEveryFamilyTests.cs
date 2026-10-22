@@ -436,6 +436,10 @@ namespace Velvet.Tests
                          // rather than a payload's effect. Substring rather than a list, which costs a
                          // family registry its term should one ever be named for a variant.
                          .Where(property => !property.Name.Contains("Variant", StringComparison.Ordinal))
+                         // The record of the custom-property tokens a reconcile toggled from the class list
+                         // itself, which only a bare render enters: a gated one reaches the same reader through
+                         // the dispatcher, and what the reader writes is compared in the styles.
+                         .Where(property => property.Name != "CustomPropertyClasses")
                          .OrderBy(property => property.Name, StringComparer.Ordinal))
             {
                 if (property.GetValue(context) is not System.Collections.IDictionary registry)

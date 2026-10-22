@@ -450,11 +450,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_AZIndexReadingADeclaration_When_TheDeclarationChanges_Then_TheElementRestacks()
         {
-            // Arrange — the declaration reaches the reader once it is attached, at the panel's next scheduler tick,
-            // and until then the element is unstacked, as z-auto leaves it.
-            var child = MountStacked("[--z:20]", "absolute z-(--z)");
+            // Arrange — unstacked while nothing declares --z, as z-auto leaves it, then raised above lit.
+            var child = MountStacked("", "absolute z-(--z)");
             var unresolved = child.parent.name;
-            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            s_setOuter.Invoke("[--z:20]");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
             var raised = PaintOrder();
 
             // Act
