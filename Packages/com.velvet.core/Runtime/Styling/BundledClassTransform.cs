@@ -195,7 +195,7 @@ namespace Velvet
                 {
                     foreach (var cls in Classes) if (!element.ClassListContains(cls)) return false;
                     foreach (var name in Names) if (name != element.name) return false;
-                    foreach (var type in Types) if (type != element.typeName) return false;
+                    foreach (var type in Types) if (type != element.GetType().Name) return false;
                     return true;
                 }
             }
