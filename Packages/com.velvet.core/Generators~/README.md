@@ -162,8 +162,10 @@ Generators~/
 │   ├── RulesOfHooks/                         (VEL101 + VEL102 + VEL103 rules-of-hooks analyzer)
 │   ├── CodeShape/                            (VEL500 depth + VEL501 branch-count + VEL502 parameter-count
 │   │                                          + VEL503 tolerance on a tuple comparison)
+│   ├── Keys/                                 (VEL600 list child without a key)
 │   ├── Diagnostics/MemoizeDiagnostics.cs     (diagnostic descriptors — see Documentation~/memoization.md)
 │   ├── Diagnostics/CodeShapeDiagnostics.cs   (diagnostic descriptors — see "The code-shape rules")
+│   ├── Diagnostics/ReconcilerDiagnostics.cs  (diagnostic descriptors — see Documentation~/react-migration.md)
 │   ├── AnalyzerReleases.*.md                 (Roslyn analyzer release tracking)
 │   └── Shared/                               (SourceBuilder, VelvetWellKnownNames, …)
 ├── src/Velvet.SourceGenerators.Bootstrap/    (second compile of the sibling's sources — see "How this solution opts in")

@@ -801,7 +801,9 @@ public static class PointerSurface
 |-------|--------|------|
 | `{cond && <X/>}` | `cond ? V.X() : null` or `V.When(cond, () => V.X())` | `null` is the "render nothing" child, and it holds its slot — see [what a position is](#what-a-position-is). `V.When` takes a factory that runs only while `cond` holds |
 | `items.map(x => <X key={k}/>)` | `V.List(items, keySelector, renderer)` | Gives each node the selector's key |
-| `items.map(x => <X/>)` | `items.Select(x => V.X()).ToArray()` | Unkeyed nodes, matched by index |
+| `items.map(x => <X/>)` | `items.Select(x => V.X()).ToArray()` | Unkeyed nodes, matched by index. VEL600 warns, as React warns about a list child with no key |
+
+VEL600 is a compile-time warning at each `V.*` factory call building a node without a `key:`, or with a null one, that reaches a list: the return of a `Select` selector, a `yield return`, a value stored into an element of an array that is handed to a `V.*` factory or returned, a property's getter included, or an item `Add`, `AddRange`, `Insert` or `InsertRange` puts into a `List<VNode>` that is made an array. An array is followed in a local or a field, and a list in a local, a field, or a parameter taken from a caller that holds one; a range written as an array initializer counts each of its elements. The node is followed through a cast, either branch of a `?:`, a `V.When`'s factory, a local's assignments, the return of a method, local function or delegate the compilation declares, and from a parameter to the argument a call passes it; a trace stops 16 methods, lambdas and locals deep. `V.Text` is not reported, as a string child takes no key in React, and nor is a collection initializer, which writes its children out as an array initializer does. React warns at run time about a keyless element in an array; a built list and children written out at the call site both reach Velvet's runtime as a `VNode?[]`, so the warning is read off the source.
 
 ### 2-3. Components
 

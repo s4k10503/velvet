@@ -769,6 +769,7 @@ namespace Velvet.Tests
                 pair => (pair.owned, true, true, true, true, true, true, true, true))));
         }
 
+        // GREEN_ON_BASE(refactor): keys rows that this case mounts once and never reconciles again.
         [TestCase(TransitionType.Spring)]
         [TestCase(TransitionType.Bezier)]
         public void Given_AMountedClipWithCustomLengthAndOpacity_When_ChannelsAreReleased_Then_LayoutTransitionsReturnWhileTheWrapperStaysMounted(TransitionType type)
@@ -779,7 +780,7 @@ namespace Velvet.Tests
             placeholder.RemoveFromHierarchy();
             var operations = new[] { "clear", "last-length" };
             _mounted = V.Mount(parent, V.Fragment(operations.Select(operation =>
-                V.Div(name: operation, className: "clip-path-[inset(0)] transition-all duration-1000")).ToArray()));
+                V.Div(key: operation, name: operation, className: "clip-path-[inset(0)] transition-all duration-1000")).ToArray()));
             ForcePanelUpdate(parent.panel);
             var elements = operations.Select(operation => parent.Q<VisualElement>(operation)).ToArray();
             var wrappers = elements.Select(ClipPathLayoutBox.Of).ToArray();
@@ -913,6 +914,7 @@ namespace Velvet.Tests
                 type => (type, true, true, true, true, true, true, true))));
         }
 
+        // GREEN_ON_BASE(refactor): keys rows that this case mounts once and never reconciles again.
         [Test]
         public void Given_ARestingImportantUniformScale_When_AnImportantUniformTargetAlsoNamesAPlainAxis_Then_TheTargetUniformHoldsTheChannel()
         {
@@ -924,7 +926,7 @@ namespace Velvet.Tests
             var names = new[] { "x-target", "y-target" };
             var axes = new[] { "scale-x-[.5]", "scale-y-[.5]" };
             _mounted = V.Mount(parent, V.Fragment(names.Select(name =>
-                V.Div(name: name, className: "!scale-[1.4]")).ToArray()));
+                V.Div(key: name, name: name, className: "!scale-[1.4]")).ToArray()));
             ForcePanelUpdate(parent.panel);
             var elements = names.Select(name => parent.Q<VisualElement>(name)).ToArray();
             foreach (var element in elements) element.AddToClassList("!scale-[1.4]");
@@ -946,6 +948,7 @@ namespace Velvet.Tests
             Assert.That(observed, Is.EqualTo(new[] { 2f, 2f }).Within(1e-5f));
         }
 
+        // GREEN_ON_BASE(refactor): keys rows that this case mounts once and never reconciles again.
         [Test]
         public void Given_AMountedClipWrapperWithACustomWidthPlay_When_AForeignTransitionListIsWritten_Then_TheNextFramePreservesItsNamesAndTimings()
         {
@@ -955,7 +958,7 @@ namespace Velvet.Tests
             placeholder.RemoveFromHierarchy();
             var types = new[] { TransitionType.Spring, TransitionType.Bezier };
             _mounted = V.Mount(parent, V.Fragment(types.Select(type =>
-                V.Div(name: type.ToString(), className: "clip-path-[inset(0)] transition-all duration-1000")).ToArray()));
+                V.Div(key: type.ToString(), name: type.ToString(), className: "clip-path-[inset(0)] transition-all duration-1000")).ToArray()));
             ForcePanelUpdate(parent.panel);
             var properties = new[] { new StylePropertyName("height"), new StylePropertyName("opacity") };
             var durations = new[] { new TimeValue(0.5f), new TimeValue(1.5f) };
