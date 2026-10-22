@@ -240,7 +240,7 @@ namespace Velvet.Tests
             var ok = StyleShadowClass.TryExtract(new[] { "shadow-[length:0_4px_8px_#101820]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.OffsetY : float.NaN, Is.EqualTo(4f));
+            Assert.That(ok && spec.Length == 1 ? spec[0].OffsetY : float.NaN, Is.EqualTo(4f));
         }
     }
 }
