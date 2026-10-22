@@ -333,7 +333,9 @@ An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element'
 **Where `skew-*` deviates from CSS.** UI Toolkit's transform carries rotation, scale and translation and
 no shear, so a skew here is not a transform: the caster's own face is repainted sheared in its generated
 content, and each direct in-flow child is seated with an inline `translate` that puts its centroid where
-the shear would carry it. Four things follow that a CSS `skewX()` does not do.
+the shear would carry it. The seat composes with the child's own `translate-x-*`, `V.Motion` translation or
+drag offset, as CSS composes the parent's transform with the child's. Three things follow that a CSS
+`skewX()` does not do.
 
 - **The caster's hit region does not lean with its face.** Its layout box stays axis-aligned and that box
   is what answers a pointer, so a click near an edge lands by the upright rectangle while the paint has
@@ -347,13 +349,6 @@ the shear would carry it. Four things follow that a CSS `skewX()` does not do.
 - **Descendants are seated, not sheared.** The seat is exact at each direct child's centroid and constant
   across that child, so a child large relative to the caster reads off at its far corners, and a
   grandchild moves only because its parent did.
-- **The seat shares each direct child's inline `translate` slot.** The seat and a child's own
-  `translate-x-*`, a `V.Motion` translation, or a drag offset follow last-writer-wins behavior. Velvet runs
-  a seat pass when the caster attaches, when its geometry changes, and from caster reconciliation. Attachment
-  resets the pass guard; subsequent passes write only when their signature of caster size, skew angles, and
-  direct-child identity, order, flow state or layout changed. A translate-only write does not change that
-  signature, so it can remain visible until a later seat pass has another reason to write. Use an inner wrapper
-  when both effects must compose.
 
 `origin-*` does not move the skew pivot either: the shear is always taken about the box centre, while
 `rotate-*` and `scale-*` are real USS transforms and do honour it. Velvet therefore exposes the painted

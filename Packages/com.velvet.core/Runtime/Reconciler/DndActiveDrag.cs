@@ -349,7 +349,7 @@ namespace Velvet
             _origin = _lastPointerPosition;
             _originRect = _source.worldBound;
             _grabOffset = _origin - _originRect.position;
-            _savedTranslate = _source.style.translate;
+            _savedTranslate = SeatedTranslate.Read(_source);
             _baseTranslate = ResolveBaseTranslate(_savedTranslate);
             _delta = Vector2.zero;
             // Snapshot what the session applies (see the field-block note): restore symmetry must not
@@ -553,7 +553,7 @@ namespace Velvet
             _delta = _lastPointerPosition - _origin;
             if (_activeMovement == DragMovement.Translate)
             {
-                _source.style.translate = new Translate(_baseTranslate.x + _delta.x, _baseTranslate.y + _delta.y);
+                SeatedTranslate.Write(_source, new Translate(_baseTranslate.x + _delta.x, _baseTranslate.y + _delta.y));
             }
             RefreshOverlays();
             UpdateCollision();
@@ -921,7 +921,7 @@ namespace Velvet
             // Restore symmetry runs on the activation-time snapshots (see the field-block note).
             if (_activeMovement == DragMovement.Translate)
             {
-                _source.style.translate = _savedTranslate;
+                SeatedTranslate.Write(_source, _savedTranslate);
             }
         }
 

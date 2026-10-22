@@ -3009,8 +3009,9 @@ namespace Velvet
                 RemoveCustomFilterHosts(element, map);
             }
             if (element != null) s_layers.Remove(element);
-            // What the fit records the radius layers as declaring goes with them.
+            // What the fit records the radius layers as declaring goes with them, as does the record of a play's.
             if (element != null) CornerRadiusFit.Release(element);
+            if (element != null) StyleAnimationClassUtils.ForgetShownLayers(element);
         }
 
         // Resolves an inline-value class token to inline style — arbitrary value first, then background
@@ -3310,19 +3311,19 @@ namespace Velvet
             var hasY = TryWinningAxis(map, ArbitraryProperty.TranslateY, out var yw);
             if (!hasX && !hasY)
             {
-                element.style.translate = StyleKeyword.Null;
+                SeatedTranslate.Write(element, StyleKeyword.Null);
                 return;
             }
             // Both axes are written by one translate declaration, which a rejected value holding either one makes
             // invalid, leaving no translation.
             if ((hasX && xw.Rejected) || (hasY && yw.Rejected))
             {
-                element.style.translate = new StyleTranslate(StyleKeyword.None);
+                SeatedTranslate.Write(element, new StyleTranslate(StyleKeyword.None));
                 return;
             }
             var x = hasX ? new Length(xw.Value, xw.Unit) : new Length(0f);
             var y = hasY ? new Length(yw.Value, yw.Unit) : new Length(0f);
-            element.style.translate = new Translate(x, y);
+            SeatedTranslate.Write(element, new Translate(x, y));
         }
 
         // The layer holding one translate axis: the winning layer of the axis or of Translate, which writes both,
@@ -4009,7 +4010,7 @@ namespace Velvet
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
                 case ArbitraryProperty.Translate:
-                    element.style.translate = StyleKeyword.Null;
+                    SeatedTranslate.Write(element, StyleKeyword.Null);
                     return true;
                 case ArbitraryProperty.Scale:
                 case ArbitraryProperty.ScaleX:

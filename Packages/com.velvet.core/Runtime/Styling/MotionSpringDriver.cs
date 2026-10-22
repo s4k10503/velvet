@@ -333,9 +333,9 @@ namespace Velvet
             }
             if (state.TranslateX != null || state.TranslateY != null)
             {
-                element.style.translate = new Translate(
+                SeatedTranslate.Write(element, new Translate(
                     new Length(state.TranslateX?.Integrator.Value ?? 0f),
-                    new Length(state.TranslateY?.Integrator.Value ?? 0f));
+                    new Length(state.TranslateY?.Integrator.Value ?? 0f)));
             }
             if (state.Scale != null)
             {
@@ -605,7 +605,7 @@ namespace Velvet
         public static void ClearInlineOverrides(VisualElement element, MotionSpringState state)
         {
             if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
-            if (state.TranslateX != null || state.TranslateY != null) element.style.translate = StyleKeyword.Null;
+            if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
             if (state.Colors != null)
@@ -640,7 +640,7 @@ namespace Velvet
             {
                 state.TranslateX = null;
                 state.TranslateY = null;
-                element.style.translate = StyleKeyword.Null;
+                SeatedTranslate.Write(element, StyleKeyword.Null);
             }
             if (state.Scale != null && named.Contains(StyleLonghand.Scale))
             {

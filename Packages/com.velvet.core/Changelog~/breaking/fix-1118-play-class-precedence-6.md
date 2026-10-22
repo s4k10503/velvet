@@ -52,6 +52,9 @@
   element's resting pose carries stops applying while the play has the pose's class off. A play's class used
   to apply only a utility backed by a plain USS rule.
 
+- On a field control a surface utility a play's class shows lands on the input box, as the className's does,
+  and on a clipped element a `clip-path-*` class a play shows re-shapes the clip.
+
 ### Fixed
 
 - A `V.Motion` hovered through a `hover:` rule of its className while its enter played kept the class of the
@@ -65,3 +68,8 @@
 - A skewed, `shadow-*` or `border-dashed` element kept painting the background and border colours it had when
   its skew, shadow or dashed border attached after a variant, gesture or drag class, a theme change or a play
   changed them, until an unrelated re-render.
+
+- A direct child of a skewed element showed either the skew's seat or its own translate — `translate-x-*`, a
+  `V.Motion` translation, a drag offset — whichever was written last. The two compose, as CSS composes a
+  parent's transform with the child's, and a translate play on such a child starts from its own translate
+  rather than offset by the seat.

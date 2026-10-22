@@ -441,7 +441,7 @@ namespace Velvet
         private static void Restore(VisualElement element, LayoutIdProjection projection)
         {
             if (projection.WritesRotate) element.style.rotate = projection.OwnInlineRotate;
-            if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
+            if (projection.WritesTranslate) SeatedTranslate.Write(element, projection.OwnInlineTranslate);
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
             if (!projection.WritesRadii) return;
             for (var corner = 0; corner < 4; corner++)
