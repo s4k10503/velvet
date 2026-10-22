@@ -126,7 +126,8 @@ namespace Velvet
         /// Subscribes to an external Store via a selector. Must be used inside Render() only. The subscription is
         /// made in the passive effects of the commit, as <see cref="UseSyncExternalStore{T}"/> makes its own, so a
         /// render that throws or suspends subscribes nothing; a change the store makes between the render and the
-        /// subscription re-renders the component once it is made.
+        /// subscription re-renders the component once it is made. A change re-renders it as a
+        /// <see cref="UseSyncExternalStore{T}"/> notification does: on the Urgent lane, inside a transition as well.
         /// </summary>
         /// <typeparam name="TStore">Store snapshot type.</typeparam>
         /// <typeparam name="TSel">Selected projection type returned to the component.</typeparam>
@@ -202,14 +203,14 @@ namespace Velvet
             if (!pending.Contains(slot.SubscribeEffect)) pending.Add(slot.SubscribeEffect);
         }
 
-        // The notification between the render and this effect reached no subscriber, so the selection is
-        // compared once more against the live snapshot after subscribing. A change found there re-renders as
-        // UseSyncExternalStore's does, on the sync lane, so it renders before the passive flush returns.
+        // A change re-renders as UseSyncExternalStore's does: on the sync lane, inside a transition as well, and
+        // flushed from the main thread's posted work. The notification between the render and this effect reached
+        // no subscriber, so the selection is compared once more against the live snapshot after subscribing.
         private static Action SubscribeStore<TStore, TSel>(ComponentFiber fiber, HookStoreSlot<TStore, TSel> slot)
         {
             slot.Subscription = slot.Store.Subscribe(snapshot =>
             {
-                if (SelectionChanged(fiber, slot, snapshot)) RequestRender(fiber);
+                if (SelectionChanged(fiber, slot, snapshot)) FiberWorkLoop.RequestExternalStoreRender(fiber);
             });
             if (SelectionChanged(fiber, slot, slot.Store.Current)) FiberWorkLoop.RequestExternalStoreRender(fiber);
             return slot.Dispose;

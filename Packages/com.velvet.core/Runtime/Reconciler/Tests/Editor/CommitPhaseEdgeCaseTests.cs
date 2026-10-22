@@ -144,6 +144,7 @@ namespace Velvet.Tests
         }
 
         private static StrStore s_store;
+        private static string s_selectorRead;
         private static string s_lastRendered;
 
         [SetUp]
@@ -151,17 +152,27 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             s_store = null;
+            s_selectorRead = null;
             s_lastRendered = null;
         }
 
+        // Selects the length, which every "vN" snapshot shares, so a store change asks this reader for no render and
+        // only the renders a case schedules read the store; the selector records the snapshot each of them read.
         [Component]
         private static VNode Reader()
         {
-            var v = Hooks.UseStore(s_store, s => s);
-            s_lastRendered = v;
-            return V.Label(name: "reader", text: v);
+            var length = Hooks.UseStore(s_store, s =>
+            {
+                s_selectorRead = s;
+                return s.Length;
+            });
+            s_lastRendered = s_selectorRead;
+            return V.Label(name: "reader", text: length.ToString());
         }
 
+        // GREEN_ON_BASE(characterization): the base's solo delayed drain already opened a fresh wave.
+        // A store change now forces a sync-lane render wherever it is made, so the reader selects a length the change
+        // leaves equal and the delayed render is scheduled directly.
         [Test]
         public void Given_AStalePinFromAPriorImmediateWave_When_ASoloDelayedDrainRuns_Then_TheReaderReadsTheCurrentSnapshot()
         {
@@ -169,19 +180,21 @@ namespace Velvet.Tests
             using var store = new StrStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
+            mounted.FlushEffectsForTest();
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             var readerFiber = mounted.Root.Child;
             Assume.That(s_lastRendered, Is.EqualTo("v0"), "Precondition: mounted at v0");
 
             // Establish a pin: an immediate drain renders the reader, which pins the now-current snapshot (v1).
             store.Set("v1");
+            readerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             scheduler.DrainImmediateForTest();
             var renderedByImmediateWave = s_lastRendered;
 
-            // The store mutation happens inside a startTransition callback, so its re-render routes to the
-            // delayed (Transition) tier and the next drain is a SOLO delayed drain with no immediate drain to
-            // open a fresh wave.
-            FiberWorkLoop.StartTransition(readerFiber, new HookTransitionSlot(), () => store.Set("v2"));
+            // The store moves on with no render asked for, and the reader's next render is a Transition one, so the
+            // next drain is a SOLO delayed drain with no immediate drain to open a fresh wave.
+            store.Set("v2");
+            readerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             scheduler.DrainDelayedForTest();
 
             // Assert — the solo delayed drain must open a fresh wave: the reader reads the current snapshot (v2),

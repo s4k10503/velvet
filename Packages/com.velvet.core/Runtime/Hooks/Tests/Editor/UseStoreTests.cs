@@ -304,7 +304,8 @@ namespace Velvet.Tests
         public void Given_AncestorImmediateAndDescendantDelayed_When_AStoreMutationInsideATransitionLandsBetweenDrains_Then_TheDelayedDrainCommitsItToBoth()
         {
             // Arrange — the immediate drain renders the ancestor at 0; the mutation, made inside a transition,
-            // re-schedules both readers on the Transition lane, so no immediate work precedes the delayed drain.
+            // re-schedules both readers on the Urgent lane as a store change does anywhere, so the delayed drain
+            // renders them in the immediate passes that run ahead of its own queue.
             using var store = new TestCounterStore(initial: 0);
             s_store = store;
             using var mounted = MountAncestorDescendant();

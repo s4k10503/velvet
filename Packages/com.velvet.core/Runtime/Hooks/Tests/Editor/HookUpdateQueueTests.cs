@@ -440,67 +440,6 @@ namespace Velvet.Tests
             Assert.That(PendingCount(slot), Is.EqualTo(0), "A setter of an unmounted component queues nothing");
         }
 
-        // GREEN_ON_BASE(characterization): the base's reader subscribed at render, so the write enrolled it already.
-        // The reader now subscribes in the mount's passive effects, which the arrangement runs first.
-        [Test]
-        public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassFoldsTheChildsNormalWrite_Then_IsPendingClears()
-        {
-            // Arrange — the child's state slot holds a Normal write, which the pass renders, and no Transition one;
-            // its deferred value keeps the Transition lane queued, so the flag clears only if the enrolment was discharged
-            using var store = new TransitionCountStore();
-            s_noteStore = store;
-            using var mounted = V.Mount(_root, V.Component(NoteParentRender, key: "note-parent"));
-            mounted.FlushEffectsForTest();
-            s_noteChildStart.Invoke(() => store.Set(1));
-            s_noteSetNote.Invoke(1);
-            s_noteSetQuery.Invoke("beta");
-
-            // Act
-            FiberWorkLoop.FlushState(s_noteParentFiber);
-
-            // Assert
-            Assert.That(s_noteChildFiber.TransitionSlots[0].IsPending, Is.False,
-                "A pass that renders every write queued in the child's state has nothing left of the transition to wait for");
-        }
-
-        private sealed class TransitionCountStore : Store<TransitionCountState>
-        {
-            public TransitionCountStore() : base(new TransitionCountState(0)) { }
-            public void Set(int value) => SetState(_ => new TransitionCountState(value));
-            protected override void ResetCore() => SetState(_ => new TransitionCountState(0));
-        }
-
-        private readonly record struct TransitionCountState(int Value);
-
-        private static TransitionCountStore s_noteStore;
-        private static StateUpdater<string> s_noteSetQuery;
-        private static StateUpdater<int> s_noteSetNote;
-        private static ComponentFiber s_noteParentFiber;
-        private static ComponentFiber s_noteChildFiber;
-        private static TransitionStarter s_noteChildStart;
-
-        [Component]
-        private static VNode NoteParentRender()
-        {
-            s_noteParentFiber = FiberAmbientStack.Current;
-            var (query, setQuery) = Hooks.UseState("alpha");
-            s_noteSetQuery = setQuery;
-            return V.Div(children: new VNode[] { V.Component(NoteChildRender, query, key: "note-child") });
-        }
-
-        [Component]
-        private static VNode NoteChildRender(string query)
-        {
-            s_noteChildFiber = FiberAmbientStack.Current;
-            var count = Hooks.UseStore(s_noteStore, state => state.Value);
-            var (note, setNote) = Hooks.UseState(0);
-            var (_, start) = Hooks.UseTransition();
-            s_noteSetNote = setNote;
-            s_noteChildStart = start;
-            var deferred = Hooks.UseDeferredValue(query);
-            return V.Label(name: "note-out", text: $"{deferred}:{count}:{note}");
-        }
-
         [Test]
         public void Given_AStagedRenderThatNeverCommitted_When_TheRecycleSweepVisitsTheSlot_Then_TheStateItComputedIsVisited()
         {

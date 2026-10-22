@@ -15,5 +15,10 @@
   its passive flush returns. It used to wait for a later drain. An ordinary update the same flush schedules renders
   with it, as React's sync flush renders the default lane too; one a flush schedules without such a re-render still
   waits for the next drain.
+- A `Hooks.UseStore` store-change notification re-renders the component on the Urgent lane, as a
+  `Hooks.UseSyncExternalStore` notification does and as Zustand's `useStore` does on React's
+  `useSyncExternalStore`, including inside `startTransition`, and is flushed from the main thread's posted work. It
+  used to take the caller's lane, so a store write inside `startTransition` was deferred to the Transition lane and
+  held the transition's `isPending`; such a callback now queues no transition work and settles as it returns.
 - Under StrictMode in the Editor, `subscribe` is called, unsubscribed and called again when a component mounts, as
   React double-invokes a mount effect.
