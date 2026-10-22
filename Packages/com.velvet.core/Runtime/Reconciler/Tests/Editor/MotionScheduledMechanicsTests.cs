@@ -5227,6 +5227,9 @@ namespace Velvet.Tests
         }
 
 
+        // GREEN_ON_BASE(characterization): the base starts a follower taking the lead back from its own scale, translate
+        // and rotate. What this branch carries and records of each must start there too rather than where the follower
+        // was drawn over the lead.
         [TestCase(100, 200, "", "", "scale", 1f)]
         [TestCase(200, 200, "translate-x-[30px]", "", "translate", 30f)]
         [TestCase(100, 100, "", "rotate-45", "rotate", 0f)]

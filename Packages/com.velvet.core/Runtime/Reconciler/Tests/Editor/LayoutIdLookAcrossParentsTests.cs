@@ -59,6 +59,9 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps no record of a rotate a projection hands back, and mixes "c" in
+        // from a's none here. The record this branch keeps must not stand in for a's own when "c" joins in the render that
+        // hands "a" the lead back.
         [TestCase("", "")]
         [TestCase("transition-all duration-1000 ease-linear", "translate-y-[40px]")]
         public void Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate(
