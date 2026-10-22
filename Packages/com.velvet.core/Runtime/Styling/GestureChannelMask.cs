@@ -33,6 +33,35 @@ namespace Velvet
     // (MotionSpringDriver.ReturnChannels).
     internal static class GestureChannelMask
     {
+        // The slots a play writes, leaving out a channel a gesture state holds.
+        public static MotionTransitionSlots DrivenSlots(IGestureMaskableState state)
+        {
+            var (opacity, translateX, translateY, scale, rotate) = state.Scalars;
+            var slots = MotionTransitionSlots.None;
+            if (Writes(opacity)) slots |= MotionTransitionSlots.Opacity;
+            if (Writes(translateX) || (translateX == null && Writes(translateY))) slots |= MotionTransitionSlots.Translate;
+            if (Writes(scale)) slots |= MotionTransitionSlots.Scale;
+            if (Writes(rotate)) slots |= MotionTransitionSlots.Rotate;
+            if (AnyWrites(state.ColorChannels)) slots |= MotionTransitionSlots.Color;
+            if (AnyWrites(state.LengthChannels)) slots |= MotionTransitionSlots.Length;
+            return slots;
+        }
+
+        private static bool Writes(IGestureMaskable? channel) => channel is { Masked: false };
+
+        private static bool AnyWrites(IReadOnlyList<IPropertyChannel>? channels)
+        {
+            if (channels == null)
+            {
+                return false;
+            }
+            for (var i = 0; i < channels.Count; i++)
+            {
+                if (!channels[i].Channel.Masked) return true;
+            }
+            return false;
+        }
+
         // Marks state, where there is one, as an exit's.
         public static void MarkExit(IGestureMaskableState? state, bool exit)
         {

@@ -136,7 +136,7 @@ namespace Velvet
             {
                 ResolveCornerRadius(element, binding);
                 // Only an upright caster owns the face; a skewed caster's SkewSilhouette already stashed it.
-                if (!binding.CasterSkewed && !binding.Face.HasStash && !StyleCascade.ClipsOverflow(element))
+                if (!binding.CasterSkewed && !binding.Face.HasStash && !NativeFace(element, binding))
                 {
                     binding.Face.TryStash(element);
                 }
@@ -152,7 +152,7 @@ namespace Velvet
             {
                 binding.OnStyleResolved = _ =>
                 {
-                    if (!binding.Face.HasStash && !StyleCascade.ClipsOverflow(element))
+                    if (!binding.Face.HasStash && !NativeFace(element, binding))
                     {
                         binding.Face.TryStash(element);
                     }
@@ -160,7 +160,7 @@ namespace Velvet
                 element.RegisterCallback(binding.OnStyleResolved);
                 // Synchronous attempt: if the resolver's inline bg-[…]/border-[…] are already on the element,
                 // suppress now so there is not even a one-frame ghost. Off-panel with no inline value it bails.
-                if (!StyleCascade.ClipsOverflow(element))
+                if (!NativeFace(element, binding))
                 {
                     binding.Face.TryStash(element);
                 }
@@ -189,6 +189,7 @@ namespace Velvet
             {
                 binding.Face.Release(element);
             }
+            FaceBorderOverlay.Remove(element);
             SilhouetteBoundsSpacer.Remove(element, ref binding.BoundsSpacer);
             s_byElement.Remove(element);
             element.MarkDirtyRepaint();
@@ -268,7 +269,7 @@ namespace Velvet
                         binding.OnStyleResolved = null;
                     }
                 }
-                else if (!binding.Face.HasStash && !StyleCascade.ClipsOverflow(element))
+                else if (!binding.Face.HasStash && !NativeFace(element, binding))
                 {
                     // No longer skewed: this paint owns the face again — re-capture + suppress.
                     binding.Face.TryStash(element);
@@ -371,27 +372,38 @@ namespace Velvet
             }
 
             // An element that clips its content cuts this paint at its padding box, which its border lies outside
-            // (styling-variants.md's hidden-overflow table), so such an element keeps its native background and
-            // border, and its layers are painted over them. Who owns the face is settled outside the paint, as
-            // settling it writes the element's inline style.
+            // (styling-variants.md's hidden-overflow table). Such an element keeps its native background and solid
+            // border, and its layers are painted over them; a dashed or dotted border, which the native chrome
+            // cannot draw, is painted with the background beneath it on a sibling over the element
+            // (FaceBorderOverlay). Who owns the face is settled outside the paint, as settling it writes the
+            // element's inline style and the hierarchy.
             var clips = StyleCascade.ClipsOverflow(ve);
-            if (clips == binding.Face.SuppressionApplied && !binding.FacePending)
+            var native = clips && binding.BorderStyle == BorderLineStyle.Solid;
+            if ((native == binding.Face.SuppressionApplied || (clips && !native) != FaceBorderOverlay.Has(ve))
+                && !binding.FacePending)
             {
                 binding.FacePending = true;
                 ve.schedule.Execute(() => SettleFace(ve, binding));
             }
-            if (clips && !binding.Face.SuppressionApplied)
+            if (native && !binding.Face.SuppressionApplied)
             {
                 DrawLayers(mgc, binding, box, inset: true, unscale);
                 return;
             }
             RepaintUprightFill(mgc, ve, binding, w, h);
             DrawLayers(mgc, binding, box, inset: true, unscale);
-            RepaintUprightBorder(mgc, ve, binding, w, h);
+            if (!clips)
+            {
+                RepaintUprightBorder(mgc, ve, binding, w, h);
+            }
         }
 
-        // Gives the face to the native chrome while the element clips its content, and takes it back once it does
-        // not.
+        // Whether the element's native chrome draws its face: while it clips its content and its border is solid.
+        private static bool NativeFace(VisualElement element, BoxShadowBinding binding)
+            => StyleCascade.ClipsOverflow(element) && binding.BorderStyle == BorderLineStyle.Solid;
+
+        // Gives the face to the native chrome while it draws it (NativeFace), else takes it back, and puts the border
+        // of a clipping element on its overlay.
         private static void SettleFace(VisualElement ve, BoxShadowBinding binding)
         {
             binding.FacePending = false;
@@ -399,7 +411,7 @@ namespace Velvet
             {
                 return;
             }
-            if (StyleCascade.ClipsOverflow(ve))
+            if (NativeFace(ve, binding))
             {
                 if (binding.Face.SuppressionApplied)
                 {
@@ -410,8 +422,15 @@ namespace Velvet
             {
                 binding.Face.TryStash(ve);
             }
-            ve.MarkDirtyRepaint();
+            FaceBorderOverlay.Sync(ve, StyleCascade.ClipsOverflow(ve) && !NativeFace(ve, binding),
+                (mgc, w, h) => PaintOverlay(mgc, ve, binding, new SilhouetteFace.Shearing(w, h, 0f, 0f)));
         }
+
+        private static void PaintOverlay(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding,
+            in SilhouetteFace.Shearing box)
+            => SilhouetteFace.PaintBand(mgc.painter2D, ve,
+                binding.Face.HasStash ? binding.Face.CurrentBg : ve.resolvedStyle.backgroundColor,
+                SilhouetteFace.BorderOf(ve, binding.Face), binding.BorderStyle, box);
 
         // Draws the inset layers of a skewed caster's shadow, between the fill and the border its SkewSilhouette
         // paints. A no-op for an element with no shadow or no inset layer.

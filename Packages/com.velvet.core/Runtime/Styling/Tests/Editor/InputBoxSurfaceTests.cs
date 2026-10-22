@@ -23,6 +23,33 @@ namespace Velvet.Tests
 
         private static string Joined(string[] classNames) => string.Join("|", classNames);
 
+        // StyleAnimationClassUtils.ClipStays names the utilities that imply the box's clip; the bundled table is what
+        // decides which those are.
+        [Test]
+        public void Given_TheBundledUtilities_When_TheOnesImplyingTheBoxClipAreCollected_Then_TheyAreTheOnesAPlayKeepsTheClipFor()
+        {
+            // Arrange
+            var table = (System.Collections.IDictionary)typeof(StyleUtilityProperties)
+                .GetField("ByClassName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .GetValue(null);
+            var named = (string[])typeof(StyleAnimationClassUtils)
+                .GetField("s_clipping", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .GetValue(null);
+
+            // Act
+            var implying = new List<string>();
+            foreach (string cls in table.Keys)
+            {
+                if (StyleInputBoxSurface.ImpliesBoxClip(cls)) implying.Add(cls);
+            }
+            implying.Sort(StringComparer.Ordinal);
+            var sorted = new List<string>(named);
+            sorted.Sort(StringComparer.Ordinal);
+
+            // Assert
+            Assert.That(string.Join("|", sorted), Is.EqualTo(string.Join("|", implying)));
+        }
+
         #region Routing
 
         [TestCase("bg-red-500")]

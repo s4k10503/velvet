@@ -54,9 +54,9 @@
   with a skew, and a `divide-dashed` or `divide-dotted` divider on a `shadow-*` or `skew-*` child dashed or
   dotted, as Chromium does; both used to be drawn solid.
 
-- A `shadow-*` element whose overflow is hidden keeps its border and background where it used to lose its border
-  and a border-wide ring of its background; its outer shadow layers are still cut at its padding box. Its border
-  is UI Toolkit's then, so a `border-dashed` / `border-dotted` one is drawn solid.
+- A `shadow-*` or `skew-*` element whose overflow is hidden keeps its border, dashed or dotted included, and the
+  background beneath it, where it used to lose its border and a border-wide ring of its background; its outer
+  shadow layers and a skew's overhang are still cut at its padding box.
 
 - While a `layoutId` move draws a `shadow-*`, `skew-*` or `border-dashed` `V.Motion` scaled differently on each
   axis, the face, border, dashed outline and skewed gradient those layers paint take the corner radii the move

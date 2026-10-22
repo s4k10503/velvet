@@ -4,20 +4,23 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The timing one channel of a driven Tween runs on where a PropertyOverrides entry names its property. The
-    // delay counts from the tick's start.
+    // The timing one channel of a driven Tween runs on where a PropertyOverrides entry names its property, or one a
+    // gesture state hands back to a bezier play (BezierTweenDriver.ReturnChannels). The delay counts from the
+    // tick's start. Curve: eased on the play's own cubic-bezier rather than Easing.
     internal readonly struct TweenChannelTiming
     {
-        public TweenChannelTiming(float delaySec, float durationSec, EasingMode easing)
+        public TweenChannelTiming(float delaySec, float durationSec, EasingMode easing, bool curve = false)
         {
             DelaySec = delaySec;
             DurationSec = durationSec;
             Easing = easing;
+            Curve = curve;
         }
 
         public float DelaySec { get; }
         public float DurationSec { get; }
         public EasingMode Easing { get; }
+        public bool Curve { get; }
     }
 
     // The timing of a Tween a mount's clock drives (StyleAnimationScheduler.StartDrivenTween), read off the list

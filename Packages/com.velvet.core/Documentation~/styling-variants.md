@@ -383,23 +383,20 @@ without `overflow-hidden` appearing anywhere in its className.
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
 | `overline` | unaffected — the rule sits inside the content box |
 
-**`skew-*` on a bordered element costs more than the bleed.** It takes ownership of the element's face: it
-suppresses the native background and border and repaints both in its own generated content. The padding-box
-clip then takes that repaint too, so a bordered card carrying `skew-*` plus a hidden overflow loses **its
-border and a border-wide ring of its own background**, and whatever is behind the card shows through that ring.
-A `shadow-*` card with a hidden overflow leaves its background and border to UI Toolkit, which keeps both, and
-paints its layers over them, of which the clip leaves the inset ones. The border is then UI Toolkit's own, so a
-`border-dashed` or `border-dotted` one is drawn solid, where CSS dashes it:
+**`skew-*` and `shadow-*` keep a bordered element's border.** Either takes ownership of the element's face: it
+suppresses the native background and border and repaints both in its own generated content, which the
+padding-box clip would cut at the border. While the element clips, a `skew-*` paints its border, and the
+background beneath it, on a sibling placed over the element and outside its clip, and a `shadow-*` leaves a
+solid border and its background to UI Toolkit and paints a dashed or dotted one the same way, so the border is
+drawn whole, as CSS draws it:
 
 ```csharp
-// Border and a border-wide ring of white are missing; the parent shows through.
+// Border and the background beneath it intact.
 V.Div(className: "-skew-x-6 overflow-hidden bg-white border-2 border-black rounded-lg");
-
-// Border intact.
-V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-black rounded-lg");
+V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-dashed border-black rounded-lg");
 ```
 
-The nesting below fixes this case too — the border belongs on whichever element is not clipped.
+The nesting below keeps a shadow's outer layers and a skew's overhang, which the clip still cuts.
 
 Put the clip on a child instead of on the painted element:
 
@@ -443,7 +440,7 @@ Framer's `variantPriorityOrder` protects a value a gesture state sets from the e
 while the state is on, and not from its `exit`, so a play other than an exit leaves that property where the
 gesture puts it, whatever its driver, and one starting during the state leaves it out. A Spring or Bezier
 play still running as the state ends takes the property back from where it is shown, on the play's spring or
-over what is left of its curve, as Framer animates a value a gesture state lets go of back to its `animate`
+over its duration again, as Framer animates a value a gesture state lets go of back to its `animate`
 target. Among themselves they rank as `hover:`, `focus:`, `active:` and `data-[…]:` rank in
 Tailwind, so a tap or focus class outranks a hover one; Framer Motion ranks `whileHover` above `whileFocus`.
 A droppable's `whileOverClass` and `whileDragActiveClass` apply theirs at `data-[…]:`'s rank, after every rule

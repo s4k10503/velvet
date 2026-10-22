@@ -1165,6 +1165,23 @@ namespace Velvet.Tests
             Assert.That(ShadowFace(card), Is.EqualTo(expected));
         }
 
+        // The theme's colours are custom properties the root sets, which the card inherits: its matched rules stay the
+        // same, and the face is read again because StyleCascade.RulesHash keys on the inherited variables too.
+        [Test]
+        public void Given_AShadowedCardWithAThemeBackground_When_TheThemeTurnsDark_Then_ItsFaceTakesTheDarkColor()
+        {
+            // Arrange
+            var (card, light) = Mount("bg-background shadow-md", "bg-background");
+
+            // Act
+            VelvetTheme.IsDark = true;
+            ForcePanelUpdate(card.panel);
+            var dark = _window.rootVisualElement.Q("ref").resolvedStyle.backgroundColor;
+
+            // Assert — NaN where the theme gives both the same colour, which a face that never moved would match.
+            Assert.That(ShadowFace(card), Is.EqualTo(dark != light ? dark : new Color(float.NaN, 0f, 0f, 0f)));
+        }
+
         [Test]
         public void Given_ASkewedCardWithAHoverBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()
         {

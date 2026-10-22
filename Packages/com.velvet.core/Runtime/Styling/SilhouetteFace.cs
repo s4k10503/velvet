@@ -185,6 +185,19 @@ namespace Velvet
                 : BorderSides.Of(rs, rs.borderLeftColor, rs.borderTopColor, rs.borderRightColor, rs.borderBottomColor);
         }
 
+        // Paints the background beneath the border, the band between the border edge and the padding edge, in fill,
+        // then the border over it (PaintBorder): what a clipping element's own paint loses (FaceBorderOverlay).
+        internal static void PaintBand(Painter2D p, VisualElement ve, Color fill, in BorderSides sides,
+            BorderLineStyle style, in Shearing box)
+        {
+            if (fill.a > 0.004f)
+            {
+                BorderBandPainter.Paint(p, ShearedRoundedRect.ForElement(ve, 0f, box.Width, box.Height, box.TanX, box.TanY),
+                    BorderSides.Of(ve.resolvedStyle, fill, fill, fill, fill));
+            }
+            PaintBorder(p, ve, sides, style, box);
+        }
+
         // Repaints a border over the face in the line style the element gives it, a dashed or dotted one side by side
         // (DashedBorderPainter). A side a dashed divider paints is left to it (DivideDashPainter), as the dashed layer
         // leaves it (BorderStyleSilhouette.PaintsSide).

@@ -53,6 +53,8 @@ namespace Velvet
         // is waiting to run.
         public Vector2 GradScale = Vector2.one;
         public bool GradRebakePending;
+        // Whether a check of the face border overlay is waiting to run (SkewSilhouette.SettleOverlay).
+        public bool OverlayPending;
 
         // When the caster carries an inline filter, the sheared silhouette would be clipped to the layout
         // rect by the filter's offscreen render tree (sized to boundingBox, which excludes gVC overflow). A
@@ -186,6 +188,8 @@ namespace Velvet
                 binding.ChildTranslate = null;
             }
             DestroyGradientTex(binding);
+            FaceBorderOverlay.Remove(element);
+            binding.OnGenerate = null;
             SilhouetteBoundsSpacer.Remove(element, ref binding.BoundsSpacer);
             element.MarkDirtyRepaint();
         }
@@ -301,8 +305,42 @@ namespace Velvet
             // CSS paints an inset shadow above the background and below the border.
             BoxShadowSilhouette.DrawInsetLayers(mgc, ve, w, h);
 
-            // Drawn after the fill so the outline sits on top and follows the shear, keeping the slanted edge crisp.
-            SilhouetteFace.PaintBorder(p, ve, SilhouetteFace.BorderOf(ve, binding.Face), binding.BorderStyle,
+            // An element that clips its content cuts this paint at its padding box, which its border lies outside
+            // (styling-variants.md's hidden-overflow table), so its border and the face beneath it are painted on a
+            // sibling over it (FaceBorderOverlay), placed outside the paint since that writes the hierarchy.
+            var clips = StyleCascade.ClipsOverflow(ve);
+            if (clips != FaceBorderOverlay.Has(ve) && !binding.OverlayPending)
+            {
+                binding.OverlayPending = true;
+                ve.schedule.Execute(() => SettleOverlay(ve, binding));
+            }
+            if (!clips)
+            {
+                // Drawn after the fill so the outline sits on top and follows the shear, keeping the slanted edge
+                // crisp.
+                SilhouetteFace.PaintBorder(p, ve, SilhouetteFace.BorderOf(ve, binding.Face), binding.BorderStyle,
+                    new SilhouetteFace.Shearing(w, h, tanX, tanY));
+            }
+        }
+
+        private static void SettleOverlay(VisualElement ve, SkewBinding binding)
+        {
+            binding.OverlayPending = false;
+            if (binding.OnGenerate == null)
+            {
+                return;
+            }
+            FaceBorderOverlay.Sync(ve, StyleCascade.ClipsOverflow(ve), (mgc, w, h) => PaintOverlay(mgc, ve, binding, w, h));
+        }
+
+        private static void PaintOverlay(MeshGenerationContext mgc, VisualElement ve, SkewBinding binding, float w, float h)
+        {
+            var tanX = Mathf.Tan(binding.Spec.XDeg * Mathf.Deg2Rad);
+            var tanY = Mathf.Tan(binding.Spec.YDeg * Mathf.Deg2Rad);
+            // A gradient face's band is the baked silhouette's, which this cannot cut out, so only its border is drawn.
+            var fill = binding.HasGradient ? Color.clear
+                : binding.HasStash ? binding.BgColor : ve.resolvedStyle.backgroundColor;
+            SilhouetteFace.PaintBand(mgc.painter2D, ve, fill, SilhouetteFace.BorderOf(ve, binding.Face), binding.BorderStyle,
                 new SilhouetteFace.Shearing(w, h, tanX, tanY));
         }
 

@@ -292,17 +292,9 @@ namespace Velvet
                 state.NativeLayoutOwner, state.Lengths, static channel => channel.Property, DrivenSlots(state));
 
         // The slot groups this play writes — the bezier sibling of MotionSpringDriver's own.
+        // The slots the play writes: a channel a gesture state holds writes nothing (GestureChannelMask).
         private static MotionTransitionSlots DrivenSlots(BezierTweenState state)
-        {
-            var slots = MotionTransitionSlots.None;
-            if (state.Opacity != null) slots |= MotionTransitionSlots.Opacity;
-            if (state.TranslateX != null || state.TranslateY != null) slots |= MotionTransitionSlots.Translate;
-            if (state.Scale != null) slots |= MotionTransitionSlots.Scale;
-            if (state.Rotate != null) slots |= MotionTransitionSlots.Rotate;
-            if (state.Colors != null) slots |= MotionTransitionSlots.Color;
-            if (state.Lengths != null) slots |= MotionTransitionSlots.Length;
-            return slots;
-        }
+            => GestureChannelMask.DrivenSlots(state);
 
         /// <summary>
         /// Advances elapsed time by <paramref name="dtSec"/> and re-applies the inline styles at the newly eased
@@ -411,21 +403,21 @@ namespace Velvet
         /// <summary>
         /// Hands the channels <see cref="GestureChannelMask.MaskChannels"/> held for a gesture, among <paramref name="named"/>, back to
         /// the play from what <paramref name="shown"/> reads the element showing: each runs from there to its target
-        /// over what is left of the play's curve, so it moves on from where it is shown and lands where and when the
-        /// play does. One the curve has all but finished lands at once.
+        /// over the play's duration again, from now, on its easing or its curve, and the play runs until it lands, as
+        /// Framer Motion animates a value a gesture state lets go of back to its animate target on that target's
+        /// transition.
         /// </summary>
         public static void ReturnChannels(VisualElement element, BezierTweenState state, StyleLonghandSet named,
             MotionSlotContext shown)
         {
-            var returned = Rebase(state, state.Opacity, named, (StyleLonghand.Opacity, ArbitraryProperty.Opacity), shown);
-            returned |= Rebase(state, state.TranslateX, named, (StyleLonghand.Translate, ArbitraryProperty.TranslateX), shown)
-                | Rebase(state, state.TranslateY, named, (StyleLonghand.Translate, ArbitraryProperty.TranslateY), shown);
-            returned |= Rebase(state, state.Scale, named, (StyleLonghand.Scale, ArbitraryProperty.Scale), shown);
-            returned |= Rebase(state, state.Rotate, named, (StyleLonghand.Rotate, ArbitraryProperty.Rotate), shown);
-            var shared = SharedEased(state);
+            var returned = Restart(state, state.Opacity, named, (StyleLonghand.Opacity, ArbitraryProperty.Opacity), shown);
+            returned |= Restart(state, state.TranslateX, named, (StyleLonghand.Translate, ArbitraryProperty.TranslateX), shown)
+                | Restart(state, state.TranslateY, named, (StyleLonghand.Translate, ArbitraryProperty.TranslateY), shown);
+            returned |= Restart(state, state.Scale, named, (StyleLonghand.Scale, ArbitraryProperty.Scale), shown);
+            returned |= Restart(state, state.Rotate, named, (StyleLonghand.Rotate, ArbitraryProperty.Rotate), shown);
             for (var i = 0; i < (state.Colors?.Count ?? 0); i++)
             {
-                returned |= ReturnColor(state, i, (named, shown), shared);
+                returned |= ReturnColor(state, i, (named, shown));
             }
             if (state.Lengths != null)
             {
@@ -437,8 +429,9 @@ namespace Velvet
                     }
                     if (shown.TryReadShown(l.Property, l.Unit, out var length))
                     {
-                        Rebase(l.Value, length.Value, Eased(state, l.Value, shared));
+                        l.Value.From = length.Value;
                     }
+                    Restart(state, l.Value);
                     returned = true;
                 }
             }
@@ -448,10 +441,9 @@ namespace Velvet
             }
         }
 
-        // Returns the colour channel at index from what the element shows, a fresh channel whose progress is rebased to
-        // stand at it, since a colour channel's endpoints are fixed.
-        private static bool ReturnColor(BezierTweenState state, int index, (StyleLonghandSet Named, MotionSlotContext Shown) gesture,
-            float shared)
+        // Returns the colour channel at index from what the element shows, as a fresh channel, since a colour
+        // channel's endpoints are fixed.
+        private static bool ReturnColor(BezierTweenState state, int index, (StyleLonghandSet Named, MotionSlotContext Shown) gesture)
         {
             var colors = state.Colors!;
             var channel = colors[index];
@@ -459,18 +451,17 @@ namespace Velvet
             {
                 return false;
             }
-            var eased = Eased(state, channel.Progress, shared);
             var from = gesture.Shown.TryReadShown(channel.Property, LengthUnit.Pixel, out var shown) ? shown.Color
                 : MotionPropertyInterpolation.LerpColor(channel.From, channel.To,
-                    Mathf.LerpUnclamped(channel.Progress.From, channel.Progress.To, eased));
+                    Mathf.LerpUnclamped(channel.Progress.From, channel.Progress.To,
+                        Eased(state, channel.Progress, SharedEased(state))));
             var fresh = new BezierColorChannel(channel.Property, from, channel.To);
-            fresh.Progress.Timing = channel.Progress.Timing;
-            Rebase(fresh.Progress, 0f, eased);
+            Restart(state, fresh.Progress, channel.Progress.Timing);
             colors[index] = fresh;
             return true;
         }
 
-        private static bool Rebase(BezierTweenState state, BezierTweenChannel? channel, StyleLonghandSet named,
+        private static bool Restart(BezierTweenState state, BezierTweenChannel? channel, StyleLonghandSet named,
             (StyleLonghand Longhand, ArbitraryProperty Slot) slot, MotionSlotContext shown)
         {
             if (!GestureChannelMask.Returns(channel, named, slot.Longhand, slot.Slot, shown))
@@ -479,17 +470,24 @@ namespace Velvet
             }
             if (shown.TryReadShown(slot.Slot, LengthUnit.Pixel, out var value))
             {
-                Rebase(channel!, value.Value, Eased(state, channel!, SharedEased(state)));
+                channel!.From = value.Value;
             }
+            Restart(state, channel!);
             return true;
         }
 
-        // Moves the channel's start so that, at the eased progress it stands at, it reads value, keeping its target:
-        // from there it covers the rest of the way over the rest of the curve. Within a thousandth of the end the
-        // channel lands instead.
-        private static void Rebase(BezierTweenChannel channel, float value, float eased)
+        // Runs the channel from its start over its duration again from now — its own timing's where it has one (a
+        // PropertyOverrides entry, a reversal), else the play's — on that easing or the play's curve, and keeps the
+        // play running until it lands.
+        private static void Restart(BezierTweenState state, BezierTweenChannel channel, TweenChannelTiming? own = null)
         {
-            channel.From = eased < 0.999f ? (value - (channel.To * eased)) / (1f - eased) : channel.To;
+            var timing = own ?? channel.Timing;
+            var duration = timing?.DurationSec ?? state.DurationSec;
+            channel.Timing = timing is { } given
+                ? new TweenChannelTiming(state.ElapsedSec, duration, given.Easing, given.Curve)
+                : new TweenChannelTiming(state.ElapsedSec, duration, state.Easing ?? EasingMode.Linear,
+                    curve: !state.Easing.HasValue);
+            state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, state.ElapsedSec + duration);
         }
 
         // The bezier sibling of MotionSpringDriver.HoldTranslate.
@@ -681,9 +679,16 @@ namespace Velvet
         // shared, the state's curve at the state's delay and duration (SharedEased), evaluated once a frame for
         // every channel taking it.
         private static float Eased(BezierTweenState state, BezierTweenChannel channel, float shared)
-            => channel.Timing is { } own
-                ? UssEasing.Evaluate(own.Easing, Progress(state, state.ElapsedSec - own.DelaySec, own.DurationSec))
-                : shared;
+        {
+            if (channel.Timing is not { } own)
+            {
+                return shared;
+            }
+            var progress = Progress(state, state.ElapsedSec - own.DelaySec, own.DurationSec);
+            return own.Curve
+                ? CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress)
+                : UssEasing.Evaluate(own.Easing, progress);
+        }
 
         // A zero duration reads as complete once its delay has passed rather than dividing by zero — the scheduler
         // builds one only from a PropertyOverrides entry of no positive duration or a reversal at its very start,

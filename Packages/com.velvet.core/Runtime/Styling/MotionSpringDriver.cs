@@ -331,17 +331,9 @@ namespace Velvet
 
         // The slot groups this play writes, for the guard's intersection against what the element's own
         // transition utilities declare.
+        // The slots the play writes: a channel a gesture state holds writes nothing (GestureChannelMask).
         private static MotionTransitionSlots DrivenSlots(MotionSpringState state)
-        {
-            var slots = MotionTransitionSlots.None;
-            if (state.Opacity != null) slots |= MotionTransitionSlots.Opacity;
-            if (state.TranslateX != null || state.TranslateY != null) slots |= MotionTransitionSlots.Translate;
-            if (state.Scale != null) slots |= MotionTransitionSlots.Scale;
-            if (state.Rotate != null) slots |= MotionTransitionSlots.Rotate;
-            if (state.Colors != null) slots |= MotionTransitionSlots.Color;
-            if (state.Lengths != null) slots |= MotionTransitionSlots.Length;
-            return slots;
-        }
+            => GestureChannelMask.DrivenSlots(state);
 
         private static void WriteChannelValues(VisualElement element, MotionSpringState state)
         {
