@@ -240,8 +240,7 @@ namespace Velvet
                 || core == "border" || core.StartsWith("border-", StringComparison.Ordinal)
                 || core == "rounded" || core.StartsWith("rounded-", StringComparison.Ordinal)
                 || StartsWithAny(core, s_paddings)
-                || StyleShadowClass.IsShadowClass(core)
-                || StyleRingClass.IsRingClass(core)
+                || IsShadowOrRingToken(core)
                 || StyleGradientClass.IsGradientClass(core)
                 // CSS's filter, opacity, transforms, color and text styling apply to the element and what it
                 // contains; a declared label is neither the input nor inside it.
@@ -268,6 +267,11 @@ namespace Velvet
                 ? Placement.Both
                 : Placement.Control;
         }
+
+        private static bool IsShadowOrRingToken(string core)
+            => StyleShadowClass.IsShadowClass(core)
+                || StyleShadowClass.IsInsetBoxShadowClass(core)
+                || StyleRingClass.IsRingClass(core);
 
         // What a utility writes: its bundled rule's properties, or the inline property it resolves to.
         private static StyleLonghandSet LonghandsOf(string core)

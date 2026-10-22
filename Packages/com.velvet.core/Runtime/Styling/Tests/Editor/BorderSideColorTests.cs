@@ -32,16 +32,16 @@ namespace Velvet.Tests
 
         private static readonly object[] ParsedCases =
         {
-            new object[] { "border-t-red-500", "BorderTopColor", "EF4444FF" },
-            new object[] { "border-r-blue-500", "BorderRightColor", "3B82F6FF" },
-            new object[] { "border-b-emerald-600", "BorderBottomColor", "059669FF" },
-            new object[] { "border-l-amber-400", "BorderLeftColor", "FBBF24FF" },
-            new object[] { "border-x-red-500", "BorderLeftColor+BorderRightColor", "EF4444FF" },
-            new object[] { "border-y-red-500", "BorderBottomColor+BorderTopColor", "EF4444FF" },
-            new object[] { "border-s-red-500", "BorderLeftColor", "EF4444FF" },
-            new object[] { "border-e-red-500", "BorderRightColor", "EF4444FF" },
-            new object[] { "border-bs-red-500", "BorderTopColor", "EF4444FF" },
-            new object[] { "border-be-red-500", "BorderBottomColor", "EF4444FF" },
+            new object[] { "border-t-red-500", "BorderTopColor", "FB2C36FF" },
+            new object[] { "border-r-blue-500", "BorderRightColor", "2B7FFFFF" },
+            new object[] { "border-b-emerald-600", "BorderBottomColor", "009966FF" },
+            new object[] { "border-l-amber-400", "BorderLeftColor", "FFB900FF" },
+            new object[] { "border-x-red-500", "BorderLeftColor+BorderRightColor", "FB2C36FF" },
+            new object[] { "border-y-red-500", "BorderBottomColor+BorderTopColor", "FB2C36FF" },
+            new object[] { "border-s-red-500", "BorderLeftColor", "FB2C36FF" },
+            new object[] { "border-e-red-500", "BorderRightColor", "FB2C36FF" },
+            new object[] { "border-bs-red-500", "BorderTopColor", "FB2C36FF" },
+            new object[] { "border-be-red-500", "BorderBottomColor", "FB2C36FF" },
             new object[] { "border-b-white", "BorderBottomColor", "FFFFFFFF" },
             new object[] { "border-t-black", "BorderTopColor", "000000FF" },
             new object[] { "border-x-transparent", "BorderLeftColor+BorderRightColor", "00000000" },
@@ -49,9 +49,9 @@ namespace Velvet.Tests
             new object[] { "border-y-[rgb(255,0,0)]", "BorderBottomColor+BorderTopColor", "FF0000FF" },
             new object[] { "border-s-[#0000ff]", "BorderLeftColor", "0000FFFF" },
             new object[] { "border-be-[#ff0000]", "BorderBottomColor", "FF0000FF" },
-            new object[] { "border-t-red-500/40", "BorderTopColor", "EF444466" },
+            new object[] { "border-t-red-500/40", "BorderTopColor", "FB2C3666" },
             new object[] { "border-x-[#00ff00]/40", "BorderLeftColor+BorderRightColor", "00FF0066" },
-            new object[] { "border-e-red-500/[0.4]", "BorderRightColor", "EF444466" },
+            new object[] { "border-e-red-500/[0.4]", "BorderRightColor", "FB2C3666" },
         };
 
         [TestCaseSource(nameof(ParsedCases))]
@@ -157,7 +157,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class BorderSideColorMountTests
     {
-        private const string Red500 = "EF4444FF";
+        private const string Red500 = "FB2C36FF";
         private const string Blue = "0000FFFF";
 
         private readonly System.Collections.Generic.List<MountedTree> _others = new();
@@ -266,7 +266,7 @@ namespace Velvet.Tests
             var leaf = MountLeaf("border-e-red-500/40");
 
             // Assert
-            Assert.That(Rgba(leaf.style.borderRightColor), Is.EqualTo("EF444466"));
+            Assert.That(Rgba(leaf.style.borderRightColor), Is.EqualTo("FB2C3666"));
         }
 
         [Test]
@@ -408,7 +408,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((before, ColorUtility.ToHtmlStringRGBA(child.style.borderBottomColor.value)),
-                Is.EqualTo((StyleKeyword.Null, "EF4444FF")));
+                Is.EqualTo((StyleKeyword.Null, "FB2C36FF")));
         }
     }
 

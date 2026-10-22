@@ -9,7 +9,8 @@ namespace Velvet.Tests
     /// <summary>
     /// The palette <see cref="VelvetPalette"/> carries in C#, against the <c>--color-*</c> tokens the bundled
     /// stylesheet declares. A utility that resolves a palette name inline reads the C# table while
-    /// <c>border-{color}</c> reads the token, so the two agree only while the tables do.
+    /// <c>border-{color}</c> reads the token, so the two agree only while the tables do. Both hold the hues Tailwind v4
+    /// added to v3's.
     /// </summary>
     [TestFixture]
     internal sealed class PaletteStyleSheetMirrorTests
@@ -17,7 +18,7 @@ namespace Velvet.Tests
         private const string PaletteSheetPath = "Packages/com.velvet.core/Runtime/Styles/_palette.uss";
 
         // GREEN_ON_BASE(construction): both sides are the repository's own content and agree on the base. Change
-        // `["red-500"] = "#ef4444"` in VelvetPalette.cs to `"#ef4445"` and this is what reddens.
+        // `["red-500"] = "#fb2c36"` in VelvetPaletteColors.g.cs to `"#fb2c37"` and this is what reddens.
         [Test]
         public void Given_EveryColorTokenTheSheetDeclares_When_ResolvedThroughThePalette_Then_TheColorsAreTheSame()
         {
@@ -39,6 +40,28 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(resolved, Is.EqualTo(declared).And.Not.Empty);
+        }
+
+        [Test]
+        public void Given_AHueTailwindV4Added_When_ResolvedThroughThePalette_Then_ItIsItsColour()
+        {
+            // Act
+            var resolved = VelvetPalette.TryGet("mauve-500", out var color)
+                ? ColorUtility.ToHtmlStringRGBA(color)
+                : "unresolved";
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo("79697BFF"));
+        }
+
+        [Test]
+        public void Given_AHueTailwindV4Added_When_ItsBackgroundClassIsLookedUp_Then_TheSheetDeclaresIt()
+        {
+            // Act
+            var declared = StyleUtilityProperties.TryGet("bg-mauve-500", out _);
+
+            // Assert
+            Assert.That(declared, Is.True);
         }
     }
 }

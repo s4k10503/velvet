@@ -68,8 +68,8 @@ The functions follow CSS Color 4:
 ## Where Velvet differs from CSS
 
 - **Named colours** are the ones `ColorUtility.TryParseHtmlString` reads, not the full CSS list.
-- **The palette is Tailwind v3's**, in hex: `bg-red-500` and a palette name in a gradient stop are v3's
-  `#ef4444`, not v4's `oklch(63.7% 0.237 25.331)`. Write the v4 value in brackets to get it.
+- **The palette** (`bg-red-500`, a palette name in a gradient stop) is Tailwind v4's in sRGB: each OKLCH colour
+  is converted as CSS Color 4 converts it and a channel outside 0–1 is clipped, so `bg-blue-500` is `#2b7fff`.
 - **A colour outside sRGB**, which an `hsl()` or `hwb()` whose components lie outside their ranges can
   describe, has each channel clipped to 0–1 where CSS Color 4 maps it into the gamut.
 - **`calc()`, `currentColor` and relative colour syntax** are not read. A `var()` is replaced by the custom

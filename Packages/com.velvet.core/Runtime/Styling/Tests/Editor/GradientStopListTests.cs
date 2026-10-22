@@ -184,7 +184,7 @@ namespace Velvet.Tests
             var left = SampleAcross(new[] { "bg-linear-[to_right,slate-900,#ffffff]" }, 0f);
 
             // Assert
-            Assert.That(ColorUtility.ToHtmlStringRGBA(left), Is.EqualTo("0F172AFF"));
+            Assert.That(ColorUtility.ToHtmlStringRGBA(left), Is.EqualTo("0F172BFF"));
         }
 
         [Test]

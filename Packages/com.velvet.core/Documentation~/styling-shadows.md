@@ -20,8 +20,29 @@ follows a transform on the element, as a CSS box-shadow does. `drop-shadow-*` is
 | `shadow-inner` | `inset 0 2px 4px 0` black at 5% |
 | `shadow-none` | none |
 | `shadow-[<shadow>(,<shadow>)*]` | each shadow two to four lengths (x, y, blur, spread), an optional colour and an optional `inset`, with `_` for spaces: `shadow-[0_4px_8px_-2px_#0004,inset_0_1px_2px_#0002]` |
+| `inset-shadow-2xs` | `inset 0 1px` black at 5% |
+| `inset-shadow-xs` | `inset 0 1px 1px` black at 5% |
+| `inset-shadow-sm` | `inset 0 2px 4px` black at 5% |
+| `inset-shadow-none` | none |
+| `inset-shadow-[<shadow>(,<shadow>)*]` | as `shadow-[…]` without the `inset`, which is written ahead of every shadow: `inset-shadow-[0_2px_4px_#0004]` |
+| `inset-ring`, `inset-ring-<n>`, `inset-ring-[<length>]` | `inset 0 0 0` and the width: 1px, `<n>` px, or the bracket's length |
 
-The presets are Tailwind v4's `--shadow-*` theme values. A layer of a bracketed shadow without a colour takes
+## Colours
+
+| Utility | Colour |
+|---|---|
+| `shadow-<color>`, `inset-shadow-<color>`, `inset-ring-<color>` | a palette name, `transparent`, `current` (the element's text colour) or a bracketed colour (`shadow-[#f00]`), taking the place of the colour of every layer of its own family; `/N` scales its alpha (`shadow-red-500/40`) |
+| `shadow-<size>/N`, `inset-shadow-<size>/N` | sets the alpha of every layer of the size to N%, or, beside a colour class, scales that colour's alpha by it (`shadow-lg/50`) |
+| `shadow-inherit`, `inset-shadow-inherit`, `inset-ring-inherit` | the colour its family's classes declare on the parent element, with the parent's size `/N` folded in, or the grandparent's where the parent's is itself `-inherit`; each layer keeps its own colour where that element declares none. It takes no `/N` |
+
+An `inset-ring-*` with no colour class is drawn in the element's text colour, as CSS's `currentColor`.
+The parent `-inherit` reads is the element's parent in the UI Toolkit hierarchy, which for a child of a
+`V.ScrollView` is the scroll view's content container rather than the scroll view, and declares no colour. The
+inherited colour is read when the element's shadow is drawn.
+
+The presets are Tailwind v4's `--shadow-*` and `--inset-shadow-*` theme values. An `inset-shadow-*`, an
+`inset-ring-*` and a `shadow-*` on one element are all drawn, listed in that order, and each `-none` (or
+`inset-ring-0`) removes its own family's layers alone. A layer of a bracketed shadow without a colour takes
 `rgb(4 12 24 / 0.2)`, where CSS takes `currentColor`. A negative blur, a percentage, or any layer that does not
 read rejects the whole bracket, as the browser drops a `box-shadow` value it cannot read.
 
@@ -49,12 +70,3 @@ Each corner keeps its own radius. A padding-box corner is the border-box radius 
 meeting there. Corner radii are circular: a corner has one radius, where CSS's `border-radius` takes a horizontal
 and a vertical one. Where the two borders at a corner differ, the wider is taken off both axes, where CSS takes
 each border off its own axis and leaves an elliptical corner.
-
-## Not supported
-
-These classes read as no shadow, so they are inert and an earlier `shadow-*` stays in force:
-
-- `shadow-<color>` and `shadow-lg/50`: the colour of a preset layer cannot be changed. Write the layers out in
-  `shadow-[…]` with a colour.
-- `shadow-[#f00]`: a bracket must hold at least the two offset lengths.
-- `inset-shadow-*`: write an `inset` layer in `shadow-[…]`, or use `shadow-inner`.

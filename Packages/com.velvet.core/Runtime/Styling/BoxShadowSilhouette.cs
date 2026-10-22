@@ -101,6 +101,42 @@ namespace Velvet
         // prior consumer's shadow. Mirrors StyleArbitraryValueResolver's per-element side-channel.
         private static readonly ConditionalWeakTable<VisualElement, BoxShadowBinding> s_byElement = new();
 
+        // The shadow colours each element's classes declare, recorded whether or not it paints a shadow, for a
+        // child's -inherit to take.
+        private static readonly ConditionalWeakTable<VisualElement, DeclaredShadowColours> s_declaredColours = new();
+
+        // Records the colours classNames declares on element, or forgets them where it declares none.
+        internal static void RecordDeclaredColours(VisualElement element, string[]? classNames)
+        {
+            if (classNames != null && StyleShadowClass.HasShadowClass(classNames))
+            {
+                s_declaredColours.AddOrUpdate(element, StyleShadowClass.DeclaredColours(classNames));
+            }
+            else if (s_declaredColours.TryGetValue(element, out _))
+            {
+                s_declaredColours.Remove(element);
+            }
+        }
+
+        // The colour family takes on element through inherit: the parent's declared colour, the grandparent's where the
+        // parent's is itself inherit, and so on up; null where the ancestor reached declares no colour for family.
+        private static Color? InheritedColour(VisualElement element, ShadowColourFamily family)
+        {
+            for (var parent = element.hierarchy.parent; parent != null; parent = parent.hierarchy.parent)
+            {
+                if (!s_declaredColours.TryGetValue(parent, out var declared))
+                {
+                    return null;
+                }
+                var colour = declared.Of(family);
+                if (!colour.Inherit)
+                {
+                    return colour.Colour;
+                }
+            }
+            return null;
+        }
+
         // Wires the paint (+ face-stash, for an upright caster) callbacks onto the element and returns the
         // binding. casterSkewed: whether a SkewSilhouette already owns this element's face (any skew axis) —
         // resolved by the reconciler, which reconciles skew before the shadow. The shadow is the BACKGROUND,
@@ -517,8 +553,16 @@ namespace Velvet
         private static void DrawShadowQuad(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowSpec layer,
             in ShadowBox box, Vector2 unscale)
         {
-            var alpha = layer.Color.a;
-            if (alpha <= 0.004f)
+            var tint = layer.InheritFrom == ShadowColourFamily.None
+                ? layer.Color
+                : InheritedColour(mgc.visualElement, layer.InheritFrom) ?? layer.Color;
+            if (float.IsNaN(tint.r))
+            {
+                var current = mgc.visualElement.resolvedStyle.color;
+                current.a *= tint.a;
+                tint = current;
+            }
+            if (tint.a <= 0.004f)
             {
                 return;
             }
@@ -541,8 +585,6 @@ namespace Velvet
             // UVs are raw 0..1 (UI Toolkit remaps them into the atlas slot); the texture's alpha carries the
             // SDF antialiasing. texUV.y is flipped (box top samples v = 1) to match the bake orientation and
             // SkewSilhouette's gradient quad, so a skewed caster's shadow slants the same direction on screen.
-            var tint = layer.Color;
-            tint.a = alpha;
             var mwd = mgc.Allocate(4, 6, tex);
             mwd.SetNextVertex(new Vertex { position = new Vector3(minX, minY, Vertex.nearZ), tint = tint, uv = new Vector2(0f, 1f) }); // top-left
             mwd.SetNextVertex(new Vertex { position = new Vector3(maxX, minY, Vertex.nearZ), tint = tint, uv = new Vector2(1f, 1f) }); // top-right

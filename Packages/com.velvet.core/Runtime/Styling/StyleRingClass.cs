@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -57,12 +56,6 @@ namespace Velvet
         // no class did.
         private const float MediumOutlineWidth = 3f;
 
-        // suffix → width (px). Shared by ring-{N} and outline-{N}; the ring/outline width scale.
-        private static readonly Dictionary<string, float> WidthScale = new()
-        {
-            ["0"] = 0f, ["1"] = 1f, ["2"] = 2f, ["4"] = 4f, ["8"] = 8f,
-        };
-
         // True when cls belongs to either family this layer owns (recognized or not-yet-valid). Both the
         // array gate below and the variant-payload gate answer through this one predicate, so which tokens
         // count as "a ring utility" is defined in exactly one place — mirroring StyleShadowClass.IsShadowClass.
@@ -70,7 +63,8 @@ namespace Velvet
             => !string.IsNullOrEmpty(cls)
                 && (cls == "ring" || cls == "outline"
                     || cls.StartsWith("ring-", StringComparison.Ordinal)
-                    || cls.StartsWith("outline-", StringComparison.Ordinal));
+                    || cls.StartsWith("outline-", StringComparison.Ordinal)
+                    || cls.StartsWith("-outline-offset-", StringComparison.Ordinal));
 
         // Cheap early-out gate: true when ANY class is ring/outline or begins with ring-/outline-. Skips the
         // full parse on the ~99% of elements that carry no ring/outline class and no binding.
@@ -143,7 +137,10 @@ namespace Velvet
 
             var colorSet = slots.IsOutline ? slots.OutlineColorSet : slots.RingColorSet;
             var color = slots.IsOutline ? slots.OutlineColor : slots.RingColor;
-            spec = new RingSpec(effectiveWidth, color, Mathf.Max(0f, slots.Offset), slots.Inset, currentColor: !colorSet);
+            // outline-offset may be negative, drawing the outline inside the border edge; a ring's offset is a
+            // spread Tailwind adds to its width, which Velvet floors at zero.
+            var offset = slots.IsOutline ? slots.Offset : Mathf.Max(0f, slots.Offset);
+            spec = new RingSpec(effectiveWidth, color, offset, slots.Inset, currentColor: !colorSet);
             return true;
         }
 
@@ -219,7 +216,7 @@ namespace Velvet
         // is a length; RejectedValueTests pins both.
         private static void ReadBoxShadowPart(string suffix, string root, bool important, ref BandSlots slots)
         {
-            if (WidthScale.ContainsKey(suffix) || IsPositiveInteger(suffix))
+            if (IsPositiveInteger(suffix))
             {
                 slots.Width.Offer(important, false);
                 return;
@@ -282,12 +279,21 @@ namespace Velvet
 
             // Offset: ring-offset-{N} / outline-offset-{N}. (A color suffix here is the offset-color fill,
             // which Velvet does not model yet; an unrecognized offset suffix is ignored.)
-            var isRingOffset = TryMatchPrefix(cls, "ring-offset-", out var ringOffSuffix);
-            if (isRingOffset || TryMatchPrefix(cls, "outline-offset-", out ringOffSuffix))
+            if (TryMatchPrefix(cls, "ring-offset-", out var ringOffSuffix))
             {
-                if (TryParseWidthValue(ringOffSuffix, isRingOffset ? "ring-offset" : null, out var off))
+                if (TryParseWidthValue(ringOffSuffix, "ring-offset", out var off))
                 {
                     slots.Offset = off;
+                }
+                return;
+            }
+            // outline-offset-* and its negation -outline-offset-*, as Tailwind's supportsNegative writes it.
+            var negative = TryMatchPrefix(cls, "-outline-offset-", out var outlineOffSuffix);
+            if (negative || TryMatchPrefix(cls, "outline-offset-", out outlineOffSuffix))
+            {
+                if (TryParseOutlineOffset(outlineOffSuffix, out var off))
+                {
+                    slots.Offset = negative ? -off : off;
                 }
                 return;
             }
@@ -407,18 +413,20 @@ namespace Velvet
             return false;
         }
 
-        // A width is either a preset (0/1/2/4/8) or an arbitrary [Npx] (px only — a ring width is pixels).
+        // A width is a whole number of pixels written bare, as Tailwind's isPositiveInteger reads one, or an arbitrary
+        // [Npx] (px only — a ring width is pixels).
         // inferredRoot: the prefix's root where Tailwind reads its bracket as a length or a colour
         // (StyleArbitraryValueResolver.TryParseInferredArbitraryPixels); null for outline-offset-, which takes a length alone.
-        private static bool TryParseWidthValue(string? suffix, string? inferredRoot, out float width)
+        internal static bool TryParseWidthValue(string? suffix, string? inferredRoot, out float width)
         {
             width = 0f;
             if (string.IsNullOrEmpty(suffix))
             {
                 return false;
             }
-            if (WidthScale.TryGetValue(suffix, out width))
+            if (IsPositiveInteger(suffix))
             {
+                width = float.Parse(suffix, System.Globalization.CultureInfo.InvariantCulture);
                 return true;
             }
             if (inferredRoot != null)
@@ -427,6 +435,31 @@ namespace Velvet
             }
             var written = StyleArbitraryValueResolver.WithoutTypeHint(suffix);
             return written != null && StyleArbitraryValueResolver.TryParseArbitraryPixels(written.AsSpan(), out width);
+        }
+
+        // outline-offset-<n>, or outline-offset-[…] holding any pixel length, a negative one included, as CSS's
+        // outline-offset takes one.
+        private static bool TryParseOutlineOffset(string? suffix, out float offset)
+        {
+            if (TryParseWidthValue(suffix, null, out offset))
+            {
+                return true;
+            }
+            var written = suffix == null ? null : StyleArbitraryValueResolver.WithoutTypeHint(suffix);
+            offset = 0f;
+            if (written == null)
+            {
+                return false;
+            }
+            if (!StyleArbitraryValueResolver.TryStripBrackets(written, 0, out var inner))
+            {
+                return false;
+            }
+            if (!StyleArbitraryValueResolver.TryParseValue(inner, out offset, out var unit))
+            {
+                return false;
+            }
+            return unit == LengthUnit.Pixel;
         }
 
         // A color is a palette token (red-500 / white / black) or an arbitrary [<color>], whose type hint is the

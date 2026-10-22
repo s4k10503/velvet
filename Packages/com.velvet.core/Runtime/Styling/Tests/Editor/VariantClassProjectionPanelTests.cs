@@ -29,8 +29,6 @@ namespace Velvet.Tests
         private const float NarrowWidth = 500f;
 
         private static readonly Color Neutral900 = new Color32(0x17, 0x17, 0x17, 0xFF);
-        private static readonly Color Red500 = new Color32(0xEF, 0x44, 0x44, 0xFF);
-        private static readonly Color Blue500 = new Color32(0x3B, 0x82, 0xF6, 0xFF);
 
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
@@ -347,8 +345,8 @@ namespace Velvet.Tests
             // Act
             SetDark(true, leaf);
 
-            // Assert
-            Assert.That(leaf.resolvedStyle.backgroundColor, Is.EqualTo(Blue500));
+            // Assert — blue-500, #2b7fff.
+            Assert.That(leaf.resolvedStyle.backgroundColor, Is.EqualTo((Color)new Color32(0x2B, 0x7F, 0xFF, 0xFF)));
         }
 
         [Test]
@@ -362,8 +360,9 @@ namespace Velvet.Tests
             // Act — the md payload was never removed, so it is what the property must fall back to.
             SetDark(false, leaf);
 
-            // Assert
-            Assert.AreEqual((Blue500, Red500), (dark, leaf.resolvedStyle.backgroundColor));
+            // Assert — blue-500 then red-500.
+            Assert.AreEqual(((Color)new Color32(0x2B, 0x7F, 0xFF, 0xFF), (Color)new Color32(0xFB, 0x2C, 0x36, 0xFF)),
+                (dark, leaf.resolvedStyle.backgroundColor));
         }
 
         [Test]
@@ -378,8 +377,8 @@ namespace Velvet.Tests
             SetDark(false, leaf);
             ResolveAt(NarrowWidth, leaf);
 
-            // Assert
-            Assert.AreEqual((Blue500, Color.white), (dark, leaf.resolvedStyle.backgroundColor));
+            // Assert — blue-500 then white.
+            Assert.AreEqual(((Color)new Color32(0x2B, 0x7F, 0xFF, 0xFF), Color.white), (dark, leaf.resolvedStyle.backgroundColor));
         }
 
         #endregion
@@ -400,8 +399,8 @@ namespace Velvet.Tests
             var important = _window.rootVisualElement.Q<VisualElement>("important");
             ForcePanelUpdate(plain.panel);
 
-            // Assert
-            Assert.AreEqual((Color.white, Red500),
+            // Assert — white, then red-500.
+            Assert.AreEqual((Color.white, (Color)new Color32(0xFB, 0x2C, 0x36, 0xFF)),
                 (plain.resolvedStyle.backgroundColor, important.resolvedStyle.backgroundColor));
         }
 
@@ -414,8 +413,8 @@ namespace Velvet.Tests
             // Act
             SetDark(true, leaf);
 
-            // Assert
-            Assert.That(leaf.resolvedStyle.backgroundColor, Is.EqualTo(Red500));
+            // Assert — red-500, #fb2c36.
+            Assert.That(leaf.resolvedStyle.backgroundColor, Is.EqualTo((Color)new Color32(0xFB, 0x2C, 0x36, 0xFF)));
         }
 
         [Test]
@@ -427,8 +426,8 @@ namespace Velvet.Tests
             // Act
             SetDark(true, leaf);
 
-            // Assert
-            Assert.That(leaf.resolvedStyle.backgroundColor, Is.EqualTo(Red500));
+            // Assert — red-500, #fb2c36.
+            Assert.That(leaf.resolvedStyle.backgroundColor, Is.EqualTo((Color)new Color32(0xFB, 0x2C, 0x36, 0xFF)));
         }
 
         [Test]
@@ -438,8 +437,8 @@ namespace Velvet.Tests
             // class, so only the important band can take the property back off it.
             var leaf = MountAt(WideWidth, "bg-[#3b82f6] !bg-red-500");
 
-            // Assert
-            Assert.That(leaf.resolvedStyle.backgroundColor, Is.EqualTo(Red500));
+            // Assert — red-500, #fb2c36.
+            Assert.That(leaf.resolvedStyle.backgroundColor, Is.EqualTo((Color)new Color32(0xFB, 0x2C, 0x36, 0xFF)));
         }
 
         #endregion

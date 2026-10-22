@@ -84,7 +84,7 @@ So `top-[calc(1rem+4px)]`, `gap-[min(2rem,24px)]`, `blur-[calc(2px*3)]`,
 
 A value Tailwind writes and the browser rejects does what it does in the browser. A plain declaration is dropped,
 so the class is inert: `border-[2PX]`, `text-[16]`, `w-[120]`. One Tailwind composes into the element's box-shadow
-discards the whole box-shadow, the ring and every `shadow-*` with it, while a `drop-shadow-*`, a filter, stays
+discards the whole box-shadow, the ring and every `shadow-*`, `inset-shadow-*` and `inset-ring-*` with it, while a `drop-shadow-*`, a filter, stays
 (`ring ring-[5PX] drop-shadow-lg` keeps its drop shadow): a ring or inset ring colour that is no colour
 (`ring ring-[5PX]`, `ring-2 ring-[2]`, `inset-ring inset-ring-[2]`), a ring width that is no length
 (`ring-[length:2]`, and `ring-[length:0]` and `ring-[length:50%]`, which Tailwind adds to the offset width in
@@ -93,8 +93,7 @@ offset colour that is no colour beside an offset width (`ring-offset-2 ring-offs
 `inset-shadow-[…]` that is no box-shadow (`shadow-[0_4_8_#000]`, `shadow-[4px]`,
 `inset-shadow-[inset_0_2px_4px_red]`, which Tailwind writes behind a second `inset`), and a shadow colour that is
 no colour where the shadow reads it (`shadow-md shadow-[#ggg]`, `inset-shadow-sm inset-shadow-[#ggg]`; beside
-`shadow-none`, or no shadow, it discards nothing). Velvet draws no `inset-shadow-*` or `inset-ring-*`
-([shadows](styling-shadows.md)), but their values count. A `shadow-[…]` Tailwind types as a colour
+`shadow-none`, or no shadow, it discards nothing). A `shadow-[…]` Tailwind types as a colour
 (`shadow-[#f00]`, `shadow-[color:red]`) writes the shadow colour alone, so it does not stand in for a rejected
 `shadow-[…]` before it. Each of these is the value of the class Tailwind emits last among those writing it, in
 whatever order they are written, and a variant's value holds while its variant applies

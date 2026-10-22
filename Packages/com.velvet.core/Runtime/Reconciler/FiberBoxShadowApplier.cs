@@ -19,6 +19,7 @@ namespace Velvet
         // wrapElement.
         internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)
         {
+            BoxShadowSilhouette.RecordDeclaredColours(element, classNames);
             if (!StyleShadowClass.HasShadowClass(classNames) || !StyleShadowClass.TryExtract(classNames, out var spec))
             {
                 return;
@@ -59,6 +60,9 @@ namespace Velvet
         internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
             SkewSpec skew)
         {
+            // Before the fast path: an element declaring only a colour paints nothing, and its children's -inherit
+            // reads what it declares.
+            BoxShadowSilhouette.RecordDeclaredColours(element, classNames);
             var bound = _ctx.ShadowBindings.TryGetValue(element, out var binding);
             // Fast path: no shadow anywhere near this element.
             if (!bound && !StyleShadowClass.HasShadowClass(classNames))

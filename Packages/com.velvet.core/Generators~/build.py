@@ -19,6 +19,8 @@ STYLE_TABLE_PROJECT = "src/Velvet.StyleTable/Velvet.StyleTable.csproj"
 STYLE_SHEET_DIR = "../Runtime/Styles"
 STYLE_TABLE_OUTPUT = "../Runtime/Styling/StyleUtilityProperties.g.cs"
 RADIUS_SHEET_OUTPUT = "../Runtime/Styles/_radius_declared.uss"
+PALETTE_SOURCE = "src/Velvet.StyleTable/PaletteColors.css"
+PALETTE_TABLE_OUTPUT = "../Runtime/Styling/VelvetPaletteColors.g.cs"
 
 DEPLOYMENTS = (
     (
@@ -72,6 +74,7 @@ def main():
             "dotnet", "run", "--project", STYLE_TABLE_PROJECT, "-c", CONFIGURATION,
             "--verbosity", "quiet", "--",
             "--styles", STYLE_SHEET_DIR, "--output", STYLE_TABLE_OUTPUT, "--radius-output", RADIUS_SHEET_OUTPUT,
+            "--palette-source", PALETTE_SOURCE, "--palette-output", PALETTE_TABLE_OUTPUT,
         ],
         "the utility property table could not be derived",
     )

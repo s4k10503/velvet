@@ -92,7 +92,9 @@ the class from its own code.
 `bg-background` paints the page the rest of the semantic colours sit on, and those colours are opaque:
 `bg-surface` inside `bg-surface` is one colour, not a brighter one. The tokens naming a strength
 rather than a role — the `--color-white-*` ladder, `--color-overlay*`, `--color-shadow` — keep their
-alpha and are declared once for both themes.
+alpha and are declared once for both themes. A role colour that is a palette colour takes the palette's value:
+`--color-primary` is `blue-600`, `--color-danger` `red-600`, `--color-text` `slate-900`, and the dark set's
+`--color-background` is `slate-900` too.
 
 To override a token, declare it in a stylesheet of your own attached after Velvet's: a `:root` rule
 for the light set, a `.dark` rule for the dark one.
@@ -316,7 +318,9 @@ two `focus:ring-2` siblings render the same whichever was focused first. `ring-i
 an opaque full-bleed child, where CSS paints an inset box-shadow under the element's children.
 
 A band is drawn by a class that names one, as in Tailwind v4: `ring` (1px), `ring-<n>`, `ring-[…]`, `outline`
-(1px), `outline-<n>` and `outline-[…]`. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
+(1px), `outline-<n>` and `outline-[…]`. `<n>` is any whole number of pixels written without a leading zero (`ring-3`),
+as it is in `ring-offset-<n>` and `outline-offset-<n>`. `-outline-offset-<n>`, `-outline-offset-[…]` and a negative
+`outline-offset-[…]` draw the outline that far inside the element's edge. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
 colours only its own family's band, so `outline ring-red-500` is an outline in the text colour. A band whose
 family names no colour, or names `ring-current` / `outline-current`, is drawn in the element's text colour and
 follows it as it changes. Velvet still

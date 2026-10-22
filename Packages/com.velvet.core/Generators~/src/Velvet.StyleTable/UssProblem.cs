@@ -3,7 +3,7 @@ using System.Globalization;
 namespace Velvet.StyleTable
 {
     /// <summary>
-    /// Stable identifiers for the ways deriving the table can fail.
+    /// Stable identifiers for the ways deriving the table, or an output beside it, can fail.
     /// </summary>
     /// <remarks>
     /// Deliberately not in the <c>VEL###</c> space the Roslyn analyzers use. These are build-script failures,
@@ -12,7 +12,10 @@ namespace Velvet.StyleTable
     /// </remarks>
     internal static class UssProblemCode
     {
-        /// <summary>The stylesheet's rule and declaration structure could not be read.</summary>
+        /// <summary>
+        /// The stylesheet's rule and declaration structure could not be read, or the palette source declared a colour
+        /// the derivation cannot convert, or the palette sheet has no <c>:root</c> block.
+        /// </summary>
         public const string MalformedUss = "USS001";
 
         /// <summary>A selector shape or at-rule the table cannot model.</summary>
