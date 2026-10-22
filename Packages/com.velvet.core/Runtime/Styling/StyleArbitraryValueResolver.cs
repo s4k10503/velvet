@@ -2841,18 +2841,14 @@ namespace Velvet
 
         private static void ApplyCombinedScale(VisualElement element, LayerMap map)
         {
-            var hasX = TryWinningKey(map, ArbitraryProperty.ScaleX, out var xw, out var xKey);
-            var hasY = TryWinningKey(map, ArbitraryProperty.ScaleY, out var yw, out var yKey);
-            var hasUniform = TryWinningKey(map, ArbitraryProperty.Scale, out var uw, out var uniformKey);
-            if (!hasX && !hasY && !hasUniform)
+            var hasX = TryWinningLayer(map, ArbitraryProperty.ScaleX, out var xw);
+            var hasY = TryWinningLayer(map, ArbitraryProperty.ScaleY, out var yw);
+            if (!hasX && !hasY && !TryWinningLayer(map, ArbitraryProperty.Scale, out _))
             {
                 element.style.scale = StyleKeyword.Null;
                 return;
             }
-            // scale-[…] declares scale itself rather than the axis variables, and Tailwind emits it after an axis
-            // utility of the same rank, so at or above every axis layer it is drawn alone; below one, the axis
-            // utility's declaration replaces it and it supplies neither axis.
-            if (hasUniform && (!hasX || uniformKey >= xKey) && (!hasY || uniformKey >= yKey))
+            if (TryDrawnScaleBracket(map, out var uw))
             {
                 element.style.scale = new Scale(new Vector2(uw.Value, uw.Value));
                 return;
@@ -2870,9 +2866,20 @@ namespace Velvet
             element.style.scale = new Scale(new Vector2(x, y));
         }
 
+        // scale-[…] declares scale itself rather than the axis variables, and Tailwind emits it after an axis utility
+        // of the same rank, so at or above every axis layer it is drawn alone; below one, the axis utility's
+        // declaration replaces it and it supplies neither axis.
+        private static bool TryDrawnScaleBracket(LayerMap map, out ArbitraryStyle bracket)
+        {
+            var hasX = TryWinningKey(map, ArbitraryProperty.ScaleX, out _, out var xKey);
+            var hasY = TryWinningKey(map, ArbitraryProperty.ScaleY, out _, out var yKey);
+            return TryWinningKey(map, ArbitraryProperty.Scale, out bracket, out var bracketKey)
+                && (!hasX || bracketKey >= xKey) && (!hasY || bracketKey >= yKey);
+        }
+
         private static void RefreshScaleClassFallback(VisualElement element, LayerMap map, float? previousUniform)
         {
-            if (previousUniform.HasValue && !TryWinningLayer(map, ArbitraryProperty.Scale, out _)
+            if (previousUniform.HasValue && !TryDrawnScaleBracket(map, out _)
                 && TryWinningLayer(map, ArbitraryProperty.ScaleX, out _) != TryWinningLayer(map, ArbitraryProperty.ScaleY, out _)
                 && previousUniform.Value != UniformScaleFromClasses(element))
             {
@@ -3016,8 +3023,32 @@ namespace Velvet
                     return true;
                 }
             }
-            return HoldsRejected(map, ArbitraryProperty.FilterDropShadow);
+            return HoldsRejected(map, ArbitraryProperty.FilterDropShadow)
+                || (HoldsRejected(map, ArbitraryProperty.FilterDropShadowColor) && ReadsDropShadowColour(map));
         }
+
+        // Whether the drop shadow drawn reads --tw-drop-shadow-color, as AppendDropShadows decides it.
+        private static bool ReadsDropShadowColour(LayerMap map)
+        {
+            if (!map.TryGetValue(ArbitraryProperty.FilterDropShadow, out var sizes) || sizes.Count == 0)
+            {
+                return false;
+            }
+            if (!map.TryGetValue(ArbitraryProperty.FilterDropShadowColor, out var colors) || colors.Count == 0)
+            {
+                return false;
+            }
+            var top = sizes.Values[sizes.Count - 1].DropShadow;
+            if (top == null)
+            {
+                return false;
+            }
+            return (!top.Literal || ColourWrites(sizes, colors)) && SizeVariable(sizes) != null;
+        }
+
+        // A colour at or above the size's rank replaces the colours a literal size writes.
+        private static bool ColourWrites(SortedList<long, ArbitraryStyle> sizes, SortedList<long, ArbitraryStyle> colors)
+            => StyleLayerPriority.RankOf(colors.Keys[colors.Count - 1]) >= StyleLayerPriority.RankOf(sizes.Keys[sizes.Count - 1]);
 
         private static bool HoldsRejected(LayerMap map, ArbitraryProperty property)
             => map.TryGetValue(property, out var layers) && layers.Count > 0 && layers.Values[layers.Count - 1].Rejected;
@@ -3109,8 +3140,7 @@ namespace Velvet
                 var color = colors.Values[colors.Count - 1].Color;
                 color.a *= AlphaVariable(sizes) ?? 1f;
                 variable = color;
-                colorWrites = StyleLayerPriority.RankOf(colors.Keys[colors.Count - 1])
-                    >= StyleLayerPriority.RankOf(sizes.Keys[sizes.Count - 1]);
+                colorWrites = ColourWrites(sizes, colors);
             }
             var literal = top.Literal && !colorWrites;
             var size = literal ? top : SizeVariable(sizes);

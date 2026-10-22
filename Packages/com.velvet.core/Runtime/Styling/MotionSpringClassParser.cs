@@ -416,6 +416,8 @@ namespace Velvet
         // MotionSlotCascadeTests pins the ordering between inline, stylesheet and per-axis scale holders.
         private const long InlineRank = 1L << 40;
         private const long ImportantRank = 1L << 45;
+        // scale-[…] shares the per-axis band, so it and the axis utilities order by importance and then Tailwind's
+        // order, as the resolver's TryDrawnScaleBracket decides which scale is drawn.
         private const long AxisScaleRank = 1L << 50;
 
         // The token holding one slot on one side: its precedence, and what it reads as when a magnitude can be
@@ -584,10 +586,20 @@ namespace Velvet
                 {
                     claims[i] = new SlotClaim { Claimed = true, Precedence = RestingInlineRank };
                 }
+                if (claims[i].Precedence < RestingAxisTranslateRank
+                    && !IsSubset(StyleArbitraryLonghands.Of(s_slots[i]), importantClasses)
+                    && context.HoldsRestingAxisTranslate(s_slots[i]))
+                {
+                    claims[i] = new SlotClaim { Claimed = true, Precedence = RestingAxisTranslateRank };
+                }
             }
         }
 
         private const long RestingInlineRank = InlineRank - 1;
+
+        // A resting translate-x-* or translate-y-* holds its axis over a both-axis translate the swap writes at the
+        // same importance, as the resolver's TryWinningAxis gives the axis a tie; it still yields to an important one.
+        private const long RestingAxisTranslateRank = InlineRank + (1L << 30);
 
         // The five axes lead s_slots.
         private const int AxisSlotCount = 5;
@@ -691,10 +703,11 @@ namespace Velvet
             var core = StyleArbitraryValueResolver.StripImportant(className, out var important);
             if (StyleArbitraryValueResolver.IsInlineResolved(core) && StyleArbitraryValueResolver.TryParseLayer(core, out var inline))
             {
-                var perAxisScale = inline.Property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
+                var declaresScale = inline.Property
+                    is ArbitraryProperty.Scale or ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
                 token = new RankedToken
                 {
-                    Precedence = (perAxisScale ? AxisScaleRank : InlineRank) + (important ? ImportantRank : 0)
+                    Precedence = (declaresScale ? AxisScaleRank : InlineRank) + (important ? ImportantRank : 0)
                         + SpacingOrder(inline.Property) + index,
                     Written = StyleArbitraryLonghands.Of(inline.Property),
                     TranslateAxis = inline.Property is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY

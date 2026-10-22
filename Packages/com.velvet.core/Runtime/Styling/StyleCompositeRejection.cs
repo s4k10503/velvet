@@ -44,8 +44,15 @@ namespace Velvet
             {
                 if (OpensBracket(core, negated ? 1 : 0, prefix))
                 {
-                    property = composed;
-                    return (negates || !negated) && TryReadValue(core, negated, out var value) && !Accepts(function, value);
+                    if (!(negates || !negated) || !TryReadValue(core, negated, out var value))
+                    {
+                        return false;
+                    }
+                    // A colour is the drop-shadow-color utility rather than a shadow (Tailwind's inferDataType).
+                    property = composed == ArbitraryProperty.FilterDropShadow && TailwindDataTypes.IsColor(value.AsSpan())
+                        ? ArbitraryProperty.FilterDropShadowColor
+                        : composed;
+                    return !Accepts(function, value);
                 }
             }
             return false;
@@ -93,8 +100,9 @@ namespace Velvet
                 "scale" => IsNumber(value) || IsPercentage(value),
                 "angle" or "hue-rotate" => IsZero(value) || IsDimension(value, s_angleUnits),
                 "blur" => !value.StartsWith("-", StringComparison.Ordinal) && (IsZero(value) || IsLength(value)),
-                // A colour is the drop-shadow-color utility rather than a shadow (Tailwind's inferDataType).
-                "drop-shadow" => TailwindDataTypes.IsColor(value.AsSpan()) || IsDropShadowList(value),
+                "drop-shadow" => TailwindDataTypes.IsColor(value.AsSpan())
+                    ? !StyleColorValueParser.RejectsAsColour(value)
+                    : IsDropShadowList(value),
                 _ => !value.StartsWith("-", StringComparison.Ordinal) && (IsNumber(value) || IsPercentage(value)),
             };
         }

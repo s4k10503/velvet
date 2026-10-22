@@ -188,6 +188,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARestingAxisTranslateBesideASwappedBothAxisOne_When_Resolved_Then_TheAxisKeepsItsRestingValue()
+        {
+            // Arrange — the element draws translate-x-4's 16 on x, the axis utility holding its tie with translate-8.
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "translate-x-4", StyleLayerPriority.Base);
+            var from = new string[0];
+            var to = new[] { "translate-8" };
+            var context = MotionSlotContext.Read(element, from, to, _ => false);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 16f, 0f, context);
+
+            // Assert — NaN where y is not planned to the both-axis value.
+            Assert.That(plan.TranslateY?.to == 32f ? plan.TranslateX?.to ?? float.NaN : float.NaN, Is.EqualTo(16f));
+        }
+
+        [Test]
         public void Given_ANullLeavingClassArray_When_AWidthTargetIsResolved_Then_ItStartsFromTheCurrentWidth()
         {
             // Arrange

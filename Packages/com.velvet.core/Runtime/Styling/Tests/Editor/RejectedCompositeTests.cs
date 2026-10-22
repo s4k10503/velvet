@@ -75,6 +75,7 @@ namespace Velvet.Tests
         [TestCase("blur-sm brightness-[abc]", "- - 0")]
         [TestCase("drop-shadow-lg hover:blur-[2]", "- - 0")]
         [TestCase("blur-sm drop-shadow-[foo]", "- - 0")]
+        [TestCase("blur-sm drop-shadow-lg drop-shadow-[#ggg]", "- - 0")]
         public void Given_LayersWhereARejectedValueHoldsItsProperty_When_Composed_Then_TheFamilyDrawsNothing(
             string classes, string expected)
         {
@@ -99,7 +100,9 @@ namespace Velvet.Tests
             Assert.That(composed, Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(characterization): the base read no rejected value, and in these no rejected value holds.
+        // GREEN_ON_BASE(characterization): the base read no rejected value, and in these no rejected value that holds is
+        // read: a drop-shadow colour no size reads leaves the filter.
+        [TestCase("blur-sm drop-shadow-[#ggg]", "- - 1")]
         [TestCase("translate-x-0 sm:translate-x-[10] md:translate-x-4 hover:translate-y-1", "16,4 - 0")]
         [TestCase("sm:translate-x-[10] md:translate-y-6 dark:translate-x-2", "8,24 - 0")]
         [TestCase("hover:translate-y-6 sm:translate-x-[10] md:translate-x-4", "16,24 - 0")]
@@ -172,6 +175,27 @@ namespace Velvet.Tests
 
             // Assert — NaN where the hover's own axis did not land.
             Assert.That(Mathf.Approximately(scale.x, 2f) ? scale.y : float.NaN, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_AScaleBracketBelowAHoverAxisScale_When_TheUniformClassLeaves_Then_TheOtherAxisFollowsIt()
+        {
+            // Arrange — scale-[1.5] sits below the hover axis, so the uniform class supplies y.
+            var element = new VisualElement();
+            StyleClassProjection.Add(element, "scale-50", StyleLayerPriority.Base);
+            var bracket = new ArbitraryStyle(ArbitraryProperty.Scale, 1.5f, LengthUnit.Pixel);
+            var axis = new ArbitraryStyle(ArbitraryProperty.ScaleX, 0.75f, LengthUnit.Pixel);
+            StyleArbitraryValueResolver.Apply(element, in bracket);
+            StyleArbitraryValueResolver.Apply(element, in axis, StyleLayerPriority.Hover);
+            var before = element.style.scale.value.value.y;
+
+            // Act
+            StyleClassProjection.Remove(element, "scale-50", StyleLayerPriority.Base);
+            var scale = element.style.scale.value.value;
+
+            // Assert — NaN where y did not read the class before it left, or x lost the axis.
+            Assert.That(Mathf.Approximately(before, 0.5f) && Mathf.Approximately(scale.x, 0.75f) ? scale.y : float.NaN,
+                Is.EqualTo(1f).Within(1e-4f));
         }
 
         [Test]

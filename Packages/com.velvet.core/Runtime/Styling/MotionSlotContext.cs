@@ -100,6 +100,20 @@ namespace Velvet
         private static bool HoldsBorderEdge(VisualElement owner, StyleLonghand longhand, StyleColor inline)
             => inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(owner, longhand);
 
+        // Read off the layers rather than the inline translate, which an axis utility and a both-axis one write alike.
+        public bool HoldsRestingAxisTranslate(ArbitraryProperty slot)
+        {
+            if (slot != ArbitraryProperty.TranslateX && slot != ArbitraryProperty.TranslateY)
+            {
+                return false;
+            }
+            if (_drivenByRunningPlay(slot) || _inlineBySwap.Contains(slot))
+            {
+                return false;
+            }
+            return StyleArbitraryValueResolver.HasLayer(Owner(slot), slot);
+        }
+
         public bool HasImportantInlineOutsideSwap(ArbitraryProperty slot)
             => StyleArbitraryValueResolver.HasImportantInlineOutside(_element,
                 StyleArbitraryLonghands.Of(slot), _importantInlineBySwap);
