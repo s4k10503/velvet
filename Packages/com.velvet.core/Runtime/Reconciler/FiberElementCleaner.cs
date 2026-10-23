@@ -540,6 +540,7 @@ namespace Velvet
                 _ctx.DragOverlayBindings.Remove(element);
             }
             _ctx.NoDragElements.Remove(element);
+            _ctx.ActiveDrag?.ForgetPressChainElement(element);
         }
 
         // The controller-owned bindings: VirtualList, which disposes its own pooled buffer.
