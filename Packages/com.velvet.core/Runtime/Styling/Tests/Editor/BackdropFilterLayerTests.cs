@@ -249,7 +249,10 @@ namespace Velvet.Tests
             glass.style.position = Position.Absolute;
             glass.style.left = 70f;
             glass.style.top = 70f;
+            var probe = new CopyProbe();
+            stage.Insert(stage.IndexOf(LayerBefore(glass) ?? glass), probe);
             ForcePanelUpdate(stage.panel);
+            MarkFrameUnread();
 
             // Act
             var (pixels, width, height, scale) = CaptureWindow();
@@ -262,27 +265,137 @@ namespace Velvet.Tests
             var red = At(40f, 100f);
             var inside = At(101f, 100f);
             var outside = At(101f, 20f);
+            var stageOutsideBox = At(160f, 100f);
 
             // Assert — the two halves read as themselves, which says the capture landed where the stage is; then the
             // pixel just right of the edge is mixed inside the box and pure blue above it.
             Assert.That((red.r > 200 && red.b < 20, inside.r > 60 && inside.b > 60, outside.b > 200 && outside.r < 20),
                 Is.EqualTo((true, true, true)), $"red={red} inside={inside} outside={outside} "
                 + $"api={SystemInfo.graphicsDeviceType} uvStartsAtTop={SystemInfo.graphicsUVStartsAtTop} "
-                + $"window={width}x{height} stage={stage.worldBound} {LastFrame()}");
+                + $"window={width}x{height} stage={stage.worldBound} {LastFrame()} "
+                + $"stageOutsideBox={stageOutsideBox} {probe.Reading}");
+        }
+
+        // A width no layer has, so a frame still holding it after the capture was not begun by the layer.
+        private const float UnreadWidth = -12345f;
+
+        private static object Frame()
+            => typeof(BackdropRenderer).GetField("s_frame", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
+
+        private static void MarkFrameUnread()
+        {
+            if (Frame() is BackdropFrame frame)
+            {
+                frame.Width = UnreadWidth;
+            }
+        }
+
+        // Sits over the glass's box directly before its layer, so it paints in the same pass with the same transform,
+        // and takes the copy the layer is about to take with its own frame: the mean of the target's region as
+        // ReadPixels reads it before the copy, and the mean of the copied texture read back.
+        private sealed class CopyProbe : ImmediateModeElement
+        {
+            private int _paints;
+            private string _last = "never painted";
+
+            public CopyProbe()
+            {
+                pickingMode = PickingMode.Ignore;
+                style.position = Position.Absolute;
+                style.left = 70f;
+                style.top = 70f;
+                style.width = 60f;
+                style.height = 60f;
+            }
+
+            public string Reading => $"probePaints={_paints} {_last}";
+
+            protected override void ImmediateRepaint()
+            {
+                _paints++;
+                try
+                {
+                    _last = Read();
+                }
+                catch (Exception e)
+                {
+                    _last = $"probeError={e.GetType().Name}: {e.Message}";
+                }
+            }
+
+            private string Read()
+            {
+                const BindingFlags Static = BindingFlags.NonPublic | BindingFlags.Static;
+                var viewport = (Func<RectInt>)typeof(BackdropRenderer).GetField("s_viewport", Static).GetValue(null);
+                var projection = (Func<Matrix4x4>)typeof(BackdropRenderer).GetField("s_projection", Static).GetValue(null);
+                var frame = new BackdropFrame();
+                var active = RenderTexture.active;
+                if (!frame.TryBegin(this, viewport(), projection()))
+                {
+                    return $"probeActive={Name(active)} probeBegan=False";
+                }
+                var region = frame.Region;
+                var before = MeanOfActive(new RectInt(0, 0, region.width, region.height), region);
+                var captured = frame.Capture();
+                try
+                {
+                    RenderTexture.active = captured;
+                    var copied = MeanOfActive(new RectInt(0, 0, region.width, region.height),
+                        new RectInt(0, 0, captured.width, captured.height));
+                    return $"probeActive={Name(active)} probeRegion={region} targetBeforeCopy={before} "
+                        + $"copied={copied} copySize={captured.width}x{captured.height}";
+                }
+                finally
+                {
+                    frame.Rebound = true;
+                    frame.Rebind();
+                    RenderTexture.ReleaseTemporary(captured);
+                }
+            }
+
+            private static string Name(RenderTexture texture) => texture == null ? "null" : texture.name;
+
+            // The mean colour of a rectangle of the active target, origin bottom-left.
+            private static Color32 MeanOfActive(RectInt size, RectInt source)
+            {
+                var texture = new Texture2D(size.width, size.height, TextureFormat.RGBA32, false);
+                try
+                {
+                    texture.ReadPixels(new Rect(source.x, source.y, source.width, source.height), 0, 0, false);
+                    var pixels = texture.GetPixels32();
+                    long r = 0, g = 0, b = 0, a = 0;
+                    foreach (var p in pixels)
+                    {
+                        r += p.r;
+                        g += p.g;
+                        b += p.b;
+                        a += p.a;
+                    }
+                    var n = Math.Max(1, pixels.Length);
+                    return new Color32((byte)(r / n), (byte)(g / n), (byte)(b / n), (byte)(a / n));
+                }
+                finally
+                {
+                    UnityEngine.Object.DestroyImmediate(texture);
+                }
+            }
         }
 
         // The renderer's reading of the target as the layer last drew, which says where it copied from.
         private static string LastFrame()
         {
             const BindingFlags Any = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance;
-            var frame = typeof(BackdropRenderer).GetField("s_frame", BindingFlags.NonPublic | BindingFlags.Static)
-                ?.GetValue(null);
-            if (frame == null)
+            var frame = Frame();
+            if (frame is not BackdropFrame begun)
             {
                 return "frame=unread";
             }
+            if (begun.Width == UnreadWidth)
+            {
+                return "layerBegan=False";
+            }
             string Read(string field) => frame.GetType().GetField(field, Any)?.GetValue(frame)?.ToString() ?? "null";
-            return $"target={Read("_target")} targetSize={Read("_targetWidth")}x{Read("_targetHeight")} "
+            return $"layerBegan=True target={Read("_target")} targetSize={Read("_targetWidth")}x{Read("_targetHeight")} "
                 + $"viewport={Read("_viewport")} region={Read("Region")}";
         }
 
