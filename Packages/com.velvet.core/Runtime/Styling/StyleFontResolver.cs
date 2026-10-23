@@ -124,7 +124,7 @@ namespace Velvet
             }
             else
             {
-                var resolved = VelvetFonts.Resolve(family, weight, intent.Italic);
+                var resolved = VelvetFonts.Resolve(family, weight, intent.Italic, intent.HasStretch ? intent.Stretch : 100f);
                 asset = resolved.Asset;
                 residualBold = resolved.ResidualBold;
                 residualItalic = resolved.ResidualItalic;

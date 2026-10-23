@@ -159,6 +159,14 @@ namespace Velvet
         /// then falls back to the binary <c>-unity-font-style</c> threshold.
         /// </summary>
         public static ResolvedFont Resolve(string? family, VelvetFontWeight weight, bool italic)
+            => Resolve(family, weight, italic, stretch: 100f);
+
+        /// <summary>
+        /// <see cref="Resolve(string?, VelvetFontWeight, bool)"/> for a font-stretch of <paramref name="stretch"/>
+        /// percent: the entries of the width nearest the request are searched first, as CSS's font matching
+        /// settles the width before the style and the weight.
+        /// </summary>
+        public static ResolvedFont Resolve(string? family, VelvetFontWeight weight, bool italic, float stretch)
         {
             var familyName = string.IsNullOrEmpty(family) ? _defaultFamily : family;
 
@@ -170,8 +178,8 @@ namespace Velvet
                 return fallback;
             }
 
-            var entryOfStyle = def.FindClosestWeightWithFace(weight, italic);
-            var entry = entryOfStyle ?? def.FindClosestWeight(weight);
+            var entryOfStyle = def.FindClosestWeightWithFace(weight, italic, stretch);
+            var entry = entryOfStyle ?? def.FindClosestWeight(weight, stretch);
             if (entry == null)
             {
                 return fallback;

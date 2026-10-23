@@ -28,6 +28,9 @@ namespace Velvet
 
         [Tooltip("Addressables key for the italic Font Asset (used when Italic is unset).")]
         public string? italicAddress;
+
+        [Tooltip("The width of these faces as a percentage of the normal width, as the font-stretch descriptor of an @font-face rule gives it (75 condensed, 100 normal, 125 expanded).")]
+        public float stretch = 100f;
     }
 
     /// <summary>
@@ -59,34 +62,48 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Picks the entry CSS's font matching algorithm picks for <paramref name="requested"/>: an exact
-        /// weight if one is registered; otherwise, for a request from 400 to 500, the lightest entry from
-        /// the request up to 500, then the heaviest below the request, then the lightest above 500; for a
-        /// request under 400, the heaviest at or below it, then the lightest above; for a request over 500,
-        /// the lightest at or above it, then the heaviest below. Of two entries at one weight, the later is
+        /// Picks the entry CSS's font matching algorithm picks for <paramref name="requested"/> among the entries
+        /// of normal width: an exact weight if one is registered; otherwise, for a request from 400 to 500, the
+        /// lightest entry from the request up to 500, then the heaviest below the request, then the lightest above
+        /// 500; for a request under 400, the heaviest at or below it, then the lightest above; for a request over
+        /// 500, the lightest at or above it, then the heaviest below. Of two entries at one weight, the later is
         /// picked. Returns null when the family has no entries.
         /// </summary>
-        public VelvetFontWeightEntry? FindClosestWeight(VelvetFontWeight requested) => Match(requested, italicFace: null);
+        public VelvetFontWeightEntry? FindClosestWeight(VelvetFontWeight requested) =>
+            Match(requested, italicFace: null, NormalStretch);
+
+        // The width of a face that font-stretch: normal names.
+        private const float NormalStretch = 100f;
 
         // FindClosestWeight over only the entries that carry the requested style's own face: CSS narrows
         // the faces by font-style before it compares weights, so a face of the requested style at another
         // weight beats the right weight in the wrong style.
         internal VelvetFontWeightEntry? FindClosestWeightWithFace(VelvetFontWeight requested, bool italicFace) =>
-            Match(requested, italicFace);
+            Match(requested, italicFace, NormalStretch);
 
-        private VelvetFontWeightEntry? Match(VelvetFontWeight requested, bool? italicFace)
+        // The same two over the entries of the width CSS's font matching reaches first for the requested stretch,
+        // which it settles before the style and the weight.
+        internal VelvetFontWeightEntry? FindClosestWeight(VelvetFontWeight requested, float stretch) =>
+            Match(requested, italicFace: null, stretch);
+
+        internal VelvetFontWeightEntry? FindClosestWeightWithFace(VelvetFontWeight requested, bool italicFace,
+            float stretch) =>
+            Match(requested, italicFace, stretch);
+
+        private VelvetFontWeightEntry? Match(VelvetFontWeight requested, bool? italicFace, float stretch)
         {
             if (weights == null)
             {
                 return null;
             }
 
+            var width = NearestStretch(stretch);
             VelvetFontWeightEntry? best = null;
             var bestTier = int.MaxValue;
             var bestKey = int.MaxValue;
             foreach (var entry in weights)
             {
-                if (entry == null || (italicFace != null && !HasFace(entry, italicFace.Value)))
+                if (entry == null || entry.stretch != width || (italicFace != null && !HasFace(entry, italicFace.Value)))
                 {
                     continue;
                 }
@@ -103,6 +120,43 @@ namespace Velvet
             }
 
             return best;
+        }
+
+        // The width among the entries' own that CSS's font matching reaches first: for a request up to 100% the
+        // widest at or under it, then the narrowest above; over 100% the narrowest at or over it, then the widest
+        // under. NaN when no entry is registered, which no entry's width equals.
+        private float NearestStretch(float desired)
+        {
+            var nearest = float.NaN;
+            var nearestTier = int.MaxValue;
+            var nearestDistance = float.MaxValue;
+            foreach (var entry in weights)
+            {
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                var (tier, distance) = RankStretch(desired, entry.stretch);
+                if (tier < nearestTier || (tier == nearestTier && distance < nearestDistance))
+                {
+                    nearest = entry.stretch;
+                    nearestTier = tier;
+                    nearestDistance = distance;
+                }
+            }
+
+            return nearest;
+        }
+
+        private static (int tier, float distance) RankStretch(float desired, float candidate)
+        {
+            if (desired <= NormalStretch)
+            {
+                return candidate <= desired ? (0, desired - candidate) : (1, candidate - desired);
+            }
+
+            return candidate >= desired ? (0, candidate - desired) : (1, desired - candidate);
         }
 
         private static bool HasFace(VelvetFontWeightEntry entry, bool italicFace) =>

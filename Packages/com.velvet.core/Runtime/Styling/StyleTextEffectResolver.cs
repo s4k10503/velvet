@@ -258,12 +258,7 @@ namespace Velvet
             {
                 element.text = raw;
             }
-            string? current = null;
-            if (!textChanged && ctx.TextRendered.TryGetValue(element, out var entry)
-                && string.Equals(entry.Raw, raw, StringComparison.Ordinal))
-            {
-                current = entry.Shown;
-            }
+            var current = textChanged ? null : ShownFor(ctx, element, raw);
             var wanted = string.Equals(display, raw, StringComparison.Ordinal) ? null : display;
             if (wanted == null)
             {
@@ -285,7 +280,17 @@ namespace Velvet
         internal static string DisplayedText(ReconcilerContext ctx, TextElement element)
         {
             var text = element.text ?? string.Empty;
-            return ctx.TextRendered.TryGetValue(element, out var entry) && entry.Raw == text ? entry.Shown : text;
+            return ShownFor(ctx, element, text) ?? text;
+        }
+
+        // The string handed to the engine for this text, or null when none was or it was made from another text.
+        private static string? ShownFor(ReconcilerContext ctx, TextElement element, string raw)
+        {
+            if (!ctx.TextRendered.TryGetValue(element, out var entry))
+            {
+                return null;
+            }
+            return string.Equals(entry.Raw, raw, StringComparison.Ordinal) ? entry.Shown : null;
         }
 
         private static void ApplyToDescendants(ReconcilerContext ctx, VisualElement root)

@@ -25,12 +25,13 @@ registry that maps family names to Font Assets.
 | `font-[550]` / `font-[weight:550]` / `font-[number:550]` | Arbitrary weight |
 | `font-[weight:inherit]` / `font-[family-name:inherit]` | The parent's weight or family, over the element's own classes |
 | `italic` / `not-italic` | Italic axis |
+| `font-stretch-ultra-condensed` … `font-stretch-ultra-expanded`, `font-stretch-87.5%`, `font-stretch-[66.5%]` | Width axis (50–200%), matched against the `stretch` of the registered faces |
 | `font-bold italic` | **Composes** to bold-and-italic |
 | `bold-italic` | Single-class bold + italic (back-compat) |
 
 Of two classes of the same facet the one Tailwind emits last wins, whichever is written first
 (`font-bold font-light` and `font-light font-bold` → light; [the order](styling-arbitrary-lengths.md#utilities-a-c-resolver-folds-from-the-class-list)),
-and the three facets coexist on one element.
+and the four facets coexist on one element.
 
 ## How resolution works
 
@@ -38,7 +39,10 @@ For each element with a font class, `StyleFontResolver` computes one `(family, w
 intent and asks `VelvetFonts.Resolve`:
 
 1. **Family asset found** → assign it via `-unity-font-definition`. The entry is chosen the way
-   CSS's font matching chooses a face: by style first, so an italic request takes an entry that
+   CSS's font matching chooses a face: by width first, from the entries whose `stretch` is the nearest the
+   request reaches (up to 100%, the widest at or under it, then the narrowest above; over 100%, the
+   narrowest at or over it, then the widest under; a request with no `font-stretch-*` class is 100%);
+   then by style, so an italic request takes an entry that
    carries an italic face (and an upright request one that carries an upright face) at any weight
    before the requested weight in the other style; then by weight, in CSS's search order — an exact
    weight; for a request from 400 to 500, the lightest weight from the request up to 500, then the
@@ -83,6 +87,18 @@ IEnumerable<VelvetFontFamily> families = myMasterData.Select(row => new VelvetFo
 
 VelvetFonts.Register(families, defaultFamily: "sans");
 ```
+
+An entry's `stretch` is the width of its faces as a percentage of the normal width, as the `font-stretch`
+descriptor of an `@font-face` rule gives it, and is 100 where not set:
+
+```csharp
+VelvetFonts.Register(new VelvetFontFamily("sans",
+    new VelvetFontWeightEntry { upright = interRegular },
+    new VelvetFontWeightEntry { upright = interCondensed, stretch = 75f }));   // font-stretch-condensed
+```
+
+A width is never synthesised: with no entry of the requested width the nearest one is used, and a family
+with a single width renders every `font-stretch-*` class in it.
 
 With the `Bold` entry registered, `font-bold` renders a **true** bold asset rather than faux bold;
 `font-medium` with no `Medium` entry picks the registered weight CSS's search order reaches first
@@ -149,7 +165,7 @@ Verified against the Unity 6000.3 USS *common properties* reference. The text ut
 Velvet ships are listed below; the ones in the table after them are omitted because UI Toolkit has **no
 USS property** for them.
 
-**Supported (shipped):** `font-<family>` / `font-thin`…`font-black` / `italic` / `not-italic` /
+**Supported (shipped):** `font-<family>` / `font-thin`…`font-black` / `italic` / `not-italic` / `font-stretch-*` /
 `text-xs`…`text-9xl` (font-size and line-height) / `text-left|center|right|start|end` (`-unity-text-align`) /
 `tracking-*` (`letter-spacing`) / `leading-*` (`line-height`) /
 `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
@@ -334,17 +350,14 @@ element or on one nearer the text keeps its own value. Velvet writes this per te
 the one Tailwind emits last wins, as they set the same CSS properties; that one decides which line
 breaking the text gets.
 
-**Not expressible in UI Toolkit (no USS property — intentionally absent):**
+**Not shipped (UI Toolkit's style has no property for them):**
 
 | Tailwind | Why omitted |
 |---|---|
-| `antialiased` / `subpixel-antialiased` (font-smoothing) | Text renders as SDF alpha-blend only — no antialiasing-mode axis to switch |
-| `font-stretch-*` | No variable-font / width-axis support |
-| `tabular-nums` etc. (font-variant-numeric) | No OpenType feature-substitution slot in the runtime font pipeline |
+| `antialiased` / `subpixel-antialiased` (font-smoothing) | `IStyle` has no font-smoothing property |
+| `tabular-nums` etc. (font-variant-numeric) | `IStyle` has no font-variant or font-feature property |
 
-None of the font-smoothing / font-stretch / font-variant-numeric rows above are reproducible at
-runtime by any class or `refCallback` — there is no engine hook to flip. Where the *look* matters
-(tabular figures in a price list, a condensed headline face, …), register a purpose-built Font Asset
+Where the *look* matters (tabular figures in a price list, …), register a purpose-built Font Asset
 for that face through the same `font-family` mechanism (`VelvetFonts.Register`) and select it with
 `font-<name>`.
 
