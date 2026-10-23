@@ -85,7 +85,8 @@ namespace Velvet.TestUtilities
                 {
                     continue;
                 }
-                names.Add(child.ClassListContains(RingOverlay.MarkerClass) ? "band" : child.name);
+                names.Add(child.ClassListContains(RingOverlay.MarkerClass) || child.ClassListContains(RingOverlay.InsetMarkerClass)
+                    ? "band" : child.name);
             }
             return string.Join(",", names);
         }

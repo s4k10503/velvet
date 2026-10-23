@@ -183,6 +183,11 @@ namespace Velvet
                 {
                     StyleResponsiveScope.ScopesChanged += OnScopesChanged;
                 }
+                if (_source == StackedInnerSource.Container)
+                {
+                    _watch ??= new StyleResponsiveScope.ScopeWatch(target, ScopeIsStale, OnScopesChanged);
+                    _watch.Start();
+                }
                 if (target.panel != null)
                 {
                     if (TracksWidth)
@@ -220,6 +225,7 @@ namespace Velvet
                 target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
                 target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
                 StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
+                _watch?.Stop();
                 _widthSource?.Unhook();
                 UnhookRelational();
             }
@@ -307,6 +313,11 @@ namespace Velvet
             var width = _widthSource?.Width ?? 0f;
             SetInner(width >= StyleVariantClass.BreakpointPx(_innerKind));
         }
+
+        private StyleResponsiveScope.ScopeWatch? _watch;
+
+        private bool ScopeIsStale()
+            => !ReferenceEquals(_widthSource?.Root, StyleResponsiveScope.ResolveContainer(target, _query.Name));
 
         private void OnScopesChanged()
         {

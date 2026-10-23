@@ -1213,12 +1213,16 @@ namespace Velvet
 
             s_desired.Clear();
             s_placed.Clear();
-            // An inset ring band leads its element's children, which it paints under.
+            // What an element holds ahead of its children, which paint over it: an inset ring band, a SceneView's
+            // camera feed and a Particles element's layers.
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
-                if (parent.hierarchy[i].ClassListContains(RingOverlay.InsetMarkerClass))
+                var leading = parent.hierarchy[i];
+                if (leading.ClassListContains(RingOverlay.InsetMarkerClass)
+                    || leading.ClassListContains(SceneViewDriver.FeedMarkerClass)
+                    || leading.ClassListContains(ParticlesDriver.LayerMarkerClass))
                 {
-                    Place(parent.hierarchy[i]);
+                    Place(leading);
                 }
             }
             foreach (var entry in s_back) Place(entry.Real);

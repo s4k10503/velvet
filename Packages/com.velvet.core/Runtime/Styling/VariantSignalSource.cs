@@ -361,6 +361,9 @@ namespace Velvet
 
         public ResponsiveWidthSource(Action onGeometryChanged) => _onGeometryChanged = onGeometryChanged;
 
+        // The element being tracked, null when unhooked.
+        public VisualElement? Root => _root;
+
         // The tracked root's resolved width, or 0 when unhooked.
         public float Width => _root?.resolvedStyle.width ?? 0f;
 

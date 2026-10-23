@@ -41,11 +41,28 @@ namespace Velvet
         // would make `@md:dark:p-2 @lg:dark:p-2` one stacked manipulator with one outer gate.
         private readonly Dictionary<string, object> _owners = new();
 
+        private StyleResponsiveScope.ScopeWatch? _watch;
+
         public StyleContainerVariantManipulator(ReconcilerContext ctx, ContainerBinding[] bindings)
         {
             _ctx = ctx;
             _bindings = bindings;
             _on = new bool[bindings.Length];
+        }
+
+        // Whether any name's source no longer points at the container that name now resolves to.
+        private bool ScopeIsStale()
+        {
+            foreach (var binding in _bindings)
+            {
+                var name = binding.Query.Name;
+                _sources.TryGetValue(name, out var source);
+                if (!ReferenceEquals(source?.Root, StyleResponsiveScope.ResolveContainer(target, name)))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public void UpdateBindings(ContainerBinding[] bindings)
@@ -68,6 +85,8 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged += OnScopesChanged;
+            _watch ??= new StyleResponsiveScope.ScopeWatch(target, ScopeIsStale, OnScopesChanged);
+            _watch.Start();
 
             if (target.panel != null)
             {
@@ -82,6 +101,7 @@ namespace Velvet
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
+            _watch?.Stop();
             UnhookSources();
             foreach (var owner in _owners.Values)
             {

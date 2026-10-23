@@ -451,6 +451,29 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnInsetRingOnARoundedElement_When_OnlyItsBorderWidthChanges_Then_TheBandRadiusFollowsOnTheNextTick()
+        {
+            // Arrange — 20px corners behind a 2px border, then the border grows to 6px: no geometry event follows.
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel, UseFrameFakeClockHost.ReadFakeClock);
+            var card = MountCard(V.Div(name: "card",
+                className: "w-[128px] h-[64px] rounded-[20px] border-[2px] ring-2 ring-inset"));
+            card.style.borderTopWidth = 6f;
+            card.style.borderRightWidth = 6f;
+            card.style.borderBottomWidth = 6f;
+            card.style.borderLeftWidth = 6f;
+            ForcePanelUpdate(card.panel);
+
+            // Act
+            UseFrameFakeClockHost.Ms += 100;
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(InsetBandIn(card)?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)14f));
+        }
+
+        [Test]
         public void Given_AnInsetRingedElementWithAnOpacity_When_LaidOut_Then_TheBandIsNotFadedAgain()
         {
             // Arrange — the band is the element's child, so the element's opacity reaches it once already.

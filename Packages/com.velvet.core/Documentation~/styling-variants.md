@@ -587,7 +587,9 @@ A descendant resolves the container each of its variants asks for when it attach
 watches that container's width from then on. It resolves again whenever a render adds `@container` to an
 element's `className`, removes it, or renames it (`@container/a` to `@container/b`), so toggling the
 marker re-points the descendants already attached. A marker written straight to the class list
-(`element.AddToClassList("@container")`) re-points them at that element's next render.
+(`element.AddToClassList("@container")` or `RemoveFromClassList`) re-points them without a render: each
+attached descendant with a container variant checks, once per animation frame, that the container it
+resolved is still the nearest one.
 
 ### Simulating a viewport: `velvet-viewport`
 

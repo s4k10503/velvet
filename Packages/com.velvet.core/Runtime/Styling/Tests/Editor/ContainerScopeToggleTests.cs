@@ -319,6 +319,89 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false, 1, true)));
         }
 
+        // Time on the panel is the fake clock's, so a scheduled check runs when the test says and not when the
+        // machine gets to it. Set before the mount, so every item scheduled there reads the same clock.
+        private void UseFakeClock()
+        {
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel, UseFrameFakeClockHost.ReadFakeClock);
+        }
+
+        // One scheduler pass at least a check's interval after the last.
+        private void TickPanel()
+        {
+            UseFrameFakeClockHost.Ms += 100;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_window.rootVisualElement.panel);
+        }
+
+        // Whether the leaf's payload is on before and after the markers on its parent are changed by hand and the
+        // panel's scheduler runs: no render follows, so nothing but the leaf's own check can re-point it.
+        private (bool Before, bool After) PayloadAcrossHandWrittenMarker(
+            string outerClass, string parentClass, string leafClass, string sourceClass, Action<VisualElement> write)
+        {
+            UseFakeClock();
+            using var store = new ScopeStore(outerClass, parentClass, leafClass);
+            var leaf = MountScope(store, sourceClass);
+            TickPanel();
+            var before = leaf.ClassListContains("bg-wide");
+
+            write(leaf.parent);
+            TickPanel();
+            TickPanel();
+            return (before, leaf.ClassListContains("bg-wide"));
+        }
+
+        [Test]
+        public void Given_AnAttachedMdLeaf_When_ItsParentGainsTheMarkerByHand_Then_TheLeafReadsTheParentAfterAScheduledCheck()
+        {
+            // Act
+            var payload = PayloadAcrossHandWrittenMarker(OuterScope, PlainNarrow, "@md:bg-wide", "@container",
+                parent => parent.AddToClassList("@container"));
+
+            // Assert
+            Assert.That(payload, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnAttachedMdLeaf_When_ItsParentLosesTheMarkerByHand_Then_TheLeafReadsTheOuterContainerAfterAScheduledCheck()
+        {
+            // Act
+            var payload = PayloadAcrossHandWrittenMarker(OuterScope, MarkedNarrow, "@md:bg-wide", "@container",
+                parent => parent.RemoveFromClassList("@container"));
+
+            // Assert
+            Assert.That(payload, Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AnAttachedNamedMdLeaf_When_ItsParentTakesTheNameByHand_Then_TheLeafReadsTheParentAfterAScheduledCheck()
+        {
+            // Act — the 900px outer container is the one named a until the 300px parent takes the name.
+            var payload = PayloadAcrossHandWrittenMarker(NamedOuterScope, OtherNamedNarrow, "@md/a:bg-wide",
+                "@container/a", parent =>
+                {
+                    parent.RemoveFromClassList("@container/b");
+                    parent.AddToClassList("@container/a");
+                });
+
+            // Assert
+            Assert.That(payload, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnAttachedStackedDarkMdLeaf_When_ItsParentGainsTheMarkerByHand_Then_TheLeafReadsTheParentAfterAScheduledCheck()
+        {
+            // Arrange — dark on, so the @md: inner of the stack is the only gate left to decide.
+            VelvetTheme.IsDark = true;
+
+            // Act
+            var payload = PayloadAcrossHandWrittenMarker(OuterScope, PlainNarrow, "dark:@md:bg-wide", "@container",
+                parent => parent.AddToClassList("@container"));
+
+            // Assert
+            Assert.That(payload, Is.EqualTo((true, false)));
+        }
+
         // A subscription left behind would hold the manipulator, and through it the element, for the life of
         // the domain. The event's backing field is read by name so that this file builds on a tree that lacks it.
 

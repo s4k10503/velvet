@@ -303,9 +303,15 @@ namespace Velvet
             style.bottom = 0f;
             style.width = StyleKeyword.Null;
             style.height = StyleKeyword.Null;
+            SyncElementState(element, binding);
+        }
 
-            // The padding box's corners are the element's less the border beside them, the larger side's where
-            // the two differ, as SceneViewDriver rounds its feed.
+        // The padding box's corners are the element's less the border beside them, the larger side's where the
+        // two differ, as SceneViewDriver rounds its feed. Read on the state tick as well as on a placement,
+        // since a border that changes alone fires no geometry event.
+        private static void SyncInsideRadii(VisualElement element, RingBinding binding)
+        {
+            var style = binding.Overlay.style;
             var rs = element.resolvedStyle;
             ResolveRadii(element, binding, out var tl, out var tr, out var br, out var bl);
             var left = Sane(rs.borderLeftWidth);
@@ -316,7 +322,6 @@ namespace Velvet
             style.borderTopRightRadius = Mathf.Max(0f, tr - Mathf.Max(right, top));
             style.borderBottomRightRadius = Mathf.Max(0f, br - Mathf.Max(right, bottom));
             style.borderBottomLeftRadius = Mathf.Max(0f, bl - Mathf.Max(left, bottom));
-            SyncElementState(element, binding);
         }
 
         // Sizes and positions the outset overlay over the element's laid-out box: the band sits OUTSIDE the
@@ -381,6 +386,7 @@ namespace Velvet
             if (binding.Inside)
             {
                 // Everything else reaches the band from the element it is a child of (see SetMode).
+                SyncInsideRadii(element, binding);
                 if (!float.IsNaN(rs.width))
                 {
                     SyncProjectedCorners(element, binding);
