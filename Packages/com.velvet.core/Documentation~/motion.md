@@ -136,8 +136,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
   fixed channel set. Spring and cubic-bezier exits drive the channels they can resolve a number
   for out of the class strings; *Driven channels* below is the single list of what that covers and
-  what it deliberately leaves out. A `skew-*` exit never animates under any driver, because skew
-  is a silhouette paint rather than a transform.
+  what it deliberately leaves out. A `skew-x-*` / `skew-y-*` angle animates on every driver: a Tween that
+  moves one runs on the Bezier driver, which draws the angle, since UI Toolkit's transition cannot.
 - **A removed child's exits play however deep their Motion sits** — behind a component,
   `V.Memoized` or `V.Suspense`, or inside another element or Motion: a Motion plays the `exit` it
   declares, or one it inherits from the Motion above it the way an `animate` label is inherited, and
@@ -371,6 +371,10 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   translate 0, rotate 0deg). When only the to-side names it, the play samples the current value;
   on an off-panel element it starts at identity. A both-axis `translate-8` or `translate-[10px]` drives the
   x and y channels with its one value.
+- **Skew angles.** `skew-x-*`, `skew-y-*` and `skew-*` (a bracket angle included) animate as degrees, on the
+  spring Framer Motion gives a transform value by default (500 stiffness, 25 damping). The angle is painted onto the
+  element's sheared silhouette, so an element that rests unskewed is skewed for the length of a play that starts or ends
+  on an angle. A pose that names no angle on an axis leaves it where the classes rest.
 - **Colors.** `background-color`, `color` and `border-color`, from palette utilities
   (`bg-red-500`), the alpha modifier (`bg-red-500/50`) and the bracket forms (`bg-[#1e293b]`).
   Interpolation is straight RGBA, the same path UI Toolkit's own color transition takes, so

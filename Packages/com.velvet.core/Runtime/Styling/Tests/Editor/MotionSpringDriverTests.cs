@@ -649,5 +649,85 @@ namespace Velvet.Tests
             // Assert
             Assert.That(state.Opacity.Integrator.Value, Is.InRange(0.01f, 0.25f));
         }
+
+        [Test]
+        public void Given_ASpringEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose()
+        {
+            // Arrange
+            var ctx = new ReconcilerContext();
+            var element = new VisualElement();
+
+            // Act
+            ctx.StyleAnimationScheduler.PlayVariantEnter(element, fromClasses: new[] { "skew-x-12" },
+                toClasses: new[] { "opacity-100" }, durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f,
+                type: TransitionType.Spring, stiffness: 100f, damping: 20f, mass: 1f);
+
+            // Assert
+            Assert.That(ctx.SkewBindings.TryGetValue(element, out var binding) ? binding.Spec.XDeg : float.NaN,
+                Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose()
+        {
+            // Arrange
+            var ctx = new ReconcilerContext();
+            var element = new VisualElement();
+
+            // Act
+            ctx.StyleAnimationScheduler.PlayVariantEnter(element, fromClasses: new[] { "skew-x-12" },
+                toClasses: new[] { "opacity-100" }, durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f);
+
+            // Assert
+            Assert.That(ctx.SkewBindings.TryGetValue(element, out var binding) ? binding.Spec.XDeg : float.NaN,
+                Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_ASkewPlayOnAnUnskewedElement_When_ItIsCancelled_Then_TheSkewBindingIsGone()
+        {
+            // Arrange
+            var ctx = new ReconcilerContext();
+            var element = new VisualElement();
+            ctx.StyleAnimationScheduler.PlayVariantEnter(element, fromClasses: new[] { "skew-x-12" },
+                toClasses: new[] { "opacity-100" }, durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f,
+                type: TransitionType.Spring, stiffness: 100f, damping: 20f, mass: 1f);
+
+            // Act
+            ctx.StyleAnimationScheduler.CancelEnter(element);
+
+            // Assert
+            Assert.That(ctx.SkewBindings.ContainsKey(element), Is.False);
+        }
+
+        [Test]
+        public void Given_AnExitFromARestingSkewToAnotherAngle_When_Planned_Then_TheSkewRunsFromTheRestingAngleToTheExitOne()
+        {
+            // Arrange
+            var from = new[] { "skew-x-6" };
+            var to = new[] { "skew-x-12" };
+            var slots = MotionSlotContext.ReadImportant(new VisualElement(), from, to);
+            slots.ForExit = true;
+            slots.RestingSkew = (6f, 0f);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, slots);
+
+            // Assert
+            Assert.That((plan.SkewX, plan.SkewY), Is.EqualTo((((float, float)?)(6f, 12f), ((float, float)?)null)));
+        }
+
+        [Test]
+        public void Given_ASpringOnTheFramerDefaults_When_SkewIsPlanned_Then_ItRunsOnTheTransformSpring()
+        {
+            // Arrange
+            var plan = MotionSpringClassParser.Resolve(new[] { "skew-x-12" }, new[] { "skew-x-0" });
+
+            // Act
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f, perValueDefaults: true);
+
+            // Assert
+            Assert.That(state!.SkewX!.FixedPhysics, Is.EqualTo(((float, float)?)(500f, 25f)));
+        }
     }
 }

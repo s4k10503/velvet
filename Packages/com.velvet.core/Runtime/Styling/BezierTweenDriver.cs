@@ -102,6 +102,10 @@ namespace Velvet
         public BezierTweenChannel? TranslateY;
         public BezierTweenChannel? Scale;
         public BezierTweenChannel? Rotate;
+        public BezierTweenChannel? SkewX;
+        public BezierTweenChannel? SkewY;
+        // As MotionSpringState.Skew.
+        public FiberSkewApplier? Skew;
         public List<BezierColorChannel>? Colors;
         public List<BezierLengthChannel>? Lengths;
         public VisualElement? NativeLayoutOwner;
@@ -227,6 +231,8 @@ namespace Velvet
             if (plan.TranslateY is { } ty) state.TranslateY = new BezierTweenChannel(ty.from, ty.to);
             if (plan.Scale is { } s) state.Scale = new BezierTweenChannel(s.from, s.to);
             if (plan.Rotate is { } r) state.Rotate = new BezierTweenChannel(r.from, r.to);
+            if (plan.SkewX is { } kx) state.SkewX = new BezierTweenChannel(kx.from, kx.to);
+            if (plan.SkewY is { } ky) state.SkewY = new BezierTweenChannel(ky.from, ky.to);
             if (plan.Colors != null)
             {
                 var colors = new List<BezierColorChannel>(plan.Colors.Count);
@@ -315,6 +321,20 @@ namespace Velvet
         // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
         public static bool EndsAtFrom(BezierTweenState state) => state.Repeat.EndsAtFrom;
 
+        // A play that landed leaves each axis it moved at the value it ended on; one cut short leaves the lot to the
+        // element's classes.
+        private static void LandSkew(VisualElement element, BezierTweenState state, bool landed)
+        {
+            if (state.SkewX != null || state.SkewY != null)
+            {
+                state.Skew?.EndDrive(element, landed ? EndValue(state, state.SkewX) : null,
+                    landed ? EndValue(state, state.SkewY) : null);
+            }
+        }
+
+        private static float? EndValue(BezierTweenState state, BezierTweenChannel? channel)
+            => channel == null ? null : state.Repeat.EndsAtFrom ? channel.From : channel.To;
+
         /// <summary>
         /// Writes the tween at <paramref name="timeSec"/> into its run, earlier or later than where it stands, and
         /// reports whether that time has reached <see cref="BezierTweenState.EndSec"/>. A play on a <c>MotionPlayback</c> is driven by
@@ -343,12 +363,13 @@ namespace Velvet
         /// See <see cref="MotionSpringDriver.ClearInlineOverrides"/> for why the surviving arbitrary-value
         /// layers and holds are re-asserted only after every slot has been nulled.
         /// </summary>
-        public static void ClearInlineOverrides(VisualElement element, BezierTweenState state)
+        public static void ClearInlineOverrides(VisualElement element, BezierTweenState state, bool landed = false)
         {
             if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
             if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
+            LandSkew(element, state, landed);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
@@ -508,7 +529,7 @@ namespace Velvet
                 => channel == null ? null
                     : (ValueAt(state, channel, state.ElapsedSec, length), VelocityOf(state, channel, length) * timeScale);
 
-            return MotionDrawnValues.Of(
+            var drawn = MotionDrawnValues.Of(
                 new MotionDrawnValues.Channels(
                     Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate)),
                 state.Colors,
@@ -519,6 +540,9 @@ namespace Velvet
                     var (value, velocity) = Of(l.Value, l.Property)!.Value;
                     return (l.Property, l.Unit, value, velocity);
                 });
+            drawn.SkewX = Of(state.SkewX);
+            drawn.SkewY = Of(state.SkewY);
+            return drawn;
         }
 
         // The channel's value at timeSec, the play's elapsed time put back after: a length through its property's
@@ -552,6 +576,8 @@ namespace Velvet
             Continue(next.TranslateY, interrupted.TranslateY);
             Continue(next.Scale, interrupted.Scale);
             Continue(next.Rotate, interrupted.Rotate);
+            Continue(next.SkewX, interrupted.SkewX);
+            Continue(next.SkewY, interrupted.SkewY);
             if (next.Lengths != null)
             {
                 foreach (var length in next.Lengths)
@@ -599,6 +625,8 @@ namespace Velvet
             RetargetChannel(state, state.TranslateY, shared);
             RetargetChannel(state, state.Scale, shared);
             RetargetChannel(state, state.Rotate, shared);
+            RetargetChannel(state, state.SkewX, shared);
+            RetargetChannel(state, state.SkewY, shared);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) RetargetChannel(state, c.Progress, shared);
@@ -746,6 +774,11 @@ namespace Velvet
             {
                 var v = Value(state, state.Rotate, shared);
                 element.style.rotate = new Rotate(Angle.Degrees(v));
+            }
+            if (state.SkewX != null || state.SkewY != null)
+            {
+                state.Skew?.Drive(element, state.SkewX != null ? Value(state, state.SkewX, shared) : null,
+                    state.SkewY != null ? Value(state, state.SkewY, shared) : null);
             }
             if (state.Colors != null)
             {

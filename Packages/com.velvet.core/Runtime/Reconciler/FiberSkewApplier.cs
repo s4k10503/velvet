@@ -1,3 +1,4 @@
+using System;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -59,6 +60,20 @@ namespace Velvet
         {
             var bound = _ctx.SkewBindings.TryGetValue(element, out var binding);
             var has = StyleSkewClass.TryGetWinningSkewClasses(newClassNames, out var winnerX, out var winnerY);
+            if (bound && binding!.Driven)
+            {
+                // A play is drawing the angles; the classes only say where it lands.
+                StyleSkewClass.TryExtract(newClassNames, out var resolved);
+                binding.Final = resolved;
+                SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged);
+                SkewSilhouette.SyncChildTranslate(binding);
+                if (classesChanged)
+                {
+                    SyncSkewGradient(element, binding, newClassNames);
+                    SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
+                }
+                return binding.Spec;
+            }
             // Fast path: no skew anywhere near this element.
             if (!bound && !has)
             {
@@ -115,5 +130,65 @@ namespace Velvet
             }
             return default;
         }
+
+        // Draws a motion play's frame: the angle on each axis, null for an axis the play does not move, which shows
+        // the angle the element's classes resolve to. An element that rests unskewed gets a binding for the length
+        // of the play, which EndDrive takes off again.
+        internal void Drive(VisualElement element, float? xDeg, float? yDeg)
+        {
+            if (!_ctx.SkewBindings.TryGetValue(element, out var binding))
+            {
+                var classNames = AppliedClasses(element);
+                binding = SkewSilhouette.Attach(element, default);
+                _ctx.SkewBindings[element] = binding;
+                SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
+                SyncSkewGradient(element, binding, classNames);
+                SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
+            }
+            if (!binding.Driven)
+            {
+                binding.Final = binding.Spec;
+                binding.Driven = true;
+            }
+            binding.Spec = new SkewSpec(xDeg ?? binding.Final.XDeg, yDeg ?? binding.Final.YDeg,
+                binding.Final.SourceX, binding.Final.SourceY);
+            SkewSilhouette.SyncChildTranslate(binding);
+            if (binding.HasGradient)
+            {
+                SkewSilhouette.SetGradient(element, binding, true, binding.Gradient);
+            }
+            element.MarkDirtyRepaint();
+        }
+
+        // Ends the play's hold on the angles. A play that landed on its own target passes it, null for an axis it
+        // does not move; one cut short passes none and the element shows what its classes resolve to.
+        internal void EndDrive(VisualElement element, float? landedXDeg, float? landedYDeg)
+        {
+            if (!_ctx.SkewBindings.TryGetValue(element, out var binding) || !binding.Driven)
+            {
+                return;
+            }
+            binding.Driven = false;
+            var spec = landedXDeg == null && landedYDeg == null
+                ? binding.Final
+                : new SkewSpec(landedXDeg ?? binding.Final.XDeg, landedYDeg ?? binding.Final.YDeg,
+                    binding.Final.SourceX, binding.Final.SourceY);
+            if (!spec.Active)
+            {
+                SkewSilhouette.Detach(element, binding);
+                _ctx.SkewBindings.Remove(element);
+                return;
+            }
+            binding.Spec = spec;
+            SkewSilhouette.SyncChildTranslate(binding);
+            if (binding.HasGradient)
+            {
+                SkewSilhouette.SetGradient(element, binding, true, binding.Gradient);
+            }
+            element.MarkDirtyRepaint();
+        }
+
+        private string[] AppliedClasses(VisualElement element)
+            => _ctx.MotionAppliedClasses.TryGetValue(element, out var applied) ? applied.Merged : Array.Empty<string>();
     }
 }

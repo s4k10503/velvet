@@ -131,6 +131,10 @@ namespace Velvet
         public SpringChannel? TranslateY;
         public SpringChannel? Scale;
         public SpringChannel? Rotate;
+        public SpringChannel? SkewX;
+        public SpringChannel? SkewY;
+        // Draws the skew channels, which no style slot holds; null where the scheduler has no reconciler to paint on.
+        public FiberSkewApplier? Skew;
         public List<SpringColorChannel>? Colors;
         public List<SpringLengthChannel>? Lengths;
         public VisualElement? NativeLayoutOwner;
@@ -193,6 +197,8 @@ namespace Velvet
             if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to);
             if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to);
             if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to);
+            if (plan.SkewX is { } kx) state.SkewX = new SpringChannel(kx.from, kx.to);
+            if (plan.SkewY is { } ky) state.SkewY = new SpringChannel(ky.from, ky.to);
             if (plan.Colors != null)
             {
                 var colors = new List<SpringColorChannel>(plan.Colors.Count);
@@ -234,6 +240,8 @@ namespace Velvet
             Spring(state.TranslateX, 500f, 25f);
             Spring(state.TranslateY, 500f, 25f);
             Spring(state.Rotate, 500f, 25f);
+            Spring(state.SkewX, 500f, 25f);
+            Spring(state.SkewY, 500f, 25f);
             if (state.Scale != null)
             {
                 Spring(state.Scale, 550f, state.Scale.Target == 0f ? 2f * Mathf.Sqrt(550f) : 30f);
@@ -415,6 +423,10 @@ namespace Velvet
             {
                 element.style.rotate = new Rotate(Angle.Degrees(state.Rotate.Integrator.Value));
             }
+            if (state.SkewX != null || state.SkewY != null)
+            {
+                state.Skew?.Drive(element, state.SkewX?.Integrator.Value, state.SkewY?.Integrator.Value);
+            }
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors)
@@ -460,6 +472,8 @@ namespace Velvet
             if (state.TranslateY != null) settled &= SampleRepeating(state, state.TranslateY, dtSec, seekScale);
             if (state.Scale != null) settled &= SampleRepeating(state, state.Scale, dtSec, seekScale);
             if (state.Rotate != null) settled &= SampleRepeating(state, state.Rotate, dtSec, seekScale);
+            if (state.SkewX != null) settled &= SampleRepeating(state, state.SkewX, dtSec, seekScale);
+            if (state.SkewY != null) settled &= SampleRepeating(state, state.SkewY, dtSec, seekScale);
             if (state.Colors != null)
             {
                 foreach (var color in state.Colors) settled &= SampleRepeating(state, color.Progress, dtSec, seekScale);
@@ -572,13 +586,16 @@ namespace Velvet
         public static MotionDrawnValues Drawn(MotionSpringState state)
         {
             static (float, float)? Of(SpringChannel? c) => c == null ? null : (c.Integrator.Value, c.Integrator.Velocity);
-            return MotionDrawnValues.Of(
+            var drawn = MotionDrawnValues.Of(
                 new MotionDrawnValues.Channels(
                     Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate)),
                 state.Colors,
                 c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)),
                 state.Lengths,
                 l => (l.Property, l.Unit, l.Value.Integrator.Value, l.Value.Integrator.Velocity));
+            drawn.SkewX = Of(state.SkewX);
+            drawn.SkewY = Of(state.SkewY);
+            return drawn;
         }
 
         /// <summary>
@@ -599,6 +616,8 @@ namespace Velvet
             Continue(next, next.TranslateY, interrupted.TranslateY, fromDrawn);
             Continue(next, next.Scale, interrupted.Scale, fromDrawn);
             Continue(next, next.Rotate, interrupted.Rotate, fromDrawn);
+            Continue(next, next.SkewX, interrupted.SkewX, fromDrawn);
+            Continue(next, next.SkewY, interrupted.SkewY, fromDrawn);
             if (next.Lengths != null)
             {
                 foreach (var length in next.Lengths)
@@ -671,6 +690,22 @@ namespace Velvet
         // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
         public static bool EndsAtFrom(MotionSpringState state) => state.Repeat.EndsAtFrom;
 
+        // A play that landed leaves each axis it moved at the value it ended on; one cut short leaves the lot to the
+        // element's classes.
+        private static void ReleaseSkew(VisualElement element, MotionSpringState state, bool landed)
+        {
+            if (state.SkewX == null && state.SkewY == null)
+            {
+                return;
+            }
+            var x = landed ? EndValue(state, state.SkewX) : null;
+            var y = landed ? EndValue(state, state.SkewY) : null;
+            state.Skew?.EndDrive(element, x, y);
+        }
+
+        private static float? EndValue(MotionSpringState state, SpringChannel? channel)
+            => channel == null ? null : state.Repeat.EndsAtFrom ? channel.Origin : channel.Target;
+
         /// <summary>
         /// Releases every inline slot this state ever wrote — and the transition suspension
         /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
@@ -682,12 +717,13 @@ namespace Velvet
         /// while an authored longhand (`pt-[2px]`) is registered against ONE of them, so per-property
         /// interleaving would let a later null wipe a value an earlier re-assert had just restored.
         /// </remarks>
-        public static void ClearInlineOverrides(VisualElement element, MotionSpringState state)
+        public static void ClearInlineOverrides(VisualElement element, MotionSpringState state, bool landed = false)
         {
             if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
             if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
+            ReleaseSkew(element, state, landed);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
@@ -867,6 +903,8 @@ namespace Velvet
             HaltChannel(state.TranslateY);
             HaltChannel(state.Scale);
             HaltChannel(state.Rotate);
+            HaltChannel(state.SkewX);
+            HaltChannel(state.SkewY);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) HaltChannel(c.Progress);
@@ -912,6 +950,8 @@ namespace Velvet
             if (state.TranslateY != null) action(state.TranslateY);
             if (state.Scale != null) action(state.Scale);
             if (state.Rotate != null) action(state.Rotate);
+            if (state.SkewX != null) action(state.SkewX);
+            if (state.SkewY != null) action(state.SkewY);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) action(c.Progress);
