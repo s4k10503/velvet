@@ -1213,6 +1213,14 @@ namespace Velvet
 
             s_desired.Clear();
             s_placed.Clear();
+            // An inset ring band leads its element's children, which it paints under.
+            for (var i = 0; i < parent.hierarchy.childCount; i++)
+            {
+                if (parent.hierarchy[i].ClassListContains(RingOverlay.InsetMarkerClass))
+                {
+                    Place(parent.hierarchy[i]);
+                }
+            }
             foreach (var entry in s_back) Place(entry.Real);
             foreach (var item in s_middle) Place(item.Element);
             foreach (var entry in s_front) Place(entry.Real);

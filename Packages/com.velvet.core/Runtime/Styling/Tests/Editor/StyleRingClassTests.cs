@@ -296,8 +296,8 @@ namespace Velvet.Tests
     /// Geometry coverage for the ring overlay against the USS-scale radius and the element's own edge: once
     /// the ringed element is LAID OUT (a real panel), the band must size, position and round to its resolved
     /// box. Outset (default): inflated by (offset + width) per side with outer radius = radius + offset +
-    /// width. Inset (ring-inset): matches the box at its own radius. Off-panel there is no resolved size, so
-    /// this needs a real <see cref="UnityEditor.EditorWindow"/> panel + forced layout (the spec's width/color
+    /// width. Inset (ring-inset): the element's own first child, matching the box at its own radius. Off-panel
+    /// there is no resolved size, so this needs a real <see cref="UnityEditor.EditorWindow"/> panel + forced layout (the spec's width/color
     /// are asserted off-panel in ClipPathWrapTests, and the arbitrary / per-corner radius forms in
     /// RingOverlayTests). GWT, one assert each.
     /// </summary>
@@ -364,11 +364,32 @@ namespace Velvet.Tests
             Assert.That(overlay?.resolvedStyle.width, Is.EqualTo((float?)112f));
         }
 
+        // An inset band is the ringed element's own first child rather than its sibling.
+        private static VisualElement InsetBandIn(VisualElement element)
+        {
+            for (var i = 0; i < element.childCount; i++)
+            {
+                if (element[i].ClassListContains(RingOverlay.InsetMarkerClass))
+                {
+                    return element[i];
+                }
+            }
+            return null;
+        }
+
+        private VisualElement MountInsetRinged(string className)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(className: className, name: "card"));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            return InsetBandIn(_window.rootVisualElement.Q<VisualElement>("card"));
+        }
+
         [Test]
         public void Given_InsetRing_When_LaidOut_Then_OverlayMatchesTheInnerBox()
         {
             // ring-inset: the band is drawn inside, so the overlay matches the inner box exactly (no inflation).
-            var overlay = MountRinged("w-[100px] h-[40px] ring-2 ring-inset");
+            var overlay = MountInsetRinged("w-[100px] h-[40px] ring-2 ring-inset");
 
             Assert.That(overlay?.resolvedStyle.width, Is.EqualTo((float?)100f));
         }
@@ -377,7 +398,7 @@ namespace Velvet.Tests
         public void Given_InsetRingWithRoundedLg_When_LaidOut_Then_OuterRadiusEqualsTheInnerRadius()
         {
             // An inset band hugs the inner edge, so its corner radius is the inner radius (8px), NOT inflated.
-            var overlay = MountRinged("w-[100px] h-[40px] rounded-lg ring-2 ring-inset");
+            var overlay = MountInsetRinged("w-[100px] h-[40px] rounded-lg ring-2 ring-inset");
 
             Assert.That(overlay?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)8f));
         }

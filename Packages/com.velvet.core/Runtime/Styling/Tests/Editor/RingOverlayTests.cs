@@ -329,4 +329,142 @@ namespace Velvet.Tests
             Assert.That((cardShift, bandShift), Is.EqualTo((32f, 32f)));
         }
     }
+
+    /// <summary>
+    /// Specifies where a <c>ring-inset</c> band lives: inside its element, ahead of the element's children, so
+    /// that it paints above the element's own background and under what the element holds, as an inset
+    /// box-shadow does. The band is not a child as far as the reconciler is concerned, which these cases pin
+    /// through the order it keeps beside rendered children.
+    /// </summary>
+    internal sealed class InsetRingBandTests : PanelTestBase
+    {
+        private static StateUpdater<bool> s_setShown;
+
+        private static VisualElement InsetBandIn(VisualElement element)
+        {
+            for (var i = 0; i < element.childCount; i++)
+            {
+                if (element[i].ClassListContains(RingOverlay.InsetMarkerClass))
+                {
+                    return element[i];
+                }
+            }
+            return null;
+        }
+
+        // The element's children by name, the band standing as "band".
+        private static string ChildOrder(VisualElement element)
+        {
+            var names = new System.Collections.Generic.List<string>();
+            for (var i = 0; i < element.childCount; i++)
+            {
+                names.Add(element[i].ClassListContains(RingOverlay.InsetMarkerClass) ? "band" : element[i].name);
+            }
+            return string.Join(",", names);
+        }
+
+        private VisualElement MountCard(VNode root)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, root);
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            ForcePanelUpdate(card.panel);
+            ForcePanelUpdate(card.panel);
+            return card;
+        }
+
+        [Test]
+        public void Given_AnInsetRing_When_Mounted_Then_NoBandIsHostedBesideTheElement()
+        {
+            // Arrange / Act
+            MountCard(V.Div(name: "card", className: "w-[100px] h-[40px] ring-2 ring-inset"));
+
+            // Assert
+            Assert.That(RingOverlayIn(_window.rootVisualElement), Is.Null);
+        }
+
+        private static VisualElement RingOverlayIn(VisualElement host)
+        {
+            for (var i = 0; i < host.childCount; i++)
+            {
+                if (host[i].ClassListContains(RingOverlay.MarkerClass))
+                {
+                    return host[i];
+                }
+            }
+            return null;
+        }
+
+        [Test]
+        public void Given_AnInsetRingOverAChild_When_Mounted_Then_TheBandIsAheadOfTheChild()
+        {
+            // Arrange / Act
+            var card = MountCard(V.Div(name: "card", className: "w-[100px] h-[40px] ring-2 ring-inset",
+                V.Div(name: "child", className: "w-[100px] h-[40px]")));
+
+            // Assert
+            Assert.That(ChildOrder(card), Is.EqualTo("band,child"));
+        }
+
+        [Component]
+        private static VNode RenderLateChild()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_setShown = setShown;
+            return V.Div(name: "card", className: "w-[100px] h-[40px] ring-2 ring-inset",
+                shown ? V.Div(name: "late", className: "w-[100px] h-[40px]") : null);
+        }
+
+        [Test]
+        public void Given_AnInsetRingOverNoChild_When_AChildIsRendered_Then_TheBandStaysAheadOfIt()
+        {
+            // Arrange
+            var card = MountCard(V.Component(RenderLateChild));
+
+            // Act
+            s_setShown.Invoke(true);
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(ChildOrder(card), Is.EqualTo("band,late"));
+        }
+
+        [Test]
+        public void Given_AnInsetRingOnABorderedElement_When_LaidOut_Then_TheBandCoversThePaddingBox()
+        {
+            // Arrange / Act — a 2px border on each side of a 128x64 box leaves a 124x60 padding box.
+            var card = MountCard(V.Div(name: "card", className: "w-[128px] h-[64px] border-[2px] ring-2 ring-inset"));
+
+            // Assert
+            var band = InsetBandIn(card);
+            Assert.That((band?.resolvedStyle.width, band?.resolvedStyle.height), Is.EqualTo(((float?)124f, (float?)60f)));
+        }
+
+        [Test]
+        public void Given_AnInsetRingOnARoundedBorderedElement_When_LaidOut_Then_TheBandRoundsToThePaddingBox()
+        {
+            // Arrange / Act — the padding box's corner is the element's 20px less its 2px border.
+            var card = MountCard(V.Div(name: "card",
+                className: "w-[128px] h-[64px] rounded-[20px] border-[2px] ring-2 ring-inset"));
+
+            // Assert
+            Assert.That(InsetBandIn(card)?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)18f));
+        }
+
+        [Test]
+        public void Given_AnInsetRingedElementWithAnOpacity_When_LaidOut_Then_TheBandIsNotFadedAgain()
+        {
+            // Arrange — the band is the element's child, so the element's opacity reaches it once already.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "card", className: "w-[100px] h-[40px] ring-2 ring-inset"));
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            card.style.opacity = 0.5f;
+
+            // Act
+            ForcePanelUpdate(card.panel);
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(InsetBandIn(card)?.resolvedStyle.opacity, Is.EqualTo((float?)1f));
+        }
+    }
 }

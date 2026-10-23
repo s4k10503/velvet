@@ -157,7 +157,6 @@ ab6590c75cf5	Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleSkewClass.
 acbc60aaccfb	Runtime/Hooks/FocusManager.cs,Runtime/Styling/RelationalTreeWatch.cs,Runtime/Styling/StyleCascade.cs
 ad7d7d32382d	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 adac1d2bffef	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Runtime/Reconciler/DndSortable.cs,Runtime/Styling/StyleClassProjection.cs
-ae006431144d	Runtime/Styling/FaceBorderOverlay.cs,Runtime/Styling/RingOverlay.cs
 ae5f181a9b98	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 b0d5136bbfc6	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 b10b145664ae	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs

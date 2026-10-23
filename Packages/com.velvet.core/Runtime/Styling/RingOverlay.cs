@@ -16,6 +16,9 @@ namespace Velvet
         public EventCallback<GeometryChangedEvent>? OnGeometry;
         public EventCallback<AttachToPanelEvent>? OnAttach;
         public IVisualElementScheduledItem? StateTick;
+        // True while the overlay is configured as the element's own first child (an inset band) rather than as
+        // its following sibling; RingOverlay.SetMode is the only writer.
+        public bool Inside;
 
         public RingBinding(VisualElement overlay) => Overlay = overlay;
     }
@@ -50,10 +53,15 @@ namespace Velvet
     /// Toolkit paints an absolutely-positioned sibling in child order against an in-flow one rather than
     /// lifting positioned elements above the in-flow ones as CSS does; that engine fact is measured by
     /// pixel readback in <c>RingSiblingPaintOrderPlaybackTests</c>, and the whole placement rests on it.
-    /// The deviation it carries: <c>ring-inset</c> paints over an opaque full-bleed child rather than under
-    /// it. A transform, an opacity, a visibility or a display on the ringed element reaches that element's own
+    /// A transform, an opacity, a visibility or a display on the ringed element reaches that element's own
     /// subtree only, which the band is not in, so the band is given each of them itself
     /// (<c>SyncElementState</c>).
+    /// </para>
+    /// <para>
+    /// <c>ring-inset</c> is the exception to all of that. An inset band is CSS's inset box-shadow, which paints
+    /// above the element's own background and under its children, so it is the element's own first child
+    /// (<see cref="InsetMarkerClass"/>) stretched over the padding box, and no sibling at all. A child needs
+    /// none of the state copying above, and would show it twice if given it (<c>SetMode</c>).
     /// </para>
     /// </remarks>
     internal static class RingOverlay
@@ -75,6 +83,12 @@ namespace Velvet
         internal const string MarkerClass = "velvet-ring-overlay";
         internal const string OverlayName = "velvet-ring-overlay";
 
+        // The marker of an inset band, which is the element's own first child rather than its following sibling.
+        // A separate class from MarkerClass because the two sit in different places: LogicalChildSlots must let
+        // an append step over a leading one and stop before a following one, and FiberZLayerCoordinator keeps a
+        // leading one first where it keeps a following one behind its element.
+        internal const string InsetMarkerClass = "velvet-ring-inset-overlay";
+
         public static RingBinding Attach(VisualElement element, RingSpec spec, string[] classNames)
         {
             var overlay = new VisualElement
@@ -86,6 +100,7 @@ namespace Velvet
             overlay.AddToClassList(MarkerClass);
 
             var binding = new RingBinding(overlay) { ClassNames = classNames, Spec = spec };
+            SetMode(binding);
             ApplySpec(overlay, spec, element);
 
             binding.OnGeometry = _ => Place(element, binding);
@@ -152,8 +167,38 @@ namespace Velvet
         {
             binding.Spec = spec;
             binding.ClassNames = classNames;
+            SetMode(binding);
             ApplySpec(binding.Overlay, spec, element);
             Place(element, binding);
+        }
+
+        // Moves the overlay between the two roles its spec can ask for. Leaving the inside role hands the
+        // band back to the sibling path, which writes the inline values it needs; entering it clears the
+        // inline opacity, visibility, display and transform that path copied from the element, because the
+        // band now receives each of them from the element as its child and would show it twice.
+        private static void SetMode(RingBinding binding)
+        {
+            var inside = binding.Spec.Inset;
+            if (binding.Inside == inside)
+            {
+                return;
+            }
+            binding.Inside = inside;
+            var overlay = binding.Overlay;
+            overlay.EnableInClassList(MarkerClass, !inside);
+            overlay.EnableInClassList(InsetMarkerClass, inside);
+            if (!inside)
+            {
+                return;
+            }
+            var style = overlay.style;
+            style.opacity = StyleKeyword.Null;
+            style.visibility = StyleKeyword.Null;
+            style.display = StyleKeyword.Null;
+            style.transformOrigin = StyleKeyword.Null;
+            style.translate = StyleKeyword.Null;
+            style.scale = StyleKeyword.Null;
+            style.rotate = StyleKeyword.Null;
         }
 
         public static void Detach(VisualElement element, RingBinding binding)
@@ -198,6 +243,11 @@ namespace Velvet
         // an attach that had not happened yet at create time all change it, and each of those re-enters here.
         private static void Place(VisualElement element, RingBinding binding)
         {
+            if (binding.Inside)
+            {
+                PlaceInside(element, binding);
+                return;
+            }
             var host = element.parent;
             if (host == null)
             {
@@ -233,10 +283,45 @@ namespace Velvet
             SyncElementState(element, binding);
         }
 
-        // Sizes and positions the overlay over the element's laid-out box. Outset (the default): the band sits
-        // OUTSIDE the element edge by Offset, or inside it by a negative outline offset, so the overlay inflates by
-        // (Offset + Width) per side and each outer corner radius is that corner's radius plus the same amount. Inset (ring-inset): the overlay
-        // matches the element's box exactly, at the element's own radii.
+        // Keeps the inset band the element's first child, ahead of every rendered child so that it paints under
+        // them. Goes through hierarchy rather than the element itself so a ScrollView takes the band as its own
+        // child and not as one of its content. Needs no parent and no layout: the band stretches over the padding
+        // box by its offsets alone, so only its corner radii wait on a resolved style.
+        private static void PlaceInside(VisualElement element, RingBinding binding)
+        {
+            var overlay = binding.Overlay;
+            if (overlay.parent != element || element.hierarchy.IndexOf(overlay) != 0)
+            {
+                overlay.RemoveFromHierarchy();
+                element.hierarchy.Insert(0, overlay);
+            }
+
+            var style = overlay.style;
+            style.left = 0f;
+            style.top = 0f;
+            style.right = 0f;
+            style.bottom = 0f;
+            style.width = StyleKeyword.Null;
+            style.height = StyleKeyword.Null;
+
+            // The padding box's corners are the element's less the border beside them, the larger side's where
+            // the two differ, as SceneViewDriver rounds its feed.
+            var rs = element.resolvedStyle;
+            ResolveRadii(element, binding, out var tl, out var tr, out var br, out var bl);
+            var left = Sane(rs.borderLeftWidth);
+            var top = Sane(rs.borderTopWidth);
+            var right = Sane(rs.borderRightWidth);
+            var bottom = Sane(rs.borderBottomWidth);
+            style.borderTopLeftRadius = Mathf.Max(0f, tl - Mathf.Max(left, top));
+            style.borderTopRightRadius = Mathf.Max(0f, tr - Mathf.Max(right, top));
+            style.borderBottomRightRadius = Mathf.Max(0f, br - Mathf.Max(right, bottom));
+            style.borderBottomLeftRadius = Mathf.Max(0f, bl - Mathf.Max(left, bottom));
+            SyncElementState(element, binding);
+        }
+
+        // Sizes and positions the outset overlay over the element's laid-out box: the band sits OUTSIDE the
+        // element edge by Offset, or inside it by a negative outline offset, so the overlay inflates by
+        // (Offset + Width) per side and each outer corner radius is that corner's radius plus the same amount.
         private static void SyncGeometry(VisualElement element, RingBinding binding, VisualElement host)
         {
             var overlay = binding.Overlay;
@@ -264,18 +349,19 @@ namespace Velvet
             if (float.IsNaN(hostBorderLeft)) hostBorderLeft = 0f;
             if (float.IsNaN(hostBorderTop)) hostBorderTop = 0f;
 
-            var grow = spec.Inset ? 0f : spec.Offset + spec.Width;
+            var grow = spec.Offset + spec.Width;
             overlay.style.left = originX - grow - hostBorderLeft;
             overlay.style.top = originY - grow - hostBorderTop;
+            overlay.style.right = StyleKeyword.Null;
+            overlay.style.bottom = StyleKeyword.Null;
             overlay.style.width = Mathf.Max(0f, width + (grow * 2f));
             overlay.style.height = Mathf.Max(0f, height + (grow * 2f));
 
-            var outerGrow = spec.Inset ? 0f : spec.Offset + spec.Width;
             ResolveRadii(element, binding, out var tl, out var tr, out var br, out var bl);
-            overlay.style.borderTopLeftRadius = Mathf.Max(0f, tl + outerGrow);
-            overlay.style.borderTopRightRadius = Mathf.Max(0f, tr + outerGrow);
-            overlay.style.borderBottomRightRadius = Mathf.Max(0f, br + outerGrow);
-            overlay.style.borderBottomLeftRadius = Mathf.Max(0f, bl + outerGrow);
+            overlay.style.borderTopLeftRadius = Mathf.Max(0f, tl + grow);
+            overlay.style.borderTopRightRadius = Mathf.Max(0f, tr + grow);
+            overlay.style.borderBottomRightRadius = Mathf.Max(0f, br + grow);
+            overlay.style.borderBottomLeftRadius = Mathf.Max(0f, bl + grow);
         }
 
         // Gives the band what the element's own subtree would have given it had it been inside: its opacity,
@@ -292,6 +378,15 @@ namespace Velvet
             {
                 ApplyColor(binding.Overlay, rs.color);
             }
+            if (binding.Inside)
+            {
+                // Everything else reaches the band from the element it is a child of (see SetMode).
+                if (!float.IsNaN(rs.width))
+                {
+                    SyncProjectedCorners(element, binding);
+                }
+                return;
+            }
             style.opacity = rs.opacity;
             style.visibility = rs.visibility;
             style.display = rs.display;
@@ -300,7 +395,7 @@ namespace Velvet
                 return; // pre-layout: a percentage pivot has no box to resolve against yet
             }
             SyncProjectedCorners(element, binding);
-            var grow = binding.Spec.Inset ? 0f : binding.Spec.Offset + binding.Spec.Width;
+            var grow = binding.Spec.Offset + binding.Spec.Width;
             var origin = rs.transformOrigin;
             var translate = rs.translate;
             style.transformOrigin = new TransformOrigin(origin.x + grow, origin.y + grow, origin.z);

@@ -2535,7 +2535,8 @@ namespace Velvet
             internal static void BindRing(VisualElement element,
                 StyleAnimationScheduler.PendingAnimation pending, float startFactor)
             {
-                if (RingOverlay.TryGet(element) is not { } binding)
+                // An inset band is the element's own child, so the element's opacity composites it already.
+                if (RingOverlay.TryGet(element) is not { } binding || binding.Inside)
                 {
                     return;
                 }
@@ -2569,7 +2570,7 @@ namespace Velvet
                 pending.RingTick = host.schedule.Execute(() =>
                 {
                     var overlay = pending.RingOverlay;
-                    if (overlay == null)
+                    if (overlay == null || ReferenceEquals(overlay.parent, animatingElement))
                     {
                         return;
                     }

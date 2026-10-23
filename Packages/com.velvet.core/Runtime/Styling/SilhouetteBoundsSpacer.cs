@@ -90,7 +90,8 @@ namespace Velvet
         }
 
         // True when child is a bounds-spacer (the internal, reconciler-invisible render-bounds child), a ring
-        // overlay (RingOverlay's band, hosted beside the element it rings rather than wrapped around it), a face
+        // overlay (RingOverlay's band, hosted beside the element it rings rather than wrapped around it, or as the
+        // element's own first child where it is inset), a face
         // border overlay (FaceBorderOverlay, hosted the same way), a SceneView's camera feed (SceneViewDriver's
         // child over the element's content box), a Particles element's blend layer (ParticlesDriver's children
         // that draw the runs the element does not), a backdrop layer (BackdropFilterLayer, hosted before its
@@ -101,6 +102,7 @@ namespace Velvet
             => child != null
                 && (child.ClassListContains(MarkerClass)
                     || child.ClassListContains(RingOverlay.MarkerClass)
+                    || child.ClassListContains(RingOverlay.InsetMarkerClass)
                     || child.ClassListContains(FaceBorderOverlay.MarkerClass)
                     || child.ClassListContains(SceneViewDriver.FeedMarkerClass)
                     || child.ClassListContains(ParticlesDriver.LayerMarkerClass)
