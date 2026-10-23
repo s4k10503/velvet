@@ -729,5 +729,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That(state!.SkewX!.FixedPhysics, Is.EqualTo(((float, float)?)(500f, 25f)));
         }
+
+        [Test]
+        public void Given_ATweenExitOnAPinnedPopLayoutGhost_When_Started_Then_TheDriverShowsItsFromValue()
+        {
+            // Arrange
+            var ctx = new ReconcilerContext();
+            var ghost = new VisualElement();
+            ctx.PinnedGhosts.Add(ghost, new object());
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 0.3f, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+            };
+
+            // Act
+            ctx.StyleAnimationScheduler.PlayExit(ghost, config, onComplete: null, restoreFromOnCancel: true);
+
+            // Assert
+            Assert.That((ghost.style.opacity.keyword, ghost.style.opacity.value), Is.EqualTo((StyleKeyword.Undefined, 1f)));
+        }
     }
 }

@@ -59,6 +59,11 @@ namespace Velvet
         // childCount via parent.RemoveAt + Insert.
         internal void PatchNode(VisualElement element, VNode? oldNode, VNode? newNode)
         {
+            // The slot of a pinned ghost holds its placeholder; the ghost itself stays in its layer whatever its classes say.
+            if (_ctx.ZLayerPlaceholders.TryGetValue(element, out var ghost) && _ctx.PinnedGhosts.TryGetValue(ghost, out _))
+            {
+                element = ghost;
+            }
             switch (oldNode)
             {
                 case ElementNode oldElem when newNode is ElementNode newElem:

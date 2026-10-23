@@ -2792,9 +2792,10 @@ namespace Velvet
             {
                 _ctx.StyleAnimationScheduler.CancelEnter(ghostMotionElement);
             }
-            if (PopsOutOfFlow(presence, node))
+            if (PopsOutOfFlow(presence, node) && PinExitingChildOutOfFlow(ghostAnchor)
+                && (ReferenceEquals(ghostMotionElement, ghostAnchor) || node is ElementNode))
             {
-                PinExitingChildOutOfFlow(ghostAnchor);
+                FiberZLayerCoordinator.PinGhost(_ctx, ghostAnchor);
             }
             var capturedKey = key;
             var capturedState = pass.State;
@@ -3254,6 +3255,7 @@ namespace Velvet
             }
             if (PopsOutOfFlow(presence, node))
             {
+                FiberZLayerCoordinator.UnpinGhost(_ctx, anchor);
                 // The anchor's OWN class list, not motion's: PinExitingChildOutOfFlow pinned
                 // `anchor` (this keyed child's own top-level element), which for a Div wrapping
                 // a Motion (the z-managed shape) is a DIFFERENT element — with a different
@@ -3276,6 +3278,7 @@ namespace Velvet
         {
             if (PopsOutOfFlow(presence, node) && !freshReplacement)
             {
+                FiberZLayerCoordinator.UnpinGhost(_ctx, anchor);
                 // The out-of-flow pin outlives its exit (only the drop would have removed the
                 // element). Skipped for a fresh replacement: the pin lives on the discarded
                 // ghost, and nulling a never-pinned element's geometry slots would erase
@@ -3486,13 +3489,13 @@ namespace Velvet
         // layout rect would apply the same margin twice and jump the child by it the instant the exit starts.
         // Subtracting the resolved margin back out of left/top cancels exactly that double count, so the
         // pinned rect reproduces the in-flow position pixel for pixel.
-        private static void PinExitingChildOutOfFlow(VisualElement anchor)
+        private static bool PinExitingChildOutOfFlow(VisualElement anchor)
         {
             var rect = anchor.layout;
             if (!float.IsFinite(rect.x) || !float.IsFinite(rect.y)
                 || !float.IsFinite(rect.width) || !float.IsFinite(rect.height))
             {
-                return;
+                return false;
             }
 
             var resolved = anchor.resolvedStyle;
@@ -3504,6 +3507,7 @@ namespace Velvet
             anchor.style.top = rect.y - marginTop;
             anchor.style.width = rect.width;
             anchor.style.height = rect.height;
+            return true;
         }
 
         // Reverses PinExitingChildOutOfFlow when a PopLayout exit is cancelled (its key re-added before the

@@ -255,6 +255,46 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APopLayoutModeChild_When_ItStartsExiting_Then_ItPaintsInTheFrontLayer()
+        {
+            // Arrange
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = MountLaidOut();
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+
+            // Act
+            store.Set("ac");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("item-b").parent?.ClassListContains(
+                FiberZLayerCoordinator.FrontMarkerClass), Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_APopLayoutExitInFlight_When_TheKeyReturnsBeforeItFinishes_Then_ItLeavesTheFrontLayerForItsHost()
+        {
+            // Arrange
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = MountLaidOut();
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            store.Set("ac");
+            scheduler.DrainImmediateForTest();
+            var inLayerWhileExiting = _window.rootVisualElement.Q<VisualElement>("item-b").parent?.ClassListContains(
+                FiberZLayerCoordinator.FrontMarkerClass);
+
+            // Act
+            store.Set("abc");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That((inLayerWhileExiting, _window.rootVisualElement.Q<VisualElement>("item-b").parent?.name),
+                Is.EqualTo(((bool?)true, "presence-host")));
+        }
+
+        [Test]
         public void Given_APopLayoutModeChild_When_Pinned_Then_ItsInlineRectMatchesItsLastLaidOutBox()
         {
             // Arrange — capture item-b's last resolved (parent-relative) rect before removing it, so the

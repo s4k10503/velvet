@@ -292,6 +292,7 @@ namespace Velvet
             {
                 try
                 {
+                    FiberZLayerCoordinator.DrainGhostStacks(_ctx);
                     _childReconciler.DrainPendingPortalMounts();
                     // After the drain, whose own reconciles can tear down a Portal too.
                     foreach (var target in _ctx.PortalTargetsToRestyle)
@@ -316,6 +317,7 @@ namespace Velvet
                 // drain (a boundary inside a portal's children) is consumed at this boundary
                 // the same way.
                 _ctx.PendingPortalMounts.Clear();
+                _ctx.PendingGhostStacks.Clear();
                 // MUTANT_SURVIVES(equivalent): the set is read only for a placeholder the drain has just dequeued,
                 // and each placeholder is queued once, where FiberNodeFactory creates it, so an entry outliving
                 // the queue cleared above is never read again; what keeping it costs is holding the element.

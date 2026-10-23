@@ -886,7 +886,20 @@ namespace Velvet
         // UI Toolkit's transition cannot move a skew angle, which is painted rather than a style slot, so a Tween that
         // moves one runs on the driver that writes it, as a Tween on another clock does.
         private bool RunsDriven(in VariantPlay play, float durationSec)
-            => DrivesTween(durationSec) || TweenDrivesSkew(in play, durationSec);
+            => DrivesTween(durationSec) || TweenDrivesSkew(in play, durationSec)
+                || (play.IsExit && InsidePinnedGhost(play.Element));
+
+        // An exit inside a pinned PopLayout ghost runs on the driver, whose inline values and recurring tick outlive the
+        // ghost's detach and reattach when the exit is cancelled and the ghost returns to its slot.
+        private bool InsidePinnedGhost(VisualElement element)
+        {
+            if (Context == null) return false;
+            for (var e = element; e != null; e = e.hierarchy.parent)
+            {
+                if (Context.PinnedGhosts.TryGetValue(e, out _)) return true;
+            }
+            return false;
+        }
 
         private static bool TweenDrivesSkew(in VariantPlay play, float durationSec)
             => IsPlayableDuration(durationSec)
@@ -1426,9 +1439,15 @@ namespace Velvet
 
         // The angles the element's classes resolve its skew to, which a play's skew channels run toward or away from.
         private (float X, float Y) RestingSkew(VisualElement element)
-            => Context != null && Context.SkewBindings.TryGetValue(element, out var binding)
-                ? (binding.Driven ? binding.Final : binding.Spec) is var spec ? (spec.XDeg, spec.YDeg) : default
-                : default;
+        {
+            var binding = Context?.SkewBindings.GetValueOrDefault(element);
+            if (binding == null)
+            {
+                return default;
+            }
+            var spec = binding.Driven ? binding.Final : binding.Spec;
+            return (spec.XDeg, spec.YDeg);
+        }
 
         private FiberSkewApplier? _skewDriver;
 

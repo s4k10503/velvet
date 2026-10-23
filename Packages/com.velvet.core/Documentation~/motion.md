@@ -212,8 +212,11 @@ Framer's `mode="popLayout"`: the exiting child is pinned **out of flow** (absolu
 laid-out rect, margins accounted for) so surviving siblings reflow *immediately* while the ghost
 plays its exit in place. The `gap-*` / `grid-cols-*` / `divide-*` emulations skip pinned ghosts
 in their index math, so spacing recomputes as if the child were already gone. A keyed `V.Fragment` is not
-pinned and exits in flow, as under Framer's `popLayout`. Note the ghost
-keeps its original paint order: a survivor that reflows into the ghost's rect draws over it.
+pinned and exits in flow, as under Framer's `popLayout`. A pinned ghost paints over the survivors that reflow into
+its rect, as a positioned element paints over in-flow ones: it moves into its parent's front layer
+([styling-z-index.md](styling-z-index.md)) for the length of its exit, leaving a placeholder at its slot, and returns to
+the slot if its key comes back. A ghost that carries a `z-*` of its own stays where that puts it. Exits inside a pinned
+ghost run on the driver rather than UI Toolkit's transition, so they carry on through that move.
 
 A negative `StyleTransitionConfig.DelaySec` starts the animation partway through its run. For
 example, `DurationSec = 1f` and `DelaySec = -0.5f` start a linear tween halfway to its target.
