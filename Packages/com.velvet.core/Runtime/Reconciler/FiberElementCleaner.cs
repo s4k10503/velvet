@@ -329,6 +329,12 @@ namespace Velvet
                 RingOverlay.Detach(element, ringBinding);
                 _ctx.RingBindings.Remove(element);
             }
+            if (_ctx.BackdropBindings.TryGetValue(element, out var backdropBinding))
+            {
+                // Lives in the element's parent, as the ring band does.
+                BackdropFilterLayer.Detach(element, backdropBinding);
+                _ctx.BackdropBindings.Remove(element);
+            }
             if (_ctx.SkewBindings.TryGetValue(element, out var skewBinding))
             {
                 // Detach unhooks the paint/stash callbacks, destroys the baked gradient texture, drops the

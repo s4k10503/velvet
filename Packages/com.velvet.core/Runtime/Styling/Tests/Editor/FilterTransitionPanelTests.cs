@@ -2383,8 +2383,9 @@ namespace Velvet.Tests
             Assert.That(runs(), Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): a filter added at once onto no filter started no filter transition on the base.
         [Test]
-        public void Given_ATransformOriginTransitionRunningAndNoFilter_When_AFilterIsAddedAtOnce_Then_OneFilterTransitionRuns()
+        public void Given_ATransformOriginTransitionRunningAndNoFilter_When_AFilterIsAddedAtOnce_Then_NoFilterTransitionRuns()
         {
             // Arrange
             var element = MountUnderTransitions("transform-origin");
@@ -2395,10 +2396,9 @@ namespace Velvet.Tests
             ApplyBlur(element, 12f);
             AdvanceAndPaint(element.panel, 0.0);
 
-            // Assert — the one filter transition the write past the setter starts from nothing.
-            Assert.That(runs(), Is.EqualTo(1));
+            // Assert
+            Assert.That(runs(), Is.Zero);
         }
-
 
         private static StyleBackgroundSize HalfSize
             => new BackgroundSize(new Length(50f, LengthUnit.Percent), new Length(50f, LengthUnit.Percent));

@@ -206,6 +206,9 @@ namespace Velvet
             // composes with every layer above and with a user wrapElement. The element has no parent yet at
             // this point; the overlay places itself when the reconcile boundary drains.
             _patcher.Appliers.ApplyRingOnCreate(element, paintClasses);
+            // backdrop-*: an immediate-mode sibling placed before this element (BackdropFilterLayer), placed at the
+            // drain as the ring band is.
+            _patcher.Appliers.ApplyBackdropOnCreate(element, paintClasses);
             ApplyOptionalCreateBindings(element, elementNode.Props, elementNode.ClassNames);
 
             VisualElement outer;
@@ -377,6 +380,7 @@ namespace Velvet
                 StyleSkewClass.TryExtract(motionPaintClasses, out var motionSkew) ? motionSkew : default);
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyRingOnPatch(element, motionPaintClasses, clipActive: false);
+            _patcher.Appliers.ApplyBackdropOnPatch(element, motionPaintClasses, clipActive: false);
             WarnIgnoredMotionUtilities(motionNode, appliedClasses);
             // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
             // mount animation, the same variant enter the presence expansion drives

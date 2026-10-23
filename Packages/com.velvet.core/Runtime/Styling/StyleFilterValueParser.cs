@@ -31,6 +31,8 @@ namespace Velvet
             ["none"] = 0f, ["xs"] = 4f, ["sm"] = 8f, ["md"] = 12f, ["lg"] = 16f, ["xl"] = 24f, ["2xl"] = 40f, ["3xl"] = 64f,
         };
 
+        internal static bool TryGetBlurPreset(string suffix, out float px) => s_blurPreset.TryGetValue(suffix, out px);
+
         private static readonly Dictionary<string, float> s_contrastPreset = new()
         {
             ["0"] = 0f, ["50"] = 0.5f, ["75"] = 0.75f, ["100"] = 1f, ["125"] = 1.25f, ["150"] = 1.5f, ["200"] = 2f,
@@ -136,7 +138,7 @@ namespace Velvet
             => StyleLengthExpression.TryParse(value, out expression) && expression!.IsFinite() && !expression.ReadsPercentage;
 
         // A number, or a percentage of 1, as each of these CSS functions takes.
-        private static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
+        internal static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
         {
             if (valueSpan.EndsWith("%"))
             {

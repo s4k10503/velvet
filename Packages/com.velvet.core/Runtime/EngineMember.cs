@@ -192,6 +192,20 @@ namespace Velvet
         internal static readonly EngineMember ComputedStyleOverflow =
             ReadProperty(UIElements, ComputedStyleType, "overflow", "enum:UnityEngine.UIElements.OverflowInternal");
 
+        // BackdropFilterLayer's mapping of an element onto the target UI Toolkit is drawing it into: the viewport and
+        // projection the renderer has set while it runs an immediate-mode element, and the rectangle it clips that
+        // element to.
+        private const string RendererUtilityType = "UnityEngine.UIElements.UIR.Utility";
+
+        internal static readonly EngineMember RendererActiveViewport =
+            Method(UIElements, RendererUtilityType, "GetActiveViewport", "UnityEngine.RectInt");
+
+        internal static readonly EngineMember RendererProjection =
+            Method(UIElements, RendererUtilityType, "GetUnityProjectionMatrix", "UnityEngine.Matrix4x4");
+
+        internal static readonly EngineMember ElementWorldClip =
+            ReadProperty(UIElements, VisualElementType, "worldClip", "UnityEngine.Rect");
+
         internal static readonly EngineMember IsMatchingShorthand = Method(UIElements,
             "UnityEngine.UIElements.StyleSheets.StylePropertyUtil", "IsMatchingShorthand", "System.Boolean",
             StylePropertyIdShape, StylePropertyIdShape);

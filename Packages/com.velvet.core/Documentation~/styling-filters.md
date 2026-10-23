@@ -152,9 +152,7 @@ the engine gives a reversed transition.
 
 A filter change that lands at once leaves a transform-origin transition running on the element, as in CSS, although
 UI Toolkit's inline-filter setter cancels that transition on such a write (Group G of `FilterTransitionPanelTests`):
-while one runs, Velvet writes the change past the cancel. Onto an element showing no filter, that write starts a
-filter transition and cancels it at once, so the element dispatches a `TransitionRunEvent` for `filter` that CSS
-does not.
+while one runs, Velvet writes the change past the cancel.
 
 While `animate-hue` drives an element's filter, the motion shows: a filter utility's change under it starts no
 transition and is not painted, and a filter transition already running keeps its clock unseen. When the motion
@@ -214,3 +212,56 @@ The definition asset and its shader contract are Unity's:
 `Velvet/FilterSaturate` and `Velvet/FilterDropShadow` shaders are written against `UnityUIEFilter.cginc`, and
 `BuiltInFilterShaderPlaybackTests` and `DropShadowFilterPlaybackTests` render them on this project's URP
 pipeline.
+
+## Backdrop filters
+
+Tailwind v4's `backdrop-*` utilities compose one CSS `backdrop-filter`: what lies behind the element is filtered,
+inside the element's border box and its rounded corners, and the element's own background, border and children
+paint over the result unfiltered. A translucent background over a blur is the frosted-glass pattern:
+
+```csharp
+V.Div(className: "rounded-xl bg-white/30 backdrop-blur-md backdrop-saturate-150");
+```
+
+| Utility | Values |
+|---|---|
+| `backdrop-blur-<k>` / `backdrop-blur-[N]` | `none`/`xs`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/8/12/16/24/40/64px; the bracket takes what `blur-[…]` takes |
+| `backdrop-brightness-<n>` / `backdrop-brightness-[N]` | any whole `n` as `n`%; the bracket takes what `brightness-[…]` takes |
+| `backdrop-contrast-<n>` / `backdrop-contrast-[N]` | as `backdrop-brightness-*` |
+| `backdrop-saturate-<n>` / `backdrop-saturate-[N]` | as `backdrop-brightness-*` |
+| `backdrop-grayscale` / `backdrop-grayscale-<n>` / `backdrop-grayscale-[N]` | bare = 100%; `n`%, above 100% clamped to 100% |
+| `backdrop-invert` / `backdrop-invert-<n>` / `backdrop-invert-[N]` | as `backdrop-grayscale-*` |
+| `backdrop-sepia` / `backdrop-sepia-<n>` / `backdrop-sepia-[N]` | as `backdrop-grayscale-*` |
+| `backdrop-opacity-<n>` / `backdrop-opacity-[N]` | `n`%, or a number or percentage in the bracket; above 1 clamped to 1 |
+| `backdrop-hue-rotate-<n>` / `backdrop-hue-rotate-[angle]` | `n` degrees; the negative form `-backdrop-hue-rotate-<n>`; the bracket takes what `hue-rotate-[…]` takes |
+
+Each function is held by one class, an important one before any other and otherwise the one Tailwind emits last,
+and they compose in Tailwind's order whatever the class order: blur, brightness, contrast, grayscale, hue-rotate,
+invert, opacity, saturate, sepia. A bracket the browser rejects (`backdrop-blur-[-4px]`) leaves the element with no
+backdrop filter at all, as it invalidates the one declaration Tailwind composes; a name with no value
+(`backdrop-blur-huge`) adds nothing. The utilities work under variants (`hover:backdrop-blur-sm`,
+`dark:backdrop-brightness-50`) and with the important modifier.
+
+What is filtered is what the target the panel draws into holds beneath the element's box at the moment the element
+is painted: what the target held when the panel began drawing, under everything the panel paints before the element
+in that frame, and nothing it paints after. Velvet places an
+immediate-mode layer directly before the element among its parent's children, which copies those pixels and paints
+them back filtered; it carries the element's transform, opacity, visibility and display, so the backdrop follows a
+rotated or scaled element and fades with it, and it is clipped to the rectangle its ancestors' `overflow-hidden`
+clips to. A screen-space overlay panel, a panel rendering into a `RenderTexture` and an editor window's panel all
+take the same layer.
+
+Where the result differs from a browser's:
+
+- A blur whose deviation exceeds 2 pixels reads a reduced copy of the backdrop, one mip level for each doubling,
+  through a Gaussian kernel cut at three deviations, so a wide blur is smooth but not a browser's exact Gaussian. The blur
+  reads only the target's pixels within the box's bounds, mirrored at their edges.
+- An ancestor's rounded `overflow-hidden` clips the backdrop to its rectangle, not to its rounded corners.
+- A change to a `backdrop-*` utility applies at once; no transition animates it.
+- Once the reconciler inserts a sibling directly before the element, the element shows no backdrop filter until
+  Velvet places the layer before it again, which it checks every 16 ms.
+- A world-space panel, and an element carrying a `clip-path-*`, draw no backdrop filter.
+- `backdrop-filter-none`, `backdrop-filter-[…]` and the custom-property forms (`backdrop-blur-(--x)`) are inert.
+
+The layer is `Velvet/BackdropFilter`, a shader the build step [player-builds.md](player-builds.md) describes ships.
+`BackdropFilterPlaybackTests` renders it on a `RenderTexture` panel.

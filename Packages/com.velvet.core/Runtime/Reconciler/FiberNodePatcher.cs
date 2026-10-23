@@ -416,9 +416,9 @@ namespace Velvet
         // - border-dashed / border-dotted runs strictly AFTER skew and shadow so it reads their final
         //   ownership — while either owns the face the dashed layer defers (the border stays solid), so an
         //   add/remove of skew/shadow in the same pass resolves without a race.
-        // - The ring overlay runs last. It owns no part of the element's face and contends with none of the
-        //   layers above, so its position here is not load-bearing; it sits at the end because it is the only
-        //   one that touches the element's PARENT rather than the element.
+        // - The ring overlay and the backdrop layer run last. Neither owns any part of the element's face or contends
+        //   with the layers above, so their position here is not load-bearing; they sit at the end because both
+        //   touch the element's PARENT rather than the element.
         // The particles spacer is here, not in the Particles-settings diff, because it follows the CLASS list
         // (a filter comes and goes via a class swap or a variant).
         private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
@@ -437,6 +437,7 @@ namespace Velvet
             _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skew);
             _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
+            _appliers.ApplyBackdropOnPatch(element, classNames, clipActive);
         }
 
         private void PatchText(Label label, TextNode oldNode, TextNode newNode)
