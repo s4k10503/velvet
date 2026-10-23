@@ -89,7 +89,7 @@ namespace Velvet
                 members.Add(element);
             }
             ctx.ElementToLayoutId[element] = layoutId;
-            ctx.LayoutIdRegistry[layoutId] = (element, oldBox);
+            SetEntry(ctx, layoutId, element, oldBox);
             // The lead this one took over from is hidden until this one's tween draws it again.
             if (joins) SyncFollows(layoutId, ctx);
 
@@ -162,7 +162,7 @@ namespace Velvet
                 && ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry)
                 && ReferenceEquals(entry.Element, element) && entry.Box is { } box)
             {
-                ctx.LayoutIdRegistry[layoutId] = (element, box.Detached());
+                SetEntry(ctx, layoutId, element, box.Detached());
             }
         }
 
@@ -924,11 +924,11 @@ namespace Velvet
             }
             else if (box != null)
             {
-                ctx.LayoutIdRegistry[layoutId] = (null, box);
+                SetEntry(ctx, layoutId, null, box);
             }
             else
             {
-                ctx.LayoutIdRegistry.Remove(layoutId);
+                RemoveEntry(ctx, layoutId);
             }
         }
 
@@ -940,7 +940,7 @@ namespace Velvet
         private static void Resume(VisualElement element, string layoutId, LayoutIdBox? from, ReconcilerContext ctx)
         {
             Unfollow(element, ctx);
-            ctx.LayoutIdRegistry[layoutId] = (element, null);
+            SetEntry(ctx, layoutId, element, null);
             if (from is { } box)
             {
                 // MUTANT_SURVIVES(equivalent): Start's own guard ends a member not laid out in a panel, as this does.
@@ -1024,20 +1024,52 @@ namespace Velvet
         // Called from FiberElementCleaner as it returns an element to the pool.
         internal static void ForgetParent(VisualElement parent, ReconcilerContext ctx)
         {
-            List<string>? forgotten = null;
-            foreach (var entry in ctx.LayoutIdRegistry)
-            {
-                if (entry.Value.Box is { } box && ReferenceEquals(box.Parent, parent))
-                {
-                    (forgotten ??= new List<string>()).Add(entry.Key);
-                }
-            }
-            if (forgotten == null) return;
-            foreach (var layoutId in forgotten)
+            if (!ctx.LayoutIdBoxParents.Remove(parent, out var ids)) return;
+            foreach (var layoutId in ids)
             {
                 var entry = ctx.LayoutIdRegistry[layoutId];
                 ctx.LayoutIdRegistry[layoutId] = (entry.Element, entry.Box!.Value.Detached());
             }
+        }
+
+        // The most boxes kept for ids no Motion holds; the oldest go first.
+        private const int MaxSnapshots = 256;
+
+        // Writes an id's entry, keeping the per-parent index ForgetParent reads and the bound on the boxes kept
+        // without a holder.
+        private static void SetEntry(ReconcilerContext ctx, string layoutId, VisualElement? element, LayoutIdBox? box)
+        {
+            DropIndex(ctx, layoutId);
+            ctx.LayoutIdRegistry[layoutId] = (element, box);
+            if (box?.Parent is { } parent)
+            {
+                if (!ctx.LayoutIdBoxParents.TryGetValue(parent, out var ids))
+                {
+                    ctx.LayoutIdBoxParents[parent] = ids = new HashSet<string>();
+                }
+                ids.Add(layoutId);
+            }
+            if (element != null) return;
+            ctx.LayoutIdSnapshotOrder.Enqueue(layoutId);
+            while (ctx.LayoutIdSnapshotOrder.Count > MaxSnapshots)
+            {
+                var oldest = ctx.LayoutIdSnapshotOrder.Dequeue();
+                if (ctx.LayoutIdRegistry.TryGetValue(oldest, out var held) && held.Element == null) RemoveEntry(ctx, oldest);
+            }
+        }
+
+        private static void RemoveEntry(ReconcilerContext ctx, string layoutId)
+        {
+            DropIndex(ctx, layoutId);
+            ctx.LayoutIdRegistry.Remove(layoutId);
+        }
+
+        private static void DropIndex(ReconcilerContext ctx, string layoutId)
+        {
+            if (!ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry) || entry.Box?.Parent is not { } parent) return;
+            if (!ctx.LayoutIdBoxParents.TryGetValue(parent, out var ids)) return;
+            ids.Remove(layoutId);
+            if (ids.Count == 0) ctx.LayoutIdBoxParents.Remove(parent);
         }
 
         // Called where a render ends: the end of a batch drain, whose passes are one render, and the

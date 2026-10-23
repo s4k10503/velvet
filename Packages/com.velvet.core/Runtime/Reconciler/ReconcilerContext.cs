@@ -1043,6 +1043,10 @@ namespace Velvet
         // element (a replacement created before the old element's teardown has already taken it over).
         public Dictionary<string, (VisualElement? Element, LayoutIdBox? Box)> LayoutIdRegistry { get; } = new();
         public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
+        // The ids whose entry holds a box read under each parent, and the ids whose entry lost its element, oldest
+        // first (MotionLayoutIdDriver.SetEntry).
+        public Dictionary<VisualElement, HashSet<string>> LayoutIdBoxParents { get; } = new();
+        public Queue<string> LayoutIdSnapshotOrder { get; } = new();
 
         // The live elements holding each id, in the order they joined it; LayoutIdRegistry names the lead among
         // them. Each member's layout transition, for a lead it takes without a patch of its own; the inline
