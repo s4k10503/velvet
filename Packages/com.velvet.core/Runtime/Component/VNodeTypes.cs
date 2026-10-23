@@ -449,8 +449,8 @@ namespace Velvet
     /// animation completes.
     /// A keyed child is kept while the exits of the Motions under it play, however deep they sit;
     /// the Exits section of Documentation~/motion.md owns which Motions play one.
-    /// Note: FragmentNode cannot be included directly as a child (it is not expanded). Use MotionNode or a direct
-    /// VNode.
+    /// A keyed FragmentNode is accepted as a child: its first Motion is the child's anchor and every element it
+    /// places stays until the exits of its Motions finish.
     /// Children without a key receive a position-based automatic key, so reordering can cause unintended
     /// exit / enter animations. Set explicit keys on children that participate in animation.
     /// </summary>

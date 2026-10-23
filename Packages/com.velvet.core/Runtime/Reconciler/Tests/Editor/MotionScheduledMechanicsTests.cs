@@ -8072,51 +8072,59 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASwapDeclaringAfterChildren_When_ItPropagatesALabelToItsChildren_Then_TheUnorchestratedWaitIsDiagnosed()
+        public void Given_AParentDeclaringAfterChildren_When_ItsLabelFlips_Then_ItSwapsOnlyOnceItsChildrenHaveEnded()
         {
-            // Arrange — AfterChildren is accepted by the config but not yet orchestrated for label
-            // propagation, so the swap that would have to wait says so instead of quietly animating early.
-            // StaggerChildrenSec is set too, which opens the orchestration gate on its own: that leaves this
-            // case measuring which When value is diagnosed rather than whether the gate above it opened.
-            var diagnosed = 0;
-            void OnLog(string condition, string stackTrace, UnityEngine.LogType type)
-            {
-                if (type == UnityEngine.LogType.Warning && condition.Contains("When = AfterChildren"))
-                {
-                    diagnosed++;
-                }
-            }
-
+            // Arrange — the child's 0.3s play is the longest below the parent, whose own swap is short.
             VNode[] Tree(string label) => new VNode[]
             {
-                V.Motion(key: "p", animate: label,
-                    transition: new StyleTransitionConfig
-                    {
-                        DurationSec = DurationSec,
-                        StaggerChildrenSec = 0.4f,
-                        When = TransitionWhen.AfterChildren,
-                    },
+                V.Motion(key: "p", name: "p", variants: s_fade, animate: label,
+                    transition: new StyleTransitionConfig { DurationSec = 0.05f, When = TransitionWhen.AfterChildren },
                     children: new VNode[]
                     {
-                        V.Motion(key: "c", variants: s_fade,
-                            transition: new StyleTransitionConfig { DurationSec = DurationSec }),
+                        V.Motion(key: "c", name: "c", variants: s_fade,
+                            transition: new StyleTransitionConfig { DurationSec = 0.3f }),
                     }),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
 
-            // Act
-            UnityEngine.Application.logMessageReceived += OnLog;
-            try
-            {
-                _reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
-            }
-            finally
-            {
-                UnityEngine.Application.logMessageReceived -= OnLog;
-            }
+            // Act — flip the label, then sample inside the child's play and again once it has ended.
+            _reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
+            for (var i = 0; i < 12; i++) Tick();
+            var swappedInsideTheChildsPlay = Root.Q<VisualElement>("p").ClassListContains("opacity-100");
+            AdvancePast(0.3f);
+            var swappedAfterIt = Root.Q<VisualElement>("p").ClassListContains("opacity-100");
 
-            // Assert — said once, for the one parent whose propagated label changed.
-            Assert.That(diagnosed, Is.EqualTo(1));
+            // Assert
+            Assert.That((swappedInsideTheChildsPlay, swappedAfterIt), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AParentStaggeringBackwards_When_ItsLabelFlips_Then_TheLastChildSwapsFirst()
+        {
+            // Arrange — three children over a 0.2s stagger: the last takes slot zero, and the first the 0.4s one.
+            VNode Child(int i) => V.Motion(key: "c" + i, name: "c" + i, variants: s_fade,
+                transition: new StyleTransitionConfig { DurationSec = 0.05f });
+            VNode[] Tree(string label) => new VNode[]
+            {
+                V.Motion(key: "p", name: "p", animate: label,
+                    transition: new StyleTransitionConfig
+                    {
+                        DurationSec = 0.1f, StaggerChildrenSec = 0.2f, StaggerDirection = -1,
+                    },
+                    children: new[] { Child(0), Child(1), Child(2) }),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
+
+            // Act — flip the label and sample at 96ms, past the last child's slot and short of the middle one's 0.2s.
+            _reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert
+            Assert.That(
+                (Root.Q<VisualElement>("c0").ClassListContains("opacity-100"),
+                 Root.Q<VisualElement>("c1").ClassListContains("opacity-100"),
+                 Root.Q<VisualElement>("c2").ClassListContains("opacity-100")),
+                Is.EqualTo((false, false, true)));
         }
 
         [Test]

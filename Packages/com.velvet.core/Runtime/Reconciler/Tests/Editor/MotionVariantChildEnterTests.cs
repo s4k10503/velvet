@@ -86,6 +86,28 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AParentEnterDeclaringAfterChildren_When_ItMountsWithAnInheritingChild_Then_ItEntersOnlyOnceTheChildHasEntered()
+        {
+            // Arrange — the child's 0.3s enter is longer than the parent's own.
+            var slowChild = V.Motion(key: "c", name: "c", variants: s_fade,
+                transition: new StyleTransitionConfig { DurationSec = 0.3f });
+
+            // Act — mount, sample inside the child's enter and again once it has ended.
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new[]
+            {
+                Parent(new StyleTransitionConfig { DurationSec = 0.05f, When = TransitionWhen.AfterChildren },
+                    new[] { slowChild }),
+            });
+            Frames(12);
+            var enteredInsideTheChildsEnter = EnteredSwapped("p");
+            AdvancePast(0.3f);
+            var enteredAfterIt = EnteredSwapped("p");
+
+            // Assert
+            Assert.That((enteredInsideTheChildsEnter, enteredAfterIt), Is.EqualTo((false, true)));
+        }
+
+        [Test]
         public void Given_AnInheritingChildWithItsOwnChild_When_TheParentsEnterStaggers_Then_TheGrandchildEntersWithItAndTheNextChildKeepsItsSlot()
         {
             // Arrange — Framer numbers each variant parent's own children: a1 belongs to a, so b is the parent's

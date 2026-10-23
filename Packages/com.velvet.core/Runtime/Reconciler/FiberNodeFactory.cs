@@ -321,6 +321,7 @@ namespace Velvet
             // Resolved before the children reconcile, because a mount enter orchestrates the enters of the
             // inheriting descendants created under it the way a label change orchestrates their swaps.
             var enter = ResolveMountEnter(motionNode, motionAmbient);
+            MotionOrchestrationFrame? childOrchestration = null;
             if (motionNode.Children != null)
             {
                 var childContainer = FiberNodePatcher.GetChildContainer(element);
@@ -329,7 +330,7 @@ namespace Velvet
                 // stack round-trip entirely when there is no label to propagate (the common case).
                 if (childLabel != null)
                 {
-                    var childOrchestration = FiberNodePatcher.ResolveChildOrchestration(motionNode,
+                    childOrchestration = FiberNodePatcher.ResolveChildOrchestration(motionNode,
                         enter.Transition, enter.Resolved, enter.Ambient, enter.DelaySec, enter.From, enter.To, element,
                         _ctx.StyleAnimationScheduler);
                     MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel, enter.InitialLabel,
@@ -390,6 +391,12 @@ namespace Velvet
             // that Motion names its own animate; this plays every other one, and says so for the anchor through
             // PresenceAnchorEnterHandled so the expansion plays nothing over it.
             var isAnchor = ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion);
+            ReportEnterEnd(element, motionNode, in enter, childOrchestration);
+            if (isAnchor)
+            {
+                _ctx.PresenceAnchorPlayStartSec = MotionOrchestrationWait.PlayStartSec(childOrchestration,
+                    enter.Ambient, enter.DelaySec);
+            }
             if (!isAnchor || motionNode.Animate == null)
             {
                 if (enter.Resolved)
@@ -407,7 +414,9 @@ namespace Velvet
                         var onSwap = _patcher.HoldInlineForEnter(element, motionNode.ClassNames,
                             enter.From!, enter.Transition!);
                         _ctx.StyleAnimationScheduler.PlayVariantEnter(element, enter.From, enter.To,
-                            enter.Transition!, enterComplete, enter.DelaySec, onSwap,
+                            enter.Transition!, enterComplete,
+                            MotionOrchestrationWait.PlayStartSec(childOrchestration, enter.Ambient, enter.DelaySec),
+                            onSwap,
                             playback: MotionVariantResolver.PlaybackForChildren(motionNode,
                                 _ctx.ComponentContextStack.Get(MotionContext.Playback)));
                     }
@@ -462,6 +471,14 @@ namespace Velvet
                 Resolved = resolved, DelaySec = delaySec,
             };
         }
+
+        // The end of the mount enter a variant child plays, reported to the frame it claimed its slot from: nothing
+        // plays where the enter is withheld or resolves to none.
+        private void ReportEnterEnd(VisualElement element, MotionNode motionNode, in MountEnter enter,
+            MotionOrchestrationFrame? ownFrame)
+            => _patcher.ReportPlayEnd(element, motionNode, enter.Ambient, ownFrame,
+                enter.Resolved && !EntersBlocked ? enter.Transition : null,
+                MotionOrchestrationWait.PlayStartSec(ownFrame, enter.Ambient, enter.DelaySec), enter.From, enter.To);
 
         private bool EntersBlocked
             => _ctx.ComponentContextStack.Get(MotionContext.EntersBlocked)

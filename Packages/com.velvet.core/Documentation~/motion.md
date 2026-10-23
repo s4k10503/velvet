@@ -247,8 +247,14 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
   spring's wait is measured from the pose classes at rest, so a spring that interrupts a running
   one, starting where that one stood and with its velocity, can end before or after its children
   start, where Framer's children wait for the animation itself.
-- `When = AfterChildren` is not orchestratable under label propagation; it warns once and falls
-  back to `Together`.
+- `When = AfterChildren`: the children start as under `Together`, and the parent's own play starts once the
+  latest play below it has ended, then waits out its own `DelaySec`. A child's play is measured as
+  `BeforeChildren` measures the parent's, its slot included, and the end of a child that has children of its own
+  includes theirs. The parent's swap, mount enter and exit, and the enter of a presence child naming its own
+  `animate`, all wait. A child repeating without end holds the parent for good, as in Framer.
+- `StaggerDirection = -1` starts the last child first, as Framer's `staggerDirection: -1` does: the
+  children are numbered back from the count of those the Motion's node declares, where a component counts as
+  one child, since what it renders is not known before it does. A slot never falls below zero.
 - Each Motion numbers its own inheriting children, as Framer numbers each variant parent's: a child
   with variants of its own starts its children with it and numbers them from zero, while a Motion
   with neither variants nor a label of its own passes its parent's numbering through to the

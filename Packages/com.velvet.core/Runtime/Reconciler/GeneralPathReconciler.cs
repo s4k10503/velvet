@@ -2573,10 +2573,11 @@ namespace Velvet
             ReconcilerContext.PresenceBoundaryState state,
             string key,
             MotionNode? anchor,
-            List<ReconcilerContext.PresenceDescendantExit>? into)
+            List<ReconcilerContext.PresenceDescendantExit>? into,
+            AnchorExitStart? anchorStart = null)
         {
             if (!state.ChildRoots.TryGetValue(key, out var roots)) return 0;
-            var walk = new DescendantExitWalk { Roots = roots, Anchor = anchor, Into = into };
+            var walk = new DescendantExitWalk { Roots = roots, Anchor = anchor, Into = into, AnchorStart = anchorStart };
             var count = 0;
             foreach (var root in roots)
             {
@@ -2596,6 +2597,15 @@ namespace Velvet
             internal List<VisualElement> Roots { get; init; }
             internal MotionNode? Anchor { get; init; }
             internal List<ReconcilerContext.PresenceDescendantExit>? Into { get; init; }
+
+            // Where the walk leaves the second the anchor's own exit starts at, which it learns once the exits of
+            // the Motions below the anchor have been collected.
+            internal AnchorExitStart? AnchorStart { get; init; }
+        }
+
+        private sealed class AnchorExitStart
+        {
+            internal float Sec;
         }
 
         // inheritedExit is the exit label an ancestor Motion hands down and frame the orchestration an
@@ -2619,9 +2629,11 @@ namespace Velvet
             }
 
             var count = 0;
+            var ambientFrame = frame;
+            var own = default(OwnExit);
             if (_ctx.MotionNodes.TryGetValue(element, out var motion))
             {
-                count += CollectOwnExit(element, motion, ref inheritedExit, ref frame, in walk);
+                count += CollectOwnExit(element, motion, ref inheritedExit, ref frame, in walk, out own);
             }
             for (var i = 0; i < element.hierarchy.childCount; i++)
             {
@@ -2630,7 +2642,45 @@ namespace Velvet
                 if (FiberZLayerCoordinator.IsLayerContainer(child)) continue;
                 count += CollectDescendantExitsUnder(child, inheritedExit, frame, in walk);
             }
+            FinishOwnExit(in own, ambientFrame, frame, in walk);
             return count;
+        }
+
+        // What CollectOwnExit leaves for FinishOwnExit, which runs once the Motions below have been collected: the Motion,
+        // the slot it claimed, where its exit sits in the walk's list (-1 when it adds none) and how long that exit
+        // runs.
+        private readonly struct OwnExit
+        {
+            internal MotionNode? Motion { get; init; }
+            internal float ClaimSec { get; init; }
+            internal int EntryIndex { get; init; }
+            internal double SpanSec { get; init; }
+        }
+
+        // The half of a Motion's exit orchestration that follows the Motions below it: an exit that waits for them
+        // (TransitionWhen.AfterChildren) starts once their exits have ended, and a variant child reports when its own
+        // ends to the frame it claimed from.
+        private static void FinishOwnExit(in OwnExit own, MotionOrchestrationFrame? ambientFrame,
+            MotionOrchestrationFrame? ownFrame, in DescendantExitWalk walk)
+        {
+            if (own.Motion == null)
+            {
+                return;
+            }
+            var startSec = MotionOrchestrationWait.PlayStartSec(ownFrame, ambientFrame, own.ClaimSec);
+            if (own.EntryIndex >= 0)
+            {
+                walk.Into![own.EntryIndex] = walk.Into[own.EntryIndex] with { DelaySec = startSec };
+            }
+            if (ReferenceEquals(own.Motion, walk.Anchor) && walk.AnchorStart != null)
+            {
+                walk.AnchorStart.Sec = startSec;
+            }
+            if (MotionVariantResolver.IsVariantChild(own.Motion))
+            {
+                MotionOrchestrationWait.ReportEnd(ambientFrame, ownFrame,
+                    own.EntryIndex >= 0 ? startSec + own.SpanSec : 0.0);
+            }
         }
 
         // A portal's children sit in its target, not under the placeholder the walk reached.
@@ -2656,13 +2706,14 @@ namespace Velvet
         // One Motion's exit, returning 1 when it plays, and what it hands its descendants in place of
         // inheritedExit and frame. A Motion naming none of its labels exits to the inherited label, the way an
         // animate label propagates, and one naming any hands down only its own exit. A variant child claims the
-        // frame's next slot, whether or not it plays an exit.
+        // frame's next slot, whether or not it plays an exit. own is what FinishOwnExit needs of it.
         private int CollectOwnExit(
             VisualElement element,
             MotionNode motion,
             ref string? inheritedExit,
             ref MotionOrchestrationFrame? frame,
-            in DescendantExitWalk walk)
+            in DescendantExitWalk walk,
+            out OwnExit own)
         {
             var label = MotionVariantResolver.IsControlling(motion) ? motion.Exit : inheritedExit;
             StyleTransitionConfig? exitTransition = null;
@@ -2671,6 +2722,9 @@ namespace Velvet
                 ? frame.ClaimNextChildDelaySec()
                 : 0f;
             var plays = 0;
+            var entryIndex = -1;
+            // A count reads no delay, so it parses no classes either.
+            var fromClasses = walk.Into != null ? V.ParseClassNames(RestingVariantClass(element)) : null;
             if (label != null)
             {
                 MotionVariant pose = default;
@@ -2685,6 +2739,7 @@ namespace Velvet
                     if (!ReferenceEquals(motion, walk.Anchor))
                     {
                         plays = 1;
+                        entryIndex = walk.Into?.Count ?? -1;
                         walk.Into?.Add(new ReconcilerContext.PresenceDescendantExit(element,
                             hasPose
                                 ? exitTransition.WithExitClasses(RestingVariantClass(element), pose.ClassName ?? string.Empty)
@@ -2695,15 +2750,24 @@ namespace Velvet
                 }
             }
             inheritedExit = label;
-            // A count reads no delay, so it opens no frame, and the diagnostic a frame can raise is left to the
-            // walk that plays.
+            var toClasses = walk.Into != null ? V.ParseClassNames(exitPoseClass) : null;
+            // A count reads no delay, so it opens no frame.
             if (walk.Into != null)
             {
                 frame = FiberNodePatcher.ResolveChildOrchestration(motion, exitTransition,
-                    childLabelChanged: label != null, frame, claimSec,
-                    V.ParseClassNames(RestingVariantClass(element)), V.ParseClassNames(exitPoseClass), element,
+                    childLabelChanged: label != null, frame, claimSec, fromClasses, toClasses, element,
                     _ctx.StyleAnimationScheduler);
             }
+            own = new OwnExit
+            {
+                Motion = motion,
+                ClaimSec = claimSec,
+                EntryIndex = entryIndex,
+                SpanSec = entryIndex >= 0 && exitTransition != null
+                    ? MotionPlaySpan.HeldBy(exitTransition, fromClasses, toClasses,
+                        _ctx.StyleAnimationScheduler.SlotContext(element, fromClasses, toClasses))
+                    : 0.0,
+            };
             return plays;
         }
 
@@ -2839,7 +2903,8 @@ namespace Velvet
 
             var anchorPlays = ResolveExitTransition(ghostMotionNode)?.HasExitAnimation == true;
             var descendants = new List<ReconcilerContext.PresenceDescendantExit>();
-            CollectDescendantExits(state, key, ghostMotionNode, descendants);
+            var anchorStart = new AnchorExitStart();
+            CollectDescendantExits(state, key, ghostMotionNode, descendants, anchorStart);
             var inners = PresencesRunningExitsUnder(state, key);
             if (!anchorPlays && descendants.Count == 0 && inners == null)
             {
@@ -2882,7 +2947,8 @@ namespace Velvet
                 // cancelled (the key is re-added before it finishes) the element must return to that resting
                 // variant rather than be left without it (interrupt handling).
                 _ctx.StyleAnimationScheduler.PlayExit(exitTarget, exitTransition, exitWait.CompleteAnchor,
-                    restoreFromOnCancel: variantExit != null, additionalDelaySec: staggerSec, onSwap: onExitSwap);
+                    restoreFromOnCancel: variantExit != null, additionalDelaySec: staggerSec + anchorStart.Sec,
+                    onSwap: onExitSwap);
             }
             if (landsAfterExit != null)
             {
@@ -3030,7 +3096,8 @@ namespace Velvet
                 if (isEnter && !anchorEmission.EnterHandled)
                 {
                     // A cancelled exit's reversal returns the same element to rest; a new one enters.
-                    PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting && !anchorEmission.Created);
+                    PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting && !anchorEmission.Created,
+                        anchorEmission.PlayStartSec);
                 }
             }
 
@@ -3250,7 +3317,8 @@ namespace Velvet
             MotionNode? motion,
             VisualElement anchor,
             VisualElement? motionElement,
-            bool wasExiting)
+            bool wasExiting,
+            float anchorPlayStartSec = 0f)
         {
             if (ResolveEnterTransition(motion) != null)
             {
@@ -3260,7 +3328,8 @@ namespace Velvet
                 if (!pass.FirstRender || presence.Initial)
                 {
                     DispatchPresenceEnter(motion, anchor, motionElement, wasExiting,
-                        presence.StaggerDelaySec(pass.Tally.VisualIndex, pass.NewKeyed.Count),
+                        Math.Max(presence.StaggerDelaySec(pass.Tally.VisualIndex, pass.NewKeyed.Count),
+                            anchorPlayStartSec),
                         pass.BoundaryFiber);
                 }
                 else
@@ -3599,6 +3668,7 @@ namespace Velvet
             var previousAnchorCreated = _ctx.PresenceAnchorCreated;
             var previousAnchorElement = _ctx.PresenceAnchorMotionElement;
             var previousAnchorEnterDelaySec = _ctx.PresenceAnchorEnterDelaySec;
+            var previousAnchorPlayStartSec = _ctx.PresenceAnchorPlayStartSec;
             var previousEnclosing = _ctx.EnclosingPresenceChild;
             var previousMountsLeaving = _ctx.PresenceMountsLeaving;
             _ctx.PresenceMountsLeaving = site.MountsLeaving;
@@ -3610,6 +3680,7 @@ namespace Velvet
             _ctx.PresenceAnchorMotionElement = null;
             _ctx.ComponentContextStack.Push(MotionContext.EntersBlocked, site.SuppressInitial);
             _ctx.PresenceAnchorEnterDelaySec = site.AnchorEnterDelaySec;
+            _ctx.PresenceAnchorPlayStartSec = site.AnchorEnterDelaySec;
             _ctx.PresenceAnchorEnterHandled = false;
             _ctx.PresenceAnchorCreated = false;
             try
@@ -3620,6 +3691,7 @@ namespace Velvet
                 {
                     EnterHandled = _ctx.PresenceAnchorEnterHandled,
                     Created = _ctx.PresenceAnchorCreated,
+                    PlayStartSec = _ctx.PresenceAnchorPlayStartSec,
                 };
                 return emitted;
             }
@@ -3629,6 +3701,7 @@ namespace Velvet
                 _ctx.PresenceAnchorMotionElement = previousAnchorElement;
                 _ctx.ComponentContextStack.Pop(MotionContext.EntersBlocked);
                 _ctx.PresenceAnchorEnterDelaySec = previousAnchorEnterDelaySec;
+                _ctx.PresenceAnchorPlayStartSec = previousAnchorPlayStartSec;
                 _ctx.PresenceAnchorEnterHandled = previousAnchorEnterHandled;
                 _ctx.PresenceAnchorCreated = previousAnchorCreated;
                 _ctx.EnclosingPresenceChild = previousEnclosing;
@@ -3642,6 +3715,10 @@ namespace Velvet
         {
             internal bool EnterHandled { get; init; }
             internal bool Created { get; init; }
+
+            // Where the anchor's own enter starts: its stagger slot, or the end of its children's plays where it
+            // waits for them.
+            internal float PlayStartSec { get; init; }
         }
 
         // Where a keyed child is emitted and on what terms: the state its roots are recorded in (null on the

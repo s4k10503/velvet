@@ -618,9 +618,10 @@ namespace Velvet
                 }
             }
 
+            MotionOrchestrationFrame? childOrchestration = null;
             if (childLabel != null)
             {
-                var childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
+                childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
                     ambientOrchestration, extraDelaySec, oldVariantClasses, newVariantClasses, element,
                     _ctx.StyleAnimationScheduler);
                 MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel,
@@ -639,6 +640,13 @@ namespace Velvet
             {
                 PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
             }
+
+            // An AfterChildren Motion starts its swap when the plays below it have ended, which the children's
+            // patches above have reported by now.
+            var playDelaySec = MotionOrchestrationWait.PlayStartSec(childOrchestration, ambientOrchestration,
+                extraDelaySec);
+            ReportPlayEnd(element, newNode, ambientOrchestration, childOrchestration, playedTransition, playDelaySec,
+                oldVariantClasses, newVariantClasses);
 
             // Runtime variant swap: PatchBaseElement above already synced the class list to the final resting
             // state (appliedNew) via a plain, instant diff, less the inline-resolved tokens ResolveInlineHold
@@ -663,7 +671,7 @@ namespace Velvet
             if (playedTransition != null)
             {
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(element, oldVariantClasses, newVariantClasses,
-                    playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap,
+                    playedTransition, onComplete: null, additionalDelaySec: playDelaySec, onSwap: onSwap,
                     appliedClasses: appliedNew, playback: playback);
             }
             RemoveStaleInlineTokens(element, playedTransition, extraDelaySec, oldVariantClasses,
@@ -966,21 +974,22 @@ namespace Velvet
         // swapTransition is the config this node's own swap into the resolved pose plays on (see PatchMotion),
         // so a pose that carries its own transition orchestrates from the span it actually takes:
         // - A FRESH frame when this node's propagated label just changed AND swapTransition declares
-        //   StaggerChildrenSec / DelayChildrenSec / a non-Together When — establishing a new stagger sequence
-        //   (When == AfterChildren is not orchestrated; it warns once here and falls back to Together's
-        //   no-extra-delay semantics for the parent's own swap — see TransitionWhen.AfterChildren). The frame's
-        //   base offset is this node's own delay and play span (MotionPlaySpan) when When == BeforeChildren
-        //   (children wait for the delay AND the swap, not just the swap), PLUS extraDelaySec — the delay this
-        //   node's own swap, enter or exit waits out: a slot it claimed from a FURTHER-OUT orchestration, or
-        //   the slot a presence plays its anchor's enter in. Folding extraDelaySec in regardless of When matters because this node's
+        //   StaggerChildrenSec / DelayChildrenSec / a non-Together When — establishing a new stagger sequence.
+        //   The frame's base offset is this node's own delay and play span (MotionPlaySpan) when
+        //   When == BeforeChildren (children wait for the delay AND the swap, not just the swap), PLUS
+        //   extraDelaySec — the delay this node's own swap, enter or exit waits out: a slot it claimed from a
+        //   FURTHER-OUT orchestration, or the slot a presence plays its anchor's enter in. Folding extraDelaySec in
+        //   regardless of When matters because this node's
         //   own swap does not start at render-commit time when extraDelaySec > 0 — without it, a claim from the
         //   fresh frame below would be measured as if this node's (already-delayed) swap started immediately,
-        //   letting a grandchild start animating before its own parent does.
+        //   letting a grandchild start animating before its own parent does. When == AfterChildren starts the
+        //   children at that offset too, and the frame collects when their plays end (MotionOrchestrationWait).
         // - The ambient frame, UNCHANGED, through a Motion with neither variants nor a label of its own:
         //   Framer registers the variant children under it with the variant node above it, which numbers them.
         // - Otherwise a frame with no stagger whose base is extraDelaySec, so the node's children start with
         //   it and are numbered from zero; an ambient frame never reaches past a node with variants or a label
-        //   of its own.
+        //   of its own. Under an AfterChildren Motion that frame is made even over a zero base, so the plays
+        //   below this node reach the Motion waiting for them.
         // fromClasses / toClasses: the pose classes this node's own play moves between, from which a spring's span is
         // measured; element and scheduler: where it plays, read for the span before the play's swap lands.
         internal static MotionOrchestrationFrame? ResolveChildOrchestration(
@@ -992,28 +1001,47 @@ namespace Velvet
             var hasOwnOrchestration = swapTransition != null
                 && (swapTransition.StaggerChildrenSec > 0f || swapTransition.DelayChildrenSec > 0f
                     || swapTransition.When != TransitionWhen.Together);
+            var tracksEnds = ambientOrchestration is { TracksEnds: true };
             if (childLabelChanged && hasOwnOrchestration)
             {
-                if (swapTransition.When == TransitionWhen.AfterChildren)
-                {
-                    FiberLogger.LogWarning("Motion",
-                        "transition.When = AfterChildren is not yet orchestrated for label propagation; "
-                        + "children animate as if When = Together (no wait for the parent's own transition).");
-                }
-                var extraBeforeChildrenSec = swapTransition.When == TransitionWhen.BeforeChildren
+                var extraBeforeChildrenSec = swapTransition!.When == TransitionWhen.BeforeChildren
                     ? (float)MotionPlaySpan.HeldBy(swapTransition, fromClasses, toClasses,
                         element != null ? scheduler?.SlotContext(element, fromClasses, toClasses) : null)
                     : 0f;
                 return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
-                    swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec);
+                    swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec,
+                    waitsForChildren: swapTransition.When == TransitionWhen.AfterChildren, tracksEnds: tracksEnds,
+                    reversedOver: swapTransition.StaggerDirection < 0
+                        ? MotionOrchestrationWait.CountVariantChildren(newNode.Children)
+                        : 0);
             }
             if (newNode.Variants == null && !MotionVariantResolver.IsControlling(newNode))
             {
                 return ambientOrchestration;
             }
             // A frame with no stagger over a zero base hands each claim the zero no frame hands it, so the
-            // allocation is spared.
-            return extraDelaySec == 0f ? null : new MotionOrchestrationFrame(0f, 0f, extraDelaySec);
+            // allocation is spared, unless a play above waits on the ends the claims report.
+            return extraDelaySec == 0f && !tracksEnds
+                ? null
+                : new MotionOrchestrationFrame(0f, 0f, extraDelaySec, tracksEnds: tracksEnds);
+        }
+
+        // Reports to the frame a variant child claimed from when the play it starts at playStartSec ends, read before
+        // the play changes what its span is measured against. A Motion that is no variant child, or whose frame no
+        // AfterChildren Motion sits above, reports nothing.
+        internal void ReportPlayEnd(VisualElement element, MotionNode node, MotionOrchestrationFrame? ambientFrame,
+            MotionOrchestrationFrame? ownFrame, StyleTransitionConfig? played, float playStartSec,
+            string[]? fromClasses = null, string[]? toClasses = null)
+        {
+            if (ambientFrame is not { TracksEnds: true } || !MotionVariantResolver.IsVariantChild(node))
+            {
+                return;
+            }
+            var context = played != null
+                ? _ctx.StyleAnimationScheduler.SlotContext(element, fromClasses, toClasses)
+                : null;
+            MotionOrchestrationWait.ReportEnd(ambientFrame, ownFrame,
+                MotionOrchestrationWait.PlayEndSec(played, playStartSec, fromClasses, toClasses, context));
         }
 
         // Applies the diff for a PortalNode. Reconciles only this Portal's own slot range

@@ -145,6 +145,24 @@ namespace Velvet.Tests
         private static VNode SpringCoordinatorRender() => V.Motion(name: "spring-coordinator",
             variants: s_springCoordinator, animate: "visible", exit: "hidden", children: new[] { InheritingMotion(0) });
 
+        // A coordinator whose exit pose swaps only once its inheriting children's exits have ended.
+        private static readonly Dictionary<string, MotionVariant> s_afterChildrenCoordinator = new()
+        {
+            ["visible"] = "opacity-100",
+            ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig
+            {
+                DurationSec = 0.3f, When = TransitionWhen.AfterChildren,
+            }),
+        };
+
+        private static VNode SlowInheritingMotion(string name) => V.Motion(name: name, variants: s_fade,
+            transition: new StyleTransitionConfig { DurationSec = 0.3f });
+
+        [Component]
+        private static VNode AfterChildrenCoordinatorRender() => V.Motion(name: "after-coordinator",
+            variants: s_afterChildrenCoordinator, animate: "visible", exit: "hidden",
+            children: new[] { SlowInheritingMotion("slow-child") });
+
         // The spring coordinator's exit on a 1 s duration, which a BeforeChildren span counting the channels it
         // names rather than the ones that play holds the children for.
         private static readonly Dictionary<string, MotionVariant> s_slowSpringCoordinator = new()
@@ -216,6 +234,10 @@ namespace Velvet.Tests
             "classic" => V.Component(ClassicRender, key: key),
             "named" => V.Motion(name: "item-" + key, key: key, variants: s_fade, initial: "hidden",
                 animate: "visible", exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+            "anchor-after" => V.Motion(name: "item-" + key, key: key, variants: s_fade, initial: "hidden",
+                animate: "visible",
+                transition: new StyleTransitionConfig { DurationSec = 0.05f, When = TransitionWhen.AfterChildren },
+                children: new[] { SlowInheritingMotion("child-" + key) }),
             "fragment" => V.Fragment(new[] { TimedMotion(null) }, key: key),
             "fragment-pair" => V.Fragment(new[] { TimedMotion(null), V.Div(name: "sibling") }, key: key),
             "z-nested" => V.Div(key: key, children: new[]
@@ -232,6 +254,7 @@ namespace Velvet.Tests
             "coordinator" => V.Component(CoordinatorRender, key: key),
             "coordinator-nested" => V.Component(NestedCoordinatorRender, key: key),
             "coordinator-spring" => V.Component(SpringCoordinatorRender, key: key),
+            "coordinator-after" => V.Component(AfterChildrenCoordinatorRender, key: key),
             "coordinator-spring-important" => V.Component(ImportantSpringCoordinatorRender, key: key),
             "coordinator-mixed" => V.Component(MixedCoordinatorRender, key: key),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_wrapper), s_wrapper, null),
@@ -587,6 +610,45 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(HasClass("child0", "opacity-0"), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ACoordinatorWhoseExitWaitsForItsChildren_When_TheKeyIsRemoved_Then_ItSwapsOnlyOnceTheirExitsHaveEnded()
+        {
+            // Arrange
+            using var mounted = MountSettled("coordinator-after", "a");
+            using var keys = s_keyStore;
+
+            // Act — the child's exit plays for 0.3 s: sample inside it, then past it and short of the end of the
+            // coordinator's own 0.3 s.
+            keys.Set(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Frames(5);
+            var swappedInsideTheChildsExit = HasClass("after-coordinator", "opacity-0");
+            Frames(20);
+            var swappedAfterIt = HasClass("after-coordinator", "opacity-0");
+
+            // Assert
+            Assert.That((swappedInsideTheChildsExit, swappedAfterIt), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AnAnchorEnterWaitingForItsChildren_When_AKeyIsAdded_Then_ItEntersOnlyOnceTheChildHasEntered()
+        {
+            // Arrange — a first key settled, then a second added.
+            using var mounted = MountSettled("anchor-after", "a");
+            using var keys = s_keyStore;
+            keys.Set("ab");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act — sample inside the child's 0.3 s enter and again once it has ended.
+            Frames(5);
+            var enteredInsideTheChildsEnter = HasClass("item-b", "opacity-100");
+            Frames(25);
+            var enteredAfterIt = HasClass("item-b", "opacity-100");
+
+            // Assert
+            Assert.That((enteredInsideTheChildsEnter, enteredAfterIt), Is.EqualTo((false, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base's coordinator swaps its own exit within these frames too.
