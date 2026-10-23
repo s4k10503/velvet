@@ -2641,7 +2641,11 @@ namespace Velvet
             foreach (var slot in HeldSlotGroups.EverySlot)
             {
                 var bit = StyleHeldSlots.Bit(slot);
-                if ((composing & bit) != 0 && TryAddToOwn(element, map, slot, holds.GapOf(slot), out var length))
+                if ((composing & bit) == 0)
+                {
+                    continue;
+                }
+                if (TryAddToOwn(element, map, slot, holds.GapOf(slot), out var length))
                 {
                     StyleHeldSlots.WriteLength(element.style, slot, length);
                     composed |= bit;
@@ -2693,13 +2697,16 @@ namespace Velvet
             {
                 return layered;
             }
-            if (TryReadStylesheetClass(StripImportant(claimant, out _), out _, out var inlineForm)
-                && TryParse(inlineForm, out var claimed))
+            if (!TryReadStylesheetClass(StripImportant(claimant, out _), out _, out var inlineForm))
             {
-                own = claimed;
-                return true;
+                return layered;
             }
-            return layered;
+            if (!TryParse(inlineForm, out var claimed))
+            {
+                return layered;
+            }
+            own = claimed;
+            return true;
         }
 
         // The class of the element's own claiming longhand and the priority it claims it at: the projection's

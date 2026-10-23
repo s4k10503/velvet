@@ -44,7 +44,11 @@ namespace Velvet
         // The widget's class list changed.
         public void Reapply()
         {
-            if (Forward() && _ctx.GapManipulators.TryGetValue(target, out var gap))
+            if (!Forward())
+            {
+                return;
+            }
+            if (_ctx.GapManipulators.TryGetValue(target, out var gap))
             {
                 gap.Reapply();
             }
