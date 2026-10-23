@@ -2223,8 +2223,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Drag-and-drop scope. A real container element (the FocusScope
-        /// precedent: the element is the stable scope identity and cleanup anchor). Draggables and
+        /// Drag-and-drop scope. A real container element (the element is the stable scope identity and
+        /// cleanup anchor). Draggables and
         /// droppables pair with their nearest ancestor scope at event time; one drag may be active per
         /// mounted tree at a time. Any existing container can be a scope via props
         /// (<see cref="FiberElementProps.DndContext"/>) — this factory is convenience.

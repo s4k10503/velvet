@@ -1,20 +1,20 @@
 ### Changed
 
-- A `contain` focus scope holds focus against every panel, as React Aria's contained `FocusScope` holds it
-  against the whole document. Focus that moves to a `V.Portal(layer:)` or `V.WorldSpace` host panel, or to
-  another mounted tree's panel, is pulled back into the scope on its panel's next scheduler tick, unless it
-  lands in a portal declared inside the scope or inside a contained scope created after this one; before, focus
-  in any other panel Velvet manages was left where it landed.
+- `V.FocusScope` renders no element around its children, as React Aria's `FocusScope` renders none: the
+  children stand among the parent's own children, between two undisplayed elements marking where the scope
+  starts and ends. It returns a `ComponentNode` and takes only `children`, `key` and the scope's settings;
+  `className`, `name`, `props`, `styles`, `refCallback`, `data`, `aria`, `events` and the `while*Class`
+  arguments are gone. A styled container that is the scope sets its `FocusScope` element prop instead,
+  `V.Div(className: ..., props: new FiberElementProps { FocusScope = new FocusScopeSettings(...) })`.
 
-- Of two contained scopes, the one created later now keeps focus against the older one, in one panel as across
-  panels and mounted trees. Before, a landing inside any contained scope stood, so focus could move from a
-  newer modal back into an older one beneath it, and each of two mounted trees' contained scopes pulled focus
-  back from the other's panel.
+- An arrow or d-pad move inside a `singleTabStop` group steps to the next member (right, down) or the
+  previous one (left, up) in hierarchy order, as React Aria's toolbar and radio group do, instead of
+  following the engine's on-screen geometry. An element outside the group lying between two members no
+  longer stops the move, and past the group's last member focus stays where it is rather than taking the
+  engine's wrap round to the group's first; `wrap: true` asks for that wrap.
 
-- Content of a portal declared inside a `contain` scope counts as inside it when the portal renders into
-  the scope's own panel, as it now does when the portal renders into another panel. Before, focus that moved
-  there was snapped back.
-
-- Arrow and d-pad navigation stays inside a `singleTabStop` group, as it stays inside a WAI-ARIA composite
-  widget. A spatial move that lands outside the group returns to the member it started from; before, the
-  engine's geometric navigation could leave the group at its edge.
+- `V.Portal(layer:)` and `V.WorldSpace` take `PanelFocusOrder.Appended` by default, so their elements follow
+  the declaring tree's panel in Tab order, as a portal into `document.body` follows the rest of the document:
+  Tab past that panel's last element enters the host, and Tab past the host's last element goes on. Before,
+  the default was `Isolated`, where Tab wrapped within the host panel; pass `focusOrder:
+  PanelFocusOrder.Isolated` to keep that.

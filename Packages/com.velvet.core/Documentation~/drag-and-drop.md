@@ -8,9 +8,9 @@ pooled element leaves with everything the session ever wrote restored.
 
 ## The pieces
 
-- **`V.DndContext`** — the scope, dnd-kit's `DndContext`. A real container element (the same
-  decision as `V.FocusScope`): draggables and droppables pair with their nearest ancestor context
-  at event time, and one drag may be active per mounted tree at a time. Carries the four
+- **`V.DndContext`** — the scope, dnd-kit's `DndContext`. A real container element: draggables and
+  droppables pair with their nearest ancestor context at event time, and one drag may be active per
+  mounted tree at a time. Carries the four
   callbacks (`onDragStart`, `onDragOver`, `onDragEnd`, `onDragCancel`), the collision strategy,
   and a scope-wide default activation constraint.
 - **`V.Draggable(id:)`** — a drag source, dnd-kit's `useDraggable`. The element itself is the
