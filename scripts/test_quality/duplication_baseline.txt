@@ -105,7 +105,6 @@
 6c53061f44f3	Runtime/Styling/StyleContainerVariantManipulator.cs,Runtime/Styling/StyleStackedVariantManipulator.cs
 6ca940c72e4e	Runtime/Component/ParticlesDriver.cs,Runtime/Preview/VelvetPreviewPanel.cs
 6ce24d36be0d	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
-6e9d634bc39a	Runtime/Reconciler/FiberNodeFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 6eeae3152a27	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 6f7f5d6f718c	Runtime/Reconciler/ReconcilerContext.cs,Runtime/Styling/StyleClassProjection.cs
 70b56d08fa2f	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
@@ -203,7 +202,6 @@ c57dbfd08295	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapM
 c5987eea9427	Runtime/Reconciler/DndActiveDrag.cs,Runtime/Reconciler/DndTypes.cs,Runtime/Reconciler/FiberCrossPanelInput.cs,Runtime/Styling/MotionLayoutIdDriver.cs,Runtime/Styling/ProjectedCornerFace.cs,Runtime/Styling/VelvetFilters.cs
 c76dd6edc42a	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 c94c8f2ea433	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
-cac89a4a4dc6	Runtime/Reconciler/FiberNodeFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 cc381ea7a71d	Runtime/Reconciler/ReconcilerContext.cs,Runtime/Styling/StyleClassProjection.cs
 ccfb87d0b12b	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
 cd0652235345	Runtime/Styling/SilhouetteBoundsSpacer.cs,Runtime/Styling/StyleGapClass.cs,Runtime/Styling/StyleGridClass.cs
@@ -247,7 +245,6 @@ ef74861abed6	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapM
 f38f7447e3ee	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 f4b444268654	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs
 f5088f3a2503	Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Reconciler/WrapperInfrastructure.cs,Runtime/Styling/StyleFilterValueParser.cs
-f633f23c7149	Runtime/Reconciler/FiberNodeFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 f65f2844172b	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 f7bf7010547c	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 f8e5df703fca	Runtime/Reconciler/AnchoredDriver.cs,Runtime/Styling/StyleAnimationScheduler.cs

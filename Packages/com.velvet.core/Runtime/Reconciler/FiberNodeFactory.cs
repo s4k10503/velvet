@@ -443,58 +443,28 @@ namespace Velvet
             };
         }
 
-        // Reconciles a new Motion's children under the labels and the orchestration it hands them, returning the
-        // frame its inheriting children claim from. A Motion that plays no mount enter withholds the enters of the
-        // Motions below it as well.
         private MotionOrchestrationFrame? ReconcileMotionChildren(VisualElement element, MotionNode motionNode,
             string? childLabel, in MountEnter enter)
-        {
-            MotionOrchestrationFrame? childOrchestration = null;
-            var withholdsEnters = !motionNode.EnterOnMount;
-            if (withholdsEnters)
-            {
-                _ctx.ComponentContextStack.Push(MotionContext.EntersWithheld, true);
-            }
-            try
-            {
-                if (motionNode.Children != null)
+            => _patcher.ReconcileUnderMotion(
+                new FiberNodePatcher.MotionChildScope
                 {
-                    var childContainer = FiberNodePatcher.GetChildContainer(element);
-                    // Provide this Motion's active label to its descendants while their subtree reconciles
-                    // (same ComponentContextStack the Router/Outlet ambient values ride on). Skip the
-                    // stack round-trip entirely when there is no label to propagate (the common case).
-                    if (childLabel != null)
-                    {
-                        childOrchestration = FiberNodePatcher.ResolveChildOrchestration(motionNode,
-                            enter.Transition, enter.Resolved, enter.Ambient, enter.DelaySec, enter.From, enter.To, element,
-                            _ctx.StyleAnimationScheduler);
-                        MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel, enter.InitialLabel,
-                            childOrchestration, MotionVariantResolver.PlaybackForChildren(motionNode,
-                                _ctx.ComponentContextStack.Get(MotionContext.Playback)));
-                        try
-                        {
-                            ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
-                        }
-                        finally
-                        {
-                            MotionContext.PopForChildren(_ctx.ComponentContextStack);
-                        }
-                    }
-                    else
-                    {
-                        ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
-                    }
-                }
-            }
-            finally
-            {
-                if (withholdsEnters)
+                    Node = motionNode, Element = element,
+                    ChildLabel = motionNode.Children != null ? childLabel : null,
+                    InitialLabel = enter.InitialLabel,
+                    Playback = MotionVariantResolver.PlaybackForChildren(motionNode,
+                        _ctx.ComponentContextStack.Get(MotionContext.Playback)),
+                    Transition = enter.Transition, Resolved = enter.Resolved, Ambient = enter.Ambient,
+                    DelaySec = enter.DelaySec, From = enter.From, To = enter.To,
+                },
+                (factory: this, element, children: motionNode.Children),
+                static s =>
                 {
-                    _ctx.ComponentContextStack.Pop(MotionContext.EntersWithheld);
-                }
-            }
-            return childOrchestration;
-        }
+                    if (s.children != null)
+                    {
+                        s.factory.ReconcileChildrenOfNewElement(s.element, FiberNodePatcher.GetChildContainer(s.element),
+                            s.children);
+                    }
+                });
 
         // The end of the mount enter a variant child plays, reported to the frame it claimed its slot from: nothing
         // plays where the enter is withheld or resolves to none.

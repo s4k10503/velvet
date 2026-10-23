@@ -618,44 +618,18 @@ namespace Velvet
                 }
             }
 
-            MotionOrchestrationFrame? childOrchestration = null;
-            // A Motion that plays no mount enter withholds the enters of the Motions its patch mounts below it.
-            var withholdsEnters = !newNode.EnterOnMount;
-            if (withholdsEnters)
-            {
-                _ctx.ComponentContextStack.Push(MotionContext.EntersWithheld, true);
-            }
-            try
-            {
-                if (childLabel != null)
+            var childOrchestration = ReconcileUnderMotion(
+                new MotionChildScope
                 {
-                    childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
-                        ambientOrchestration, extraDelaySec, oldVariantClasses, newVariantClasses, element,
-                        _ctx.StyleAnimationScheduler);
-                    MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel,
-                        MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
-                        childOrchestration, playback);
-                    try
-                    {
-                        PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
-                    }
-                    finally
-                    {
-                        MotionContext.PopForChildren(_ctx.ComponentContextStack);
-                    }
-                }
-                else
-                {
-                    PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
-                }
-            }
-            finally
-            {
-                if (withholdsEnters)
-                {
-                    _ctx.ComponentContextStack.Pop(MotionContext.EntersWithheld);
-                }
-            }
+                    Node = newNode, Element = element, ChildLabel = childLabel,
+                    InitialLabel = MotionVariantResolver.InitialLabel(newNode,
+                        _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
+                    Playback = playback, Transition = swapTransition, Resolved = childLabelChanged,
+                    Ambient = ambientOrchestration, DelaySec = extraDelaySec,
+                    From = oldVariantClasses, To = newVariantClasses,
+                },
+                (patcher: this, element, oldNode, newNode, syncOld, syncNew),
+                static s => s.patcher.PatchBaseElement(s.element, s.oldNode, s.newNode, s.syncOld, s.syncNew));
 
             // An AfterChildren Motion starts its swap when the plays below it have ended, which the children's
             // patches above have reported by now.
@@ -1040,6 +1014,52 @@ namespace Velvet
             return extraDelaySec == 0f && !tracksEnds
                 ? null
                 : new MotionOrchestrationFrame(0f, 0f, extraDelaySec, TransitionWhen.Together, tracksEnds, 0);
+        }
+
+        internal readonly struct MotionChildScope
+        {
+            internal MotionNode Node { get; init; }
+            internal VisualElement Element { get; init; }
+            internal string? ChildLabel { get; init; }
+            internal string? InitialLabel { get; init; }
+            internal MotionPlayback? Playback { get; init; }
+            internal StyleTransitionConfig? Transition { get; init; }
+            internal bool Resolved { get; init; }
+            internal MotionOrchestrationFrame? Ambient { get; init; }
+            internal float DelaySec { get; init; }
+            internal string[]? From { get; init; }
+            internal string[]? To { get; init; }
+        }
+
+        // Runs body, which reconciles a Motion's children, under the labels and the orchestration the Motion hands
+        // them, and returns the frame its inheriting children claimed from. A Motion that plays no mount enter
+        // withholds the enters of the Motions below it as well. The body is a static lambda over a value state so
+        // that neither caller allocates a closure.
+        internal MotionOrchestrationFrame? ReconcileUnderMotion<TState>(in MotionChildScope scope, TState state,
+            Action<TState> body)
+        {
+            MotionOrchestrationFrame? childOrchestration = null;
+            var withholdsEnters = !scope.Node.EnterOnMount;
+            var pushedLabel = false;
+            try
+            {
+                if (withholdsEnters) _ctx.ComponentContextStack.Push(MotionContext.EntersWithheld, true);
+                if (scope.ChildLabel != null)
+                {
+                    childOrchestration = ResolveChildOrchestration(scope.Node, scope.Transition, scope.Resolved,
+                        scope.Ambient, scope.DelaySec, scope.From, scope.To, scope.Element, _ctx.StyleAnimationScheduler);
+                    MotionContext.PushForChildren(_ctx.ComponentContextStack, scope.ChildLabel, scope.InitialLabel,
+                        childOrchestration, scope.Playback);
+                    pushedLabel = true;
+                }
+                body(state);
+            }
+            finally
+            {
+                if (pushedLabel) MotionContext.PopForChildren(_ctx.ComponentContextStack);
+                if (withholdsEnters) _ctx.ComponentContextStack.Pop(MotionContext.EntersWithheld);
+            }
+            return childOrchestration;
         }
 
         // Reports to the frame a variant child claimed from when the play it starts at playStartSec ends, read before
