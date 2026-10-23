@@ -106,8 +106,9 @@ namespace Velvet
     public readonly struct DndDroppableRect
     {
         public string Id { get; }
-        /// <summary>Live <c>worldBound</c>, panel space — re-read every move, so mid-drag layout shifts
-        /// and scrolls are picked up automatically.</summary>
+        /// <summary>Live <c>worldBound</c> in the source's panel space — re-read every move, so mid-drag layout
+        /// shifts and scrolls are picked up automatically. A <c>V.Sortable</c> item's leaves out the translate and
+        /// scale the drag gave it.</summary>
         public Rect Rect { get; }
         public object? Data { get; }
 
@@ -134,8 +135,10 @@ namespace Velvet
 
     /// <summary>
     /// Everything a collision strategy may consider. Candidates are pre-filtered: in-scope, enabled,
-    /// attached, same panel as the source, and the active draggable's own id excluded (an element that is
-    /// both draggable and droppable under one id never collides with itself).
+    /// attached, on the source's panel or on another screen-space runtime panel of the tree (their rects mapped
+    /// into the source's panel space), and the active draggable's own id excluded unless it is a
+    /// <c>V.Sortable</c> item (any other element that is both draggable and droppable under one id never collides
+    /// with itself).
     /// </summary>
     public readonly struct DndCollisionQuery
     {

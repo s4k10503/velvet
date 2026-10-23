@@ -35,21 +35,37 @@
 [Velvet] ctor Velvet.ComponentNode.ctor(): System.Void
 [Velvet] ctor Velvet.ContextProviderNode`1[T].ctor(): System.Void
 [Velvet] ctor Velvet.Deferred`1[T].ctor(Velvet.VelvetTask`1[T]): System.Void
+[Velvet] ctor Velvet.DndAccessibility.ctor(Velvet.DndAnnouncements?, System.Action`1[System.String]?): System.Void
+[Velvet] ctor Velvet.DndAnnouncements.ctor(System.Func`2[Velvet.DragStartArgs, System.String?]?, System.Func`2[Velvet.DragMoveArgs, System.String?]?, System.Func`2[Velvet.DragOverArgs, System.String?]?, System.Func`2[Velvet.DragEndArgs, System.String?]?, System.Func`2[Velvet.DragCancelArgs, System.String?]?): System.Void
+[Velvet] ctor Velvet.DndAutoScroll.ctor(System.Boolean, System.Single, System.Single, System.Single, System.Single): System.Void
 [Velvet] ctor Velvet.DndCollision.ctor(System.String, System.Object?, System.Double): System.Void
 [Velvet] ctor Velvet.DndCollisionDetection.ctor(System.Object~, System.IntPtr): System.Void
 [Velvet] ctor Velvet.DndCollisionQuery.ctor(UnityEngine.Rect, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndDroppableRect]): System.Void
-[Velvet] ctor Velvet.DndContextSettings.ctor(System.Action`1[Velvet.DragStartArgs]?, System.Action`1[Velvet.DragOverArgs]?, System.Action`1[Velvet.DragEndArgs]?, System.Action`1[Velvet.DragCancelArgs]?, Velvet.DndCollisionDetection?, Velvet.DragActivation?): System.Void
+[Velvet] ctor Velvet.DndContextSettings.ctor(System.Action`1[Velvet.DragStartArgs]?, System.Action`1[Velvet.DragOverArgs]?, System.Action`1[Velvet.DragEndArgs]?, System.Action`1[Velvet.DragCancelArgs]?, Velvet.DndCollisionDetection?, Velvet.DragActivation?, System.Action`1[Velvet.DragMoveArgs]?): System.Void
+[Velvet] ctor Velvet.DndContextState.ctor(Velvet.DraggableInfo?, Velvet.DroppableInfo?, System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision], System.Nullable`1[UnityEngine.Rect]): System.Void
+[Velvet] ctor Velvet.DndDropAnimation.ctor(System.Single): System.Void
 [Velvet] ctor Velvet.DndDroppableRect.ctor(System.String, UnityEngine.Rect, System.Object?): System.Void
+[Velvet] ctor Velvet.DndKeyboardCodes.ctor(System.Collections.Generic.IReadOnlyList`1[UnityEngine.KeyCode], System.Collections.Generic.IReadOnlyList`1[UnityEngine.KeyCode], System.Collections.Generic.IReadOnlyList`1[UnityEngine.KeyCode]): System.Void
+[Velvet] ctor Velvet.DndKeyboardCoordinateGetter.ctor(System.Object~, System.IntPtr): System.Void
+[Velvet] ctor Velvet.DndKeyboardSensor.ctor(Velvet.DndKeyboardCodes?, Velvet.DndKeyboardCoordinateGetter?): System.Void
+[Velvet] ctor Velvet.DndModifier.ctor(System.Object~, System.IntPtr): System.Void
+[Velvet] ctor Velvet.DndMonitorListener.ctor(System.Action`1[Velvet.DragStartArgs]?, System.Action`1[Velvet.DragMoveArgs]?, System.Action`1[Velvet.DragOverArgs]?, System.Action`1[Velvet.DragEndArgs]?, System.Action`1[Velvet.DragCancelArgs]?): System.Void
+[Velvet] ctor Velvet.DndPointerSensor.ctor(Velvet.DragActivation?): System.Void
+[Velvet] ctor Velvet.DndSortingStrategy.ctor(System.Object~, System.IntPtr): System.Void
+[Velvet] ctor Velvet.DndSortingTransform.ctor(UnityEngine.Vector2, System.Nullable`1[UnityEngine.Vector2]): System.Void
 [Velvet] ctor Velvet.DragActivation.ctor(System.Single, System.Single, System.Single): System.Void
 [Velvet] ctor Velvet.DragCancelArgs.ctor(Velvet.DraggableInfo): System.Void
 [Velvet] ctor Velvet.DragEndArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]): System.Void
+[Velvet] ctor Velvet.DragMoveArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]): System.Void
 [Velvet] ctor Velvet.DragOverArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]): System.Void
 [Velvet] ctor Velvet.DragOverlaySettings.ctor(): System.Void
 [Velvet] ctor Velvet.DragStartArgs.ctor(Velvet.DraggableInfo, UnityEngine.Vector2): System.Void
 [Velvet] ctor Velvet.DraggableInfo.ctor(System.String, System.Object?, UnityEngine.UIElements.VisualElement): System.Void
 [Velvet] ctor Velvet.DraggableSettings.ctor(System.String, System.Object?, System.Boolean, Velvet.DragMovement, Velvet.DragActivation?, System.String?): System.Void
+[Velvet] ctor Velvet.DraggableState.ctor(System.Boolean, Velvet.DraggableInfo?, Velvet.DroppableInfo?, System.Nullable`1[UnityEngine.Vector2]): System.Void
 [Velvet] ctor Velvet.DroppableInfo.ctor(System.String, System.Object?, UnityEngine.UIElements.VisualElement): System.Void
 [Velvet] ctor Velvet.DroppableSettings.ctor(System.String, System.Object?, System.Boolean, System.String?, System.String?): System.Void
+[Velvet] ctor Velvet.DroppableState.ctor(System.Boolean, Velvet.DraggableInfo?, Velvet.DroppableInfo?): System.Void
 [Velvet] ctor Velvet.ElementNode.ctor(): System.Void
 [Velvet] ctor Velvet.ErrorInfo.ctor(System.String): System.Void
 [Velvet] ctor Velvet.Experimental.VButton.ctor(System.String?): System.Void
@@ -122,6 +138,7 @@
 [Velvet] ctor Velvet.SearchParams.ctor(): System.Void
 [Velvet] ctor Velvet.SliderIntSettings.ctor(System.Nullable`1[System.Int32], System.Nullable`1[System.Int32], System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean], System.Nullable`1[System.Int32]): System.Void
 [Velvet] ctor Velvet.SliderSettings.ctor(System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean], System.Nullable`1[System.Single]): System.Void
+[Velvet] ctor Velvet.SortableInfo.ctor(System.String, System.Int32, System.Collections.Generic.IReadOnlyList`1[System.String]): System.Void
 [Velvet] ctor Velvet.StoreLogger.ctor(): System.Void
 [Velvet] ctor Velvet.StyleOverrides.ctor(): System.Void
 [Velvet] ctor Velvet.StylePropertyTransition.ctor(System.String, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single]): System.Void
@@ -153,6 +170,7 @@
 [Velvet] ctor Velvet.WorldSpaceNode.ctor(): System.Void
 [Velvet] ctor protected Velvet.BaseElementNode.ctor(): System.Void
 [Velvet] ctor protected Velvet.ContextProviderNode.ctor(): System.Void
+[Velvet] ctor protected Velvet.DndSensor.ctor(): System.Void
 [Velvet] ctor protected Velvet.Experimental.VBuilder.ctor(System.String?): System.Void
 [Velvet] ctor protected Velvet.FiberDispatchedEventBinding.ctor(): System.Void
 [Velvet] ctor protected Velvet.FiberEventBinding.ctor(): System.Void
@@ -169,10 +187,29 @@
 [Velvet] field Velvet.AnimatePresenceMode.Wait: Velvet.AnimatePresenceMode
 [Velvet] field Velvet.ComponentFiber.RenderCount: System.Int32
 [Velvet] field Velvet.ComponentFiber.RequestRenderForContextHandler: System.Action`1[Velvet.ComponentFiber]?
+[Velvet] field Velvet.DndAnnouncements.Default: Velvet.DndAnnouncements
+[Velvet] field Velvet.DndAutoScroll.Default: Velvet.DndAutoScroll
+[Velvet] field Velvet.DndAutoScroll.Disabled: Velvet.DndAutoScroll
 [Velvet] field Velvet.DndCollisions.ClosestCenter: Velvet.DndCollisionDetection
 [Velvet] field Velvet.DndCollisions.ClosestCorners: Velvet.DndCollisionDetection
 [Velvet] field Velvet.DndCollisions.PointerWithin: Velvet.DndCollisionDetection
 [Velvet] field Velvet.DndCollisions.RectIntersection: Velvet.DndCollisionDetection
+[Velvet] field Velvet.DndContextState.Idle: Velvet.DndContextState
+[Velvet] field Velvet.DndDropAnimation.Default: Velvet.DndDropAnimation
+[Velvet] field Velvet.DndDropAnimation.None: Velvet.DndDropAnimation
+[Velvet] field Velvet.DndKeyboardCodes.Default: Velvet.DndKeyboardCodes
+[Velvet] field Velvet.DndModifiers.RestrictToFirstScrollableAncestor: Velvet.DndModifier
+[Velvet] field Velvet.DndModifiers.RestrictToHorizontalAxis: Velvet.DndModifier
+[Velvet] field Velvet.DndModifiers.RestrictToParentElement: Velvet.DndModifier
+[Velvet] field Velvet.DndModifiers.RestrictToVerticalAxis: Velvet.DndModifier
+[Velvet] field Velvet.DndModifiers.RestrictToWindowEdges: Velvet.DndModifier
+[Velvet] field Velvet.DndModifiers.SnapCenterToCursor: Velvet.DndModifier
+[Velvet] field Velvet.DndSensors.Default: System.Collections.Generic.IReadOnlyList`1[Velvet.DndSensor]
+[Velvet] field Velvet.DndSortable.KeyboardCoordinates: Velvet.DndKeyboardCoordinateGetter
+[Velvet] field Velvet.DndSortingStrategies.HorizontalList: Velvet.DndSortingStrategy
+[Velvet] field Velvet.DndSortingStrategies.Rect: Velvet.DndSortingStrategy
+[Velvet] field Velvet.DndSortingStrategies.RectSwapping: Velvet.DndSortingStrategy
+[Velvet] field Velvet.DndSortingStrategies.VerticalList: Velvet.DndSortingStrategy
 [Velvet] field Velvet.DragActivation.Default: Velvet.DragActivation
 [Velvet] field Velvet.DragActivation.None: Velvet.DragActivation
 [Velvet] field Velvet.DragMovement.None: Velvet.DragMovement
@@ -351,6 +388,23 @@
 [Velvet] method Velvet.DndCollisionDetection.BeginInvoke(Velvet.DndCollisionQuery&, System.AsyncCallback~, System.Object~): System.IAsyncResult~
 [Velvet] method Velvet.DndCollisionDetection.EndInvoke(Velvet.DndCollisionQuery&, System.IAsyncResult~): Velvet.DndCollision[]
 [Velvet] method Velvet.DndCollisionDetection.Invoke(Velvet.DndCollisionQuery&): Velvet.DndCollision[]
+[Velvet] method Velvet.DndKeyboardCoordinateGetter.BeginInvoke(Velvet.DndKeyboardMove&, System.AsyncCallback~, System.Object~): System.IAsyncResult~
+[Velvet] method Velvet.DndKeyboardCoordinateGetter.EndInvoke(Velvet.DndKeyboardMove&, System.IAsyncResult~): System.Nullable`1[UnityEngine.Vector2]
+[Velvet] method Velvet.DndKeyboardCoordinateGetter.Invoke(Velvet.DndKeyboardMove&): System.Nullable`1[UnityEngine.Vector2]
+[Velvet] method Velvet.DndKeyboardSensor.DefaultCoordinates(Velvet.DndKeyboardMove&): System.Nullable`1[UnityEngine.Vector2]
+[Velvet] method Velvet.DndModifier.BeginInvoke(Velvet.DndModifierArgs&, System.AsyncCallback~, System.Object~): System.IAsyncResult~
+[Velvet] method Velvet.DndModifier.EndInvoke(Velvet.DndModifierArgs&, System.IAsyncResult~): UnityEngine.Vector2
+[Velvet] method Velvet.DndModifier.Invoke(Velvet.DndModifierArgs&): UnityEngine.Vector2
+[Velvet] method Velvet.DndModifiers.CreateSnapModifier(System.Single): Velvet.DndModifier
+[Velvet] method Velvet.DndSensorActivation.Start(UnityEngine.Vector2, System.Action?): Velvet.DndSensorSession?
+[Velvet] method Velvet.DndSensorSession.Cancel(): System.Void
+[Velvet] method Velvet.DndSensorSession.End(): System.Void
+[Velvet] method Velvet.DndSensorSession.Move(UnityEngine.Vector2): System.Void
+[Velvet] method Velvet.DndSortable.ArrayMove`1(System.Collections.Generic.IReadOnlyList`1[T], System.Int32, System.Int32): T[]
+[Velvet] method Velvet.DndSortable.ArraySwap`1(System.Collections.Generic.IReadOnlyList`1[T], System.Int32, System.Int32): T[]
+[Velvet] method Velvet.DndSortingStrategy.BeginInvoke(Velvet.DndSortingArgs&, System.AsyncCallback~, System.Object~): System.IAsyncResult~
+[Velvet] method Velvet.DndSortingStrategy.EndInvoke(Velvet.DndSortingArgs&, System.IAsyncResult~): System.Nullable`1[Velvet.DndSortingTransform]
+[Velvet] method Velvet.DndSortingStrategy.Invoke(Velvet.DndSortingArgs&): System.Nullable`1[Velvet.DndSortingTransform]
 [Velvet] method Velvet.ErrorBoundaryReset.Invoke(System.Object?[]): System.Void
 [Velvet] method Velvet.Experimental.VBuilder.Add(Velvet.VNode?): System.Void
 [Velvet] method Velvet.Experimental.VBuilder.Build(): Velvet.VNode
@@ -400,6 +454,10 @@
 [Velvet] method Velvet.Hooks.UseContext`1(Velvet.ComponentContext`1[T]): T?
 [Velvet] method Velvet.Hooks.UseDeferredValue`1(T): T
 [Velvet] method Velvet.Hooks.UseDeferredValue`1(T, T): T
+[Velvet] method Velvet.Hooks.UseDndContext(): Velvet.DndContextState
+[Velvet] method Velvet.Hooks.UseDndMonitor(Velvet.DndMonitorListener): System.Void
+[Velvet] method Velvet.Hooks.UseDraggable(System.String): Velvet.DraggableState
+[Velvet] method Velvet.Hooks.UseDroppable(System.String): Velvet.DroppableState
 [Velvet] method Velvet.Hooks.UseEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseEffect(System.Func`1[System.IDisposable], System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseErrorBoundary(): Velvet.ErrorBoundaryApi
@@ -441,6 +499,7 @@
 [Velvet] method Velvet.Hooks.UseRouteError(): System.Exception?
 [Velvet] method Velvet.Hooks.UseSearchParams(): System.ValueTuple`2[Velvet.ISearchParams, Velvet.SearchParamsSetter]
 [Velvet] method Velvet.Hooks.UseService`1(): T
+[Velvet] method Velvet.Hooks.UseSortable(System.String): Velvet.SortableState
 [Velvet] method Velvet.Hooks.UseState`1(System.Func`1[T]): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
 [Velvet] method Velvet.Hooks.UseState`1(T): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
 [Velvet] method Velvet.Hooks.UseStore`2(Velvet.Store`1[TStore], System.Func`2[TStore, TSel], System.Collections.Generic.IEqualityComparer`1[TSel]?): TSel
@@ -579,8 +638,8 @@
 [Velvet] method Velvet.V.Div(System.String, Velvet.FiberEventBinding[], Velvet.VNode?[]): Velvet.ElementNode
 [Velvet] method Velvet.V.Div(System.String, Velvet.VNode?[]): Velvet.ElementNode
 [Velvet] method Velvet.V.Div(System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
-[Velvet] method Velvet.V.DndContext(System.Action`1[Velvet.DragStartArgs]?, System.Action`1[Velvet.DragOverArgs]?, System.Action`1[Velvet.DragEndArgs]?, System.Action`1[Velvet.DragCancelArgs]?, Velvet.DndCollisionDetection?, Velvet.DragActivation?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
-[Velvet] method Velvet.V.DragOverlay(Velvet.VNode?[]?, System.String?): Velvet.PortalNode
+[Velvet] method Velvet.V.DndContext(System.Action`1[Velvet.DragStartArgs]?, System.Action`1[Velvet.DragOverArgs]?, System.Action`1[Velvet.DragEndArgs]?, System.Action`1[Velvet.DragCancelArgs]?, Velvet.DndCollisionDetection?, Velvet.DragActivation?, System.Action`1[Velvet.DragMoveArgs]?, System.Collections.Generic.IReadOnlyList`1[Velvet.DndSensor]?, System.Collections.Generic.IReadOnlyList`1[Velvet.DndModifier]?, Velvet.DndAutoScroll?, Velvet.DndAccessibility?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ComponentNode
+[Velvet] method Velvet.V.DragOverlay(Velvet.VNode?[]?, System.String?, Velvet.DndDropAnimation?, System.Collections.Generic.IReadOnlyList`1[Velvet.DndModifier]?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Draggable(System.String, System.Object?, System.Boolean, Velvet.DragMovement, Velvet.DragActivation?, System.String?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
 [Velvet] method Velvet.V.DropdownField(System.String?, System.String?, System.Collections.Generic.List`1[System.String]?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Droppable(System.String, System.Object?, System.Boolean, System.String?, System.String?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
@@ -641,6 +700,8 @@
 [Velvet] method Velvet.V.ScrollView(System.String?, System.String?, System.String?, System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior], System.Action`1[UnityEngine.UIElements.VisualElement]?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Slider(System.String?, System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Action`1[System.Single]?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean], System.Nullable`1[System.Single], Velvet.FiberEventBinding[]?): Velvet.ElementNode
 [Velvet] method Velvet.V.SliderInt(System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Int32], System.Nullable`1[System.Int32], System.Action`1[System.Int32]?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean], System.Nullable`1[System.Int32], Velvet.FiberEventBinding[]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Sortable(System.String, System.Object?, System.Boolean, Velvet.DragMovement, Velvet.DragActivation?, Velvet.DndSortingStrategy?, System.String?, System.String?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ComponentNode
+[Velvet] method Velvet.V.SortableContext(System.Collections.Generic.IReadOnlyList`1[System.String], Velvet.DndSortingStrategy?, System.String?, Velvet.VNode?[]?, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Suspense(Velvet.VNode?, Velvet.VNode?[], System.String?): Velvet.SuspenseNode
 [Velvet] method Velvet.V.Text(System.String?): Velvet.TextNode
 [Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[UnityEngine.TouchScreenKeyboardType], System.Nullable`1[System.Boolean], System.Action`1[System.String]?, UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyDownEvent]?, UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyUpEvent]?, UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusInEvent]?, UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusOutEvent]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
@@ -831,21 +892,80 @@
 [Velvet] property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.RegisteredAt: System.DateTime
 [Velvet] property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.TypeName: System.String
 [Velvet] property Velvet.DevTools.VelvetDevToolsRegistry.Entries: System.Collections.Generic.IReadOnlyList`1[Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry]
+[Velvet] property Velvet.DndAccessibility.Announce: System.Action`1[System.String]?
+[Velvet] property Velvet.DndAccessibility.Announcements: Velvet.DndAnnouncements?
+[Velvet] property Velvet.DndAnnouncements.OnDragCancel: System.Func`2[Velvet.DragCancelArgs, System.String?]?
+[Velvet] property Velvet.DndAnnouncements.OnDragEnd: System.Func`2[Velvet.DragEndArgs, System.String?]?
+[Velvet] property Velvet.DndAnnouncements.OnDragMove: System.Func`2[Velvet.DragMoveArgs, System.String?]?
+[Velvet] property Velvet.DndAnnouncements.OnDragOver: System.Func`2[Velvet.DragOverArgs, System.String?]?
+[Velvet] property Velvet.DndAnnouncements.OnDragStart: System.Func`2[Velvet.DragStartArgs, System.String?]?
+[Velvet] property Velvet.DndAutoScroll.Acceleration: System.Single
+[Velvet] property Velvet.DndAutoScroll.Enabled: System.Boolean
+[Velvet] property Velvet.DndAutoScroll.IntervalMs: System.Single
+[Velvet] property Velvet.DndAutoScroll.ThresholdX: System.Single
+[Velvet] property Velvet.DndAutoScroll.ThresholdY: System.Single
 [Velvet] property Velvet.DndCollision.Data: System.Object?
 [Velvet] property Velvet.DndCollision.Id: System.String
 [Velvet] property Velvet.DndCollision.Value: System.Double
 [Velvet] property Velvet.DndCollisionQuery.ActiveRect: UnityEngine.Rect
 [Velvet] property Velvet.DndCollisionQuery.Droppables: System.Collections.Generic.IReadOnlyList`1[Velvet.DndDroppableRect]
+[Velvet] property Velvet.DndCollisionQuery.HasPointer: System.Boolean
 [Velvet] property Velvet.DndCollisionQuery.PointerPosition: UnityEngine.Vector2
+[Velvet] property Velvet.DndContextSettings.Accessibility: Velvet.DndAccessibility?
 [Velvet] property Velvet.DndContextSettings.Activation: Velvet.DragActivation?
+[Velvet] property Velvet.DndContextSettings.AutoScroll: Velvet.DndAutoScroll?
 [Velvet] property Velvet.DndContextSettings.CollisionDetection: Velvet.DndCollisionDetection?
+[Velvet] property Velvet.DndContextSettings.Modifiers: System.Collections.Generic.IReadOnlyList`1[Velvet.DndModifier]?
 [Velvet] property Velvet.DndContextSettings.OnDragCancel: System.Action`1[Velvet.DragCancelArgs]?
 [Velvet] property Velvet.DndContextSettings.OnDragEnd: System.Action`1[Velvet.DragEndArgs]?
+[Velvet] property Velvet.DndContextSettings.OnDragMove: System.Action`1[Velvet.DragMoveArgs]?
 [Velvet] property Velvet.DndContextSettings.OnDragOver: System.Action`1[Velvet.DragOverArgs]?
 [Velvet] property Velvet.DndContextSettings.OnDragStart: System.Action`1[Velvet.DragStartArgs]?
+[Velvet] property Velvet.DndContextSettings.Sensors: System.Collections.Generic.IReadOnlyList`1[Velvet.DndSensor]?
+[Velvet] property Velvet.DndContextState.Active: Velvet.DraggableInfo?
+[Velvet] property Velvet.DndContextState.ActiveNodeRect: System.Nullable`1[UnityEngine.Rect]
+[Velvet] property Velvet.DndContextState.Collisions: System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]
+[Velvet] property Velvet.DndContextState.Over: Velvet.DroppableInfo?
+[Velvet] property Velvet.DndDropAnimation.DurationMs: System.Single
 [Velvet] property Velvet.DndDroppableRect.Data: System.Object?
 [Velvet] property Velvet.DndDroppableRect.Id: System.String
 [Velvet] property Velvet.DndDroppableRect.Rect: UnityEngine.Rect
+[Velvet] property Velvet.DndKeyboardCodes.Cancel: System.Collections.Generic.IReadOnlyList`1[UnityEngine.KeyCode]
+[Velvet] property Velvet.DndKeyboardCodes.End: System.Collections.Generic.IReadOnlyList`1[UnityEngine.KeyCode]
+[Velvet] property Velvet.DndKeyboardCodes.Start: System.Collections.Generic.IReadOnlyList`1[UnityEngine.KeyCode]
+[Velvet] property Velvet.DndKeyboardMove.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DndKeyboardMove.CollisionRect: UnityEngine.Rect
+[Velvet] property Velvet.DndKeyboardMove.CurrentCoordinates: UnityEngine.Vector2
+[Velvet] property Velvet.DndKeyboardMove.Droppables: System.Collections.Generic.IReadOnlyList`1[Velvet.DndDroppableRect]
+[Velvet] property Velvet.DndKeyboardMove.Key: UnityEngine.KeyCode
+[Velvet] property Velvet.DndKeyboardMove.OverId: System.String?
+[Velvet] property Velvet.DndKeyboardSensor.Codes: Velvet.DndKeyboardCodes
+[Velvet] property Velvet.DndKeyboardSensor.CoordinateGetter: Velvet.DndKeyboardCoordinateGetter
+[Velvet] property Velvet.DndModifierArgs.ActivatorCoordinates: System.Nullable`1[UnityEngine.Vector2]
+[Velvet] property Velvet.DndModifierArgs.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DndModifierArgs.ActiveNodeRect: UnityEngine.Rect
+[Velvet] property Velvet.DndModifierArgs.ContainerNodeRect: System.Nullable`1[UnityEngine.Rect]
+[Velvet] property Velvet.DndModifierArgs.DraggingNodeRect: UnityEngine.Rect
+[Velvet] property Velvet.DndModifierArgs.FirstScrollableAncestorRect: System.Nullable`1[UnityEngine.Rect]
+[Velvet] property Velvet.DndModifierArgs.Over: Velvet.DroppableInfo?
+[Velvet] property Velvet.DndModifierArgs.Transform: UnityEngine.Vector2
+[Velvet] property Velvet.DndModifierArgs.WindowRect: UnityEngine.Rect
+[Velvet] property Velvet.DndMonitorListener.OnDragCancel: System.Action`1[Velvet.DragCancelArgs]?
+[Velvet] property Velvet.DndMonitorListener.OnDragEnd: System.Action`1[Velvet.DragEndArgs]?
+[Velvet] property Velvet.DndMonitorListener.OnDragMove: System.Action`1[Velvet.DragMoveArgs]?
+[Velvet] property Velvet.DndMonitorListener.OnDragOver: System.Action`1[Velvet.DragOverArgs]?
+[Velvet] property Velvet.DndMonitorListener.OnDragStart: System.Action`1[Velvet.DragStartArgs]?
+[Velvet] property Velvet.DndPointerSensor.Activation: Velvet.DragActivation?
+[Velvet] property Velvet.DndSensorActivation.Draggable: Velvet.DraggableInfo
+[Velvet] property Velvet.DndSensorSession.CollisionRect: UnityEngine.Rect
+[Velvet] property Velvet.DndSensorSession.IsActive: System.Boolean
+[Velvet] property Velvet.DndSortingArgs.ActiveIndex: System.Int32
+[Velvet] property Velvet.DndSortingArgs.ActiveNodeRect: UnityEngine.Rect
+[Velvet] property Velvet.DndSortingArgs.Index: System.Int32
+[Velvet] property Velvet.DndSortingArgs.OverIndex: System.Int32
+[Velvet] property Velvet.DndSortingArgs.Rects: System.Collections.Generic.IReadOnlyList`1[UnityEngine.Rect]
+[Velvet] property Velvet.DndSortingTransform.Scale: UnityEngine.Vector2
+[Velvet] property Velvet.DndSortingTransform.Translate: UnityEngine.Vector2
 [Velvet] property Velvet.DragActivation.DelaySec: System.Single
 [Velvet] property Velvet.DragActivation.Distance: System.Single
 [Velvet] property Velvet.DragActivation.Tolerance: System.Single
@@ -855,29 +975,44 @@
 [Velvet] property Velvet.DragEndArgs.Delta: UnityEngine.Vector2
 [Velvet] property Velvet.DragEndArgs.Over: Velvet.DroppableInfo?
 [Velvet] property Velvet.DragEndArgs.Position: UnityEngine.Vector2
+[Velvet] property Velvet.DragMoveArgs.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DragMoveArgs.Collisions: System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]
+[Velvet] property Velvet.DragMoveArgs.Delta: UnityEngine.Vector2
+[Velvet] property Velvet.DragMoveArgs.Over: Velvet.DroppableInfo?
 [Velvet] property Velvet.DragOverArgs.Active: Velvet.DraggableInfo
 [Velvet] property Velvet.DragOverArgs.Collisions: System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]
 [Velvet] property Velvet.DragOverArgs.Delta: UnityEngine.Vector2
 [Velvet] property Velvet.DragOverArgs.Over: Velvet.DroppableInfo?
+[Velvet] property Velvet.DragOverlaySettings.DropAnimation: Velvet.DndDropAnimation?
+[Velvet] property Velvet.DragOverlaySettings.Modifiers: System.Collections.Generic.IReadOnlyList`1[Velvet.DndModifier]?
 [Velvet] property Velvet.DragStartArgs.Active: Velvet.DraggableInfo
 [Velvet] property Velvet.DragStartArgs.Origin: UnityEngine.Vector2
 [Velvet] property Velvet.DraggableInfo.Data: System.Object?
 [Velvet] property Velvet.DraggableInfo.Element: UnityEngine.UIElements.VisualElement
 [Velvet] property Velvet.DraggableInfo.Id: System.String
+[Velvet] property Velvet.DraggableInfo.Sortable: Velvet.SortableInfo?
 [Velvet] property Velvet.DraggableSettings.Activation: Velvet.DragActivation?
 [Velvet] property Velvet.DraggableSettings.Data: System.Object?
 [Velvet] property Velvet.DraggableSettings.Disabled: System.Boolean
 [Velvet] property Velvet.DraggableSettings.Id: System.String
 [Velvet] property Velvet.DraggableSettings.Movement: Velvet.DragMovement
 [Velvet] property Velvet.DraggableSettings.WhileDraggingClass: System.String?
+[Velvet] property Velvet.DraggableState.Active: Velvet.DraggableInfo?
+[Velvet] property Velvet.DraggableState.IsDragging: System.Boolean
+[Velvet] property Velvet.DraggableState.Over: Velvet.DroppableInfo?
+[Velvet] property Velvet.DraggableState.Transform: System.Nullable`1[UnityEngine.Vector2]
 [Velvet] property Velvet.DroppableInfo.Data: System.Object?
 [Velvet] property Velvet.DroppableInfo.Element: UnityEngine.UIElements.VisualElement
 [Velvet] property Velvet.DroppableInfo.Id: System.String
+[Velvet] property Velvet.DroppableInfo.Sortable: Velvet.SortableInfo?
 [Velvet] property Velvet.DroppableSettings.Data: System.Object?
 [Velvet] property Velvet.DroppableSettings.Disabled: System.Boolean
 [Velvet] property Velvet.DroppableSettings.Id: System.String
 [Velvet] property Velvet.DroppableSettings.WhileDragActiveClass: System.String?
 [Velvet] property Velvet.DroppableSettings.WhileOverClass: System.String?
+[Velvet] property Velvet.DroppableState.Active: Velvet.DraggableInfo?
+[Velvet] property Velvet.DroppableState.IsOver: System.Boolean
+[Velvet] property Velvet.DroppableState.Over: Velvet.DroppableInfo?
 [Velvet] property Velvet.ElementNode.OnCreated: System.Action`1[UnityEngine.UIElements.VisualElement]?
 [Velvet] property Velvet.ElementNode.Styles: Velvet.StyleOverrides?
 [Velvet] property Velvet.ElementNode.WrapElement: System.Func`2[UnityEngine.UIElements.VisualElement, UnityEngine.UIElements.VisualElement]?
@@ -1197,6 +1332,18 @@
 [Velvet] property Velvet.SliderSettings.Inverted: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.SliderSettings.LowValue: System.Nullable`1[System.Single]
 [Velvet] property Velvet.SliderSettings.Step: System.Nullable`1[System.Single]
+[Velvet] property Velvet.SortableInfo.ContainerId: System.String
+[Velvet] property Velvet.SortableInfo.Index: System.Int32
+[Velvet] property Velvet.SortableInfo.Items: System.Collections.Generic.IReadOnlyList`1[System.String]
+[Velvet] property Velvet.SortableState.ActiveIndex: System.Int32
+[Velvet] property Velvet.SortableState.ContainerId: System.String?
+[Velvet] property Velvet.SortableState.Index: System.Int32
+[Velvet] property Velvet.SortableState.IsDragging: System.Boolean
+[Velvet] property Velvet.SortableState.IsOver: System.Boolean
+[Velvet] property Velvet.SortableState.IsSorting: System.Boolean
+[Velvet] property Velvet.SortableState.Items: System.Collections.Generic.IReadOnlyList`1[System.String]
+[Velvet] property Velvet.SortableState.NewIndex: System.Int32
+[Velvet] property Velvet.SortableState.OverIndex: System.Int32
 [Velvet] property Velvet.StoreLogger.Default: Velvet.StoreLogger
 [Velvet] property Velvet.Store`1[TState].Current: TState
 [Velvet] property Velvet.Store`1[TState].InitialState: TState
@@ -1334,23 +1481,49 @@
 [Velvet] type Velvet.Deferred`1[T]
 [Velvet] type Velvet.DevTools.VelvetDevToolsRegistry
 [Velvet] type Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry
+[Velvet] type Velvet.DndAccessibility
+[Velvet] type Velvet.DndAnnouncements
+[Velvet] type Velvet.DndAutoScroll
 [Velvet] type Velvet.DndCollision
 [Velvet] type Velvet.DndCollisionDetection
 [Velvet] type Velvet.DndCollisionQuery
 [Velvet] type Velvet.DndCollisions
 [Velvet] type Velvet.DndContextSettings
+[Velvet] type Velvet.DndContextState
+[Velvet] type Velvet.DndDropAnimation
 [Velvet] type Velvet.DndDroppableRect
+[Velvet] type Velvet.DndKeyboardCodes
+[Velvet] type Velvet.DndKeyboardCoordinateGetter
+[Velvet] type Velvet.DndKeyboardMove
+[Velvet] type Velvet.DndKeyboardSensor
+[Velvet] type Velvet.DndModifier
+[Velvet] type Velvet.DndModifierArgs
+[Velvet] type Velvet.DndModifiers
+[Velvet] type Velvet.DndMonitorListener
+[Velvet] type Velvet.DndPointerSensor
+[Velvet] type Velvet.DndSensor
+[Velvet] type Velvet.DndSensorActivation
+[Velvet] type Velvet.DndSensorSession
+[Velvet] type Velvet.DndSensors
+[Velvet] type Velvet.DndSortable
+[Velvet] type Velvet.DndSortingArgs
+[Velvet] type Velvet.DndSortingStrategies
+[Velvet] type Velvet.DndSortingStrategy
+[Velvet] type Velvet.DndSortingTransform
 [Velvet] type Velvet.DragActivation
 [Velvet] type Velvet.DragCancelArgs
 [Velvet] type Velvet.DragEndArgs
+[Velvet] type Velvet.DragMoveArgs
 [Velvet] type Velvet.DragMovement
 [Velvet] type Velvet.DragOverArgs
 [Velvet] type Velvet.DragOverlaySettings
 [Velvet] type Velvet.DragStartArgs
 [Velvet] type Velvet.DraggableInfo
 [Velvet] type Velvet.DraggableSettings
+[Velvet] type Velvet.DraggableState
 [Velvet] type Velvet.DroppableInfo
 [Velvet] type Velvet.DroppableSettings
+[Velvet] type Velvet.DroppableState
 [Velvet] type Velvet.ElementNode
 [Velvet] type Velvet.ErrorBoundaryApi
 [Velvet] type Velvet.ErrorBoundaryReset
@@ -1468,6 +1641,8 @@
 [Velvet] type Velvet.SearchParamsSetter
 [Velvet] type Velvet.SliderIntSettings
 [Velvet] type Velvet.SliderSettings
+[Velvet] type Velvet.SortableInfo
+[Velvet] type Velvet.SortableState
 [Velvet] type Velvet.StateUpdater`1[T]
 [Velvet] type Velvet.StoreLogger
 [Velvet] type Velvet.StoreShallowEqualityComparer

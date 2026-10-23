@@ -218,8 +218,12 @@ namespace Velvet
             {
                 return false;
             }
-            listener.Attach(session);
             key.StopPropagation();
+            // The start callback's own commit may already have torn the drag down, and closed it.
+            if (session.IsActive)
+            {
+                listener.Attach(session);
+            }
             return true;
         }
 
@@ -237,11 +241,15 @@ namespace Velvet
 
         // The keys of one keyboard drag, heard on the panel root ahead of every element below it. The key that
         // started the drag has already passed the root's trickle phase, so it is not heard again as an end key.
+        // While the drag lasts, the root also holds back the navigation events the same keys raise, as dnd-kit
+        // prevents the keys' defaults: a move would take focus off the source and a submit would click it.
         private sealed class Listener
         {
             private readonly DndKeyboardSensor _sensor;
             private readonly VisualElement _root;
             private readonly EventCallback<KeyDownEvent> _onKeyDown;
+            private readonly EventCallback<NavigationMoveEvent> _onNavigationMove;
+            private readonly EventCallback<NavigationSubmitEvent> _onNavigationSubmit;
             private DndSensorSession? _session;
 
             internal Listener(DndKeyboardSensor sensor, VisualElement root)
@@ -249,15 +257,30 @@ namespace Velvet
                 _sensor = sensor;
                 _root = root;
                 _onKeyDown = OnKeyDown;
+                _onNavigationMove = HoldBack;
+                _onNavigationSubmit = HoldBack;
             }
 
             internal void Attach(DndSensorSession session)
             {
                 _session = session;
                 _root.RegisterCallback(_onKeyDown, TrickleDown.TrickleDown);
+                _root.RegisterCallback(_onNavigationMove, TrickleDown.TrickleDown);
+                _root.RegisterCallback(_onNavigationSubmit, TrickleDown.TrickleDown);
             }
 
-            internal void Detach() => _root.UnregisterCallback(_onKeyDown, TrickleDown.TrickleDown);
+            internal void Detach()
+            {
+                _root.UnregisterCallback(_onKeyDown, TrickleDown.TrickleDown);
+                _root.UnregisterCallback(_onNavigationMove, TrickleDown.TrickleDown);
+                _root.UnregisterCallback(_onNavigationSubmit, TrickleDown.TrickleDown);
+            }
+
+            private void HoldBack(EventBase evt)
+            {
+                _root.panel?.focusController?.IgnoreEvent(evt);
+                evt.StopPropagation();
+            }
 
             private void OnKeyDown(KeyDownEvent evt)
             {

@@ -466,10 +466,13 @@ namespace Velvet
                 RegisterActiveObservers();
                 EstablishFocusAnchor();
             }
+            _sortable = DndSortableSession.TryBegin(this);
             ApplyActiveStyling();
             _delta = ApplyModifiers(_scope.Settings.Modifiers, Vector2.zero);
-            WriteSourceTranslate();
-            _sortable = DndSortableSession.TryBegin(this);
+            if (_delta != Vector2.zero)
+            {
+                WriteSourceTranslate();
+            }
             RefreshOverlays();
             StartAutoScroll();
 
@@ -725,11 +728,14 @@ namespace Velvet
         // isolated: subtree containment alone would leak an inner scope's droppables into an
         // outer scope's drag, handing the outer callbacks drop ids they never registered. A droppable on
         // another panel of the tree is a candidate where DndPanelSpace maps its rect into the source's panel.
+        // The source's own droppable is one only for a V.Sortable item, whose drag over its own slot is over
+        // itself, as dnd-kit's sortable item is.
         private bool IsCollisionCandidate(VisualElement element, DndDroppableBinding binding)
             => !binding.Settings.Disabled
                && DndPanelSpace.CanMap(element.panel, _source.panel, _ctx)
                && ReferenceEquals(FindEnclosingScope(element, _ctx, out _), _scopeElement)
-               && binding.Settings.Id != _draggable.Settings.Id;
+               && (binding.Settings.Id != _draggable.Settings.Id
+                   || (_sortable != null && ReferenceEquals(element, _source)));
 
         private void OnDragMove(PointerMoveEvent evt)
         {
