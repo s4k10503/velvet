@@ -502,36 +502,20 @@ namespace Velvet
                 }
             }
             var declaringRoot = placeholder.panel.visualTree;
-            if (ResolveEscapeTarget(placeholder, declaringRoot, direction, ctx) == null)
+            var target = ResolveEscapeTarget(placeholder, declaringRoot, direction, ctx);
+            if (target == null)
             {
                 return false;
             }
-            // This panel's own move is suppressed NOW, and ITS focused element is blurred synchronously
-            // (its own controller, mid-its-own-dispatch — safe); the cross-panel Focus is deferred to the
-            // TARGET panel's next scheduler tick. A synchronous Focus() into another panel from inside this
-            // panel's dispatch does not stick (verified empirically), and the blur must come first: two
-            // panels holding a focused element simultaneously gets reconciled against the still-focused
-            // source panel, unfocusing the target again. The placeholder-entry direction needs no such hop:
-            // it runs inside a FOCUS event, whose nested switches ride the engine's pending-focus gate.
-            // The hop is scheduled on the DECLARING PANEL'S ROOT (stable, never pooled), and the landing is
-            // RE-RESOLVED at fire time from the placeholder's then-current ring position — a landing
-            // captured now could be unmounted and pool-recycled into an unrelated same-panel role within
-            // the one-tick window, which no identity guard on the captured reference can detect.
+            // The source element is blurred before the target takes focus: the runtime event system re-reads
+            // which panel holds focus once this dispatch returns, and a source panel still holding an element
+            // takes focus back from the target. FocusChainedPortalTests sends the move through that event
+            // system to hold this. The placeholder-entry direction needs no blur: it runs inside a FOCUS event,
+            // whose nested switches ride the engine's pending-focus gate.
             panel.focusController.IgnoreEvent(evt);
             evt.StopPropagation();
             focused.Blur();
-            declaringRoot.schedule.Execute(() =>
-            {
-                if (placeholder.panel == null || placeholder.panel.visualTree != declaringRoot)
-                {
-                    return;
-                }
-                var target = ResolveEscapeTarget(placeholder, declaringRoot, direction, ctx);
-                if (target != null)
-                {
-                    ResolveScopeEntryTarget(target, ctx).Focus();
-                }
-            });
+            ResolveScopeEntryTarget(target, ctx).Focus();
             return true;
         }
 

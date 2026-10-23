@@ -1,4 +1,6 @@
 using System.Collections;
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -85,6 +87,27 @@ namespace Velvet.Tests
             target.SendEvent(move);
         }
 
+        // Sends a navigation move the way UI Toolkit's runtime event system sends one for a key: inside a
+        // focus-based sequence, to the element its focused panel holds, after which it reads again which panel
+        // holds focus.
+        private static void SendMoveThroughTheEventSystem(NavigationMoveEvent.Direction direction)
+        {
+            const BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
+            var utility = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.UIElementsRuntimeUtility", true);
+            var system = utility.GetProperty("defaultEventSystem", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null)
+                ?? throw new System.MissingMemberException(utility.FullName, "defaultEventSystem");
+            var type = system.GetType();
+            var sequence = type.GetMethod("FocusBasedEventSequence", instance)?.Invoke(system, null) as System.IDisposable
+                ?? throw new System.MissingMethodException(type.FullName, "FocusBasedEventSequence");
+            using (sequence)
+            {
+                var send = type.GetMethods(instance).SingleOrDefault(m => m.Name == "SendFocusBasedEvent" && m.IsGenericMethodDefinition)
+                    ?? throw new System.MissingMethodException(type.FullName, "SendFocusBasedEvent");
+                System.Func<NavigationMoveEvent.Direction, EventBase> factory = d => NavigationMoveEvent.GetPooled(d);
+                send.MakeGenericMethod(typeof(NavigationMoveEvent.Direction)).Invoke(system, new object[] { factory, direction });
+            }
+        }
+
         [UnityTest]
         public IEnumerator Given_AChainedLayerPortal_When_TabDispatchesFromTheHostRingsLastFocusable_Then_FocusLandsOnTheDeclaringPanelElementAfterThePlaceholder()
         {
@@ -97,8 +120,7 @@ namespace Velvet.Tests
             Assume.That(p2.panel.focusController.focusedElement, Is.EqualTo(p2),
                 "Precondition: the host ring's last focusable holds focus");
 
-            // Act — the escape's cross-panel Focus lands on the target panel's next scheduler tick (see
-            // FiberFocusNavigator's own note on why it cannot be synchronous), so wait a few frames.
+            // Act
             SendMove(p2, NavigationMoveEvent.Direction.Next);
             yield return null;
             yield return null;
@@ -108,6 +130,30 @@ namespace Velvet.Tests
             // focusable there), instead of the host wrapping internally to p1.
             var main1 = Main("main1");
             Assert.That(main1.panel.focusController.focusedElement, Is.EqualTo(main1));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AChainedLayerPortal_When_TheEventSystemSendsTabFromTheHostRingsLastFocusable_Then_TheDeclaringPanelHoldsFocusFromTheDispatchOn()
+        {
+            // Arrange
+            s_focusOrder = PanelFocusOrder.Chained;
+            yield return Mount();
+            var p2 = HostElement("p2");
+            p2.Focus();
+            var held = p2.panel.focusController.focusedElement == p2;
+            var main1 = Main("main1");
+
+            // Act
+            SendMoveThroughTheEventSystem(NavigationMoveEvent.Direction.Next);
+            var landed = main1.panel.focusController.focusedElement;
+            yield return null;
+            yield return null;
+
+            // Assert — on the declaring panel once the dispatch returns, and still there two frames on, with the
+            // host panel holding nothing.
+            Assert.That(
+                (held, landed, main1.panel.focusController.focusedElement, p2.panel.focusController.focusedElement),
+                Is.EqualTo((true, (Focusable)main1, (Focusable)main1, (Focusable)null)));
         }
 
         [UnityTest]
