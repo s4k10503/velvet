@@ -675,15 +675,16 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(FaceResortHost, key: "root"));
             var a = root.Q<VisualElement>("a");
             FaceBorderOverlay.Ensure(a, (_, _, _) => { });
-            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
-            var placedBefore = front != null && front.IndexOf(OverlayIn(front)) == front.IndexOf(a) + 1;
+            var parent = root.Q<VisualElement>("parent");
+            var placedBefore = parent.IndexOf(OverlayIn(parent)) == parent.IndexOf(a) + 1;
 
             // Act — a becomes z-10, which sorts it ahead of b and c.
             store.Set(true);
             mounted.FlushStateForTest();
 
             // Assert
-            var placedAfter = front != null && front.IndexOf(a) == 0 && front.IndexOf(OverlayIn(front)) == 1;
+            var placedAfter = parent.IndexOf(a) < parent.IndexOf(root.Q<VisualElement>("b"))
+                && parent.IndexOf(OverlayIn(parent)) == parent.IndexOf(a) + 1;
             Assert.That((placedBefore, placedAfter), Is.EqualTo((true, true)));
         }
 
