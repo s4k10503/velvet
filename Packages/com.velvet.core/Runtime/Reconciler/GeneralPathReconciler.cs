@@ -623,9 +623,10 @@ namespace Velvet
                 OldLen = oldNodes.Length,
                 LogicalNewLen = newElements.Count,
             };
-            _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
+            var reordered = _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
 
             CommitComponentOrder(commit.Placements);
+            if (reordered) _ctx.ComponentRegistry.CommitChildOrderToRows(parent, newElements, commit.Placements);
             foreach (var (fiber, firstRow, rows) in commit.Placements)
             {
                 fiber.MountSlotStart = slotStart + firstRow;

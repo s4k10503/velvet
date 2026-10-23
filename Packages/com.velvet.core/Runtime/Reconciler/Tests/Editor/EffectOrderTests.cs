@@ -573,7 +573,7 @@ namespace Velvet.Tests
     /// effects immediately after its own render, so an earlier sibling's layout effect fired before a later
     /// sibling had even rendered. Across the drain, every layout-effect cleanup runs before any setup, each a
     /// child before its parent, and components in tree order whatever order their updates were enqueued in,
-    /// siblings and cousins alike. The passive effects of the drain run in tree order too, whether a component was
+    /// siblings and cousins alike, and in the order a keyed reorder of the elements holding them left. The passive effects of the drain run in tree order too, whether a component was
     /// flushed on its own or rendered by its parent's pass.
     /// </summary>
     [TestFixture]
@@ -726,6 +726,34 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(", ", s_log), Is.EqualTo("first-child:setup, second-child:setup"));
+        }
+
+        [Test]
+        public void Given_KeyedContainersHoldingComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheirLayoutSetupsRunInTheNewTreeOrder()
+        {
+            // Arrange — the reorder moves the containers, so the components keep their fibers and states
+            using var mounted = V.Mount(_root, V.Component(ReorderingContainersHost, key: "host"));
+            s_setters["host"].Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_log.Clear();
+            s_setters["first"].Invoke(1);
+            s_setters["second"].Invoke(1);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("second:setup, first:setup"));
+        }
+
+        [Component]
+        private static VNode ReorderingContainersHost()
+        {
+            var (flipped, setFlipped) = Hooks.UseState(0);
+            s_setters["host"] = setFlipped;
+            var first = V.Div(key: "first", children: new VNode[] { V.Component(OwnStateSibling, "first", key: "first") });
+            var second = V.Div(key: "second", children: new VNode[] { V.Component(OwnStateSibling, "second", key: "second") });
+            return V.Div(children: flipped == 0 ? new VNode[] { first, second } : new VNode[] { second, first });
         }
 
         [Test]

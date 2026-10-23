@@ -11,3 +11,6 @@
   commit, or a `UseSyncExternalStore` whose `getSnapshot` builds a new value on every read — stop after 50 nested
   passes by throwing an `InvalidOperationException` reading "Maximum update depth exceeded" out of the drain, as
   React throws its error. The runaway update is still dropped. The drain used to log that error and return.
+- After a keyed reorder moves elements holding components, a commit takes those components in the new tree order,
+  as React's child list follows the move: their layout effects, refs and passive effects run in that order. They
+  ran in the order the components were first created.

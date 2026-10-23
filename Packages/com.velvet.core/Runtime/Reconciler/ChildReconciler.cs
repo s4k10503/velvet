@@ -1269,7 +1269,10 @@ namespace Velvet
                     OldLen = oldNodes.Length,
                     LogicalNewLen = newNodes.Length,
                 };
-                _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
+                if (_placement.ComputeAnchorsAndReorder(parent, newElements, in range) && parent != null)
+                {
+                    _ctx.ComponentRegistry.CommitChildOrderToRows(parent, newElements, placements: null);
+                }
             }
             finally
             {
@@ -1624,7 +1627,10 @@ namespace Velvet
             if (AbortIfCanceled(state)) return true;
 
             var regionStart = state.SlotStart + state.LinearEnd;
-            _placement.ReorderToNewElementOrder(state.Parent, state.NewElements!, state.LisIndices!, regionStart);
+            if (_placement.ReorderToNewElementOrder(state.Parent, state.NewElements!, state.LisIndices!, regionStart))
+            {
+                _ctx.ComponentRegistry.CommitChildOrderToRows(state.Parent!, state.NewElements!, placements: null);
+            }
 
             state.Phase = KeyedReconcilePhase.Done;
             return true;

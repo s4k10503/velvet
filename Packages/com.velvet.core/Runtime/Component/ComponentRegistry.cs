@@ -532,6 +532,81 @@ namespace Velvet
             CollectWrapperFibersUnder(roots, ref into);
         }
 
+        // Once a reconcile has placed a container's rows out of the order the components in them were created in
+        // (ChildElementPlacement.ReorderToNewElementOrder), the components in those rows and the ones the walk placed
+        // among them take the rows' order in their parents' child lists, as React's child list follows a keyed move.
+        // FiberEffects orders a commit by those lists. A component outside the rows keeps its place, and two in one
+        // row keep their order.
+        internal void CommitChildOrderToRows(
+            VisualElement container, List<(VisualElement? element, bool isExisting)> rows,
+            List<(ComponentFiber Fiber, int FirstRow, int Rows)>? placements)
+        {
+            var rowOf = new Dictionary<VisualElement, int>();
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (rows[i].element != null) rowOf[rows[i].element!] = i;
+            }
+            var byParent = new Dictionary<ComponentFiber, List<(ComponentFiber Fiber, int Row, int Rank)>>();
+            if (placements != null)
+            {
+                // Ahead of the row at its first row, which it emitted before that row's leaf.
+                foreach (var (fiber, firstRow, _) in placements) AddToRowOrder(byParent, fiber, firstRow, 0);
+            }
+            foreach (var fiber in _inlineFiberToKey.Keys)
+            {
+                AddToRowOrder(byParent, fiber, RowHolding(fiber.MountPoint, container, rowOf), 1);
+            }
+            foreach (var (fiber, info) in _wrapperFiberInfo)
+            {
+                AddToRowOrder(byParent, fiber, RowHolding(info.wrapper, container, rowOf), 1);
+            }
+            foreach (var (parent, members) in byParent)
+            {
+                if (members.Count < 2) continue;
+                var siblings = new List<ComponentFiber>();
+                var chainIndex = new Dictionary<ComponentFiber, int>();
+                for (var sibling = parent.Child; sibling != null; sibling = sibling.Sibling)
+                {
+                    chainIndex[sibling] = siblings.Count;
+                    siblings.Add(sibling);
+                }
+                members.Sort((a, b) => a.Row != b.Row ? a.Row.CompareTo(b.Row)
+                    : a.Rank != b.Rank ? a.Rank.CompareTo(b.Rank)
+                    : chainIndex[a.Fiber].CompareTo(chainIndex[b.Fiber]));
+                var included = new HashSet<ComponentFiber>();
+                foreach (var member in members) included.Add(member.Fiber);
+                var next = 0;
+                for (var i = 0; i < siblings.Count; i++)
+                {
+                    if (included.Contains(siblings[i])) siblings[i] = members[next++].Fiber;
+                }
+                parent.CommitChildOrder(siblings);
+            }
+        }
+
+        private static void AddToRowOrder(
+            Dictionary<ComponentFiber, List<(ComponentFiber Fiber, int Row, int Rank)>> byParent,
+            ComponentFiber fiber, int row, int rank)
+        {
+            if (row < 0 || fiber.Parent == null) return;
+            if (!byParent.TryGetValue(fiber.Parent, out var members))
+            {
+                members = new List<(ComponentFiber Fiber, int Row, int Rank)>();
+                byParent[fiber.Parent] = members;
+            }
+            members.Add((fiber, row, rank));
+        }
+
+        // The row of the container that holds anchor, or -1 for an anchor that is the container or outside it.
+        private static int RowHolding(VisualElement? anchor, VisualElement container, Dictionary<VisualElement, int> rowOf)
+        {
+            for (var ve = anchor; ve != null && ve != container; ve = ve.parent)
+            {
+                if (rowOf.TryGetValue(ve, out var row)) return row;
+            }
+            return -1;
+        }
+
         // MUTANT_SURVIVES(equivalent): a caller reading true over an empty table collects nothing from it.
         internal bool HasWrapperMountedFibers => _wrapperFiberInfo.Count > 0;
 
