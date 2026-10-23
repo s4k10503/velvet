@@ -277,6 +277,7 @@ namespace Velvet.Tests
             Assert.That(parsed, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [TestCase("hover:text-sm/6")]
         [TestCase("hover:text-[14px]/6")]
         public void Given_AHoverGatedSlashTextSize_When_TheElementIsHoveredAndLeft_Then_TheLineHeightAppliesOnlyWhileHovered(
@@ -305,6 +306,7 @@ namespace Velvet.Tests
                 Is.EqualTo(("hi", "<line-height=24px>hi</line-height>", "hi")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AHoverGatedBareTextSize_When_TheElementIsHoveredAndLeft_Then_ThePairAppliesOnlyWhileHovered()
         {
@@ -331,6 +333,7 @@ namespace Velvet.Tests
                 Is.EqualTo(("hi", "<line-height=1.5em>hi</line-height>", "hi")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ALabelWithATextSize_When_ItsSizeClassIsPatchedToAnother_Then_TheTextCarriesTheNewPair()
         {
@@ -347,7 +350,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("<line-height=1em>hi</line-height>"));
         }
 
-        // GREEN_ON_BASE(characterization): the base reads no size class, so the text is plain before and after.
+        // GREEN_ON_BASE(characterization): the base reads no size class, so the shown string is plain before and after.
         [Test]
         public void Given_ALabelWithATextSize_When_ItsSizeClassIsPatchedAway_Then_TheTextIsPlainAgain()
         {
@@ -364,6 +367,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("hi"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ATextSizeOnAContainer_When_AClasslessLabelIsUnderIt_Then_TheLabelCarriesThePair()
         {
@@ -380,6 +384,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ALabelWithATextSize_When_Mounted_Then_ItsTextCarriesThePairedLineHeight()
         {
@@ -394,6 +399,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ALabelWithASlashTextSize_When_Mounted_Then_ItsTextCarriesTheSuffixLineHeight()
         {
@@ -422,6 +428,7 @@ namespace Velvet.Tests
             Assert.That(scope.Root.Q<Label>("label").style.fontSize.value.value, Is.EqualTo(14f));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ATextSizeUnderALeadingAncestor_When_Mounted_Then_TheSizesPairReplacesTheAncestorsLeading()
         {

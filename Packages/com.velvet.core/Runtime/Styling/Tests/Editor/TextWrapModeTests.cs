@@ -315,7 +315,7 @@ namespace Velvet.Tests
                 Is.EqualTo($"{(StyleKeyword.Null, WhiteSpace.Normal)} {(StyleKeyword.Undefined, WhiteSpace.Pre)} {StyleKeyword.Null}"));
         }
 
-        // GREEN_ON_BASE(characterization): the base already re-resolves a variant whitespace-* payload.
+        // GREEN_ON_BASE(characterization): the base already re-resolves a variant whitespace-* payload, which the probe reads in the shown string.
         [Test]
         public void Given_ADarkWhitespacePreUnderPreLine_When_TheThemeTurnsDark_Then_ThePreLineStops()
         {
@@ -332,6 +332,7 @@ namespace Velvet.Tests
             Assert.That((light, RenderedTextProbe.Of(label)), Is.EqualTo(("a b", "a   b")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [TestCase("!whitespace-pre-line")]
         [TestCase("whitespace-pre-line!")]
         public void Given_AnImportantPreLine_When_Reconciled_Then_TheSpacesCollapse(string cls)

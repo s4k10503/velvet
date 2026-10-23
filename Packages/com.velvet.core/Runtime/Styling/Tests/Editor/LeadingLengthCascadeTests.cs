@@ -173,6 +173,7 @@ namespace Velvet.Tests
     {
         protected override Rect WindowSize => new Rect(0, 0, 600, 600);
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_NoBundledSheet_When_APercentLeadingIsLaidOut_Then_TheLabelGetsTheElementsLength()
         {

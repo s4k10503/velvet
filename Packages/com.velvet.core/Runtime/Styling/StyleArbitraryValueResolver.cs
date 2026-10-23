@@ -359,9 +359,9 @@ namespace Velvet
                 return TryParseRelativeLength(property, valueSpan, negate, out result);
             }
 
-            // A font size or a letter spacing in percent is a multiple of a font size, which an inline write does
-            // not convert (RelativeLengthPanelTests pins both), so it is measured as an em is.
-            if (unit == LengthUnit.Percent && property is ArbitraryProperty.FontSize or ArbitraryProperty.LetterSpacing)
+            // A font size or a letter spacing in percent is a multiple of a font size, so it is measured as an em
+            // is (RelativeLengthPanelTests holds the measured result) rather than written as a percent length.
+            if (IsPercentOfFont(property, unit))
             {
                 return TryParseRelativeLength(property, valueSpan, negate, out result);
             }
@@ -405,6 +405,10 @@ namespace Velvet
             }
             return true;
         }
+
+        private static bool IsPercentOfFont(ArbitraryProperty property, LengthUnit unit)
+            => unit == LengthUnit.Percent
+                && (property == ArbitraryProperty.FontSize || property == ArbitraryProperty.LetterSpacing);
 
         private static bool IsBorderWidth(ArbitraryProperty property)
             => property is ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth

@@ -31,6 +31,7 @@ namespace Velvet.Tests
             Assert.That((label.text, RenderedTextProbe.Of(label)), Is.EqualTo(("hello", "HELLO")));
         }
 
+        // GREEN_ON_BASE(characterization): the engine behaviour this pins involves no Velvet code, so the base shows it too.
         [Test]
         public void Given_AShownStringSetOnALabel_When_ItsTextChanges_Then_TheEngineShowsTheNewText()
         {
@@ -44,11 +45,12 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("b"));
         }
 
+        // GREEN_ON_BASE(characterization): an uppercase label shows upper case after a text change, as the base does.
         [Test]
         public void Given_AnUppercaseLabelProp_When_ItsTextChangesToAnotherCasing_Then_TheShownStringIsStillUppercased()
         {
-            // The two texts shown the same, so only the prop write that resets the engine's string tells the
-            // resolver the string it handed over is gone.
+            // Both texts show as ONE, so only the text the shown string was made from tells the resolver that
+            // the engine dropped it.
             _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderCasedLabel));
             s_setText.Invoke("One");
 

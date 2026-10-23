@@ -136,6 +136,7 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ADarkGatedUnderline_When_TheThemeTurnsDark_Then_TheTextIsWrappedInTheUnderlineTag()
         {
@@ -152,6 +153,7 @@ namespace Velvet.Tests
             Assert.That((textWhileLight, RenderedTextProbe.Of(card)), Is.EqualTo(("Docs", "<u>Docs</u>")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ADarkGatedUnderlineApplied_When_TheThemeTurnsLight_Then_TheTagIsRemoved()
         {
@@ -168,6 +170,7 @@ namespace Velvet.Tests
             Assert.That((textWhileDark, RenderedTextProbe.Of(card)), Is.EqualTo(("<u>Docs</u>", "Docs")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ALitDarkGatedUppercase_When_AnUnrelatedClassPatches_Then_TheTransformSurvives()
         {
@@ -188,6 +191,7 @@ namespace Velvet.Tests
             Assert.That((textBeforePatch, RenderedTextProbe.Of(card)), Is.EqualTo(("DOCS", "DOCS")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AHasClassGatedUppercase_When_TheElementMounts_Then_TheDescendantTextIsTransformed()
         {
@@ -235,7 +239,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the control label carries no size class, so it reads as it did on the base.
+        // GREEN_ON_BASE(characterization): the control label carries no size class, so its shown string reads as its text did on the base.
         [Test]
         public void Given_AChildCombinatorTextEffectOverATextChild_When_Mounted_Then_TheTransformReachesIt()
         {
@@ -300,6 +304,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AChildCombinatorPayloadOverABracketLeading_When_ItLands_Then_TheChildKeepsItsTag()
         {
@@ -324,6 +329,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "<line-height=24px>Docs</line-height>")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AHoverChannelUppercase_When_ThePointerLeaves_Then_TheTextComesBack()
         {
@@ -362,6 +368,7 @@ namespace Velvet.Tests
         private const float MdBreakpoint = 768f;
         private const float WidePanel = 1000f;
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AResponsiveUnderline_When_TheRootIsWiderThanMd_Then_TheTextIsWrappedInTheUnderlineTag()
         {

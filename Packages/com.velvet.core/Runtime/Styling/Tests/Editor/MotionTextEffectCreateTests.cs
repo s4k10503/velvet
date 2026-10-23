@@ -22,6 +22,7 @@ namespace Velvet.Tests
         [SetUp]
         public void SetUp() => _root = new VisualElement();
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AMotionCarryingUppercase_When_ItMountsWithoutEverPatching_Then_ItsTextLeafIsUppercased()
         {
@@ -36,6 +37,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(_root.Q<Label>()), Is.EqualTo("SHOUT"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AMotionHostingALabelWithItsOwnText_When_ItMountsWithoutEverPatching_Then_ThatTextIsUppercased()
         {

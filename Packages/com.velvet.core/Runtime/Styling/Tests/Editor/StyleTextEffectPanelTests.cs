@@ -63,6 +63,7 @@ namespace Velvet.Tests
             return _window.rootVisualElement.Q<Label>();
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_UppercaseOnParent_When_Mounted_Then_ChildTextLeafIsUppercased()
         {
@@ -72,6 +73,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("HELLO"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_LowercaseOnLabelItself_When_Mounted_Then_OwnTextIsLowercased()
         {
@@ -80,6 +82,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("hello"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_UnderlineOnParent_When_Mounted_Then_ChildTextWrappedInUTag()
         {
@@ -88,6 +91,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<u>hi</u>"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_NormalCaseUnderUppercase_When_Mounted_Then_InnerResetsToRawText()
         {
@@ -98,6 +102,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("hi"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_UppercaseParent_When_TextChanges_Then_NewTextIsReTransformed()
         {
@@ -111,6 +116,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("TWO"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_UppercaseAncestor_When_InnerComponentReRendersInIsolation_Then_LeafStaysUppercased()
         {
@@ -126,6 +132,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("TWO"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AncestorUppercaseClassRemoved_When_DescendantTextUnchanged_Then_DescendantRevertsToRaw()
         {
@@ -143,6 +150,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("hi"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_WhitespacePreLineOnLabelItself_When_Mounted_Then_OwnTextIsCollapsed()
         {
@@ -151,6 +159,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("a b"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_WhitespacePreLineOnParent_When_Mounted_Then_ChildTextLeafIsCollapsed()
         {
@@ -161,6 +170,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("a b"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_WhitespacePreLineAncestorAndExplicitNowrapDescendant_When_Mounted_Then_DescendantTextNotCollapsedAndNoInlineWrite()
         {
@@ -177,6 +187,7 @@ namespace Velvet.Tests
             Assert.That((RenderedTextProbe.Of(explicitLabel), explicitLabel.style.whiteSpace.keyword), Is.EqualTo(("a   b", StyleKeyword.Null)));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_WhitespacePreLineAncestorAndPlainSiblingDescendant_When_Mounted_Then_SiblingTextCollapsed()
         {
@@ -263,6 +274,7 @@ namespace Velvet.Tests
             Assert.That(_window.rootVisualElement.Q<Label>().style.whiteSpace.value, Is.EqualTo(WhiteSpace.Pre));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_WhitespacePreLineClassRemoved_When_Patched_Then_TextRestoredToRaw()
         {
@@ -315,6 +327,7 @@ namespace Velvet.Tests
             Assert.That(label.style.whiteSpace.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AncestorPreLineClassRemoved_When_DescendantTextUnchanged_Then_DescendantRevertsToRaw()
         {
@@ -332,6 +345,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a   b"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ThreeLevelCascade_When_Mounted_Then_LeafIsCollapsedAndUppercased()
         {
@@ -345,6 +359,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("A B C"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ThreeLevelCascadeParentUppercaseRemoved_When_Patched_Then_LeafStaysCollapsedButNotUppercased()
         {
@@ -362,6 +377,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a b c"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_LabelPooledWithPreLineState_When_RentedAgainWithoutTheClass_Then_NewLabelHasNoInlineWhiteSpace()
         {
@@ -400,6 +416,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("hi"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_LeadingRelaxedOnParent_When_Mounted_Then_ChildTextLeafGetsTheLineHeightTag()
         {
@@ -411,6 +428,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.625em>hi</line-height>"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_NearerAncestorLeadingOverridesFartherAncestorLeading_When_Mounted_Then_ChildLeafUsesNearerValue()
         {
@@ -423,6 +441,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.25em>hi</line-height>"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_LeafOwnLeadingUnderAncestorLeading_When_Mounted_Then_LeafOwnValueWins()
         {
@@ -437,6 +456,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1em>hi</line-height>"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AncestorLeadingClassRemoved_When_DescendantTextUnchanged_Then_DescendantRevertsToRaw()
         {
@@ -455,6 +475,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("hi"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_LeadingParent_When_TextChanges_Then_NewTextCarriesTheTag()
         {
@@ -470,6 +491,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.625em>there</line-height>"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_LabelPooledWithLeadingState_When_RentedAgainWithoutTheClass_Then_NewLabelHasNoLineHeightTag()
         {

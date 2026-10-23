@@ -234,8 +234,8 @@ namespace Velvet
             }
         }
 
-        // The tags carry decoration and line height, and the engine reads tags only with rich text on, so a
-        // leaf with it off shows neither rather than the markup as literal text.
+        // Decoration and line height are tags, so a leaf with rich text off is shown without them rather than
+        // with the markup as literal text.
         private static string Compose(string raw, in ResolvedEffect effect, bool richText, TextBreakRequest? breaks)
         {
             return StyleTextEffectClass.Apply(
@@ -311,9 +311,8 @@ namespace Velvet
         // line-height. A null axis on every ancestor means no effect on that axis. An explicit None on
         // Transform/Whitespace (normal-case / an explicit whitespace-* class) also wins and stops the walk for
         // THAT axis — it is a real resolved value, not "no token" — so it blocks a farther ancestor's non-None
-        // value from reaching this element. Decoration is the exception, as in CSS: a line an ancestor draws
-        // runs through every text below it and no-underline there cannot take it away, so the walk passes a
-        // None and takes the nearest line. Leading's walk stops on the nearest leading-* token, leading-[normal]
+        // value from reaching this element. Decoration is the exception, as in CSS: no-underline cannot take
+        // away a line an ancestor draws, so the walk passes a None and takes the nearest line. Leading's walk stops on the nearest leading-* token, leading-[normal]
         // included (see LeadingUnit), or the tree's root.
         // Feeds BOTH the string rewrite and the inline white-space write in ApplyToElement — one resolve,
         // N writes off the same values, so they can never disagree.

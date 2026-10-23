@@ -106,8 +106,8 @@ With the `Bold` entry registered, `font-bold` renders a **true** bold asset rath
 
 ### What `DefaultFamily` reaches
 
-`DefaultFamily` supplies the family to an element that has a weight or italic class (`font-normal`,
-`font-bold`, `italic`, …), no `font-<name>`, and no ancestor naming a family (below), and Velvet writes the resolved asset inline on that
+`DefaultFamily` supplies the family to an element that has a weight, italic or width class (`font-normal`,
+`font-bold`, `italic`, `font-stretch-condensed`, …), no `font-<name>`, and no ancestor naming a family (below), and Velvet writes the resolved asset inline on that
 element. Its descendants inherit that asset like any other. **A label with no font class, and no
 ancestor carrying one, gets no font from Velvet**: it keeps whatever font its stylesheets, ancestors
 and the panel's text settings give it.
@@ -128,7 +128,7 @@ under this root, so the target, layer root or world-space panel root needs the c
 `DefaultFamilyScopePanelTests` pins the scope and both kinds of root on a panel with no theme
 stylesheet.
 
-A weight or italic class on an element with no `font-<name>` of its own keeps the family it inherits,
+A weight, italic or width class on an element with no `font-<name>` of its own keeps the family it inherits,
 as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.
 The family is the one named by the nearest ancestor carrying a `font-<name>` class that Velvet rendered;
 an ancestor that has only a weight class names none. `DefaultFamily` applies when no such ancestor
@@ -179,10 +179,10 @@ the `<u>` / `<s>` rich-text tags UITK renders (`enableRichText` is on by default
 the app gave, as the text content does in CSS: Velvet hands the engine the string to show through
 `TextElement.experimental.SetRenderedText`, so `label.text` reads `"hello"` under `uppercase`. Both **inherit** like CSS — put the class on an ancestor and
 the descendant text leaves pick it up (`StyleTextEffectResolver` walks ancestors; a change of the ancestor's
-classes re-resolves the text under it). The tags are read only with rich text on, so a leaf with
-`enableRichText = false` is shown without the decoration and the line height (`leading-*`, below),
-where it would otherwise show the markup as literal text; the text-transform, the white-space and the line
-breaks still apply. The change of `enableRichText` itself is read at the leaf's next resolve, not when it is set.
+classes re-resolves the text under it). The decoration and the line height (`leading-*`, below) are
+rich-text tags, so a leaf with `enableRichText = false` is shown without them, where it would otherwise show
+the markup as literal text; the text-transform, the white-space and the line breaks still apply. A change of
+`enableRichText` is read at the leaf's next resolve, not when it is set.
 
 **`overline` is the one decoration value that cannot be a string rewrite:** UI Toolkit's rich text
 has no overline tag (only `<u>` / `<s>`), so `overline` **paints** a solid rule above the text via
@@ -230,8 +230,8 @@ collapse unapplied on that one element.
 
 **`leading-*` (line-height)** has no USS property either — UI Toolkit's style has no `line-height`, and
 `-unity-paragraph-spacing` only affects explicit `\n` breaks, not the per-line advance a real line-height
-changes — so it is realised through UI Toolkit's rich-text `<line-height=X>` tag instead, which is read only
-with `enableRichText` on (a leaf with it off keeps its font's line advance). Both text engines (the standard
+changes — so it is realised through UI Toolkit's rich-text `<line-height=X>` tag instead, and a leaf with
+`enableRichText = false` keeps its font's line advance. Both text engines (the standard
 generator and the Advanced Text Generator) implement the tag natively, feeding it into the
 line-advance math at every line-break site; a following `</line-height>` restores the natural
 metric.

@@ -19,8 +19,8 @@ namespace Velvet
 
     // The text-decoration an element requests. None is no-underline, which ends every line the element's own
     // classes ask for, Overline included, as CSS's text-decoration-line: none does; it takes no line away
-    // from an ancestor, which CSS draws through the element's text whatever the element sets
-    // (StyleTextEffectResolver.ResolveEffective). Unset is a null TextDecorationKind? in TextEffect. UI Toolkit rich text has no overline tag (only <u>/<s>), so unlike
+    // from an ancestor (StyleTextEffectResolver.ResolveEffective). Unset is a null TextDecorationKind? in
+    // TextEffect. UI Toolkit rich text has no overline tag (only <u>/<s>), so unlike
     // Underline/LineThrough, Overline is never realised as a string rewrite — StyleTextEffectClass.Apply
     // passes the string through unchanged for it, and the leaf paints a rule instead (see
     // StyleTextEffectResolver.ApplyToElement / TextOverlineBinding). It still shares this single axis with

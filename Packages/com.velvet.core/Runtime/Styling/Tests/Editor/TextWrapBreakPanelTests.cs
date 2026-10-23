@@ -170,6 +170,7 @@ namespace Velvet.Tests
 
         private static string LastLine(string text) => text.Substring(text.LastIndexOf('\n') + 1);
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AShortLastWordAloneOnItsLine_When_Balanced_Then_TheDisplayedTextBreaksBeforeIt()
         {
@@ -193,6 +194,7 @@ namespace Velvet.Tests
             Assert.That((arranged, balanced.layout.width), Is.EqualTo((true, plain.layout.width)), measured);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AShortLastWordAloneOnItsLine_When_BalancedUnderAFullWidthClass_Then_TheDisplayedTextStillBreaks()
         {
@@ -214,6 +216,7 @@ namespace Velvet.Tests
             Assert.That((arranged, RawTextOf(balanced)), Is.EqualTo((true, Head + " e")), measured);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AShortLastWordAloneOnItsLine_When_TheClassIsOnTheContainer_Then_TheLeafBreaksItsLines()
         {
@@ -224,7 +227,7 @@ namespace Velvet.Tests
             Assert.That((arranged, RenderedTextProbe.Of(leaf).Contains('\n')), Is.EqualTo((true, true)), measured);
         }
 
-        // GREEN_ON_BASE(characterization): the base never writes a break into a displayed text.
+        // GREEN_ON_BASE(characterization): the base never writes a break into a displayed text, which the probe reads there.
         [Test]
         public void Given_BalanceOnTheContainerAndTextWrapOnTheLeaf_When_TheTextWraps_Then_TheLeafIsNotBroken()
         {
@@ -246,6 +249,7 @@ namespace Velvet.Tests
             Assert.That((arranged, balanced.layout.height), Is.EqualTo((true, plain.layout.height)), measured);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ABalancedLabel_When_ItsWrapperWidensToOneLine_Then_ItsBreaksGoAway()
         {
@@ -261,6 +265,7 @@ namespace Velvet.Tests
             Assert.That((arranged, broken, RenderedTextProbe.Of(balanced).Contains('\n')), Is.EqualTo((true, true, false)), measured);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ABalancedLabel_When_ItsTextBecomesOneWord_Then_ItsBreaksGoAway()
         {
@@ -276,6 +281,7 @@ namespace Velvet.Tests
             Assert.That((arranged, broken, RenderedTextProbe.Of(balanced)), Is.EqualTo((true, true, "aaaa")), measured);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AShortLastWordAloneOnItsLine_When_Pretty_Then_AWordJoinsItAtTheSameHeight()
         {
@@ -289,7 +295,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, true)), measured);
         }
 
-        // GREEN_ON_BASE(characterization): the base left this text unbroken too.
+        // GREEN_ON_BASE(characterization): the base left this text unbroken too, as the probe reads it there.
         [Test]
         public void Given_ALastWordWiderThanAThirdOfTheLine_When_Pretty_Then_TheTextIsLeftAlone()
         {
@@ -300,7 +306,7 @@ namespace Velvet.Tests
             Assert.That((arranged, RenderedTextProbe.Of(pretty).Contains('\n')), Is.EqualTo((true, false)), measured);
         }
 
-        // GREEN_ON_BASE(characterization): the base left this text unbroken too.
+        // GREEN_ON_BASE(characterization): the base left this text unbroken too, as the probe reads it there.
         [Test]
         public void Given_ALastLineHoldingTwoWords_When_Pretty_Then_TheTextIsLeftAlone()
         {
@@ -311,7 +317,7 @@ namespace Velvet.Tests
             Assert.That((arranged, RenderedTextProbe.Of(pretty).Contains('\n')), Is.EqualTo((true, false)), measured);
         }
 
-        // GREEN_ON_BASE(characterization): the base never broke a leaf against its own last width either; the case pins that the new breaking does not.
+        // GREEN_ON_BASE(characterization): the base never broke a leaf against its own last width either; the case pins, through the shown string, that the new breaking does not.
         [Test]
         public void Given_ABalancedLeafSizedByItsText_When_ItsTextGrows_Then_ItIsWiderThanItWasWithTheShortText()
         {
@@ -334,6 +340,7 @@ namespace Velvet.Tests
                 $"short {shortWidth} now {styled.layout.width} text '{RenderedTextProbe.Of(styled)}'");
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ABrokenLeafSizedByItsText_When_ItsParentWidensInSmallSteps_Then_ItsBreaksGoAway()
         {
@@ -376,6 +383,7 @@ namespace Velvet.Tests
             Assert.That((arranged, style), Is.EqualTo((true, (FontStyle?)FontStyle.Bold)), measured);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_TextWithRunsOfSpaces_When_Balanced_Then_ItsLinesAreAsManyAsTheCollapsedTextTakesInNormal()
         {
@@ -390,7 +398,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, false, true)), measured);
         }
 
-        // GREEN_ON_BASE(characterization): the base never rewrote the white space of a leaf with nothing to balance.
+        // GREEN_ON_BASE(characterization): the base never rewrote the white space of a leaf with nothing to balance, as the probe reads it there.
         [Test]
         public void Given_TextThatFitsOneLine_When_Balanced_Then_ItKeepsTheWhiteSpaceItWasWrittenWith()
         {
@@ -408,6 +416,7 @@ namespace Velvet.Tests
             Assert.That((RenderedTextProbe.Of(styled), styled.style.whiteSpace.value), Is.EqualTo(("aaaa  bbbb", WhiteSpace.Normal)));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ABalancedLeafUnderAMaxWidth_When_ItsTextWraps_Then_ItBreaksInsideTheCeilingAtTheSameHeight()
         {
@@ -420,6 +429,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, true)), measured);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ABalancedLeafBesideASiblingInARow_When_Balanced_Then_TheSiblingKeepsItsWidth()
         {
@@ -433,6 +443,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, SiblingWidthPx)), measured);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ABalancedLeafInAScrollView_When_ItsTextWraps_Then_ItBreaksAgainstTheInnerBox()
         {

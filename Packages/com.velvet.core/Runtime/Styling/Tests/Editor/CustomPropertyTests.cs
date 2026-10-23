@@ -250,6 +250,7 @@ namespace Velvet.Tests
             Assert.That(child.ClassListContains("w-[var(--w)]"), Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ALineHeightReadingAParentsDeclaration_When_Mounted_Then_TheLabelTakesThatLineHeight()
         {
@@ -316,6 +317,7 @@ namespace Velvet.Tests
             Assert.That((loaded, child.resolvedStyle.color), Is.EqualTo((true, new UnityEngine.Color(1f, 0f, 0f, 1f))));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AnUnresolvableLineHeight_When_AnAncestorSetsOne_Then_TheLabelInheritsIt()
         {

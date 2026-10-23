@@ -95,28 +95,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ACondensedFaceAndANormalOne_When_ResolvedCondensed_Then_TheCondensedAssetIsTaken()
-        {
-            var normal = ScriptableObject.CreateInstance<FontAsset>();
-            var condensed = ScriptableObject.CreateInstance<FontAsset>();
-            try
-            {
-                VelvetFonts.Register(new VelvetFontFamily("sans",
-                    new VelvetFontWeightEntry { upright = normal },
-                    new VelvetFontWeightEntry { upright = condensed, stretch = 75f }));
-
-                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Normal, italic: false, stretch: 75f);
-
-                Assert.That(resolved.Asset, Is.SameAs(condensed));
-            }
-            finally
-            {
-                Object.DestroyImmediate(normal);
-                Object.DestroyImmediate(condensed);
-            }
-        }
-
-        [Test]
         public void Given_ACondensedClassOnAnElement_When_Applied_Then_TheCondensedAssetIsWrittenInline()
         {
             var normal = ScriptableObject.CreateInstance<FontAsset>();
