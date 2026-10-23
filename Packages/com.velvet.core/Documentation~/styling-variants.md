@@ -368,68 +368,33 @@ declared radius, and a radius your code writes to `style` is scaled with the oth
 no longer needs the fit. A keyword written there (`initial`) is left alone. A change of class under
 `transition-all` animates between the fitted radii rather than the declared ones.
 
-**Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
-element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
-CSS clips neither a box-shadow nor a border that way, so a painted utility silently loses whatever falls
-outside that box. What matters is the resolved `overflow: hidden`, not the utility that set it: `truncate`
-sets it alongside `white-space` and `text-overflow`, so a truncating label reaches every loss below
-without `overflow-hidden` appearing anywhere in its className.
+**The wrapper-less paints under a hidden overflow.** UI Toolkit applies an element's own overflow clip to the
+element's own painted content, and cuts it at the **padding** box, while CSS clips neither a box-shadow nor a border
+that way. What matters is the resolved `overflow: hidden`, not the utility that set it: `truncate` sets it
+alongside `white-space` and `text-overflow`. A paint that lies outside the padding box is therefore painted on a
+sibling placed over the element and outside its clip (`FaceBorderOverlay`, `RingOverlay`), and the element's own
+paint keeps what lies inside it:
 
 | Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
-| `shadow-*` | unaffected: the outer layers are painted on a sibling over the element, outside its clip, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) is drawn inside the padding box |
-| `skew-*` (and a gradient on a skewed element) | unaffected where the skew is the element's transform. Where it keeps the painted layer (see above): the shear overhang past the box edge is cut; the rest of the face renders. Children are clipped to the upright box, not to the sheared face CSS clips them to |
-| `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
-| `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
+| `shadow-*` | the outer layers are painted on a sibling over the element, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) is drawn inside the padding box |
+| `skew-*` (and a gradient on a skewed element) | where the skew is the element's transform, the sheared face keeps its overhang. Where it keeps the painted layer (see above), the shear overhang past the box edge is cut and the rest of the face renders; children are clipped to the upright box, not to the sheared face CSS clips them to |
+| `border-dashed` / `border-dotted` | the outline lies in the border band, which the padding-box clip excludes, so it is painted on a sibling over the element |
+| `divide-dashed` / `divide-dotted` | the rule on a clipped child is painted on a sibling over that child |
 | `overline` | unaffected — the rule sits inside the content box |
 
-**`skew-*` and `shadow-*` keep a bordered element's border.** A `shadow-*`, and a `skew-*` on the painted layer, takes ownership of the element's face: it
-suppresses the native background and border and repaints both in its own generated content, which the
-padding-box clip would cut at the border. While the element clips, a `skew-*` paints its border, and the
-background beneath it, on a sibling placed over the element and outside its clip, and a `shadow-*` leaves a
-solid border and its background to UI Toolkit and paints a dashed or dotted one, and its outer layers, the same
-way, so the border and the shadow are drawn whole, as CSS draws them:
+A `shadow-*`, and a `skew-*` on the painted layer, takes ownership of the element's face: it suppresses the native
+background and border and repaints both in its own generated content, which the padding-box clip would cut at the
+border. While the element clips, a `skew-*` paints its border, and the background beneath it, on a sibling placed
+over the element and outside its clip, and a `shadow-*` leaves a solid border and its background to UI Toolkit and
+paints a dashed or dotted one, and its outer layers, the same way, so the border and the shadow are drawn whole, as
+CSS draws them:
 
 ```csharp
 // Border and the background beneath it intact.
-V.Div(className: "-skew-x-6 overflow-hidden bg-white border-2 border-black rounded-lg");
+V.Div(className: "-skew-x-6 rotate-0 overflow-hidden bg-white border-2 border-black rounded-lg");
 V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-dashed border-black rounded-lg");
 ```
-
-The nesting below keeps a skew's overhang, which the clip still cuts.
-
-Put the clip on a child instead of on the painted element:
-
-```csharp
-// The shadow on the outer element, the clip on an inner one.
-V.Div(className: "shadow-lg rounded-2xl", children: new VNode[]
-{
-    V.Div(className: "overflow-hidden rounded-2xl", children: new VNode[]
-    {
-        V.Label(text: "Clipped content"),
-    }),
-});
-```
-
-For `skew-*`, make the inner element `absolute inset-0`. The face keeps its overhang, and the content is
-clipped to the upright box. A clip on a parent the skewed element fills is no substitute: the overhang
-lies outside that parent's box, so its clip cuts it too, as it does in CSS.
-
-```csharp
-V.Div(className: "absolute inset-0 skew-x-[-24deg] bg-lime-400", children: new VNode[]
-{
-    V.Div(className: "absolute inset-0 overflow-hidden", children: new VNode[]
-    {
-        V.Label(text: "Clipped content"),
-    }),
-});
-```
-
-The ring's sibling hosting is not simply extended to the rest because a paint drawn in the element's own
-content receives the element's transform and opacity from the renderer, while a paint hosted outside the
-element has to be handed both every frame, the way the band is. A band was worth that cost because an
-outset one is wholly outside the padding box and a clip takes all of it; `ring-inset` sits over the box
-and would have survived, but one hosting has to serve both.
 
 **Class channels that are not variants.** `whileHoverClass`, `whileTapClass`, `whileFocusClass` and a
 draggable's `whileDraggingClass` are Framer Motion's gesture states, and apply their utilities as a payload

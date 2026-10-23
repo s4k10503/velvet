@@ -397,7 +397,7 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_ADashedBorderElement_When_ItsOwnOverflowIsHidden_Then_TheWholeOutlineIsLost()
+        public IEnumerator Given_ADashedBorderElement_When_ItsOwnOverflowIsHidden_Then_TheOutlineIsKept()
         {
             // Arrange
             const string border = BoxBase + " bg-[#000040] border-[10px] border-[#ff0000]";
@@ -405,26 +405,21 @@ namespace Velvet.Tests
             yield return MountBox("DashedOpen", dashed, clip: false);
             var openBand = Count(TopBorderBand, IsRed);
 
-            // Act — the same box clipped, then the same width and colour as a plain SOLID border, also clipped.
+            // Act — the same box clipped.
             yield return MountBox("DashedClipped", dashed, clip: true);
             var clippedControl = CountAll(IsGreen);
-            var clippedOutline = CountAll(IsRed);
-            yield return MountBox("SolidClipped", border, clip: true);
-            var clippedSolid = Count(TopBorderBand, IsRed);
+            var clippedBand = Count(TopBorderBand, IsRed);
 
-            // Assert — the dashed outline is drawn in the border band, which the padding-box clip excludes, so
-            // the element renders with NO border at all rather than a trimmed one. The solid term is what makes
-            // this a Velvet deviation rather than an engine-wide rule: UI Toolkit's own border property is not
-            // painted through generated content and survives the same clip, so one style of the same border
-            // renders and the other vanishes.
-            Assert.That((openBand > 0, clippedControl == 0, clippedOutline == 0, clippedSolid > 0),
-                Is.EqualTo((true, true, true, true)),
-                $"openBand={openBand} clippedControl={clippedControl} clippedOutline={clippedOutline} "
-                + $"clippedSolid={clippedSolid}");
+            // Assert — the clip is on, since the control child is gone, and the outline is still drawn: it lies in the
+            // border band, which the padding-box clip excludes, so it is painted on a sibling over the element
+            // (FaceBorderOverlay), so the band holds red.
+            Assert.That((openBand > 0, clippedControl == 0, clippedBand > 0),
+                Is.EqualTo((true, true, true)),
+                $"openBand={openBand} clippedControl={clippedControl} clippedBand={clippedBand}");
         }
 
         [UnityTest]
-        public IEnumerator Given_ADashedDividedChild_When_ItsOwnOverflowIsHidden_Then_TheDividerIsLost()
+        public IEnumerator Given_ADashedDividedChild_When_ItsOwnOverflowIsHidden_Then_TheDividerIsKept()
         {
             // Arrange — the divider is painted by the DIVIDED CHILD, on its own divider edge, so it is that
             // child's overflow that decides its fate rather than the list container's.
@@ -450,10 +445,9 @@ namespace Velvet.Tests
             yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
             var clippedDivider = CountAll(IsRed);
 
-            // Assert — the dashed divider sits in the child's own border band, so the same padding-box clip
-            // removes it entirely while the layout gutter it occupies stays reserved: the row keeps its gap
-            // and loses its rule.
-            Assert.That((openDivider > 0, clippedDivider), Is.EqualTo((true, 0)),
+            // Assert — the dashed divider sits in the child's own border band, which the padding-box clip excludes, so
+            // it is painted on a sibling over the child (FaceBorderOverlay) and the clipped child keeps its rule.
+            Assert.That((openDivider > 0, clippedDivider > 0), Is.EqualTo((true, true)),
                 $"openDivider={openDivider} clippedDivider={clippedDivider}");
         }
 
