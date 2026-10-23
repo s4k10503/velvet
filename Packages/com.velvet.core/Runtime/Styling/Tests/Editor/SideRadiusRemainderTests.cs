@@ -41,15 +41,17 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var card = Mount(scope, "rounded-l-lg dark:rounded-t-lg");
             VelvetTheme.IsDark = true;
+            var dark = (card.ClassListContains("rounded-t-lg"), card.ClassListContains("rounded-l-lg"),
+                card.ClassListContains("rounded-bl-lg"));
 
             // Act
             VelvetTheme.IsDark = false;
 
-            // Assert
+            // Assert — the dark half says the left radius was reduced, so the light half is a restoration.
             Assert.That(
-                (card.ClassListContains("rounded-t-lg"), card.ClassListContains("rounded-l-lg"),
-                    card.ClassListContains("rounded-bl-lg")),
-                Is.EqualTo((false, true, false)));
+                (dark, (card.ClassListContains("rounded-t-lg"), card.ClassListContains("rounded-l-lg"),
+                    card.ClassListContains("rounded-bl-lg"))),
+                Is.EqualTo(((true, false, true), (false, true, false))));
         }
     }
 }
