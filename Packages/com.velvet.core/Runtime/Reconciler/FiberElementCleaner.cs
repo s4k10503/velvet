@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 
@@ -89,7 +90,7 @@ namespace Velvet
                 return;
             }
 
-            var exactType = element.GetType();
+            var exactType = PoolingType(element);
             if (exactType == typeof(Toggle) || exactType == typeof(Slider) || exactType == typeof(TextField)
                 || exactType == typeof(SliderInt)
                 || ((exactType == typeof(Button) || exactType == typeof(Label)) && element.childCount == 0))
@@ -111,6 +112,11 @@ namespace Velvet
             }
         }
 
+        // The type pooling dispatches on: the Button and Label subclasses Velvet itself builds (SkewPickRegion.cs) are
+        // the primitives they stand for, where any other subclass keeps its own type and stays out of the pool.
+        private static Type PoolingType(VisualElement element)
+            => element is SkewPickButton ? typeof(Button) : element is SkewPickLabel ? typeof(Label) : element.GetType();
+
         // Returns the element to the VNodePool when the type supports pooling.
         // Called after the element has been detached from the DOM hierarchy and Velvet-managed
         // resources have been released. Dispatches on the EXACT runtime type, mirroring the
@@ -121,7 +127,7 @@ namespace Velvet
         private void ReturnToPool(VisualElement element)
         {
             FiberPropApplier.ForgetRecordedDefaults(element);
-            var type = element.GetType();
+            var type = PoolingType(element);
             if (type == typeof(TextField))
             {
                 VNodePool.ReturnTextField((TextField)element);
