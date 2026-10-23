@@ -20,7 +20,7 @@ namespace Velvet
     /// </summary>
     public static class StyleFontResolver
     {
-        private const string AddressPrefix = "addr:";
+        private const string AddressPrefix = VelvetFontStack.AddressPrefix;
 
         /// <summary>
         /// Extracts the font intent from <paramref name="classNames"/> and applies it, or clears the

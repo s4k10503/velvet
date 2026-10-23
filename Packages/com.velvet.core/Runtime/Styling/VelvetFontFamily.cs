@@ -41,8 +41,9 @@ namespace Velvet
     /// <para/>
     /// Multilingual (CJK / fallback) coverage is a property of the Font Assets themselves: configure
     /// the local fallback table on the Font Asset, or the global fallback list on the panel's UITK
-    /// Text Settings. Velvet only selects <em>which</em> family/weight asset to assign — TextCore
-    /// performs the per-glyph fallback at render time.
+    /// Text Settings, or name several families in a font-family list (<c>font-[Inter,Noto_Sans_JP]</c>),
+    /// which appends the later families' assets to the first one's table. TextCore performs the per-glyph
+    /// fallback at render time.
     /// </summary>
     [Serializable]
     public sealed class VelvetFontFamily

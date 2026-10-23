@@ -20,6 +20,7 @@ registry that maps family names to Font Assets.
 |---|---|
 | `font-sans`, `font-serif`, `font-mono`, `font-<name>` | Selects the family named `<name>` from the registry |
 | `font-[Inter]` / `font-[family-name:Inter]` / `font-[generic-name:serif]` | Arbitrary family by registered name; `_` is a space and `\_` an underscore, as Tailwind reads a bracket |
+| `font-[Inter,Noto_Sans_JP,sans-serif]` | A family list: the first registered family is assigned and the ones after it become its fallbacks ([Family lists](#family-lists)) |
 | `font-[addr:<key>]` | Arbitrary family loaded from Addressables (mirrors `bg-[addr:<key>]`), the key read as written, `\_` an underscore as `_` is |
 | `font-thin` … `font-black` | Weight scale (100…900) |
 | `font-[550]` / `font-[weight:550]` / `font-[number:550]` | Arbitrary weight |
@@ -142,15 +143,29 @@ Glyphs the assigned asset lacks still go through TextCore's fallback chain, whic
 
 ## Multilingual / CJK fallback
 
-Velvet selects *which* family/weight asset to assign — it does **not** implement per-glyph
-fallback. Configure that the standard TextCore way:
+Per-glyph fallback is TextCore's. Configure it the standard way:
 
 - **Local fallback**: add a fallback table on the Font Asset itself.
 - **Global fallback**: assign a UITK **Text Settings** asset to the Panel Settings and list the
   fallback fonts there (local fallback takes priority over global).
 
 A Latin family with a Japanese fallback asset therefore renders mixed text correctly while still
-being selected by `font-sans`.
+being selected by `font-sans`. A font-family list writes the local fallback table for you.
+
+### Family lists
+
+`font-[Inter,Noto_Sans_JP,sans-serif]` (or `font-['Noto_Sans_JP',Inter]`, `font-[family-name:Inter,Noto_Sans_JP]`)
+names several families, as CSS's `font-family` does. Names are read as the arbitrary family form reads
+them, `_` a space, and quoted names are unquoted. Velvet resolves each name against the registry
+for the element's weight, italic and width, takes the first that has a Font Asset as the one it assigns
+(a name no family is registered under, such as `sans-serif`, is skipped), and appends the assets of the
+names after it to that asset's `fallbackFontAssetTable`, in list order, unless the asset already lists them
+or they would list it back. The list inherits as the family does, and the residual faux bold and italic
+are the assigned asset's.
+
+The fallback table belongs to the Font Asset, not to the label that named the list: every label showing
+that asset gets the fallbacks, and they stay until `VelvetFonts.Clear()`, which takes out those Velvet
+added and leaves a table you configured as it was. A list that starts with `addr:` is one Addressables key.
 
 ## Swapping fonts at runtime (e.g. per-locale)
 

@@ -140,6 +140,7 @@ namespace Velvet
         public static void Clear()
         {
             var hadState = _families.Count > 0 || _defaultFamily != null;
+            VelvetFontStack.Release();
             _families.Clear();
             _addrCache.Clear();
             _defaultFamily = null;
@@ -167,6 +168,55 @@ namespace Velvet
         /// settles the width before the style and the weight.
         /// </summary>
         public static ResolvedFont Resolve(string? family, VelvetFontWeight weight, bool italic, float stretch)
+        {
+            return VelvetFontStack.IsList(family)
+                ? ResolveList(family!, weight, italic, stretch)
+                : ResolveFamily(family, weight, italic, stretch);
+        }
+
+        // A family list: the first name that resolves to an asset is the one assigned, with its own residual
+        // bold and italic, and the assets of the names after it are appended to that asset's fallback table.
+        // A name no family is registered under (sans-serif, system-ui) resolves to nothing and is skipped.
+        private static ResolvedFont ResolveList(string family, VelvetFontWeight weight, bool italic, float stretch)
+        {
+            ResolvedFont? primary = null;
+            var fallbacks = new List<FontAsset>();
+            foreach (var name in VelvetFontStack.Split(family))
+            {
+                var resolved = ResolveListName(name, weight, italic, stretch);
+                if (!resolved.HasAsset)
+                {
+                    continue;
+                }
+                if (primary == null)
+                {
+                    primary = resolved;
+                }
+                else
+                {
+                    fallbacks.Add(resolved.Asset!);
+                }
+            }
+            if (primary == null)
+            {
+                return new ResolvedFont(null, residualBold: (int)weight >= 600, residualItalic: italic);
+            }
+            VelvetFontStack.Append(primary.Value.Asset!, fallbacks);
+            return primary.Value;
+        }
+
+        private static ResolvedFont ResolveListName(string name, VelvetFontWeight weight, bool italic, float stretch)
+        {
+            if (!name.StartsWith(VelvetFontStack.AddressPrefix, StringComparison.Ordinal))
+            {
+                return ResolveFamily(name, weight, italic, stretch);
+            }
+            // A single asset has no per-variant faces to choose from, so a heavy or italic request is emulated.
+            TryLoadAddressableFont(name.Substring(VelvetFontStack.AddressPrefix.Length), out var asset);
+            return new ResolvedFont(asset, residualBold: (int)weight >= 600, residualItalic: italic);
+        }
+
+        private static ResolvedFont ResolveFamily(string? family, VelvetFontWeight weight, bool italic, float stretch)
         {
             var familyName = string.IsNullOrEmpty(family) ? _defaultFamily : family;
 
