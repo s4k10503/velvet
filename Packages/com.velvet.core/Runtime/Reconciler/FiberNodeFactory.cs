@@ -428,12 +428,9 @@ namespace Velvet
             // A rotated layoutId Motion created inside another is drawn through a correction wrapper from its first
             // frame: inside one still being created, which is not registered yet, by the depth count, else by the
             // parent the reconcile places it under.
-            var outer = element;
-            if (motionNode.LayoutId != null && MotionLayoutIdDriver.Corrects(appliedClasses)
-                && (_ctx.LayoutIdMotionDepth > 0 || MotionLayoutIdDriver.HasLayoutIdAncestor(_ctx.ReconcileParent, _ctx)))
-            {
-                outer = _patcher.Appliers.WrapLayoutIdCorrection(element);
-            }
+            var outer = WantsLayoutIdCorrection(motionNode, appliedClasses)
+                ? _patcher.Appliers.WrapLayoutIdCorrection(element)
+                : element;
             // Shared-element layout animation (layoutId) on a freshly-created element, which never
             // routes through PatchMotion's own registration.
             if (motionNode.LayoutId != null)
@@ -447,6 +444,12 @@ namespace Velvet
                 return FiberZLayerCoordinator.EnqueueMount(_ctx, outer, resolvedZ);
             }
             return outer;
+        }
+
+        private bool WantsLayoutIdCorrection(MotionNode motionNode, string[] appliedClasses)
+        {
+            if (motionNode.LayoutId == null || !MotionLayoutIdDriver.Corrects(appliedClasses)) return false;
+            return _ctx.LayoutIdMotionDepth > 0 || MotionLayoutIdDriver.HasLayoutIdAncestor(_ctx.ReconcileParent, _ctx);
         }
 
         // The variant enter a Motion plays as it mounts, from its own labels or inherited ones. DelaySec is the
