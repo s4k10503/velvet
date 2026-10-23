@@ -125,6 +125,7 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
         [Test]
         public void Given_EveryElementFactory_When_CalledWithAnEventsArray_Then_TheNodeCarriesItsBindings()
         {
@@ -140,6 +141,7 @@ namespace Velvet.Tests
             Assert.That((factories.Length > 1, string.Join("\n", failures)), Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
         [Test]
         public void Given_EveryElementFactoryWithItsOwnCallback_When_CalledWithItAndAnEventsArray_Then_ItsOwnBindingLeadsTheCallersBindings()
         {
@@ -157,6 +159,7 @@ namespace Velvet.Tests
             Assert.That((factories.Length >= 8, string.Join("\n", failures)), Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
         [Test]
         public void Given_EveryInitializerBuilder_When_ItsEventsAreSet_Then_TheBuiltNodeCarriesThem()
         {
@@ -190,6 +193,7 @@ namespace Velvet.Tests
             Assert.That((builders.Length > 1, string.Join("\n", failures)), Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
         [Test]
         public void Given_EveryShorthandElementFactory_When_CalledWithAnEventsArray_Then_ItHasAnEventsFormThatCarriesThem()
         {

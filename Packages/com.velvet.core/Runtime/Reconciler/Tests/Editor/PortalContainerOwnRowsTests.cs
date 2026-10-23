@@ -502,6 +502,7 @@ namespace Velvet.Tests
             // Assert
             Assert.That(NamedChildren(container), Is.EqualTo("a|q1"));
         }
+        // GREEN_ON_BASE(characterization): the base's shifts already follow rows replaced ahead of a last portal. This pins that reading the range from its rows leaves that unchanged.
         [Test]
         public void Given_APortalAfterTheContainerRowsItTargets_When_ThoseRowsShrinkAndAreReplacedAheadOfItAndItChangesInOneRender_Then_ItsPatchInThatRenderLandsOnItsChildren()
         {

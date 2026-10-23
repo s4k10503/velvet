@@ -81,14 +81,15 @@ namespace Velvet.Tests
             var tree = new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
             var element = Root.Q<VisualElement>("anchored").parent;
-            Assume.That(_reconciler.Context.AnchoredBindings.ContainsKey(element), Is.True,
-                "Precondition: mounting registered a binding");
+            var boundWhileMounted = _reconciler.Context.AnchoredBindings.ContainsKey(element);
 
             // Act
             _reconciler.Reconcile(Root, tree, Array.Empty<VNode>());
 
-            // Assert
-            Assert.That(_reconciler.Context.AnchoredBindings.ContainsKey(element), Is.False);
+            // Assert — the mounted reading is folded in, since an element that never held a binding would
+            // otherwise satisfy the released one on its own.
+            Assert.That((boundWhileMounted, _reconciler.Context.AnchoredBindings.ContainsKey(element)),
+                Is.EqualTo((true, false)));
         }
 
         // GREEN_ON_BASE(characterization): the base hides every element of an editor panel, this one included.
@@ -152,6 +153,7 @@ namespace Velvet.Tests
             Assert.That(ShownPosition(element), Is.EqualTo(ExpectedViewportPosition()).Within(0.01f));
         }
 
+        // GREEN_ON_BASE(refactor): only which element the case reads changed, the wrapper V.Anchored now renders. The base has no hide for a target level with the camera plane either.
         [Test]
         public void Given_ATargetLevelWithTheCameraPlane_When_Ticked_Then_TheElementIsNotHidden()
         {
@@ -260,7 +262,6 @@ namespace Velvet.Tests
                 _reconciler.Reconcile(Root, Array.Empty<VNode>(), before);
                 var element = Root.Q<VisualElement>("anchored").parent;
                 _reconciler.Context.AnchoredBindings.TryGetValue(element, out var bindingBefore);
-                Assume.That(bindingBefore, Is.Not.Null, "Precondition: mounting registered a binding");
 
                 // Act
                 var after = new[] { V.Anchored(otherTargetGo.transform, camera: _camera, key: "a", name: "anchored") };
