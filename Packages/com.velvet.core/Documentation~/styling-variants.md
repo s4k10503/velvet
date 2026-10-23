@@ -469,14 +469,11 @@ an animation â€” a `V.Motion` pose's, an `AnimatePresence` enter or exit class â
 pose's class the play takes off for that duration stops applying until it is back: `EnterFromClass:
 "gap-4 shadow-lg w-[40px]"` spaces, shadows and sizes the element until the enter swaps it out.
 
-**`[&>*]:` on a UI Toolkit composite lands on the control's own parts.** The walk is over whatever the
-container redirects its children into. A `V.ScrollView` redirects, so the payload reaches the children
-reconciled into it. Controls that redirect nothing answer with themselves, so the walk finds the parts the
-control built for itself. On `V.TextField`, for example, the input box (`#unity-text-input`) is a direct
-child and is reached. How far the payload gets differs per control because `& > *` stops after one level.
-
-A declared `label:` seats the label element ahead of the input, and it takes the payload as well, so
-`[&>*]:text-red-500` on a labelled field colours both.
+**`[&>*]:` on a UI Toolkit composite reaches no part of the control.** `& > *` selects the children a tree
+placed, so the walk is over whatever the container redirects its children into. A `V.ScrollView` redirects, so
+the payload reaches the children reconciled into it. A control that redirects nothing, such as `V.TextField`, holds
+only the parts it built for itself (its label and `#unity-text-input`), and a literal `[&>*]:` token leaves
+them alone. A field's input box takes the utilities the next paragraph lists from the field's own class list.
 
 **A field control's own surface utilities paint its input box.** On an `<input>` or a `<select>` the class
 lands on the box the value is shown in; UI Toolkit draws a field as an outer control around a child box (the
@@ -530,7 +527,7 @@ which a browser does not paint.
 
 `V.TextField(className: "w-64 bg-slate-800 rounded-lg px-3")` sizes the outer control and paints the box;
 layout, size and margin utilities, and every utility not listed, stay on the outer control. A declared
-`label:` is left unpainted, unlike under `[&>*]:`. `whileHoverClass` / `whileTapClass` / `whileFocusClass`
+`label:` is left unpainted. `whileHoverClass` / `whileTapClass` / `whileFocusClass`
 send their surface classes to the box the same way.
 
 Where a variant's condition lives decides who evaluates it:
