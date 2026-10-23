@@ -97,7 +97,11 @@ namespace Velvet
         internal static void ApplyPlayTrigger(ParticlesBinding binding)
         {
             var host = binding.EffectHost!;
-            host.initialEventName = binding.Settings.PlayOn == PlayTrigger.Mount ? binding.EffectInitialEvent : string.Empty;
+            var initialEvent = binding.Settings.PlayOn == PlayTrigger.Mount ? binding.EffectInitialEvent : string.Empty;
+            if (initialEvent != null && host.initialEventName != initialEvent)
+            {
+                host.initialEventName = initialEvent;
+            }
             host.Reinit();
         }
 

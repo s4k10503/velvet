@@ -625,6 +625,7 @@
 [Velvet] method Velvet.V.Navigate(System.String, System.Boolean, System.String?, System.Object?, Velvet.RelativeRoutingType): Velvet.ComponentNode
 [Velvet] method Velvet.V.Outlet(System.Object?, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Particles(UnityEngine.ParticleSystem?, System.String?, System.String?, System.String?, Velvet.PlayTrigger, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Particles(UnityEngine.VFX.VisualEffect?, System.String?, System.String?, System.String?, Velvet.PlayTrigger, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Portal(System.String, Velvet.VNode?[]?, System.String?): Velvet.PortalNode
 [Velvet] method Velvet.V.Portal(UnityEngine.UIElements.VisualElement, Velvet.VNode?[]?, System.String?): Velvet.PortalNode
 [Velvet] method Velvet.V.Portal(Velvet.UILayer, Velvet.VNode?[]?, System.String?, Velvet.PanelFocusOrder): Velvet.PortalNode
@@ -1060,6 +1061,7 @@
 [Velvet] property Velvet.ParticlesSettings.Effect: UnityEngine.ParticleSystem?
 [Velvet] property Velvet.ParticlesSettings.PixelsPerUnit: System.Single
 [Velvet] property Velvet.ParticlesSettings.PlayOn: Velvet.PlayTrigger
+[Velvet] property Velvet.ParticlesSettings.VisualEffect: UnityEngine.VFX.VisualEffect?
 [Velvet] property Velvet.PointerDownBinding.EventId: System.String
 [Velvet] property Velvet.PointerDownBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerDownEvent]?
 [Velvet] property Velvet.PointerEnterBinding.EventId: System.String
