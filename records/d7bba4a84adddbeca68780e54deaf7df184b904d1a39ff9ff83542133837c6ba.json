@@ -1,0 +1,26 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "c54c72c65c16aaea094a8ff782a719c632dc76cea2aaa1b29451c2d6a7c3cbdb",
+ "killers": [],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "",
+  "before": " || _draining",
+  "column": 33,
+  "line": 396,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBatchScheduler.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "survived"
+}

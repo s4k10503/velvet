@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "4c5eefe0283a66ed646eb1c2446522833941e0711cc5e72f42c146f8bb7fbc99",
+ "killers": [],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": ";",
+  "before": "_canvas.Focus();",
+  "column": 12,
+  "line": 62,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Editor/Preview/PreviewPanelBridge.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "survived"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "aa76b94643e873ba19e93b99b9269c4c3c37168518f18531b411333a250e2841",
+ "killers": [],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": ";",
+  "before": "ShowPanelTexture();",
+  "column": 12,
+  "line": 716,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Editor/Preview/VelvetPreviewWindow.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "survived"
+}

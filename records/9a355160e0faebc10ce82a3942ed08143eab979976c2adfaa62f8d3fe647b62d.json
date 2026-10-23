@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed among the 1401 case(s) that ran the site: Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds, Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildObservesNewValue, Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildReRendersExactlyOnce",
+ "file": "44e1952d8b66d7aa2004df50f7af131791b5dcf2167d463569ec95553e6a46d9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildObservesNewValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildReRendersExactlyOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": ";",
+  "before": "staged.Add(ordered[i].Fiber);",
+  "column": 16,
+  "line": 721,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

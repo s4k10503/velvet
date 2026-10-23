@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "39e73347d2726c5fc8529abe4f6b87590446170dfdc83769db1514af6f29de41",
+ "killers": [],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": ";",
+  "before": "Detach(element, binding);",
+  "column": 12,
+  "line": 66,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBackdropApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "survived"
+}

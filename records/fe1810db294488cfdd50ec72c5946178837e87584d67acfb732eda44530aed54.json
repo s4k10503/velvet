@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b1a3bbb585d46c725eb8ffe09a98a226999fc8d9ee83c100d01c828f9b1870f4",
+ "killers": [],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 28,
+  "line": 575,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "survived"
+}

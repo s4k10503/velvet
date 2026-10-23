@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Reconciler.Editor: Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildStaysForThatRender(\"wrapper\"), Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildStaysForThatRender(\"top\")",
+ "file": "c54c72c65c16aaea094a8ff782a719c632dc76cea2aaa1b29451c2d6a7c3cbdb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresencePropagateTests.Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildStaysForThatRender(\"top\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePropagateTests.cs": "730c0d4bd759efc4a8d14df2eb9b25b04a973d5857931a723c205626d6df271f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresencePropagateTests.Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildStaysForThatRender(\"wrapper\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePropagateTests.cs": "730c0d4bd759efc4a8d14df2eb9b25b04a973d5857931a723c205626d6df271f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "",
+  "before": "if (!_syncLaneQueued) return;",
+  "column": 16,
+  "line": 386,
+  "operator": "guard removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBatchScheduler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

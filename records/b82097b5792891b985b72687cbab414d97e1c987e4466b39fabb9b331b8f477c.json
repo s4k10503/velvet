@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "0745256238074399339a8d2aae0ba6fcc48b9e406022ce4dadd1a96708ccabb3",
+ "killers": [],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 111,
+  "line": 392,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "survived"
+}

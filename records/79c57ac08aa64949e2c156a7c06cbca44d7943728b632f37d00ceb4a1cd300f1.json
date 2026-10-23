@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed among the 55 case(s) that ran the site: Given_AContainedScope_When_FocusMovesIntoAPlainScopeCreatedAfterIt_Then_TheScopeTakesItBack, Given_TwoContainedScopes_When_FocusMovesFromTheNewerIntoTheOlder_Then_TheNewerScopeTakesItBack",
+ "file": "0745256238074399339a8d2aae0ba6fcc48b9e406022ce4dadd1a96708ccabb3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusScopeRankTests.Given_AContainedScope_When_FocusMovesIntoAPlainScopeCreatedAfterIt_Then_TheScopeTakesItBack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRankTests.cs": "fb2120d4372e1e796b357816dd08d5303debeb4a0456b3f7bad19c78fca54738",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusScopeRankTests.Given_TwoContainedScopes_When_FocusMovesFromTheNewerIntoTheOlder_Then_TheNewerScopeTakesItBack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRankTests.cs": "fb2120d4372e1e796b357816dd08d5303debeb4a0456b3f7bad19c78fca54738",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": ";",
+  "before": "Scope = _current;",
+  "column": 28,
+  "line": 1351,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

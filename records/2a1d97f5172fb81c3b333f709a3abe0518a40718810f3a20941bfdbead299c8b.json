@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_KeyedContainersHoldingComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheirLayoutSetupsRunInTheNewTreeOrder",
+ "file": "b1a3bbb585d46c725eb8ffe09a98a226999fc8d9ee83c100d01c828f9b1870f4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LayoutEffectDrainPhaseTests.Given_KeyedContainersHoldingComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheirLayoutSetupsRunInTheNewTreeOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/EffectOrderTests.cs": "cb55847316c1313e6229722a8eff3c640abfa38f3522631b151b5eac3487262c",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 33,
+  "line": 566,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

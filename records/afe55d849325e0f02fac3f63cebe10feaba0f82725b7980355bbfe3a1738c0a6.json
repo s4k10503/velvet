@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Component.Editor: Given_AncestorSuspenseBoundary_When_SearchedFromDescendant_Then_WalksUpToBoundary",
+ "file": "47ca8ee9d8f1ed80ddc1016b215807f93a5a4e2a6f99540e0ba85ae5f78a2a04",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_AncestorSuspenseBoundary_When_SearchedFromDescendant_Then_WalksUpToBoundary",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "c3155d39e104014eaf67ae71a89965bf05d07eff5fd768aba424b70f465453d9"
+   }
+  }
+ ],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 48,
+  "line": 16,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentBoundarySearch.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

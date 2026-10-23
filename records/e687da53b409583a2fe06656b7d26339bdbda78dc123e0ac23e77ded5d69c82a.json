@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_AFallbackWhoseOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheSuspenseAboveShowsItsFallbackWithoutTheFallbacksOwnerRendering",
+ "file": "47ca8ee9d8f1ed80ddc1016b215807f93a5a4e2a6f99540e0ba85ae5f78a2a04",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SelfScheduledResuspendTests.Given_AFallbackWhoseOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheSuspenseAboveShowsItsFallbackWithoutTheFallbacksOwnerRendering",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SelfScheduledResuspendTests.cs": "51fe3f30601af175194bf265952d4275d66386dd8383a2aa89ce6c241f7b23f8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 44,
+  "line": 18,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentBoundarySearch.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

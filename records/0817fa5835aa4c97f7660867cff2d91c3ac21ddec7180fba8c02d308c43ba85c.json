@@ -1,0 +1,122 @@
+{
+ "detail": "EditMode: 19 failed in Velvet.Tests.Hooks.Editor: Given_ACollapsedFoldoutBeforeTheFocusedElement_When_FocusPreviousIsCalled_Then_ItsHiddenContentIsSkipped, Given_AComponentInAPortalDeclaredInsideAScope_When_FocusFirstIsCalled_Then_TheScopesFirstMemberTakesFocus, Given_AComponentInAScopeInsideAPortal_When_FocusFirstIsCalled_Then_TheInnerScopesFirstMemberTakesFocus",
+ "file": "f8897c0c442a3fe6d29beb4878ae70505991eddf6d4e366c7d39d7466162cf44",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_ACollapsedFoldoutBeforeTheFocusedElement_When_FocusPreviousIsCalled_Then_ItsHiddenContentIsSkipped",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_AComponentInAPortalDeclaredInsideAScope_When_FocusFirstIsCalled_Then_TheScopesFirstMemberTakesFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_AComponentInAScopeInsideAPortal_When_FocusFirstIsCalled_Then_TheInnerScopesFirstMemberTakesFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_AContainerAsFrom_When_FocusNextIsCalled_Then_TheContainersFirstFocusableDescendantTakesFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_AFocusedScopeMember_When_FocusNextIsCalled_Then_TheNextMemberInHierarchyOrderTakesFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_AFocusedTextField_When_FocusNextIsCalled_Then_TheElementAfterTheFieldTakesFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_AFocusedToggle_When_FocusPreviousIsCalled_Then_TheTextFieldTakesFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_AMemberAfterADisabledOneAndANegativeTabIndex_When_FocusPreviousIsCalledTabbable_Then_BothAreSkipped",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_AMemberAfterADisabledOneAndANegativeTabIndex_When_FocusPreviousIsCalled_Then_TheNegativeTabIndexTakesFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseFocusManagerTests.Given_AMemberBeforeAnElementDelegatingItsFocus_When_FocusNextIsCalled_Then_TheDelegatingElementIsNotReturned",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseFocusManagerTests.cs": "8de89deaa3dfb52c6f400dbad0f6a0742db77059e307fd0bf362b6b7fda90a3f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 43,
+  "line": 248,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/FocusManager.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

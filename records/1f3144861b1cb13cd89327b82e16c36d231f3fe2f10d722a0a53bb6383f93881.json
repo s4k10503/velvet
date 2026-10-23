@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AWrappingGroupWithAnElementBeyondIt_When_AnArrowMovesPastTheLastMember_Then_FocusLandsOnTheFirst",
+ "file": "0745256238074399339a8d2aae0ba6fcc48b9e406022ce4dadd1a96708ccabb3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusGroupArrowPlaybackTests.Given_AWrappingGroupWithAnElementBeyondIt_When_AnArrowMovesPastTheLastMember_Then_FocusLandsOnTheFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusGroupArrowPlaybackTests.cs": "5cc53517ff49caf10763127066d8c1cb5ac577dfc9c26cc9cbaab3ef58b75638",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 71,
+  "line": 978,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

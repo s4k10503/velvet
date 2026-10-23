@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Reconciler.Editor: Given_ALogicalAncestorOfAPortalCapturingFocusIn_When_ItReachesThePortalsContent_Then_TheAncestorCapturesIt, Given_ALogicalAncestorOfAPortalCapturingFocusOut_When_ItReachesThePortalsContent_Then_TheAncestorCapturesIt",
+ "file": "0745256238074399339a8d2aae0ba6fcc48b9e406022ce4dadd1a96708ccabb3",
+ "killers": [],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 1370,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

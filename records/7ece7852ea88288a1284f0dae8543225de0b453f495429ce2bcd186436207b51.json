@@ -1,0 +1,69 @@
+{
+ "detail": "EditMode survived; PlayMode: 5 failed: Given_AScopeThatIsNotASingleTabStop_When_ItNamesAnOrientation_Then_ADownMoveStillTravels, Given_AContainedFocusScope_When_ASpatialMoveWouldExitTheScope_Then_FocusIsBackInsideTheScopeAfterTheFlush, Given_ASingleTabStopGroup_When_ASpatialMoveWouldLeaveItAtItsEdge_Then_FocusStaysOnTheMember",
+ "file": "0745256238074399339a8d2aae0ba6fcc48b9e406022ce4dadd1a96708ccabb3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusScopeOrientationPlaybackTests.Given_AScopeThatIsNotASingleTabStop_When_ItNamesAnOrientation_Then_ADownMoveStillTravels",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusScopeOrientationPlaybackTests.cs": "a62b5a0ca70b60d0ae66d37b82e3f82b62de954f276b679f9782d9637c3e9fa0",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusScopePlaybackTests.Given_AContainedFocusScope_When_ASpatialMoveWouldExitTheScope_Then_FocusIsBackInsideTheScopeAfterTheFlush",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusNavigationInterceptionTests.cs": "66bb56cef571651298e7cd81f966e90749eb62086fc67e337ea3205430938ac6",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusScopeSingleTabStopPlaybackTests.Given_ASingleTabStopGroup_When_ASpatialMoveWouldLeaveItAtItsEdge_Then_FocusStaysOnTheMember",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusScopeSingleTabStopPlaybackTests.cs": "6c8fe8667100e4424600c5117d46e7617125c1bacc654ccd819cf9d17bcf72cf",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusScopeSingleTabStopPlaybackTests.Given_ASpatialMoveHeldAtAGroupEdge_When_TabThenEntersTheGroupItHadLandedIn_Then_FocusTakesThatGroupsFirstMember",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusScopeSingleTabStopPlaybackTests.cs": "6c8fe8667100e4424600c5117d46e7617125c1bacc654ccd819cf9d17bcf72cf",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FocusScopeSingleTabStopPlaybackTests.Given_ASpatialMoveHeldAtAGroupEdge_When_TheLandingKeepsAFocusVisibleResidue_Then_TheNextTickSettlesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusScopeSingleTabStopPlaybackTests.cs": "6c8fe8667100e4424600c5117d46e7617125c1bacc654ccd819cf9d17bcf72cf",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 25,
+  "line": 914,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

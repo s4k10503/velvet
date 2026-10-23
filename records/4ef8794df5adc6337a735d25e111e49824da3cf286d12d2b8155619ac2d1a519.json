@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_GetSnapshotBuildingANewValuePerRead_When_ItsPassiveCheckRuns_Then_ItRerendersPastTheUpdateDepthLimit",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "8d55806babf5ba593a6ca086ce81e9b6b7b4b09de82262fefdbae1fbfafd71a7",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -15,7 +15,7 @@
   {
    "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_ReaderMountedInADrainPassAfterAChange_When_TheDrainEnds_Then_ItRendersTheLatestSnapshot",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "8d55806babf5ba593a6ca086ce81e9b6b7b4b09de82262fefdbae1fbfafd71a7",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -25,7 +25,7 @@
   {
    "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_StoreChangedBeforeTheMountsEffects_When_ThePassiveFlushRuns_Then_TheChangeRendersBeforeItReturns",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "8d55806babf5ba593a6ca086ce81e9b6b7b4b09de82262fefdbae1fbfafd71a7",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -35,7 +35,7 @@
   {
    "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_StoreChangedBetweenTheMountAndItsPassiveEffects_When_TheyRun_Then_TheChangedSnapshotRenders",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "8d55806babf5ba593a6ca086ce81e9b6b7b4b09de82262fefdbae1fbfafd71a7",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -43,7 +43,7 @@
    }
   }
  ],
- "measured_by": "39767874313",
+ "measured_by": "39913002090",
  "mutant": {
   "after": ";",
   "before": "RunCheck();",
@@ -57,6 +57,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
  "verdict": "killed"
 }

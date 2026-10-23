@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Component.Editor: Given_HeadInsertion_When_Patched_Then_NewElementLandsAtTheHead, Given_KeyedChildren_When_OrderReversed_Then_ElementsAreReordered",
+ "file": "b1a3bbb585d46c725eb8ffe09a98a226999fc8d9ee83c100d01c828f9b1870f4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_HeadInsertion_When_Patched_Then_NewElementLandsAtTheHead",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "90f467fce2e9d5f2a31d474859cd39bf366ef9f3e59073602e104b531f5f71db",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_KeyedChildren_When_OrderReversed_Then_ElementsAreReordered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "90f467fce2e9d5f2a31d474859cd39bf366ef9f3e59073602e104b531f5f71db",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 546,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "killed"
+}

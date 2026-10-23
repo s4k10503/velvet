@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the editor was killed at --timeout 900s and the baseline took 502s; raise it, or read the log for a mutation that does not terminate",
+ "file": "e018e84a8be1352c4c17f39bfa7134e4c607e7240b5ea421ab742787c290e01d",
+ "killers": [],
+ "measured_by": "39913002090",
+ "mutant": {
+  "after": ";",
+  "before": "parent.RemoveAt(at);",
+  "column": 16,
+  "line": 38,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "verdict": "not measured (timed out)"
+}
