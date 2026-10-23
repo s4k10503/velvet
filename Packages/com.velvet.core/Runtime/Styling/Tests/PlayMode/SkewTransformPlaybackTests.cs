@@ -112,5 +112,24 @@ namespace Velvet.Tests
             Assert.That(new float[] { measured.Rows, shear },
                 Is.EqualTo(new[] { BoxSize, -(BoxSize - 5f) * Mathf.Tan(30f * Mathf.Deg2Rad) }).Within(3f));
         }
+
+        [UnityTest]
+        public IEnumerator Given_ABoxCarryingTheFactoredSkew_When_APointerPicksAtItsTopEdge_Then_TheHitRegionLeansWithThePaint()
+        {
+            // Arrange — skewX(30deg) carries the top edge left by 50 * tan 30 = 28.9 px about the box's centre
+            // (230, 130 down to 180 for the 100 x 100 box at 130, 80), so 15 px left of the box's left edge near the
+            // top is painted, and 15 px left of its right edge near the top is not.
+            yield return Mount(30f, 0f);
+            var panel = _host.Root.panel;
+
+            // Act
+            var outsideTheBox = panel.Pick(new Vector2(130f - 15f, 85f));
+            var insideTheBox = panel.Pick(new Vector2(230f - 15f, 85f));
+
+            // Assert
+            var box = _host.Root.Q<VisualElement>("box");
+            Assert.That((ReferenceEquals(outsideTheBox, box), ReferenceEquals(insideTheBox, box)),
+                Is.EqualTo((true, false)));
+        }
     }
 }

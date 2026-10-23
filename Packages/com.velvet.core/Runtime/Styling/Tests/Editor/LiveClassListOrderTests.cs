@@ -86,6 +86,8 @@ namespace Velvet.Tests
             + "UnityEngine.UIElements.TextElement, Velvet.StyleTextInputColors/Winner&)";
         private const string ContainerMarkerReader =
             "System.Boolean Velvet.StyleResponsiveScope.IsContainer(UnityEngine.UIElements.VisualElement)";
+        private const string MarkerObservationReader =
+            "System.Void Velvet.StyleResponsiveScope.ObserveMarkers(UnityEngine.UIElements.VisualElement)";
         private const string OwnBorderStyleReader =
             "System.Nullable`1<Velvet.BorderLineStyle> Velvet.StyleBorderStyleClass.StyleOf("
             + "UnityEngine.UIElements.VisualElement)";
@@ -927,6 +929,36 @@ namespace Velvet.Tests
             Assert.That((ReferenceEquals(fromAdded, added), ReferenceEquals(fromReversed, reversed)),
                 Is.EqualTo((true, true)),
                 "an unnamed container query finds a marked ancestor wherever the marker sits in its class list");
+        }
+
+        // What shows the case can fail is the signature taken in list order: reordering the two markers then reads as
+        // a change and announces again.
+        [Test]
+        [ReaderVerdict(MarkerObservationReader)]
+        public void Given_TwoMarkersOnAnObservedElement_When_TheyAreReorderedOnTheClassList_Then_NoScopeChangeIsAnnouncedAgain()
+        {
+            // Arrange
+            var announced = 0;
+            void OnChanged() => announced++;
+            var element = Carrying("@container/side", "@container");
+            StyleResponsiveScope.ScopesChanged += OnChanged;
+            try
+            {
+                StyleResponsiveScope.ObserveMarkers(element);
+                element.RemoveFromClassList("@container/side");
+                element.AddToClassList("@container/side");
+
+                // Act
+                StyleResponsiveScope.ObserveMarkers(element);
+            }
+            finally
+            {
+                StyleResponsiveScope.ScopesChanged -= OnChanged;
+            }
+
+            // Assert — the first observation announced the markers, so one is the order not mattering.
+            Assert.That(announced, Is.EqualTo(1),
+                "markers are a set, so the order they sit on the class list in announces nothing");
         }
 
         [Test]
