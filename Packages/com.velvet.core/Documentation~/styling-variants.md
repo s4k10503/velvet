@@ -136,12 +136,16 @@ Four consequences worth knowing:
   ahead of `w-4`. A side radius that a higher layer takes one corner of keeps its other corner, which Velvet
   writes with the per-corner class of the same size: `rounded-l-lg md:rounded-t-lg` paints `rounded-t-lg` and
   `rounded-bl-lg`, whichever is written first and whether or not either is marked important.
-- **A class Velvet does not ship is never ranked.** The property table is derived from the bundled
-  stylesheets, so a class of your own carries no known properties and can neither displace another
-  class nor be displaced by one. `my-card dark:my-card-dark` ties exactly as before, and marking
-  either one important changes nothing — there is no property set to rank them by. Use the
-  arbitrary-value form where the family has one, or compute the class string in C# and render exactly
-  one member.
+- **A class of your own is ranked by the properties its rule sets.** The table of what a class sets is derived from
+  the bundled stylesheets, so for a class it does not name Velvet reads the answer off a probe: an element carrying
+  the class is set beside one carrying none, and a property whose computed value differs between them is one the class
+  sets. `my-card dark:my-card-dark` then does what it reads like: while `dark:` holds, `my-card` comes off if
+  `my-card-dark` sets every property it does. The probe is read once per class and panel, at the first panel update
+  after a variant payload of a class of your own reaches an element, and the other classes of your own on that element
+  are read then too, so until then the classes are ranked by nothing, as they were before. A class a play shows is
+  not read. A declaration behind a pseudo-class does not count, since the probe is in no state, nor does one that
+  matches the property's value without the class. A class starting `unity-` or `velvet-` is never probed, since
+  the rules of UI Toolkit's own controls are theirs to apply.
 - **`has-[.foo]:` matches what the className wrote.** A `.foo` written in a descendant's `className`
   matches while Velvet keeps it off that descendant's class list, as `:has(.foo)` matches on the web
   however the cascade ranks `.foo`'s declarations. A `.foo` that only a variant payload puts on the
@@ -349,24 +353,34 @@ gives 6° on both). A bare value is a whole number of degrees written without a 
 transform: Velvet writes the inline `rotate` and `scale` slots with a uniform scale and one 3D rotation whose
 projection onto the panel is the shear (`skewX() skewY()` as the single 2x2 matrix Tailwind composes). UI Toolkit
 then draws the element sheared about the pivot `origin-*` names, with its descendants under the same transform.
-The sheared face keeps its overhang under a hidden overflow, and a pointer picks the bounding rectangle of the
-sheared box rather than the sheared shape (`SkewTransformPlaybackTests` measures both).
+The sheared face keeps its overhang under a hidden overflow (`SkewTransformPlaybackTests` measures it).
+
+**What a pointer picks of a skewed element.** The sheared shape, not the bounding rectangle of the sheared box, so a
+click in a corner the shear leaves bare reaches what is behind the element. UI Toolkit
+reads whether an element overrides `ContainsPoint` from its type, so Velvet creates the plain `VisualElement`, `Button`
+and `Label` it builds for `V.Div`, `V.Button` and its labels as subclasses that do, and the shape each is picked by is
+set when a `skew-*` class reaches it. An element of any other type, a `V.TextField` or a `V.Toggle`, is picked by its
+rectangle. The shape is the box without its rounded corners.
 
 An element that also carries a `rotate-*` or `scale-*` class (behind a variant too), an `animate-*` preset, or a
 `V.Motion` keeps the older painted layer, since those write the same slots: the caster's own face is repainted
 sheared in its generated content, and each direct in-flow child is seated with an inline `translate` that puts its
-centroid where the shear would carry it. There the caster's hit region stays the upright box, its own text neither
-shears nor moves, descendants are seated rather than sheared, and `origin-*` does not move the pivot.
+centroid where the shear would carry it. There the caster's own text neither shears nor moves, descendants are seated rather than
+sheared, and `origin-*` does not move the pivot.
 
-**How a radius larger than its box fits.** A `rounded-*` class or an arbitrary radius that does not fit
-its box is scaled the way CSS scales it: once two adjacent radii overlap on a side, every radius on the
-element shrinks by one factor. So `rounded-full` on a 330 × 34 box is a pill with 17 px ends, and
+**How a radius larger than its box fits.** A radius that does not fit its box, whether a `rounded-*` class, an
+arbitrary value, a rule of your own or one your code writes, is scaled the way CSS scales it: once two adjacent
+radii overlap on a side, every radius on the element shrinks by one factor. So `rounded-full` on a 330 × 34 box is a pill with 17 px ends, and
 `rounded-r-[400px]` on a 75 px-tall tab ends in a half-disc. Velvet holds the fitted radii as inline style.
 On an element that carries a `rounded-*` class or an arbitrary radius, the radius a corner is fitted from is the
 one that wins the cascade there: a rule of your own that outranks the class on a corner is that corner's
 declared radius, and a radius your code writes to `style` is scaled with the others and comes back when the box
 no longer needs the fit. A keyword written there (`initial`) is left alone. A change of class under
-`transition-all` animates between the fitted radii rather than the declared ones.
+`transition-all` animates between the fitted radii rather than the declared ones. An element with no such class and
+no arbitrary radius is fitted all the same, from a radius your own stylesheet gives it or your code writes to `style`
+(`border-radius: 400px` on a `.pill` rule). It is checked each time its size changes, first layout included, so a
+radius that appears with no size change, a class swap or a write to `style` after layout, is fitted when the size next
+changes.
 
 **The wrapper-less paints under a hidden overflow.** UI Toolkit applies an element's own overflow clip to the
 element's own painted content, and cuts it at the **padding** box, while CSS clips neither a box-shadow nor a border

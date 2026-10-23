@@ -147,6 +147,7 @@ namespace Velvet.Tests
             CollectionAssert.AreEqual(new[] { "item" }, node.ClassNames);
         }
 
+        // GREEN_ON_BASE(refactor): the base's cell is a Button as well; the check now takes the Button subclass Velvet builds.
         [Test]
         public void Given_MotionWithButtonElementType_When_Mounted_Then_TheAnimatedCellIsAButton()
         {
@@ -158,7 +159,7 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
 
             // Assert — AnimatePresence is DOM-less, so the Motion (a Button) sits directly in Root.
-            Assert.That(Root.ElementAt(0), Is.TypeOf<Button>());
+            Assert.That(Root.ElementAt(0), Is.InstanceOf<Button>());
         }
 
         [Test]

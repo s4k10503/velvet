@@ -115,6 +115,11 @@ namespace Velvet
         {
             if (element == null) return;
 
+            if (element is ISkewPickTarget skewPick)
+            {
+                skewPick.PickRegion = null;
+            }
+
             // Clearing ANY inline property restores the matched-rules value THROUGH the transition system, so
             // while the element is still on a panel every clear below can become a running animation instead —
             // one that keeps painting what the reset just removed, and that the transition-longhand nulls at

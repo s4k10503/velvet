@@ -923,6 +923,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base stops the trim at a tail it cannot patch.
         // The trim's key and patch tests were split apart, and this is what fails when the patch test goes.
+        // The base's tail is a Button as well, so the check takes the Button subclass Velvet builds now.
         [Test]
         public void Given_AKeyedTailWhoseElementTypeChanges_When_ItTakesAPrepend_Then_TheTailIsReplaced()
         {
@@ -934,7 +935,7 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, oldTree, new[] { K("x"), K("a"), V.Button(text: "t", key: "t") });
 
             // Assert
-            Assert.That(Root.ElementAt(2), Is.TypeOf<Button>());
+            Assert.That(Root.ElementAt(2), Is.InstanceOf<Button>());
         }
 
         // GREEN_ON_BASE(characterization): the base stops the trim where an unkeyed tail's index moved.

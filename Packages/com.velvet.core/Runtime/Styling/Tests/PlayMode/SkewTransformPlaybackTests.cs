@@ -80,13 +80,18 @@ namespace Velvet.Tests
             return -1;
         }
 
-        private IEnumerator Mount(float xDeg, float yDeg, string extraClasses = "")
+        private VisualElement MountBox(string extraClasses)
         {
             _host = new RenderTexturePanelHost("Skew", Width, Height);
             VelvetStyleUtilities.AttachTo(_host.Root);
             _mounted = V.Mount(_host.Root,
                 V.Div(name: "box", className: "w-[100px] h-[100px] mt-[80px] ml-[130px] bg-[#0000ff] " + extraClasses));
-            var box = _host.Root.Q<VisualElement>("box");
+            return _host.Root.Q<VisualElement>("box");
+        }
+
+        private IEnumerator Mount(float xDeg, float yDeg, string extraClasses = "")
+        {
+            var box = MountBox(extraClasses);
             if (SkewTransformFactor.TryFactor(xDeg, yDeg, out var rotation, out var scale))
             {
                 rotation.ToAngleAxis(out var angle, out var axis);
@@ -130,23 +135,28 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_ABoxCarryingTheFactoredSkew_When_APointerPicksNearItsTopEdge_Then_TheBoundingRectangleOfTheShearedBoxIsPicked()
+        public IEnumerator Given_ABoxSkewedByItsClass_When_APointerPicksNearItsTopEdge_Then_OnlyTheShearedShapePicksTheBox()
         {
             // Arrange — skewX(30deg) carries the top edge left by 50 * tan 30 = 28.9 px about the centre of the
             // 100 x 100 box at (130, 80): 15 px left of its left edge near the top is painted, and 15 px left of its
             // right edge there is not.
-            yield return Mount(30f, 0f);
+            yield return MountSkewedByClass("skew-x-30");
             var panel = _host.Root.panel;
 
             // Act
             var paintedCorner = panel.Pick(new Vector2(130f - 15f, 85f));
             var unpaintedCorner = panel.Pick(new Vector2(230f - 15f, 85f));
 
-            // Assert — both resolve to the box: the pick reaches the sheared box's bounding rectangle rather than
-            // the sheared shape.
+            // Assert
             var box = _host.Root.Q<VisualElement>("box");
             Assert.That((ReferenceEquals(paintedCorner, box), ReferenceEquals(unpaintedCorner, box)),
-                Is.EqualTo((true, true)));
+                Is.EqualTo((true, false)));
+        }
+
+        private IEnumerator MountSkewedByClass(string skewClass)
+        {
+            MountBox(skewClass);
+            return WaitRealtimeDraining(0.8, _host.TargetTexture);
         }
     }
 }
