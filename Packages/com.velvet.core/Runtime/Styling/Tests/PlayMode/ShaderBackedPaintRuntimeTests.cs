@@ -109,7 +109,6 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already shears a shadow on a caster skewed on y alone with its face.
         // Have FiberBoxShadowApplier pass `default` for the caster's skew and the upright shadow's level edge reddens it.
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ABoxShadowCasterSkewedOnY_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes()
         {

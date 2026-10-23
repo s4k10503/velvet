@@ -332,7 +332,6 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the nesting styling-variants.md gives for skew-* plus a clip.
         // Move `overflow-hidden` from the inner child onto the caster and the overhang term reddens.
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ASkewedElementWithAFullSizeClippingChild_When_ItRenders_Then_TheFaceKeepsItsOverhangAndTheContentIsClipped()
         {
