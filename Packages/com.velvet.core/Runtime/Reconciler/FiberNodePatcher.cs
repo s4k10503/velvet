@@ -643,8 +643,7 @@ namespace Velvet
 
             // An AfterChildren Motion starts its swap when the plays below it have ended, which the children's
             // patches above have reported by now.
-            var playDelaySec = MotionOrchestrationWait.PlayStartSec(childOrchestration, ambientOrchestration,
-                extraDelaySec);
+            var playDelaySec = MotionOrchestrationWait.PlayStartSec(childOrchestration, extraDelaySec);
             ReportPlayEnd(element, newNode, ambientOrchestration, childOrchestration, playedTransition, playDelaySec,
                 oldVariantClasses, newVariantClasses);
 
@@ -1004,14 +1003,14 @@ namespace Velvet
             var tracksEnds = ambientOrchestration is { TracksEnds: true };
             if (childLabelChanged && hasOwnOrchestration)
             {
-                var extraBeforeChildrenSec = swapTransition!.When == TransitionWhen.BeforeChildren
+                var extraBeforeChildrenSec = swapTransition.When == TransitionWhen.BeforeChildren
                     ? (float)MotionPlaySpan.HeldBy(swapTransition, fromClasses, toClasses,
                         element != null ? scheduler?.SlotContext(element, fromClasses, toClasses) : null)
                     : 0f;
                 return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
                     swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec,
-                    waitsForChildren: swapTransition.When == TransitionWhen.AfterChildren, tracksEnds: tracksEnds,
-                    reversedOver: swapTransition.StaggerDirection < 0
+                    swapTransition.When, tracksEnds,
+                    reversedOver: swapTransition.StaggerDirection != 1
                         ? MotionOrchestrationWait.CountVariantChildren(newNode.Children)
                         : 0);
             }
@@ -1023,7 +1022,7 @@ namespace Velvet
             // allocation is spared, unless a play above waits on the ends the claims report.
             return extraDelaySec == 0f && !tracksEnds
                 ? null
-                : new MotionOrchestrationFrame(0f, 0f, extraDelaySec, tracksEnds: tracksEnds);
+                : new MotionOrchestrationFrame(0f, 0f, extraDelaySec, TransitionWhen.Together, tracksEnds, 0);
         }
 
         // Reports to the frame a variant child claimed from when the play it starts at playStartSec ends, read before
@@ -1037,9 +1036,7 @@ namespace Velvet
             {
                 return;
             }
-            var context = played != null
-                ? _ctx.StyleAnimationScheduler.SlotContext(element, fromClasses, toClasses)
-                : null;
+            var context = _ctx.StyleAnimationScheduler.SlotContext(element, fromClasses, toClasses);
             MotionOrchestrationWait.ReportEnd(ambientFrame, ownFrame,
                 MotionOrchestrationWait.PlayEndSec(played, playStartSec, fromClasses, toClasses, context));
         }

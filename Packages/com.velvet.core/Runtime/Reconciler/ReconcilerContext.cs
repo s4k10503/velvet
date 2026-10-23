@@ -2533,13 +2533,10 @@ namespace Velvet
         // live key remounted under its own key from one it patched. Same set/restore discipline.
         internal bool PresenceAnchorCreated;
 
-        // The stagger slot the expansion plays PresenceAnchorMotion's enter in. Same set/restore discipline.
+        // The delay the expansion plays PresenceAnchorMotion's enter in: its stagger slot, which the create path raises
+        // to the end of its children's plays once they have been created where the Motion waits for them
+        // (TransitionWhen.AfterChildren). Same set/restore discipline.
         internal float PresenceAnchorEnterDelaySec;
-
-        // The second the expansion starts PresenceAnchorMotion's enter at when the Motion waits for its children
-        // (TransitionWhen.AfterChildren), which the create path reads off the frame they reported to once they have
-        // been created; the slot above where it waits for nothing. Same set/restore discipline.
-        internal float PresenceAnchorPlayStartSec;
 
         // The keyed child being emitted now and whether it is present: what a presence expanding inside that
         // child's subtree reads as its nearest enclosing presence. Same set/restore discipline as

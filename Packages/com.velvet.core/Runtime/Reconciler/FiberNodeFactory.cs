@@ -394,8 +394,8 @@ namespace Velvet
             ReportEnterEnd(element, motionNode, in enter, childOrchestration);
             if (isAnchor)
             {
-                _ctx.PresenceAnchorPlayStartSec = MotionOrchestrationWait.PlayStartSec(childOrchestration,
-                    enter.Ambient, enter.DelaySec);
+                _ctx.PresenceAnchorEnterDelaySec = MotionOrchestrationWait.PlayStartSec(childOrchestration,
+                    enter.DelaySec);
             }
             if (!isAnchor || motionNode.Animate == null)
             {
@@ -415,8 +415,7 @@ namespace Velvet
                             enter.From!, enter.Transition!);
                         _ctx.StyleAnimationScheduler.PlayVariantEnter(element, enter.From, enter.To,
                             enter.Transition!, enterComplete,
-                            MotionOrchestrationWait.PlayStartSec(childOrchestration, enter.Ambient, enter.DelaySec),
-                            onSwap,
+                            MotionOrchestrationWait.PlayStartSec(childOrchestration, enter.DelaySec), onSwap,
                             playback: MotionVariantResolver.PlaybackForChildren(motionNode,
                                 _ctx.ComponentContextStack.Get(MotionContext.Playback)));
                     }
@@ -478,7 +477,7 @@ namespace Velvet
             MotionOrchestrationFrame? ownFrame)
             => _patcher.ReportPlayEnd(element, motionNode, enter.Ambient, ownFrame,
                 enter.Resolved && !EntersBlocked ? enter.Transition : null,
-                MotionOrchestrationWait.PlayStartSec(ownFrame, enter.Ambient, enter.DelaySec), enter.From, enter.To);
+                MotionOrchestrationWait.PlayStartSec(ownFrame, enter.DelaySec), enter.From, enter.To);
 
         private bool EntersBlocked
             => _ctx.ComponentContextStack.Get(MotionContext.EntersBlocked)

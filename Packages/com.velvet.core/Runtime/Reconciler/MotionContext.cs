@@ -93,13 +93,13 @@ namespace Velvet
         private double _childrenEndSec;
 
         public MotionOrchestrationFrame(float delayChildrenSec, float staggerChildrenSec, float baseDelaySec,
-            bool waitsForChildren = false, bool tracksEnds = false, int reversedOver = 0)
+            TransitionWhen when, bool tracksEnds, int reversedOver)
         {
             _delayChildrenSec = delayChildrenSec;
             _staggerChildrenSec = staggerChildrenSec;
             _baseDelaySec = baseDelaySec;
-            WaitsForChildren = waitsForChildren;
-            TracksEnds = waitsForChildren || tracksEnds;
+            WaitsForChildren = when == TransitionWhen.AfterChildren;
+            TracksEnds = WaitsForChildren || tracksEnds;
             _reversedOver = reversedOver;
         }
 
@@ -108,19 +108,13 @@ namespace Velvet
         public bool WaitsForChildren { get; }
 
         // Whether the children claiming from this frame report when their plays end: set for a frame whose owner waits
-        // for them, and for every frame below one, since the end of a child includes the ends of its own children.
+        // for them, and for a frame made below one, since the end of a child includes the ends of its own children.
         public bool TracksEnds { get; }
 
         // The latest end, in seconds from render-commit time, among the plays that reported to this frame.
         public double ChildrenEndSec => _childrenEndSec;
 
-        public void RecordChildEnd(double endSec)
-        {
-            if (endSec > _childrenEndSec)
-            {
-                _childrenEndSec = endSec;
-            }
-        }
+        public void RecordChildEnd(double endSec) => _childrenEndSec = Math.Max(_childrenEndSec, endSec);
 
         // Claims the next sequential slot (document order) and returns the claiming descendant's total extra
         // delay (seconds): delayChildren + slot * staggerChildren, plus this frame's base delay (see

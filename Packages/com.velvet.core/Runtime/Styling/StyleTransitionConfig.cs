@@ -306,9 +306,9 @@ namespace Velvet
 
         /// <summary>
         /// The order <see cref="StaggerChildrenSec"/> numbers the inheriting children in, as Framer Motion's
-        /// <c>staggerDirection</c>: 1 (default) starts the first child first, and a negative value starts the last
-        /// child first. A child's number counts back from the declared children of this Motion's node, where a
-        /// component counts as one child.
+        /// <c>staggerDirection</c>: 1 (default) starts the first child first, and -1 starts the last child first, as
+        /// does any other value. A child's number counts back from the declared children of this Motion's node,
+        /// where a component counts as one child.
         /// </summary>
         public int StaggerDirection { get; init; } = 1;
 

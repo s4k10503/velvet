@@ -8,11 +8,9 @@ namespace Velvet
     internal static class MotionOrchestrationWait
     {
         // Seconds from render-commit time at which a Motion's own play starts. One handed an AfterChildren frame of
-        // its own starts when the plays below it have ended, and never before the slot it claimed. An ambient frame
-        // is no answer here: it pools the ends of the Motion's siblings as well.
-        public static float PlayStartSec(MotionOrchestrationFrame? ownFrame, MotionOrchestrationFrame? ambientFrame,
-            float claimedDelaySec)
-            => ownFrame is { WaitsForChildren: true } && !ReferenceEquals(ownFrame, ambientFrame)
+        // its own starts when the plays below it have ended, and never before the slot it claimed.
+        public static float PlayStartSec(MotionOrchestrationFrame? ownFrame, float claimedDelaySec)
+            => ownFrame is { WaitsForChildren: true }
                 ? Math.Max(claimedDelaySec, (float)ownFrame.ChildrenEndSec)
                 : claimedDelaySec;
 
@@ -31,8 +29,7 @@ namespace Velvet
             {
                 return;
             }
-            var belowEndSec = ownFrame != null && !ReferenceEquals(ownFrame, ambientFrame) ? ownFrame.ChildrenEndSec : 0.0;
-            ambientFrame.RecordChildEnd(Math.Max(ownEndSec, belowEndSec));
+            ambientFrame.RecordChildEnd(Math.Max(ownEndSec, ownFrame?.ChildrenEndSec ?? 0.0));
         }
 
         // The variant children a Motion's declared nodes hold, which a reversed stagger counts back from. A component

@@ -108,6 +108,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AParentEnterDeclaringAfterChildren_When_TheChildsEnterIsWithheld_Then_ItEntersAtOnce()
+        {
+            // Arrange — the child sits in a presence whose first render withholds its enter, so no play of its
+            // 0.3s is there to wait for.
+            var slowChild = V.Motion(key: "c", name: "c", variants: s_fade,
+                transition: new StyleTransitionConfig { DurationSec = 0.3f });
+
+            // Act
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new[]
+            {
+                Parent(new StyleTransitionConfig { DurationSec = 0.05f, When = TransitionWhen.AfterChildren },
+                    new VNode[] { V.AnimatePresence(key: "presence", initial: false, children: new[] { slowChild }) }),
+            });
+            Frames(6);
+
+            // Assert
+            Assert.That(EnteredSwapped("p"), Is.True);
+        }
+
+        [Test]
         public void Given_AnInheritingChildWithItsOwnChild_When_TheParentsEnterStaggers_Then_TheGrandchildEntersWithItAndTheNextChildKeepsItsSlot()
         {
             // Arrange — Framer numbers each variant parent's own children: a1 belongs to a, so b is the parent's

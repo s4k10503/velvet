@@ -8072,9 +8072,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AParentDeclaringAfterChildren_When_ItsLabelFlips_Then_ItSwapsOnlyOnceItsChildrenHaveEnded()
+        public void Given_AParentDeclaringAfterChildren_When_ItsLabelFlips_Then_ItSwapsOnceTheVariantChildrenBelowItHaveEnded()
         {
-            // Arrange — the child's 0.3s play is the longest below the parent, whose own swap is short.
+            // Arrange — the slowest play below the parent is the grandchild's 0.2s, behind a child whose own is short.
+            // A child naming its own animate is not one of the parent's variant children, so its 0.6s is not waited for.
             VNode[] Tree(string label) => new VNode[]
             {
                 V.Motion(key: "p", name: "p", variants: s_fade, animate: label,
@@ -8082,20 +8083,27 @@ namespace Velvet.Tests
                     children: new VNode[]
                     {
                         V.Motion(key: "c", name: "c", variants: s_fade,
-                            transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                            transition: new StyleTransitionConfig { DurationSec = 0.05f },
+                            children: new VNode[]
+                            {
+                                V.Motion(key: "g", name: "g", variants: s_fade,
+                                    transition: new StyleTransitionConfig { DurationSec = 0.2f }),
+                            }),
+                        V.Motion(key: "own", name: "own", variants: s_fade, animate: label,
+                            transition: new StyleTransitionConfig { DurationSec = 0.6f }),
                     }),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
 
-            // Act — flip the label, then sample inside the child's play and again once it has ended.
+            // Act — flip the label, then sample inside the grandchild's play and again once it has ended.
             _reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
-            for (var i = 0; i < 12; i++) Tick();
-            var swappedInsideTheChildsPlay = Root.Q<VisualElement>("p").ClassListContains("opacity-100");
-            AdvancePast(0.3f);
+            for (var i = 0; i < 6; i++) Tick();
+            var swappedInsideTheGrandchildsPlay = Root.Q<VisualElement>("p").ClassListContains("opacity-100");
+            for (var i = 0; i < 13; i++) Tick();
             var swappedAfterIt = Root.Q<VisualElement>("p").ClassListContains("opacity-100");
 
             // Assert
-            Assert.That((swappedInsideTheChildsPlay, swappedAfterIt), Is.EqualTo((false, true)));
+            Assert.That((swappedInsideTheGrandchildsPlay, swappedAfterIt), Is.EqualTo((false, true)));
         }
 
         [Test]

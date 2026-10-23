@@ -255,6 +255,9 @@ namespace Velvet.Tests
             "coordinator-nested" => V.Component(NestedCoordinatorRender, key: key),
             "coordinator-spring" => V.Component(SpringCoordinatorRender, key: key),
             "coordinator-after" => V.Component(AfterChildrenCoordinatorRender, key: key),
+            "anchor-coordinator-after" => V.Motion(name: "after-coordinator", key: key,
+                variants: s_afterChildrenCoordinator, animate: "visible", exit: "hidden",
+                children: new[] { SlowInheritingMotion("slow-child") }),
             "coordinator-spring-important" => V.Component(ImportantSpringCoordinatorRender, key: key),
             "coordinator-mixed" => V.Component(MixedCoordinatorRender, key: key),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_wrapper), s_wrapper, null),
@@ -612,11 +615,13 @@ namespace Velvet.Tests
             Assert.That(HasClass("child0", "opacity-0"), Is.EqualTo(expected));
         }
 
-        [Test]
-        public void Given_ACoordinatorWhoseExitWaitsForItsChildren_When_TheKeyIsRemoved_Then_ItSwapsOnlyOnceTheirExitsHaveEnded()
+        [TestCase("coordinator-after")]
+        [TestCase("anchor-coordinator-after")]
+        public void Given_ACoordinatorWhoseExitWaitsForItsChildren_When_TheKeyIsRemoved_Then_ItSwapsOnlyOnceTheirExitsHaveEnded(
+            string wrapper)
         {
-            // Arrange
-            using var mounted = MountSettled("coordinator-after", "a");
+            // Arrange — the coordinator is the keyed child's anchor, or a Motion a component renders.
+            using var mounted = MountSettled(wrapper, "a");
             using var keys = s_keyStore;
 
             // Act — the child's exit plays for 0.3 s: sample inside it, then past it and short of the end of the
