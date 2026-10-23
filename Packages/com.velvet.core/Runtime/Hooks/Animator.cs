@@ -476,10 +476,10 @@ namespace Velvet
                     WriteTranslate(value);
                     break;
                 case AnimateChannel.Scale:
-                    _element.style.scale = new Scale(new Vector2(value, value));
+                    AuthoredTransform.SetScale(_element, new Scale(new Vector2(value, value)));
                     break;
                 default:
-                    _element.style.rotate = new Rotate(Angle.Degrees(value));
+                    AuthoredTransform.SetRotate(_element, new Rotate(Angle.Degrees(value)));
                     break;
             }
         }

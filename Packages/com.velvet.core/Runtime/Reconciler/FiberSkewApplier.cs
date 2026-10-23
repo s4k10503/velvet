@@ -30,7 +30,7 @@ namespace Velvet
             {
                 return;
             }
-            if (CanUseTransform(element, classNames))
+            if (CanUseTransform(element))
             {
                 WriteTransform(element, spec);
                 return;
@@ -215,46 +215,10 @@ namespace Velvet
         private string[] AppliedClasses(VisualElement element)
             => _ctx.MotionAppliedClasses.TryGetValue(element, out var applied) ? applied.Merged : Array.Empty<string>();
 
-        // Whether the element takes the skew as its transform slots: nothing else writes them, so nothing is lost
-        // to the skew's inline value, and nothing it writes is lost to theirs.
-        private bool CanUseTransform(VisualElement element, string[] classNames)
-            => !_ctx.MotionNodes.ContainsKey(element) && !_ctx.ElementToLayoutId.ContainsKey(element)
-                && !CarriesTransformSource(classNames);
-
-        // A preset that animates rotate or scale, whatever variant or modifier it sits behind.
-        private static bool CarriesTransformSource(string[] classNames) => Array.Exists(classNames, IsTransformSource);
-
-        private static bool IsTransformSource(string cls)
-        {
-            if (string.IsNullOrEmpty(cls))
-            {
-                return false;
-            }
-            var start = 0;
-            var depth = 0;
-            for (var i = 0; i < cls.Length; i++)
-            {
-                if (cls[i] == '[')
-                {
-                    depth++;
-                }
-                else if (cls[i] == ']')
-                {
-                    depth--;
-                }
-                else if (cls[i] == ':' && depth == 0)
-                {
-                    start = i + 1;
-                }
-            }
-            var core = cls.AsSpan(start);
-            while (core.Length > 0 && (core[0] == '!' || core[0] == '-'))
-            {
-                core = core.Slice(1);
-            }
-            return core.StartsWith("animate".AsSpan(), StringComparison.Ordinal)
-                || core.StartsWith("anim-".AsSpan(), StringComparison.Ordinal);
-        }
+        // Whether the element takes the skew as its transform slots. A Motion or a layoutId writes them on its own
+        // clock, which the composite does not follow yet.
+        private bool CanUseTransform(VisualElement element)
+            => !_ctx.MotionNodes.ContainsKey(element) && !_ctx.ElementToLayoutId.ContainsKey(element);
 
         // Moves the element between the transform and the painted layer as its classes now call for. True where the
         // element takes the skew as a transform, so the painted layer has nothing to do.
@@ -263,7 +227,7 @@ namespace Velvet
         {
             SkewSpec spec = default;
             var want = has && StyleSkewClass.TryExtract(classNames, out spec);
-            var useTransform = want && CanUseTransform(element, classNames);
+            var useTransform = want && CanUseTransform(element);
             if (useTransform)
             {
                 if (bound)

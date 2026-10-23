@@ -131,11 +131,11 @@ namespace Velvet
             }
             if (Mask(channels.Scale, named, StyleLonghand.Scale))
             {
-                element.style.scale = StyleKeyword.Null;
+                AuthoredTransform.SetScale(element, StyleKeyword.Null);
             }
             if (Mask(channels.Rotate, named, StyleLonghand.Rotate))
             {
-                element.style.rotate = StyleKeyword.Null;
+                AuthoredTransform.SetRotate(element, StyleKeyword.Null);
             }
         }
 

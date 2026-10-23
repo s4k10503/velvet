@@ -110,7 +110,7 @@ namespace Velvet
         private static void ClearAppliedScale(VisualElement element, AnchoredBinding binding)
         {
             if (!binding.HasAppliedDistanceFactorScale) return;
-            element.style.scale = StyleKeyword.Null;
+            AuthoredTransform.SetScale(element, StyleKeyword.Null);
             binding.HasAppliedDistanceFactorScale = false;
         }
 
@@ -224,7 +224,7 @@ namespace Velvet
             if (distanceFactor.HasValue)
             {
                 var scale = DistanceScale(camera, toTarget.magnitude, distanceFactor.Value);
-                element.style.scale = new Scale(new Vector2(scale, scale));
+                AuthoredTransform.SetScale(element, new Scale(new Vector2(scale, scale)));
                 binding.HasAppliedDistanceFactorScale = true;
             }
             else

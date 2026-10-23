@@ -443,8 +443,8 @@ namespace Velvet
         {
             if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
             if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
-            if (state.Scale != null) element.style.scale = StyleKeyword.Null;
-            if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
+            if (state.Scale != null) AuthoredTransform.SetScale(element, StyleKeyword.Null);
+            if (state.Rotate != null) AuthoredTransform.SetRotate(element, StyleKeyword.Null);
             state.Paint?.Release();
             LandSkew(element, state, landed);
             if (state.Colors != null)
@@ -484,12 +484,12 @@ namespace Velvet
             {
                 state.Scale = null;
                 state.ScaleY = null;
-                element.style.scale = StyleKeyword.Null;
+                AuthoredTransform.SetScale(element, StyleKeyword.Null);
             }
             if (state.Rotate != null && named.Contains(StyleLonghand.Rotate))
             {
                 state.Rotate = null;
-                element.style.rotate = StyleKeyword.Null;
+                AuthoredTransform.SetRotate(element, StyleKeyword.Null);
             }
             state.Colors?.RemoveAll(c => MotionSpringDriver.ReleasesProperty(element, c.Property, named));
             state.Lengths?.RemoveAll(l => MotionSpringDriver.ReleasesProperty(element, l.Property, named));
@@ -857,12 +857,12 @@ namespace Velvet
             if (state.Scale is { Masked: false })
             {
                 var v = Value(state, state.Scale, shared);
-                element.style.scale = new Scale(new Vector2(v, state.ScaleY != null ? Value(state, state.ScaleY, shared) : v));
+                AuthoredTransform.SetScale(element, new Scale(new Vector2(v, state.ScaleY != null ? Value(state, state.ScaleY, shared) : v)));
             }
             if (state.Rotate is { Masked: false })
             {
                 var v = Value(state, state.Rotate, shared);
-                element.style.rotate = new Rotate(Angle.Degrees(v));
+                AuthoredTransform.SetRotate(element, new Rotate(Angle.Degrees(v)));
             }
             state.Paint?.Apply(Value(state, state.PaintProgress!, shared));
             if (state.SkewX != null || state.SkewY != null)

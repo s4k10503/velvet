@@ -440,11 +440,11 @@ namespace Velvet
             if (state.Scale is { Masked: false })
             {
                 var v = state.Scale.Integrator.Value;
-                element.style.scale = new Scale(new Vector2(v, state.ScaleY?.Integrator.Value ?? v));
+                AuthoredTransform.SetScale(element, new Scale(new Vector2(v, state.ScaleY?.Integrator.Value ?? v)));
             }
             if (state.Rotate is { Masked: false })
             {
-                element.style.rotate = new Rotate(Angle.Degrees(state.Rotate.Integrator.Value));
+                AuthoredTransform.SetRotate(element, new Rotate(Angle.Degrees(state.Rotate.Integrator.Value)));
             }
             state.Paint?.Apply(state.PaintProgress!.Integrator.Value);
             if (state.SkewX != null || state.SkewY != null)
@@ -821,8 +821,8 @@ namespace Velvet
         {
             if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
             if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
-            if (state.Scale != null) element.style.scale = StyleKeyword.Null;
-            if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
+            if (state.Scale != null) AuthoredTransform.SetScale(element, StyleKeyword.Null);
+            if (state.Rotate != null) AuthoredTransform.SetRotate(element, StyleKeyword.Null);
             state.Paint?.Release();
             ReleaseSkew(element, state, landed);
             if (state.Colors != null)
@@ -863,12 +863,12 @@ namespace Velvet
             {
                 state.Scale = null;
                 state.ScaleY = null;
-                element.style.scale = StyleKeyword.Null;
+                AuthoredTransform.SetScale(element, StyleKeyword.Null);
             }
             if (state.Rotate != null && named.Contains(StyleLonghand.Rotate))
             {
                 state.Rotate = null;
-                element.style.rotate = StyleKeyword.Null;
+                AuthoredTransform.SetRotate(element, StyleKeyword.Null);
             }
             state.Colors?.RemoveAll(c => ReleasesProperty(element, c.Property, named));
             state.Lengths?.RemoveAll(l => ReleasesProperty(element, l.Property, named));
