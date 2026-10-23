@@ -402,7 +402,7 @@ namespace Velvet.Tests
             // only remaining place the bridge can attach is PatchPortal's healing branch, on the first
             // patch after the id registers.
             LogAssert.Expect(LogType.Warning,
-                "[Portal] Target \"same-panel-late-heal-target\" is not registered. Children will not be rendered.");
+                "[Portal] Target \"same-panel-late-heal-target\" is not registered. Its children mount once an element is registered under that id.");
             var bubbled = false;
             var binding = new PointerDownBinding { Handler = _ => bubbled = true };
             _mounted = V.Mount(_root, V.Motion(

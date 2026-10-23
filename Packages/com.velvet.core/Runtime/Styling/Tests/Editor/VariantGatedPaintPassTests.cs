@@ -1,3 +1,4 @@
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -38,13 +39,14 @@ namespace Velvet.Tests
             return scope.Root.Q<VisualElement>("card");
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ADarkGatedSkew_When_TheThemeTurnsDark_Then_TheSilhouetteTakesTheFace()
         {
             // Arrange — an inline background gives the stash something to capture off-panel; the sheared
             // silhouette then masks it with the sentinel so only its own repaint shows.
             using var scope = new ReconcilerScope();
-            var card = Mount(scope, "bg-[#FFFFFF] dark:-skew-x-6");
+            var card = Mount(scope, "bg-[#FFFFFF] dark:-skew-x-6 rotate-0");
             Assume.That(SilhouetteFace.IsSentinel(card.style.backgroundColor.value), Is.False,
                 "Precondition: nothing shears the face while the theme is light");
 
@@ -59,12 +61,13 @@ namespace Velvet.Tests
         private static float SkewX(ReconcilerScope scope, VisualElement card)
             => scope.Reconciler.Context.SkewBindings.TryGetValue(card, out var binding) ? binding.Spec.XDeg : float.NaN;
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_APerAxisSkewAndADarkPlainSkew_When_TheThemeTurnsDark_Then_ThePayloadTakesTheXAxis()
         {
             // Arrange — a rule behind a variant outranks the base while the variant holds, whichever of the two is per-axis.
             using var scope = new ReconcilerScope();
-            var card = Mount(scope, "skew-x-12 dark:skew-6");
+            var card = Mount(scope, "skew-x-12 dark:skew-6 rotate-0");
 
             // Act
             VelvetTheme.IsDark = true;
@@ -73,12 +76,13 @@ namespace Velvet.Tests
             Assert.That(SkewX(scope, card), Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_AnImportantSkewAndADarkImportantPlainSkew_When_TheThemeTurnsDark_Then_ThePayloadTakesTheXAxis()
         {
             // Arrange — a plain payload would lose to the important base, so the payload keeps its bang.
             using var scope = new ReconcilerScope();
-            var card = Mount(scope, "!skew-x-12 dark:!skew-6");
+            var card = Mount(scope, "!skew-x-12 dark:!skew-6 rotate-0");
 
             // Act
             VelvetTheme.IsDark = true;
@@ -87,12 +91,13 @@ namespace Velvet.Tests
             Assert.That(SkewX(scope, card), Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ADarkGatedSkewApplied_When_TheThemeTurnsLight_Then_TheFaceIsReturned()
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var card = Mount(scope, "bg-[#FFFFFF] dark:-skew-x-6");
+            var card = Mount(scope, "bg-[#FFFFFF] dark:-skew-x-6 rotate-0");
             VelvetTheme.IsDark = true;
             // Both edges in one assertion: an element that never sheared at all would satisfy the off-edge on
             // its own, so "was masked, then was not" is the whole claim.
@@ -340,6 +345,31 @@ namespace Velvet.Tests
             var card = scope.Root.Q<VisualElement>("card");
             Assert.That(scope.Reconciler.Context.ShadowBindings.ContainsKey(card), Is.True);
         }
+
+        [Test]
+        public void Given_AChildCombinatorShadowOverAnElementAndATextChild_When_TheyMount_Then_BothPaintItWithoutAnyLaterRender()
+        {
+            // Arrange — neither child declares a payload of its own, so only the container's [&>*]: rule names
+            // them, and it runs after both are built.
+            using var scope = new ReconcilerScope();
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[]
+                {
+                    V.Div(className: "[&>*]:shadow-lg", children: new VNode?[]
+                    {
+                        V.Label(className: "bg-[#FFFFFF]", text: "element", name: "element"),
+                        V.Text("text-child"),
+                    }),
+                });
+
+            // Assert
+            var context = scope.Reconciler.Context;
+            var text = scope.Root[0].Children().OfType<Label>().Last();
+            Assert.That((context.ShadowBindings.ContainsKey(scope.Root.Q<Label>("element")),
+                context.ShadowBindings.ContainsKey(text)), Is.EqualTo((true, true)));
+        }
     }
 
     /// <summary>
@@ -375,13 +405,14 @@ namespace Velvet.Tests
             return card;
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ALiteralSkewOverAUssFace_When_AnUnrelatedGateTokenToggles_Then_TheFaceStaysSuppressed()
         {
             // Arrange — the skew and the face colour are both literal, so the toggle changes neither: only
             // `shadow-lg` arrives. A USS face colour (not a bracket value) is what puts the stash on the
             // class-change branch.
-            var card = MountAndStash("bg-blue-500 -skew-x-6 dark:shadow-lg");
+            var card = MountAndStash("bg-blue-500 -skew-x-6 dark:shadow-lg rotate-0");
             var suppressedAtRest = SilhouetteFace.IsSentinel(card.style.backgroundColor.value);
 
             // Act
@@ -528,12 +559,13 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_AResponsiveSkew_When_TheRootIsNarrowerThanMd_Then_TheFaceIsUntouched()
         {
             // Arrange / Act — below the breakpoint the payload never applies, so the composed class source
             // must resolve to exactly what the element literally declares.
-            var card = MountAndResolveAt(NarrowPanel, "bg-[#FFFFFF] md:-skew-x-6");
+            var card = MountAndResolveAt(NarrowPanel, "bg-[#FFFFFF] md:-skew-x-6 rotate-0");
             Assume.That(card.panel.visualTree.resolvedStyle.width, Is.LessThan(MdBreakpoint),
                 "Precondition: the panel root resolved below the md breakpoint");
 

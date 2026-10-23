@@ -356,7 +356,8 @@ namespace Velvet.Tests
             s_classFor = s => (s == 0 ? "w-[50px]" : "w-[60px]") + " h-[40px] " + Triangle;
             _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderAnchoredHost));
             ForcePanelUpdate(_window.rootVisualElement.panel);
-            var wrapper = Named("card").parent;
+            // The clip wrapper sits inside the wrapper V.Anchored renders, which is the one forced absolute.
+            var wrapper = Named("card").parent.parent;
             var beforePatch = wrapper.style.position.value;
 
             // Act: the patch alone, before any layout pass could put a wrongly-written mode right again.

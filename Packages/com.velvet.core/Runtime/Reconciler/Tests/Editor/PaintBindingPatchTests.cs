@@ -37,7 +37,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class PaintBindingPatchTests
     {
-        private const string Skew = "-skew-x-6";
+        private const string Skew = "-skew-x-6 rotate-0";
         private const string Gradient = "bg-gradient-to-b from-[#FF0000] to-[#0000FF]";
 
         private static BoxShadowBinding Binding(ReconcilerScope scope, VisualElement element)
@@ -498,12 +498,13 @@ namespace Velvet.Tests
                 ? (xAxis ? binding.Spec.XDeg : binding.Spec.YDeg)
                 : float.NaN;
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_APlainSkewClass_When_Reconciled_Then_TheBindingCarriesTheAngleOnX()
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            Mount(scope, new VNode[] { V.Div(className: "skew-6", name: "card") });
+            Mount(scope, new VNode[] { V.Div(className: "skew-6 rotate-0", name: "card") });
 
             // Act
             var xDeg = SkewAngle(scope, xAxis: true);
@@ -512,12 +513,13 @@ namespace Velvet.Tests
             Assert.That(xDeg, Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_APlainSkewClass_When_Reconciled_Then_TheBindingCarriesTheAngleOnY()
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            Mount(scope, new VNode[] { V.Div(className: "skew-6", name: "card") });
+            Mount(scope, new VNode[] { V.Div(className: "skew-6 rotate-0", name: "card") });
 
             // Act
             var yDeg = SkewAngle(scope, xAxis: false);
@@ -526,44 +528,47 @@ namespace Velvet.Tests
             Assert.That(yDeg, Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_APerAxisSkew_When_APlainSkewIsAddedByPatch_Then_ItTakesTheOtherAxis()
         {
             // Arrange — x keeps its winner across the patch, so only a probe that reads skew-6 for y re-extracts.
             using var scope = new ReconcilerScope();
-            var oldTree = new VNode[] { V.Div(className: "skew-x-12", name: "card") };
+            var oldTree = new VNode[] { V.Div(className: "skew-x-12 rotate-0", name: "card") };
             Mount(scope, oldTree);
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, oldTree,
-                new VNode[] { V.Div(className: "skew-x-12 skew-6", name: "card") });
+                new VNode[] { V.Div(className: "skew-x-12 skew-6 rotate-0", name: "card") });
 
             // Assert
             Assert.That(SkewAngle(scope, xAxis: false), Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_APlainSkew_When_APerAxisSkewIsAddedByPatch_Then_TheOtherAxisKeepsThePlainAngle()
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var oldTree = new VNode[] { V.Div(className: "skew-6", name: "card") };
+            var oldTree = new VNode[] { V.Div(className: "skew-6 rotate-0", name: "card") };
             Mount(scope, oldTree);
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, oldTree,
-                new VNode[] { V.Div(className: "skew-6 skew-x-12", name: "card") });
+                new VNode[] { V.Div(className: "skew-6 skew-x-12 rotate-0", name: "card") });
 
             // Assert
             Assert.That(SkewAngle(scope, xAxis: false), Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_AnImportantSkewXBeforeALargerPlainOne_When_Reconciled_Then_TheImportantOneHoldsTheAxis()
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            Mount(scope, new VNode[] { V.Div(className: "!skew-x-6 skew-x-12", name: "card") });
+            Mount(scope, new VNode[] { V.Div(className: "!skew-x-6 skew-x-12 rotate-0", name: "card") });
 
             // Act
             var xDeg = SkewAngle(scope, xAxis: true);
@@ -572,6 +577,7 @@ namespace Velvet.Tests
             Assert.That(xDeg, Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_AShadowedElementWithAPlainSkew_When_Reconciled_Then_TheShadowCarriesTheYAngle()
         {
@@ -579,7 +585,7 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
 
             // Act
-            Mount(scope, new VNode[] { V.Div(className: "skew-6 shadow-md", name: "card") });
+            Mount(scope, new VNode[] { V.Div(className: "skew-6 shadow-md rotate-0", name: "card") });
 
             // Assert
             Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].SkewYDeg, Is.EqualTo(6f));
@@ -615,6 +621,7 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.ShadowBindings[element].SkewXDeg, Is.EqualTo(-6f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_AShadowedElementSkewedOnY_When_Reconciled_Then_TheShadowCarriesTheYAngle()
         {
@@ -622,23 +629,24 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
 
             // Act
-            Mount(scope, new VNode[] { V.Div(className: "skew-y-3 shadow-md", name: "card") });
+            Mount(scope, new VNode[] { V.Div(className: "skew-y-3 shadow-md rotate-0", name: "card") });
 
             // Assert
             Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].SkewYDeg, Is.EqualTo(3f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_AShadowedElementSkewedOnY_When_PatchedToAnotherYAngle_Then_TheShadowCarriesTheNewAngle()
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var before = new VNode[] { V.Div(className: "skew-y-3 shadow-md", name: "card") };
+            var before = new VNode[] { V.Div(className: "skew-y-3 shadow-md rotate-0", name: "card") };
             Mount(scope, before);
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before,
-                new VNode[] { V.Div(className: "skew-y-6 shadow-md", name: "card") });
+                new VNode[] { V.Div(className: "skew-y-6 shadow-md rotate-0", name: "card") });
 
             // Assert
             Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].SkewYDeg, Is.EqualTo(6f));

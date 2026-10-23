@@ -661,8 +661,9 @@ namespace Velvet
         }
 
         // Re-sorts `container` when its members are out of order. Hierarchy.Sort reorders within one parent, so
-        // no member leaves the panel the way a remove-and-insert makes it. A ring band keeps its place directly
-        // after the member it rings (RingOverlay.Place); any other child goes last.
+        // no member leaves the panel the way a remove-and-insert makes it. A backdrop layer keeps its place directly
+        // before its member (BackdropFilterLayer), and a face border overlay and then a ring band theirs directly
+        // after it (FaceBorderOverlay.Place, RingOverlay.Place); any other child goes last.
         private static void Resort(ReconcilerContext ctx, VisualElement container)
         {
             var stackingParent = container.hierarchy.parent;
@@ -723,7 +724,15 @@ namespace Velvet
             var rank = new Dictionary<VisualElement, int>(members.Count * 2);
             foreach (var (_, element) in members)
             {
+                if (ctx.BackdropBindings.TryGetValue(element, out var backdrop))
+                {
+                    rank[backdrop.Layer] = rank.Count;
+                }
                 rank[element] = rank.Count;
+                if (FaceBorderOverlay.OverlayOf(element) is { } face)
+                {
+                    rank[face] = rank.Count;
+                }
                 if (ctx.RingBindings.TryGetValue(element, out var ring))
                 {
                     rank[ring.Overlay] = rank.Count;

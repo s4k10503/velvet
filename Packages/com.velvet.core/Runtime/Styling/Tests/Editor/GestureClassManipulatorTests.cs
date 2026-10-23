@@ -821,7 +821,7 @@ namespace Velvet.Tests
         {
             "shadow" => ctx.ShadowBindings.ContainsKey(child),
             "ring" => ctx.RingBindings.ContainsKey(child),
-            "skew" => ctx.SkewBindings.ContainsKey(child),
+            "skew" => ctx.SkewBindings.ContainsKey(child) || ctx.SkewTransformed.ContainsKey(child),
             "gradient" => ctx.GradientBackgrounds.ContainsKey(child),
             "animation" => ctx.AnimationBindings.ContainsKey(child),
             "dash" => ctx.BorderStyleBindings.ContainsKey(child),
@@ -1184,11 +1184,12 @@ namespace Velvet.Tests
             Assert.That(ShadowFace(card), Is.EqualTo(dark != light ? dark : new Color(float.NaN, 0f, 0f, 0f)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedCardWithAHoverBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()
         {
             // Arrange
-            var (card, expected) = Mount("bg-blue-500 hover:bg-red-500 -skew-x-6", "bg-red-500");
+            var (card, expected) = Mount("bg-blue-500 hover:bg-red-500 -skew-x-6 rotate-0", "bg-red-500");
 
             // Act
             Hover(card);
@@ -1197,11 +1198,12 @@ namespace Velvet.Tests
             Assert.That(SkewFace(card), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedCardWithAHoverClassBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()
         {
             // Arrange
-            var (card, expected) = Mount("bg-blue-500 -skew-x-6", "bg-red-500", hover: "bg-red-500");
+            var (card, expected) = Mount("bg-blue-500 -skew-x-6 rotate-0", "bg-red-500", hover: "bg-red-500");
 
             // Act
             Hover(card);
@@ -1210,11 +1212,12 @@ namespace Velvet.Tests
             Assert.That(SkewFace(card), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedCardWithADarkBackground_When_TheThemeTurnsDark_Then_ItsFaceTakesTheDarkColor()
         {
             // Arrange
-            var (card, expected) = Mount("bg-blue-500 dark:bg-red-500 -skew-x-6", "bg-red-500");
+            var (card, expected) = Mount("bg-blue-500 dark:bg-red-500 -skew-x-6 rotate-0", "bg-red-500");
 
             // Act
             VelvetTheme.IsDark = true;
@@ -1238,11 +1241,12 @@ namespace Velvet.Tests
             Assert.That(ShadowFace(card), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedCard_When_APlayShowsABackgroundClass_Then_ItsFaceTakesThePlaysColor()
         {
             // Arrange
-            var (card, expected) = Mount("bg-blue-500 -skew-x-6", "bg-red-500");
+            var (card, expected) = Mount("bg-blue-500 -skew-x-6 rotate-0", "bg-red-500");
 
             // Act — the class writer every play goes through.
             StyleAnimationClassUtils.AddClasses(card, new[] { "bg-red-500" }, StyleLayerPriority.Animation);
@@ -1268,12 +1272,13 @@ namespace Velvet.Tests
             Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(card), Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedCardWithABracketHoverClassBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()
         {
             // Arrange — a bracket value is written inline over the face's suppression, which the face reads
             // directly rather than through its probe.
-            var (card, _) = Mount("bg-[#0000ff] -skew-x-6", "", hover: "bg-[#ff0000]");
+            var (card, _) = Mount("bg-[#0000ff] -skew-x-6 rotate-0", "", hover: "bg-[#ff0000]");
 
             // Act
             Hover(card);

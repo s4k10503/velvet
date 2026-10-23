@@ -73,7 +73,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode RenderClassColumn()
         {
-            var (cls, setClass) = Hooks.UseState("skew-x-12 w-[120px]");
+            var (cls, setClass) = Hooks.UseState("skew-x-12 w-[120px] rotate-0");
             s_setClass = setClass;
             return V.Div(className: cls, name: "col", children: new VNode?[]
             {
@@ -90,14 +90,14 @@ namespace Velvet.Tests
             // A FIXED caster box (w+h) so adding a row does not resize the caster: the manipulator only listens to
             // the CASTER's own GeometryChangedEvent, so an unchanged caster box guarantees the newly-added,
             // freshly-laid-out row can be seated by nothing but the reconciler's SyncChildTranslate re-run.
-            return V.Div(className: "skew-x-12 w-[120px] h-[200px]", name: "col",
+            return V.Div(className: "skew-x-12 w-[120px] h-[200px] rotate-0", name: "col",
                 children: items.Select(it => (VNode?)V.Div(key: it, name: it, className: "h-[24px]")).ToArray());
         }
 
         [Component]
         private static VNode RenderFlowTransitionColumn()
         {
-            var (casterCls, setCaster) = Hooks.UseState("skew-x-12 w-[120px] h-[200px]");
+            var (casterCls, setCaster) = Hooks.UseState("skew-x-12 w-[120px] h-[200px] rotate-0");
             var (childCls, setChild) = Hooks.UseState("h-[24px]");
             s_setCasterClass = setCaster;
             s_setChildClass = setChild;
@@ -110,7 +110,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode RenderTranslateChildColumn()
         {
-            var (cls, setClass) = Hooks.UseState("skew-x-12 w-[120px]");
+            var (cls, setClass) = Hooks.UseState("skew-x-12 w-[120px] rotate-0");
             s_setTranslateClass = setClass;
             return V.Div(className: cls, name: "col", children: new VNode?[]
             {
@@ -125,19 +125,20 @@ namespace Velvet.Tests
             // A fixed-height skewed ScrollView whose rows overflow it, so contentContainer's resolved height (the
             // full content extent) is far taller than the ScrollView's own visible box — the two candidate shear
             // frames the seat could centre on.
-            return V.ScrollView(className: "skew-x-12 w-[200px] h-[100px]", name: "sv",
+            return V.ScrollView(className: "skew-x-12 w-[200px] h-[100px] rotate-0", name: "sv",
                 children: Enumerable.Range(0, 5)
                     .Select(i => (VNode?)V.Div(key: "r" + i, name: "r" + i, className: "h-[40px] w-full"))
                     .ToArray());
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_SkewX12ColumnWithFixedHeightRows_When_Reconciled_Then_TopRowTranslatesOppositeBottomRow()
         {
             // Arrange — a positive-skewX column of three fixed-height rows: the top row's centroid is above the
             // box centre and the bottom's below, so the shear carries them opposite ways along x.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(
-                className: "skew-x-12 w-[120px]", name: "col", children: new VNode?[]
+                className: "skew-x-12 w-[120px] rotate-0", name: "col", children: new VNode?[]
                 {
                     V.Div(key: "a", name: "a", className: "h-[24px]"),
                     V.Div(key: "b", name: "b", className: "h-[24px]"),
@@ -206,12 +207,13 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_OutOfFlowAbsoluteChildUnderSkewedContainer_When_Reconciled_Then_AbsoluteChildTranslateStaysNull()
         {
             // Arrange — a skewed column with one in-flow child and one out-of-flow .absolute child.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(
-                className: "skew-x-12 w-[120px]", name: "col", children: new VNode?[]
+                className: "skew-x-12 w-[120px] rotate-0", name: "col", children: new VNode?[]
                 {
                     V.Div(key: "flow", name: "flow", className: "h-[24px]"),
                     V.Div(key: "abs", name: "abs", className: "absolute h-[24px]"),
@@ -449,7 +451,7 @@ namespace Velvet.Tests
             {
                 ["a"] = "translate-x-0", ["b"] = "translate-x-[20px]",
             };
-            return V.Div(className: "skew-x-12 w-[120px] h-[200px]", name: "col", children: new VNode?[]
+            return V.Div(className: "skew-x-12 w-[120px] h-[200px] rotate-0", name: "col", children: new VNode?[]
             {
                 V.Motion(key: "m", name: "m", className: "h-[24px]", variants: poses, initial: "a", animate: "b",
                     transition: new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 0.2f }),

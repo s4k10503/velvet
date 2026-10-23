@@ -202,21 +202,19 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
-        // A skewed draggable whose dragging class brings in a background of its own.
-        private static VNode SkewedDraggableScene() => V.DndContext(
-            activation: new DragActivation(Distance: 4f),
-            className: "w-[300px] h-[300px]",
-            children: new VNode[]
-            {
-                V.Draggable("item", key: "item", name: "item", whileDraggingClass: "bg-[#ff0000]",
-                    className: "absolute left-[0px] top-[0px] w-[50px] h-[50px] bg-[#0000ff] -skew-x-6"),
-            });
-
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedDraggableWithADraggingBackground_When_ItIsDragged_Then_ItsFaceTakesTheDraggingColor()
         {
-            // Arrange
-            Mount(SkewedDraggableScene);
+            // Arrange — a rotate class beside the skew keeps the painted layer that suppresses the face.
+            Mount(() => V.DndContext(
+                activation: new DragActivation(Distance: 4f),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", key: "item", name: "item", whileDraggingClass: "bg-[#ff0000]",
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px] bg-[#0000ff] -skew-x-6 rotate-0"),
+                }));
             var item = Q("item");
             SendPointerDown(item, new Vector2(10, 10));
 

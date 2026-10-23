@@ -604,7 +604,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base tweens a moved Motion from its own previous box.
-        // A replacement's registration must outlive the pass boundary that expires teardown boxes.
+        // A replacement's registration must outlive the end of the render that created it.
         [Test]
         public void Given_ASameKeyTypeFlipsReplacementWhoseTweenSettled_When_ItMovesAgain_Then_ItTweensFromItsOwnBox()
         {
@@ -641,27 +641,23 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base keeps no box for an id whose element left in an earlier render.
-        // The box a teardown now leaves for a same-key type flip must expire with its render.
         [Test]
-        public void Given_ALayoutIdMotionRemovedInOneRender_When_ALaterRenderMountsAnotherUnderTheSameId_Then_ItCarriesNoInversePose()
+        public void Given_ALayoutIdMotionRemovedInOneRender_When_ALaterRenderMountsAnotherUnderTheSameId_Then_ItTweensFromTheRemovedBox()
         {
             // Arrange
             using var mounted = V.Mount(Root, V.Component(RemoveThenRemountBoxRender, key: "root"));
             Tick();
             s_setStep.Invoke(1);
             mounted.FlushStateForTest();
-            var removed = Root.Q<VisualElement>("shared");
 
             // Act
             s_setStep.Invoke(2);
             mounted.FlushStateForTest();
             Tick();
 
-            // Assert
+            // Assert — pinned near the removed box, 200px left of its own.
             var remounted = Root.Q<VisualElement>("shared");
-            Assert.That((removed, remounted?.style.translate.keyword),
-                Is.EqualTo(((VisualElement)null, (StyleKeyword?)StyleKeyword.Null)));
+            Assert.That(UnityEngine.Mathf.Abs(remounted.style.translate.value.x.value + 200f), Is.LessThan(50f));
         }
 
         // Two 150px-tall parents, one below the other: the box stands at the same place inside either, and
@@ -869,21 +865,33 @@ namespace Velvet.Tests
             renderer: id => V.Motion(key: id, name: id, layoutId: id, transition: s_layoutSpring, className: "w-[100px] h-[50px]"),
             overscan: 0);
 
-        // GREEN_ON_BASE(characterization): the base forgets an id whose element a scroll took out of range.
-        // A teardown outside every pass must not leave a box a later render claims.
+        // What the id's entry holds, for a failure message: whether an element, a box, and how many ids are kept.
+        private static string RegistryReading(ReconcilerContext ctx, string id) =>
+            ctx.LayoutIdRegistry.TryGetValue(id, out var entry)
+                ? $"{id}: element={(entry.Element != null)}, box={entry.Box.HasValue}{BoxReading(entry.Box)} of {ctx.LayoutIdRegistry.Count} ids"
+                : $"{id}: absent of {ctx.LayoutIdRegistry.Count} ids";
+
+        private static string BoxReading(LayoutIdBox? box) => box is { } b
+            ? $" (parented={b.Parent != null}, local={b.Local}, centre={b.PanelCentre}, size={b.PanelSize})"
+            : "";
+
         [Test]
-        public void Given_ALayoutIdRowAScrollTookOutOfRange_When_ALaterRenderMountsAnotherUnderItsId_Then_ItCarriesNoInversePose()
+        public void Given_ALayoutIdRowAScrollTookOutOfRange_When_ALaterRenderMountsAnotherUnderItsId_Then_ItTweensFromTheRowsBox()
         {
-            // Arrange — the rows re-render once after layout, so row-0 holds its own box when the scroll takes it.
+            // Arrange — the list scrolled for real, so the range it renders on later layouts stays past row-0, and the
+            // rows re-rendered once after layout so row-0 held its own box when the scroll took it.
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            scrollView.style.height = 100f;
             Root.Add(scrollView);
             using var controller = new FiberVirtualListController(scrollView, LayoutIdRows(), _reconciler);
             controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
             Tick();
             controller.Update(LayoutIdRows());
             Tick();
-            var row0 = Root.Q<VisualElement>("row-0");
-            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 100f);
+            scrollView.scrollOffset = new Vector2(0f, 500f);
+            Tick();
+            var ctx = _reconciler.Context;
+            var scrolled = $"row-0 in the tree={Root.Q<VisualElement>("row-0") != null}, {RegistryReading(ctx, "row-0")}";
             var host = new VisualElement();
             Root.Add(host);
 
@@ -895,9 +903,38 @@ namespace Velvet.Tests
             });
             Tick();
 
-            // Assert
-            var remounted = host.Q<VisualElement>("remount");
-            Assert.That((row0.panel, remounted.style.translate.keyword), Is.EqualTo(((IPanel)null, StyleKeyword.Null)));
+            // Assert — the row stood 300px left of where the new Motion does.
+            Assert.That(TranslateX(host.Q<VisualElement>("remount")), Is.LessThan(-200f), $"after the scroll [{scrolled}]");
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionTornDownOutsideARender_When_ALaterRenderMountsAnotherUnderItsId_Then_ItTweensFromItsBox()
+        {
+            // Arrange — a Motion laid out, and the cleanup a virtual list gives a row it recycles, with no render in
+            // progress, and the row taken out of the tree as the list takes it.
+            var first = new VisualElement();
+            Root.Add(first);
+            _reconciler.Reconcile(first, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(name: "row", layoutId: "row-0", transition: s_layoutSpring, className: "left-[0px] top-[0px] w-[100px] h-[50px]"),
+            });
+            Tick();
+            var row = first.Q<VisualElement>("row");
+            ((IReconcilerBridge)_reconciler).CleanupElementForController(row);
+            row.RemoveFromHierarchy();
+            var host = new VisualElement();
+            Root.Add(host);
+
+            // Act
+            _reconciler.Reconcile(host, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(name: "remount", layoutId: "row-0", transition: s_layoutSpring,
+                    className: "left-[300px] top-[0px] w-[100px] h-[50px]"),
+            });
+            Tick();
+
+            // Assert — the row stood 300px left of where the new Motion does.
+            Assert.That(TranslateX(host.Q<VisualElement>("remount")), Is.LessThan(-200f));
         }
 
         // Step 1 flips the outer Motion's element type and moves it 200px right, and moves the inner one 20px
@@ -1011,10 +1048,8 @@ namespace Velvet.Tests
             Assert.That(UnityEngine.Mathf.Abs(translate - 200f), Is.LessThan(50f));
         }
 
-        // GREEN_ON_BASE(characterization): the base keeps no box for an id whose element left in an earlier render.
-        // A box a batch drain leaves must expire at that drain's end rather than wait for a pass outside one.
         [Test]
-        public void Given_TwoTabComponentsOnOneStore_When_NoneIsSelectedAndThenTheSecond_Then_TheUnderlineAppearsInPlace()
+        public void Given_TwoTabComponentsOnOneStore_When_NoneIsSelectedAndThenTheSecond_Then_TheUnderlineTweensFromWhereItLeft()
         {
             // Arrange
             s_tabs = new TabStore(0);
@@ -1024,17 +1059,14 @@ namespace Velvet.Tests
             s_tabs.Select(-1);
             Tick();
             Tick();
-            var removed = Root.Q<VisualElement>("underline");
 
             // Act
             s_tabs.Select(1);
             Tick();
             Tick();
 
-            // Assert
-            var underline = Root.Q<VisualElement>("underline");
-            Assert.That((removed, underline?.style.translate.keyword),
-                Is.EqualTo(((VisualElement)null, (StyleKeyword?)StyleKeyword.Null)));
+            // Assert — pinned near the first tab, 200px left of the second.
+            Assert.That(UnityEngine.Mathf.Abs(TranslateX(Root.Q<VisualElement>("underline")) + 200f), Is.LessThan(50f));
         }
 
         // Step 1 moves the box out of a parent drawn at half scale into an unscaled one above it.
@@ -3288,7 +3320,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItsLayoutIdIsRemovedAndAnotherMountsUnderIt_Then_TheOtherAppearsInPlace()
+        public void Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItsLayoutIdIsRemovedAndAnotherMountsUnderIt_Then_TheOtherTweensFromItsBox()
         {
             // Arrange
             (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
@@ -3301,8 +3333,8 @@ namespace Velvet.Tests
             s_bMounted = true;
             RenderShared(mounted);
 
-            // Assert
-            Assert.That(Root.Q<VisualElement>("b").style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — back over where "a" stands.
+            Assert.That(TranslateX(Root.Q<VisualElement>("b")), Is.LessThan(-250f));
         }
 
         // GREEN_ON_BASE(characterization): the base starts no tween on a Motion when the holder of an id it left leaves.

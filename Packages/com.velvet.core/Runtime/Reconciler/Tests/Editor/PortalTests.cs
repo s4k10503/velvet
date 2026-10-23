@@ -213,7 +213,7 @@ namespace Velvet.Tests
                 V.Portal("nonexistent", children: new VNode[] { V.Label(text: "Orphan") }),
             };
             LogAssert.Expect(LogType.Warning,
-                "[Portal] Target \"nonexistent\" is not registered. Children will not be rendered.");
+                "[Portal] Target \"nonexistent\" is not registered. Its children mount once an element is registered under that id.");
 
             // Act
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), children);

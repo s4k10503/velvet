@@ -107,8 +107,8 @@ namespace Velvet.Tests
             Assert.That((backdrop > 0, shadow > 0), Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already shears a shadow on a caster skewed on y alone with its face.
         // Have FiberBoxShadowApplier pass `default` for the caster's skew and the upright shadow's level edge reddens it.
+        // GREEN_ON_BASE(characterization): the base already shears a shadow on a caster skewed on y alone with its face.
         [UnityTest]
         public IEnumerator Given_ABoxShadowCasterSkewedOnY_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes()
         {
@@ -116,7 +116,7 @@ namespace Velvet.Tests
             // the bottom edge of both by tan(20deg) ≈ 0.36px a column, about 11px between the sampled columns, 5px in
             // from each side of the box; an upright shadow's bottom edge is level there.
             yield return MountOverBackdrop("SkewedBoxShadowPanel", V.Div(name: "caster",
-                className: "w-[40px] h-[30px] bg-[#00ff00] skew-y-[20deg] shadow-[0px_14px_10px_0px_#ff0000]"));
+                className: "w-[40px] h-[30px] bg-[#00ff00] skew-y-[20deg] shadow-[0px_14px_10px_0px_#ff0000] rotate-0"));
             var box = CasterBox();
             var pixels = RenderTexturePixelReader.ReadPixels(
                 _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
@@ -128,6 +128,7 @@ namespace Velvet.Tests
             Assert.That(ratio, Is.EqualTo(1f).Within(0.5f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ABoxShadowCasterSkewedOnBothAxesByOneClass_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes()
         {
@@ -137,7 +138,7 @@ namespace Velvet.Tests
             // its offset also carries 5px right, 8px to 53px. A shadow sheared by the x angle alone has a level
             // bottom edge from 11px to 51px, and an upright one ends at 40px, short of the second column.
             yield return MountOverBackdrop("BothAxesSkewedBoxShadowPanel", V.Div(name: "caster",
-                className: "w-[40px] h-[30px] bg-[#00ff00] skew-[20deg] shadow-[0px_14px_10px_0px_#ff0000]"));
+                className: "w-[40px] h-[30px] bg-[#00ff00] skew-[20deg] shadow-[0px_14px_10px_0px_#ff0000] rotate-0"));
             var box = CasterBox();
             var pixels = RenderTexturePixelReader.ReadPixels(
                 _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
@@ -212,6 +213,7 @@ namespace Velvet.Tests
             Assert.That(inside > 0 ? below : -1, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ASkewedGradientElement_When_RenderedOnARuntimePanel_Then_TheSilhouettePaintsIt()
         {
@@ -219,7 +221,7 @@ namespace Velvet.Tests
             // solid-fill branch is skipped whenever a gradient is present, so an unavailable shader leaves the
             // element entirely invisible rather than flat-filled.
             yield return MountOverBackdrop("SkewedGradientPanel", V.Div(
-                className: "w-[40px] h-[40px] skew-x-12 bg-gradient-to-r from-[#ff0000] to-[#00ff00]"));
+                className: "w-[40px] h-[40px] skew-x-12 bg-gradient-to-r from-[#ff0000] to-[#00ff00] rotate-0"));
 
             // Act
             var backdrop = CountBackdrop();

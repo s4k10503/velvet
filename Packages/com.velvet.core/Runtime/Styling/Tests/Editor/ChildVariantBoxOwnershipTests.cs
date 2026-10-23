@@ -9,9 +9,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies what a child keeps when a <c>[&amp;&gt;*]:</c> payload and a gap, grid or divide container
-    /// write the same inline slot on it — the manipulators directly, the payload through a layer. The
-    /// container's value wins while it applies, the precedence its polyfill documents; once it stops, the
-    /// slot holds what CSS would leave there, the payload's value.
+    /// write the same inline slot on it — the manipulators directly, the payload through a layer. While it
+    /// applies, a gap adds its value to the payload's, a grid's value wins and a divider gives way to the payload,
+    /// the precedence each polyfill documents; once it stops, the slot holds what CSS would leave there, the payload's value.
     /// </summary>
     /// <remarks>
     /// The transfer cases pose the same deferred re-apply <see cref="PerChildManipulatorOwnershipTests"/>
@@ -273,7 +273,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, before, after);
 
             // Assert — the gap's own write rides along, since a gap that never landed leaves the same slot.
-            Assert.That((spaced, Inline(second.style.marginLeft)), Is.EqualTo(("16", "2")));
+            Assert.That((spaced, Inline(second.style.marginLeft)), Is.EqualTo(("18", "2")));
         }
 
         [Test]
@@ -299,7 +299,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, before, after);
 
             // Assert — the gap it carried as the second child rides along, since the stale value is the point.
-            Assert.That((spaced, Inline(promoted.style.marginLeft)), Is.EqualTo(("16", "2")));
+            Assert.That((spaced, Inline(promoted.style.marginLeft)), Is.EqualTo(("18", "2")));
         }
 
         [Test]
@@ -339,9 +339,10 @@ namespace Velvet.Tests
             // Act
             var row = OneRow(scope, "flex flex-row gap-x-4 [&>*]:ml-[2px]");
 
-            // Assert — the second child reads the gap, so a row whose gap never applied cannot pass.
+            // Assert — the second child reads the gap added to the payload, so a row whose gap never applied
+            // cannot pass.
             Assert.That((Inline(row[0].style.marginLeft), Inline(row[1].style.marginLeft)),
-                Is.EqualTo(("2", "16")));
+                Is.EqualTo(("2", "18")));
         }
 
         [Test]
@@ -544,7 +545,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AWrappingGapContainerWithItsOwnMargin_When_TheGapIsDropped_Then_ItsMarginReturns()
         {
-            // Arrange — a wrapping gap writes -gap/2 onto the container's own four margins.
+            // Arrange — a wrapping gap adds -gap/2 to the container's own four margins.
             using var scope = new ReconcilerScope();
             var before = new VNode[]
             {
@@ -564,7 +565,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, before, after);
 
             // Assert — the wrap's own write rides along, since a gap that never wrapped leaves the margin.
-            Assert.That((whileWrapping, Inline(container.style.marginLeft)), Is.EqualTo(("-8", "4")));
+            Assert.That((whileWrapping, Inline(container.style.marginLeft)), Is.EqualTo(("-4", "4")));
         }
 
         [Test]

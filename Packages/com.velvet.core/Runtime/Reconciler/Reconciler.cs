@@ -105,7 +105,7 @@ namespace Velvet
                         finally
                         {
                             _ctx.EndStoreSnapshotWave();
-                            MotionLayoutIdDriver.ExpireSnapshots(_ctx);
+                            MotionLayoutIdDriver.EndRender(_ctx);
                         }
                     });
             }
@@ -326,10 +326,9 @@ namespace Velvet
                 // Declaring-resolution misses are scoped to one top-level pass: retrying the
                 // scan next pass is what lets a late-arriving declaring panel resolve.
                 _ctx.DeclaringResolveMisses.Clear();
-                // After the portal drain, whose reconciles can create the element that claims one. Inside a
-                // batch drain the drain's end expires them instead: its passes are one render, and a box one
-                // fiber's pass leaves is claimed by a later fiber's.
-                if (!_ctx.DeferDrainLayoutEffects) MotionLayoutIdDriver.ExpireSnapshots(_ctx);
+                // After the portal drain, whose reconciles can restore a rotate. Inside a batch drain the drain's
+                // end does this instead: its passes are one render.
+                if (!_ctx.DeferDrainLayoutEffects) MotionLayoutIdDriver.EndRender(_ctx);
                 // After the portal drain, whose reconciles insert elements of their own.
                 StyleRelationalVariantManipulator.RetargetAll(_ctx);
                 // After the portal drain for the same reason: a Portal's target can sit inside a scope. Every walk
@@ -350,6 +349,7 @@ namespace Velvet
                 // drain just above. Draining here, at the top-level boundary, is the first point where every
                 // element created in this pass has its final parent.
                 RingOverlay.DrainPendingPlacements(_ctx);
+                BackdropFilterLayer.DrainPendingPlacements(_ctx);
                 // Same reason: an inherited family is read off the final parent chain (FiberFontScope).
                 _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
                 // Last, so a ref setup sees the element where the pass finally put it and every cleanup
@@ -693,6 +693,11 @@ namespace Velvet
                 RingOverlay.Detach(element, binding);
             }
             _ctx.RingBindings.Clear();
+            foreach (var (element, binding) in _ctx.BackdropBindings)
+            {
+                BackdropFilterLayer.Detach(element, binding);
+            }
+            _ctx.BackdropBindings.Clear();
             // Skewed elements hold paint/stash callbacks and an inline color suppression: detach so
             // a still-mounted element released at root disposal carries no Velvet residue.
             foreach (var (element, binding) in _ctx.SkewBindings)
@@ -882,6 +887,12 @@ namespace Velvet
             }
 
             _ctx.GapManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.CompositeFlowManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.CompositeFlowManipulators.Clear();
             foreach (var (element, manipulator) in _ctx.DivideManipulators)
             {
                 element.RemoveManipulator(manipulator);

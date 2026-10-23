@@ -356,9 +356,22 @@ namespace Velvet
             return false;
         }
 
-        private static bool HasRunningNativeTransition(VisualElement owner, StyleLonghand longhand)
+        internal static bool HasRunningNativeTransition(VisualElement owner, StyleLonghand longhand)
             => owner.panel != null && s_nativePropertyIds[(int)longhand] is { } id
                 && ReadNativeMemberOrNull(s_hasRunningNative, owner, new[] { id }) is true;
+
+        // Whether CancelNativeTransition can reach the transition of longhand.
+        internal static bool CancelsNativeTransition(StyleLonghand longhand)
+            => s_cancelNative != null && s_nativePropertyIds[(int)longhand] != null;
+
+        // Cancels owner's native transition of longhand, which lands the longhand on the transition's end.
+        internal static void CancelNativeTransition(VisualElement owner, StyleLonghand longhand)
+        {
+            if (owner.panel != null && s_nativePropertyIds[(int)longhand] is { } id)
+            {
+                ReadNativeMemberOrNull(s_cancelNative, owner, new[] { id });
+            }
+        }
 
         private static object? ReadNativeMemberOrNull(MemberInfo? member, object owner, object[]? arguments = null)
         {
@@ -379,6 +392,7 @@ namespace Velvet
         }
 
         private static readonly MethodInfo? s_hasRunningNative = EngineMember.HasRunningStyleAnimation.ResolveMethod();
+        private static readonly MethodInfo? s_cancelNative = EngineMember.CancelStyleAnimation.ResolveMethod();
         private static readonly PropertyInfo? s_nativePropertyId = EngineMember.StylePropertyNameId.ResolveProperty();
         private static readonly object?[] s_nativePropertyIds = NativePropertyIds();
 
