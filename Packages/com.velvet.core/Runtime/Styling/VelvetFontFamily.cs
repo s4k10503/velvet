@@ -75,17 +75,14 @@ namespace Velvet
         // The width of a face that font-stretch: normal names.
         private const float NormalStretch = 100f;
 
-        // FindClosestWeight over only the entries that carry the requested style's own face: CSS narrows
-        // the faces by font-style before it compares weights, so a face of the requested style at another
-        // weight beats the right weight in the wrong style.
-        internal VelvetFontWeightEntry? FindClosestWeightWithFace(VelvetFontWeight requested, bool italicFace) =>
-            Match(requested, italicFace, NormalStretch);
-
-        // The same two over the entries of the width CSS's font matching reaches first for the requested stretch,
-        // which it settles before the style and the weight.
+        // FindClosestWeight over the entries of the width CSS's font matching reaches first for the requested
+        // stretch, which it settles before the style and the weight.
         internal VelvetFontWeightEntry? FindClosestWeight(VelvetFontWeight requested, float stretch) =>
             Match(requested, italicFace: null, stretch);
 
+        // And over only the entries that carry the requested style's own face: CSS narrows the faces by
+        // font-style before it compares weights, so a face of the requested style at another weight beats
+        // the right weight in the wrong style.
         internal VelvetFontWeightEntry? FindClosestWeightWithFace(VelvetFontWeight requested, bool italicFace,
             float stretch) =>
             Match(requested, italicFace, stretch);

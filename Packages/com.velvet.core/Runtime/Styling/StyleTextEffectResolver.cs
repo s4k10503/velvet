@@ -274,6 +274,10 @@ namespace Velvet
             }
             element.experimental.SetRenderedText(wanted ?? raw);
             element.MarkDirtyText();
+            if (ctx.FlexMinSizeManipulators.TryGetValue(element, out var minSize))
+            {
+                minSize.Rederive();
+            }
         }
 
         // What the leaf shows: the string handed to the engine, or its text when none was.
