@@ -227,6 +227,7 @@ namespace Velvet
                 ApplyVariantManipulators(element, newClasses);
                 StyleResponsiveScope.OnClassesChanged(oldClasses ?? Array.Empty<string>(), newClasses ?? Array.Empty<string>());
             }
+            StyleResponsiveScope.ObserveMarkers(element);
             // The font layer reads the COMPOSED source, so the class diff answers only half of whether its
             // input moved: applying a variant's payload moves the token set without moving either class
             // array, and a [&>*]: one moves nothing on the child at all. Lit tokens are the other half.
@@ -493,6 +494,7 @@ namespace Velvet
             // would put an element between this container and each Component's output.
             FiberCommitWork.OpenOwnRows(_ctx, childContainer);
             int? rowsBehindRanges;
+            using var host = _ctx.OpenChildVariantHost(StyleChildVariantClass.HasChildVariantClass(newNode.ClassNames));
             try
             {
                 _host.ReconcileChildren(childContainer,
@@ -3422,23 +3424,13 @@ namespace Velvet
         private void ReSyncVariantGatedPasses(VisualElement element)
         {
             _ctx.VariantGateClasses.TryGetValue(element, out var state);
-            // The array the element's own reconcile pass last applied, or none when no pass ever recorded
-            // one: the trigger was a width payload, which gates nothing and so never earns an entry, or the
-            // payload came from a [&>*]: rule on the PARENT, whose children are fully created before it runs.
-            // The second case is temporary for a child rendered as an element — its own next patch runs the
-            // class passes and records the array. A V.Text child's patch runs none, ever, which is why the
-            // empty array below is its reconciled array rather than a stand-in; the live list stands in for
-            // the layout gates in the element case only. The paint sequence stands down for both: it runs only
-            // from an array a pass of the element's own recorded (VariantGateState.PaintTail).
-            // That makes a [&>*]: paint land inconsistently: a child that declares ANY gated payload of its own
-            // was recorded at create, so the parent's payload finds PaintTail set and paints at mount, while a
-            // child that declares none paints only from its next patch.
-            // A TextNode's element applies no class of its own at any render, so an empty array is not a
-            // stand-in for its reconciled one — it IS its reconciled one. Without this the two resolvers
-            // below stand down for such a child forever, and a container's [&>*]:font-mono or
-            // [&>*]:uppercase lands on its class list and changes nothing, at mount and at every patch.
-            var reconciled = state?.Reconciled
-                ?? (_ctx.TextNodeElements.ContainsKey(element) ? System.Array.Empty<string>() : null);
+            // The array the element's own reconcile pass last applied, or none when no pass ever recorded one: the
+            // trigger was a width payload, which gates nothing and so never earns an entry. A child of a [&>*]:
+            // container is recorded as it is created or patched (RecordVariantGateSource), so its payload paints
+            // from the first frame. A TextNode's element applies no class of its own at any render, so an empty
+            // array is its reconciled one rather than a stand-in, and the passes below read it as recorded.
+            var isTextNode = _ctx.TextNodeElements.ContainsKey(element);
+            var reconciled = state?.Reconciled ?? (isTextNode ? System.Array.Empty<string>() : null);
             var previous = state?.Resolved;
             var resolved = reconciled == null ? LiveClasses(element)
                 : state == null ? reconciled
@@ -3468,7 +3460,7 @@ namespace Velvet
             {
                 StyleTextEffectResolver.Apply(_ctx, element, resolved);
             }
-            if (state == null || !state.PaintTail)
+            if (state == null || !(state.PaintTail || isTextNode))
             {
                 return;
             }
@@ -3492,7 +3484,9 @@ namespace Velvet
                 state.Reconciled = classNames;
                 return;
             }
-            if (StyleVariantPayload.DeclaresGatePayload(classNames))
+            // A child of a [&>*]: container declares nothing itself, yet the container's payload reaches it, so
+            // the array is put aside for the re-sync that payload raises.
+            if (_ctx.ChildVariantHostDepth > 0 || StyleVariantPayload.DeclaresGatePayload(classNames))
             {
                 _ctx.VariantGateClasses[element] = new VariantGateState { Reconciled = classNames };
             }

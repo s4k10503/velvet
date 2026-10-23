@@ -157,6 +157,13 @@ namespace Velvet
         public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
             double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
         {
+            using var host = _ctx.OpenChildVariantHost(_ctx.HostsChildVariant(parent));
+            ReconcileInto(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
+        }
+
+        private void ReconcileInto(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
+            double frameBudgetMs, int slotStart, int slotLimit)
+        {
             if (_ctx.IsAborted) return;
             FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, parent);
 

@@ -48,6 +48,11 @@ namespace Velvet
         // The panel whose per-frame check holds this binding (DivideDashPainter.EnsureCheck).
         public IPanel? CheckedBy;
 
+        // Whether a settling of the sibling overlay (FaceBorderOverlay) is waiting to run, and whether the binding
+        // has been torn down.
+        public bool OverlayPending;
+        public bool Detached;
+
         // The width the child's border resolves to on Edge: the divider's own, or a width of the child's own that
         // the divider gave way to, so the dash is drawn as wide as the border it stands in for.
         public float Width => DivideDashPainter.StrokeWidth(Child, Edge);
@@ -100,6 +105,8 @@ namespace Velvet
 
         public static void Detach(VisualElement child, DivideDashChildBinding binding)
         {
+            binding.Detached = true;
+            FaceBorderOverlay.RemoveLater(child);
             child.generateVisualContent -= binding.OnGenerate;
             // MUTANT_SURVIVES(equivalent, line removed): a callback left registered only asks the element for a
             // repaint.
@@ -389,6 +396,28 @@ namespace Velvet
             TakeOver(binding);
             var now = s_checks.TryGetValue(child.panel, out var check) ? check.NowMs / 1000.0 : 0.0;
             binding.Color = Advance(binding, PaintColor(binding), now);
+            // A child that clips its content cuts this dash at its padding box, which the divider's border band lies
+            // outside (styling-variants.md's hidden-overflow table), and CSS clips neither, so such a child's dash
+            // is painted on a sibling over it (FaceBorderOverlay), settled outside the paint as it writes the
+            // hierarchy.
+            if (!FaceBorderOverlay.ClipsAndSettle(child, ref binding.OverlayPending, binding, SettleOverlay))
+            {
+                PaintEdge(mgc, child, binding);
+            }
+        }
+
+        private static void SettleOverlay(VisualElement child, DivideDashChildBinding binding)
+        {
+            binding.OverlayPending = false;
+            if (binding.Detached || child.panel == null)
+            {
+                return;
+            }
+            FaceBorderOverlay.Sync(child, StyleCascade.ClipsOverflow(child), (mgc, _, _) => PaintEdge(mgc, child, binding));
+        }
+
+        private static void PaintEdge(MeshGenerationContext mgc, VisualElement child, DivideDashChildBinding binding)
+        {
             if (binding.Width <= 0.01f || binding.Color.a <= 0.004f)
             {
                 return;

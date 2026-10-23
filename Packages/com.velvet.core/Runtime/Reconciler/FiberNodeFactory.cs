@@ -84,8 +84,11 @@ namespace Velvet
         // it — is released before the throw goes on. A suspend passes through untouched: releasing the
         // element on one too left the Suspense boundary on its fallback after the resource resolved, which
         // ElementCreationFailureTests holds.
-        private void ReconcileChildrenOfNewElement(VisualElement element, VisualElement childContainer, VNode?[] children)
+        private void ReconcileChildrenOfNewElement(VisualElement element, VisualElement childContainer, VNode?[] children,
+            string[]? classNames = null)
         {
+            using var host = _ctx.OpenChildVariantHost(
+                classNames != null && StyleChildVariantClass.HasChildVariantClass(classNames));
             try
             {
                 _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), children);
@@ -136,7 +139,7 @@ namespace Velvet
                 // produce no DOM element of their own. The same path is used
                 // on patch (PatchCommon) so initial-mount and patch DOM layouts stay
                 // symmetric — both omit the per-Component wrapper VE.
-                ReconcileChildrenOfNewElement(element, childContainer, elementNode.Children);
+                ReconcileChildrenOfNewElement(element, childContainer, elementNode.Children, elementNode.ClassNames);
             }
             try
             {
@@ -340,7 +343,7 @@ namespace Velvet
                             _ctx.ComponentContextStack.Get(MotionContext.Playback)));
                     try
                     {
-                        ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
+                        ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children, writtenClasses);
                     }
                     finally
                     {
@@ -349,7 +352,7 @@ namespace Velvet
                 }
                 else
                 {
-                    ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
+                    ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children, writtenClasses);
                 }
             }
             _ctx.SyncRefCallback(element, motionNode.RefCallback);
