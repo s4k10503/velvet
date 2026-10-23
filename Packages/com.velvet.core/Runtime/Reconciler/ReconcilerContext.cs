@@ -192,9 +192,8 @@ namespace Velvet
     // ReconcilerContext.VariantGateClasses. An entry is opened by whichever comes first: the reconcile pass
     // that sees the element DECLARE a gated payload (FiberNodePatcher.RecordVariantGateSource), the create or
     // patch that sees a gesture or drag channel or a play's classes carry one (ReconcilerContext.ExpectGatePayload,
-    // ExpectPlayGates), or the toggle itself for an element none of those named — a [&>*]: rule on its PARENT,
-    // since every other variant family (first: and has-[.class]: included) spells its payload on the subject's
-    // own class list, or a play on an element ExpectPlayGates did not reach. It outlives an emptied token set,
+    // ExpectPlayGates), a create or patch under a [&>*]: container (ChildVariantHostDepth), or the toggle
+    // itself for an element none of those named — a play on an element ExpectPlayGates did not reach. It outlives an emptied token set,
     // because the array it holds is what the NEXT toggle will need and no reconcile need ever run again to
     // re-record it.
     internal sealed class VariantGateState
@@ -412,10 +411,9 @@ namespace Velvet
         public string[]? Resolved;
 
         // Whether a pass of this element's own has resolved it, which is what lets the re-sync run the
-        // wrapper-less paint tail. False while a [&>*]: rule on the parent is the only thing that has ever named
-        // this element, because the child is fully created before that rule runs; the re-sync then drives the
-        // layout gates alone, and the element's next patch records it. A child that declares any gated payload
-        // of its OWN was recorded at create, so the same [&>*]: payload paints at mount for it.
+        // wrapper-less paint tail. An element made or patched under a [&>*]: container is recorded as it is
+        // made, so the container's payload paints at mount for it; False for an element nothing but a toggle
+        // has ever named, for which the re-sync drives the layout gates alone until its next patch.
         public bool PaintTail;
     }
 
@@ -981,6 +979,35 @@ namespace Velvet
         // dispose. The per-child stacked manipulators a state-variant payload spawns live in
         // StackedVariantManipulators (keyed by the child) and are swept with each child, not here.
         public Dictionary<VisualElement, StyleChildVariantManipulator> ChildVariantManipulators { get; } = new();
+
+        // Above zero while the children of a container carrying a [&>*]: token are being reconciled, so that each
+        // element made or patched there is recorded for the re-sync the container's payload raises
+        // (FiberNodePatcher.RecordVariantGateSource). Nested containers raise it further; it is a superset of the
+        // direct children, which costs a record per descendant and nothing else.
+        internal int ChildVariantHostDepth;
+
+        // Whether parent, as a reconcile target, is the child container of an element that carries a manipulator.
+        internal bool HostsChildVariant(VisualElement? parent)
+        {
+            if (parent == null || ChildVariantManipulators.Count == 0)
+            {
+                return false;
+            }
+            if (ChildVariantManipulators.ContainsKey(parent))
+            {
+                return true;
+            }
+            var owner = parent.hierarchy.parent;
+            for (var level = 0; owner != null && level < 4; level++, owner = owner.hierarchy.parent)
+            {
+                if (ChildVariantManipulators.ContainsKey(owner)
+                    && ReferenceEquals(FiberNodePatcher.GetChildContainer(owner), parent))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
 
         // Per-Motion-element bookkeeping of the class set actually APPLIED (base ClassNames plus any
         // variant classes propagated from an ancestor Motion's active label, PLUS the variant-only classes

@@ -547,31 +547,12 @@ payload and paint binding lands, and what teardown releases) and `InputBoxSurfac
 sheet-attached resolved colours, the peer source and focus). They resolve the utility's colour from a
 reference element carrying the same class rather than from a literal.
 
-**`[&>*]:` reaches the paints late, and inconsistently.** It is the only family whose payload is
-spelled on the *container* rather than on the element it lands on, and a child is fully built before
-the container applies it. The layout utilities still re-derive at mount, so `[&>*]:gap-2` spaces
-immediately. The paints depend on something the child cannot be relied on to have: if the child
-declares a variant-gated payload **of its own** — any one, `hover:gap-4` is enough — it was already
-recorded at create and `[&>*]:shadow-lg` paints at mount; if it declares none, the same class paints
-only from that child's next render. Do not lean on either outcome. Put the utility on the child, or
-behind a variant the child declares itself.
-
-The font layer and the string axes fail it differently again. A paint that cannot resolve does not
-paint; these two resolve a whole family out of a class array and rewrite the element from it, so
-they would resolve *something*. Until that child's own next render there is no array of its own to
-resolve from: the payload's landing opens its record and that render fills it in. Before that the
-only array there is its live class list, and a `font-[…]` or `leading-[…]` the child declared is
-deliberately kept off it — the resolver owns those — while the class channels above put utilities
-on it the child never declared. So both stand down there rather than replace what the child's own
-render got right with nothing left to put it back: `[&>*]:uppercase` over a `leading-[24px]` label
-leaves the label alone. From that child's next render on the two agree and both land —
-`[&>*]:font-mono` and `[&>*]:uppercase` alike — for a child rendered as an element. A `V.Text`
-child takes them at mount instead: it declares no class of its own at any render, so there is
-nothing of its own for the payload to resolve over and nothing to wait for. For a child rendered as
-an element that declares none, mount is what neither reaches — one that must carry the family or the
-transform on its first frame declares it itself, or declares a variant of its own, the same escape
-the paints take. The paints reach a `V.Text` child at no render at all: they run behind a verdict
-only an element's own class pass records.
+**`[&>*]:` reaches every direct child at once.** It is the only family whose payload is spelled on the
+*container* rather than on the element it lands on, and a child is fully built before the container applies
+it. Velvet records the class array of each element made or patched under a container carrying the token, so
+the layout utilities, the paints (`shadow-lg`, `ring-2`, `skew-x-6`, gradients), the font layer and the string
+axes (`font-mono`, `uppercase`) all land at mount for a child rendered as an element, whether or not the child
+declares a variant of its own, and the same holds for a `V.Text` child.
 
 ## Container queries — `@container`
 

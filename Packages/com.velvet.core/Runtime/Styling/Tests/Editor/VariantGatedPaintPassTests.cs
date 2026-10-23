@@ -1,3 +1,4 @@
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -339,6 +340,31 @@ namespace Velvet.Tests
             // nothing re-runs the paint afterwards, so the element would mount unshadowed and stay that way.
             var card = scope.Root.Q<VisualElement>("card");
             Assert.That(scope.Reconciler.Context.ShadowBindings.ContainsKey(card), Is.True);
+        }
+
+        [Test]
+        public void Given_AChildCombinatorShadowOverAnElementAndATextChild_When_TheyMount_Then_BothPaintItWithoutAnyLaterRender()
+        {
+            // Arrange — neither child declares a payload of its own, so only the container's [&>*]: rule names
+            // them, and it runs after both are built.
+            using var scope = new ReconcilerScope();
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[]
+                {
+                    V.Div(className: "[&>*]:shadow-lg", children: new VNode?[]
+                    {
+                        V.Label(className: "bg-[#FFFFFF]", text: "element", name: "element"),
+                        V.Text("text-child"),
+                    }),
+                });
+
+            // Assert
+            var context = scope.Reconciler.Context;
+            var text = scope.Root[0].Children().OfType<Label>().Last();
+            Assert.That((context.ShadowBindings.ContainsKey(scope.Root.Q<Label>("element")),
+                context.ShadowBindings.ContainsKey(text)), Is.EqualTo((true, true)));
         }
     }
 
