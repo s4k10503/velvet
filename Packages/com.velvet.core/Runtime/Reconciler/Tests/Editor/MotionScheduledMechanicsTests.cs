@@ -5955,16 +5955,16 @@ namespace Velvet.Tests
             Assert.That(CornerRadiusFit.InlineCorner(element.style, corner).value.value, Is.EqualTo(expected).Within(0.5f));
         }
 
-        [TestCase(0, 180f)]
-        [TestCase(1, 60f)]
-        public void Given_ALayoutIdMotionWhoseOwnStylesheetGivesItOverlappingRadii_When_ItsTweenStarts_Then_TheyAreLeftUnfittedAsAtRest(int corner, float expected)
+        [TestCase(0, 150f)]
+        [TestCase(1, 50f)]
+        public void Given_ALayoutIdMotionWhoseOwnStylesheetGivesItOverlappingRadii_When_ItsTweenStarts_Then_TheyAreScaledDownTogether(int corner, float expected)
         {
-            // Arrange / Act — the test's own sheet giving ninety and thirty, which Velvet leaves unfitted at rest; doubled in
-            // place.
+            // Arrange / Act — the test's own sheet giving ninety and thirty, doubled in place, so drawn at half and
+            // written at twice, 180 and 60 on a 200px side.
             Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
             var element = ResizeBoxWithOrigin("layout-id-test-uneven");
 
-            // Assert — written at twice each, drawn at half as at rest.
+            // Assert — both by the one factor that fits the side, 200 over 240, as a radius of an arbitrary class is.
             Assert.That(CornerRadiusFit.InlineCorner(element.style, corner).value.value, Is.EqualTo(expected).Within(0.5f));
         }
 

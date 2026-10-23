@@ -147,6 +147,10 @@ namespace Velvet
         internal static Length? Fitted(VisualElement element, int corner)
         {
             if (!s_states.TryGetValue(element, out var state)) return null;
+            if (state.ReadsCascade)
+            {
+                ReadSheet(element, state, null);
+            }
             var declared = Declared(state, corner);
             return declared == null ? null : new Length(declared.Value.value * FactorFor(element, state), declared.Value.unit);
         }

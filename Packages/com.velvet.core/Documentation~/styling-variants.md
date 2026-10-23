@@ -141,8 +141,9 @@ Four consequences worth knowing:
   the class is set beside one carrying none, and a property whose computed value differs between them is one the class
   sets. `my-card dark:my-card-dark` then does what it reads like: while `dark:` holds, `my-card` comes off if
   `my-card-dark` sets every property it does. The probe is read once per class and panel, at the first panel update
-  after a variant payload reaches an element carrying the class, so until then the class is ranked by nothing, as it
-  was before. A declaration behind a pseudo-class does not count, since the probe is in no state, nor does one that
+  after a variant payload of a class of your own reaches an element, and the other classes of your own on that element
+  are read then too, so until then the classes are ranked by nothing, as they were before. A class a play shows is
+  not read. A declaration behind a pseudo-class does not count, since the probe is in no state, nor does one that
   matches the property's value without the class. A class starting `unity-` or `velvet-` is never probed, since
   the rules of UI Toolkit's own controls are theirs to apply.
 - **`has-[.foo]:` matches what the className wrote.** A `.foo` written in a descendant's `className`

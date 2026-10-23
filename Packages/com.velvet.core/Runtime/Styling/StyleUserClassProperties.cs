@@ -57,6 +57,21 @@ namespace Velvet
             return false;
         }
 
+        // Whether the properties of cls are already known, asking nothing.
+        internal static bool TryGetKnown(VisualElement element, string cls, out StyleLonghandSet properties)
+        {
+            properties = StyleLonghandSet.Empty;
+            if (IsEngineOwned(cls))
+            {
+                return true;
+            }
+            if (element.panel == null)
+            {
+                return false;
+            }
+            return s_caches.GetOrCreateValue(element.panel).Known.TryGetValue(cls, out properties);
+        }
+
         // The classes UI Toolkit's own controls and Velvet's internal elements carry. A rule of theirs that a probe read
         // would let a payload take a built-in control's own styling off it.
         private static bool IsEngineOwned(string cls)

@@ -342,12 +342,12 @@ namespace Velvet.Tests
             var box = MountSwitchable($"{WideBox} own-radius");
             var fittedWhileShort = IsNear(box.resolvedStyle.borderTopLeftRadius, 17f);
 
-            // Act — 400 across an 800px side fits unscaled.
-            SwitchClass("w-[800px] h-[800px] own-radius");
+            // Act — 200 across a 420px side fits unscaled.
+            SwitchClass("w-[420px] h-[420px] own-radius");
 
             // Assert
             Assert.That((fittedWhileShort, box.style.borderTopLeftRadius.keyword, box.resolvedStyle.borderTopLeftRadius),
-                Is.EqualTo((true, StyleKeyword.Null, 400f)));
+                Is.EqualTo((true, StyleKeyword.Null, 200f)));
         }
     }
 }

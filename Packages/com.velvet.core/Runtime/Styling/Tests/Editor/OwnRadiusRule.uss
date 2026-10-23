@@ -1,4 +1,4 @@
 /* A radius that no bundled class declares, which CornerRadiusFitPanelTests lays out. */
 .own-radius {
-    border-radius: 400px;
+    border-radius: 200px;
 }
