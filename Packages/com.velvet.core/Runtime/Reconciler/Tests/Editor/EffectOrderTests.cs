@@ -775,6 +775,7 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_log), Is.EqualTo("first:passive, second:passive, third:passive"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already runs the flushed sibling and the parent's later sibling in tree order before the parent.
         [Test]
         public void Given_ASiblingFlushedOnItsOwnAheadOfAParentWhosePassReachesALaterSibling_When_TheirPassiveEffectsFlush_Then_TheSiblingsRunInTreeOrderBeforeTheParent()
         {
