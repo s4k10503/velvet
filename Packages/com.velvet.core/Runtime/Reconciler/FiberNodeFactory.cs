@@ -426,10 +426,11 @@ namespace Velvet
                 }
             }
             // A rotated layoutId Motion created inside another is drawn through a correction wrapper from its first
-            // frame. One created apart from its parent, as a component rendering on its own does, takes it at its next
-            // patch (FiberNodePatcher.ReconcileLayoutIdCorrection).
+            // frame: inside one still being created, which is not registered yet, by the depth count, else by the
+            // parent the reconcile places it under.
             var outer = element;
-            if (motionNode.LayoutId != null && _ctx.LayoutIdMotionDepth > 0 && MotionLayoutIdDriver.Corrects(appliedClasses))
+            if (motionNode.LayoutId != null && MotionLayoutIdDriver.Corrects(appliedClasses)
+                && (_ctx.LayoutIdMotionDepth > 0 || MotionLayoutIdDriver.HasLayoutIdAncestor(_ctx.ReconcileParent, _ctx)))
             {
                 outer = _patcher.Appliers.WrapLayoutIdCorrection(element);
             }

@@ -1046,6 +1046,8 @@ namespace Velvet
         // How many layoutId Motions the children being created are inside, which a Motion created with no parent yet
         // reads as an ancestor (MotionLayoutIdDriver.Corrects).
         internal int LayoutIdMotionDepth;
+        // The parent the children being reconciled are placed under (ChildReconciler.Reconcile).
+        internal VisualElement? ReconcileParent;
         // The ids whose entry holds a box read under each parent, and the ids whose entry lost its element, oldest
         // first (MotionLayoutIdDriver.SetEntry).
         public Dictionary<VisualElement, HashSet<string>> LayoutIdBoxParents { get; } = new();

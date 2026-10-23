@@ -52,10 +52,10 @@ namespace Velvet
             ? Rotates(payload)
             : cls.StartsWith("rotate-", System.StringComparison.Ordinal) || cls.StartsWith("-rotate-", System.StringComparison.Ordinal);
 
-        // Whether a layoutId Motion is registered above the element.
-        internal static bool HasLayoutIdAncestor(VisualElement element, ReconcilerContext ctx)
+        // Whether a layoutId Motion is registered at the element or above it.
+        internal static bool HasLayoutIdAncestor(VisualElement? from, ReconcilerContext ctx)
         {
-            for (var e = element.hierarchy.parent; e != null; e = e.hierarchy.parent)
+            for (var e = from; e != null; e = e.hierarchy.parent)
             {
                 if (ctx.ElementToLayoutId.ContainsKey(e)) return true;
             }
@@ -882,16 +882,17 @@ namespace Velvet
         }
 
         // Called before the box the parent lays out for a Motion is swapped for its wrapper or back: the projection
-        // hands its slots back where they are written now, and the box the Motion stood at is kept for the render's
+        // hands its slots back where they are written now, and the box the Motion is drawn at is kept for the render's
         // registration to start from, since the new box has no layout until the next pass.
         internal static void BeforeReseat(VisualElement element, ReconcilerContext ctx)
         {
             if (!ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)) return;
+            // Read before the projection ends, so a tween running now hands on the box it is drawn at.
+            var box = ReadBox(element, ctx);
             CancelPendingSettle(element, ctx);
             End(element, ctx);
             if (!ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry)) return;
             if (!ReferenceEquals(entry.Element, element)) return;
-            var box = ReadBox(element, ctx);
             if (box != null) SetEntry(ctx, layoutId, element, box);
         }
 

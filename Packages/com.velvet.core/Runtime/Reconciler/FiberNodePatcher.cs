@@ -516,7 +516,7 @@ namespace Velvet
         private void ReconcileLayoutIdCorrection(VisualElement element, MotionNode node, string[] appliedClasses)
         {
             var wants = node.LayoutId != null && MotionLayoutIdDriver.Corrects(appliedClasses)
-                && MotionLayoutIdDriver.HasLayoutIdAncestor(element, _ctx);
+                && MotionLayoutIdDriver.HasLayoutIdAncestor(element.hierarchy.parent, _ctx);
             if (wants == _appliers.HasLayoutIdCorrection(element))
             {
                 if (wants) ClipPathLayoutBox.SyncClasses(element);

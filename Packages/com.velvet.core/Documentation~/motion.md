@@ -578,8 +578,7 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   element its parent holds in its place, which carries the counter-scale and the move outside the Motion's own
   rotate, as Framer applies the correction ahead of the rotate. The wrapper takes the Motion's place in layout, its
   `name` and refs stay on the Motion, and it leaves the tree with the Motion, an `AnimatePresence` exit included.
-  A Motion created apart from its parent, as a component rendering on its own is, takes the wrapper at its next
-  render. A move that
+  A move that
   lands while a tween is still running starts from where the element is drawn, not from its last layout.
   A box in a rotated or sheared frame (a rotated element inside a non-uniformly scaled one) starts
   unrotated over the same centre, at the drawn lengths of its sides.
