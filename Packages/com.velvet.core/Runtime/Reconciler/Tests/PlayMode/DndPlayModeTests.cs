@@ -908,7 +908,10 @@ namespace Velvet.Tests
                 }),
             });
 
-        // A droppable far larger than the screen on the main panel, and a draggable in the world-space panel.
+        // A 300 px droppable on the main panel, which the test seats over the middle of the screen, and a draggable in
+        // the world-space panel. The droppable stays near the draggable's size once both are in the world-space
+        // panel's units: a rect intersection ratio rounds to four decimals, so a droppable thousands of times the
+        // draggable's area ranks as no collision.
         [Component]
         private static VNode WorldSpaceDraggableScene() => V.DndContext(
             onDragEnd: e => s_ended.Add(e.Over?.Id),
@@ -916,7 +919,7 @@ namespace Velvet.Tests
             className: "w-[4000px] h-[4000px]",
             children: new VNode[]
             {
-                V.Droppable("main-slot", key: "main-slot", className: "w-[4000px] h-[4000px]"),
+                V.Droppable("main-slot", key: "main-slot", name: "main-slot", className: "w-[300px] h-[300px]"),
                 V.WorldSpace(Vector3.zero, panelSize: new Vector2(1000f, 500f), key: "world", children: new VNode[]
                 {
                     V.Draggable("world-item", key: "world-item", name: "world-item", className: "w-[50px] h-[50px]"),
@@ -972,14 +975,18 @@ namespace Velvet.Tests
         {
             // Arrange
             yield return MountAndWaitForWorldSpace(WorldSpaceDraggableScene);
+            var middle = _panelGo.GetComponent<UIDocument>().rootVisualElement.worldBound.center;
+            Main("main-slot").style.marginLeft = middle.x - 150f;
+            Main("main-slot").style.marginTop = middle.y - 150f;
+            yield return null;
             var item = _mounted.Root.Reconciler.Context.WorldSpaceBindings.Values.Single()
                 .Document.rootVisualElement.Q<VisualElement>("world-item");
             SendPointerDown(item, new Vector2(10, 10));
-            SendPointerMove(item, new Vector2(20, 10));
-            SendPointerMove(item, new Vector2(30, 10));
+            SendPointerMove(item, new Vector2(15, 10));
+            SendPointerMove(item, new Vector2(16, 10));
 
             // Act
-            SendPointerUp(item, new Vector2(30, 10));
+            SendPointerUp(item, new Vector2(16, 10));
             yield return null;
 
             // Assert
