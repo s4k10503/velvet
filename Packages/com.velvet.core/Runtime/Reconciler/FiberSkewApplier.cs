@@ -140,45 +140,40 @@ namespace Velvet
 
         // A class that writes rotate or scale, whatever variant or modifier it sits behind, or a preset that animates
         // them.
-        private static bool CarriesTransformSource(string[] classNames)
+        private static bool CarriesTransformSource(string[] classNames) => Array.Exists(classNames, IsTransformSource);
+
+        private static bool IsTransformSource(string cls)
         {
-            foreach (var cls in classNames)
+            if (string.IsNullOrEmpty(cls))
             {
-                if (string.IsNullOrEmpty(cls))
+                return false;
+            }
+            var start = 0;
+            var depth = 0;
+            for (var i = 0; i < cls.Length; i++)
+            {
+                if (cls[i] == '[')
                 {
-                    continue;
+                    depth++;
                 }
-                var start = 0;
-                var depth = 0;
-                for (var i = 0; i < cls.Length; i++)
+                else if (cls[i] == ']')
                 {
-                    if (cls[i] == '[')
-                    {
-                        depth++;
-                    }
-                    else if (cls[i] == ']')
-                    {
-                        depth--;
-                    }
-                    else if (cls[i] == ':' && depth == 0)
-                    {
-                        start = i + 1;
-                    }
+                    depth--;
                 }
-                var core = cls.AsSpan(start);
-                while (core.Length > 0 && (core[0] == '!' || core[0] == '-'))
+                else if (cls[i] == ':' && depth == 0)
                 {
-                    core = core.Slice(1);
-                }
-                if (core.StartsWith("rotate".AsSpan(), StringComparison.Ordinal)
-                    || core.StartsWith("scale".AsSpan(), StringComparison.Ordinal)
-                    || core.StartsWith("animate".AsSpan(), StringComparison.Ordinal)
-                    || core.StartsWith("anim-".AsSpan(), StringComparison.Ordinal))
-                {
-                    return true;
+                    start = i + 1;
                 }
             }
-            return false;
+            var core = cls.AsSpan(start);
+            while (core.Length > 0 && (core[0] == '!' || core[0] == '-'))
+            {
+                core = core.Slice(1);
+            }
+            return core.StartsWith("rotate".AsSpan(), StringComparison.Ordinal)
+                || core.StartsWith("scale".AsSpan(), StringComparison.Ordinal)
+                || core.StartsWith("animate".AsSpan(), StringComparison.Ordinal)
+                || core.StartsWith("anim-".AsSpan(), StringComparison.Ordinal);
         }
 
         // Moves the element between the transform and the painted layer as its classes now call for. True where the
