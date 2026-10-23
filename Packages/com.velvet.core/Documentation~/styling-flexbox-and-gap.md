@@ -319,7 +319,8 @@ A gap is written as a margin, and CSS adds a gap to an item's own margin rather 
 Velvet adds the two:
 
 - **A child's own margin on the gap edge.** A margin of the child's own on an edge a gap writes — a class
-  (`ml-2`), a bracket (`ml-[5px]`), a container's `[&>*]:ml-[2px]` — is added to the gap: `ml-2` on the
+  (`ml-2`), a bracket (`ml-[5px]`), a container's `[&>*]:ml-[2px]`, a margin class a play shows such as an
+  `AnimatePresence` enter class — is added to the gap: `ml-2` on the
   second child of a `gap-x-4` row puts `24px` before it, and follows the class as it changes. It also wins
   over a space margin on that edge, as it does in Tailwind, and the gap adds to it there too. `ml-auto`
   stays `auto`, so the free space still goes to it. A percentage is taken of the container's content width

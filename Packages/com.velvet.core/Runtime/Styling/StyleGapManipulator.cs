@@ -104,6 +104,9 @@ namespace Velvet
         // The size slots of the child container's layout box this manipulator holds (HoldSizes), by HeldSlot bit, and
         // the parent it listens to for a percentage size.
         private int _sizesHeld;
+
+        // The layout box the container's margins and sizes were last held on — see MoveBox.
+        private VisualElement? _box;
         private VisualElement? _sizeParent;
 
         // One child's summed margins and which slots anything asked for, indexed by HeldSlot; reused per child.
@@ -261,8 +264,10 @@ namespace Velvet
             }
 
             var wrap = (_spec.HasColumnGap || _spec.HasRowGap) && IsWrap(container);
+            var box = ClipPathLayoutBox.Of(container);
+            MoveBox(box);
             // Ahead of the signature: a size declaration of the container's own changes with none of its inputs.
-            HoldSizes(ClipPathLayoutBox.Of(container), wrap);
+            HoldSizes(box, wrap);
             var gapSlot = ResolveGapSlot(container);
             var signature = ComputeSignature(container, wrap, gapSlot);
             if (_hasSignature && signature == _lastSignature)
@@ -313,7 +318,6 @@ namespace Velvet
             }
             WatchGeometry(lastSpaced);
 
-            var box = ClipPathLayoutBox.Of(container);
             if (wrap)
             {
                 HoldContainerAxis(box, HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _spec.ColumnGap);
@@ -431,11 +435,13 @@ namespace Velvet
             var container = ChildContainer;
             if (container != null)
             {
+                var box = ClipPathLayoutBox.Of(container);
+                MoveBox(box);
                 if (_containerHeld)
                 {
-                    HandBackMargins(ClipPathLayoutBox.Of(container));
+                    HandBackMargins(box);
                 }
-                HoldSizes(ClipPathLayoutBox.Of(container), false);
+                HoldSizes(box, false);
             }
             ResetAllMargined();
             WatchGeometry(null);
@@ -490,6 +496,29 @@ namespace Velvet
             }
             StyleArbitraryValueResolver.HoldGap(box, start, new StyleLength(-gap / 2f), -gap / 2f);
             StyleArbitraryValueResolver.HoldGap(box, end, new StyleLength(-gap / 2f), -gap / 2f);
+        }
+
+        // A clip wrapper arriving or leaving changes which element lays the container out in its parent
+        // (ClipPathLayoutBox.Of), and the move carries the values held there across (ClipPathLayoutBox.Adopt and
+        // Release). The holds stay on the element left behind, where a later reassert would write them over the
+        // value the move left it, so they are dropped without a write and taken again on the new box.
+        private void MoveBox(VisualElement box)
+        {
+            if (_box != null && !ReferenceEquals(_box, box))
+            {
+                foreach (var slot in HeldSlotGroups.EverySlot)
+                {
+                    var margin = _containerHeld && System.Array.IndexOf(s_marginSlots, slot) >= 0;
+                    if (margin || (_sizesHeld & StyleHeldSlots.Bit(slot)) != 0)
+                    {
+                        StyleArbitraryValueResolver.LetGo(_box, slot);
+                    }
+                }
+                _containerHeld = false;
+                _sizesHeld = 0;
+                _hasSignature = false;
+            }
+            _box = box;
         }
 
         private static readonly HeldSlot[] s_columnSizes = { HeldSlot.Width, HeldSlot.MinWidth, HeldSlot.MaxWidth };

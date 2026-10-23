@@ -2712,9 +2712,16 @@ namespace Velvet
         }
 
         // What the element's own declarations put on slot: the class claiming its longhand where that class
-        // outranks the winning layer, else that layer.
+        // outranks the winning layer, else that layer. A clip wrapper's are its element's: every length slot is one
+        // the element's layers write onto the wrapper (ClipPathLayoutBox.BoxFor).
         private static bool TryOwnLength(VisualElement element, LayerMap map, HeldSlot slot, out ArbitraryStyle own)
         {
+            var owner = ClipPathLayoutBox.InnerOf(element);
+            if (!ReferenceEquals(owner, element))
+            {
+                element = owner;
+                map = MapOf(owner);
+            }
             var layered = TryLayeredWinner(map, slot, out own, out var rank);
             var claimant = OwnClaimant(element, map, HeldSlotGroups.LonghandOf(slot), out var claim);
             if (claimant == null || layered && claim <= rank)
@@ -2815,12 +2822,19 @@ namespace Velvet
                 : RelativeLengthAxis.Width;
 
         // What PropertySetters writes for a percentage of an indefinite size on slot's longhand.
+#pragma warning disable CS8524 // no discard arm: a new held slot has to say what its indefinite percentage is
         private static StyleKeyword? IndefiniteOf(HeldSlot slot) => slot switch
         {
             HeldSlot.Width or HeldSlot.Height => StyleKeyword.Auto,
             HeldSlot.MaxWidth or HeldSlot.MaxHeight => StyleKeyword.None,
-            _ => null,
+            HeldSlot.MinWidth or HeldSlot.MinHeight => null,
+            HeldSlot.MarginTop or HeldSlot.MarginRight or HeldSlot.MarginBottom or HeldSlot.MarginLeft => null,
+            HeldSlot.BorderTopWidth or HeldSlot.BorderRightWidth or HeldSlot.BorderBottomWidth
+                or HeldSlot.BorderLeftWidth => null,
+            HeldSlot.BorderTopColor or HeldSlot.BorderRightColor or HeldSlot.BorderBottomColor
+                or HeldSlot.BorderLeftColor => null,
         };
+#pragma warning restore CS8524
 
         internal static bool IsDriven(VisualElement element, HeldSlot slot)
             => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.IsDriven(slot);
@@ -3334,6 +3348,12 @@ namespace Velvet
             var rewritten = ResolveSharedLonghands(element, property, map, out var written);
             RewriteDriven(element, map, written);
             ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property) | rewritten);
+            // A write the clip wrapper took (ClipPathLayoutBox.BoxFor) goes back under what is held there.
+            var box = ClipPathLayoutBox.Of(element);
+            if (!ReferenceEquals(box, element) && s_layers.TryGetValue(box, out var boxMap))
+            {
+                ReassertHolds(box, boxMap, HeldSlotGroups.SlotsOf(property));
+            }
         }
 
         // Reused by every tick: a tick runs alone and resolves nothing re-entrantly.
