@@ -623,9 +623,10 @@ namespace Velvet
                 OldLen = oldNodes.Length,
                 LogicalNewLen = newElements.Count,
             };
-            _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
+            var reordered = _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
 
             CommitComponentOrder(commit.Placements);
+            if (reordered) _ctx.ComponentRegistry.CommitChildOrderToRows(parent, newElements, commit.Placements);
             foreach (var (fiber, firstRow, rows) in commit.Placements)
             {
                 fiber.MountSlotStart = slotStart + firstRow;
@@ -1073,6 +1074,16 @@ namespace Velvet
                     fiber = _ctx.ComponentRegistry.GetOrCreateInline(
                         component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
                 }
+                catch (BoundaryCaughtSignal)
+                {
+                    // An existing component whose render threw into a boundary this walk is expanding is part of
+                    // the failed output, which the boundary disposes with the fibers it added (ExpandBoundaryInline);
+                    // one the old side never reached would otherwise stay registered and render, and throw, again.
+                    var failed = _ctx.ComponentRegistry.TryGetFiberForInlineKey(
+                        parentFiber, slotKey, identity, portalScope, walk.Parent);
+                    if (failed != null) walk.NewFibers.Add(failed);
+                    throw;
+                }
                 catch (FiberSuspendSignal)
                 {
                     // The component whose render suspended stays in the new tree, which a Suspense above keeps
@@ -1087,6 +1098,7 @@ namespace Velvet
                     fiber = suspended;
                 }
                 walk.NewFibers.Add(fiber);
+                fiber.SuspenseFallbackOf = _ctx.SuspenseFallbackOwner;
                 var preCount = emittedCount;
                 if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
                 else ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
@@ -1408,7 +1420,7 @@ namespace Velvet
         // directly in the parent's slot range and, on the new side, render in-scope of any enclosing
         // Provider (no pre-captured snapshot needed). The fiber rendering this Suspense
         // (FiberStack.Current) becomes the boundary so a descendant's
-        // FiberSuspendSignal routes here via FindNearestSuspenseBoundary. If a
+        // FiberSuspendSignal routes here via FindSuspenseBoundaryAbove. If a
         // descendant suspends during the new-side render of a primary the boundary has not committed, the
         // partial primary output is discarded (the partially-mounted fibers stay registered so a later resolve
         // re-render reuses them with their state) and the fallback subtree is expanded instead. A primary it has
@@ -1491,10 +1503,7 @@ namespace Velvet
                         if (hides) SetPrimaryHidden(walk, commit!, preCount, primaryEnd, boundaryFiber, hidden: true);
                         else if (commit != null) RollbackCommitTo(commit, preCount, fibersBefore, newFibers);
                         else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
-                        if (suspense.Fallback != null)
-                        {
-                            ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fallbackPosition);
-                        }
+                        if (suspense.Fallback != null) ExpandSuspenseFallback(walk, suspense.Fallback, fallbackPosition, boundaryFiber);
                     }
                     else if (primaryWasHidden)
                     {
@@ -1518,13 +1527,27 @@ namespace Velvet
             }
         }
 
+        private void ExpandSuspenseFallback(
+            InlineWalk walk, VNode fallback, WalkPosition fallbackPosition, ComponentFiber? boundaryFiber)
+        {
+            var enclosingFallbackOwner = _ctx.EnterSuspenseFallback(boundaryFiber);
+            try
+            {
+                ExpandInlineRecursive(walk, new[] { fallback }, fallbackPosition);
+            }
+            finally
+            {
+                _ctx.LeaveSuspenseFallback(enclosingFallbackOwner);
+            }
+        }
+
         // Returns whether the primary suspended: at this expansion, or where HoldSuspendInPrimary held it.
         private bool ExpandSuspensePrimary(
             InlineWalk walk, VNode?[]? children, bool retains, WalkPosition primaryPosition,
             out List<SuspenseRender>? renders)
         {
             renders = null;
-            _ctx.OpenSuspensePrimary(retains);
+            _ctx.OpenSuspensePrimary(retains, _ctx.FiberStack.Current);
             bool suspended;
             try
             {

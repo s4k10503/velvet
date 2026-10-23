@@ -2,18 +2,21 @@
 
 Velvet's focus layer models [React Aria](https://react-spectrum.adobe.com/react-aria/)'s
 FocusScope / roving-tabindex / `useFocusRing` capabilities on top of UI Toolkit's own focus
-machinery. Two things stay entirely the engine's: **spatial 2D navigation** (arrows / d-pad /
-stick move between focusables by their on-screen geometry, on every runtime panel, with no
-Velvet code involved), and the **sequential focus ring order** — Velvet predicts and redirects
-the ring, but the order itself always comes from the engine's own ring class.
+machinery. Two things stay the engine's: **spatial 2D navigation** outside a `singleTabStop` group
+(arrows / d-pad / stick move between focusables by their on-screen geometry, on every runtime panel),
+and the **sequential focus ring order** — Velvet predicts and redirects the ring, but the order itself
+always comes from the engine's own ring class.
 
 ## Focus scopes
 
-A focus scope is a container element whose subtree carries focus-management behavior, declared
-either with the `V.FocusScope` factory or by setting the `FocusScope` element prop on any
-existing container. Four independent knobs, mirroring React Aria's props:
+A focus scope is a set of elements carrying focus-management behavior, declared either with the
+`V.FocusScope` factory or by setting the `FocusScope` element prop on any existing container.
+`V.FocusScope` renders no element around its children, as React Aria's `FocusScope` renders none: the
+children stand among the parent's own children, between two undisplayed elements marking where the
+scope starts and ends, as React Aria marks them with two hidden spans. The prop makes the container and
+its subtree the scope. Four independent knobs, mirroring React Aria's props:
 
-- **`contain`** — Tab/Shift-Tab wrap within the subtree instead of leaving it, and a move that
+- **`contain`** — Tab/Shift-Tab wrap within the scope instead of leaving it, and a move that
   escapes anyway (a spatial d-pad flick, a pointer press outside) is snapped back inside within
   the same event flush, inside a plain scope as anywhere else. A press on empty non-focusable space
   clears focus to nothing first (no focus event ever lands anywhere), so that path re-focuses the
@@ -32,38 +35,42 @@ existing container. Four independent knobs, mirroring React Aria's props:
   gone or can no longer take focus (an unmounted one is dropped rather than chased into pool reuse).
   Pair with `contain` for dialogs.
 - **`autoFocus`** — on mount, the scope's first focusable descendant takes focus (skipped when
-  focus already sits inside). Mount-once, like React's `autoFocus`: a reorder that moves the scope's
-  element physically re-attaches it and must not steal focus back, so a re-attach never re-fires it.
+  focus already sits inside). Mount-once, like React's `autoFocus`: a reorder that moves the scope
+  physically re-attaches it and must not steal focus back, so a re-attach never re-fires it.
   A reorder that rebuilds the element is a fresh mount and does fire it, taking focus back from
   wherever the user had moved it — [react-migration.md, what a position is](react-migration.md#what-a-position-is)
   states which reorders rebuild, and what to write instead.
-- **`singleTabStop`** — the whole subtree behaves as ONE Tab stop, the WAI-ARIA composite-widget
+- **`singleTabStop`** — the whole scope behaves as ONE Tab stop, the WAI-ARIA composite-widget
   (roving tabindex) contract: Tab from inside exits past the remaining members, and Tab entering
   from outside — in either direction — lands on the member last used (else the first). The exit
   wraps within the nearest containing scope when the group is nested in one, and a group covering
-  every reachable focusable holds position (in a `Chained` host panel it exits across the panel
-  boundary instead — see below). Members keep their `tabIndex`, so spatial navigation INSIDE the
-  group is untouched, except on an axis its `orientation:` excludes (below). Of groups nested in each
-  other, the outermost one below the nearest contain scope decides, as the outermost of nested toolbars does in React Aria's `useToolbar`: Tab leaves all
-  of them, arrows move across the nested ones, and entry lands on the member last used at any depth.
-  A plain scope nested in a group is part of the group.
+  every reachable focusable holds position (in a panel whose Tab order goes on into another panel it
+  exits across the panel boundary instead — see below). Of groups nested in each other, the outermost one below the nearest
+  contain scope decides, as the outermost of nested toolbars does in React Aria's `useToolbar`: Tab
+  leaves all of them, arrows move across the nested ones, and entry lands on the member last used at
+  any depth. A plain scope nested in a group is part of the group.
 
-Arrows/d-pad move between a group's members by their on-screen geometry and never leave the group:
-a spatial move that lands outside it returns to the member it started from. An element outside the
-group that lies between two members is where a move toward the members beyond it lands, so that
-move is reverted and those members are not reached by arrows from that side.
+An arrow or d-pad move inside a group steps through its elements in hierarchy order, as React Aria's
+toolbar and radio group step with their focus manager: right and down to the next, left and up to the
+previous, wherever the elements sit on screen, and never out of the group. The elements are the ones
+`UseFocusManager` moves among (below), so a member whose `TabIndex` is -1 is reached too. Past either
+end focus stays where it is, as on a toolbar; `wrap: true` (`FocusScopeSettings.Wrap`) continues from
+the other end instead, as a radio group does. The step is taken once the move has bubbled back to the
+panel root, so a control that keeps the arrow for itself and stops it there, such as a slider or a text
+field, still does. A move some handler stopped without ignoring it reaches the engine's 2D search, and
+a landing of that search outside the group returns to the member the move started from.
 
 `orientation:` (`FocusScopeOrientation`, `Both` by default) names the axis a group's arrows travel, as
 React Aria's `useToolbar` takes an `orientation`: with `Horizontal` an up or down move, and with `Vertical`
-a left or right move, is ignored before it moves focus, even where a member lies in that direction, so no
-member receives focus events for it. The move still reaches the focused element's own handlers, so a
-slider in the group keeps its use of the arrow. Of nested groups, the outermost one's value decides.
-`orientation:` is read only on a `singleTabStop` scope.
+a left or right move, is ignored before it moves focus, so no member receives focus events for it. The
+move still reaches the focused element's own handlers, so a slider in the group keeps its use of the
+arrow. Of nested groups, the outermost one's `orientation:` and `wrap:` decide. Both are read only on a
+`singleTabStop` scope.
 
 `TabIndex` -1 takes an element out of the Tab ring while `Focus()` and a pointer press still focus
-it, as the web's `tabindex="-1"` does. On a runtime panel it also takes the element out of
-arrow/d-pad navigation, which is why `singleTabStop` is interception-based rather than a hand-rolled
-roving tabindex over `TabIndex` values.
+it, as the web's `tabindex="-1"` does. Outside a `singleTabStop` group, the engine's arrow/d-pad
+navigation on a runtime panel passes it over as well; `NegativeTabIndexEngineContractTests` holds the
+engine to that.
 
 ## Element props
 
@@ -106,7 +113,7 @@ where a component inside a portal reaches the scope the portal is declared in. `
 `FocusPrevious`, `FocusFirst` and `FocusLast` focus an element of that scope and return it, or return
 null and leave focus alone when there is none to move to or the component is in no scope.
 
-The elements are the scope's descendants in hierarchy order. A field such as a `TextField` or a
+The elements are the scope's, and everything under them, in hierarchy order. A field such as a `TextField` or a
 `Toggle` is one element. A disabled element, anything
 under an element that is not displayed, and an element other than a field that delegates its focus
 are skipped.
@@ -119,18 +126,26 @@ in, as React Aria's scope walker reaches only the scope's own DOM.
 
 ## Cross-panel Tab order (`PanelFocusOrder`)
 
-A `V.Portal(layer:)` / `V.WorldSpace` host panel owns its own focus ring, and by default that
-ring is **`Isolated`**: Tab wraps within the host panel and never crosses the boundary. Passing
-`focusOrder: PanelFocusOrder.Chained` opts the host into the declaring panel's Tab order at the
-portal's call site, with iframe semantics: tabbing through the declaring panel enters the host
-when the ring reaches the portal's position (landing on the host's first focusable; Shift-Tab
-enters at its last), and tabbing past the host's own last element exits back to the declaring
-panel element after the call site. Arrow/2D navigation never crosses panels.
+A `V.Portal(layer:)` / `V.WorldSpace` host panel owns its own focus ring. `focusOrder:` says where
+its elements sit in the Tab order of the tree that declared it:
 
-The escape hop is deferred by one tick of the target panel's scheduler: a synchronous
-cross-panel focus handoff from inside another panel's event dispatch does not stick (verified
-empirically — the still-focused source panel wins the reconciliation), so the source element is
-blurred synchronously and the target focused on its own panel's next tick.
+- **`Appended`**, the default — after every element of the panel the tree is mounted on, where a
+  portal into `document.body` puts its content. Tab past that panel's last element enters the first
+  appended host that has an element to land on (Shift-Tab past its first element enters the last one's
+  last element), Tab past a host's last element moves on to the next appended host or back round to
+  that panel's first element, and Shift-Tab runs the other way. Hosts follow each other in the order
+  each came to hold an appended portal. A host that also carries a `Chained` portal sits at that
+  portal's call site instead.
+- **`Chained`** — at the portal's call site, as an iframe's elements sit: tabbing through the
+  declaring panel enters the host when the ring reaches the portal's position (landing on the host's
+  first focusable; Shift-Tab enters at its last), and tabbing past the host's own last element exits
+  back to the declaring panel element after the call site.
+- **`Isolated`** — out of that order: Tab wraps within the host panel and never crosses the boundary.
+
+A move between panels hands focus over inside the dispatch of the key that made it: the element the
+move leaves is blurred first and the landing focused straight after. Tab from inside a `contain` scope
+wraps within the scope rather than moving on to the next panel. Arrow/2D navigation stays within each panel
+in every mode.
 
 A `focusOrder:` naming no `PanelFocusOrder` member is refused at construction: `V.Portal` and
 `V.WorldSpace` each throw `ArgumentOutOfRangeException` from the call itself, naming the parameter.
@@ -139,4 +154,3 @@ A `focusOrder:` naming no `PanelFocusOrder` member is refused at construction: `
 
 - No `whileFocusVisibleClass` gesture prop; the `focus-visible:` variant and `UseFocusRing`
   cover both channels.
-- No `wrap` option on `singleTabStop`; spatial navigation decides where an arrow at the group's edge lands.

@@ -22,8 +22,7 @@ namespace Velvet
         // each pass exists for commit-phase writes (a callback ref or an event dispatched during
         // a commit re-enqueues its fiber mid-drain), and a component whose commit writes a NEW
         // value every pass would otherwise spin the drain forever inside one frame callback.
-        // Overflow DROPS the runaway update (see DrainImmediate) rather than deferring it — a
-        // deferred runaway re-arms every frame and burns the full cap forever.
+        // Overflow drops the runaway update and throws, as React's limit does (see DrainImmediatePassesUpTo).
         private const int NestedUpdateLimit = 50;
 
         // How many immediate drains in a row may throw before the updates queued after the last of them are dropped
@@ -115,9 +114,6 @@ namespace Velvet
 
         // Raised while DrainImmediate runs, whose own passes render the sync-lane work its passive flushes queue.
         private bool _inImmediateDrain;
-
-        // Whether the nested-update cap ended the last DrainImmediatePasses.
-        private bool _lastDrainCapped;
 
         // Counts every ScheduleImmediate call, for a caller asking whether a flush it ran queued anything; a count
         // of the queue would miss intake that dedups onto a fiber already queued.
@@ -373,16 +369,13 @@ namespace Velvet
             // another frame callback for one would only fire an empty drain next frame (dead
             // scheduler churn that also skews the coalescing counter).
             var totalPasses = 0;
-            var capped = DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane);
+            DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane);
             while (true)
             {
-                _lastDrainCapped = capped;
                 // Ahead of the flush below: an update an effect there schedules is an ordinary one, and a flag left
                 // standing would keep OweExternalStoreFlush from posting the next store change.
                 if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
-                // After a cap the passive effects stay pending: the update the cap dropped would otherwise be asked
-                // for again by the very effects that kept asking for it.
-                if (!renderedSyncLane || capped) return;
+                if (!renderedSyncLane) return;
                 renderedSyncLane = false;
                 // React flushes the passive effects of a sync-lane commit as that commit ends, then flushes sync
                 // work: when those effects queued a store hook's forced re-render, it renders the root at every
@@ -391,34 +384,31 @@ namespace Velvet
                 // what it scheduled for the tier's next drain, as a default-lane update waits for React's next task.
                 FlushPendingPassiveEffects();
                 if (!_syncLaneQueued) return;
-                capped = DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane);
+                DrainImmediatePassesUpTo(ref totalPasses, ref renderedSyncLane);
             }
         }
 
         // Renders the immediate tier when a passive drain queued sync-lane work, then flushes what those renders'
         // commits leave pending in turn. Called once a passive drain outside every immediate drain has run, as
-        // React's passive flush ends by flushing sync work. Returns whether the nested-update cap ended it, which
-        // leaves the passive effects the runaway's last commit queued pending.
-        internal bool FlushSyncWorkAfterPassiveEffects()
+        // React's passive flush ends by flushing sync work.
+        internal void FlushSyncWorkAfterPassiveEffects()
         {
-            if (_inImmediateDrain || _draining || (_reconcileActiveProbe?.Invoke() ?? false)) return false;
-            if (!_syncLaneQueued || _immediateOrder.Count == 0) return false;
+            if (_inImmediateDrain || _draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
+            if (!_syncLaneQueued || _immediateOrder.Count == 0) return;
             DrainImmediate();
-            return _lastDrainCapped;
         }
 
-        // Returns whether the nested-update cap ended the passes.
-        private bool DrainImmediatePassesUpTo(ref int totalPasses, ref bool renderedSyncLane)
+        private void DrainImmediatePassesUpTo(ref int totalPasses, ref bool renderedSyncLane)
         {
             while (_immediateOrder.Count > 0)
             {
                 if (totalPasses > NestedUpdateLimit)
                 {
-                    // Runaway commit-phase loop (a component writing a NEW value on every pass) — the
-                    // kind of bug that would ordinarily deserve a hard failure, but a throw from the
-                    // frame callback cannot reach an error boundary and would only re-arm next frame,
-                    // burning the full cap every frame forever — so the runaway update is DROPPED
-                    // instead and the UI keeps the last committed state. Only the IMMEDIATE-tier
+                    // Runaway commit-phase loop (a component writing a NEW value on every pass). React throws
+                    // from the update that passes its nested-update limit, and no error boundary takes it; so
+                    // does this, once the runaway update is dropped, since a drain the throw leaves with that
+                    // update still queued would re-arm and burn the full cap again every frame. The UI keeps the
+                    // last committed state. Only the IMMEDIATE-tier
                     // lanes are dropped: a fiber can be queued this deep with an unrelated Transition
                     // lane still pending (the runaway's commits may write bystanders each pass), and
                     // wiping that lane would strand its delayed-tier work (a StartTransition left
@@ -428,19 +418,17 @@ namespace Velvet
                     // lane that skipped them and asked for the Transition lane again, so that lane survives the drop,
                     // and the pending-flag sweep below spares an async action still in flight. The runaway update
                     // itself stays queued in its slot too, and the next render of that component folds it in.
-                    FiberLogger.LogError("Scheduler",
-                        "Maximum update depth exceeded. A component repeatedly schedules state"
-                        + " updates from its commit phase (a callback ref or an effect writing a"
-                        + " new value on every pass). The runaway update was dropped.");
                     DropImmediateIntake();
-                    return true;
+                    throw new InvalidOperationException(
+                        "Maximum update depth exceeded. A component repeatedly schedules state updates from its commit"
+                        + " phase (a callback ref or an effect writing a new value on every pass). Velvet limits the"
+                        + " number of nested updates, as React does, to prevent infinite loops.");
                 }
                 totalPasses++;
                 renderedSyncLane |= _syncLaneQueued;
                 _syncLaneQueued = false;
                 Drain(_immediateOrder, _immediateSet, immediateTier: true);
             }
-            return false;
         }
 
         // Which lanes go, and why only these, is the nested-update cap's comment in DrainImmediatePassesUpTo.

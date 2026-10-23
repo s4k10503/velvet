@@ -1162,11 +1162,11 @@ namespace Velvet
         public Dictionary<VisualElement, AnchoredBinding> AnchoredBindings { get; } = new();
 
         // Per-focus-scope bookkeeping (FiberElementProps.FocusScope / V.FocusScope), keyed by the scope
-        // root element. The binding owns a registered AttachToPanelEvent callback (AutoFocus / lazy
+        // root element, or by a V.FocusScope's start sentinel. The binding owns a registered AttachToPanelEvent callback (AutoFocus / lazy
         // navigator attach), so it is NOT a pure side-table: FiberElementCleaner fires RestoreFocus and
         // detaches it on teardown, and Reconciler.Dispose sweeps any binding still live at root disposal.
-        // FiberFocusNavigator consults this registry at event time (innermost-scope resolution walks an
-        // element's parent chain against these keys).
+        // FiberFocusNavigator consults this registry at event time (its ScopeWalk resolves an element's scopes
+        // against these keys).
         public Dictionary<VisualElement, FocusScopeBinding> FocusScopeBindings { get; } = new();
 
         // Chained-portal focus bookkeeping (PanelFocusOrder.Chained): the DECLARING-panel placeholder that
@@ -1177,11 +1177,18 @@ namespace Velvet
         public Dictionary<VisualElement, PanelHostRecord> ChainedPlaceholders { get; } = new();
         public Dictionary<VisualElement, VisualElement> ChainedHostRoots { get; } = new();
 
-        // The panel roots FiberFocusNavigator has attached its listener trio to, with the registered
+        // Appended-portal focus bookkeeping (PanelFocusOrder.Appended): each appended portal's placeholder → its
+        // host record, and the hosts in the order their first appended portal mounted, which is the order they
+        // follow the tree's own panel in Tab order. Maintained by FiberFocusNavigator.ConfigurePortalFocusOrder and
+        // ReleaseAppended; Reconciler.Dispose sweeps the rest.
+        public Dictionary<VisualElement, PanelHostRecord> AppendedPlaceholders { get; } = new();
+        public List<PanelHostRecord> AppendedHosts { get; } = new();
+
+        // The panel roots FiberFocusNavigator has attached its listeners to, with the registered
         // callbacks retained so Reconciler.Dispose can unregister them (panel roots belong to the user /
         // the host panels and can outlive this reconciler). Keyed by the panel's TRUE root
         // (panel.visualTree), so two attach requests from different elements of one panel dedup.
-        public Dictionary<VisualElement, (EventCallback<NavigationMoveEvent> OnMove, EventCallback<FocusInEvent> OnFocusIn, EventCallback<FocusOutEvent> OnFocusOut)> NavigatorAttachments { get; } = new();
+        public Dictionary<VisualElement, (EventCallback<NavigationMoveEvent> OnMove, EventCallback<NavigationMoveEvent> OnArrow, EventCallback<FocusInEvent> OnFocusIn, EventCallback<FocusOutEvent> OnFocusOut)> NavigatorAttachments { get; } = new();
 
         // Deferred navigator attachments: elements whose panel was unresolved when EnsureAttached ran (a
         // detached mount root, a placeholder configured before its declaring tree attaches), each holding
@@ -1504,8 +1511,13 @@ namespace Velvet
 
         internal int SuspensePrimaryDepth => _suspensePrimaries.Count;
 
-        // Retains is whether the Suspense keeps the primary it had committed when that primary suspends again.
-        internal void OpenSuspensePrimary(bool retains) => _suspensePrimaries.Add(new SuspensePrimaryFrame(retains));
+        // Retains is whether the Suspense keeps the primary it had committed when that primary suspends again; boundary
+        // is the fiber rendering it.
+        internal void OpenSuspensePrimary(bool retains, ComponentFiber? boundary)
+        {
+            _suspensePrimaries.Add(new SuspensePrimaryFrame(retains, boundary, SuspenseFallbackOwner));
+            SuspenseFallbackOwner = null;
+        }
 
         // Returns whether the primary suspended, at its own expansion or where HoldSuspendInPrimary held it. The
         // renders the primary made come back through renders, for the caller that decides whether the Suspense
@@ -1515,9 +1527,28 @@ namespace Velvet
             var last = _suspensePrimaries.Count - 1;
             var frame = _suspensePrimaries[last];
             _suspensePrimaries.RemoveAt(last);
+            SuspenseFallbackOwner = frame.EnclosingFallbackOwner;
             renders = frame.Renders;
             return frame.Suspended;
         }
+
+        // What the walk writes into ComponentFiber.SuspenseFallbackOf: the fiber rendering the Suspense whose fallback
+        // is being expanded, or null inside a primary and outside every fallback.
+        internal ComponentFiber? SuspenseFallbackOwner { get; private set; }
+
+        // Returns the owner to hand back to LeaveSuspenseFallback. A fallback inside a primary of a Suspense the same
+        // fiber renders is that Suspense's to catch, which no search up the fibers tells apart from this one, so the
+        // owner is left null there.
+        internal ComponentFiber? EnterSuspenseFallback(ComponentFiber? boundary)
+        {
+            var enclosing = SuspenseFallbackOwner;
+            SuspenseFallbackOwner = boundary != null && !_suspensePrimaries.Exists(frame => ReferenceEquals(frame.Boundary, boundary))
+                ? boundary
+                : null;
+            return enclosing;
+        }
+
+        internal void LeaveSuspenseFallback(ComponentFiber? enclosing) => SuspenseFallbackOwner = enclosing;
 
         // Whether the Suspense walking the innermost open primary decides, once its walk ends, whether a render
         // made in it commits: only a primary that retains what it had committed has one to keep or give up, since
@@ -1559,9 +1590,16 @@ namespace Velvet
 
         private sealed class SuspensePrimaryFrame
         {
-            internal SuspensePrimaryFrame(bool retains) => Retains = retains;
+            internal SuspensePrimaryFrame(bool retains, ComponentFiber? boundary, ComponentFiber? enclosingFallbackOwner)
+            {
+                Retains = retains;
+                Boundary = boundary;
+                EnclosingFallbackOwner = enclosingFallbackOwner;
+            }
 
             internal bool Retains { get; }
+            internal ComponentFiber? Boundary { get; }
+            internal ComponentFiber? EnclosingFallbackOwner { get; }
             internal bool Suspended { get; set; }
             internal List<SuspenseRender>? Renders { get; set; }
         }

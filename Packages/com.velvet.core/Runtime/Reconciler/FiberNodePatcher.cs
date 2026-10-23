@@ -1091,8 +1091,8 @@ namespace Velvet
                 VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
                 if (oldNode.FocusOrder != newNode.FocusOrder)
                 {
-                    FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
-                        newNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
+                    FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost,
+                        newNode.FocusOrder, _ctx);
                 }
                 return target;
             }
@@ -1239,8 +1239,8 @@ namespace Velvet
             }
             if (oldNode.FocusOrder != newNode.FocusOrder)
             {
-                FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
-                    newNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
+                FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, record,
+                    newNode.FocusOrder, _ctx);
             }
 
             // Stamped as PatchPortal stamps (see its comment): a world-space panel can likewise mount with

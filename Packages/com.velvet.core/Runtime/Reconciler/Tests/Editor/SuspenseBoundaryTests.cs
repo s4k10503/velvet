@@ -542,7 +542,7 @@ namespace Velvet.Tests
         public void Given_TwoSuspenseNodesOnOneBoundaryFiber_When_TheOuterSuspendsAndAnInnerChildUpdates_Then_OuterFallbackKeepsItsSlot()
         {
             // Arrange — the host's two Suspense nodes share one boundary fiber, for the reason
-            // SameFiberNestedHostRender states, so FindNearestSuspenseBoundary answers with that fiber for
+            // SameFiberNestedHostRender states, so FindSuspenseBoundaryAbove answers with that fiber for
             // the inner one's children. The inner Suspense resolves, so it claims nothing and marks its
             // children visible; the outer then suspends on its own second child and marks them over
             var source = new VelvetTaskCompletionSource<string>();

@@ -535,8 +535,8 @@ namespace Velvet
             var target = layerHost.Document.rootVisualElement;
             VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
             var children = layerPortal.Children ?? Array.Empty<VNode>();
-            FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
-                layerPortal.FocusOrder == PanelFocusOrder.Chained, _ctx);
+            FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost,
+                layerPortal.FocusOrder, _ctx);
             return (target, children);
         }
 
@@ -548,8 +548,8 @@ namespace Velvet
             var target = record.Document.rootVisualElement;
             VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
             var children = worldSpaceNode.Children ?? Array.Empty<VNode>();
-            FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
-                worldSpaceNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
+            FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, record,
+                worldSpaceNode.FocusOrder, _ctx);
             return (target, children);
         }
 
@@ -1269,7 +1269,10 @@ namespace Velvet
                     OldLen = oldNodes.Length,
                     LogicalNewLen = newNodes.Length,
                 };
-                _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
+                if (_placement.ComputeAnchorsAndReorder(parent, newElements, in range) && parent != null)
+                {
+                    _ctx.ComponentRegistry.CommitChildOrderToRows(parent, newElements, placements: null);
+                }
             }
             finally
             {
@@ -1624,7 +1627,10 @@ namespace Velvet
             if (AbortIfCanceled(state)) return true;
 
             var regionStart = state.SlotStart + state.LinearEnd;
-            _placement.ReorderToNewElementOrder(state.Parent, state.NewElements!, state.LisIndices!, regionStart);
+            if (_placement.ReorderToNewElementOrder(state.Parent, state.NewElements!, state.LisIndices!, regionStart))
+            {
+                _ctx.ComponentRegistry.CommitChildOrderToRows(state.Parent!, state.NewElements!, placements: null);
+            }
 
             state.Phase = KeyedReconcilePhase.Done;
             return true;

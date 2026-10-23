@@ -58,31 +58,11 @@ namespace Velvet
             {
                 return null;
             }
-            // The panel reports a focused field as the field, the unit Collect keeps.
+            // The panel reports a focused field as the field, the unit FocusWalk.Collect keeps.
             var from = options?.From ?? root.panel?.focusController?.focusedElement as VisualElement;
             var order = new List<VisualElement>();
-            Collect(root, order);
-            var fromIndex = from == null ? -1 : order.IndexOf(from);
-            VisualElement? found = null;
-            if (forward)
-            {
-                for (var i = fromIndex + 1; i < order.Count && found == null; i++)
-                {
-                    found = Candidate(order[i], options);
-                }
-            }
-            else
-            {
-                var start = fromIndex < 0 ? order.Count - 1 : fromIndex - 1;
-                for (var i = start; i >= 0 && found == null; i--)
-                {
-                    found = Candidate(order[i], options);
-                }
-            }
-            if (found == null && options is { Wrap: true })
-            {
-                found = FindEdge(order, options, first: forward);
-            }
+            FocusWalk.CollectScope(root, order);
+            var found = FocusWalk.Step(order, from, forward, options);
             found?.Focus();
             return found;
         }
@@ -95,70 +75,17 @@ namespace Velvet
                 return null;
             }
             var order = new List<VisualElement>();
-            Collect(root, order);
+            FocusWalk.CollectScope(root, order);
             // React Aria's focusFirst and focusLast read neither From nor Wrap.
-            var found = FindEdge(order, options, first);
+            var found = FocusWalk.FindEdge(order, options, first);
             found?.Focus();
             return found;
         }
 
-        private static VisualElement? FindEdge(List<VisualElement> order, FocusManagerOptions? options, bool first)
-        {
-            for (var n = 0; n < order.Count; n++)
-            {
-                if (Candidate(order[first ? n : order.Count - 1 - n], options) is { } found)
-                {
-                    return found;
-                }
-            }
-            return null;
-        }
-
-        private static VisualElement? Candidate(VisualElement element, FocusManagerOptions? options)
-        {
-            // A field delegates its focus to its input, and is still the unit to land on.
-            if (!element.canGrabFocus || (element.delegatesFocus && !IsCompositeRoot(element)))
-            {
-                return null;
-            }
-            if (options == null)
-            {
-                return element;
-            }
-            if (options.Tabbable && element.tabIndex < 0)
-            {
-                return null;
-            }
-            return options.Accept == null || options.Accept(element) ? element : null;
-        }
-
-        // A subtree under an element that is not displayed is skipped whole, as the engine's ring and React
-        // Aria's isElementVisible skip it; canGrabFocus reads only the element's own display. A field's parts are
-        // skipped too, so the field is one element.
-        private static void Collect(VisualElement parent, List<VisualElement> order)
-        {
-            var count = parent.hierarchy.childCount;
-            for (var i = 0; i < count; i++)
-            {
-                var child = parent.hierarchy[i];
-                if (child.resolvedStyle.display == DisplayStyle.None)
-                {
-                    continue;
-                }
-                order.Add(child);
-                if (!IsCompositeRoot(child))
-                {
-                    Collect(child, order);
-                }
-            }
-        }
-
-        // A later engine that drops isCompositeRoot leaves every field's parts reachable.
-        private static readonly PropertyInfo? s_isCompositeRoot = EngineMember.IsCompositeRoot.ResolveProperty();
-
-        private static bool IsCompositeRoot(VisualElement element)
-            => s_isCompositeRoot?.GetValue(element) is true;
-
+        // A V.FocusScope's content is mounted among its parent's children rather than under an element of the
+        // scope's, so the walk up from this component's mount point meets its parent, not the scope: the nearest
+        // V.FocusScope is read off the fibers above instead, and it is the scope unless an element scope met
+        // first lies inside it.
         private VisualElement? FindScopeRoot()
         {
             var ctx = _fiber.Reconciler?.Context;
@@ -166,11 +93,25 @@ namespace Velvet
             {
                 return null;
             }
+            var range = NearestRangeAbove();
             for (var current = LogicalMountPoint(ctx); current != null; current = FiberFocusNavigator.LogicalParentOf(current))
             {
-                if (ctx.FocusScopeBindings.ContainsKey(current))
+                if (current is FocusScopeStart || !ctx.FocusScopeBindings.ContainsKey(current))
                 {
-                    return current;
+                    continue;
+                }
+                return range == null || FiberFocusNavigator.IsLogicallyWithin(current, range) ? current : range;
+            }
+            return range;
+        }
+
+        private FocusScopeStart? NearestRangeAbove()
+        {
+            for (var fiber = _fiber.Parent; fiber != null; fiber = fiber.Parent)
+            {
+                if (fiber.Props is FocusScopeRangeProps && FocusScopeRange.StartRenderedBy(fiber) is { } start)
+                {
+                    return start;
                 }
             }
             return null;
@@ -211,5 +152,114 @@ namespace Velvet
             }
             return false;
         }
+    }
+
+    // The elements a focus manager moves among, in hierarchy order, and one step between them. A singleTabStop
+    // group's arrow moves take the same steps, as React Aria's toolbar and radio group take theirs.
+    internal static class FocusWalk
+    {
+        internal static VisualElement? Step(
+            List<VisualElement> order, VisualElement? from, bool forward, FocusManagerOptions? options)
+        {
+            var fromIndex = from == null ? -1 : order.IndexOf(from);
+            VisualElement? found = null;
+            if (forward)
+            {
+                for (var i = fromIndex + 1; i < order.Count && found == null; i++)
+                {
+                    found = Candidate(order[i], options);
+                }
+            }
+            else
+            {
+                var start = fromIndex < 0 ? order.Count - 1 : fromIndex - 1;
+                for (var i = start; i >= 0 && found == null; i--)
+                {
+                    found = Candidate(order[i], options);
+                }
+            }
+            if (found == null && options is { Wrap: true })
+            {
+                found = FindEdge(order, options, first: forward);
+            }
+            return found;
+        }
+
+        internal static VisualElement? FindEdge(List<VisualElement> order, FocusManagerOptions? options, bool first)
+        {
+            for (var n = 0; n < order.Count; n++)
+            {
+                if (Candidate(order[first ? n : order.Count - 1 - n], options) is { } found)
+                {
+                    return found;
+                }
+            }
+            return null;
+        }
+
+        private static VisualElement? Candidate(VisualElement element, FocusManagerOptions? options)
+        {
+            // A field delegates its focus to its input, and is still the unit to land on.
+            if (!element.canGrabFocus || (element.delegatesFocus && !IsCompositeRoot(element)))
+            {
+                return null;
+            }
+            if (options == null)
+            {
+                return element;
+            }
+            if (options.Tabbable && element.tabIndex < 0)
+            {
+                return null;
+            }
+            return options.Accept == null || options.Accept(element) ? element : null;
+        }
+
+        // The scope's elements: under its element, or between a range's sentinels.
+        internal static void CollectScope(VisualElement scope, List<VisualElement> order)
+        {
+            if (scope is not FocusScopeStart start)
+            {
+                Collect(scope, order);
+                return;
+            }
+            var content = new List<VisualElement>();
+            FocusScopeRange.AppendContent(start, content);
+            foreach (var child in content)
+            {
+                Visit(child, order);
+            }
+        }
+
+        private static void Collect(VisualElement parent, List<VisualElement> order)
+        {
+            var count = parent.hierarchy.childCount;
+            for (var i = 0; i < count; i++)
+            {
+                Visit(parent.hierarchy[i], order);
+            }
+        }
+
+        // A subtree under an element that is not displayed is skipped whole, as the engine's ring and React
+        // Aria's isElementVisible skip it; canGrabFocus reads only the element's own display. A field's parts are
+        // skipped too, so the field is one element.
+        private static void Visit(VisualElement child, List<VisualElement> order)
+        {
+            if (child.resolvedStyle.display == DisplayStyle.None)
+            {
+                return;
+            }
+            order.Add(child);
+            if (!IsCompositeRoot(child))
+            {
+                Collect(child, order);
+            }
+        }
+
+        // A later engine that drops isCompositeRoot leaves every field's parts reachable.
+        private static readonly PropertyInfo? s_isCompositeRoot = EngineMember.IsCompositeRoot.ResolveProperty();
+
+        private static bool IsCompositeRoot(VisualElement element)
+            => s_isCompositeRoot?.GetValue(element) is true;
     }
 }

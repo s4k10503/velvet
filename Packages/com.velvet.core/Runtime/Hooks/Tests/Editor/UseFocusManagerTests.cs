@@ -48,7 +48,7 @@ namespace Velvet.Tests
         private static VNode ScopeHost() => V.Div(children: new VNode[]
         {
             V.Button(name: "before"),
-            V.FocusScope(name: "scope", children: new VNode[]
+            FocusScopeElement.Div(name: "scope", children: new VNode[]
             {
                 V.Component(Probe, key: "probe"),
                 V.Div(name: "group", children: new VNode[] { V.Button(name: "m2") }),
@@ -71,6 +71,8 @@ namespace Velvet.Tests
 
         private Focusable Focused => _host.Panel.focusController.focusedElement;
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AFocusedScopeMember_When_FocusNextIsCalled_Then_TheNextMemberInHierarchyOrderTakesFocus()
         {
@@ -85,6 +87,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("m2"), (Focusable)Q("m2"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_TheScopesLastMemberFocused_When_FocusNextIsCalledWithoutWrap_Then_NothingMoves()
         {
@@ -99,6 +103,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo(((VisualElement)null, (Focusable)Q("d1"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_TheScopesLastMemberFocused_When_FocusNextIsCalledWithWrap_Then_TheScopesFirstMemberTakesFocus()
         {
@@ -113,6 +119,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("m1"), (Focusable)Q("m1"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_TheScopesFirstMemberFocused_When_FocusPreviousIsCalledWithoutWrap_Then_NothingMoves()
         {
@@ -127,6 +135,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo(((VisualElement)null, (Focusable)Q("m1"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_TheScopesFirstMemberFocused_When_FocusPreviousIsCalledWithWrap_Then_TheScopesLastMemberTakesFocus()
         {
@@ -141,6 +151,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("d1"), (Focusable)Q("d1"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AMemberInsideAContainer_When_FocusPreviousIsCalled_Then_TheScopesFirstMemberBeforeTheContainerTakesFocus()
         {
@@ -155,6 +167,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("m1"), (Focusable)Q("m1"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AMemberAfterADisabledOneAndANegativeTabIndex_When_FocusPreviousIsCalled_Then_TheNegativeTabIndexTakesFocus()
         {
@@ -169,6 +183,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("skip"), (Focusable)Q("skip"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AMemberAfterADisabledOneAndANegativeTabIndex_When_FocusPreviousIsCalledTabbable_Then_BothAreSkipped()
         {
@@ -183,6 +199,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("m2"), (Focusable)Q("m2"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AMemberBeforeAnElementDelegatingItsFocus_When_FocusNextIsCalled_Then_TheDelegatingElementIsNotReturned()
         {
@@ -197,6 +215,8 @@ namespace Velvet.Tests
             Assert.That(moved, Is.EqualTo(Q("d1")));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_FocusOutsideTheScope_When_FocusNextIsCalled_Then_TheScopesFirstMemberTakesFocus()
         {
@@ -211,6 +231,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("m1"), (Focusable)Q("m1"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_FocusOutsideTheScope_When_FocusPreviousIsCalled_Then_TheScopesLastMemberTakesFocus()
         {
@@ -225,6 +247,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("d1"), (Focusable)Q("d1"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AContainerAsFrom_When_FocusNextIsCalled_Then_TheContainersFirstFocusableDescendantTakesFocus()
         {
@@ -239,6 +263,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("m2"), (Focusable)Q("m2"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AnAcceptFilter_When_FocusNextIsCalled_Then_ARejectedMemberIsSkipped()
         {
@@ -253,6 +279,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("skip"), (Focusable)Q("skip"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AnAcceptFilterRejectingEveryMember_When_FocusFirstIsCalled_Then_NothingMoves()
         {
@@ -267,6 +295,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo(((VisualElement)null, (Focusable)Q("after"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_FocusOutsideTheScope_When_FocusFirstIsCalled_Then_TheScopesFirstMemberTakesFocus()
         {
@@ -281,6 +311,8 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("m1"), (Focusable)Q("m1"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_FocusOutsideTheScope_When_FocusLastIsCalled_Then_TheScopesLastMemberTakesFocus()
         {
@@ -298,7 +330,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode FieldsHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "scope", children: new VNode[]
+            FocusScopeElement.Div(name: "scope", children: new VNode[]
             {
                 V.Component(Probe, key: "probe"),
                 V.TextField(name: "text", label: "Name"),
@@ -309,6 +341,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AFocusedTextField_When_FocusNextIsCalled_Then_TheElementAfterTheFieldTakesFocus()
         {
@@ -324,6 +358,8 @@ namespace Velvet.Tests
             Assert.That((heldByTheField, moved), Is.EqualTo((true, Q("toggle"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AFocusedToggle_When_FocusPreviousIsCalled_Then_TheTextFieldTakesFocus()
         {
@@ -339,6 +375,8 @@ namespace Velvet.Tests
             Assert.That((heldByTheToggle, moved), Is.EqualTo((true, Q("text"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_ACollapsedFoldoutBeforeTheFocusedElement_When_FocusPreviousIsCalled_Then_ItsHiddenContentIsSkipped()
         {
@@ -357,6 +395,8 @@ namespace Velvet.Tests
                 Is.EqualTo((DisplayStyle.None, (VisualElement)fold.Q<Toggle>())));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AScopeEndingInAnElementThatTakesNoFocus_When_FocusLastIsCalled_Then_TheLastFocusableElementTakesFocus()
         {
@@ -378,6 +418,8 @@ namespace Velvet.Tests
             V.Button(name: "other"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AComponentInNoFocusScope_When_FocusFirstIsCalled_Then_NothingMoves()
         {
@@ -395,7 +437,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ScopeDeclaringAPortal() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "scope", children: new VNode[]
+            FocusScopeElement.Div(name: "scope", children: new VNode[]
             {
                 V.Button(name: "s1"),
                 V.Portal(s_portalTarget, key: "portal", children: new VNode[]
@@ -405,6 +447,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AComponentInAPortalDeclaredInsideAScope_When_FocusFirstIsCalled_Then_TheScopesFirstMemberTakesFocus()
         {
@@ -423,12 +467,12 @@ namespace Velvet.Tests
         [Component]
         private static VNode ScopeInsideAPortal() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "outer", children: new VNode[]
+            FocusScopeElement.Div(name: "outer", children: new VNode[]
             {
                 V.Button(name: "s1"),
                 V.Portal(s_portalTarget, key: "portal", children: new VNode[]
                 {
-                    V.FocusScope(name: "inner", children: new VNode[]
+                    FocusScopeElement.Div(name: "inner", children: new VNode[]
                     {
                         V.Component(Probe, key: "probe"),
                     }),
@@ -436,6 +480,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AComponentInAScopeInsideAPortal_When_FocusFirstIsCalled_Then_TheInnerScopesFirstMemberTakesFocus()
         {
