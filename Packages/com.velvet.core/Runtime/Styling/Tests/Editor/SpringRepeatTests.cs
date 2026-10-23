@@ -88,7 +88,8 @@ namespace Velvet.Tests
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 
             // Act — false for a driver that has no such test.
-            var result = rests?.Invoke(null, new object[] { delta, displacement, velocity, null }) is true;
+            var arguments = new object[] { delta, displacement, velocity, null };
+            var result = rests?.Invoke(null, arguments[..rests.GetParameters().Length]) is true;
 
             // Assert
             Assert.That(result, Is.True);
