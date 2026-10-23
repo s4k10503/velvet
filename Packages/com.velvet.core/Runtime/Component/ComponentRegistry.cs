@@ -283,8 +283,9 @@ namespace Velvet
             catch { FiberRenderer.Dispose(fiber); throw; }
             // A first render that threw, where a boundary outside this walk took the error rather than unwinding the
             // walk: React discards a component whose first render threw, so it is not registered, and the hooks it
-            // ran before the throw are released.
-            if (fiber.RenderCount == 0)
+            // ran before the throw are released. One that suspended with nothing above it to catch the signal waits
+            // for its read (FiberRenderer.RenderAndReconcile), holding it in a slot still pending.
+            if (fiber.RenderCount == 0 && !ComponentBoundarySearch.HasPendingAsyncSlot(fiber))
             {
                 FiberRenderer.Dispose(fiber);
                 return fiber;

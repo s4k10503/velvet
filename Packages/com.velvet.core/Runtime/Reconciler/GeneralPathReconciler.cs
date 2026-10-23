@@ -1074,6 +1074,16 @@ namespace Velvet
                     fiber = _ctx.ComponentRegistry.GetOrCreateInline(
                         component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
                 }
+                catch (BoundaryCaughtSignal)
+                {
+                    // An existing component whose render threw into a boundary this walk is expanding is part of
+                    // the failed output, which the boundary disposes with the fibers it added (ExpandBoundaryInline);
+                    // one the old side never reached would otherwise stay registered and render, and throw, again.
+                    var failed = _ctx.ComponentRegistry.TryGetFiberForInlineKey(
+                        parentFiber, slotKey, identity, portalScope, walk.Parent);
+                    if (failed != null) walk.NewFibers.Add(failed);
+                    throw;
+                }
                 catch (FiberSuspendSignal)
                 {
                     // The component whose render suspended stays in the new tree, which a Suspense above keeps
@@ -1410,7 +1420,7 @@ namespace Velvet
         // directly in the parent's slot range and, on the new side, render in-scope of any enclosing
         // Provider (no pre-captured snapshot needed). The fiber rendering this Suspense
         // (FiberStack.Current) becomes the boundary so a descendant's
-        // FiberSuspendSignal routes here via FindNearestSuspenseBoundary. If a
+        // FiberSuspendSignal routes here via FindSuspenseBoundaryAbove. If a
         // descendant suspends during the new-side render of a primary the boundary has not committed, the
         // partial primary output is discarded (the partially-mounted fibers stay registered so a later resolve
         // re-render reuses them with their state) and the fallback subtree is expanded instead. A primary it has

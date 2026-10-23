@@ -8,16 +8,6 @@ namespace Velvet
     // to the nearest Error Boundary.
     internal static class ComponentBoundarySearch
     {
-        // Inclusive of fiber itself.
-        internal static ComponentFiber? FindNearestSuspenseBoundary(ComponentFiber fiber)
-        {
-            for (var current = fiber; current != null; current = current.Parent)
-            {
-                if (current.IsSuspenseBoundary) return current;
-            }
-            return null;
-        }
-
         // The Suspense a suspend of fiber reaches outside a walk: the nearest boundary above it, passing over one whose
         // fallback fiber is in, as React's suspend in a fallback goes to the Suspense above the one showing it.
         internal static ComponentFiber? FindSuspenseBoundaryAbove(ComponentFiber fiber)

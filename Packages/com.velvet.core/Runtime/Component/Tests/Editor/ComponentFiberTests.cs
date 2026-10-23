@@ -17,8 +17,8 @@ namespace Velvet.Tests
     /// or sole child) and clears the removed node's parent and sibling pointers; removing a child that
     /// does not belong to the parent is a no-op.</item>
     /// <item><c>Detach</c> removes the fiber from its own parent, and is a no-op on an orphan.</item>
-    /// <item><c>ComponentBoundarySearch.FindNearestSuspenseBoundary</c> walks the parent chain (including
-    /// self) and returns the closest suspense boundary, or null when none exists.</item>
+    /// <item><c>ComponentBoundarySearch.FindSuspenseBoundaryAbove</c> walks the parent chain above a fiber and
+    /// returns the closest suspense boundary.</item>
     /// <item>Context dependencies form a set: registering a context is idempotent, distinct contexts are
     /// stored separately, membership is queryable, and the set can be cleared.</item>
     /// <item>Async slots are an ordered list with a monotonically advancing cursor that can be reset to
@@ -279,11 +279,11 @@ namespace Velvet.Tests
             parent.AppendChild(child);
 
             // Act
-            var result = ComponentBoundarySearch.FindNearestSuspenseBoundary(child);
+            var result = ComponentBoundarySearch.FindSuspenseBoundaryAbove(child);
 
             // Assert
             Assert.That(result, Is.SameAs(grandparent),
-                "Suspense boundary search walks the parent chain (self-inclusive) to the nearest boundary");
+                "Suspense boundary search walks the parent chain to the nearest boundary");
         }
 
         #endregion
