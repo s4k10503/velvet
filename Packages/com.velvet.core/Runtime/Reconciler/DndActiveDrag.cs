@@ -1042,8 +1042,11 @@ namespace Velvet
             _queryBuffer.Clear();
             foreach (var (element, binding) in _ctx.DroppableBindings)
             {
-                if (IsCollisionCandidate(element, binding)
-                    && DndPanelSpace.TryRectIn(element, _source.panel!, _ctx, out var rect))
+                if (!IsCollisionCandidate(element, binding))
+                {
+                    continue;
+                }
+                if (DndPanelSpace.TryRectIn(element, _source.panel!, _ctx, out var rect))
                 {
                     _queryBuffer.Add(CandidateRect(element, binding, rect));
                 }
