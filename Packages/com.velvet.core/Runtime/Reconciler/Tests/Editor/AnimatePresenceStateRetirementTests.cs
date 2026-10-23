@@ -920,7 +920,7 @@ namespace Velvet.Tests
         {
             V.Motion(name: "item-" + childKey, key: childKey,
                 variants: s_fade, animate: "visible", exit: "hidden",
-                transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
         });
 
         private static VNode ThrowingCleanupPresence(string childKey)
@@ -929,7 +929,7 @@ namespace Velvet.Tests
                 V.Motion(name: "item-" + childKey, key: childKey,
                     refCallback: _ => () => throw new InvalidOperationException(CleanupFailureMessage),
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
             });
 
         // The parent element each surviving entry is keyed on, in table order. A count says how many are

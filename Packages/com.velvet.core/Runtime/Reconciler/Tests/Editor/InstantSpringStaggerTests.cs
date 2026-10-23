@@ -114,9 +114,9 @@ namespace Velvet.Tests
             return V.Motion(key: "p", name: "p", variants: s_coordinator, animate: label,
                 children: new VNode[]
                 {
-                    V.Motion(key: "c0", name: "c0", variants: s_children),
-                    V.Motion(key: "c1", name: "c1", variants: s_children),
-                });
+                    V.Motion(key: "c0", name: "c0", variants: s_children, transition: StyleTransition.Fade),
+                    V.Motion(key: "c1", name: "c1", variants: s_children, transition: StyleTransition.Fade),
+                }, enterOnMount: false, transition: StyleTransition.Fade);
         }
 
         [Component]
@@ -127,7 +127,7 @@ namespace Velvet.Tests
             foreach (var key in keys)
             {
                 var name = key.ToString();
-                children.Add(V.Motion(key: name, name: name, variants: s_exiting, animate: "shown", exit: "gone"));
+                children.Add(V.Motion(key: name, name: name, variants: s_exiting, animate: "shown", exit: "gone", enterOnMount: false, transition: StyleTransition.Fade));
             }
             return V.AnimatePresence(key: "presence", initial: false, staggerSec: 0.2f, children: children.ToArray());
         }

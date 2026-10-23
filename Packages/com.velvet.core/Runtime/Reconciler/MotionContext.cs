@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Velvet
@@ -26,6 +27,10 @@ namespace Velvet
         // carried by the snapshots a portal or a virtual list mounts under. Where neither pushed it, it is null
         // and ComponentFiber.BlocksInitialEnters answers instead.
         public static readonly ComponentContext<bool?> EntersBlocked = ComponentContext<bool?>.Create(null);
+
+        // Whether a Motion above plays no mount enter (MotionNode.EnterOnMount), which the Motions below it follow. Unlike
+        // EntersBlocked it crosses a presence, since the Motion's choice is not the presence's.
+        public static readonly ComponentContext<bool> EntersWithheld = ComponentContext<bool>.Create(false);
 
         // The staggerChildren/delayChildren orchestration a Motion's inheriting children claim their slots from,
         // while that Motion's label changes this render or its mount enter plays. Pushed alongside ActiveLabel by
@@ -86,22 +91,44 @@ namespace Velvet
         // index*staggerChildren — see FiberNodePatcher.ResolveChildOrchestration for its contributions, which
         // measure a claim from render-commit time rather than from when the Motion's own delayed swap begins.
         private readonly float _baseDelaySec;
+        // The count a staggerDirection of -1 numbers the claims back from; zero numbers them forward.
+        private readonly int _reversedOver;
         private int _nextChildIndex;
+        private double _childrenEndSec;
 
-        public MotionOrchestrationFrame(float delayChildrenSec, float staggerChildrenSec, float baseDelaySec)
+        public MotionOrchestrationFrame(float delayChildrenSec, float staggerChildrenSec, float baseDelaySec,
+            TransitionWhen when, bool tracksEnds, int reversedOver)
         {
             _delayChildrenSec = delayChildrenSec;
             _staggerChildrenSec = staggerChildrenSec;
             _baseDelaySec = baseDelaySec;
+            WaitsForChildren = when == TransitionWhen.AfterChildren;
+            TracksEnds = WaitsForChildren || tracksEnds;
+            _reversedOver = reversedOver;
         }
 
+        // The Motion this frame belongs to starts its own play once the plays of the children claiming from it have
+        // ended (TransitionWhen.AfterChildren).
+        public bool WaitsForChildren { get; }
+
+        // Whether the children claiming from this frame report when their plays end: set for a frame whose owner waits
+        // for them, and for a frame made below one, since the end of a child includes the ends of its own children.
+        public bool TracksEnds { get; }
+
+        // The latest end, in seconds from render-commit time, among the plays that reported to this frame.
+        public double ChildrenEndSec => _childrenEndSec;
+
+        public void RecordChildEnd(double endSec) => _childrenEndSec = Math.Max(_childrenEndSec, endSec);
+
         // Claims the next sequential slot (document order) and returns the claiming descendant's total extra
-        // delay (seconds): delayChildren + index * staggerChildren, plus this frame's base delay (see
-        // _baseDelaySec).
+        // delay (seconds): delayChildren + slot * staggerChildren, plus this frame's base delay (see
+        // _baseDelaySec). The slot is the claim's index, or the index counted back from the last child where the
+        // frame is reversed.
         public float ClaimNextChildDelaySec()
         {
             var index = _nextChildIndex++;
-            return _delayChildrenSec + index * _staggerChildrenSec + _baseDelaySec;
+            var slot = _reversedOver > 0 ? Math.Max(0, _reversedOver - 1 - index) : index;
+            return _delayChildrenSec + slot * _staggerChildrenSec + _baseDelaySec;
         }
     }
 }

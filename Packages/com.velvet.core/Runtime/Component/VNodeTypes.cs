@@ -155,6 +155,10 @@ namespace Velvet
         // default layout transition in its place (LayoutIdTiming.From).
         internal bool TransitionDefaulted { get; init; }
 
+        // What a variant play on this Motion takes where its pose names no transition: the Framer default for a Motion
+        // nobody gave one, else the Motion's own.
+        internal StyleTransitionConfig? VariantTransition => TransitionDefaulted ? StyleTransitionConfig.FramerDefault : Transition;
+
         /// <summary>
         /// Callback invoked when the enter animation completes.
         /// Fires for a variant <see cref="Initial"/>/<see cref="Animate"/> enter whether this Motion sits under
@@ -203,6 +207,14 @@ namespace Velvet
         /// Null = use the transition's own ExitFrom/ExitTo classes.
         /// </summary>
         public string? Exit { get; init; }
+
+        /// <summary>
+        /// Whether this Motion plays its mount enter. False mounts it, and every Motion below it, at its resting
+        /// pose with no enter, as Framer Motion's <c>initial={false}</c> does. A Motion naming no
+        /// <see cref="Initial"/> label otherwise enters from the look it has without its variant classes to the
+        /// <see cref="Animate"/> pose.
+        /// </summary>
+        public bool EnterOnMount { get; init; } = true;
 
         /// <summary>
         /// Shared-element layout animation identity. When a Motion
@@ -449,8 +461,8 @@ namespace Velvet
     /// animation completes.
     /// A keyed child is kept while the exits of the Motions under it play, however deep they sit;
     /// the Exits section of Documentation~/motion.md owns which Motions play one.
-    /// Note: FragmentNode cannot be included directly as a child (it is not expanded). Use MotionNode or a direct
-    /// VNode.
+    /// A keyed FragmentNode is accepted as a child: its first Motion is the child's anchor and every element it
+    /// places stays until the exits of its Motions finish.
     /// Children without a key receive a position-based automatic key, so reordering can cause unintended
     /// exit / enter animations. Set explicit keys on children that participate in animation.
     /// </summary>

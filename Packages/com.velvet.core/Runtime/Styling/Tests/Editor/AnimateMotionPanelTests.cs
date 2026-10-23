@@ -57,7 +57,7 @@ namespace Velvet.Tests
         {
             var variants = new Dictionary<string, MotionVariant> { ["hidden"] = "opacity-0", ["visible"] = "opacity-100" };
             VNode Card(string label) => V.Motion(className: className, name: "card", variants: variants,
-                animate: label, transition: new StyleTransitionConfig { DurationSec = 0.35f });
+                animate: label, transition: new StyleTransitionConfig { DurationSec = 0.35f }, enterOnMount: false);
             _mounted = V.Mount(_window.rootVisualElement, Card("hidden"));
             ForcePanelUpdate(_window.rootVisualElement.panel);
             var element = _window.rootVisualElement.Q<VisualElement>("card");

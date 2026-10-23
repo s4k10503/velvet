@@ -123,6 +123,19 @@ namespace Velvet
             return spec.Active;
         }
 
+        // The angle each axis is written at by classNames, null for an axis none of them writes, so a reset
+        // (skew-x-0) is a written 0 where an absent token is not. A rejected angle writes neither axis a value.
+        public static (float? X, float? Y) WrittenAngles(string[]? classNames)
+        {
+            if (classNames == null)
+            {
+                return (null, null);
+            }
+            Resolve(classNames, out var x, out var y);
+            var rejected = x.Rejected || y.Rejected;
+            return (x.Source == null ? null : rejected ? 0f : x.Deg, y.Source == null ? null : rejected ? 0f : y.Deg);
+        }
+
         private struct Pick
         {
             public float Deg;

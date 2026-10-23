@@ -209,7 +209,7 @@ namespace Velvet.Tests
             var poses = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["a"] = Skew };
 
             // Act
-            Mount(scope, new VNode[] { V.Motion(key: "m", variants: poses, animate: "a") });
+            Mount(scope, new VNode[] { V.Motion(key: "m", variants: poses, animate: "a", enterOnMount: false, transition: StyleTransition.Fade) });
 
             // Assert
             Assert.That(scope.Reconciler.Context.SkewBindings.ContainsKey(scope.Root[0]), Is.True);

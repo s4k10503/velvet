@@ -69,6 +69,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AParentNamingNoInitial_When_AnInheritingChildMountsWithIt_Then_TheChildEntersFromItsOwnClasses()
+        {
+            // Arrange / Act — no initial label reaches the child, so its pose is held back until its enter plays.
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new[]
+            {
+                V.Motion(key: "p", name: "p", variants: s_fade, animate: "visible", transition: s_child,
+                    children: new[] { Child("c") }),
+            });
+            var heldBack = EnteredSwapped("c");
+            AdvancePast(0.05f);
+
+            // Assert
+            Assert.That((heldBack, EnteredSwapped("c")), Is.EqualTo((false, true)));
+        }
+
+        [Test]
         public void Given_AParentEnterStaggeringItsChildren_When_TwoInheritingChildrenMountWithIt_Then_EachEntersOnItsOwnSlot()
         {
             // Arrange
@@ -83,6 +99,50 @@ namespace Velvet.Tests
 
             // Assert — c0 has swapped to its resting pose; c1 is still held at its initial one.
             Assert.That((EnteredSwapped("c0"), EnteredSwapped("c1")), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AParentEnterDeclaringAfterChildren_When_ItMountsWithAnInheritingChild_Then_ItEntersOnlyOnceTheChildHasEntered()
+        {
+            // Arrange — the child's 0.3s enter is longer than the parent's own.
+            var slowChild = V.Motion(key: "c", name: "c", variants: s_fade,
+                transition: new StyleTransitionConfig { DurationSec = 0.3f });
+
+            // Act — mount, sample inside the child's enter and again once it has ended.
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new[]
+            {
+                Parent(new StyleTransitionConfig { DurationSec = 0.05f, When = TransitionWhen.AfterChildren },
+                    new[] { slowChild }),
+            });
+            Frames(12);
+            var enteredInsideTheChildsEnter = EnteredSwapped("p");
+            AdvancePast(0.3f);
+            var enteredAfterIt = EnteredSwapped("p");
+
+            // Assert
+            Assert.That((enteredInsideTheChildsEnter, enteredAfterIt), Is.EqualTo((false, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's parent entered at once whatever its children did.
+        // A child reporting an end for an enter it never plays is what reddens this.
+        [Test]
+        public void Given_AParentEnterDeclaringAfterChildren_When_TheChildsEnterIsWithheld_Then_ItEntersAtOnce()
+        {
+            // Arrange — the child sits in a presence whose first render withholds its enter, so no play of its
+            // 0.3s is there to wait for.
+            var slowChild = V.Motion(key: "c", name: "c", variants: s_fade,
+                transition: new StyleTransitionConfig { DurationSec = 0.3f });
+
+            // Act
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new[]
+            {
+                Parent(new StyleTransitionConfig { DurationSec = 0.05f, When = TransitionWhen.AfterChildren },
+                    new VNode[] { V.AnimatePresence(key: "presence", initial: false, children: new[] { slowChild }) }),
+            });
+            Frames(6);
+
+            // Assert
+            Assert.That(EnteredSwapped("p"), Is.True);
         }
 
         [Test]
@@ -184,7 +244,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode SideBySideHost() => V.Div(children: new VNode[]
         {
-            V.Motion(key: "q", name: "q", variants: s_fade, animate: "visible", transition: s_child),
+            V.Motion(key: "q", name: "q", variants: s_fade, animate: "visible", transition: s_child, enterOnMount: false),
             V.Component(AddingConsumer, key: "consumer"),
         });
 
@@ -213,9 +273,9 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "p", name: "p", animate: "visible", children: new[]
                 {
-                    V.Motion(key: "a", name: "a", animate: "hidden", children: new[] { Child("a1") }),
+                    V.Motion(key: "a", name: "a", animate: "hidden", children: new[] { Child("a1") }, enterOnMount: false),
                     Child("b"),
-                }),
+                }, enterOnMount: false),
             });
 
             // Assert
@@ -252,7 +312,7 @@ namespace Velvet.Tests
                 V.Motion(key: "p", name: "p", animate: "visible", children: new VNode[]
                 {
                     V.Motion(key: "own-exit", name: "own-exit", variants: s_fade, exit: "hidden", transition: s_child),
-                }),
+                }, enterOnMount: false),
             });
 
             // Assert
@@ -306,7 +366,7 @@ namespace Velvet.Tests
 
         [Component]
         private static VNode LabelledListHost() => V.Motion(key: "p", name: "p", animate: "visible",
-            children: new[] { RowList() });
+            children: new[] { RowList() }, enterOnMount: false);
 
         // GREEN_ON_BASE(characterization): every row of one range already inherited the label above the list.
         [Test]

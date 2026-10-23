@@ -64,7 +64,7 @@ namespace Velvet.Tests
                 var motion = V.Motion(name: "item-" + key, key: s_fragments ? null : key.ToString(),
                     className: "w-[60px] h-[24px]",
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f });
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false);
                 children.Add(s_fragments ? V.Fragment(new[] { motion }, key: key.ToString()) : motion);
             }
             return V.Div(name: "presence-host", children: new VNode[]
@@ -103,7 +103,7 @@ namespace Velvet.Tests
                     ? V.Motion(className: "w-[60px] h-[24px]", transition: StyleTransition.Fade)
                     : V.Motion(className: "w-[60px] h-[24px]",
                         variants: s_fade, animate: "visible", exit: "hidden",
-                        transition: new StyleTransitionConfig { DurationSec = 0.3f });
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false);
                 children.Add(V.Div(name: "item-" + key, key: key.ToString(), className: "absolute z-10",
                     children: new VNode[] { motion }));
             }
@@ -260,6 +260,46 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
+        [Test]
+        public void Given_APopLayoutModeChild_When_ItStartsExiting_Then_ItPaintsInTheFrontLayer()
+        {
+            // Arrange
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = MountLaidOut();
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+
+            // Act
+            store.Set("ac");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("item-b").parent?.ClassListContains(
+                FiberZLayerCoordinator.FrontMarkerClass), Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_APopLayoutExitInFlight_When_TheKeyReturnsBeforeItFinishes_Then_ItLeavesTheFrontLayerForItsHost()
+        {
+            // Arrange
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = MountLaidOut();
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            store.Set("ac");
+            scheduler.DrainImmediateForTest();
+            var inLayerWhileExiting = _window.rootVisualElement.Q<VisualElement>("item-b").parent?.ClassListContains(
+                FiberZLayerCoordinator.FrontMarkerClass);
+
+            // Act
+            store.Set("abc");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That((inLayerWhileExiting, _window.rootVisualElement.Q<VisualElement>("item-b").parent?.name),
+                Is.EqualTo(((bool?)true, "presence-host")));
+        }
+
         [Test]
         public void Given_APopLayoutModeChild_When_Pinned_Then_ItsInlineRectMatchesItsLastLaidOutBox()
         {
@@ -446,7 +486,7 @@ namespace Velvet.Tests
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     className: "h-[20px] w-[40px]" + extra,
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false));
             }
             return V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
             {
@@ -598,7 +638,7 @@ namespace Velvet.Tests
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(), className: "h-[20px] w-[40px]",
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false));
             }
             return V.Div(name: "row", className: "flex flex-row-reverse gap-x-2", children: new VNode[]
             {

@@ -420,8 +420,7 @@ while the state is on, and not from its `exit`, so a play other than an exit lea
 gesture puts it, whatever its driver, and one starting during the state leaves it out. A Spring or Bezier
 play still running as the state ends takes the property back from where it is shown, on the play's spring or
 over its duration again, as Framer animates a value a gesture state lets go of back to its `animate`
-target. Among themselves they rank as `hover:`, `focus:`, `active:` and `data-[…]:` rank in
-Tailwind, so a tap or focus class outranks a hover one; Framer Motion ranks `whileHover` above `whileFocus`.
+target. Among themselves they rank as Framer's `variantPriorityOrder` does: `whileFocus`, then `whileHover`, then `whileTap`, the later outranking the earlier.
 A droppable's `whileOverClass` and `whileDragActiveClass` apply theirs at `data-[…]:`'s rank, after every rule
 the className declares with that variant alone, and a play outranks them. An important utility outranks every
 one of these channels. The element's own value comes back when the state goes off. Bracket values apply through them, and so do `shadow-*`,

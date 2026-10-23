@@ -17,6 +17,8 @@ namespace Velvet
         public (float Value, float Velocity)? TranslateY;
         public (float Value, float Velocity)? Scale;
         public (float Value, float Velocity)? Rotate;
+        public (float Value, float Velocity)? SkewX;
+        public (float Value, float Velocity)? SkewY;
         public List<(ArbitraryProperty Property, Color Color)>? Colors;
         public List<(ArbitraryProperty Property, LengthUnit Unit, float Value, float Velocity)>? Lengths;
 

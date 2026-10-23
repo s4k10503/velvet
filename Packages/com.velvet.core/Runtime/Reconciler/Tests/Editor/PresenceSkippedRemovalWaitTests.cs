@@ -102,7 +102,7 @@ namespace Velvet.Tests
                         ? new VNode[]
                         {
                             V.Motion(key: "a", variants: s_fade, animate: "visible", exit: "hidden",
-                                transition: new StyleTransitionConfig { DurationSec = 1f }),
+                                transition: new StyleTransitionConfig { DurationSec = 1f }, enterOnMount: false),
                         }
                         : Array.Empty<VNode>()),
             });

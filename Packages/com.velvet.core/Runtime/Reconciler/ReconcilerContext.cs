@@ -1559,6 +1559,15 @@ namespace Velvet
         // carrying the classes, so a z a custom property supplies can stack one that its patch left unstacked.
         internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> ZLayerCandidates { get; } = new();
 
+        // The exiting children a PopLayout presence pinned out of flow, keyed by the element holding their slot, which
+        // stack in the front layer for as long as they exit (FiberZLayerCoordinator.PinnedGhostZ). An entry is taken
+        // when the exit is cancelled or the ghost is removed.
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> PinnedGhosts { get; } = new();
+
+        // The pinned ghosts still to be moved into their layer, which the end of the pass that pinned them does
+        // (FiberZLayerCoordinator.DrainGhostStacks): the commit that is running still holds each one at its slot.
+        internal List<VisualElement> PendingGhostStacks { get; } = new();
+
         // Real element -> its z-layer bookkeeping. A pure side-table (its own teardown is a plain Remove — the
         // container detach and placeholder bookkeeping live in ZLayerPlaceholders/ZLayerHosts instead), so it
         // is enrolled in _pureElementSideTables: a departing real element (however it is reached — its own
@@ -2763,7 +2772,9 @@ namespace Velvet
         // live key remounted under its own key from one it patched. Same set/restore discipline.
         internal bool PresenceAnchorCreated;
 
-        // The stagger slot the expansion plays PresenceAnchorMotion's enter in. Same set/restore discipline.
+        // The delay the expansion plays PresenceAnchorMotion's enter in: its stagger slot, which the create path raises
+        // to the end of its children's plays once they have been created where the Motion waits for them
+        // (TransitionWhen.AfterChildren). Same set/restore discipline.
         internal float PresenceAnchorEnterDelaySec;
 
         // The keyed child being emitted now and whether it is present: what a presence expanding inside that

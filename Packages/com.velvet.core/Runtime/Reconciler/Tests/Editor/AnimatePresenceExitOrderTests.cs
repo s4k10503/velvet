@@ -52,7 +52,7 @@ namespace Velvet.Tests
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false));
             }
             return V.Div(name: "presence-host", children: new VNode[]
             {

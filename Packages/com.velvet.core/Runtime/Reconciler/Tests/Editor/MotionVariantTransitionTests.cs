@@ -222,7 +222,7 @@ namespace Velvet.Tests
             return V.Div(name: "wrap", children: new VNode[]
             {
                 V.Motion(key: "m", name: "m", variants: s_asymmetric, animate: label,
-                    transition: s_nodeDefault),
+                    transition: s_nodeDefault, enterOnMount: false),
             });
         }
 
@@ -233,7 +233,7 @@ namespace Velvet.Tests
             return V.Div(name: "wrap", children: new VNode[]
             {
                 V.Motion(key: "m", name: "m", variants: s_classlessTimedPose, animate: label,
-                    transition: s_nodeDefault),
+                    transition: s_nodeDefault, enterOnMount: false),
             });
         }
 
@@ -246,7 +246,7 @@ namespace Velvet.Tests
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     variants: s_classlessExitVariants, animate: "visible", exit: "gone",
-                    transition: s_classlessExitNode));
+                    transition: s_classlessExitNode, enterOnMount: false));
             }
             return V.Div(name: "host", children: new VNode[]
             {
@@ -263,7 +263,7 @@ namespace Velvet.Tests
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     variants: s_classlessExitVariants, animate: "visible", exit: "absent",
-                    transition: s_classlessExitNode));
+                    transition: s_classlessExitNode, enterOnMount: false));
             }
             return V.Div(name: "host", children: new VNode[]
             {
@@ -281,7 +281,7 @@ namespace Velvet.Tests
                 children.Add(V.Motion(name: "coordinator-" + key, key: key.ToString(),
                     variants: s_classlessCoordinator, animate: "visible", exit: "hidden",
                     transition: s_nodeDefault,
-                    children: new VNode[] { V.Motion(name: "child-" + key, variants: s_plainFade) }));
+                    children: new VNode[] { V.Motion(name: "child-" + key, variants: s_plainFade, transition: StyleTransition.Fade) }, enterOnMount: false));
             }
             return V.Div(name: "host", children: new VNode[]
             {
@@ -315,7 +315,7 @@ namespace Velvet.Tests
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     variants: s_exitTimedOnly, animate: "visible", exit: "hidden",
-                    transition: StyleTransitionConfig.None));
+                    transition: StyleTransitionConfig.None, enterOnMount: false));
             }
             return V.Div(name: "host", children: new VNode[]
             {
@@ -336,7 +336,7 @@ namespace Velvet.Tests
                         transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                     V.Motion(key: "c1", name: "c1", variants: s_plainFade,
                         transition: new StyleTransitionConfig { DurationSec = 0.05f }),
-                });
+                }, enterOnMount: false);
         }
 
         [Component]
@@ -349,7 +349,7 @@ namespace Velvet.Tests
                 {
                     V.Motion(key: "c", name: "c", variants: s_plainFade,
                         transition: new StyleTransitionConfig { DurationSec = 0.05f }),
-                });
+                }, enterOnMount: false);
         }
 
         [Component]
@@ -366,7 +366,7 @@ namespace Velvet.Tests
                 {
                     V.Motion(key: "c", name: "c", variants: s_plainFade,
                         transition: new StyleTransitionConfig { DurationSec = 0.05f }),
-                });
+                }, enterOnMount: false);
         }
 
         [Test]
@@ -583,7 +583,7 @@ namespace Velvet.Tests
             };
             VNode[] Tree(string label) => new VNode[]
             {
-                V.Motion(key: "m", name: "m", variants: poses, animate: label, transition: s_nodeDefault),
+                V.Motion(key: "m", name: "m", variants: poses, animate: label, transition: s_nodeDefault, enterOnMount: false),
             };
             using var reconciler = new Reconciler();
             reconciler.Reconcile(Root, System.Array.Empty<VNode>(), Tree("hidden"));

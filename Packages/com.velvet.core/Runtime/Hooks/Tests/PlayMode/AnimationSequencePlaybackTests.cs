@@ -63,7 +63,7 @@ namespace Velvet.Tests
             return V.Div(name: "wrap", children: new VNode[]
             {
                 V.Motion(key: "m", name: "m", className: "absolute w-[50px] h-[50px]", variants: s_poses,
-                    animate: state.CurrentLabel, transition: state.CurrentTransition),
+                    animate: state.CurrentLabel, transition: state.CurrentTransition, enterOnMount: false),
             });
         }
 
