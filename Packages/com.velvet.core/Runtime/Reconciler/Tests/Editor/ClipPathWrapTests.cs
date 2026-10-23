@@ -38,7 +38,7 @@ namespace Velvet.Tests
         // A case asserting only that something is ABSENT holds equally against a layer that produces
         // nothing at all, so every negative here compares that absence against a term the working layer
         // RESOLVES — a wrapper around a sibling, a hosted band, a bound element. The control has to come
-        // from the layer the case is aimed at: the Motion warnings and the shadow / ring suppression
+        // from the layer the case is aimed at: the shadow / ring suppression
         // gates all read the PARSERS, so each of them stays true with the wrapper and band appliers dead
         // and controls nothing about them.
         private const string Triangle = "clip-path-[polygon(50%_0%,100%_100%,0%_100%)]";
@@ -163,13 +163,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ClipOnMotion_When_Reconciled_Then_NoClipWrapperIsCreated()
+        public void Given_ClipOnMotion_When_Reconciled_Then_TheMotionIsClipWrappedLikeADiv()
         {
-            // Arrange — a Motion carrying a clip-path utility. Motion does not auto-wrap: a structural
-            // wrapper would become the AnimatePresence enter/exit anchor while the transition stays on the
-            // inner Motion.
+            // Arrange — a Motion and a Div carrying the same clip-path utility.
             using var scope = new ReconcilerScope();
-            LogAssert.Expect(LogType.Warning, new Regex(@"clip-path-\* utility on a Motion is ignored"));
 
             // Act
             Mount(scope, new VNode[]
@@ -182,7 +179,22 @@ namespace Velvet.Tests
             Assert.That(
                 (IsClipWrapped(scope.Root.Q<VisualElement>("motion")),
                     IsClipWrapped(scope.Root.Q<VisualElement>("card"))),
-                Is.EqualTo((false, true)));
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AMotion_When_APatchAddsAClip_Then_TheMotionIsClipWrapped()
+        {
+            // Arrange — the create path and the patch path each decide whether a Motion is wrapped.
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Motion("", key: "m", name: "motion") });
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, new VNode[] { V.Motion("", key: "m", name: "motion") },
+                new VNode[] { V.Motion(Triangle, key: "m", name: "motion") });
+
+            // Assert
+            Assert.That(IsClipWrapped(scope.Root.Q<VisualElement>("motion")), Is.True);
         }
 
         // Clip suppresses the shadow paint (CSS clip-path clips the box-shadow too)

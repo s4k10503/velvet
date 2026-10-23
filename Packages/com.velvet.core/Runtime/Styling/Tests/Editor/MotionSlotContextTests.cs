@@ -1029,7 +1029,7 @@ namespace Velvet.Tests
             var transition = new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 1f };
             var completions = 0;
             var motion = V.Motion(key: "entry", name: "constant-exit", className: "opacity-[0.7]",
-                variants: variants, animate: "rest", exit: "gone", transition: transition);
+                variants: variants, animate: "rest", exit: "gone", transition: transition, enterOnMount: false);
             _mounted = V.Mount(parent, V.AnimatePresence(key: "presence", initial: false,
                 onExitComplete: () => completions++, children: new VNode[] { motion }));
             ForcePanelUpdate(parent.panel);
@@ -1086,7 +1086,7 @@ namespace Velvet.Tests
             };
             MotionNode reentry = null;
             var originalMotion = V.Motion(key: "variant", name: "variant", className: "translate-x-[0px]",
-                variants: variants, animate: "rest", exit: "gone", transition: new StyleTransitionConfig { DurationSec = 0.3f });
+                variants: variants, animate: "rest", exit: "gone", transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false);
             VNode Entry(int stage) => V.AnimatePresence(key: "presence", initial: false, children: stage == 1
                 ? new VNode[0]
                 : new VNode[] { V.Fragment(new[] { stage == 0 ? originalMotion : reentry }, key: "entry") });
@@ -1481,7 +1481,7 @@ namespace Velvet.Tests
                     ["rest"] = "",
                     ["target"] = s_widthTargetClass,
                 },
-                transition: new StyleTransitionConfig { Type = s_widthTransitionType, DurationSec = 1f });
+                transition: new StyleTransitionConfig { Type = s_widthTransitionType, DurationSec = 1f }, enterOnMount: false);
         }
 
         [TestCase(TransitionType.Spring, false)]

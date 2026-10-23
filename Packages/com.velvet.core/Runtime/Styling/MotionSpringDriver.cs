@@ -46,6 +46,11 @@ namespace Velvet
         // delay, duration and easing once, as Framer Motion runs a value given a transition of its own, and the
         // state's spring does not move it.
         public TweenChannelTiming? Timing;
+        // Set by MotionSpringDriver.Create for a play on StyleTransitionConfig.PerValueDefaults: a channel Framer runs
+        // on an ease has the length of that ease here, and one it runs on a spring its own physics and rest speed.
+        public float EaseSec;
+        public (float Stiffness, float Damping)? FixedPhysics;
+        public float? RestSpeed;
 
         public SpringChannel(float initialValue, float target)
         {
@@ -136,6 +141,10 @@ namespace Velvet
         // The y factor when the play's scale differs per axis; Scale is then the x factor.
         public SpringChannel? ScaleY;
         public SpringChannel? Rotate;
+        public SpringChannel? SkewX;
+        public SpringChannel? SkewY;
+        // Draws the skew channels, which no style slot holds; null where the scheduler has no reconciler to paint on.
+        public FiberSkewApplier? Skew;
         public List<SpringColorChannel>? Colors;
         public List<SpringLengthChannel>? Lengths;
         // The progress the paint layers are drawn at, and the hold it draws them under.
@@ -185,7 +194,7 @@ namespace Velvet
         /// </summary>
         public static MotionSpringState? Create(MotionSpringClassParser.SpringPlan plan, float stiffness, float damping,
             float mass, MotionRepeat repeat = default, double? settleSec = null,
-            DurationSpringDescription? description = null)
+            DurationSpringDescription? description = null, bool perValueDefaults = false)
         {
             if (plan.IsEmpty)
             {
@@ -207,6 +216,8 @@ namespace Velvet
                 state.Paint = plan.Paint;
                 state.PaintProgress = new SpringChannel(0f, 1f) { Normalized = true };
             }
+            if (plan.SkewX is { } kx) state.SkewX = new SpringChannel(kx.from, kx.to);
+            if (plan.SkewY is { } ky) state.SkewY = new SpringChannel(ky.from, ky.to);
             if (plan.Colors != null)
             {
                 var colors = new List<SpringColorChannel>(plan.Colors.Count);
@@ -225,8 +236,53 @@ namespace Velvet
                 }
                 state.Lengths = lengths;
             }
+            if (perValueDefaults)
+            {
+                AssignFramerDefaults(state);
+            }
             ForEachActiveChannel(state, c => Release(state, c, c.Origin, 0f));
             return state;
+        }
+
+        // The ease Framer runs a value that is no transform on.
+        internal const float DefaultEaseSec = 0.3f;
+        internal const float DefaultEaseX1 = 0.25f;
+        internal const float DefaultEaseY1 = 0.1f;
+        internal const float DefaultEaseX2 = 0.35f;
+        internal const float DefaultEaseY2 = 1f;
+
+        // A transform value runs on a spring, scale on a critically damped one that is stiffer, and any other value
+        // on the ease above.
+        private static void AssignFramerDefaults(MotionSpringState state)
+        {
+            if (state.Opacity != null) state.Opacity.EaseSec = DefaultEaseSec;
+            if (state.PaintProgress != null) state.PaintProgress.EaseSec = DefaultEaseSec;
+            Spring(state.TranslateX, 500f, 25f);
+            Spring(state.TranslateY, 500f, 25f);
+            Spring(state.Rotate, 500f, 25f);
+            Spring(state.SkewX, 500f, 25f);
+            Spring(state.SkewY, 500f, 25f);
+            if (state.Scale != null)
+            {
+                Spring(state.Scale, 550f, state.Scale.Target == 0f ? 2f * Mathf.Sqrt(550f) : 30f);
+            }
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors) c.Progress.EaseSec = DefaultEaseSec;
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) l.Value.EaseSec = DefaultEaseSec;
+            }
+        }
+
+        private static void Spring(SpringChannel? channel, float stiffness, float damping)
+        {
+            if (channel != null)
+            {
+                channel.FixedPhysics = (stiffness, damping);
+                channel.RestSpeed = 10f;
+            }
         }
 
         // Releases the channel's spring at `origin` with `velocity`, in the channel's own units per second, toward its
@@ -243,6 +299,15 @@ namespace Velvet
                 c.PassSec = own.DelaySec + own.DurationSec;
                 return;
             }
+            if (c.EaseSec > 0f)
+            {
+                c.Scale = 1f;
+                c.StartVelocity = 0f;
+                c.Physics = null;
+                c.MirroredPhysics = null;
+                c.PassSec = c.EaseSec;
+                return;
+            }
             var travel = c.Target - origin;
             var accelerated = c.Acceleratable && state.Repeat.Type != TransitionRepeatType.Mirror
                 && state.Repeat.DelaySec == 0f;
@@ -251,25 +316,27 @@ namespace Velvet
             // Framer hands the spring the motion value's own velocity on either path, the browser's travel of 100
             // included, and a mirrored pass the opposite one; a color's progress has none.
             var valueVelocity = c.Normalized ? 0f : velocity;
-            c.Physics = PhysicsAt(state, valueVelocity);
-            c.MirroredPhysics = PhysicsAt(state, -valueVelocity);
+            c.Physics = c.FixedPhysics ?? PhysicsAt(state, valueVelocity);
+            c.MirroredPhysics = c.FixedPhysics ?? PhysicsAt(state, -valueVelocity);
             // A spring with a settle time runs exactly that long on the main thread, and on the browser for the
             // easing Framer samples from it, which ends at the first sample at or past it.
             var pass = state.SettleSec is { } settleSec
                 ? accelerated ? SampledEndSec(settleSec) : (float)settleSec
-                : PassDurationSec(travel * c.Scale, state.Stiffness, state.Damping, state.Mass, c.StartVelocity);
+                : PassDurationSec(travel * c.Scale, c.FixedPhysics?.Stiffness ?? state.Stiffness,
+                    c.FixedPhysics?.Damping ?? state.Damping, state.Mass, c.StartVelocity, c.RestSpeed);
             c.PassSec = accelerated ? System.Math.Min(pass, MaxPassMs / 1000f) : pass;
         }
 
         // Framer Motion's calcGeneratorDuration over its spring generator: the first 50 ms sample at which a spring
         // released `delta` from its target with `velocity` has come to rest, or infinity when none before 20 s does.
-        internal static float PassDurationSec(float delta, float stiffness, float damping, float mass, float velocity = 0f)
+        internal static float PassDurationSec(float delta, float stiffness, float damping, float mass, float velocity = 0f,
+            float? restSpeed = null)
         {
             for (var ms = 0; ms < MaxPassMs; ms += PassSampleMs)
             {
                 var (displacement, speed) = SpringIntegrator.Solve(-delta, velocity, ms / 1000.0,
                     (stiffness, damping, mass));
-                if (Rests(delta, displacement, speed))
+                if (Rests(delta, displacement, speed, restSpeed))
                 {
                     return ms / 1000f;
                 }
@@ -319,10 +386,10 @@ namespace Velvet
         private const int MaxPassMs = 20000;
 
         // Framer Motion's rest test, with its thresholds for a travel under 5 and for any other.
-        private static bool Rests(double delta, double displacement, double velocity)
+        private static bool Rests(double delta, double displacement, double velocity, float? restSpeed = null)
         {
             var granular = System.Math.Abs(delta) < 5.0;
-            return System.Math.Abs(velocity) <= (granular ? 0.01 : 2.0)
+            return System.Math.Abs(velocity) <= (restSpeed ?? (granular ? 0.01 : 2.0))
                 && System.Math.Abs(displacement) <= (granular ? 0.005 : 0.5);
         }
 
@@ -380,6 +447,10 @@ namespace Velvet
                 element.style.rotate = new Rotate(Angle.Degrees(state.Rotate.Integrator.Value));
             }
             state.Paint?.Apply(state.PaintProgress!.Integrator.Value);
+            if (state.SkewX != null || state.SkewY != null)
+            {
+                state.Skew?.Drive(element, state.SkewX?.Integrator.Value, state.SkewY?.Integrator.Value);
+            }
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors)
@@ -427,6 +498,8 @@ namespace Velvet
             if (state.ScaleY != null) settled &= SampleRepeating(state, state.ScaleY, dtSec, seekScale);
             if (state.Rotate != null) settled &= SampleRepeating(state, state.Rotate, dtSec, seekScale);
             if (state.PaintProgress != null) settled &= SampleRepeating(state, state.PaintProgress, dtSec, seekScale);
+            if (state.SkewX != null) settled &= SampleRepeating(state, state.SkewX, dtSec, seekScale);
+            if (state.SkewY != null) settled &= SampleRepeating(state, state.SkewY, dtSec, seekScale);
             if (state.Colors != null)
             {
                 foreach (var color in state.Colors) settled &= SampleRepeating(state, color.Progress, dtSec, seekScale);
@@ -568,25 +641,33 @@ namespace Velvet
 
         private static float SamplePass(MotionSpringState state, SpringChannel channel, double passTime, bool mirrored)
         {
+            if (channel.EaseSec > 0f)
+            {
+                var progress = CubicBezierEvaluator.Evaluate(DefaultEaseX1, DefaultEaseY1, DefaultEaseX2, DefaultEaseY2,
+                    Mathf.Clamp01((float)passTime / channel.EaseSec));
+                return mirrored
+                    ? Mathf.LerpUnclamped(channel.Target, channel.Origin, progress)
+                    : Mathf.LerpUnclamped(channel.Origin, channel.Target, progress);
+            }
             var physics = mirrored ? channel.MirroredPhysics : channel.Physics;
             var spring = physics is { } own
                 ? (own.Stiffness, own.Damping, state.Mass)
                 : (state.Stiffness, state.Damping, state.Mass);
             return mirrored
                 ? SampleSpring(channel.Target, channel.Origin, channel.Scale, -channel.StartVelocity, passTime, spring,
-                    state.SettleSec)
+                    state.SettleSec, channel.RestSpeed)
                 : SampleSpring(channel.Origin, channel.Target, channel.Scale, channel.StartVelocity, passTime, spring,
-                    state.SettleSec);
+                    state.SettleSec, channel.RestSpeed);
         }
 
         // Framer Motion's spring generator released at `from` toward `to` with `velocity` on the scaled travel: the
         // target once it rests, or, for one resolved from a duration (settleSec), once that duration has run.
         internal static float SampleSpring(float from, float to, float scale, float velocity, double t,
-            (float Stiffness, float Damping, float Mass) spring, double? settleSec = null)
+            (float Stiffness, float Damping, float Mass) spring, double? settleSec = null, float? restSpeed = null)
         {
             var delta = (to - from) * scale;
             var (displacement, speed) = SpringIntegrator.Solve(-delta, velocity, t, spring);
-            var done = settleSec is { } settle ? t >= settle : Rests(delta, displacement, speed);
+            var done = settleSec is { } settle ? t >= settle : Rests(delta, displacement, speed, restSpeed);
             return done ? to : (float)(to + displacement / scale);
         }
 
@@ -607,6 +688,8 @@ namespace Velvet
             drawn.ScaleY = Of(state.ScaleY);
             drawn.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
             drawn.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            drawn.SkewX = Of(state.SkewX);
+            drawn.SkewY = Of(state.SkewY);
             return drawn;
         }
 
@@ -631,6 +714,8 @@ namespace Velvet
             Continue(next, next.Scale, interrupted.Scale, fromDrawn);
             Continue(next, next.ScaleY, interrupted.ScaleY ?? interrupted.Scale, fromDrawn);
             Continue(next, next.Rotate, interrupted.Rotate, fromDrawn);
+            Continue(next, next.SkewX, interrupted.SkewX, fromDrawn);
+            Continue(next, next.SkewY, interrupted.SkewY, fromDrawn);
             if (next.Lengths != null)
             {
                 foreach (var length in next.Lengths)
@@ -705,6 +790,22 @@ namespace Velvet
         // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
         public static bool EndsAtFrom(MotionSpringState state) => state.Repeat.EndsAtFrom;
 
+        // A play that landed leaves each axis it moved at the value it ended on; one cut short leaves the lot to the
+        // element's classes.
+        private static void ReleaseSkew(VisualElement element, MotionSpringState state, bool landed)
+        {
+            if (state.SkewX == null && state.SkewY == null)
+            {
+                return;
+            }
+            var x = landed ? EndValue(state, state.SkewX) : null;
+            var y = landed ? EndValue(state, state.SkewY) : null;
+            state.Skew?.EndDrive(element, x, y);
+        }
+
+        private static float? EndValue(MotionSpringState state, SpringChannel? channel)
+            => channel == null ? null : state.Repeat.EndsAtFrom ? channel.Origin : channel.Target;
+
         /// <summary>
         /// Releases every inline slot this state ever wrote — and the transition suspension
         /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
@@ -716,13 +817,14 @@ namespace Velvet
         /// while an authored longhand (`pt-[2px]`) is registered against ONE of them, so per-property
         /// interleaving would let a later null wipe a value an earlier re-assert had just restored.
         /// </remarks>
-        public static void ClearInlineOverrides(VisualElement element, MotionSpringState state)
+        public static void ClearInlineOverrides(VisualElement element, MotionSpringState state, bool landed = false)
         {
             if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
             if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
             state.Paint?.Release();
+            ReleaseSkew(element, state, landed);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
@@ -908,6 +1010,8 @@ namespace Velvet
             HaltChannel(state.ScaleY);
             HaltChannel(state.Rotate);
             HaltChannel(state.PaintProgress);
+            HaltChannel(state.SkewX);
+            HaltChannel(state.SkewY);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) HaltChannel(c.Progress);
@@ -961,6 +1065,8 @@ namespace Velvet
             if (state.ScaleY != null) action(state.ScaleY);
             if (state.Rotate != null) action(state.Rotate);
             if (state.PaintProgress != null) action(state.PaintProgress);
+            if (state.SkewX != null) action(state.SkewX);
+            if (state.SkewY != null) action(state.SkewY);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) action(c.Progress);

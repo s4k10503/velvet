@@ -230,7 +230,7 @@ namespace Velvet.Tests
             var variants = new Dictionary<string, MotionVariant> { ["on"] = pose };
 
             // Act
-            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: baseClasses, variants: variants, animate: "on"));
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: baseClasses, variants: variants, animate: "on", enterOnMount: false, transition: StyleTransition.Fade));
 
             // Assert
             Assert.That(Corners(root.Q<VisualElement>("leaf")), Is.EqualTo(expected));

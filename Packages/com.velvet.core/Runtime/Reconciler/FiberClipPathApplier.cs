@@ -58,6 +58,19 @@ namespace Velvet
             // Wrap whenever a clip can apply (base OR a variant) — the wrapper is persistent so a hover toggle
             // never wraps/unwraps; the active shape is the live cascade, resolved below.
             var wantWrap = StyleClipPathClass.WantsClipWrapper(classNames);
+            if (wrapped && binding!.Correction)
+            {
+                // The correction wrapper takes the one binding slot and is no clip:
+                // FiberNodePatcher.ReconcileLayoutIdCorrection owns it while no clip applies, and a clip that now
+                // applies replaces it.
+                if (!wantWrap)
+                {
+                    return false;
+                }
+                MotionLayoutIdDriver.BeforeReseat(element, _ctx);
+                UnwrapClipPathInPlace(element, binding);
+                wrapped = false;
+            }
             if (!wrapped && !wantWrap)
             {
                 return false;

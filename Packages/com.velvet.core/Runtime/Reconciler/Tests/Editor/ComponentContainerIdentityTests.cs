@@ -515,8 +515,8 @@ namespace Velvet.Tests
         private static VNode TwoMotionsHost()
             => V.Div(name: "shell", children: new VNode?[]
             {
-                V.Motion(name: "left", animate: "alpha", children: new VNode?[] { V.Component(LabelReader) }),
-                V.Motion(name: "right", animate: "beta", children: new VNode?[] { V.Component(LabelReader) }),
+                V.Motion(name: "left", animate: "alpha", children: new VNode?[] { V.Component(LabelReader) }, enterOnMount: false),
+                V.Motion(name: "right", animate: "beta", children: new VNode?[] { V.Component(LabelReader) }, enterOnMount: false),
             });
 
         [Test]

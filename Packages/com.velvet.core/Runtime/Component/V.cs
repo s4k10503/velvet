@@ -2797,6 +2797,9 @@ namespace Velvet
         /// <param name="animate">The active variant label (a key of <paramref name="variants"/>). When this Motion
         /// names none of <paramref name="animate"/>, <paramref name="initial"/> and <paramref name="exit"/>, the
         /// nearest ancestor Motion's labels are inherited; naming any of them, it inherits none.</param>
+        /// <param name="enterOnMount">False mounts this Motion and the Motions below it at their resting pose with
+        /// no enter (Framer Motion's <c>initial={false}</c>). Left true, a Motion naming no
+        /// <paramref name="initial"/> label enters from the look it has without its variant classes.</param>
         /// <param name="initial">Mount-time starting variant label. The enter starts at <c>variants[initial]</c>
         /// and transitions to <c>variants[animate]</c> (its persistent resting state); with no
         /// <paramref name="animate"/>, the Motion rests at <c>variants[initial]</c>. The motion guide's
@@ -2831,7 +2834,8 @@ namespace Velvet
             string? animate = null,
             string? initial = null,
             string? exit = null,
-            string? layoutId = null)
+            string? layoutId = null,
+            bool enterOnMount = true)
         {
             var resolvedTransition = transition ?? StyleTransition.Fade;
             if (duration != null || easing != null || delay != null)
@@ -2865,6 +2869,7 @@ namespace Velvet
                 Initial = initial,
                 Exit = exit,
                 LayoutId = layoutId,
+                EnterOnMount = enterOnMount,
             };
         }
 

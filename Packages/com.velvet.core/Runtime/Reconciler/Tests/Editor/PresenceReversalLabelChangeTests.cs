@@ -102,13 +102,13 @@ namespace Velvet.Tests
                         {
                             ["rest"] = "scale-100",
                             ["gone"] = "scale-50",
-                        }, animate: "rest", exit: "gone", transition: s_tween),
+                        }, animate: "rest", exit: "gone", transition: s_tween, enterOnMount: false),
                     }));
             }
             return V.Motion(name: "parent", animate: state.Label, children: new VNode[]
             {
                 V.AnimatePresence(key: "presence", children: children.ToArray()),
-            });
+            }, enterOnMount: false);
         }
 
         // Mounts key "a", removes it, runs frames into its exit, then adds it back, which cancels the exit into
@@ -150,7 +150,7 @@ namespace Velvet.Tests
             using var store = new PresenceStore("lit");
             using var mounted = MountRemoveAndReAdd(store, (state, key) => V.Motion(key: key, name: "item",
                 className: "tagged", variants: variants, animate: state.Label, exit: "gone",
-                transition: new StyleTransitionConfig { Type = TransitionType.Spring }));
+                transition: new StyleTransitionConfig { Type = TransitionType.Spring }, enterOnMount: false));
 
             // Act
             store.SetLabel("dim");
@@ -180,7 +180,7 @@ namespace Velvet.Tests
             };
             using var store = new PresenceStore("lit");
             using var mounted = MountRemoveAndReAdd(store, (state, key) => V.Motion(key: key, name: "item",
-                variants: variants, animate: state.Label, transition: presetExit));
+                variants: variants, animate: state.Label, transition: presetExit, enterOnMount: false));
 
             // Act
             store.SetLabel("dim");
@@ -377,7 +377,7 @@ namespace Velvet.Tests
             using var store = new PresenceStore("lit");
             using var mounted = MountRemoveAndReAdd(store, (state, key) => V.Motion(key: key, name: "item",
                 variants: variants, animate: state.Label, exit: "gone",
-                transition: new StyleTransitionConfig { Type = TransitionType.Spring }));
+                transition: new StyleTransitionConfig { Type = TransitionType.Spring }, enterOnMount: false));
             var item = Root.Q<VisualElement>("item");
             var drivenBefore = item.style.opacity.keyword == StyleKeyword.Undefined;
 
@@ -402,7 +402,7 @@ namespace Velvet.Tests
             using var store = new PresenceStore("lit");
             using var mounted = MountRemoveAndReAdd(store, (state, key) => V.Motion(key: key, name: "item",
                 variants: variants, animate: state.Label, exit: "gone",
-                transition: new StyleTransitionConfig { Type = TransitionType.Spring }));
+                transition: new StyleTransitionConfig { Type = TransitionType.Spring }, enterOnMount: false));
 
             // Act
             store.SetLabel("dim");
@@ -429,7 +429,7 @@ namespace Velvet.Tests
             using var store = new PresenceStore("lit");
             using var mounted = MountRemoveAndReAdd(store, (state, key) => V.Motion(key: key, name: "item",
                 className: "translate-x-[0px]", variants: variants, animate: state.Label, exit: "gone",
-                transition: new StyleTransitionConfig { Type = TransitionType.Spring }));
+                transition: new StyleTransitionConfig { Type = TransitionType.Spring }, enterOnMount: false));
 
             // Act
             store.SetLabel("dim");
@@ -459,7 +459,7 @@ namespace Velvet.Tests
                         {
                             ["rest"] = "scale-100",
                             ["gone"] = "scale-50",
-                        }, animate: "rest", exit: "gone", transition: s_tween),
+                        }, animate: "rest", exit: "gone", transition: s_tween, enterOnMount: false),
                     }));
             }
             return V.AnimatePresence(key: "presence", children: children.ToArray());
@@ -545,7 +545,7 @@ namespace Velvet.Tests
             using var store = new PresenceStore("lit");
             using var mounted = MountRemoveAndReAdd(store, (state, key) => V.Motion(key: key, name: "item",
                 variants: variants, animate: state.Label, exit: "gone",
-                transition: new StyleTransitionConfig { Type = TransitionType.Spring }));
+                transition: new StyleTransitionConfig { Type = TransitionType.Spring }, enterOnMount: false));
             store.SetLabel("dim");
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             Tick();
@@ -576,7 +576,7 @@ namespace Velvet.Tests
             using var store = new PresenceStore("lit");
             s_store = store;
             s_child = (state, key) => V.Motion(key: key, name: "item", variants: poses, animate: "shown", exit: "hidden",
-                transition: transition);
+                transition: transition, enterOnMount: false);
             using var mounted = V.Mount(Root, V.Component(PresenceHost, key: "root"));
             Tick();
             store.SetKeys(string.Empty);

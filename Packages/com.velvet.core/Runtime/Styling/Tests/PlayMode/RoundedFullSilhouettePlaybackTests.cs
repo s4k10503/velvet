@@ -206,13 +206,11 @@ namespace Velvet.Tests
             return n;
         }
 
-        // GREEN_ON_BASE(characterization): the base already bounds an oversized radius in the shadow bake.
-        // Unbounding it, `Mathf.Min(r.x, bound)` -> `r.x` in BoxShadowSilhouette.BoxOf, reddens it.
         [UnityTest]
         public IEnumerator Given_ABoxWithAnOversizedInlineRadiusWearingAShadow_When_Painted_Then_ItsHaloReachesTheScreen()
         {
-            // Arrange — the radius is written straight onto the element, which CornerRadiusFit neither declares
-            // nor fits, so the shadow layer is handed a radius larger than the box. A shadow-free mount says how
+            // Arrange — the radius is written straight onto the element, and CornerRadiusFit fits it to half the
+            // layout height, so the shadow layer is handed the fitted radius. A shadow-free mount says how
             // much red sits beside the box with no shadow at all, and the same shadow behind a radius the box can
             // carry says the shadow layer paints on this panel.
             static void Oversize(VisualElement box)
@@ -230,11 +228,12 @@ namespace Velvet.Tests
 
             // Act
             yield return MountBox("ShadowOversized", $"{CasterGeometry} shadow-[0px_0px_24px_#ff0000]", Oversize);
-            var radiusExceededTheBox = Box.resolvedStyle.borderTopLeftRadius > Box.layout.height;
+            var radiusFittedToHalfTheHeight =
+                Mathf.Abs(Box.resolvedStyle.borderTopLeftRadius - (Box.layout.height * 0.5f)) < 1e-3f;
             var oversized = HaloMean(Box.worldBound, RedOf);
 
             // Assert
-            Assert.That((radiusExceededTheBox, oversized > bare, lg > bare), Is.EqualTo((true, true, true)));
+            Assert.That((radiusFittedToHalfTheHeight, oversized > bare, lg > bare), Is.EqualTo((true, true, true)));
         }
 
         private static float RedOf(Color32 p) => p.r;

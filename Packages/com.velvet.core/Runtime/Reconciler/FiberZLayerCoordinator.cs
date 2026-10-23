@@ -48,6 +48,10 @@ namespace Velvet
     // (EnqueueMount/ResolveQueuedMount for creation, PendingZLayerTeardownChecks/DrainTeardowns for removal).
     internal static class FiberZLayerCoordinator
     {
+        // The z a pinned PopLayout ghost stacks at: in front of every ordinary sibling, as a positioned element paints
+        // above the in-flow ones, and beneath any element given a positive z of its own.
+        internal const int PinnedGhostZ = 0;
+
         internal const string FrontMarkerClass = "velvet-z-layer-front";
         internal const string BackMarkerClass = "velvet-z-layer-back";
 
@@ -201,7 +205,12 @@ namespace Velvet
             ctx.ZLayerCandidates.Remove(classElement);
             if (!classified)
             {
-                return false;
+                if (!ctx.PinnedGhosts.TryGetValue(SlotOf(ctx, classElement), out _))
+                {
+                    return false;
+                }
+                resolvedZ = PinnedGhostZ;
+                return true;
             }
             ctx.ZLayerCandidates.Add(classElement, s_candidate);
             if (!StyleCustomProperties.TryVariableZ(classElement, out var variable))
@@ -295,6 +304,47 @@ namespace Velvet
             return null;
         }
 
+        // Marks ghost, a child a PopLayout presence has just pinned out of flow, to stack in front of its siblings
+        // while it exits. One already stacked by a z of its own is in front already.
+        internal static void PinGhost(ReconcilerContext ctx, VisualElement ghost)
+        {
+            if (PlaceholderOf(ctx, ghost) != null)
+            {
+                return;
+            }
+            ctx.PinnedGhosts.Remove(ghost);
+            ctx.PinnedGhosts.Add(ghost, s_candidate);
+            ctx.PendingGhostStacks.Add(ghost);
+        }
+
+        // A pinned ghost whose exit was cancelled returns to the slot its placeholder holds.
+        internal static void UnpinGhost(ReconcilerContext ctx, VisualElement ghost)
+        {
+            if (ctx.PinnedGhosts.Remove(ghost))
+            {
+                ctx.PendingGhostStacks.Add(ghost);
+            }
+        }
+
+        // The end-of-pass half of PinGhost and UnpinGhost: the commit that is running holds each ghost at the slot it
+        // diffed it at, so each moves once that commit has finished, to the layer it is pinned for or back to its slot.
+        internal static void DrainGhostStacks(ReconcilerContext ctx)
+        {
+            foreach (var ghost in ctx.PendingGhostStacks)
+            {
+                var placeholder = PlaceholderOf(ctx, ghost);
+                if (!ctx.PinnedGhosts.TryGetValue(ghost, out _))
+                {
+                    if (placeholder != null) RelocateToOrdinarySlot(ctx, placeholder, ghost);
+                }
+                else if (placeholder == null && ghost.parent != null && !IsLayerContainer(ghost.parent))
+                {
+                    RelocateFromOrdinarySlot(ctx, ghost, PinnedGhostZ, createLayer: true);
+                }
+            }
+            ctx.PendingGhostStacks.Clear();
+        }
+
         // The placeholder standing at real's declared slot while it is z-managed, placed or still queued; null
         // while real is in that slot itself.
         internal static VisualElement? PlaceholderOf(ReconcilerContext ctx, VisualElement real)
@@ -381,6 +431,7 @@ namespace Velvet
             {
                 return null;
             }
+            ctx.PinnedGhosts.Remove(real);
             if (ctx.ZLayerMembers.TryGetValue(real, out var member))
             {
                 DetachFromContainer(ctx, member.Container, real);

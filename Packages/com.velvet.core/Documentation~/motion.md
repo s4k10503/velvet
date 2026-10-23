@@ -73,6 +73,10 @@ on any `motion.*` element). The element mounts showing `variants[initial]`, then
   *Orchestration*); one mounting under a parent already mounted enters on its own.
 - An `initial` pose applying no class starts the enter from the Motion's own classes, the way a
   Framer `initial` naming no value starts each value from the one it already has.
+- A Motion that resolves no `initial` label, its own or inherited, enters from the same place: the look it has
+  without its variant classes. Its `animate` pose applying no class leaves nothing to enter to. `enterOnMount:
+  false` mounts a Motion, and the Motions below it across a presence, at their resting pose with no enter, as
+  Framer's `initial={false}` does; `transition: StyleTransitionConfig.None` does the same for a single Motion.
 - Inside `AnimatePresence`, the presence can withhold enters: `V.AnimatePresence(initial: false, …)`
   suppresses them for the children its first render mounts, like Framer's `<AnimatePresence initial={false}>`
   (see *Exits* below).
@@ -132,7 +136,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
   fixed channel set. Spring and cubic-bezier exits drive the channels they can resolve a number
   for out of the class strings; *Driven channels* below is the single list of what that covers and
-  what it deliberately leaves out.
+  what it deliberately leaves out. A `skew-x-*` / `skew-y-*` angle animates on every driver: a Tween that
+  moves one runs on the Bezier driver, which draws the angle, since UI Toolkit's transition cannot.
 - **A removed child's exits play however deep their Motion sits** — behind a component,
   `V.Memoized` or `V.Suspense`, or inside another element or Motion: a Motion plays the `exit` it
   declares, or one it inherits from the Motion above it the way an `animate` label is inherited, and
@@ -207,8 +212,11 @@ Framer's `mode="popLayout"`: the exiting child is pinned **out of flow** (absolu
 laid-out rect, margins accounted for) so surviving siblings reflow *immediately* while the ghost
 plays its exit in place. The `gap-*` / `grid-cols-*` / `divide-*` emulations skip pinned ghosts
 in their index math, so spacing recomputes as if the child were already gone. A keyed `V.Fragment` is not
-pinned and exits in flow, as under Framer's `popLayout`. Note the ghost
-keeps its original paint order: a survivor that reflows into the ghost's rect draws over it.
+pinned and exits in flow, as under Framer's `popLayout`. A pinned ghost paints over the survivors that reflow into
+its rect, as a positioned element paints over in-flow ones: it moves into its parent's front layer
+([styling-z-index.md](styling-z-index.md)) for the length of its exit, leaving a placeholder at its slot, and returns to
+the slot if its key comes back. A ghost that carries a `z-*` of its own stays where that puts it. Exits inside a pinned
+ghost run on the driver rather than UI Toolkit's transition, so they carry on through that move.
 
 A negative `StyleTransitionConfig.DelaySec` starts the animation partway through its run. For
 example, `DurationSec = 1f` and `DelaySec = -0.5f` start a linear tween halfway to its target.
@@ -246,8 +254,15 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
   spring's wait is measured from the pose classes at rest, so a spring that interrupts a running
   one, starting where that one stood and with its velocity, can end before or after its children
   start, where Framer's children wait for the animation itself.
-- `When = AfterChildren` is not orchestratable under label propagation; it warns once and falls
-  back to `Together`.
+- `When = AfterChildren`: the children start as under `Together`, and the parent's own play starts once the
+  latest play below it has ended, then waits out its own `DelaySec`. A child's play is measured as
+  `BeforeChildren` measures the parent's, its slot included, and the end of a child that has children of its own
+  includes theirs. The parent's swap, mount enter and exit, and the enter of a presence child naming its own
+  `animate`, all wait. A child repeating without end holds the parent for good, as in Framer.
+- `StaggerDirection = -1` starts the last child first, as Framer's `staggerDirection: -1` does, and so does any
+  value but 1: the children are numbered back from the count of those the Motion's node declares, where a
+  component counts as one child, since what it renders is not known before it does. A slot never falls below
+  zero.
 - Each Motion numbers its own inheriting children, as Framer numbers each variant parent's: a child
   with variants of its own starts its children with it and numbers them from zero, while a Motion
   with neither variants nor a label of its own passes its parent's numbering through to the
@@ -362,6 +377,10 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   translate 0, rotate 0deg). When only the to-side names it, the play samples the current value;
   on an off-panel element it starts at identity. A both-axis `translate-8` or `translate-[10px]` drives the
   x and y channels with its one value.
+- **Skew angles.** `skew-x-*`, `skew-y-*` and `skew-*` (a bracket angle included) animate as degrees, on the
+  spring Framer Motion gives a transform value by default (500 stiffness, 25 damping). The angle is painted onto the
+  element's sheared silhouette, so an element that rests unskewed is skewed for the length of a play that starts or ends
+  on an angle. A pose that names no angle on an axis leaves it where the classes rest.
 - **Colors.** `background-color`, `color` and `border-color`, from palette utilities
   (`bg-red-500`), the alpha modifier (`bg-red-500/50`) and the bracket forms (`bg-[#1e293b]`).
   Interpolation is straight RGBA, the same path UI Toolkit's own color transition takes, so
@@ -1083,8 +1102,10 @@ V.AnimatePresence(children: new VNode[]
 
 Three consequences worth knowing:
 
-- **Every Motion animates by default.** `V.Motion` without an explicit `transition` falls back
-  to the `Fade` preset's timing, so even a bare Motion tweens its label swaps. Pass
+- **Every Motion animates by default.** `V.Motion` without an explicit `transition` is `Fade` for the preset enter and
+  exit of a Motion with no variants, and for a variant play it runs each value on the transition Framer Motion picks for
+  its type: a spring (500 stiffness, 25 damping) for translate and rotate, a stiffer one (550, 30) for scale, and a
+  0.3 s ease for opacity, colours and lengths. A value neither covers lands with the swap, as on any spring. Pass
   `transition: StyleTransitionConfig.None` for an instant, non-animated swap — and because the
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
   means exactly that pose animates and the rest are instant. Whether a removal animates is

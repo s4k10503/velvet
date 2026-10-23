@@ -54,6 +54,9 @@ namespace Velvet
             internal IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
             internal EasingMode Easing { get; init; }
             internal float DurationSec { get; init; }
+            // Whether a spring play runs each channel on the transition Framer picks for its type
+            // (StyleTransitionConfig.PerValueDefaults).
+            internal bool PerValueDefaults { get; init; }
         }
 
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
@@ -171,7 +174,7 @@ namespace Velvet
                 landsAtOnce ? TransitionType.Tween : config.Type, config.Stiffness, config.Damping, config.Mass,
                 config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses,
                 playback, config.PlayedRepeat, config.SpringSettleSec,
-                config.SpringDescription);
+                config.SpringDescription, config.PerValueDefaults);
         }
 
         // additionalDelaySec, here and in LandsAtOnce: the stagger the caller hands the play, which an instant
@@ -217,7 +220,7 @@ namespace Velvet
             float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f,
             Action? onSwap = null, string[]? appliedClasses = null, MotionPlayback? playback = null,
             MotionRepeat repeat = default, double? springSettleSec = null,
-            DurationSpringDescription? springDescription = null)
+            DurationSpringDescription? springDescription = null, bool perValueDefaults = false)
         {
             if (element == null)
             {
@@ -242,6 +245,7 @@ namespace Velvet
                 PropertyOverrides = propertyOverrides,
                 Easing = easing,
                 DurationSec = durationSec,
+                PerValueDefaults = perValueDefaults,
             };
 
             WarnRepeatNotPlayed(type, repeat);
@@ -257,7 +261,7 @@ namespace Velvet
                 return;
             }
 
-            if (DrivesTween(durationSec))
+            if (RunsDriven(in play, durationSec))
             {
                 StartDrivenTween(in play, durationSec, easing, propertyOverrides, removesToClasses: false);
                 return;
@@ -495,6 +499,7 @@ namespace Velvet
                 PropertyOverrides = VariantOverrides(config, restoreFromOnCancel),
                 Easing = ExitEasingOf(config),
                 DurationSec = config.DurationSec,
+                PerValueDefaults = config.PerValueDefaults,
             };
 
             WarnRepeatNotPlayed(config.Type, play.Repeat);
@@ -514,7 +519,7 @@ namespace Velvet
                 return;
             }
 
-            if (DrivesTween(config.DurationSec))
+            if (RunsDriven(in play, config.DurationSec))
             {
                 // Per-property overrides reach the variant exit alone, as below.
                 StartDrivenTween(in play, config.DurationSec, config.ExitEasing ?? config.Easing,
@@ -725,17 +730,19 @@ namespace Velvet
             var context = ReadSlotContext(element, fromClasses, toClasses);
             var slots = context ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses);
             slots.ForExit = isExit;
+            slots.RestingSkew = RestingSkew(element);
             var plan = MotionSpringClassParser.ResolveResting(fromClasses, toClasses, restingTranslate, slots);
             plan = StartFromHeld(element, plan, fromClasses, toClasses);
             plan.Paint = Context?.PaintLeases?.Open(element, fromClasses, toClasses, isExit);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
-            var state = ValidateSpringParameters(stiffness, damping, mass)
+            var state = Skewing(ValidateSpringParameters(stiffness, damping, mass)
                 ? MotionSpringDriver.WithOverrides(
-                    MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description),
+                    MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description,
+                        play.PerValueDefaults),
                     play.PropertyOverrides, play.Easing, play.DurationSec)
-                : null;
+                : null);
             GestureChannelMask.MarkExit(state, isExit);
             // A spring or bezier play this one interrupts hands on its velocity, and a native transition its rate, both
             // read before the cancel and the class swap below end them. The interrupted play's values are an enter's
@@ -888,6 +895,28 @@ namespace Velvet
 
         private bool DrivesTween(float durationSec) => !Clock.StepsOnPanelTime && IsPlayableDuration(durationSec);
 
+        // UI Toolkit's transition cannot move a skew angle, which is painted rather than a style slot, so a Tween that
+        // moves one runs on the driver that writes it, as a Tween on another clock does.
+        private bool RunsDriven(in VariantPlay play, float durationSec)
+            => DrivesTween(durationSec) || TweenDrivesSkew(in play, durationSec)
+                || (play.IsExit && InsidePinnedGhost(play.Element));
+
+        // An exit inside a pinned PopLayout ghost runs on the driver, whose inline values and recurring tick outlive the
+        // ghost's detach and reattach when the exit is cancelled and the ghost returns to its slot.
+        private bool InsidePinnedGhost(VisualElement element)
+        {
+            if (Context == null) return false;
+            for (var e = element; e != null; e = e.hierarchy.parent)
+            {
+                if (Context.PinnedGhosts.TryGetValue(e, out _)) return true;
+            }
+            return false;
+        }
+
+        private static bool TweenDrivesSkew(in VariantPlay play, float durationSec)
+            => IsPlayableDuration(durationSec)
+                && (StyleSkewClass.HasSkewClass(play.FromClasses) || StyleSkewClass.HasSkewClass(play.ToClasses));
+
         // What the spring or bezier play pending draws, its velocity on the clock the play is shown on: a play on a
         // playback moves by its rate, and not at all while it is paused.
         private static MotionDrawnValues? Drawn(PendingAnimation? pending)
@@ -941,13 +970,14 @@ namespace Velvet
             var context = ReadSlotContext(element, planFrom, planTo);
             var slots = context ?? MotionSlotContext.ReadImportant(element, planFrom, planTo);
             slots.ForExit = play.IsExit;
+            slots.RestingSkew = RestingSkew(element);
             var plan = MotionSpringClassParser.ResolveResting(planFrom, planTo, restingTranslate, slots);
             plan = StartFromHeld(element, plan, planFrom, planTo);
             plan.Paint = Context?.PaintLeases?.Open(element, planFrom, planTo, play.IsExit);
             // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
-            var state = create(plan);
+            var state = Skewing(create(plan));
             GestureChannelMask.MarkExit(state, play.IsExit);
             // A variant enter interrupting a spring or bezier play where no context was read starts from the values
             // that play drew, as a spring's does (StartSpringVariant). A classic preset enter's from-classes are its
@@ -1151,7 +1181,7 @@ namespace Velvet
             // Target is at rest now — stop the co-fade and release the band's inline opacity (a no-op when
             // this element carries none, the common case).
             RingCoFadeCoordinator.EndRingCoFade(pending);
-            MotionSpringDriver.ClearInlineOverrides(element, state);
+            MotionSpringDriver.ClearInlineOverrides(element, state, landed: true);
             StyleAnimationClassUtils.Rest(element, pending.ToClasses, Context);
             ReapplyMotionOwnedInlineValues(element);
             ReassertHeld(element);
@@ -1229,7 +1259,7 @@ namespace Velvet
             {
                 StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses, ctx: Context);
             }
-            BezierTweenDriver.ClearInlineOverrides(element, state);
+            BezierTweenDriver.ClearInlineOverrides(element, state, landed: true);
             StyleAnimationClassUtils.Rest(element, pending.ToClasses, Context);
             ReapplyMotionOwnedInlineValues(element);
             ReassertHeld(element);
@@ -1456,8 +1486,40 @@ namespace Velvet
         // What a play on element between fromClasses and toClasses is planned against, read before its swap lands;
         // MotionPlaySpan reads it too, so a span counts the channels the play has.
         internal MotionSlotContext SlotContext(VisualElement element, string[]? fromClasses, string[]? toClasses)
-            => ReadSlotContext(element, fromClasses, toClasses)
+        {
+            var slots = ReadSlotContext(element, fromClasses, toClasses)
                 ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses);
+            slots.RestingSkew = RestingSkew(element);
+            return slots;
+        }
+
+        // The angles the element's classes resolve its skew to, which a play's skew channels run toward or away from.
+        private (float X, float Y) RestingSkew(VisualElement element)
+        {
+            var binding = Context?.SkewBindings.GetValueOrDefault(element);
+            if (binding == null)
+            {
+                return default;
+            }
+            var spec = binding.Driven ? binding.Final : binding.Spec;
+            return (spec.XDeg, spec.YDeg);
+        }
+
+        private FiberSkewApplier? _skewDriver;
+
+        private MotionSpringState? Skewing(MotionSpringState? state)
+        {
+            if (state != null) state.Skew = SkewDriver;
+            return state;
+        }
+
+        private BezierTweenState? Skewing(BezierTweenState? state)
+        {
+            if (state != null) state.Skew = SkewDriver;
+            return state;
+        }
+
+        private FiberSkewApplier? SkewDriver => Context == null ? null : _skewDriver ??= new FiberSkewApplier(Context);
 
         // Null off a panel, which the spring and bezier starts read as a play to continue from the values drawn and
         // inherit no native velocity; SlotContext stands ReadImportant's in for it in the plan alone.

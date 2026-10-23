@@ -19,6 +19,19 @@ namespace Velvet
         /// </summary>
         public static readonly StyleTransitionConfig None = new() { DurationSec = 0f };
 
+        /// <summary>
+        /// The transition a variant play takes on a Motion whose caller named none: each value runs on the transition
+        /// Framer Motion picks for its type, a spring for translate, rotate and scale and a 0.3 s ease for the
+        /// rest.
+        /// </summary>
+        internal static readonly StyleTransitionConfig FramerDefault = new()
+        {
+            Type = TransitionType.Spring, PerValueDefaults = true,
+        };
+
+        // Set on FramerDefault alone: the spring's physics and the ease are chosen per channel, not by the knobs.
+        internal bool PerValueDefaults { get; init; }
+
         /// <summary>USS class string for the initial enter state. Use the parsed array <see cref="EnterFromClasses"/> at runtime.</summary>
         internal string? EnterFromClass { get; init; }
 
@@ -320,6 +333,14 @@ namespace Velvet
         public float StaggerChildrenSec { get; init; }
 
         /// <summary>
+        /// The order <see cref="StaggerChildrenSec"/> numbers the inheriting children in, as Framer Motion's
+        /// <c>staggerDirection</c>: 1 (default) starts the first child first, and -1 starts the last child first, as
+        /// does any other value. A child's number counts back from the declared children of this Motion's node,
+        /// where a component counts as one child.
+        /// </summary>
+        public int StaggerDirection { get; init; } = 1;
+
+        /// <summary>
         /// A fixed delay (seconds) added before any inheriting descendant's staggered delay — see
         /// <see cref="StaggerChildrenSec"/> for the full propagation contract. 0 (default) means no fixed delay.
         /// </summary>
@@ -416,8 +437,10 @@ namespace Velvet
                 PropertyOverrides = PropertyOverrides,
                 Layout = Layout,
                 StaggerChildrenSec = StaggerChildrenSec,
+                StaggerDirection = StaggerDirection,
                 DelayChildrenSec = DelayChildrenSec,
                 When = When,
+                PerValueDefaults = PerValueDefaults,
                 Type = Type,
                 _stiffness = _stiffness,
                 _damping = _damping,
@@ -465,6 +488,7 @@ namespace Velvet
                 ExitEasing = ExitEasing,
                 DelaySec = DelaySec,
                 PropertyOverrides = PropertyOverrides,
+                PerValueDefaults = PerValueDefaults,
                 Type = Type,
                 _stiffness = _stiffness,
                 _damping = _damping,
@@ -643,9 +667,10 @@ namespace Velvet
         BeforeChildren,
 
         /// <summary>
-        /// The name implies this Motion's own transition would wait for every inheriting descendant to finish
-        /// first. Not implemented: setting this value logs a warning and behaves like <see cref="Together"/> (no
-        /// parent/child sequencing) rather than silently applying the wrong delay.
+        /// This Motion's own play waits for its inheriting descendants' plays to end: it starts once the latest of
+        /// them has, measured as <see cref="BeforeChildren"/> measures a play's span, and then adds its own
+        /// <see cref="StyleTransitionConfig.DelaySec"/>. The descendants start as under <see cref="Together"/>, at
+        /// <see cref="StyleTransitionConfig.DelayChildrenSec"/> plus their stagger slot.
         /// </summary>
         AfterChildren,
     }

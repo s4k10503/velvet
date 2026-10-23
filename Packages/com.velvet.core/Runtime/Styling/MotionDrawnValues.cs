@@ -22,6 +22,8 @@ namespace Velvet
         // The y factor, where the play draws one of its own; null where Scale is drawn on both axes.
         public (float Value, float Velocity)? ScaleY;
         public (float Value, float Velocity)? Rotate;
+        public (float Value, float Velocity)? SkewX;
+        public (float Value, float Velocity)? SkewY;
         public List<(ArbitraryProperty Property, Color Color)>? Colors;
         public List<(ArbitraryProperty Property, LengthUnit Unit, float Value, float Velocity)>? Lengths;
 

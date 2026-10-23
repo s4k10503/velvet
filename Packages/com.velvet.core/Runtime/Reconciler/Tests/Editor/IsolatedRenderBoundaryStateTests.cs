@@ -164,7 +164,7 @@ namespace Velvet.Tests
         // than dropped on the render after its removal.
         private static VNode FadingChild(string name, string key)
             => V.Motion(name: name, key: key, variants: s_fade, animate: "visible", exit: "hidden",
-                transition: new StyleTransitionConfig { DurationSec = 0.3f });
+                transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false);
 
         [Component(Compiler = false)]
         private static VNode TwoPresencesOwner()

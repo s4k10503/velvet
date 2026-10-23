@@ -54,7 +54,7 @@ namespace Velvet.Tests
             return s_transition == null
                 ? new MotionNode { Name = "m", Variants = s_poses, Animate = label }
                 : V.Motion(name: "m", className: s_className, variants: s_poses, animate: label,
-                    transition: s_transition);
+                    transition: s_transition, enterOnMount: false);
         }
 
         // OnPoses puts Transition on the To pose and builds the Motion with none, so a Land with no LandTransition

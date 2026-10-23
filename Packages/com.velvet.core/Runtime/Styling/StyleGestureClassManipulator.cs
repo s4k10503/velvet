@@ -13,13 +13,15 @@ namespace Velvet
     // elements — buttons, fields — ever trigger it). whileTap maps to the Active signal (pointer-down /
     // pointer-up / pointer-cancel / release-outside-bounds).
     // Each class array is applied as a variant payload in the gesture band (StyleLayerPriority.Gesture), ordered
-    // among the three as hover:, focus: and active: order, so it outranks every rule of the element's own short
+    // among the three as focus, hover and tap, so it outranks every rule of the element's own short
     // of an important one, and a play's classes, and the element's own value comes back on release.
     internal sealed class StyleGestureClassManipulator : Manipulator, IVariantSettleTarget
     {
-        private static readonly long HoverPriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Hover);
+        // The hover and focus ranks are exchanged against the variants they are named for: a hover class outranks a
+        // focus one here, where hover: sits below focus: in the variant order.
+        private static readonly long HoverPriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Focus);
         private static readonly long ActivePriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Active);
-        private static readonly long FocusPriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Focus);
+        private static readonly long FocusPriority = StyleLayerPriority.GestureOf(StyleLayerPriority.Hover);
 
         private readonly ReconcilerContext? _ctx;
         private string[] _hoverClasses;

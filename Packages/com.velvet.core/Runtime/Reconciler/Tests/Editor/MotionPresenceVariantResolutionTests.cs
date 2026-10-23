@@ -181,7 +181,7 @@ namespace Velvet.Tests
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     variants: s_recolor, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { Type = TransitionType.Spring }));
+                    transition: new StyleTransitionConfig { Type = TransitionType.Spring }, enterOnMount: false));
             }
             return V.Div(name: "host", children: new VNode[]
             {
@@ -246,7 +246,7 @@ namespace Velvet.Tests
             foreach (var key in keys)
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
-                    variants: s_recolor, animate: "visible", transition: s_classicSpringExit));
+                    variants: s_recolor, animate: "visible", transition: s_classicSpringExit, enterOnMount: false));
             }
             return V.Div(name: "host", children: new VNode[]
             {
@@ -262,7 +262,7 @@ namespace Velvet.Tests
 
         [Component]
         private static VNode RecolorRow() => V.Motion(name: "item", variants: s_recolor, animate: "visible",
-            exit: "hidden", transition: new StyleTransitionConfig { Type = TransitionType.Spring });
+            exit: "hidden", transition: new StyleTransitionConfig { Type = TransitionType.Spring }, enterOnMount: false);
 
         // CompletedExitHost's Motion, behind a component, so it exits as a descendant rather than an anchor.
         [Component]
@@ -319,7 +319,7 @@ namespace Velvet.Tests
                 {
                     V.Motion(name: "item-" + key, elementType: s_boxed ? typeof(Box) : null,
                         className: "w-[60px] h-[24px]", variants: s_recolor, animate: "visible", exit: "hidden",
-                        transition: new StyleTransitionConfig { Type = TransitionType.Spring }),
+                        transition: new StyleTransitionConfig { Type = TransitionType.Spring }, enterOnMount: false),
                 }, key: key.ToString()));
             }
             return V.Div(name: "host", children: new VNode[]
@@ -768,8 +768,8 @@ namespace Velvet.Tests
             {
                 mounted = V.Mount(_root, V.Motion(name: "p", animate: "visible", children: new VNode[]
                 {
-                    V.Motion(name: "m", variants: s_fade, initial: "hidden"),
-                }));
+                    V.Motion(name: "m", variants: s_fade, initial: "hidden", transition: StyleTransition.Fade),
+                }, enterOnMount: false));
             }
             finally
             {
@@ -790,7 +790,7 @@ namespace Velvet.Tests
 
             // Act — an `exit` variant declared with no AnimatePresence to defer the unmount for.
             using var mounted = V.Mount(_root,
-                V.Motion(name: "m", variants: s_fade, animate: "visible", exit: "hidden"));
+                V.Motion(name: "m", variants: s_fade, animate: "visible", exit: "hidden", enterOnMount: false, transition: StyleTransition.Fade));
 
             // Assert — the element mounted; the expected warning is enforced by LogAssert at test
             // end (an Assert.Pass would bypass that unmatched-expectation check).
@@ -813,7 +813,7 @@ namespace Velvet.Tests
             {
                 // Act — a standalone entrance pair (no `exit`, no AnimatePresence).
                 using var mounted = V.Mount(_root,
-                    V.Motion(name: "m", variants: s_fade, initial: "hidden", animate: "visible"));
+                    V.Motion(name: "m", variants: s_fade, initial: "hidden", animate: "visible", transition: StyleTransition.Fade));
             }
             finally
             {

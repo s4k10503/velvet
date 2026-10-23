@@ -36,7 +36,7 @@ namespace Velvet
             out StyleTransitionConfig? poseTransition)
         {
             var baseClasses = node.ClassNames ?? Array.Empty<string>();
-            poseTransition = node.Transition;
+            poseTransition = node.VariantTransition;
 
             if (label == null || node.Variants == null)
             {

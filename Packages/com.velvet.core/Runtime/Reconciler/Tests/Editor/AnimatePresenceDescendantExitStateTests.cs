@@ -64,19 +64,19 @@ namespace Velvet.Tests
         }
 
         private static VNode TimedMotion() => V.Motion(name: "item", variants: s_fade, animate: "visible",
-            exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.3f });
+            exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false);
 
         [Component]
         private static VNode TimedRow() => TimedMotion();
 
         [Component]
         private static VNode SpringRow() => V.Motion(name: "item", variants: s_recolor, animate: "visible",
-            exit: "hidden", transition: new StyleTransitionConfig { Type = TransitionType.Spring });
+            exit: "hidden", transition: new StyleTransitionConfig { Type = TransitionType.Spring }, enterOnMount: false);
 
         private static VNode KeyedChild(string key) => s_kind switch
         {
             // An anchor that plays no exit, around a Motion that does.
-            "nested" => V.Motion(key: key, variants: s_fade, animate: "visible", children: new[] { TimedMotion() }),
+            "nested" => V.Motion(key: key, variants: s_fade, animate: "visible", children: new[] { TimedMotion() }, enterOnMount: false, transition: StyleTransition.Fade),
             // An anchor with nothing to play, so its exit settles in the passive flush after the removing render.
             "instant" => V.Motion(key: key, name: "item", transition: StyleTransitionConfig.None),
             "timed-row" => V.Component(TimedRow, key: key),

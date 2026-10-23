@@ -697,7 +697,7 @@
 [Velvet] method Velvet.V.Memoized`6(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?): Velvet.MemoNode
 [Velvet] method Velvet.V.Memoized`7(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?): Velvet.MemoNode
 [Velvet] method Velvet.V.Memoized`8(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?, T8?): Velvet.MemoNode
-[Velvet] method Velvet.V.Motion(System.String?, System.String?, System.String?, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single], System.Action?, Velvet.VNode?[]?, Velvet.FiberElementProps?, Velvet.FiberEventBinding[]?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Type?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, Velvet.MotionVariant]?, System.String?, System.String?, System.String?, System.String?): Velvet.MotionNode
+[Velvet] method Velvet.V.Motion(System.String?, System.String?, System.String?, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single], System.Action?, Velvet.VNode?[]?, Velvet.FiberElementProps?, Velvet.FiberEventBinding[]?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Type?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, Velvet.MotionVariant]?, System.String?, System.String?, System.String?, System.String?, System.Boolean): Velvet.MotionNode
 [Velvet] method Velvet.V.Mount(UnityEngine.UIElements.VisualElement, Velvet.VNode): Velvet.MountedTree
 [Velvet] method Velvet.V.Mount(UnityEngine.UIElements.VisualElement, Velvet.VNode, Velvet.MountOptions): Velvet.MountedTree
 [Velvet] method Velvet.V.NavLink(System.String, System.String, System.String?, System.String?, System.String?, Velvet.VNode?[]?, System.Boolean, System.Boolean, System.Boolean, System.String?, Velvet.FiberEventBinding[]?, System.Object?, Velvet.RelativeRoutingType): Velvet.ComponentNode
@@ -1184,6 +1184,7 @@
 [Velvet] property Velvet.MotionClock.NowSec: System.Double
 [Velvet] property Velvet.MotionClock.Realtime: Velvet.MotionClock
 [Velvet] property Velvet.MotionNode.Animate: System.String?
+[Velvet] property Velvet.MotionNode.EnterOnMount: System.Boolean
 [Velvet] property Velvet.MotionNode.Exit: System.String?
 [Velvet] property Velvet.MotionNode.Initial: System.String?
 [Velvet] property Velvet.MotionNode.LayoutId: System.String?
@@ -1439,6 +1440,7 @@
 [Velvet] property Velvet.StyleTransitionConfig.RepeatDelaySec: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.RepeatType: Velvet.TransitionRepeatType
 [Velvet] property Velvet.StyleTransitionConfig.StaggerChildrenSec: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.StaggerDirection: System.Int32
 [Velvet] property Velvet.StyleTransitionConfig.Stiffness: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.Type: Velvet.TransitionType
 [Velvet] property Velvet.StyleTransitionConfig.When: Velvet.TransitionWhen

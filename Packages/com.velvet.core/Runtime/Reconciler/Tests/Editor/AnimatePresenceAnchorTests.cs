@@ -73,6 +73,7 @@ namespace Velvet.Tests
         private static Dictionary<string, MotionVariant> s_inheritingVariants;
         private static string s_hostLabel;
         private static bool s_nestInner;
+        private static bool s_hostEnters;
 
         private EditorPanelSimulator _sim;
 
@@ -92,6 +93,7 @@ namespace Velvet.Tests
             s_inheritingVariants = s_fade;
             s_hostLabel = "visible";
             s_nestInner = false;
+            s_hostEnters = false;
         }
 
         [TearDown]
@@ -119,7 +121,7 @@ namespace Velvet.Tests
 
         // Exits more slowly than TimedMotion, so the two exiting together settle at different times.
         private static VNode SlowMotion() => V.Motion(name: "slow", variants: s_fade, animate: "visible",
-            exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.6f });
+            exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.6f }, enterOnMount: false);
 
         // The timed Motion while s_flagStore is on, a plain element once it is off.
         [Component]
@@ -139,11 +141,29 @@ namespace Velvet.Tests
 
         [Component]
         private static VNode CoordinatorRender() => V.Motion(variants: s_coordinator, animate: "visible",
-            exit: "hidden", children: new[] { InheritingMotion(0), InheritingMotion(1), InheritingMotion(2) });
+            exit: "hidden", children: new[] { InheritingMotion(0), InheritingMotion(1), InheritingMotion(2) }, enterOnMount: false, transition: StyleTransition.Fade);
 
         [Component]
         private static VNode SpringCoordinatorRender() => V.Motion(name: "spring-coordinator",
-            variants: s_springCoordinator, animate: "visible", exit: "hidden", children: new[] { InheritingMotion(0) });
+            variants: s_springCoordinator, animate: "visible", exit: "hidden", children: new[] { InheritingMotion(0) }, enterOnMount: false, transition: StyleTransition.Fade);
+
+        // A coordinator whose exit pose swaps only once its inheriting children's exits have ended.
+        private static readonly Dictionary<string, MotionVariant> s_afterChildrenCoordinator = new()
+        {
+            ["visible"] = "opacity-100",
+            ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig
+            {
+                DurationSec = 0.3f, When = TransitionWhen.AfterChildren,
+            }),
+        };
+
+        private static VNode SlowInheritingMotion(string name) => V.Motion(name: name, variants: s_fade,
+            transition: new StyleTransitionConfig { DurationSec = 0.3f });
+
+        [Component]
+        private static VNode AfterChildrenCoordinatorRender() => V.Motion(name: "after-coordinator",
+            variants: s_afterChildrenCoordinator, animate: "visible", exit: "hidden",
+            children: new[] { SlowInheritingMotion("slow-child") }, enterOnMount: false, transition: StyleTransition.Fade);
 
         // The spring coordinator's exit on a 1 s duration, which a BeforeChildren span counting the channels it
         // names rather than the ones that play holds the children for.
@@ -164,7 +184,7 @@ namespace Velvet.Tests
             children: new[]
             {
                 V.Motion(name: "slow-child", variants: s_fade, transition: new StyleTransitionConfig { DurationSec = 2f }),
-            });
+            }, enterOnMount: false, transition: StyleTransition.Fade);
 
         // child0 has an inheriting child of its own, which is its to number rather than the coordinator's.
         [Component]
@@ -174,7 +194,7 @@ namespace Velvet.Tests
                 V.Motion(name: "child0", variants: s_fade, transition: new StyleTransitionConfig { DurationSec = 0.05f },
                     children: new[] { InheritingMotion(3) }),
                 InheritingMotion(1),
-            });
+            }, enterOnMount: false, transition: StyleTransition.Fade);
 
         // Ahead of the two inheriting children: a Motion naming its own exit, one naming its own animate, and a
         // variant child whose variants name no pose for the exit label.
@@ -185,12 +205,12 @@ namespace Velvet.Tests
                 V.Motion(name: "own-exit", variants: s_fade, exit: "hidden",
                     transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                 V.Motion(name: "own-animate", variants: s_fade, animate: "visible",
-                    transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                    transition: new StyleTransitionConfig { DurationSec = 0.05f }, enterOnMount: false),
                 V.Motion(name: "no-pose", variants: new Dictionary<string, MotionVariant> { ["visible"] = "opacity-100" },
                     transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                 InheritingMotion(1),
                 InheritingMotion(2),
-            });
+            }, enterOnMount: false, transition: StyleTransition.Fade);
 
         // The keyed child s_wrapper names: the same TimedMotion, or a wrapper around it. "nested" puts it inside
         // a Motion that plays no exit of its own.
@@ -203,7 +223,7 @@ namespace Velvet.Tests
             "suspense" => V.Suspense(V.Label(text: "loading"), new[] { TimedMotion(null) }, key: key),
             "element" => V.Div(key: key, children: new[] { TimedMotion(null) }),
             "nested" => V.Motion(key: key, variants: s_fade, animate: "visible",
-                children: new[] { TimedMotion(null) }),
+                children: new[] { TimedMotion(null) }, enterOnMount: false, transition: StyleTransition.Fade),
             "toggled" => V.Component(ToggledMotionRender, key: key),
             "inner-presence" => V.Div(key: key, children: new VNode[]
             {
@@ -216,6 +236,10 @@ namespace Velvet.Tests
             "classic" => V.Component(ClassicRender, key: key),
             "named" => V.Motion(name: "item-" + key, key: key, variants: s_fade, initial: "hidden",
                 animate: "visible", exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+            "anchor-after" => V.Motion(name: "item-" + key, key: key, variants: s_fade, initial: "hidden",
+                animate: "visible",
+                transition: new StyleTransitionConfig { DurationSec = 0.05f, When = TransitionWhen.AfterChildren },
+                children: new[] { SlowInheritingMotion("child-" + key) }),
             "fragment" => V.Fragment(new[] { TimedMotion(null) }, key: key),
             "fragment-pair" => V.Fragment(new[] { TimedMotion(null), V.Div(name: "sibling") }, key: key),
             "z-nested" => V.Div(key: key, children: new[]
@@ -232,6 +256,10 @@ namespace Velvet.Tests
             "coordinator" => V.Component(CoordinatorRender, key: key),
             "coordinator-nested" => V.Component(NestedCoordinatorRender, key: key),
             "coordinator-spring" => V.Component(SpringCoordinatorRender, key: key),
+            "coordinator-after" => V.Component(AfterChildrenCoordinatorRender, key: key),
+            "anchor-coordinator-after" => V.Motion(name: "after-coordinator", key: key,
+                variants: s_afterChildrenCoordinator, animate: "visible", exit: "hidden",
+                children: new[] { SlowInheritingMotion("slow-child") }, enterOnMount: false, transition: StyleTransition.Fade),
             "coordinator-spring-important" => V.Component(ImportantSpringCoordinatorRender, key: key),
             "coordinator-mixed" => V.Component(MixedCoordinatorRender, key: key),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_wrapper), s_wrapper, null),
@@ -254,7 +282,7 @@ namespace Velvet.Tests
         private static VNode OutsidePortal() => s_portalTarget == null ? null : V.Portal(s_portalTarget, new[]
         {
             V.Motion(name: "other", variants: s_fade, animate: "visible", exit: "hidden",
-                transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
         });
 
         [Component]
@@ -303,7 +331,7 @@ namespace Velvet.Tests
             return V.Motion(name: "host", animate: s_hostLabel, children: new VNode[]
             {
                 V.AnimatePresence(key: "presence", initial: s_presenceInitial, children: children.ToArray()),
-            });
+            }, enterOnMount: s_hostEnters);
         }
 
         // Keyed Fragments placing a Label ahead of a Motion that plays the Fade preset's enter and exit.
@@ -470,9 +498,29 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAnchorInheritingItsLabelWithNoInitial_When_ItsKeyIsAdded_Then_ItRestsWithNoPresetEnter()
+        public void Given_AnAnchorInheritingItsLabelWithNoInitial_When_ItsKeyIsAdded_Then_ItEntersFromItsOwnClassesNotThePreset()
         {
-            // Arrange — no initial label anywhere, so no variant enter resolves.
+            // Arrange — no initial label anywhere, so the enter starts from the look the anchor has without its pose.
+            s_hostEnters = true;
+            using var keys = new KeySetStore(string.Empty);
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(InheritingPresenceHost, key: "root"));
+            Frames(40);
+
+            // Act
+            keys.Set("a");
+            Drain(mounted);
+
+            // Assert — the pose is held back for the variant enter, and the Fade preset's enter is not started.
+            var item = Root.Q<VisualElement>("item");
+            Assert.That((item.ClassListContains("anim-fade-enter-from"), item.ClassListContains("opacity-100")),
+                Is.EqualTo((false, false)));
+        }
+
+        [Test]
+        public void Given_AnAnchorInheritingItsLabelUnderAMotionNotEnteringOnMount_When_ItsKeyIsAdded_Then_ItRestsWithNoPresetEnter()
+        {
+            // Arrange
             using var keys = new KeySetStore(string.Empty);
             s_keyStore = keys;
             using var mounted = V.Mount(Root, V.Component(InheritingPresenceHost, key: "root"));
@@ -493,6 +541,7 @@ namespace Velvet.Tests
         public void Given_AMotionWithVariantsThatNoLabelReaches_When_ItsKeyIsAdded_Then_ItsPresetEnterPlays()
         {
             // Arrange
+            s_hostEnters = true;
             s_hostLabel = null;
             using var keys = new KeySetStore(string.Empty);
             s_keyStore = keys;
@@ -512,6 +561,7 @@ namespace Velvet.Tests
         public void Given_AMotionWithNoVariantsUnderAnInheritedLabel_When_ItsKeyIsAdded_Then_ItsPresetEnterPlays()
         {
             // Arrange
+            s_hostEnters = true;
             s_inheritingVariants = null;
             using var keys = new KeySetStore(string.Empty);
             s_keyStore = keys;
@@ -587,6 +637,47 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(HasClass("child0", "opacity-0"), Is.EqualTo(expected));
+        }
+
+        [TestCase("coordinator-after")]
+        [TestCase("anchor-coordinator-after")]
+        public void Given_ACoordinatorWhoseExitWaitsForItsChildren_When_TheKeyIsRemoved_Then_ItSwapsOnlyOnceTheirExitsHaveEnded(
+            string wrapper)
+        {
+            // Arrange — the coordinator is the keyed child's anchor, or a Motion a component renders.
+            using var mounted = MountSettled(wrapper, "a");
+            using var keys = s_keyStore;
+
+            // Act — the child's exit plays for 0.3 s: sample inside it, then past it and short of the end of the
+            // coordinator's own 0.3 s.
+            keys.Set(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Frames(5);
+            var swappedInsideTheChildsExit = HasClass("after-coordinator", "opacity-0");
+            Frames(20);
+            var swappedAfterIt = HasClass("after-coordinator", "opacity-0");
+
+            // Assert
+            Assert.That((swappedInsideTheChildsExit, swappedAfterIt), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AnAnchorEnterWaitingForItsChildren_When_AKeyIsAdded_Then_ItEntersOnlyOnceTheChildHasEntered()
+        {
+            // Arrange — a first key settled, then a second added.
+            using var mounted = MountSettled("anchor-after", "a");
+            using var keys = s_keyStore;
+            keys.Set("ab");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act — sample inside the child's 0.3 s enter and again once it has ended.
+            Frames(5);
+            var enteredInsideTheChildsEnter = HasClass("item-b", "opacity-100");
+            Frames(25);
+            var enteredAfterIt = HasClass("item-b", "opacity-100");
+
+            // Assert
+            Assert.That((enteredInsideTheChildsEnter, enteredAfterIt), Is.EqualTo((false, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base's coordinator swaps its own exit within these frames too.

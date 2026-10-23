@@ -81,6 +81,10 @@ namespace Velvet
             // The y factor of a scale that differs per axis, Scale being its x factor; null for a uniform scale.
             public (float from, float to)? ScaleY;
             public (float from, float to)? Rotate;
+            // Skew angles in degrees, which no style slot holds: a skew-* class is painted (SkewSilhouette), so these
+            // channels write the element's skew binding instead (MotionSkewSink).
+            public (float from, float to)? SkewX;
+            public (float from, float to)? SkewY;
             public List<ColorChannelPlan>? Colors;
             public List<LengthChannelPlan>? Lengths;
             // The one translate axis the swap names, and where it lands, when it names one alone.
@@ -93,7 +97,8 @@ namespace Velvet
             public IMotionPaintLease? Paint;
 
             public bool IsEmpty => Opacity == null && TranslateX == null && TranslateY == null
-                && Scale == null && Rotate == null && Colors == null && Lengths == null && Paint == null;
+                && Scale == null && Rotate == null && SkewX == null && SkewY == null && Colors == null && Lengths == null
+                && Paint == null;
         }
 
         // Mirrors _effects.uss's fixed opacity scale exactly (a class outside this exact set has no matching
@@ -242,7 +247,32 @@ namespace Velvet
             plan.Scale = PairAxis(in from, in to, ArbitraryProperty.Scale, 1f, reading, out _);
             plan.Rotate = PairAxis(in from, in to, ArbitraryProperty.Rotate, 0f, reading, out _);
             PairScaleAxes(fromClasses, toClasses, context, reading, ref plan);
+            PairSkew(fromClasses, toClasses, context, ref plan);
             return plan;
+        }
+
+        // The skew channels of a swap. An axis neither side writes rests where it is; one a side writes runs between
+        // that side's angle and the other side's, which is the element's resting angle (MotionSlotContext.RestingSkew)
+        // for an enter's to-side and an exit's from-side, and zero where the other side does not write it.
+        private static void PairSkew(string[]? fromClasses, string[]? toClasses, MotionSlotContext? context,
+            ref SpringPlan plan)
+        {
+            if (!StyleSkewClass.HasSkewClass(fromClasses) && !StyleSkewClass.HasSkewClass(toClasses))
+            {
+                return;
+            }
+            var written = (From: StyleSkewClass.WrittenAngles(fromClasses), To: StyleSkewClass.WrittenAngles(toClasses));
+            var resting = context?.RestingSkew ?? default;
+            var exit = context?.ForExit == true;
+            plan.SkewX = PairSkewAxis(written.From.X, written.To.X, resting.X, exit);
+            plan.SkewY = PairSkewAxis(written.From.Y, written.To.Y, resting.Y, exit);
+        }
+
+        private static (float from, float to)? PairSkewAxis(float? from, float? to, float resting, bool exit)
+        {
+            var start = exit ? resting : from ?? (to != null ? 0f : resting);
+            var end = exit ? to ?? (from != null ? 0f : resting) : to ?? resting;
+            return start == end ? null : (start, end);
         }
 
         // `plan`, each channel `start` also holds starting from `start`'s value rather than its own from-side.

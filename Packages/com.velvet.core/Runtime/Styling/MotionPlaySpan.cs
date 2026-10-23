@@ -51,7 +51,8 @@ namespace Velvet
                         ? MotionSpringDriver.SpanSec(
                             MotionSpringDriver.WithOverrides(
                                 MotionSpringDriver.Create(MotionSpringClassParser.Resolve(fromClasses, toClasses, context: context),
-                                    config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config), config.SpringSettleSec),
+                                    config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config), config.SpringSettleSec,
+                                    perValueDefaults: config.PerValueDefaults),
                                 config.PropertyOverrides, config.Easing, config.DurationSec),
                             MotionRepeat.Of(config))
                         : 0.0;

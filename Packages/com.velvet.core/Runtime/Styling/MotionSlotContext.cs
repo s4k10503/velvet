@@ -270,6 +270,9 @@ namespace Velvet
         // Whether the plan read through this is an exit's, which a gesture channel's value does not keep out.
         public bool ForExit { get; set; }
 
+        // The skew angles the element rests at, which a play's skew channels run toward or away from.
+        public (float X, float Y) RestingSkew { get; set; }
+
         // A gesture channel holds slot: its value is protected from the swap, as Framer Motion keeps a value a gesture
         // state sets out of the element's animate and variants while the state is on.
         public bool HoldsGesture(ArbitraryProperty slot)
