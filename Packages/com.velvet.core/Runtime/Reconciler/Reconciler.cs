@@ -347,6 +347,7 @@ namespace Velvet
                 // drain just above. Draining here, at the top-level boundary, is the first point where every
                 // element created in this pass has its final parent.
                 RingOverlay.DrainPendingPlacements(_ctx);
+                BackdropFilterLayer.DrainPendingPlacements(_ctx);
                 // Same reason: an inherited family is read off the final parent chain (FiberFontScope).
                 _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
                 // Last, so a ref setup sees the element where the pass finally put it and every cleanup
@@ -690,6 +691,11 @@ namespace Velvet
                 RingOverlay.Detach(element, binding);
             }
             _ctx.RingBindings.Clear();
+            foreach (var (element, binding) in _ctx.BackdropBindings)
+            {
+                BackdropFilterLayer.Detach(element, binding);
+            }
+            _ctx.BackdropBindings.Clear();
             // Skewed elements hold paint/stash callbacks and an inline color suppression: detach so
             // a still-mounted element released at root disposal carries no Velvet residue.
             foreach (var (element, binding) in _ctx.SkewBindings)

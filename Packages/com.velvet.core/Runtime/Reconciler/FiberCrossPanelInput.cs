@@ -345,15 +345,8 @@ namespace Velvet
     // panel's own content independent of any other panel's presence or overlap.
     //
     // Scope: pointer events only (PointerDown/PointerUp), and screen-space LAYER hosts only — NOT
-    // V.WorldSpace. RuntimePanelUtils.ScreenToPanel/CameraTransformWorldToPanel (used below via
-    // PanelToScreen) are for UI Toolkit's OLDER RenderTexture-on-a-mesh workflow: verified empirically
-    // (not just from docs) that both return the input essentially unchanged against a Transform-driven
-    // PanelRenderMode.WorldSpace panel, i.e. they silently no-op rather than performing the documented
-    // transform. World-space panels instead rely entirely on Unity's own implicit runtime input system
-    // picking up their Collider (see PanelHostFactory.AttachWorldSpaceCollider) — Velvet cannot
-    // substitute a manual Pick() for them the way it does for screen-space layers, since the coordinate
-    // conversion these APIs would need is an internal-only code path (WorldSpaceInput.Pick3D /
-    // PickDocument3D — the containing class is `internal`) not reachable from a package assembly.
+    // V.WorldSpace, whose pointer delivery is Unity's own (Documentation~/portals.md, "V.WorldSpace
+    // picking").
     // Key events also route by FOCUS, not position — a separate concern from this class.
     internal static class FiberCrossPanelPointerRouter
     {

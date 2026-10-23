@@ -311,7 +311,7 @@ namespace Velvet
             var ws = binding.Wrapper.style;
             ws.backgroundPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, binding.Bounds.x);
             ws.backgroundPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, binding.Bounds.y);
-            ws.backgroundSize = new BackgroundSize(binding.Bounds.width, binding.Bounds.height);
+            TransformOriginSparing.SetBackgroundSize(binding.Wrapper, new BackgroundSize(binding.Bounds.width, binding.Bounds.height));
         }
     }
 }

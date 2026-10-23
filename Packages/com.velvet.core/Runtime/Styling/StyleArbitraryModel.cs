@@ -302,7 +302,7 @@ namespace Velvet
         #region Filters (UITK USS filter:)
         // Each filter type is its own layer, composed into one StyleList<FilterFunction> by ApplyCombinedFilter
         // so several filter-* utilities on one element merge rather than overwrite.
-        FilterBlur,       // blur-[6px]         -> filter: blur(6px)        (Value = px)
+        FilterBlur,       // blur-[6px]         -> filter: blur(6px)        (Value = px, or Expression)
         FilterContrast,   // contrast-[1.4]     -> filter: contrast(1.4)    (Value = unitless)
         FilterGrayscale,  // grayscale-[.6]     -> filter: grayscale(.6)    (Value = 0..1)
         FilterHueRotate,  // hue-rotate-[90deg] -> filter: hue-rotate(90deg)(Value = degrees)
@@ -400,8 +400,8 @@ namespace Velvet
         // Payload for FilterDropShadow; null for every other property.
         public DropShadowValue? DropShadow { get; }
         // A length an element has to measure (em, a viewport unit, a percentage beside a pixel length), for a
-        // property PropertySetters writes, where Value and Unit then carry nothing, or for Flex's basis, where
-        // Value2 and Unit2 do. Null for every other result.
+        // property PropertySetters writes or for FilterBlur, where Value and Unit then carry nothing, or for Flex's
+        // basis, where Value2 and Unit2 do. Null for every other result.
         public StyleLengthExpression? Expression { get; }
         // True for the `auto` keyword of a length property; Value and Unit then carry nothing.
         public bool Auto { get; }
@@ -590,16 +590,20 @@ namespace Velvet
         public readonly DropShadowLayer[] Shadows;
         public readonly bool Literal;
         public readonly float? Alpha;
+        // Whether a shadow holds a length only the element can measure.
+        public readonly bool Measured;
 
         public DropShadowValue(DropShadowLayer[] shadows, bool literal, float? alpha)
         {
             Shadows = shadows;
             Literal = literal;
             Alpha = alpha;
+            Measured = System.Array.Exists(shadows, shadow => shadow.Measured != null);
         }
     }
 
-    // One drop-shadow() function: the offset and standard deviation in pixels, and the colour.
+    // One drop-shadow() function: the offset and standard deviation in pixels, and the colour. Measured, where it is
+    // not null, holds a length the element measures in place of the pixels at the same index (x, y, deviation).
     internal readonly struct DropShadowLayer
     {
         // currentcolor, its alpha a factor on the element's colour: the compose reads the colour as it writes.
@@ -609,13 +613,15 @@ namespace Velvet
         public readonly float Y;
         public readonly float Deviation;
         public readonly Color Color;
+        public readonly StyleLengthExpression?[]? Measured;
 
-        public DropShadowLayer(float x, float y, float deviation, Color color)
+        public DropShadowLayer(float x, float y, float deviation, Color color, StyleLengthExpression?[]? measured = null)
         {
             X = x;
             Y = y;
             Deviation = deviation;
             Color = color;
+            Measured = measured;
         }
     }
 
