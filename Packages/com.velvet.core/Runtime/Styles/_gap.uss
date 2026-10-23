@@ -12,7 +12,7 @@
  * margin-top for a column) normally, or the TRAILING edge (margin-right /
  * margin-bottom) on a `flex-row-reverse` / `flex-col-reverse` container — see
  * "Reversed containers" in the guide below. See:
- *   - Runtime/Styling/StyleGapManipulator.cs (the polyfill + residual edge cases)
+ *   - Runtime/Styling/StyleGapManipulator.cs (the polyfill)
  *   - Runtime/Styling/StyleGapClass.cs (class → pixel scale, mirrors _tokens.uss)
  *   - Documentation~/styling-flexbox-and-gap.md
  *

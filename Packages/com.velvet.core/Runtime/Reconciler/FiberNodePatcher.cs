@@ -227,6 +227,7 @@ namespace Velvet
                 ApplyVariantManipulators(element, newClasses);
                 StyleResponsiveScope.OnClassesChanged(oldClasses ?? Array.Empty<string>(), newClasses ?? Array.Empty<string>());
             }
+            StyleResponsiveScope.ObserveMarkers(element);
             // The font layer reads the COMPOSED source, so the class diff answers only half of whether its
             // input moved: applying a variant's payload moves the token set without moving either class
             // array, and a [&>*]: one moves nothing on the child at all. Lit tokens are the other half.
@@ -416,9 +417,9 @@ namespace Velvet
         // - border-dashed / border-dotted runs strictly AFTER skew and shadow so it reads their final
         //   ownership — while either owns the face the dashed layer defers (the border stays solid), so an
         //   add/remove of skew/shadow in the same pass resolves without a race.
-        // - The ring overlay runs last. It owns no part of the element's face and contends with none of the
-        //   layers above, so its position here is not load-bearing; it sits at the end because it is the only
-        //   one that touches the element's PARENT rather than the element.
+        // - The ring overlay and the backdrop layer run last. Neither owns any part of the element's face or contends
+        //   with the layers above, so their position here is not load-bearing; they sit at the end because both
+        //   touch the element's PARENT rather than the element.
         // The particles spacer is here, not in the Particles-settings diff, because it follows the CLASS list
         // (a filter comes and goes via a class swap or a variant).
         private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
@@ -437,6 +438,7 @@ namespace Velvet
             _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skew);
             _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
+            _appliers.ApplyBackdropOnPatch(element, classNames);
         }
 
         private void PatchText(Label label, TextNode oldNode, TextNode newNode)
@@ -492,6 +494,7 @@ namespace Velvet
             // would put an element between this container and each Component's output.
             FiberCommitWork.OpenOwnRows(_ctx, childContainer);
             int? rowsBehindRanges;
+            using var host = _ctx.OpenChildVariantHost(StyleChildVariantClass.HasChildVariantClass(newNode.ClassNames));
             try
             {
                 _host.ReconcileChildren(childContainer,
@@ -508,6 +511,23 @@ namespace Velvet
             }
 
             _ctx.SyncRefCallback(element, newNode.RefCallback);
+        }
+
+        // Draws a rotated layoutId Motion inside another through a correction wrapper, and takes the wrapper off
+        // again once it no longer is one. The Motion's layout and projection are read through the box its parent
+        // lays out (MotionLayoutIdDriver.Box), so the swap hands them to the driver first.
+        private void ReconcileLayoutIdCorrection(VisualElement element, MotionNode node, string[] appliedClasses)
+        {
+            var wants = node.LayoutId != null && MotionLayoutIdDriver.Corrects(appliedClasses)
+                && MotionLayoutIdDriver.HasLayoutIdAncestor(element.hierarchy.parent, _ctx);
+            if (wants == _appliers.HasLayoutIdCorrection(element))
+            {
+                if (wants) ClipPathLayoutBox.SyncClasses(element);
+                return;
+            }
+            MotionLayoutIdDriver.BeforeReseat(element, _ctx);
+            if (wants) _appliers.WrapLayoutIdCorrectionInPlace(element);
+            else _appliers.UnwrapLayoutIdCorrectionInPlace(element);
         }
 
         private void PatchMotion(VisualElement element, MotionNode oldNode, MotionNode newNode)
@@ -628,6 +648,7 @@ namespace Velvet
                     childOrchestration, playback);
                 try
                 {
+                    using var inside = new LayoutIdMotionScope(_ctx, newNode.LayoutId != null);
                     PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
                 }
                 finally
@@ -637,6 +658,7 @@ namespace Velvet
             }
             else
             {
+                using var inside = new LayoutIdMotionScope(_ctx, newNode.LayoutId != null);
                 PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
             }
 
@@ -677,6 +699,7 @@ namespace Velvet
             // Shared-element layout animation (layoutId): independent of the variant swap
             // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so
             // it fires whether or not this patch also changed Variants/Animate.
+            ReconcileLayoutIdCorrection(element, newNode, appliedNew);
             if (newNode.LayoutId != null)
             {
                 MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.TransitionDefaulted ? null : newNode.Transition), _ctx);
@@ -1076,25 +1099,15 @@ namespace Velvet
         {
             if (newNode.Layer is { } layer)
             {
-                // The per-layer framework host was created when the mount drained and persists
-                // until reconciler disposal, so a patch resolves it from the table. A record whose
-                // GameObject a scene unload killed reads as dead here and counts as missing.
                 describe = layer.ToString();
-                if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost) || layerHost.Document == null)
+                // A layer whose host was never created is one whose mount failed, which repeats here: only a
+                // record whose GameObject died is replaced.
+                if (!_ctx.LayerHosts.ContainsKey(layer))
                 {
                     FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
                     return null;
                 }
-                // Recurring re-sync point for late declaring resolution and runtime drift.
-                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
-                var target = layerHost.Document.rootVisualElement;
-                VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
-                if (oldNode.FocusOrder != newNode.FocusOrder)
-                {
-                    FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost,
-                        newNode.FocusOrder, _ctx);
-                }
-                return target;
+                return ResolveLayerTarget(placeholder, oldNode, newNode, layer);
             }
 
             if (newNode.TargetElement is { } held)
@@ -1139,33 +1152,72 @@ namespace Velvet
             var resolvedTarget = PortalContainerOf(FiberPortalRegistry.Get(describe));
             if (resolvedTarget == null)
             {
-                FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
+                FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Its children mount once an element is registered under that id.");
                 return null;
             }
             return RebaseOnto(placeholder, resolvedTarget);
         }
 
+        // A layer portal's host is looked up in the table, and replaced as ChildReconciler.ResolveLayerPortalTarget
+        // replaces one at mount when a scene unload killed its GameObject. Children that mounted into the dead
+        // host unmount and mount again into the replacement, as they do when an id names another element.
+        private VisualElement ResolveLayerTarget(
+            VisualElement placeholder, PortalNode oldNode, PortalNode newNode, UILayer layer)
+        {
+            var known = _ctx.LayerHosts.TryGetValue(layer, out var held);
+            var alive = known && held!.Document != null;
+            var layerHost = alive ? held! : PanelHostFactory.ReplaceLayerHost(layer, placeholder.panel, _ctx);
+            if (alive)
+            {
+                // Recurring re-sync point for late declaring resolution and runtime drift.
+                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
+            }
+            var target = layerHost.Document.rootVisualElement;
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
+            // Another portal on the layer may have replaced the host already, which leaves this one's range
+            // addressing the dead root.
+            var hasRange = _ctx.PortalState.TryGetValue(placeholder, out var recorded);
+            var leftDeadHost = hasRange && recorded.Target != null && !ReferenceEquals(recorded.Target, target);
+            if (leftDeadHost)
+            {
+                _host.ReleasePortalRangeForRetarget(placeholder);
+                RebaseRangeOnto(placeholder, target);
+            }
+            if (!alive || leftDeadHost || oldNode.FocusOrder != newNode.FocusOrder)
+            {
+                FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost, newNode.FocusOrder, _ctx);
+            }
+            return target;
+        }
+
         private VisualElement RebaseOnto(VisualElement placeholder, VisualElement resolvedTarget)
         {
-            // Each caller hands this a range that addresses nothing on resolvedTarget — the unregistered mount
-            // recorded slot 0 against no element at all, a retarget emptied the range it held on a different
-            // one — so the range is rebased to the end of whatever resolvedTarget already holds, the slot
-            // ChildReconciler's deferred-mount pass would have taken. Patching from an unrebased slot 0 instead
-            // diffs this Portal's first child against the container's own.
-            if (_ctx.PortalState.TryGetValue(placeholder, out var released))
-            {
-                _ctx.PortalState[placeholder] = released with
-                {
-                    SlotStart = LogicalChildSlots.Count(resolvedTarget),
-                    SlotLength = 0,
-                };
-            }
+            RebaseRangeOnto(placeholder, resolvedTarget);
             // The mount-time attach (ChildReconciler's same-panel drain branch) never ran for this
             // target — a mount while the id was unregistered enqueued no drain entry at all, and a
             // retarget resolves an element that mount never saw — so this patch is where the same-panel
             // synthetic-bubbling bridge gets attached.
             _ctx.BindPortalTarget(resolvedTarget);
             return resolvedTarget;
+        }
+
+        // Each caller hands this a range that addresses nothing on resolvedTarget — the unregistered mount
+        // recorded slot 0 against no element at all, a retarget emptied the range it held on a different
+        // one — so the range is rebased to the end of whatever resolvedTarget already holds, the slot
+        // ChildReconciler's deferred-mount pass would have taken. Patching from an unrebased slot 0 instead
+        // diffs this Portal's first child against the container's own.
+        private void RebaseRangeOnto(VisualElement placeholder, VisualElement resolvedTarget)
+        {
+            if (_ctx.PortalState.TryGetValue(placeholder, out var released))
+            {
+                _ctx.PortalState[placeholder] = released with
+                {
+                    SlotStart = LogicalChildSlots.Count(resolvedTarget),
+                    SlotLength = 0,
+                    First = null,
+                    Last = null,
+                };
+            }
         }
 
         // Captures declaringFiber's current direct children, in a set rented from the shared pool, so a later
@@ -1202,6 +1254,17 @@ namespace Velvet
             }
         }
 
+        private PanelHostRecord ReplaceWorldSpaceHost(VisualElement placeholder, PanelHostRecord dead, WorldSpaceNode node)
+        {
+            _host.ReleasePortalRangeForRetarget(placeholder);
+            PanelHostFactory.Destroy(dead);
+            var fresh = PanelHostFactory.CreateWorldSpaceHost(node, placeholder.panel, _ctx);
+            _ctx.WorldSpaceBindings[placeholder] = fresh;
+            RebaseRangeOnto(placeholder, fresh.Document.rootVisualElement);
+            FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, fresh, node.FocusOrder, _ctx);
+            return fresh;
+        }
+
         // Applies the diff for a WorldSpaceNode: the host transform and virtual panel size follow
         // the node, and the children reconcile through the same slot bookkeeping every portal
         // flavor uses (the world-space host root is the recorded target).
@@ -1214,15 +1277,10 @@ namespace Velvet
             }
             if (record.Document == null)
             {
-                // A scene unload can kill the host GameObject while the owning fiber tree survives
-                // (a persistent root anchoring per-scene world-space UI). Patching a dead document
-                // would throw out of the whole reconcile pass, so every patch skips it on this same
-                // warning path — the record stays so later patches keep landing here rather than
-                // degrading into the missing-record corruption error (mirrors the layer flavor);
-                // remount the world-space node to rebuild its host.
-                FiberLogger.LogWarning("WorldSpace",
-                    "Host died externally (scene unload?). Patch skipped; remount the world-space node to rebuild its host.");
-                return;
+                // A scene unload can kill the host GameObject while the owning fiber tree survives (a
+                // persistent root anchoring per-scene world-space UI). The children that mounted into it unmount
+                // and mount again into a fresh host, as they do when an id names another element.
+                record = ReplaceWorldSpaceHost(placeholder, record, newNode);
             }
             // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
             // world-space panels depth-sort in the scene, not by sorting order).
@@ -1281,6 +1339,9 @@ namespace Velvet
                 return;
             }
 
+            // The rows this patch is about to add, remove and replace are not read as the range until it records
+            // them again, since a row put ahead of the first one would otherwise move the start under the patch.
+            _ctx.PortalState.Unanchor(placeholder);
             var oldChildren = oldChildrenRaw ?? Array.Empty<VNode>();
             var newChildren = newChildrenRaw ?? Array.Empty<VNode>();
             // LOGICAL counts on both sides of the reconcile, matching the basis SlotStart and SlotLength are
@@ -1335,9 +1396,10 @@ namespace Velvet
             // the children actually live. For an already-recorded portal this rewrites the same
             // reference.
             _ctx.PortalState[placeholder] = prevState with { Target = target, SlotLength = newSlotLength };
+            _ctx.PortalState.Anchor(placeholder);
 
             var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
-            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, placeholder, prevState, unshifted);
+            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, placeholder, prevState, unshifted);
             FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, prevState, unshifted);
             FiberCommitWork.RebaseOwnRows(_ctx, target);
         }
@@ -2317,6 +2379,18 @@ namespace Velvet
 
             public void Update(StyleGapManipulator manipulator)
                 => manipulator.UpdateGap(_spec);
+        }
+
+        private readonly struct CompositeFlowOp : IManipulatorOp<StyleCompositeFlowManipulator>
+        {
+            public Dictionary<VisualElement, StyleCompositeFlowManipulator> Table(ReconcilerContext ctx)
+                => ctx.CompositeFlowManipulators;
+
+            public StyleCompositeFlowManipulator Create(ReconcilerContext ctx)
+                => new StyleCompositeFlowManipulator(ctx);
+
+            public void Update(StyleCompositeFlowManipulator manipulator)
+                => manipulator.Forward();
         }
 
         private readonly struct DivideOp : IManipulatorOp<StyleDivideManipulator>
@@ -3370,23 +3444,13 @@ namespace Velvet
         private void ReSyncVariantGatedPasses(VisualElement element)
         {
             _ctx.VariantGateClasses.TryGetValue(element, out var state);
-            // The array the element's own reconcile pass last applied, or none when no pass ever recorded
-            // one: the trigger was a width payload, which gates nothing and so never earns an entry, or the
-            // payload came from a [&>*]: rule on the PARENT, whose children are fully created before it runs.
-            // The second case is temporary for a child rendered as an element — its own next patch runs the
-            // class passes and records the array. A V.Text child's patch runs none, ever, which is why the
-            // empty array below is its reconciled array rather than a stand-in; the live list stands in for
-            // the layout gates in the element case only. The paint sequence stands down for both: it runs only
-            // from an array a pass of the element's own recorded (VariantGateState.PaintTail).
-            // That makes a [&>*]: paint land inconsistently: a child that declares ANY gated payload of its own
-            // was recorded at create, so the parent's payload finds PaintTail set and paints at mount, while a
-            // child that declares none paints only from its next patch.
-            // A TextNode's element applies no class of its own at any render, so an empty array is not a
-            // stand-in for its reconciled one — it IS its reconciled one. Without this the two resolvers
-            // below stand down for such a child forever, and a container's [&>*]:font-mono or
-            // [&>*]:uppercase lands on its class list and changes nothing, at mount and at every patch.
-            var reconciled = state?.Reconciled
-                ?? (_ctx.TextNodeElements.ContainsKey(element) ? System.Array.Empty<string>() : null);
+            // The array the element's own reconcile pass last applied, or none when no pass ever recorded one: the
+            // trigger was a width payload, which gates nothing and so never earns an entry. A child of a [&>*]:
+            // container is recorded as it is created or patched (RecordVariantGateSource), so its payload paints
+            // from the first frame. A TextNode's element applies no class of its own at any render, so an empty
+            // array is its reconciled one rather than a stand-in, and the passes below read it as recorded.
+            var isTextNode = _ctx.TextNodeElements.ContainsKey(element);
+            var reconciled = state?.Reconciled ?? (isTextNode ? System.Array.Empty<string>() : null);
             var previous = state?.Resolved;
             var resolved = reconciled == null ? LiveClasses(element)
                 : state == null ? reconciled
@@ -3416,7 +3480,7 @@ namespace Velvet
             {
                 StyleTextEffectResolver.Apply(_ctx, element, resolved);
             }
-            if (state == null || !state.PaintTail)
+            if (state == null || !(state.PaintTail || isTextNode))
             {
                 return;
             }
@@ -3440,7 +3504,9 @@ namespace Velvet
                 state.Reconciled = classNames;
                 return;
             }
-            if (StyleVariantPayload.DeclaresGatePayload(classNames))
+            // A child of a [&>*]: container declares nothing itself, yet the container's payload reaches it, so
+            // the array is put aside for the re-sync that payload raises.
+            if (_ctx.ChildVariantHostDepth > 0 || StyleVariantPayload.DeclaresGatePayload(classNames))
             {
                 _ctx.VariantGateClasses[element] = new VariantGateState { Reconciled = classNames };
             }
@@ -3462,6 +3528,8 @@ namespace Velvet
         // load-bearing either.
         private void ApplyResolvedLayoutManipulators(VisualElement element, string[] classNames)
         {
+            // Ahead of gap, which reads the direction and wrap this writes onto the inner box.
+            ApplyCompositeFlowManipulator(element);
             if (StyleGridClass.HasGridClass(classNames))
             {
                 ApplyGapManipulator(element, classNames, gridSuppressed: true);
@@ -3476,6 +3544,11 @@ namespace Velvet
             ApplyFlexMinSizeManipulator(element, classNames);
             ApplyPointerEvents(element, classNames);
         }
+
+        // The widget's live classes are what it forwards (StyleCompositeFlowManipulator), so it takes no class array.
+        private void ApplyCompositeFlowManipulator(VisualElement element)
+            => Configure<CompositeFlowOp, StyleCompositeFlowManipulator>(element,
+                !ReferenceEquals(GetChildContainer(element), element), default);
 
         // Every Label and Button gets one, unlike the class-gated manipulators beside it: the automatic
         // minimum size applies to a text flex item whatever classes it carries, and the manipulator decides

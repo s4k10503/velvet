@@ -62,6 +62,7 @@ namespace Velvet.Tests
             ["StyleAnimateClass.IsAnimateClass"] = "animate-pulse",
             ["StyleBorderStyleClass.IsBorderStyleClass"] = "border-dashed",
             ["StyleRingClass.IsRingClass"] = "ring-2",
+            ["StyleBackdropClass.IsBackdropClass"] = "backdrop-blur-sm",
             ["StyleFontClass.IsFontToken"] = "italic",
             ["StyleTextEffectClass.IsTextEffectToken"] = "uppercase",
             ["StyleCustomPropertyClass.IsCustomPropertyToken"] = "[width:120px]",
@@ -70,7 +71,7 @@ namespace Velvet.Tests
         // A ratchet on the declaration, because the two-directional check alone is satisfied by deleting a
         // family from the dispatcher AND its representative here — one plausible cleanup edit that removes a
         // family's coverage with both tests green.
-        private const int FamilyFloor = 18;
+        private const int FamilyFloor = 19;
 
         // What a family's representative acts on, written bare in every render of that family's cells. Velvet
         // draws no inset ring, so what the inset representative changes is the box-shadow its rejected width discards.
@@ -154,7 +155,7 @@ namespace Velvet.Tests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-        // GREEN_ON_BASE(characterization): this branch adds a declared family and changes neither the family reader nor the gate strings below.
+        // GREEN_ON_BASE(characterization): the gate strings below are literals fed to the family reader, which this branch leaves as it was; adding the backdrop family to the declared set touches neither.
         [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
         [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
             "StyleGapClass.IsGapToken")]

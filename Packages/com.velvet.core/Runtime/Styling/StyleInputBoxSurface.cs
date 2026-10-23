@@ -245,6 +245,7 @@ namespace Velvet
                 // CSS's filter, opacity, transforms, color and text styling apply to the element and what it
                 // contains; a declared label is neither the input nor inside it.
                 || StyleFilterValueParser.IsFilterLeaf(core)
+                || StyleBackdropClass.IsBackdropClass(core)
                 || StyleFontClass.IsFontToken(core)
                 || StyleTextEffectClass.IsTextEffectToken(core)
                 || StyleSkewClass.IsSkewClass(core)

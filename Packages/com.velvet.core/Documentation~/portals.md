@@ -62,8 +62,10 @@ is; a portal's boundary is one, and it holds even where the two sides share a co
 portal's children follow the container's own, and when a render of the tree that declares the portal
 changes how many of those there are — the element's own children, or a component among them rendering
 again — the portal's range moves with them, so the next patch still lands on the portal's children. A
-child other code appends behind the portal's children stays behind them. A portal declared among the
-children of the container it targets is supported too. A portal nested inside another portal on the
+child other code appends behind the portal's children stays behind them, and a row put ahead of them, by other
+code or by another mounted tree rendering the container, does not move the portal's next patch onto it, since
+the portal finds its range by the rows it holds. A portal declared among the children of the container it
+targets is supported too. A portal nested inside another portal on the
 same target is supported: a portal's own patch shifts the ranges that follow it.
 
 ## The shared boundary semantics
@@ -123,30 +125,17 @@ A framework-managed layer or world-space host is a completely separate UI Toolki
 input delivery, propagation, and focus are all scoped per-panel by UI Toolkit itself. Velvet
 closes three distinct gaps:
 
-**Picking order.** When a screen-space layer panel visually overlaps the main panel, Unity's
-own runtime input system claims to arbitrate delivery by `PanelSettings.sortingOrder`, but this
-isn't reliable enough to depend on (a documented Unity Issue Tracker bug: a click can pass
-through an overlapping `UIDocument`'s content to whatever sits behind it). Velvet arbitrates
-this itself: before the main panel's own native dispatch processes a `PointerDown`/`PointerUpEvent`, it
-walks every layer host in `sortingOrder` order and calls each panel's own `IPanel.Pick()` (which
-resolves against that panel's own content alone, independent of any other panel's presence) —
-the first host with actual content at that screen position wins, and the main panel's own
-processing for that event is stopped. `V.WorldSpace` panels are NOT part of this arbitration.
+**Picking order.** When a screen-space layer panel visually overlaps the main panel, Velvet arbitrates
+delivery itself: before the main panel's own native dispatch processes a `PointerDown`/`PointerUpEvent`, it
+walks every layer host in `sortingOrder` order and calls each panel's own `IPanel.Pick()` (which resolves
+against that panel's own content alone, independent of any other panel's presence) — the first host with
+actual content at that screen position wins, and the main panel's own processing for that event is stopped.
+`V.WorldSpace` panels are not part of this arbitration; their pointer input is Unity's own, below.
 
-**`V.WorldSpace` picking.** `RuntimePanelUtils.ScreenToPanel`/`CameraTransformWorldToPanel` look
-like the natural tool for converting a screen position into a `PanelRenderMode.WorldSpace`
-panel's local coordinates, but they are for UI Toolkit's OLDER RenderTexture-on-a-mesh workflow
-and silently no-op (return the input essentially unchanged) against a Transform-driven
-world-space panel — verified empirically, not just from docs.
-
-The correct mechanism is Unity's own implicit runtime input system (bootstrapped automatically
-every Play session, using Main Camera as the event camera and processing world-space input by
-default, zero configuration required), which drives picking through an internal-only engine API a
-package assembly cannot call. So Velvet's own job is limited to attaching a `BoxCollider` sized to
-the panel's world extent (`panelSize` in pixels ÷ 100 pixels-per-unit, Unity's documented default)
-to the host. Only the collider's placement is machine-verifiable (`Physics.Raycast` against it);
-the end-to-end path is not, since Unity's runtime input system polls the real mouse device every
-frame and batchmode has no way to drive that.
+**`V.WorldSpace` picking.** A world-space host's `UIDocument` keeps a collider on the host's GameObject while a
+Play session runs, and Unity's runtime input system picks and delivers through it. Velvet adds no collider of
+its own. `PortalLayersPlaybackTests` pins that the host carries exactly the one
+the document keeps.
 
 **Focus.** A focusable element inside a host panel is tracked correctly by that panel's own
 `FocusController` when focused, and a host torn down while it holds focus hands focus back to
@@ -206,13 +195,14 @@ The host object itself is hidden from the Hierarchy:
 One engine fact bounds this feature: **a screen-space panel always composites over the 3D
 scene** — the compositor draws overlay panels after cameras, and `sortingOrder` only orders
 panels among themselves. UI that must sit *among or behind scene geometry* is world-space
-territory.
+territory. `PanelRenderModeContractTests` pins that Unity offers no render mode between the two.
 
 Layer order anchors to the **declaring panel's** `sortingOrder` (base −100 / +100 / +200), so
 two mounted trees whose main panels share a `sortingOrder` produce layers that tie across the
 apps — give each main panel its own base when several run side by side. A host panel killed
-externally (a scene unload tearing down framework objects) is replaced the next time a portal
-mounts on that layer; portals already mounted into the dead host need a remount.
+externally (a scene unload tearing down framework objects) is replaced by the next portal on that layer to
+mount or patch. The portals that were mounted into the dead host unmount and mount again into the
+replacement, so their children's state does not survive it, as when an id names another element.
 
 A `layer:` naming no `UILayer` member is refused at construction: `V.Portal` throws
 `ArgumentOutOfRangeException` from the call itself, naming the parameter.
@@ -232,8 +222,8 @@ resolution in pixels. The host carries the `BoxCollider` described under "Cross-
 routing" above, which is what lets Unity's own runtime input system route pointer input into it.
 
 A world-space host follows the same declaring-panel sync and stylesheet carry as the layers,
-and a host destroyed externally (a scene unload) is skipped safely on later patches — remount the
-`V.WorldSpace` node to rebuild it.
+and a host destroyed externally (a scene unload) is rebuilt by the node's next patch, which mounts the
+children into the new host again; their state does not survive it.
 
 ## Cross-panel Tab order: `PanelFocusOrder`
 
@@ -255,14 +245,18 @@ has no inherent scene depth — it sits wherever its target currently projects t
 physics `Linecast` between the camera and the target hides the element when a solid
 (non-trigger) collider sits between them, scoped by `occludeLayerMask` (a target whose own
 collider sits on that mask will typically occlude itself — scope the mask to scene geometry that
-excludes it). `distanceFactor` approximates perspective size falloff on otherwise-flat content:
-it scales the element by itself divided by the current camera distance, so it is the reference
-distance at which scale is exactly 1. Left unset, Anchored never touches the element's `scale`
-style at all, so it composes freely with a `scale-*` class or a Motion scale variant; setting it
-makes Anchored own that style slot every tick instead, so combining it with either of those is a
-straightforward conflict, not an integration.
+excludes it). `distanceFactor` scales the element as drei's does: by the factor divided by the world height the camera
+sees at the target, which is 2·tan(fov/2)·distance for a perspective camera and 2·`orthographicSize` for an
+orthographic one, whose view does not widen with distance.
 
-`V.Anchored` forces `position: absolute` inline (dynamic positioning has no other way to
+As in drei, the element is not the thing that is positioned: `V.Anchored` renders a wrapper that owns the
+position, the hide for a target behind the camera or occluded, and the `distanceFactor` scale, and the
+element carrying the `className`, `name`, `events`, ref and children sits inside it. So a `scale-*` class or a
+Motion scale variant on the element composes with the distance scale instead of fighting it. `z-*` classes go
+on the wrapper, which is the out-of-flow element they stack. A selector or `Q` query for the element finds it
+inside the wrapper, and its parent is the positioned one.
+
+`V.Anchored` forces `position: absolute` inline on the wrapper (dynamic positioning has no other way to
 work), so pass layout classes for everything else — sizing, background, text, and so on —
 exactly as on any other element, at any nesting depth (the panel-space projection is
 converted to the element's own parent-relative space before it's written, so it positions

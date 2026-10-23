@@ -267,9 +267,9 @@ namespace Velvet
         private static void WriteSize(VisualElement element, GradientBinding binding)
         {
             binding.UnderOverride = StyleArbitraryValueResolver.OverrideBackgroundWins(element);
-            element.style.backgroundSize = binding.UnderOverride
+            TransformOriginSparing.SetBackgroundSize(element, binding.UnderOverride
                 ? new StyleBackgroundSize(StyleKeyword.Null)
-                : new StyleBackgroundSize(new BackgroundSize(Length.Percent(100f), Length.Percent(100f)));
+                : new StyleBackgroundSize(new BackgroundSize(Length.Percent(100f), Length.Percent(100f))));
         }
 
         // The element's box: its layout once it has one, else the size its last geometry event reported.

@@ -42,6 +42,7 @@ namespace Velvet.Tests
             return null;
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; a rotate class keeps the painted skew layer that owns the spacer, and the preconditions are folded into the assertion.
         [UnityTest]
         public IEnumerator Given_ABorderThickerThanTheShearOverhang_When_Rendered_Then_TheSpacerReachesPastTheBorderBoxEdge()
         {
@@ -49,7 +50,7 @@ namespace Velvet.Tests
             // box, under a filter, so an unsubtracted border would push the spacer's border-box edge positive.
             _host = new RenderTexturePanelHost("BorderSpacerPanel", 300, 300);
             _mounted = V.Mount(_host.Root,
-                V.Div(className: "w-[200px] h-[80px] -skew-x-4 border-8 hue-rotate-90", name: "box"));
+                V.Div(className: "w-[200px] h-[80px] -skew-x-4 border-8 hue-rotate-90 rotate-0", name: "box"));
             var box = _host.Root.Q<VisualElement>("box");
             Assume.That(box, Is.Not.Null, "Precondition: the element mounted");
 
@@ -65,14 +66,14 @@ namespace Velvet.Tests
                     break;
                 }
             }
-            Assume.That(spacer, Is.Not.Null, "Precondition: the filtered skewed element carries a spacer");
-            Assume.That(spacer.resolvedStyle.width, Is.GreaterThan(0f), "Precondition: the spacer was sized");
 
             // Assert — resolvedStyle.left is the spacer's used position from the caster's border-box origin
             // (Yoga adds the parent's border to the padding-box-relative inline left). It must reach left of
             // that origin to cover the shear that leans past the corner; without subtracting the border when
             // positioning, a border thicker than the overhang would leave this positive (inside the box).
-            Assert.That(spacer.resolvedStyle.left, Is.LessThan(0f));
+            Assert.That((spacer != null, spacer != null && spacer.resolvedStyle.width > 0f,
+                    spacer != null && spacer.resolvedStyle.left < 0f),
+                Is.EqualTo((true, true, true)));
         }
     }
 }

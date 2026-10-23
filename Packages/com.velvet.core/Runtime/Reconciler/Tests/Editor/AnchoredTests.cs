@@ -43,6 +43,7 @@ namespace Velvet.Tests
             base.TearDown();
         }
 
+        // GREEN_ON_BASE(refactor): only which element the case reads changed, the wrapper V.Anchored now renders; the base forces the anchored element out of flow too.
         [Test]
         public void Given_AnAnchoredElement_When_Mounted_Then_ItIsForcedOutOfFlow()
         {
@@ -53,7 +54,7 @@ namespace Velvet.Tests
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
 
             // Assert
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
             Assert.That(element.style.position.value, Is.EqualTo(Position.Absolute));
         }
 
@@ -64,7 +65,7 @@ namespace Velvet.Tests
             _targetGo.transform.position = new Vector3(0f, 0f, -20f);
             _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
 
             // Act
             Tick();
@@ -80,15 +81,16 @@ namespace Velvet.Tests
             _targetGo.transform.position = new Vector3(0f, 0f, 0f);
             var tree = new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
-            var element = Root.Q<VisualElement>("anchored");
-            Assume.That(_reconciler.Context.AnchoredBindings.ContainsKey(element), Is.True,
-                "Precondition: mounting registered a binding");
+            var element = Root.Q<VisualElement>("anchored").parent;
+            var boundWhileMounted = _reconciler.Context.AnchoredBindings.ContainsKey(element);
 
             // Act
             _reconciler.Reconcile(Root, tree, Array.Empty<VNode>());
 
-            // Assert
-            Assert.That(_reconciler.Context.AnchoredBindings.ContainsKey(element), Is.False);
+            // Assert — the mounted reading is folded in, since an element that never held a binding would
+            // otherwise satisfy the released one on its own.
+            Assert.That((boundWhileMounted, _reconciler.Context.AnchoredBindings.ContainsKey(element)),
+                Is.EqualTo((true, false)));
         }
 
         // GREEN_ON_BASE(characterization): the base hides every element of an editor panel, this one included.
@@ -105,7 +107,7 @@ namespace Velvet.Tests
                 _targetGo.transform.position = new Vector3(0f, 0f, 0f);
                 _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                     new[] { V.Anchored(_targetGo.transform, key: "a", name: "anchored") });
-                var element = Root.Q<VisualElement>("anchored");
+                var element = Root.Q<VisualElement>("anchored").parent;
 
                 // Act
                 Tick();
@@ -127,7 +129,7 @@ namespace Velvet.Tests
             _targetGo.transform.position = new Vector3(1f, 0.5f, 0f);
             _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
 
             // Act
             Tick();
@@ -143,7 +145,7 @@ namespace Velvet.Tests
             _targetGo.transform.position = new Vector3(1f, 0.5f, -20f);
             _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, hideWhenBehindCamera: false, key: "a", name: "anchored") });
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
 
             // Act
             Tick();
@@ -152,6 +154,7 @@ namespace Velvet.Tests
             Assert.That(ShownPosition(element), Is.EqualTo(ExpectedViewportPosition()).Within(0.01f));
         }
 
+        // GREEN_ON_BASE(refactor): only which element the case reads changed, the wrapper V.Anchored now renders. The base has no hide for a target level with the camera plane either.
         [Test]
         public void Given_ATargetLevelWithTheCameraPlane_When_Ticked_Then_TheElementIsNotHidden()
         {
@@ -160,7 +163,7 @@ namespace Velvet.Tests
             _targetGo.transform.position = new Vector3(5f, 0f, -10f);
             _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
 
             // Act
             Tick();
@@ -258,9 +261,8 @@ namespace Velvet.Tests
                 _targetGo.transform.position = new Vector3(0f, 0f, 0f);
                 var before = new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") };
                 _reconciler.Reconcile(Root, Array.Empty<VNode>(), before);
-                var element = Root.Q<VisualElement>("anchored");
+                var element = Root.Q<VisualElement>("anchored").parent;
                 _reconciler.Context.AnchoredBindings.TryGetValue(element, out var bindingBefore);
-                Assume.That(bindingBefore, Is.Not.Null, "Precondition: mounting registered a binding");
 
                 // Act
                 var after = new[] { V.Anchored(otherTargetGo.transform, camera: _camera, key: "a", name: "anchored") };

@@ -64,11 +64,12 @@ namespace Velvet.Tests
             return "other";
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ASkewedBoxWhoseTopBorderAloneIsBlue_When_ItsFaceIsRepainted_Then_ItsTopBandIsBlue()
         {
             // Arrange / Act
-            yield return Mount("SkewTopBand", $"{Box} skew-x-[10deg]");
+            yield return Mount("SkewTopBand", $"{Box} skew-x-[10deg] rotate-0");
 
             // Assert — halfway along the top band and halfway into it.
             Assert.That(ColourAt(new Vector2(60f, 4f), Mathf.Tan(10f * Mathf.Deg2Rad)), Is.EqualTo("blue"));
@@ -123,11 +124,12 @@ namespace Velvet.Tests
             Assert.That((seen.Contains("red"), seen.Contains("other")), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ASkewedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps()
         {
             // Arrange
-            yield return Mount("SkewDashed", $"{DashedBox} skew-x-[10deg]");
+            yield return Mount("SkewDashed", $"{DashedBox} skew-x-[10deg] rotate-0");
 
             // Act
             var seen = TopBand(Mathf.Tan(10f * Mathf.Deg2Rad));
@@ -136,11 +138,12 @@ namespace Velvet.Tests
             Assert.That((seen.Contains("red"), seen.Contains("other")), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ASkewedBoxThatClipsItsContent_When_Painted_Then_ItsTopBandIsBlue()
         {
             // Arrange / Act
-            yield return Mount("SkewClipped", $"{Box} overflow-hidden skew-x-[10deg]");
+            yield return Mount("SkewClipped", $"{Box} overflow-hidden skew-x-[10deg] rotate-0");
             var skewed = _mounted.Root.Reconciler.Context.SkewBindings.ContainsKey(_host.Root.Q<VisualElement>("box"));
 
             // Assert — halfway along the top band and halfway into it; "no skew" where the skew never bound, since the

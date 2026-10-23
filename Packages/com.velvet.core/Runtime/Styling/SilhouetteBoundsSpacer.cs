@@ -96,8 +96,9 @@ namespace Velvet
         // reconciler-invisible — a z-marked absolute child's real element lives inside one instead of at its
         // logical slot), a ring overlay (RingOverlay's band, hosted beside the element it rings rather than
         // wrapped around it), a face border overlay (FaceBorderOverlay, hosted the same way), a SceneView's
-        // camera feed (SceneViewDriver's child over the element's content box), OR a Particles element's blend
-        // layer (ParticlesDriver's children that draw the runs the element does not).
+        // camera feed (SceneViewDriver's child over the element's content box), a Particles element's blend
+        // layer (ParticlesDriver's children that draw the runs the element does not), OR a backdrop layer
+        // (BackdropFilterLayer, hosted before its element).
         internal static bool IsSpacer(VisualElement child)
             => child != null
                 && (child.ClassListContains(MarkerClass)
@@ -105,6 +106,7 @@ namespace Velvet
                     || child.ClassListContains(FaceBorderOverlay.MarkerClass)
                     || child.ClassListContains(SceneViewDriver.FeedMarkerClass)
                     || child.ClassListContains(ParticlesDriver.LayerMarkerClass)
+                    || child.ClassListContains(BackdropFilterLayer.MarkerClass)
                     || FiberZLayerCoordinator.IsLayerContainer(child));
 
         // True when spacer is a child of caster and no RENDERED (non-spacer) child follows it — the placement

@@ -748,26 +748,56 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_bumpStep;
 
         [Test]
-        public void Given_AHostKilledExternally_When_TheWorldSpacePatches_Then_TheReconcileSurvives()
+        public void Given_AHostKilledExternally_When_TheWorldSpacePatches_Then_TheChildrenMountIntoAFreshHost()
         {
-            // Arrange — a scene unload can destroy the host GameObject while the owning fiber tree
-            // survives; EVERY later patch must skip the dead record on the same warning path instead
-            // of throwing or escalating to an error-level log.
+            // Arrange — a scene unload can destroy the host GameObject while the owning fiber tree survives.
             MountAndLayout(V.Component(SlidingWorldSpaceHost, key: "root"));
             var docs = NewDocs();
             Assume.That(docs.Count, Is.EqualTo(1), "Precondition: the world-space host exists");
-            LogAssert.Expect(LogType.Warning, new Regex("died externally", RegexOptions.IgnoreCase));
-            LogAssert.Expect(LogType.Warning, new Regex("died externally", RegexOptions.IgnoreCase));
             Object.DestroyImmediate(docs[0].gameObject);
 
-            // Act & Assert — two consecutive patches both survive on the warning path.
-            Assert.That(() =>
+            // Act
+            s_bumpStep.Invoke(s => s + 1);
+            FlushAndLayout();
+            s_bumpStep.Invoke(s => s + 1);
+            FlushAndLayout();
+
+            // Assert — one live host holds the child once, and the second patch left it there.
+            var live = NewDocs();
+            Assert.That((live.Count, live.Count == 1 ? live[0].rootVisualElement.Query<VisualElement>("ws-live").ToList().Count : -1),
+                Is.EqualTo((1, 1)));
+        }
+
+        [Component]
+        private static VNode SlidingLayerHost()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_bumpStep = setStep;
+            return V.Div(children: new VNode[]
             {
-                s_bumpStep.Invoke(s => s + 1);
-                FlushAndLayout();
-                s_bumpStep.Invoke(s => s + 1);
-                FlushAndLayout();
-            }, Throws.Nothing);
+                V.Portal(UILayer.Overlay, children: new VNode[] { V.Div(name: "layer-live", className: $"w-[{10 + step}px]") }),
+            });
+        }
+
+        [Test]
+        public void Given_ALayerHostKilledExternally_When_ThePortalPatches_Then_TheChildrenMountIntoAFreshHost()
+        {
+            // Arrange
+            MountAndLayout(V.Component(SlidingLayerHost, key: "root"));
+            var docs = NewDocs();
+            Assume.That(docs.Count, Is.EqualTo(1), "Precondition: the layer host exists");
+            Object.DestroyImmediate(docs[0].gameObject);
+
+            // Act
+            s_bumpStep.Invoke(s => s + 1);
+            FlushAndLayout();
+            s_bumpStep.Invoke(s => s + 1);
+            FlushAndLayout();
+
+            // Assert — one live host holds the child once, and the second patch left it there.
+            var live = NewDocs();
+            Assert.That((live.Count, live.Count == 1 ? live[0].rootVisualElement.Query<VisualElement>("layer-live").ToList().Count : -1),
+                Is.EqualTo((1, 1)));
         }
 
         #endregion

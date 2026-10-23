@@ -47,6 +47,7 @@ namespace Velvet.Tests
             new object[] { "h-[31.25%]", ArbitraryProperty.Height, 31.25f, LengthUnit.Percent },
         };
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [TestCaseSource(nameof(SizePropertyValueUnitCases))]
         public void Given_SizeClass_When_Parsed_Then_ResolvesPropertyValueUnit(
             string className, object property, float value, LengthUnit unit)
@@ -55,8 +56,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit), Is.EqualTo(((ArbitraryProperty)property, value, unit)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, (ArbitraryProperty)property, value, unit)));
         }
 
         // GREEN_ON_BASE(characterization): the base already declines `w-[200]`, as a BareNumberBracketTests row there pinned.
@@ -326,6 +327,7 @@ namespace Velvet.Tests
             new object[] { "left-[50%]", ArbitraryProperty.Left, 50f, LengthUnit.Percent },
         };
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [TestCaseSource(nameof(PositionPropertyValueUnitCases))]
         public void Given_PositionClass_When_Parsed_Then_ResolvesPropertyValueUnit(
             string className, object property, float value, LengthUnit unit)
@@ -334,10 +336,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit), Is.EqualTo(((ArbitraryProperty)property, value, unit)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, (ArbitraryProperty)property, value, unit)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_RightPixelClass_When_Parsed_Then_ResolvesRightWithValue()
         {
@@ -345,8 +348,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("right-[16px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Right, 16f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.Right, 16f)));
         }
 
         static readonly object[] InsetShorthandPropertyCases =
@@ -359,6 +362,7 @@ namespace Velvet.Tests
             new object[] { "inset-y-[20px]", ArbitraryProperty.InsetY },
         };
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [TestCaseSource(nameof(InsetShorthandPropertyCases))]
         public void Given_InsetShorthandClass_When_Parsed_Then_ResolvesProperty(
             string className, object property)
@@ -367,8 +371,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Property, Is.EqualTo((ArbitraryProperty)property));
+            Assert.That((ok, s.Property), Is.EqualTo((true, (ArbitraryProperty)property)));
         }
 
         #endregion
@@ -387,6 +390,7 @@ namespace Velvet.Tests
             new object[] { "pt-[26px]", ArbitraryProperty.PaddingTop, 26f },
         };
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [TestCaseSource(nameof(PaddingPropertyValueCases))]
         public void Given_PaddingClass_When_Parsed_Then_ResolvesPropertyValue(
             string className, object property, float value)
@@ -395,10 +399,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo(((ArbitraryProperty)property, value)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, (ArbitraryProperty)property, value)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_PaddingLeftClass_When_Parsed_Then_ResolvesPaddingLeftProperty()
         {
@@ -406,8 +411,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("pl-[16px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Property, Is.EqualTo(ArbitraryProperty.PaddingLeft));
+            Assert.That((ok, s.Property), Is.EqualTo((true, ArbitraryProperty.PaddingLeft)));
         }
 
         #endregion
@@ -422,6 +426,7 @@ namespace Velvet.Tests
             new object[] { "mx-[20px]", ArbitraryProperty.MarginX },
         };
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [TestCaseSource(nameof(MarginShorthandPropertyCases))]
         public void Given_MarginShorthandClass_When_Parsed_Then_ResolvesProperty(
             string className, object property)
@@ -430,8 +435,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Property, Is.EqualTo((ArbitraryProperty)property));
+            Assert.That((ok, s.Property), Is.EqualTo((true, (ArbitraryProperty)property)));
         }
 
         static readonly object[] MarginPropertyValueCases =
@@ -442,6 +446,7 @@ namespace Velvet.Tests
             new object[] { "mt-[20px]", ArbitraryProperty.MarginTop, 20f },
         };
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [TestCaseSource(nameof(MarginPropertyValueCases))]
         public void Given_MarginClass_When_Parsed_Then_ResolvesPropertyValue(
             string className, object property, float value)
@@ -450,14 +455,15 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo(((ArbitraryProperty)property, value)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, (ArbitraryProperty)property, value)));
         }
 
         #endregion
 
         #region TryParse — Valid Inputs (BorderRadius / FontSize)
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_RoundedClass_When_Parsed_Then_ResolvesBorderRadiusWithValue()
         {
@@ -465,10 +471,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("rounded-[36px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.BorderRadius, 36f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.BorderRadius, 36f)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_TextLengthClass_When_Parsed_Then_ResolvesFontSizeWithValue()
         {
@@ -476,14 +483,15 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("text-[18px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.FontSize, 18f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.FontSize, 18f)));
         }
 
         #endregion
 
         #region TryParse — Valid Inputs (Color)
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_TextHexColorClass_When_Parsed_Then_ResolvesTextColor()
         {
@@ -491,10 +499,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("text-[#ff0000]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Color), Is.EqualTo((ArbitraryProperty.TextColor, Color.red)));
+            Assert.That((ok, s.Property, s.Color),
+                Is.EqualTo((true, ArbitraryProperty.TextColor, Color.red)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_TextShortHexColorClass_When_Parsed_Then_ResolvesTextColor()
         {
@@ -502,10 +511,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("text-[#fff]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Color), Is.EqualTo((ArbitraryProperty.TextColor, Color.white)));
+            Assert.That((ok, s.Property, s.Color),
+                Is.EqualTo((true, ArbitraryProperty.TextColor, Color.white)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_BackgroundHexColorClass_When_Parsed_Then_ResolvesBackgroundColor()
         {
@@ -513,8 +523,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("bg-[#00ff00]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Color), Is.EqualTo((ArbitraryProperty.BackgroundColor, Color.green)));
+            Assert.That((ok, s.Property, s.Color),
+                Is.EqualTo((true, ArbitraryProperty.BackgroundColor, Color.green)));
         }
 
         [Test]
@@ -529,6 +539,7 @@ namespace Velvet.Tests
                 Is.EqualTo((ArbitraryProperty.BackgroundColor, 1f, 0.5f)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_TextWithLengthValue_When_Parsed_Then_ResolvesFontSizeNotColor()
         {
@@ -536,8 +547,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("text-[18px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Property, Is.EqualTo(ArbitraryProperty.FontSize));
+            Assert.That((ok, s.Property), Is.EqualTo((true, ArbitraryProperty.FontSize)));
         }
 
         [Test]
@@ -562,6 +572,7 @@ namespace Velvet.Tests
             Assert.That(s.Color.a, Is.EqualTo(128f / 255f).Within(0.001f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_TextNamedColorClass_When_Parsed_Then_ResolvesTextColor()
         {
@@ -569,8 +580,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("text-[red]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Color), Is.EqualTo((ArbitraryProperty.TextColor, Color.red)));
+            Assert.That((ok, s.Property, s.Color),
+                Is.EqualTo((true, ArbitraryProperty.TextColor, Color.red)));
         }
 
         [Test]
@@ -587,6 +598,7 @@ namespace Velvet.Tests
 
         #region TryParse — Negative Values
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_NegativeMarginTopClass_When_Parsed_Then_ResolvesNegativePixelLength()
         {
@@ -594,11 +606,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("-mt-[20px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.MarginTop, -20f, LengthUnit.Pixel)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.MarginTop, -20f, LengthUnit.Pixel)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_NegativeMarginLeftClass_When_Parsed_Then_ResolvesNegativePercentLength()
         {
@@ -606,11 +618,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("-ml-[50%]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.MarginLeft, -50f, LengthUnit.Percent)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.MarginLeft, -50f, LengthUnit.Percent)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_NegativeLeftClass_When_Parsed_Then_ResolvesNegativePercentLength()
         {
@@ -618,11 +630,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("-left-[50%]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.Left, -50f, LengthUnit.Percent)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.Left, -50f, LengthUnit.Percent)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_NegativeTopClass_When_Parsed_Then_ResolvesNegativeValue()
         {
@@ -630,8 +642,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("-top-[10px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Top, -10f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.Top, -10f)));
         }
 
         #endregion
@@ -1732,6 +1744,7 @@ namespace Velvet.Tests
 
         #region Transform extensions (scale / translate / rotate)
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_ScaleArbitraryClass_When_Parsed_Then_ResolvesScaleWithUnitlessValue()
         {
@@ -1739,8 +1752,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("scale-[1.4]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Scale, 1.4f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.Scale, 1.4f)));
         }
 
         [Test]
@@ -1758,6 +1771,7 @@ namespace Velvet.Tests
                 Is.EqualTo((1.4f, 1.4f)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_TranslateXArbitraryClass_When_Parsed_Then_ResolvesTranslateXAsPixelLength()
         {
@@ -1765,11 +1779,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("translate-x-[4px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.TranslateX, 4f, LengthUnit.Pixel)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.TranslateX, 4f, LengthUnit.Pixel)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_TranslateYArbitraryClass_When_Parsed_Then_ResolvesTranslateYWithValue()
         {
@@ -1777,8 +1791,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("translate-y-[8px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.TranslateY, 8f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.TranslateY, 8f)));
         }
 
         [Test]
@@ -1812,6 +1826,7 @@ namespace Velvet.Tests
                 Is.EqualTo((4f, 8f)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_NegativeRotateArbitraryClass_When_Parsed_Then_ResolvesNegativeDegrees()
         {
@@ -1819,10 +1834,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("-rotate-[45deg]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Rotate, -45f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.Rotate, -45f)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_RotateRadiansClass_When_Parsed_Then_NormalizesToDegrees()
         {
@@ -1830,10 +1846,10 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("rotate-[3.14159265rad]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Value, Is.EqualTo(180f).Within(0.01f));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(180f).Within(0.01f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_RotateTurnClass_When_Parsed_Then_NormalizesToDegrees()
         {
@@ -1841,8 +1857,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("rotate-[0.25turn]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Value, Is.EqualTo(90f).Within(0.001f));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(90f).Within(0.001f));
         }
 
         [Test]
@@ -1856,6 +1871,7 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_TransformOriginPairClass_When_Parsed_Then_BothComponentsSurvive()
         {
@@ -1863,11 +1879,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("origin-[33%_75%]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit, s.Value2, s.Unit2),
-                Is.EqualTo((ArbitraryProperty.TransformOrigin, 33f, LengthUnit.Percent, 75f, LengthUnit.Percent)));
+            Assert.That((ok, s.Property, s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((true, ArbitraryProperty.TransformOrigin, 33f, LengthUnit.Percent, 75f, LengthUnit.Percent)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_TransformOriginSingleComponentClass_When_Parsed_Then_TheSecondIsHalfAndNotTheFirst()
         {
@@ -1876,11 +1892,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("origin-[0px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Value, s.Unit, s.Value2, s.Unit2),
-                Is.EqualTo((0f, LengthUnit.Pixel, 50f, LengthUnit.Percent)));
+            Assert.That((ok, s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((true, 0f, LengthUnit.Pixel, 50f, LengthUnit.Percent)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_TransformOriginMixedUnits_When_Parsed_Then_EachComponentKeepsItsOwnUnit()
         {
@@ -1888,8 +1904,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("origin-[12px_80%]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Unit, s.Unit2), Is.EqualTo((LengthUnit.Pixel, LengthUnit.Percent)));
+            Assert.That((ok, s.Unit, s.Unit2),
+                Is.EqualTo((true, LengthUnit.Pixel, LengthUnit.Percent)));
         }
 
         // CSS transform-origin's grammar inside the brackets: a keyword stands for its percentage, a lone
@@ -2766,6 +2782,17 @@ namespace Velvet.Tests
             Assert.That((rem, s.Property, s.Value, percent), Is.EqualTo((true, ArbitraryProperty.FilterBlur, 8f, false)));
         }
 
+        // GREEN_ON_BASE(characterization): a blur bracket reading a percentage was declined on the base, as CSS blur() takes none.
+        [Test]
+        public void Given_ABlurBracketMixingAnEmWithAPercentage_When_Parsed_Then_ItIsDeclined()
+        {
+            // Act
+            var parsed = StyleArbitraryValueResolver.TryParse("blur-[calc(1em+10%)]", out _);
+
+            // Assert
+            Assert.That(parsed, Is.False);
+        }
+
         [Test]
         public void Given_AGrayscaleBracketAboveOne_When_Parsed_Then_ItIsClampedToOne()
         {
@@ -3293,6 +3320,7 @@ namespace Velvet.Tests
 
         #region Opacity / Size / FlexBasis (parity additions)
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_OpacityArbitraryWithLeadingDot_When_Parsed_Then_ResolvesOpacityAsUnitlessFloat()
         {
@@ -3300,8 +3328,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("opacity-[.37]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Opacity, 0.37f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.Opacity, 0.37f)));
         }
 
         [Test]
@@ -3333,6 +3361,7 @@ namespace Velvet.Tests
             Assert.That(el.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_SizeArbitraryPixel_When_Parsed_Then_ResolvesSizeProperty()
         {
@@ -3340,9 +3369,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("size-[40px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.Size, 40f, LengthUnit.Pixel)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.Size, 40f, LengthUnit.Pixel)));
         }
 
         [Test]
@@ -3536,6 +3564,7 @@ namespace Velvet.Tests
             Assert.That(scope.Root[0].style.flexGrow.value, Is.EqualTo(3f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_BasisArbitraryPixel_When_Parsed_Then_ResolvesFlexBasis()
         {
@@ -3543,11 +3572,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("basis-[120px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.FlexBasis, 120f, LengthUnit.Pixel)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.FlexBasis, 120f, LengthUnit.Pixel)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_BasisArbitraryPercent_When_Parsed_Then_ResolvesFlexBasisAsPercent()
         {
@@ -3555,9 +3584,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("basis-[50%]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.FlexBasis, 50f, LengthUnit.Percent)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.FlexBasis, 50f, LengthUnit.Percent)));
         }
 
         [Test]

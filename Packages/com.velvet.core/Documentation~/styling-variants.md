@@ -131,14 +131,11 @@ Four consequences worth knowing:
   ([react-migration.md §4-1b](react-migration.md#4-1b-per-side-border-colors)); the families a C# resolver folds from
   the class list, the font facets (`font-light font-bold`, `not-italic italic`) among them, and the nine-slice
   utilities are put in Tailwind's order too ([the list](styling-arbitrary-lengths.md#utilities-a-c-resolver-folds-from-the-class-list)).
-- **A payload only displaces a class whose properties it wholly covers.** A base utility writing
-  something the payload does not keeps its place, and the two then settle their shared properties in
-  Tailwind's order. That is reliable where one set contains the other — `size-8 md:w-4` resolves the
-  width correctly, because Tailwind emits `size-8` ahead of `w-4` — and
-  unreliable where the sets merely overlap. `rounded-l` and `rounded-t` share one corner and neither
-  contains the other, so `rounded-l md:rounded-t` can be a silent no-op. The important modifier does
-  not rescue it: the base is still uncontained, so it still applies. Write one class, or use the
-  arbitrary-value form.
+- **A payload displaces the properties of a class it covers, and only those.** A base utility writing something
+  the payload does not keeps it: `size-8 md:w-4` resolves the width correctly, because Tailwind emits `size-8`
+  ahead of `w-4`. A side radius that a higher layer takes one corner of keeps its other corner, which Velvet
+  writes with the per-corner class of the same size: `rounded-l-lg md:rounded-t-lg` paints `rounded-t-lg` and
+  `rounded-bl-lg`, whichever is written first and whether or not either is marked important.
 - **A class Velvet does not ship is never ranked.** The property table is derived from the bundled
   stylesheets, so a class of your own carries no known properties and can neither displace another
   class nor be displaced by one. `my-card dark:my-card-dark` ties exactly as before, and marking
@@ -348,105 +345,56 @@ hovered), and an important one (`!skew-6`, `skew-6!`, `hover:!skew-6`) over ever
 gives 6° on both). A bare value is a whole number of degrees written without a leading zero, so
 `skew-x-07` is declined, as Tailwind declines it.
 
-**Where `skew-*` deviates from CSS.** UI Toolkit's transform carries rotation, scale and translation and
-no shear, so a skew here is not a transform: the caster's own face is repainted sheared in its generated
-content, and each direct in-flow child is seated with an inline `translate` that puts its centroid where
-the shear would carry it. The seat composes with the child's own `translate-x-*`, `V.Motion` translation or
-drag offset, as CSS composes the parent's transform with the child's. Three things follow that a CSS
-`skewX()` does not do.
+**How `skew-*` is drawn.** An element with no other source of `rotate` or `scale` takes its skew as its own
+transform: Velvet writes the inline `rotate` and `scale` slots with a uniform scale and one 3D rotation whose
+projection onto the panel is the shear (`skewX() skewY()` as the single 2x2 matrix Tailwind composes). UI Toolkit
+then draws the element sheared about the pivot `origin-*` names, with its descendants under the same transform.
+The sheared face keeps its overhang under a hidden overflow, and a pointer picks the bounding rectangle of the
+sheared box rather than the sheared shape (`SkewTransformPlaybackTests` measures both).
 
-- **The caster's hit region does not lean with its face.** Its layout box stays axis-aligned and that box
-  is what answers a pointer, so a click near an edge lands by the upright rectangle while the paint has
-  moved off it. The two part company most at the top and bottom edges, where the face is carried
-  ±(height / 2) · tan θ sideways: ±2.5 px for `skew-x-6` on a 48 px-tall button, ±42.5 px for
-  `skew-x-12` on a 400 px-tall card. A direct child's hit region *does* follow, its seat being a real
-  transform.
-- **A caster's own text neither shears nor moves.** `V.Button(text:)` and `V.Label` paint their text on
-  the caster itself rather than into a child, so there is no child for the seat to move and the text
-  stands upright over the sheared fill.
-- **Descendants are seated, not sheared.** The seat is exact at each direct child's centroid and constant
-  across that child, so a child large relative to the caster reads off at its far corners, and a
-  grandchild moves only because its parent did.
-
-`origin-*` does not move the skew pivot either: the shear is always taken about the box centre, while
-`rotate-*` and `scale-*` are real USS transforms and do honour it. Velvet therefore exposes the painted
-approximation described here rather than a true shear transform.
+An element that also carries a `rotate-*` or `scale-*` class (behind a variant too), an `animate-*` preset, or a
+`V.Motion` keeps the older painted layer, since those write the same slots: the caster's own face is repainted
+sheared in its generated content, and each direct in-flow child is seated with an inline `translate` that puts its
+centroid where the shear would carry it. There the caster's hit region stays the upright box, its own text neither
+shears nor moves, descendants are seated rather than sheared, and `origin-*` does not move the pivot.
 
 **How a radius larger than its box fits.** A `rounded-*` class or an arbitrary radius that does not fit
 its box is scaled the way CSS scales it: once two adjacent radii overlap on a side, every radius on the
 element shrinks by one factor. So `rounded-full` on a 330 × 34 box is a pill with 17 px ends, and
-`rounded-r-[400px]` on a 75 px-tall tab ends in a half-disc. Velvet holds the fitted radii as inline style,
-and so:
+`rounded-r-[400px]` on a 75 px-tall tab ends in a half-disc. Velvet holds the fitted radii as inline style.
+On an element that carries a `rounded-*` class or an arbitrary radius, the radius a corner is fitted from is the
+one that wins the cascade there: a rule of your own that outranks the class on a corner is that corner's
+declared radius, and a radius your code writes to `style` is scaled with the others and comes back when the box
+no longer needs the fit. A keyword written there (`initial`) is left alone. A change of class under
+`transition-all` animates between the fitted radii rather than the declared ones.
 
-- A radius your own stylesheet sets is not fitted. On an element that also carries a `rounded-*` class, the
-  fit reads the class's radius even on a corner your rule outranks it on, and where that radius does not
-  fit, the fitted class radius replaces yours.
-- A radius your own code writes to `style` keeps its value, unless it equals the value the fit last wrote
-  there; CSS would scale it with the others. The other corners are still fitted, counting it at that value.
-- A change of class under `transition-all` animates between the fitted radii rather than the declared ones.
-
-**Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
-element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
-CSS clips neither a box-shadow nor a border that way, so a painted utility silently loses whatever falls
-outside that box. What matters is the resolved `overflow: hidden`, not the utility that set it: `truncate`
-sets it alongside `white-space` and `text-overflow`, so a truncating label reaches every loss below
-without `overflow-hidden` appearing anywhere in its className.
+**The wrapper-less paints under a hidden overflow.** UI Toolkit applies an element's own overflow clip to the
+element's own painted content, and cuts it at the **padding** box, while CSS clips neither a box-shadow nor a border
+that way. What matters is the resolved `overflow: hidden`, not the utility that set it: `truncate` sets it
+alongside `white-space` and `text-overflow`. A paint that lies outside the padding box is therefore painted on a
+sibling placed over the element and outside its clip (`FaceBorderOverlay`, `RingOverlay`), and the element's own
+paint keeps what lies inside it:
 
 | Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
-| `shadow-*` | unaffected: the outer layers are painted on a sibling over the element, outside its clip, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) is drawn inside the padding box |
-| `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders. Children are clipped to the upright box, not to the sheared face CSS clips them to |
-| `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
-| `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
+| `shadow-*` | the outer layers are painted on a sibling over the element, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) is drawn inside the padding box |
+| `skew-*` (and a gradient on a skewed element) | where the skew is the element's transform, the sheared face keeps its overhang. Where it keeps the painted layer (see above), the shear overhang past the box edge is cut and the rest of the face renders; children are clipped to the upright box, not to the sheared face CSS clips them to |
+| `border-dashed` / `border-dotted` | the outline lies in the border band, which the padding-box clip excludes, so it is painted on a sibling over the element |
+| `divide-dashed` / `divide-dotted` | the rule on a clipped child is painted on a sibling over that child |
 | `overline` | unaffected — the rule sits inside the content box |
 
-**`skew-*` and `shadow-*` keep a bordered element's border.** Either takes ownership of the element's face: it
-suppresses the native background and border and repaints both in its own generated content, which the
-padding-box clip would cut at the border. While the element clips, a `skew-*` paints its border, and the
-background beneath it, on a sibling placed over the element and outside its clip, and a `shadow-*` leaves a
-solid border and its background to UI Toolkit and paints a dashed or dotted one, and its outer layers, the same
-way, so the border and the shadow are drawn whole, as CSS draws them:
+A `shadow-*`, and a `skew-*` on the painted layer, takes ownership of the element's face: it suppresses the native
+background and border and repaints both in its own generated content, which the padding-box clip would cut at the
+border. While the element clips, a `skew-*` paints its border, and the background beneath it, on a sibling placed
+over the element and outside its clip, and a `shadow-*` leaves a solid border and its background to UI Toolkit and
+paints a dashed or dotted one, and its outer layers, the same way, so the border and the shadow are drawn whole, as
+CSS draws them:
 
 ```csharp
 // Border and the background beneath it intact.
-V.Div(className: "-skew-x-6 overflow-hidden bg-white border-2 border-black rounded-lg");
+V.Div(className: "-skew-x-6 rotate-0 overflow-hidden bg-white border-2 border-black rounded-lg");
 V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-dashed border-black rounded-lg");
 ```
-
-The nesting below keeps a skew's overhang, which the clip still cuts.
-
-Put the clip on a child instead of on the painted element:
-
-```csharp
-// The shadow on the outer element, the clip on an inner one.
-V.Div(className: "shadow-lg rounded-2xl", children: new VNode[]
-{
-    V.Div(className: "overflow-hidden rounded-2xl", children: new VNode[]
-    {
-        V.Label(text: "Clipped content"),
-    }),
-});
-```
-
-For `skew-*`, make the inner element `absolute inset-0`. The face keeps its overhang, and the content is
-clipped to the upright box. A clip on a parent the skewed element fills is no substitute: the overhang
-lies outside that parent's box, so its clip cuts it too, as it does in CSS.
-
-```csharp
-V.Div(className: "absolute inset-0 skew-x-[-24deg] bg-lime-400", children: new VNode[]
-{
-    V.Div(className: "absolute inset-0 overflow-hidden", children: new VNode[]
-    {
-        V.Label(text: "Clipped content"),
-    }),
-});
-```
-
-The ring's sibling hosting is not simply extended to the rest because a paint drawn in the element's own
-content receives the element's transform and opacity from the renderer, while a paint hosted outside the
-element has to be handed both every frame, the way the band is. A band was worth that cost because an
-outset one is wholly outside the padding box and a clip takes all of it; `ring-inset` sits over the box
-and would have survived, but one hosting has to serve both.
 
 **Class channels that are not variants.** `whileHoverClass`, `whileTapClass`, `whileFocusClass` and a
 draggable's `whileDraggingClass` are Framer Motion's gesture states, and apply their utilities as a payload
@@ -469,14 +417,11 @@ an animation — a `V.Motion` pose's, an `AnimatePresence` enter or exit class �
 pose's class the play takes off for that duration stops applying until it is back: `EnterFromClass:
 "gap-4 shadow-lg w-[40px]"` spaces, shadows and sizes the element until the enter swaps it out.
 
-**`[&>*]:` on a UI Toolkit composite lands on the control's own parts.** The walk is over whatever the
-container redirects its children into. A `V.ScrollView` redirects, so the payload reaches the children
-reconciled into it. Controls that redirect nothing answer with themselves, so the walk finds the parts the
-control built for itself. On `V.TextField`, for example, the input box (`#unity-text-input`) is a direct
-child and is reached. How far the payload gets differs per control because `& > *` stops after one level.
-
-A declared `label:` seats the label element ahead of the input, and it takes the payload as well, so
-`[&>*]:text-red-500` on a labelled field colours both.
+**`[&>*]:` on a UI Toolkit composite reaches no part of the control.** `& > *` selects the children a tree
+placed, so the walk is over whatever the container redirects its children into. A `V.ScrollView` redirects, so
+the payload reaches the children reconciled into it. A control that redirects nothing, such as `V.TextField`, holds
+only the parts it built for itself (its label and `#unity-text-input`), and a literal `[&>*]:` token leaves
+them alone. A field's input box takes the utilities the next paragraph lists from the field's own class list.
 
 **A field control's own surface utilities paint its input box.** On an `<input>` or a `<select>` the class
 lands on the box the value is shown in; UI Toolkit draws a field as an outer control around a child box (the
@@ -530,7 +475,7 @@ which a browser does not paint.
 
 `V.TextField(className: "w-64 bg-slate-800 rounded-lg px-3")` sizes the outer control and paints the box;
 layout, size and margin utilities, and every utility not listed, stay on the outer control. A declared
-`label:` is left unpainted, unlike under `[&>*]:`. `whileHoverClass` / `whileTapClass` / `whileFocusClass`
+`label:` is left unpainted. `whileHoverClass` / `whileTapClass` / `whileFocusClass`
 send their surface classes to the box the same way.
 
 Where a variant's condition lives decides who evaluates it:
@@ -550,31 +495,12 @@ payload and paint binding lands, and what teardown releases) and `InputBoxSurfac
 sheet-attached resolved colours, the peer source and focus). They resolve the utility's colour from a
 reference element carrying the same class rather than from a literal.
 
-**`[&>*]:` reaches the paints late, and inconsistently.** It is the only family whose payload is
-spelled on the *container* rather than on the element it lands on, and a child is fully built before
-the container applies it. The layout utilities still re-derive at mount, so `[&>*]:gap-2` spaces
-immediately. The paints depend on something the child cannot be relied on to have: if the child
-declares a variant-gated payload **of its own** — any one, `hover:gap-4` is enough — it was already
-recorded at create and `[&>*]:shadow-lg` paints at mount; if it declares none, the same class paints
-only from that child's next render. Do not lean on either outcome. Put the utility on the child, or
-behind a variant the child declares itself.
-
-The font layer and the string axes fail it differently again. A paint that cannot resolve does not
-paint; these two resolve a whole family out of a class array and rewrite the element from it, so
-they would resolve *something*. Until that child's own next render there is no array of its own to
-resolve from: the payload's landing opens its record and that render fills it in. Before that the
-only array there is its live class list, and a `font-[…]` or `leading-[…]` the child declared is
-deliberately kept off it — the resolver owns those — while the class channels above put utilities
-on it the child never declared. So both stand down there rather than replace what the child's own
-render got right with nothing left to put it back: `[&>*]:uppercase` over a `leading-[24px]` label
-leaves the label alone. From that child's next render on the two agree and both land —
-`[&>*]:font-mono` and `[&>*]:uppercase` alike — for a child rendered as an element. A `V.Text`
-child takes them at mount instead: it declares no class of its own at any render, so there is
-nothing of its own for the payload to resolve over and nothing to wait for. For a child rendered as
-an element that declares none, mount is what neither reaches — one that must carry the family or the
-transform on its first frame declares it itself, or declares a variant of its own, the same escape
-the paints take. The paints reach a `V.Text` child at no render at all: they run behind a verdict
-only an element's own class pass records.
+**`[&>*]:` reaches every direct child at once.** It is the only family whose payload is spelled on the
+*container* rather than on the element it lands on, and a child is fully built before the container applies
+it. Velvet records the class array of each element made or patched under a container carrying the token, so
+the layout utilities, the paints (`shadow-lg`, `ring-2`, `skew-x-6`, gradients), the font layer and the string
+axes (`font-mono`, `uppercase`) all land at mount for a child rendered as an element, whether or not the child
+declares a variant of its own, and the same holds for a `V.Text` child.
 
 ## Container queries — `@container`
 
@@ -637,7 +563,8 @@ name, so a named container still answers the unnamed variants inside it.
 A descendant resolves the container each of its variants asks for when it attaches to the panel, and
 watches that container's width from then on. It resolves again whenever a render adds `@container` to an
 element's `className`, removes it, or renames it (`@container/a` to `@container/b`), so toggling the
-marker re-points the descendants already attached.
+marker re-points the descendants already attached. A marker written straight to the class list
+(`element.AddToClassList("@container")`) re-points them at that element's next render.
 
 ### Simulating a viewport: `velvet-viewport`
 
