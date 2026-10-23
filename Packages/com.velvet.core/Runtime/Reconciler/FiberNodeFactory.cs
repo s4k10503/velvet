@@ -343,6 +343,7 @@ namespace Velvet
                             _ctx.ComponentContextStack.Get(MotionContext.Playback)));
                     try
                     {
+                        using var inside = new LayoutIdMotionScope(_ctx, motionNode.LayoutId != null);
                         ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children, writtenClasses);
                     }
                     finally
@@ -352,6 +353,7 @@ namespace Velvet
                 }
                 else
                 {
+                    using var inside = new LayoutIdMotionScope(_ctx, motionNode.LayoutId != null);
                     ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children, writtenClasses);
                 }
             }
@@ -430,6 +432,12 @@ namespace Velvet
                         + "pose for its initial label, and a transition, for a mount enter.");
                 }
             }
+            // A rotated layoutId Motion created inside another is drawn through a correction wrapper from its first
+            // frame: inside one still being created, which is not registered yet, by the depth count, else by the
+            // parent the reconcile places it under.
+            var outer = WantsLayoutIdCorrection(motionNode, appliedClasses)
+                ? _patcher.Appliers.WrapLayoutIdCorrection(element)
+                : element;
             // Shared-element layout animation (layoutId) on a freshly-created element, which never
             // routes through PatchMotion's own registration.
             if (motionNode.LayoutId != null)
@@ -440,9 +448,15 @@ namespace Velvet
             var classified = FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out var resolvedZ);
             if (FiberZLayerCoordinator.Stacks(_ctx, element, classified, ref resolvedZ))
             {
-                return FiberZLayerCoordinator.EnqueueMount(_ctx, element, resolvedZ);
+                return FiberZLayerCoordinator.EnqueueMount(_ctx, outer, resolvedZ);
             }
-            return element;
+            return outer;
+        }
+
+        private bool WantsLayoutIdCorrection(MotionNode motionNode, string[] appliedClasses)
+        {
+            if (motionNode.LayoutId == null || !MotionLayoutIdDriver.Corrects(appliedClasses)) return false;
+            return _ctx.LayoutIdMotionDepth > 0 || MotionLayoutIdDriver.HasLayoutIdAncestor(_ctx.ReconcileParent, _ctx);
         }
 
         // The variant enter a Motion plays as it mounts, from its own labels or inherited ones. DelaySec is the

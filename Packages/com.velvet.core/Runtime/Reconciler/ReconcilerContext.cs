@@ -1235,8 +1235,8 @@ namespace Velvet
         public Dictionary<VisualElement, PresenceExitWait> PresenceDescendantExitWaits { get; } = new();
 
         // The element a V.Motion(layoutId:) id is registered to, and the box MotionLayoutIdDriver falls
-        // back to when that element gives none. A null element marks a torn-down element's box, listed in
-        // LayoutIdSnapshots until MotionLayoutIdDriver.ExpireSnapshots drops it where the render ends. Keyed by the id string, not an element, so it
+        // back to when that element gives none. A null element marks a torn-down element's box, which stays until
+        // another Motion takes the id. Keyed by the id string, not an element, so it
         // cannot ride the _pureElementSideTables auto-clear mechanism below (that clears entries keyed BY
         // a departing element, not entries that happen to reference one as a value) — ElementToLayoutId
         // is the reverse index that makes manual cleanup possible: when an element is torn down, look up
@@ -1244,7 +1244,15 @@ namespace Velvet
         // element (a replacement created before the old element's teardown has already taken it over).
         public Dictionary<string, (VisualElement? Element, LayoutIdBox? Box)> LayoutIdRegistry { get; } = new();
         public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
-        public HashSet<string> LayoutIdSnapshots { get; } = new();
+        // How many layoutId Motions the children being created are inside, which a Motion created with no parent yet
+        // reads as an ancestor (MotionLayoutIdDriver.Corrects).
+        internal int LayoutIdMotionDepth;
+        // The parent the children being reconciled are placed under (ChildReconciler.Reconcile).
+        internal VisualElement? ReconcileParent;
+        // The ids whose entry holds a box read under each parent, and the ids whose entry lost its element, oldest
+        // first (MotionLayoutIdDriver.SetEntry).
+        public Dictionary<VisualElement, HashSet<string>> LayoutIdBoxParents { get; } = new();
+        public Queue<string> LayoutIdSnapshotOrder { get; } = new();
 
         // The live elements holding each id, in the order they joined it; LayoutIdRegistry names the lead among
         // them. Each member's layout transition, for a lead it takes without a patch of its own; the inline
