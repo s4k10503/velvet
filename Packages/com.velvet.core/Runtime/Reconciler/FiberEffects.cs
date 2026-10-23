@@ -156,14 +156,16 @@ namespace Velvet
             var commits = 0;
             while (HasStrandedWork(ctx))
             {
-                // Bounded, so a chain of follow-up commits that never settles surfaces as this exception rather
-                // than a hang.
+                // Bounded at React's nested-update limit, so a chain that never settles — a fallback whose layout
+                // effect throws back into its own boundary on every commit — ends in this exception, as React's does,
+                // rather than a hang.
                 if (commits++ == MaxFollowUpCommits)
                 {
                     DropStrandedWork(ctx);
                     throw new InvalidOperationException(
-                        $"Velvet: layout effects kept leaving work for a follow-up commit, {MaxFollowUpCommits} follow-up"
-                        + " commits in a row.");
+                        "Maximum update depth exceeded. Layout effects kept leaving work for a follow-up commit, "
+                        + $"{MaxFollowUpCommits} follow-up commits in a row. Velvet limits them, as React limits "
+                        + "nested updates, to prevent infinite loops.");
                 }
                 CommitLayoutBatch(ctx, null, s_noRoots);
             }
@@ -176,7 +178,7 @@ namespace Velvet
             ctx.ErrorsDuringFallbackSwap.RemoveAll(static taken => !taken.Boundary.IsMounted);
         }
 
-        private const int MaxFollowUpCommits = 100;
+        private const int MaxFollowUpCommits = 50;
 
         private static readonly List<(ComponentFiber Fiber, bool IsMount)> s_noRoots = new();
 
@@ -294,6 +296,7 @@ namespace Velvet
                 {
                     ScheduleRunEffects(roots[i].Fiber, roots[i].IsMount);
                 }
+                StageInCommitOrder(ctx, ordered);
             }
             finally
             {
@@ -616,14 +619,13 @@ namespace Velvet
         // the layout-effect drain's ordering, but deferred to the post-paint scheduler tick rather
         // than committed synchronously. Reconstructs post-order from fiber.Parent ancestry
         // the same way TakeBatch does for the layout commit.
-        // Returns whether the sync work it rendered ended at the nested-update cap.
-        private static bool DrainPassiveEffects(ReconcilerContext context)
+        private static void DrainPassiveEffects(ReconcilerContext context)
         {
             context.PassiveEffectDrainScheduled = false;
             // Snapshot and clear the staged set before running: an effect setup can synchronously
             // stage further passive effects (setState in a UseEffect), which must enqueue a NEW drain
             // rather than mutate the list we are iterating.
-            if (context.PendingPassiveEffectFibers.Count == 0 && context.PendingPassiveCompletions.Count == 0) return false;
+            if (context.PendingPassiveEffectFibers.Count == 0 && context.PendingPassiveCompletions.Count == 0) return;
             context.EffectCommitDepth++;
             context.PassiveDrainDepth++;
             try
@@ -639,7 +641,7 @@ namespace Velvet
             CommitStrandedLayoutWork(context);
             // React's passive flush ends by flushing sync work, so a store hook's forced re-render renders before
             // the drain returns rather than on a later tick. Inside an immediate drain, that drain's own passes do.
-            return context.EffectCommitDepth == 0 && context.BatchScheduler.FlushSyncWorkAfterPassiveEffects();
+            if (context.EffectCommitDepth == 0) context.BatchScheduler.FlushSyncWorkAfterPassiveEffects();
         }
 
         private static void RunPassivePhases(ReconcilerContext context)
@@ -702,6 +704,22 @@ namespace Velvet
                 return true;
             }
             return false;
+        }
+
+        // The passive drain runs fibers in the order they were staged (OrderFibersPostOrder), and the fibers of a
+        // commit were staged as their passes rendered them, its roots in the order a drain flushed them
+        // (CommitLayoutBatch). They move to the end of the staged list in the commit's own order, the tree's, as
+        // React's commit walks the tree for its passive effects as for its layout effects; what earlier commits
+        // staged stays ahead of them.
+        private static void StageInCommitOrder(ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered)
+        {
+            var staged = ctx.PendingPassiveEffectFibers;
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                if (!ctx.PendingPassiveEffectFiberSet.Contains(ordered[i].Fiber)) continue;
+                staged.Remove(ordered[i].Fiber);
+                staged.Add(ordered[i].Fiber);
+            }
         }
 
         // Runs when a layout commit ends, a throwing one included, since the commit that completes a pass is the one
@@ -850,9 +868,7 @@ namespace Velvet
                     throw new InvalidOperationException(
                         "FlushPendingPassiveEffects: passive effects kept re-staging without settling.");
                 }
-                // A runaway the cap stopped leaves its last commit's effects pending, and running them would only
-                // ask for the update the cap dropped, so they wait for the next flush.
-                if (DrainPassiveEffects(context)) return;
+                DrainPassiveEffects(context);
             }
         }
 
