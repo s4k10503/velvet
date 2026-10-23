@@ -2766,6 +2766,17 @@ namespace Velvet.Tests
             Assert.That((rem, s.Property, s.Value, percent), Is.EqualTo((true, ArbitraryProperty.FilterBlur, 8f, false)));
         }
 
+        // GREEN_ON_BASE(characterization): a blur bracket reading a percentage was declined on the base, as CSS blur() takes none.
+        [Test]
+        public void Given_ABlurBracketMixingAnEmWithAPercentage_When_Parsed_Then_ItIsDeclined()
+        {
+            // Act
+            var parsed = StyleArbitraryValueResolver.TryParse("blur-[calc(1em+10%)]", out _);
+
+            // Assert
+            Assert.That(parsed, Is.False);
+        }
+
         [Test]
         public void Given_AGrayscaleBracketAboveOne_When_Parsed_Then_ItIsClampedToOne()
         {

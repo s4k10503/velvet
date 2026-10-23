@@ -85,8 +85,10 @@ namespace Velvet
         /// answered: on a parent holding a back z-layer container and no rendered child that idiom said 0,
         /// which would place the append ahead of a container that has to stay first.
         /// Insert semantics follow from the same rule: inserting at a logical slot puts the new child
-        /// immediately before the child currently holding that slot, so an invisible child sitting between
-        /// two rendered ones stays attached to the rendered child it precedes.
+        /// immediately before the child currently holding that slot, and so after every invisible child between
+        /// that child and the rendered one before it. One hosted after its rendered child (a ring band) stays
+        /// beside it; one hosted before its rendered child (a backdrop layer) is left before the new child,
+        /// which is why BackdropFilterLayer places its layer again at the reconcile boundary.
         /// </remarks>
         internal static int ToPhysical(VisualElement container, int logical)
         {

@@ -674,6 +674,35 @@
           "neuter": "return false;"
         }
       ]
+    },
+    {
+      "name": "backdrop-parser",
+      "mechanism": "backdrop",
+      "summary": "the backdrop-* class parser declares no backdrop-filter",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleBackdropClass.cs",
+          "anchor": "public static bool TryExtract(string[]? classNames, out BackdropSpec? spec)",
+          "neuter": "spec = null; return false;"
+        }
+      ]
+    },
+    {
+      "name": "backdrop-applier",
+      "mechanism": "backdrop",
+      "summary": "the reconciler attaches no backdrop layer",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBackdropApplier.cs",
+          "anchor": "internal void ApplyBackdropOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBackdropApplier.cs",
+          "anchor": "internal void ApplyBackdropOnPatch(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -1019,6 +1048,24 @@
       ],
       "caseScopes": [],
       "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.BackdropFilterLayerTests",
+      "cuts": [
+        "backdrop-applier",
+        "backdrop-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.BackdropFilterPlaybackTests",
+      "cuts": [
+        "backdrop-applier",
+        "backdrop-parser"
+      ],
+      "caseScopes": [],
+      "platform": "PlayMode"
     }
   ]
 }

@@ -422,7 +422,7 @@ namespace Velvet
             style.backgroundPositionX = state.WrittenPositionX = state.Own.X;
             style.backgroundPositionY = state.WrittenPositionY = state.Own.Y;
             style.backgroundRepeat = state.WrittenRepeat = state.Own.Repeat;
-            style.backgroundSize = state.WrittenSize = state.Own.Size;
+            TransformOriginSparing.SetBackgroundSize(element, state.WrittenSize = state.Own.Size);
         }
 
         // An element's own inline image slot and placement slots.
@@ -558,7 +558,7 @@ namespace Velvet
             style.backgroundPositionX = state.WrittenPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, 0f);
             style.backgroundPositionY = state.WrittenPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, 0f);
             style.backgroundRepeat = state.WrittenRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
-            style.backgroundSize = state.WrittenSize = new BackgroundSize(size.x, size.y);
+            TransformOriginSparing.SetBackgroundSize(element, state.WrittenSize = new BackgroundSize(size.x, size.y));
         }
 
         // Within a hundredth of a pixel.
