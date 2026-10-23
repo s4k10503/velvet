@@ -83,8 +83,8 @@ effects play live without entering Play Mode.
 V.Particles(sparksVfx, className: "absolute inset-0", playOn: PlayTrigger.Mount);
 ```
 
-A VFX Graph effect simulates and draws on the GPU and leaves no geometry to bake, so
-`V.Particles(VisualEffect visualEffect, …)` takes the camera route:
+A VFX Graph effect simulates and draws on the GPU, and `VisualEffect` has no call that bakes what it
+draws into a mesh, so `V.Particles(VisualEffect visualEffect, …)` takes the camera route:
 
 - On mount the effect is cloned into a hidden host at the source's pose, with a disabled
   orthographic camera under it looking down its forward axis, as tall in world units as the element

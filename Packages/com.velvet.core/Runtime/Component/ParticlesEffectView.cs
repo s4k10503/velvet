@@ -5,9 +5,9 @@ using UnityEngine.VFX;
 
 namespace Velvet
 {
-    // The VisualEffect half of ParticlesDriver. A VisualEffect simulates and draws on the GPU and leaves no
-    // geometry to bake, so a camera under its hidden clone renders the clone into a texture on the element's tick
-    // and a layer over the element draws that texture.
+    // The VisualEffect half of ParticlesDriver. VisualEffect has no call that bakes what it draws into a mesh, so a
+    // camera under its hidden clone renders the clone into a texture on the element's tick and a layer over the
+    // element draws that texture.
     //
     // The clone and every object under it are moved onto a layer the project has not named, the one layer the
     // camera renders, and their renderers are forced off except while that camera renders, so no other camera
