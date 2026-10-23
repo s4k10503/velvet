@@ -127,7 +127,7 @@ namespace Velvet
             if (Mask(channels.TranslateX, named, StyleLonghand.Translate))
             {
                 Mask(channels.TranslateY, named, StyleLonghand.Translate);
-                SeatedTranslate.Write(element, StyleKeyword.Null);
+                element.style.translate = StyleKeyword.Null;
             }
             if (Mask(channels.Scale, named, StyleLonghand.Scale))
             {

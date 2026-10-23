@@ -433,7 +433,7 @@ namespace Velvet
             binding.Opacity.Seed(style.opacity);
             binding.Rotation.Seed(AuthoredTransform.Rotate(element));
             binding.Scale.Seed(AuthoredTransform.Scale(element));
-            binding.Translation.Seed(SeatedTranslate.Read(element));
+            binding.Translation.Seed(element.style.translate);
         }
 
         /// <summary>
@@ -533,7 +533,7 @@ namespace Velvet
             else if (binding.Spec.Mode == AnimateMode.Bounce)
             {
                 // Same ownership rule as the Spin branch, over the translate slot.
-                SeatedTranslate.Write(element, StyleKeyword.Null);
+                element.style.translate = StyleKeyword.Null;
             }
             else if (binding.Spec.Mode == AnimateMode.Custom)
             {
@@ -548,7 +548,7 @@ namespace Velvet
             if ((slots & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None) MotionOpacity.Write(element, StyleKeyword.Null);
             if ((slots & MotionTransitionSlots.Rotate) != MotionTransitionSlots.None) AuthoredTransform.SetRotate(element, StyleKeyword.Null);
             if ((slots & MotionTransitionSlots.Scale) != MotionTransitionSlots.None) AuthoredTransform.SetScale(element, StyleKeyword.Null);
-            if ((slots & MotionTransitionSlots.Translate) != MotionTransitionSlots.None) SeatedTranslate.Write(element, StyleKeyword.Null);
+            if ((slots & MotionTransitionSlots.Translate) != MotionTransitionSlots.None) element.style.translate = StyleKeyword.Null;
         }
 
         // Re-asserts a pan mode's background sizing. A steady-state patch (the animate spec is unchanged) may
@@ -826,12 +826,12 @@ namespace Velvet
             {
                 return;
             }
-            var translation = binding.Translation.Own(SeatedTranslate.Read(element), Adopts(driven, MotionTransitionSlots.Translate));
+            var translation = binding.Translation.Own(element.style.translate, Adopts(driven, MotionTransitionSlots.Translate));
             var own = ReadTranslate(element, binding, translation);
             var x = LengthPx(own.x, width) + lift.x;
             var y = LengthPx(own.y, height) + lift.y;
-            SeatedTranslate.Write(element, new Translate(new Length(x), new Length(y), own.z));
-            binding.Translation.Wrote(SeatedTranslate.Read(element));
+            element.style.translate = new Translate(new Length(x), new Length(y), own.z);
+            binding.Translation.Wrote(element.style.translate);
         }
 
         // One frame of a registered animation at loop position t. Each property composes with the element's own the
@@ -872,13 +872,13 @@ namespace Velvet
         private static void ApplyCustomTranslate(VisualElement element, StyleAnimateBinding binding, KeyframeSet keyframes,
             float t, MotionTransitionSlots driven)
         {
-            var translation = binding.Translation.Own(SeatedTranslate.Read(element), Adopts(driven, MotionTransitionSlots.Translate));
+            var translation = binding.Translation.Own(element.style.translate, Adopts(driven, MotionTransitionSlots.Translate));
             var own = ReadTranslate(element, binding, translation);
             var (width, height) = (element.resolvedStyle.width, element.resolvedStyle.height);
             var x = LengthPx(own.x, float.IsNaN(width) ? 0f : width) + (keyframes.TranslateX?.Eval(t, 0f, 0f, binding.Spec.Timing) ?? 0f);
             var y = LengthPx(own.y, float.IsNaN(height) ? 0f : height) + (keyframes.TranslateY?.Eval(t, 0f, 0f, binding.Spec.Timing) ?? 0f);
-            SeatedTranslate.Write(element, new Translate(new Length(x), new Length(y), own.z));
-            binding.Translation.Wrote(SeatedTranslate.Read(element));
+            element.style.translate = new Translate(new Length(x), new Length(y), own.z);
+            binding.Translation.Wrote(element.style.translate);
         }
 
         // A translate component in pixels; a percentage is of the element's own extent along that axis.

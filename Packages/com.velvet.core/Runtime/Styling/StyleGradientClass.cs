@@ -112,9 +112,7 @@ namespace Velvet
     // re-resolves to the same gradient.
     internal readonly struct GradientSpec : IEquatable<GradientSpec>
     {
-        // The skew silhouette shader declares its stop arrays at this length, so the parser rejects a longer
-        // list rather than let the skewed paint drop stops the straight paint draws. GradientStopCapacityTests
-        // holds the shader's length to this one.
+        // The most colour stops the parser lets through; it rejects a longer list.
         public const int MaxStops = 64;
 
         public GradientType Type { get; init; }

@@ -17,8 +17,7 @@ namespace Velvet
         public HideFlags HideFlags { get; init; }
     }
 
-    // Shared bake→readback recipe for a shader-driven silhouette texture (GradientSilhouetteBaker,
-    // BoxShadowBaker): render a material into a temporary RT, read it back into a persistent Texture2D, then
+    // Bake→readback recipe for a shader-driven silhouette texture (BoxShadowBaker): render a material into a temporary RT, read it back into a persistent Texture2D, then
     // restore whichever RT was active on entry.
     internal static class SilhouetteBakeReadback
     {

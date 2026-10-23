@@ -10,8 +10,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins, by real GPU pixel readback, that a face a silhouette layer repaints keeps each border side's own colour:
-    /// a red border whose top side alone is blue, eight pixels wide, on a box the skew layer repaints and on one the
-    /// shadow layer repaints; and where the two sides meet in a rounded corner, divided by their widths. A shadowed box
+    /// a red border whose top side alone is blue, eight pixels wide, on a box the shadow layer repaints; and where the two sides meet in a rounded corner, divided by their widths. A shadowed box
     /// keeps its border where it clips its content, and dashes a dashed one.
     /// </summary>
     [Timeout(600000)]
@@ -64,17 +63,6 @@ namespace Velvet.Tests
             return "other";
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [UnityTest]
-        public IEnumerator Given_ASkewedBoxWhoseTopBorderAloneIsBlue_When_ItsFaceIsRepainted_Then_ItsTopBandIsBlue()
-        {
-            // Arrange / Act
-            yield return Mount("SkewTopBand", $"{Box} skew-x-[10deg] rotate-0");
-
-            // Assert — halfway along the top band and halfway into it.
-            Assert.That(ColourAt(new Vector2(60f, 4f), Mathf.Tan(10f * Mathf.Deg2Rad)), Is.EqualTo("blue"));
-        }
-
         [UnityTest]
         public IEnumerator Given_AShadowedBoxWhoseTopBorderAloneIsBlue_When_ItsFaceIsRepainted_Then_ItsTopBandIsBlue()
         {
@@ -122,34 +110,6 @@ namespace Velvet.Tests
 
             // Assert — both dash and gap, which a solid band, or none, would not show.
             Assert.That((seen.Contains("red"), seen.Contains("other")), Is.EqualTo((true, true)));
-        }
-
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [UnityTest]
-        public IEnumerator Given_ASkewedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps()
-        {
-            // Arrange
-            yield return Mount("SkewDashed", $"{DashedBox} skew-x-[10deg] rotate-0");
-
-            // Act
-            var seen = TopBand(Mathf.Tan(10f * Mathf.Deg2Rad));
-
-            // Assert — both dash and gap, which a solid band, or none, would not show.
-            Assert.That((seen.Contains("red"), seen.Contains("other")), Is.EqualTo((true, true)));
-        }
-
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [UnityTest]
-        public IEnumerator Given_ASkewedBoxThatClipsItsContent_When_Painted_Then_ItsTopBandIsBlue()
-        {
-            // Arrange / Act
-            yield return Mount("SkewClipped", $"{Box} overflow-hidden skew-x-[10deg] rotate-0");
-            var skewed = _mounted.Root.Reconciler.Context.SkewBindings.ContainsKey(_host.Root.Q<VisualElement>("box"));
-
-            // Assert — halfway along the top band and halfway into it; "no skew" where the skew never bound, since the
-            // same box unskewed shows its border natively.
-            Assert.That(skewed ? ColourAt(new Vector2(60f, 4f), Mathf.Tan(10f * Mathf.Deg2Rad)) : "no skew",
-                Is.EqualTo("blue"));
         }
 
         [UnityTest]

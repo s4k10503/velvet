@@ -183,9 +183,8 @@ namespace Velvet
             // arrive later through attach.
             _ctx.ExpectPlayGates(element, null);
             var paintClasses = _patcher.ResolveVariantClassesOnCreate(element, elementNode.ClassNames);
-            // Skew is wrapper-less (the sheared silhouette is the element's own painted
-            // content), so it attaches before — and composes with — any wrap layer below,
-            // including a user wrapElement.
+            // Skew is wrapper-less (the element's own inline rotate and scale), so it attaches before — and
+            // composes with — any wrap layer below, including a user wrapElement.
             _patcher.Appliers.ApplySkewOnCreate(element, paintClasses);
             // Gradient is also wrapper-less (baked texture set as the element's own
             // background-image, clipped to its border-radius), so it attaches on the element too.
@@ -348,8 +347,7 @@ namespace Velvet
             // ring then stand down for the clip.
             var motionOuter = _patcher.Appliers.ApplyClipPathOnCreate(element, writtenClasses);
             var clipActive = !ReferenceEquals(motionOuter, element);
-            _patcher.Appliers.ApplyShadowOnPatch(element, motionPaintClasses, clipActive,
-                StyleSkewClass.TryExtract(motionPaintClasses, out var motionSkew) ? motionSkew : default);
+            _patcher.Appliers.ApplyShadowOnPatch(element, motionPaintClasses, clipActive);
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyRingOnPatch(element, motionPaintClasses, clipActive);
             WarnInertMotionExit(motionNode);

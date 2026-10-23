@@ -314,7 +314,7 @@ namespace Velvet
             StyleAnimateDriver.ForgetHolds(element);
         }
 
-        // The generateVisualContent-driven paint bindings: shadow/clip/ring/skew/border/divide/overline
+        // The generateVisualContent-driven paint bindings: shadow/clip/ring/border/divide/overline
         // silhouettes, the baked gradient background, and the animate/filter-transition tick drivers.
         private void CleanupPaintResources(VisualElement element)
         {
@@ -352,15 +352,6 @@ namespace Velvet
                 // Lives in the element's parent, as the ring band does.
                 BackdropFilterLayer.Detach(element, backdropBinding);
                 _ctx.BackdropBindings.Remove(element);
-            }
-            if (_ctx.SkewBindings.TryGetValue(element, out var skewBinding))
-            {
-                // Detach unhooks the paint/stash callbacks, destroys the baked gradient texture, drops the
-                // bounds spacer and removes the child-translate manipulator; no pool return does any of
-                // those. The suppression it also releases is the one part a pool return covers on its own,
-                // ResetInlineStyle nulling the same five inline colors.
-                SkewSilhouette.Detach(element, skewBinding);
-                _ctx.SkewBindings.Remove(element);
             }
             if (_ctx.BorderStyleBindings.TryGetValue(element, out var borderStyleBinding))
             {

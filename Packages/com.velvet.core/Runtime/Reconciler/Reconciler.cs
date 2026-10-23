@@ -697,13 +697,14 @@ namespace Velvet
                 BackdropFilterLayer.Detach(element, binding);
             }
             _ctx.BackdropBindings.Clear();
-            // Skewed elements hold paint/stash callbacks and an inline color suppression: detach so
-            // a still-mounted element released at root disposal carries no Velvet residue.
-            foreach (var (element, binding) in _ctx.SkewBindings)
+            // Skewed elements hold the composite in their rotate and scale slots: hand them back so a
+            // still-mounted element released at root disposal carries no Velvet residue.
+            foreach (var element in _ctx.SkewTransformed.Keys)
             {
-                SkewSilhouette.Detach(element, binding);
+                AuthoredTransform.Release(element);
             }
-            _ctx.SkewBindings.Clear();
+            _ctx.SkewTransformed.Clear();
+            _ctx.SkewDriven.Clear();
             // border-dashed / border-dotted elements hold a paint/stash callback and a border-color
             // suppression: detach so a still-mounted element released at root disposal carries no residue.
             foreach (var (element, binding) in _ctx.BorderStyleBindings)

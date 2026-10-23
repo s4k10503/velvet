@@ -238,7 +238,7 @@ namespace Velvet.Tests
         }
 
         // A strip through the LEFT border band at mid-height. Mid-height is where a shear displaces nothing, so
-        // one strip definition serves the shadowed and the skewed caster alike, and it is clear of the corner
+        // one strip definition serves every caster, and it is clear of the corner
         // anti-aliasing that would otherwise decide the count.
         private static RectInt LeftBorderStrip(Rect box, float border)
             => new(Mathf.RoundToInt(box.xMin), Mathf.RoundToInt(box.center.y) - 5,
@@ -285,115 +285,6 @@ namespace Velvet.Tests
                     shadowClipped.Backdrop),
                 Is.EqualTo((true, true, true, 0)),
                 $"plainClipped={plainClipped} shadowOpen={shadowOpen} shadowClipped={shadowClipped}");
-        }
-
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [UnityTest]
-        public IEnumerator Given_ABorderedSkewedCaster_When_ItsOwnOverflowIsHidden_Then_ItKeepsItsBorder()
-        {
-            // Arrange — a clipping skewed card paints its border and the background beneath it on a sibling over
-            // it (FaceBorderOverlay). A shallow angle keeps the sheared face over the sampled strip.
-            const string skew = " skew-x-[10deg] rotate-0";
-            yield return MountBorderedCard("BorderedSkewOpen", skew, clip: false);
-            var open = SampleBorderStrip();
-
-            // Act
-            yield return MountBorderedCard("BorderedSkewClipped", skew, clip: true);
-            var clipped = SampleBorderStrip();
-
-            // Assert — the border shows clipped as it does unclipped. The backdrop is left out: the sheared band's
-            // anti-aliased edge shows it in a pixel or two either way.
-            Assert.That((open.Border > 0, clipped.Border == open.Border), Is.EqualTo((true, true)),
-                $"open={open} clipped={clipped}");
-        }
-
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [UnityTest]
-        public IEnumerator Given_ASkewedElement_When_ItsOwnOverflowIsHidden_Then_TheShearOverhangIsLostAndTheFaceSurvives()
-        {
-            // Arrange
-            const string skew = BoxBase + " bg-[#ff0000] skew-x-[30deg] rotate-0";
-            yield return MountBox("SkewOpen", skew, clip: false);
-            var openOverhang = Count(LeftOfBox, IsRed);
-
-            // Act
-            yield return MountBox("SkewClipped", skew, clip: true);
-            var clippedControl = CountAll(IsGreen);
-            var clippedOverhang = Count(LeftOfBox, IsRed);
-            var clippedFace = CountAll(IsRed);
-
-            // Assert — unlike the shadow, the sheared face is mostly inside the box, so the clip trims it
-            // rather than erasing it: the overhang past the box edge goes and the rest stays. The face term is
-            // what distinguishes trimming from a paint that never ran.
-            Assert.That((openOverhang > 0, clippedControl == 0, clippedOverhang == 0, clippedFace > 0),
-                Is.EqualTo((true, true, true, true)),
-                $"openOverhang={openOverhang} clippedOverhang={clippedOverhang} clippedFace={clippedFace}");
-        }
-
-        // Move `overflow-hidden` from the inner child onto the caster and the overhang term reddens.
-        // GREEN_ON_BASE(characterization): the nesting styling-variants.md gives for skew-* plus a clip.
-        [UnityTest]
-        public IEnumerator Given_ASkewedElementWithAFullSizeClippingChild_When_ItRenders_Then_TheFaceKeepsItsOverhangAndTheContentIsClipped()
-        {
-            // Arrange — the clip one level in from the skew. The GREEN child of the clipping element straddles
-            // its right edge: the half inside proves the content painted, the half outside proves the clip took.
-            NewPanel("SkewClipChild");
-            _mounted = V.Mount(_host.Root, V.Div(name: "caster",
-                className: BoxBase + " bg-[#ff0000] skew-x-[30deg] rotate-0",
-                children: new[] { V.Div(name: "clip", className: "absolute inset-0 overflow-hidden") }));
-            var caster = _host.Root.Q<VisualElement>("caster");
-            var clip = _host.Root.Q<VisualElement>("clip");
-            clip.Add(new VisualElement
-            {
-                pickingMode = PickingMode.Ignore,
-                style =
-                {
-                    position = Position.Absolute, left = 60, top = 15, width = 40, height = 30,
-                    backgroundColor = new Color(0f, 1f, 0f, 1f),
-                },
-            });
-
-            // Act
-            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
-            var box = caster.worldBound;
-            var inner = clip.worldBound;
-            var innerCoversBox = Vector2.Distance(inner.min, box.min) < 0.5f
-                && Vector2.Distance(inner.max, box.max) < 0.5f;
-            var left = Mathf.RoundToInt(box.xMin);
-            var right = Mathf.RoundToInt(box.xMax);
-            var top = Mathf.RoundToInt(box.yMin);
-            var overhang = Count(new RectInt(left - 30, top, 28, Mathf.RoundToInt(box.height / 2f)), IsRed);
-            var contentInside = Count(new RectInt(right - 20, top + 15, 20, 30), IsGreen);
-            var contentOutside = Count(new RectInt(right, top + 15, 20, 30), IsGreen);
-
-            // Assert — the inner child covers the caster, the face still reaches past the box's left edge, and
-            // the content shows inside the box and not in the strip past its right edge.
-            Assert.That((innerCoversBox, overhang > 0, contentInside > 0, contentOutside),
-                Is.EqualTo((true, true, true, 0)),
-                $"box={box} inner={inner} overhang={overhang} inside={contentInside} outside={contentOutside}");
-        }
-
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [UnityTest]
-        public IEnumerator Given_ASkewedGradientElement_When_ItsOwnOverflowIsHidden_Then_TheShearOverhangIsLost()
-        {
-            // Arrange — a gradient alone is a background-image and is clipped to the box either way; the
-            // skewed one is the case that becomes a generated-content quad, so it is the one at risk.
-            const string skewGradient = BoxBase + " skew-x-[30deg] bg-gradient-to-r from-[#ff0000] to-[#ff0000] rotate-0";
-            yield return MountBox("SkewGradOpen", skewGradient, clip: false);
-            var openOverhang = Count(LeftOfBox, IsRed);
-
-            // Act
-            yield return MountBox("SkewGradClipped", skewGradient, clip: true);
-            var clippedControl = CountAll(IsGreen);
-            var clippedOverhang = Count(LeftOfBox, IsRed);
-            var clippedFace = CountAll(IsRed);
-
-            // Assert — the baked gradient quad follows the sheared silhouette, so it loses exactly what the
-            // painted face loses.
-            Assert.That((openOverhang > 0, clippedControl == 0, clippedOverhang == 0, clippedFace > 0),
-                Is.EqualTo((true, true, true, true)),
-                $"openOverhang={openOverhang} clippedOverhang={clippedOverhang} clippedFace={clippedFace}");
         }
 
         [UnityTest]

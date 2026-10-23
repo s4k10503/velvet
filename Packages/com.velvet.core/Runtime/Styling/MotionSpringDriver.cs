@@ -143,7 +143,7 @@ namespace Velvet
         public SpringChannel? Rotate;
         public SpringChannel? SkewX;
         public SpringChannel? SkewY;
-        // Draws the skew channels, which no style slot holds; null where the scheduler has no reconciler to paint on.
+        // Draws the skew channels, which no style slot holds; null where the scheduler has no reconciler to write to.
         public FiberSkewApplier? Skew;
         public List<SpringColorChannel>? Colors;
         public List<SpringLengthChannel>? Lengths;
@@ -433,9 +433,9 @@ namespace Velvet
             }
             if ((state.TranslateX != null || state.TranslateY != null) && state.TranslateX?.Masked != true)
             {
-                SeatedTranslate.Write(element, new Translate(
+                element.style.translate = new Translate(
                     new Length(state.TranslateX?.Integrator.Value ?? 0f, state.TranslateX?.Unit ?? LengthUnit.Pixel),
-                    new Length(state.TranslateY?.Integrator.Value ?? 0f, state.TranslateY?.Unit ?? LengthUnit.Pixel)));
+                    new Length(state.TranslateY?.Integrator.Value ?? 0f, state.TranslateY?.Unit ?? LengthUnit.Pixel));
             }
             if (state.Scale is { Masked: false })
             {
@@ -820,7 +820,7 @@ namespace Velvet
         public static void ClearInlineOverrides(VisualElement element, MotionSpringState state, bool landed = false)
         {
             if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
-            if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
+            if (state.TranslateX != null || state.TranslateY != null) element.style.translate = StyleKeyword.Null;
             if (state.Scale != null) AuthoredTransform.SetScale(element, StyleKeyword.Null);
             if (state.Rotate != null) AuthoredTransform.SetRotate(element, StyleKeyword.Null);
             state.Paint?.Release();
@@ -857,7 +857,7 @@ namespace Velvet
             {
                 state.TranslateX = null;
                 state.TranslateY = null;
-                SeatedTranslate.Write(element, StyleKeyword.Null);
+                element.style.translate = StyleKeyword.Null;
             }
             if (state.Scale != null && named.Contains(StyleLonghand.Scale))
             {

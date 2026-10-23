@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Velvet
 {
     /// <summary>
-    /// The value math a Motion play applies to the paint layers (skew, shadow, gradient) at a progress. A pair
+    /// The value math a Motion play applies to the skew, shadow and gradient layers at a progress. A pair
     /// that has no continuous path between its ends holds the first until progress reaches one half and then
     /// takes the second.
     /// </summary>

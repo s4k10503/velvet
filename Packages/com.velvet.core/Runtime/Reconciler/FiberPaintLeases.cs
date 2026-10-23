@@ -371,8 +371,8 @@ namespace Velvet
                 if (_target != null)
                 {
                     _owner._gradient.ApplyGradientOnPatch(_element, _target);
-                    var skew = _owner._skew.ApplySkewOnPatch(_element, _target, classesChanged: true);
-                    _owner._shadow.ApplyShadowOnPatch(_element, _target, clipActive: false, skew);
+                    _owner._skew.ApplySkewOnPatch(_element, _target, classesChanged: true);
+                    _owner._shadow.ApplyShadowOnPatch(_element, _target, clipActive: false);
                 }
                 if (_hasZ)
                 {

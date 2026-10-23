@@ -44,14 +44,8 @@ namespace Velvet
     // after them, so the last one is the one Tailwind emits last: every skew-<n> beneath every skew-x-* and
     // skew-y-*, whichever is written first and whatever its sign, and a payload over the base.
     //
-    // PARITY NOTE: CSS transform: skewX() shears the element AND its descendants. UI Toolkit's
-    // transform supports only translate / rotate / scale — shear is unrepresentable — so Velvet's
-    // skew is a documented deviation: it shears the element's own box silhouette (background +
-    // border, painted by SkewSilhouette). The descendant shear is APPROXIMATED, not exact:
-    // StyleSkewChildTranslateManipulator seats each direct in-flow child's centroid where the shear would
-    // carry it via an inline translate, applied automatically (Velvet does the counter-translate a CSS author
-    // would otherwise hand-write per row). The seat is piecewise-constant — exact at each child's centroid,
-    // slightly off at the far corners of a child large relative to the frame, and it does not rotate the child.
+    // UI Toolkit's transform has no shear, so FiberSkewApplier draws the angles as the inline rotate and scale slots
+    // (AuthoredTransform, SkewTransformFactor), under which the element and its descendants are sheared.
     internal static class StyleSkewClass
     {
         private const string XPrefix = "skew-x-";

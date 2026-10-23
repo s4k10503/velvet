@@ -24,13 +24,10 @@ namespace Velvet.Tests
     /// declaring a field that holds <c>VisualElement</c>s. A fifth family wired that same way is a subject
     /// the day it is written, with no list here to update.
     /// <para>
-    /// Four known limits, stated because the sentence above otherwise reads as coverage it does not
+    /// Three known limits, stated because the sentence above otherwise reads as coverage it does not
     /// have. They are the ones established, not a proof that no fifth exists:
     /// </para>
     /// <list type="bullet">
-    /// <item>Owned by something other than a <c>ReconcilerContext</c> table.
-    /// <see cref="StyleSkewChildTranslateManipulator"/> is that today — it tracks children in a dictionary
-    /// but hangs off the caster's <c>SkewBinding</c>, so the derivation never reaches it.</item>
     /// <item>Keyed by a tuple rather than by the element. <c>StackedVariantManipulators</c> is that, and
     /// <c>KeyedByElement</c> rejects it.</item>
     /// <item>Holding its children inside a helper object rather than in a field of its own, which

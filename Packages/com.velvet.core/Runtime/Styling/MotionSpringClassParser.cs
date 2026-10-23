@@ -81,8 +81,8 @@ namespace Velvet
             // The y factor of a scale that differs per axis, Scale being its x factor; null for a uniform scale.
             public (float from, float to)? ScaleY;
             public (float from, float to)? Rotate;
-            // Skew angles in degrees, which no style slot holds: a skew-* class is painted (SkewSilhouette), so these
-            // channels write the element's skew binding instead (MotionSkewSink).
+            // Skew angles in degrees, which no style slot holds: a skew-* class is composed into the rotate and scale
+            // slots (AuthoredTransform), so these channels write the element's skew angles instead (FiberSkewApplier.Drive).
             public (float from, float to)? SkewX;
             public (float from, float to)? SkewY;
             public List<ColorChannelPlan>? Colors;

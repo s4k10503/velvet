@@ -86,7 +86,7 @@ namespace Velvet
             BorderLineStyle style)
             => PaintSide(painter, side, box, color, style, SilhouetteFace.Shearing.None);
 
-        // As above, each point carried by shear, as a skewed element's face is (SkewSilhouette).
+        // As above, each point carried by shear.
         public static void PaintSide(Painter2D painter, DivideEdge side, in BorderBox box, Color color,
             BorderLineStyle style, in SilhouetteFace.Shearing shear)
         {

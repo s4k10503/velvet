@@ -36,9 +36,6 @@ namespace Velvet
 
         public static bool Has(VisualElement element) => s_byElement.TryGetValue(element, out _);
 
-        public static VisualElement? OverlayOf(VisualElement element)
-            => s_byElement.TryGetValue(element, out var binding) ? binding.Overlay : null;
-
         // Paints element's border with paint, which draws in the element's own box, given its laid-out width and
         // height, from now on.
         public static void Ensure(VisualElement element, Action<MeshGenerationContext, float, float> paint)

@@ -821,7 +821,7 @@ namespace Velvet.Tests
         {
             "shadow" => ctx.ShadowBindings.ContainsKey(child),
             "ring" => ctx.RingBindings.ContainsKey(child),
-            "skew" => ctx.SkewBindings.ContainsKey(child) || ctx.SkewTransformed.ContainsKey(child),
+            "skew" => ctx.SkewTransformed.ContainsKey(child),
             "gradient" => ctx.GradientBackgrounds.ContainsKey(child),
             "animation" => ctx.AnimationBindings.ContainsKey(child),
             "dash" => ctx.BorderStyleBindings.ContainsKey(child),
@@ -1030,7 +1030,7 @@ namespace Velvet.Tests
 
     /// <summary>
     /// A background colour a class change brings in outside a reconcile pass — a variant payload, a gesture
-    /// class, a theme flip, a play — on an element whose shadow or skew Velvet paints. Both layers repaint the
+    /// class, a theme flip, a play — on an element whose shadow Velvet paints. The layer repaints the
     /// element's face, so the face has to take the colour the background would resolve to.
     /// </summary>
     internal sealed class SilhouetteFaceColorPanelTests : PanelTestBase
@@ -1054,7 +1054,7 @@ namespace Velvet.Tests
 
         // A card carrying className and the hover class, beside a reference carrying reference alone, whose
         // resolved background is the one the card should show. A geometry event is delivered as a live host's
-        // layout delivers it, since that is where a skew layer on a panel takes its first stash.
+        // layout delivers it, since that is where a shadow layer on a panel takes its first stash.
         private (VisualElement Card, Color Expected) Mount(string className, string reference, string? hover = null,
             string name = "card")
         {
@@ -1080,8 +1080,6 @@ namespace Velvet.Tests
             }
             ForcePanelUpdate(element.panel);
         }
-
-        private Color SkewFace(VisualElement card) => _mounted.Root.Reconciler.Context.SkewBindings[card].BgColor;
 
         private Color ShadowFace(VisualElement card)
             => _mounted.Root.Reconciler.Context.ShadowBindings[card].Face.CurrentBg;
@@ -1184,49 +1182,6 @@ namespace Velvet.Tests
             Assert.That(ShadowFace(card), Is.EqualTo(dark != light ? dark : new Color(float.NaN, 0f, 0f, 0f)));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [Test]
-        public void Given_ASkewedCardWithAHoverBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()
-        {
-            // Arrange
-            var (card, expected) = Mount("bg-blue-500 hover:bg-red-500 -skew-x-6 rotate-0", "bg-red-500");
-
-            // Act
-            Hover(card);
-
-            // Assert
-            Assert.That(SkewFace(card), Is.EqualTo(expected));
-        }
-
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [Test]
-        public void Given_ASkewedCardWithAHoverClassBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()
-        {
-            // Arrange
-            var (card, expected) = Mount("bg-blue-500 -skew-x-6 rotate-0", "bg-red-500", hover: "bg-red-500");
-
-            // Act
-            Hover(card);
-
-            // Assert
-            Assert.That(SkewFace(card), Is.EqualTo(expected));
-        }
-
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [Test]
-        public void Given_ASkewedCardWithADarkBackground_When_TheThemeTurnsDark_Then_ItsFaceTakesTheDarkColor()
-        {
-            // Arrange
-            var (card, expected) = Mount("bg-blue-500 dark:bg-red-500 -skew-x-6 rotate-0", "bg-red-500");
-
-            // Act
-            VelvetTheme.IsDark = true;
-            ForcePanelUpdate(card.panel);
-
-            // Assert
-            Assert.That(SkewFace(card), Is.EqualTo(expected));
-        }
-
         [Test]
         public void Given_AShadowedCard_When_APlayShowsABackgroundClass_Then_ItsFaceTakesThePlaysColor()
         {
@@ -1239,21 +1194,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ShadowFace(card), Is.EqualTo(expected));
-        }
-
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [Test]
-        public void Given_ASkewedCard_When_APlayShowsABackgroundClass_Then_ItsFaceTakesThePlaysColor()
-        {
-            // Arrange
-            var (card, expected) = Mount("bg-blue-500 -skew-x-6 rotate-0", "bg-red-500");
-
-            // Act — the class writer every play goes through.
-            StyleAnimationClassUtils.AddClasses(card, new[] { "bg-red-500" }, StyleLayerPriority.Animation);
-            ForcePanelUpdate(card.panel);
-
-            // Assert
-            Assert.That(SkewFace(card), Is.EqualTo(expected));
         }
 
         [Test]
@@ -1272,19 +1212,5 @@ namespace Velvet.Tests
             Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(card), Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [Test]
-        public void Given_ASkewedCardWithABracketHoverClassBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()
-        {
-            // Arrange — a bracket value is written inline over the face's suppression, which the face reads
-            // directly rather than through its probe.
-            var (card, _) = Mount("bg-[#0000ff] -skew-x-6 rotate-0", "", hover: "bg-[#ff0000]");
-
-            // Act
-            Hover(card);
-
-            // Assert
-            Assert.That(SkewFace(card), Is.EqualTo(Color.red));
-        }
     }
 }

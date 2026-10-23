@@ -273,14 +273,13 @@ namespace Velvet
         private static LayoutIdProjection CreateProjection(VisualElement element, VisualElement host, ReconcilerContext ctx)
         {
             var slot = Box(element);
-            var translate = SeatedTranslate.Read(slot);
+            var translate = slot.style.translate;
             var scale = AuthoredTransform.Scale(slot);
             // Where the element is drawn, which an inline value it was just given is not until a style pass has run: what a
             // projection that ended earlier in this render handed back, else the resolved style
-            // (Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform), less a skewed
-            // parent's seat, which the projection's own writes compose again (SeatedTranslate).
+            // (Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform).
             ctx.LayoutIdRestored.Remove(element, out var restored);
-            var startTranslate = restored.Translate ?? SeatedTranslate.Unseated(slot, slot.resolvedStyle.translate);
+            var startTranslate = restored.Translate ?? slot.resolvedStyle.translate;
             var startScale = restored.Scale ?? AuthoredTransform.ResolvedScale(slot).value;
             // A running bounce or ping has its frame in the slot, and the frame is the loop's rather than the element's.
             // A correction wrapper's slots are the projection's alone, so the loops stay on the Motion inside it.
@@ -560,9 +559,9 @@ namespace Velvet
             // A running bounce's lift is in the element's own frame, so the projection's scale carries it too. On a
             // correction wrapper the loop stays on the Motion inside it, inside the wrapper's scale already.
             var lift = projection.Boxed ? Vector2.zero : StyleAnimateDriver.CurrentLiftPx(element) * scaleY;
-            SeatedTranslate.Write(slot, new Translate(
-                new Length(own.x + translate.x + lift.x), new Length(own.y + translate.y + lift.y), own.z));
-            projection.WrittenTranslate = SeatedTranslate.Read(slot);
+            slot.style.translate = new Translate(
+                new Length(own.x + translate.x + lift.x), new Length(own.y + translate.y + lift.y), own.z);
+            projection.WrittenTranslate = slot.style.translate;
         }
 
         private static void WriteScale(VisualElement element, LayoutIdProjection projection, Vector2 scale, float dtSec)
@@ -597,7 +596,7 @@ namespace Velvet
         private static void AdoptForeignWrites(VisualElement element, LayoutIdProjection projection)
         {
             var slot = Box(element);
-            var translate = SeatedTranslate.Read(slot);
+            var translate = slot.style.translate;
             if (projection.WritesTranslate && translate != projection.WrittenTranslate) projection.OwnInlineTranslate = translate;
             var scale = AuthoredTransform.Scale(slot);
             if (projection.WritesScale && scale != projection.WrittenScale) projection.OwnInlineScale = scale;
@@ -797,7 +796,7 @@ namespace Velvet
             if (projection.WritesTranslate && LayoutIdLook.Landed(projection.TranslateCarries))
             {
                 restored.Translate = OwnCarriedTranslate(element, projection);
-                SeatedTranslate.Write(Box(element), projection.OwnInlineTranslate);
+                Box(element).style.translate = projection.OwnInlineTranslate;
                 projection.WritesTranslate = false;
             }
             if (projection.WritesScale && LayoutIdLook.Landed(projection.ScaleCarries))

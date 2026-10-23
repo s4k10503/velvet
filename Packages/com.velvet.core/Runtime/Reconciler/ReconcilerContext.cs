@@ -694,10 +694,10 @@ namespace Velvet
         // UI Toolkit rich text has no overline tag (unlike Underline/LineThrough, which rewrite the string
         // with <u>/<s>), so Overline is realised as a generateVisualContent PAINT binding on the leaf
         // TextElement instead — see TextOverlineBinding / TextOverlineSilhouette. Unlike the pure
-        // tables above, an entry here owns a live delegate subscription (like ShadowBindings / SkewBindings
-        // / BorderStyleBindings below), so it is deliberately NOT enrolled in _pureElementSideTables —
+        // tables above, an entry here owns a live delegate subscription (like ShadowBindings and
+        // BorderStyleBindings below), so it is deliberately NOT enrolled in _pureElementSideTables —
         // FiberElementCleaner detaches the callback explicitly before an element is torn down or returned to
-        // the pool, mirroring exactly how those three paint bindings are swept.
+        // the pool, mirroring exactly how those paint bindings are swept.
         public Dictionary<VisualElement, TextOverlineBinding> TextOverlineBindings { get; } = new();
 
         // Elements declaring an em or percentage leading-[…], each with the probe reading its font size. Not
@@ -1298,7 +1298,7 @@ namespace Velvet
         public Dictionary<VisualElement, IVisualElementScheduledItem> LayoutIdFrames { get; } = new();
 
         // Per-element box-shadow bookkeeping for the shadow-* className layer, keyed by the element
-        // itself — the shadow needs NO structural wrapper. Like skew and gradient, the shadow is painted
+        // itself — the shadow needs NO structural wrapper. Like gradient, the shadow is painted
         // by the element's own generateVisualContent (BoxShadowSilhouette draws the baked shadow texture
         // BEHIND the content, bleeding outside the box), so it composes as a paint, not a wrapper —
         // matching CSS box-shadow (non-structural: it neither alters layout nor escapes a transform on the
@@ -1339,10 +1339,6 @@ namespace Velvet
         // PendingRingPlacements drains. The layer lives in the element's parent, so cleanup has to remove it.
         public Dictionary<VisualElement, BackdropBinding> BackdropBindings { get; } = new();
 
-        // Sheared-silhouette bookkeeping for skew-x-*/skew-y-* elements (SkewSilhouette). Keyed by
-        // the element itself — skew paints via the element's own generateVisualContent, no wrapper.
-        public Dictionary<VisualElement, SkewBinding> SkewBindings { get; } = new();
-
         // The elements whose inline rotate and scale slots carry their skew (FiberSkewApplier), by the skew classes
         // that won on each axis. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, (string? X, string? Y)> SkewTransformed { get; } = new();
@@ -1357,9 +1353,9 @@ namespace Velvet
         public FiberPaintLeases? PaintLeases { get; set; }
 
         // Dashed / dotted border outline per element (border-dashed / border-dotted), keyed by the element
-        // itself — like skew, the outline is painted by the element's own generateVisualContent with no
-        // wrapper (only the border color is suppressed; the fill and width are untouched). Defers to skew /
-        // shadow when either owns the face. Maintained by FiberWrapperElementAppliers' border-style methods
+        // itself — the outline is painted by the element's own generateVisualContent with no
+        // wrapper (only the border color is suppressed; the fill and width are untouched). Defers to the
+        // shadow when it owns the face. Maintained by FiberWrapperElementAppliers' border-style methods
         // and torn down by FiberElementCleaner / Reconciler.Dispose.
         public Dictionary<VisualElement, BorderStyleBinding> BorderStyleBindings { get; } = new();
 

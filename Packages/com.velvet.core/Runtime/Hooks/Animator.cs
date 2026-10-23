@@ -489,7 +489,7 @@ namespace Velvet
             var pose = ScopedPose.Of(_element);
             if (_channel == AnimateChannel.X) pose.X = value;
             else pose.Y = value;
-            SeatedTranslate.Write(_element, new Translate(new Length(pose.X), new Length(pose.Y)));
+            _element.style.translate = new Translate(new Length(pose.X), new Length(pose.Y));
         }
     }
 }

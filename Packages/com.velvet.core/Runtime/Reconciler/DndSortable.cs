@@ -345,7 +345,7 @@ namespace Velvet
 
             internal Saved(VisualElement element)
             {
-                Translate = SeatedTranslate.Read(element);
+                Translate = element.style.translate;
                 Scale = AuthoredTransform.Scale(element);
                 TransitionProperty = element.style.transitionProperty;
                 TransitionDuration = element.style.transitionDuration;
@@ -459,7 +459,7 @@ namespace Velvet
                 element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Ease) };
             }
             var value = transform ?? new DndSortingTransform(Vector2.zero);
-            SeatedTranslate.Write(element, new Translate(value.Translate.x, value.Translate.y));
+            element.style.translate = new Translate(value.Translate.x, value.Translate.y);
             AuthoredTransform.SetScale(element, value.Scale == Vector2.one
                 ? _saved[element].Scale
                 : new StyleScale(new Scale(new Vector3(value.Scale.x, value.Scale.y, 1f))));
@@ -471,7 +471,7 @@ namespace Velvet
             element.style.transitionProperty = saved.TransitionProperty;
             element.style.transitionDuration = saved.TransitionDuration;
             element.style.transitionTimingFunction = saved.TransitionTiming;
-            SeatedTranslate.Write(element, saved.Translate);
+            element.style.translate = saved.Translate;
             AuthoredTransform.SetScale(element, saved.Scale);
         }
     }

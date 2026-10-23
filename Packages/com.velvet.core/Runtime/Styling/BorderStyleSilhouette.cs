@@ -43,15 +43,15 @@ namespace Velvet
     /// <remarks>
     /// The native border color is suppressed with a near-invisible sentinel (the inline slot is shared with
     /// <see cref="StyleArbitraryValueResolver"/>'s <c>border-[…]</c> writes, so suppression re-syncs on every
-    /// patch — the same contract <see cref="SkewSilhouette"/> documents), while the border WIDTH is left
+    /// patch), while the border WIDTH is left
     /// untouched so the box keeps reserving the same layout space a solid border would. Only the box's own
     /// outline is repainted; the background and children are unaffected, so <c>border-2 border-red-500
     /// border-dashed</c> composes exactly as CSS width + style + color (width from the untouched resolved
     /// style, color from the captured stash).
     /// <para>
-    /// When the element is also skewed or shadowed, that layer owns the whole face and repaints the border as
-    /// part of it, in this line style (<see cref="BoxShadowBinding.BorderStyle"/>, <see cref="SkewBinding.BorderStyle"/>),
-    /// so the reconciler defers this layer while a skew / shadow binding is present.
+    /// When the element is also shadowed, the shadow owns the whole face and repaints the border as
+    /// part of it, in this line style (<see cref="BoxShadowBinding.BorderStyle"/>),
+    /// so the reconciler defers this layer while a shadow binding is present.
     /// </para>
     /// </remarks>
     internal static class BorderStyleSilhouette
@@ -61,7 +61,7 @@ namespace Velvet
         // Wires the paint + stash callbacks onto the element and returns the binding. The first stash (capture
         // the border color, then suppress the native border color) is driven, in order of reliability: a
         // synchronous attempt here, then a GeometryChangedEvent, then CustomStyleResolvedEvent — mirroring
-        // SkewSilhouette.Attach so a colored border never shows a solid ghost through the dashes before the
+        // BoxShadowSilhouette.Attach so a colored border never shows a solid ghost through the dashes before the
         // first patch.
         public static BorderStyleBinding Attach(VisualElement element, BorderStyleSpec spec)
         {
@@ -69,7 +69,7 @@ namespace Velvet
             binding.OnGenerate = mgc => Draw(mgc, element, binding);
             // TextElement (Button, Label) registers its text-rendering callback at construction, before this
             // Attach call. Prepending keeps the outline from being appended AFTER (over) the text — the same
-            // ordering rule SkewSilhouette keeps for a skewed button's sheared background.
+            // ordering rule BoxShadowSilhouette keeps for a shadowed button's background.
             if (element is TextElement)
             {
                 element.generateVisualContent = binding.OnGenerate + element.generateVisualContent;
@@ -121,10 +121,10 @@ namespace Velvet
             element.MarkDirtyRepaint();
         }
 
-        // Tears the binding down for a face HANDOFF to a skew / shadow layer that took over the whole face in the
+        // Tears the binding down for a face HANDOFF to the shadow layer that took over the whole face in the
         // same patch: unregisters the paint + stash callbacks but LEAVES the border-color suppression in place, so
         // the incoming layer's own suppression of the shared inline slot is not nulled out from under it (which
-        // would re-expose the native rectangular border behind the sheared / shadowed face). The plain Detach
+        // would re-expose the native rectangular border behind the shadowed face). The plain Detach
         // releases instead, for when the border-style classes were genuinely removed with no higher layer taking over.
         public static void DetachPreservingSuppression(VisualElement element, BorderStyleBinding binding)
         {

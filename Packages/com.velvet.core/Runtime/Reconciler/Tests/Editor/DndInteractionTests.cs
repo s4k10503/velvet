@@ -202,29 +202,6 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [Test]
-        public void Given_ASkewedDraggableWithADraggingBackground_When_ItIsDragged_Then_ItsFaceTakesTheDraggingColor()
-        {
-            // Arrange — a rotate class beside the skew keeps the painted layer that suppresses the face.
-            Mount(() => V.DndContext(
-                activation: new DragActivation(Distance: 4f),
-                className: "w-[300px] h-[300px]",
-                children: new VNode[]
-                {
-                    V.Draggable("item", key: "item", name: "item", whileDraggingClass: "bg-[#ff0000]",
-                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px] bg-[#0000ff] -skew-x-6 rotate-0"),
-                }));
-            var item = Q("item");
-            SendPointerDown(item, new Vector2(10, 10));
-
-            // Act
-            SendPointerMove(item, new Vector2(20, 10));
-
-            // Assert — the skew silhouette repaints the face, so the colour it paints is what the drag shows.
-            Assert.That(_mounted.Root.Reconciler.Context.SkewBindings[item].BgColor, Is.EqualTo(Color.red));
-        }
-
         [Test]
         public void Given_ADroppableWithItsOwnBackground_When_TheItemIsOverIt_Then_TheOverClassTakesTheBackground()
         {

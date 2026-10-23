@@ -606,10 +606,9 @@ namespace Velvet.Tests
         {
             // Arrange / Act — the transform reads the axis variable with an empty fallback.
             var child = Mount("", "skew-x-[12deg] skew-x-[var(--m)]!");
-            var skews = _mounted.Root.Reconciler.Context.SkewBindings;
 
             // Assert
-            Assert.That(skews.TryGetValue(child, out var binding) ? binding.Spec.XDeg : 0f, Is.EqualTo(0f));
+            Assert.That(AuthoredTransform.TryGetSkew(child, out var xDeg, out _) ? xDeg : 0f, Is.EqualTo(0f));
         }
 
         [Test]

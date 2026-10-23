@@ -726,7 +726,7 @@ namespace Velvet
             // its UNRELATED (non-swapped) classes rested it at — e.g. a base translate-y-8 alongside a
             // variant pair that only touches translate-x. Used as the resting value for a translate axis the
             // swap names on neither side (see Resolve's own doc).
-            var restingTranslate = SeatedTranslate.Read(element).value;
+            var restingTranslate = element.style.translate.value;
             var context = ReadSlotContext(element, fromClasses, toClasses);
             var slots = context ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses);
             slots.ForExit = isExit;
@@ -895,7 +895,7 @@ namespace Velvet
 
         private bool DrivesTween(float durationSec) => !Clock.StepsOnPanelTime && IsPlayableDuration(durationSec);
 
-        // UI Toolkit's transition cannot move a skew angle, which is painted rather than a style slot, so a Tween that
+        // UI Toolkit's transition cannot move a skew angle, which no style slot holds, so a Tween that
         // moves one runs on the driver that writes it, as a Tween on another clock does.
         private bool RunsDriven(in VariantPlay play, float durationSec)
             => DrivesTween(durationSec) || TweenDrivesSkew(in play, durationSec)
@@ -966,7 +966,7 @@ namespace Velvet
 
             // Read BEFORE the class swap lands (same rationale as StartSpringVariant): a translate axis the swap
             // names on neither side rests at the element's own current inline translate rather than snapping to 0.
-            var restingTranslate = SeatedTranslate.Read(element).value;
+            var restingTranslate = element.style.translate.value;
             var context = ReadSlotContext(element, planFrom, planTo);
             var slots = context ?? MotionSlotContext.ReadImportant(element, planFrom, planTo);
             slots.ForExit = play.IsExit;

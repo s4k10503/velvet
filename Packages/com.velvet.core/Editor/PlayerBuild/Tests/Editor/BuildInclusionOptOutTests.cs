@@ -179,10 +179,10 @@ namespace Velvet.Tests
             var page = Page();
 
             // Act
-            PageToggle(page, VelvetShaders.GradientSilhouette).SimulateChange(false);
+            PageToggle(page, VelvetShaders.BoxShadow).SimulateChange(false);
 
             // Assert
-            Assert.That(VelvetBuildSettings.Read().Excludes(VelvetShaders.GradientSilhouette), Is.True);
+            Assert.That(VelvetBuildSettings.Read().Excludes(VelvetShaders.BoxShadow), Is.True);
         }
 
         [Test]

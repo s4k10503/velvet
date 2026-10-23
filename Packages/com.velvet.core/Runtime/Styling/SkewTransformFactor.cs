@@ -2,23 +2,13 @@ using UnityEngine;
 
 namespace Velvet
 {
-    // The linear part of CSS `skewX(x) skewY(y)` written as what a UI Toolkit transform can carry: a uniform scale
-    // and one 3D rotation, which the engine projects onto the panel. A 2x2 matrix is a rotation, a stretch along
-    // two axes and another rotation (its singular value decomposition); the stretch is a uniform scale by the larger
-    // factor followed by a turn about the in-plane axis that foreshortens the other direction by the ratio, so the
-    // whole is rotation * rotation-about-x * rotation, with the z column of it never drawn.
+    // A 2x2 linear map written as what a UI Toolkit transform can carry: a scale and one 3D rotation, which the engine
+    // projects onto the panel. A 2x2 matrix is a rotation, a stretch along two axes and another rotation (its singular
+    // value decomposition); the stretch is a uniform scale by the larger factor followed by a turn about the in-plane
+    // axis that foreshortens the other direction by the ratio, so the whole is rotation * rotation-about-x * rotation,
+    // with the z column of it never drawn.
     internal static class SkewTransformFactor
     {
-        public static bool TryFactor(float xDeg, float yDeg, out Quaternion rotation, out float scale)
-        {
-            var tx = Mathf.Tan(xDeg * Mathf.Deg2Rad);
-            var ty = Mathf.Tan(yDeg * Mathf.Deg2Rad);
-            // skewX(x) * skewY(y)
-            var ok = TryFactor(1f + (tx * ty), tx, ty, 1f, out rotation, out var drawn);
-            scale = drawn.x;
-            return ok;
-        }
-
         // The matrix [[a, b], [c, d]] as the pair of slots that draw it: scale.x * Matrix4x4.Rotate(rotation) has it
         // as its top-left block. A rotation cannot reflect, so a matrix of negative determinant has its second column
         // negated before it is factored and that reflection goes to the scale's y, which CSS `scale` takes negative.

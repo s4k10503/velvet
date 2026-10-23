@@ -27,23 +27,22 @@ namespace Velvet
         // skewed element or one whose winning skew classes changed, compose it again when the other classes did, and
         // give the slots back for one whose skew classes were removed. Runs AFTER SyncClassDrivenStyling so the
         // composite observes this patch's freshly-applied styling (the inline slots are shared with the
-        // arbitrary-value resolver). Always the zero spec: the shear is the transform's, which the shadow and
-        // the borders are drawn under.
+        // arbitrary-value resolver). The shear is the transform's, which the shadow and the borders are drawn under.
         // classesChanged comes from the caller because the answer depends on which class SOURCE this pass
         // was given: a variant re-sync hands over the same reconciled array both times and the change lives
         // entirely in what the live class list added, which a comparison here could not see.
-        internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)
+        internal void ApplySkewOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)
         {
             if (_ctx.SkewDriven.ContainsKey(element))
             {
                 SettleDriven(element, newClassNames, classesChanged);
-                return default;
+                return;
             }
             var transformed = _ctx.SkewTransformed.TryGetValue(element, out var owner);
             var has = StyleSkewClass.TryGetWinningSkewClasses(newClassNames, out _, out _);
             if (!has && !transformed)
             {
-                return default;
+                return;
             }
             SkewSpec spec = default;
             if (!has || !StyleSkewClass.TryExtract(newClassNames, out spec))
@@ -61,7 +60,6 @@ namespace Velvet
             {
                 AuthoredTransform.Engage(element, spec.XDeg, spec.YDeg);
             }
-            return default;
         }
 
         // A play is drawing the angles; the classes only say where it lands.

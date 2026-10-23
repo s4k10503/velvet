@@ -433,14 +433,13 @@ namespace Velvet
             return MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit);
         }
 
-        // What the element showed on slot at its last style pass, in unit, a skewed parent's seat taken off a
-        // translate (SeatedTranslate.Unseated); false where it cannot be read so.
+        // What the element showed on slot at its last style pass, in unit; false where it cannot be read so.
         public bool TryReadShown(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
         {
             if (slot == ArbitraryProperty.TranslateX || slot == ArbitraryProperty.TranslateY)
             {
                 var owner = Owner(slot);
-                var own = SeatedTranslate.Unseated(owner, owner.resolvedStyle.translate);
+                var own = owner.resolvedStyle.translate;
                 return Pixels(slot, slot == ArbitraryProperty.TranslateX ? own.x : own.y, out value)
                     && (value.Unit == unit || TryConvert(slot, ref value, unit));
             }
@@ -534,7 +533,7 @@ namespace Velvet
                     return Float(slot, style.opacity, out value);
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
-                    return Translate(slot, SeatedTranslate.Read(Owner(slot)), out value);
+                    return Translate(slot, Owner(slot).style.translate, out value);
                 case ArbitraryProperty.Scale:
                     return Scale(slot, AuthoredTransform.Scale(Owner(slot)), out value);
                 case ArbitraryProperty.Rotate:

@@ -12,7 +12,6 @@ namespace Velvet
     internal static class VelvetShaders
     {
         internal const string BoxShadow = "Velvet/BoxShadow";
-        internal const string GradientSilhouette = "Velvet/GradientSilhouette";
         internal const string FilterBrightness = "Velvet/FilterBrightness";
         internal const string FilterSaturate = "Velvet/FilterSaturate";
         internal const string FilterDropShadow = "Velvet/FilterDropShadow";
@@ -22,7 +21,6 @@ namespace Velvet
         internal static readonly string[] Names =
         {
             BoxShadow,
-            GradientSilhouette,
             FilterBrightness,
             FilterSaturate,
             FilterDropShadow,

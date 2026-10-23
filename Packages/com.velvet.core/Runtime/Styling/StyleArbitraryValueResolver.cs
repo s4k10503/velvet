@@ -3687,20 +3687,20 @@ namespace Velvet
             var hasY = TryWinningAxis(map, ArbitraryProperty.TranslateY, out var yw);
             if (!hasX && !hasY)
             {
-                SeatedTranslate.Write(element, StyleKeyword.Null);
+                element.style.translate = StyleKeyword.Null;
                 return;
             }
             // Both axes are written by one translate declaration, which a rejected value holding either one makes
             // invalid, leaving no translation.
             if ((hasX && xw.Rejected) || (hasY && yw.Rejected))
             {
-                SeatedTranslate.Write(element, new StyleTranslate(StyleKeyword.None));
+                element.style.translate = new StyleTranslate(StyleKeyword.None);
                 return;
             }
             // A keyword axis is an axis at its initial value, which translates by nothing.
             var x = hasX && xw.Keyword == StyleKeyword.Undefined ? new Length(xw.Value, xw.Unit) : new Length(0f);
             var y = hasY && yw.Keyword == StyleKeyword.Undefined ? new Length(yw.Value, yw.Unit) : new Length(0f);
-            SeatedTranslate.Write(element, new Translate(x, y));
+            element.style.translate = new Translate(x, y);
         }
 
         // The layer holding one translate axis: the winning layer of the axis or of Translate, which writes both,
@@ -4498,7 +4498,7 @@ namespace Velvet
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
                 case ArbitraryProperty.Translate:
-                    SeatedTranslate.Write(element, StyleKeyword.Null);
+                    element.style.translate = StyleKeyword.Null;
                     return true;
                 case ArbitraryProperty.Scale:
                 case ArbitraryProperty.ScaleBoth:

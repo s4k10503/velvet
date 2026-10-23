@@ -484,7 +484,7 @@ namespace Velvet
         {
             if (projection.WritesRotate) AuthoredTransform.SetRotate(element, projection.OwnInlineRotate);
             var slot = MotionLayoutIdDriver.Box(element);
-            if (projection.WritesTranslate) SeatedTranslate.Write(slot, projection.OwnInlineTranslate);
+            if (projection.WritesTranslate) slot.style.translate = projection.OwnInlineTranslate;
             if (projection.WritesScale) AuthoredTransform.SetScale(slot, projection.OwnInlineScale);
             if (!projection.WritesRadii) return;
             ProjectedCornerFace.End(element);

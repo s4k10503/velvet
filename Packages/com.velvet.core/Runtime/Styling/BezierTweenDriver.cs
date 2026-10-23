@@ -442,7 +442,7 @@ namespace Velvet
         public static void ClearInlineOverrides(VisualElement element, BezierTweenState state, bool landed = false)
         {
             if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
-            if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
+            if (state.TranslateX != null || state.TranslateY != null) element.style.translate = StyleKeyword.Null;
             if (state.Scale != null) AuthoredTransform.SetScale(element, StyleKeyword.Null);
             if (state.Rotate != null) AuthoredTransform.SetRotate(element, StyleKeyword.Null);
             state.Paint?.Release();
@@ -478,7 +478,7 @@ namespace Velvet
             {
                 state.TranslateX = null;
                 state.TranslateY = null;
-                SeatedTranslate.Write(element, StyleKeyword.Null);
+                element.style.translate = StyleKeyword.Null;
             }
             if (state.Scale != null && named.Contains(StyleLonghand.Scale))
             {
@@ -850,9 +850,9 @@ namespace Velvet
             {
                 var x = state.TranslateX != null ? Value(state, state.TranslateX, shared) : 0f;
                 var y = state.TranslateY != null ? Value(state, state.TranslateY, shared) : 0f;
-                SeatedTranslate.Write(element, new Translate(
+                element.style.translate = new Translate(
                     new Length(x, state.TranslateX?.Unit ?? LengthUnit.Pixel),
-                    new Length(y, state.TranslateY?.Unit ?? LengthUnit.Pixel)));
+                    new Length(y, state.TranslateY?.Unit ?? LengthUnit.Pixel));
             }
             if (state.Scale is { Masked: false })
             {
