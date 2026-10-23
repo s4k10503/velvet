@@ -107,6 +107,8 @@ namespace Velvet.Tests
             Assert.That((enteredInsideTheChildsEnter, enteredAfterIt), Is.EqualTo((false, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base's parent entered at once whatever its children did.
+        // A child reporting an end for an enter it never plays is what reddens this.
         [Test]
         public void Given_AParentEnterDeclaringAfterChildren_When_TheChildsEnterIsWithheld_Then_ItEntersAtOnce()
         {
