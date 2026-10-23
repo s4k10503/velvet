@@ -350,6 +350,11 @@ namespace Velvet
                     free &= ~slots;
                 }
             }
+            // An important declaration of the element's own outranks an animation, so the loop leaves its slot alone.
+            if (StyleArbitraryValueResolver.HoldsImportant(element, MotionNativeTransitionGuard.LonghandsOf(free)))
+            {
+                free &= ~ImportantSlots(element, free);
+            }
             if (free == MotionTransitionSlots.None)
             {
                 return;
@@ -357,6 +362,27 @@ namespace Velvet
             var elapsed = binding.Clock.NowSec - binding.StartTime;
             WriteFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec), free, driven | yielded, yielded);
         }
+
+        // The slots of free the element's important declarations write.
+        private static MotionTransitionSlots ImportantSlots(VisualElement element, MotionTransitionSlots free)
+        {
+            var held = MotionTransitionSlots.None;
+            foreach (var slot in s_loopSlots)
+            {
+                if ((free & slot) != MotionTransitionSlots.None
+                    && StyleArbitraryValueResolver.HoldsImportant(element, MotionNativeTransitionGuard.LonghandsOf(slot)))
+                {
+                    held |= slot;
+                }
+            }
+            return held;
+        }
+
+        private static readonly MotionTransitionSlots[] s_loopSlots =
+        {
+            MotionTransitionSlots.Opacity, MotionTransitionSlots.Translate, MotionTransitionSlots.Scale,
+            MotionTransitionSlots.Rotate, MotionTransitionSlots.Filter, MotionTransitionSlots.BackgroundPosition,
+        };
 
         // Attaches a motion to an element whose gradient (the pan modes) is already applied. Sets the
         // once-per-attach background sizing for pan modes, takes the transition suspension, then schedules the

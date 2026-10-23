@@ -626,7 +626,7 @@ namespace Velvet
         }
 
         /// <summary>The longhands a driver reporting <paramref name="slots"/> can write.</summary>
-        private static StyleLonghandSet LonghandsOf(MotionTransitionSlots slots)
+        internal static StyleLonghandSet LonghandsOf(MotionTransitionSlots slots)
         {
             var set = StyleLonghandSet.Empty;
             if ((slots & MotionTransitionSlots.Opacity) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Opacity));

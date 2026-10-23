@@ -215,6 +215,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASpinBesideAnImportantRotation_When_TheLoopTicks_Then_TheImportantRotationHoldsTheSlot()
+        {
+            // Arrange
+            var (element, binding) = Mount("w-[40px] h-[40px] bg-red-500 !rotate-45 animate-spin");
+            binding.StartTime -= 0.5;
+
+            // Act
+            StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.None);
+
+            // Assert
+            Assert.That(element.style.rotate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
         public void Given_ARunningSpinOverAnArbitraryRotation_When_TheSpinIsRemoved_Then_TheClassRotationIsBack()
         {
             // Arrange — the rotate slot is shared. The spin drives it while it runs, turning on from the class's

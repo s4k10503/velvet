@@ -21,3 +21,5 @@
 - A Bezier play reads `PropertyOverrides` (each entry's delay, duration and easing for the channels it names) and
   an exit can run its own curve through the new `StyleTransitionConfig.ExitBezier`; a Bezier config carrying
   overrides ignored them before. A sequence step's hold counts a Bezier override that outlasts the play.
+- An important utility on an element with an `animate-*` loop (`!opacity-50 animate-pulse`) holds its slot against
+  the loop, where the loop overwrote it on every tick.
