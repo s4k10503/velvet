@@ -20,7 +20,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAuthoredRotateAndScale_When_ASkewIsEngaged_Then_TheSlotsCarryTheSkewCompositeMath.Composite()
+        public void Given_AnAuthoredRotateAndScale_When_ASkewIsEngaged_Then_TheSlotsCarryTheComposite()
         {
             // Arrange
             var element = new VisualElement();
@@ -35,7 +35,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASkewedElement_When_ARotateIsWritten_Then_TheSlotsCarryTheNewSkewCompositeMath.Composite()
+        public void Given_ASkewedElement_When_ARotateIsWritten_Then_TheSlotsCarryTheNewComposite()
         {
             // Arrange
             var element = new VisualElement();
