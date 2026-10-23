@@ -69,9 +69,18 @@ namespace Velvet.Tests
         private static void Retire(object? node)
         {
             if (node is not BaseElementNode element) return;
+            var inner = ElementCarryingEvents(element);
+            if (!ReferenceEquals(inner, element)) Retire(inner);
             VNodePool.ReturnProps(element.Props);
             VNodePool.ReturnEventArray(element.Events);
         }
+
+        // V.Anchored renders a wrapper that positions the element and puts the element carrying the bindings
+        // inside it, as drei's Html does.
+        private static BaseElementNode ElementCarryingEvents(BaseElementNode node)
+            => node.Props?.Anchored != null && node.Children.Length == 1 && node.Children[0] is BaseElementNode inner
+                ? inner
+                : node;
 
         private static string? Describe(MethodInfo factory, bool withOwnCallback)
         {
@@ -101,7 +110,7 @@ namespace Velvet.Tests
 
             try
             {
-                var events = ((BaseElementNode)node!).Events;
+                var events = ElementCarryingEvents((BaseElementNode)node!).Events;
                 if (!withOwnCallback)
                 {
                     return events.Contains(Sentinel) ? null : factory.Name + ": dropped the events array";
