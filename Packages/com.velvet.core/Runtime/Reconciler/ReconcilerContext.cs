@@ -1162,11 +1162,11 @@ namespace Velvet
         public Dictionary<VisualElement, AnchoredBinding> AnchoredBindings { get; } = new();
 
         // Per-focus-scope bookkeeping (FiberElementProps.FocusScope / V.FocusScope), keyed by the scope
-        // root element. The binding owns a registered AttachToPanelEvent callback (AutoFocus / lazy
+        // root element, or by a V.FocusScope's start sentinel. The binding owns a registered AttachToPanelEvent callback (AutoFocus / lazy
         // navigator attach), so it is NOT a pure side-table: FiberElementCleaner fires RestoreFocus and
         // detaches it on teardown, and Reconciler.Dispose sweeps any binding still live at root disposal.
-        // FiberFocusNavigator consults this registry at event time (innermost-scope resolution walks an
-        // element's parent chain against these keys).
+        // FiberFocusNavigator consults this registry at event time (its ScopeWalk resolves an element's scopes
+        // against these keys).
         public Dictionary<VisualElement, FocusScopeBinding> FocusScopeBindings { get; } = new();
 
         // Chained-portal focus bookkeeping (PanelFocusOrder.Chained): the DECLARING-panel placeholder that

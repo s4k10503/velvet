@@ -73,7 +73,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ContainedScopeHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "scope", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "scope", contain: true, children: new VNode[]
             {
                 V.Button(name: "in1"),
                 V.Button(name: "in2"),
@@ -107,7 +107,7 @@ namespace Velvet.Tests
             {
                 V.Button(name: "opener"),
                 showScope
-                    ? V.FocusScope(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
+                    ? FocusScopeElement.Div(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
                     {
                         V.Button(name: "inner"),
                     })
@@ -145,9 +145,9 @@ namespace Velvet.Tests
             {
                 V.Button(name: "opener"),
                 showScope
-                    ? V.FocusScope(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
+                    ? FocusScopeElement.Div(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
                     {
-                        V.FocusScope(name: "nested", children: new VNode[]
+                        FocusScopeElement.Div(name: "nested", children: new VNode[]
                         {
                             V.Button(name: "inner"),
                         }),
@@ -186,7 +186,7 @@ namespace Velvet.Tests
                 V.Button(name: "opener"),
                 V.Button(name: "other"),
                 showScope
-                    ? V.FocusScope(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
+                    ? FocusScopeElement.Div(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
                     {
                         V.Button(name: "inner"),
                     })
@@ -222,7 +222,7 @@ namespace Velvet.Tests
             {
                 V.Button(name: "opener"),
                 showScope
-                    ? V.FocusScope(name: "scope", key: "scope", restoreFocus: true,
+                    ? FocusScopeElement.Div(name: "scope", key: "scope", restoreFocus: true,
                         props: new FiberElementProps { Focusable = true },
                         children: new VNode[]
                         {
@@ -257,7 +257,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode AutoFocusScopeHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "scope", autoFocus: true, children: new VNode[]
+            FocusScopeElement.Div(name: "scope", autoFocus: true, children: new VNode[]
             {
                 V.Button(name: "first"),
                 V.Button(name: "second"),
@@ -278,7 +278,7 @@ namespace Velvet.Tests
         private static VNode SingleTabStopHost() => V.Div(children: new VNode[]
         {
             V.Button(name: "before"),
-            V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+            FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
             {
                 V.Button(name: "g1"),
                 V.Button(name: "g2"),
@@ -305,7 +305,7 @@ namespace Velvet.Tests
         }
 
         // The scope is declared through the props bag, where SingleTabStop is left to its record default,
-        // not through V.FocusScope, which always passes it.
+        // not through FocusScopeElement.Div, which always passes it.
         [Component]
         private static VNode DefaultSettingsScopeHost() => V.Div(children: new VNode[]
         {
@@ -359,12 +359,12 @@ namespace Velvet.Tests
         [Component]
         private static VNode TwoScopesHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
                 V.Button(name: "m2"),
             }),
-            V.FocusScope(name: "drawer", restoreFocus: true, children: new VNode[]
+            FocusScopeElement.Div(name: "drawer", restoreFocus: true, children: new VNode[]
             {
                 V.Button(name: "d1"),
             }),
@@ -414,7 +414,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode StuckRingHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
             }),
@@ -461,7 +461,7 @@ namespace Velvet.Tests
         {
             var (rotated, setRotated) = Hooks.UseState(false);
             s_setRotated = setRotated;
-            var scope = V.FocusScope(name: "scope", key: "scope", autoFocus: true, children: new VNode[]
+            var scope = FocusScopeElement.Div(name: "scope", key: "scope", autoFocus: true, children: new VNode[]
             {
                 V.Button(name: "first"),
             });
@@ -492,12 +492,12 @@ namespace Velvet.Tests
         [Component]
         private static VNode TwoGroupsHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "groupA", singleTabStop: true, children: new VNode[]
+            FocusScopeElement.Div(name: "groupA", singleTabStop: true, children: new VNode[]
             {
                 V.Button(name: "a1"),
                 V.Button(name: "a2"),
             }),
-            V.FocusScope(name: "groupB", singleTabStop: true, children: new VNode[]
+            FocusScopeElement.Div(name: "groupB", singleTabStop: true, children: new VNode[]
             {
                 V.Button(name: "b1"),
                 V.Button(name: "b2"),
@@ -545,15 +545,15 @@ namespace Velvet.Tests
         private static VNode GroupWithNestedScopeHost() => V.Div(children: new VNode[]
         {
             V.Button(name: "before"),
-            V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+            FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
             {
-                V.FocusScope(name: "nestedFirst", children: new VNode[]
+                FocusScopeElement.Div(name: "nestedFirst", children: new VNode[]
                 {
                     V.Button(name: "n1"),
                     V.Button(name: "n2"),
                 }),
                 V.Button(name: "g3"),
-                V.FocusScope(name: "nestedLast", children: new VNode[]
+                FocusScopeElement.Div(name: "nestedLast", children: new VNode[]
                 {
                     V.Button(name: "n4"),
                 }),
@@ -596,10 +596,10 @@ namespace Velvet.Tests
         private static VNode NestedGroupsHost() => V.Div(children: new VNode[]
         {
             V.Button(name: "before"),
-            V.FocusScope(name: "g1", singleTabStop: true, children: new VNode[]
+            FocusScopeElement.Div(name: "g1", singleTabStop: true, children: new VNode[]
             {
                 V.Button(name: "x"),
-                V.FocusScope(name: "g2", singleTabStop: true, children: new VNode[]
+                FocusScopeElement.Div(name: "g2", singleTabStop: true, children: new VNode[]
                 {
                     V.Button(name: "y1"),
                     V.Button(name: "y2"),
@@ -658,7 +658,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ContainedGroupHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "both", contain: true, singleTabStop: true, children: new VNode[]
+            FocusScopeElement.Div(name: "both", contain: true, singleTabStop: true, children: new VNode[]
             {
                 V.Button(name: "a"),
                 V.Button(name: "b"),
@@ -685,10 +685,10 @@ namespace Velvet.Tests
         [Component]
         private static VNode GroupInModalHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
-                V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+                FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
                 {
                     V.Button(name: "g1"),
                     V.Button(name: "g2"),
@@ -718,9 +718,9 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalInGroupHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+            FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
             {
-                V.FocusScope(name: "modal", contain: true, children: new VNode[]
+                FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
                 {
                     V.Button(name: "m1"),
                     V.Button(name: "m2"),
@@ -748,9 +748,9 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalWithANestedScopeHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
-                V.FocusScope(name: "nested", children: new VNode[]
+                FocusScopeElement.Div(name: "nested", children: new VNode[]
                 {
                     V.Button(name: "m1"),
                     V.Button(name: "m2"),
@@ -780,7 +780,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalDeclaringASamePanelPortal() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
                 V.Portal(s_portalTarget, key: "portal", children: new VNode[]
@@ -849,7 +849,7 @@ namespace Velvet.Tests
             {
                 showOpener ? V.Button(name: "opener", key: "opener") : null,
                 showScope
-                    ? V.FocusScope(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
+                    ? FocusScopeElement.Div(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
                     {
                         V.Button(name: "inner"),
                     })
@@ -882,7 +882,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode PlainScopeHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "scope", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "scope", contain: true, children: new VNode[]
             {
                 V.Button(name: "s1"),
             }),
@@ -912,12 +912,12 @@ namespace Velvet.Tests
             s_setShowScope = setShowSecond;
             return V.Div(children: new VNode[]
             {
-                V.FocusScope(name: "modalA", key: "modalA", contain: true, children: new VNode[]
+                FocusScopeElement.Div(name: "modalA", key: "modalA", contain: true, children: new VNode[]
                 {
                     V.Button(name: "a1"),
                 }),
                 showSecond
-                    ? V.FocusScope(name: "modalB", key: "modalB", contain: true, autoFocus: true, children: new VNode[]
+                    ? FocusScopeElement.Div(name: "modalB", key: "modalB", contain: true, autoFocus: true, children: new VNode[]
                     {
                         V.Button(name: "b1"),
                     })
@@ -948,11 +948,11 @@ namespace Velvet.Tests
         [Component]
         private static VNode TwoContainedScopesHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modalA", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modalA", contain: true, children: new VNode[]
             {
                 V.Button(name: "a1"),
             }),
-            V.FocusScope(name: "modalB", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modalB", contain: true, children: new VNode[]
             {
                 V.Button(name: "x1"),
             }),
@@ -990,7 +990,7 @@ namespace Velvet.Tests
             {
                 V.Button(name: "opener"),
                 showScope
-                    ? V.FocusScope(name: "modal", key: "modal", contain: true, restoreFocus: true, children: new VNode[]
+                    ? FocusScopeElement.Div(name: "modal", key: "modal", contain: true, restoreFocus: true, children: new VNode[]
                     {
                         V.Button(name: "inner"),
                     })
@@ -1026,7 +1026,7 @@ namespace Velvet.Tests
             s_setAutoFocusOn = setAutoFocusOn;
             var (rotated, setRotated) = Hooks.UseState(false);
             s_setRotated = setRotated;
-            var scope = V.FocusScope(name: "scope", key: "scope", autoFocus: autoFocusOn, children: new VNode[]
+            var scope = FocusScopeElement.Div(name: "scope", key: "scope", autoFocus: autoFocusOn, children: new VNode[]
             {
                 V.Button(name: "first"),
             });

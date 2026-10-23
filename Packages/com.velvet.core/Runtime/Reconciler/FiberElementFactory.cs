@@ -116,6 +116,16 @@ namespace Velvet
                 return new IntegerField();
             }
 
+            if (type == typeof(FocusScopeStart))
+            {
+                return new FocusScopeStart();
+            }
+
+            if (type == typeof(FocusScopeEnd))
+            {
+                return new FocusScopeEnd();
+            }
+
             // Fallback for unknown types only (rare custom elements such as BlurredBackgroundElement
             // and SceneViewElement are created here).
             return (VisualElement)Activator.CreateInstance(type);

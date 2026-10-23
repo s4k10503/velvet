@@ -430,24 +430,13 @@ namespace Velvet
         // ring-edge ownership hand-off, and any still-pending navigator attach hook.
         private void CleanupFocusAndNavigationResources(VisualElement element)
         {
-            if (_ctx.FocusScopeBindings.Remove(element, out var focusScopeBinding))
+            // A range's end can leave before its start, with its content still in place behind it: the scope is
+            // torn down at whichever goes first, while focus can still be read inside it.
+            if (element is FocusScopeEnd end && FocusScopeRange.StartOf(end) is { } start)
             {
-                // The registry entry is dropped BEFORE the restore focus fires: the restore's own FocusIn
-                // must not see the dying scope as a live contain scope, or the snap-back would revert the
-                // restore straight back into the detaching subtree. RestoreFocus itself must still run
-                // BEFORE this element physically leaves the tree (UI Toolkit clears the focused element
-                // the moment it detaches — the same ordering RescueFocusFromWorldSpaceHost exists for).
-                if (focusScopeBinding.Settings.RestoreFocus
-                    && FiberFocusNavigator.IsFocusedElementWithin(element, out _))
-                {
-                    var restore = focusScopeBinding.RestoreTarget;
-                    if (restore != null && restore.panel != null && restore.canGrabFocus)
-                    {
-                        restore.Focus();
-                    }
-                }
-                FocusScopeDriver.Detach(element, focusScopeBinding);
+                TearDownFocusScope(start);
             }
+            TearDownFocusScope(element);
             // A departing element must not linger as any scope's remembered member or restore target:
             // pooled primitives get recycled into unrelated roles, and the liveness checks at use time
             // (panel / canGrabFocus / Contains) all pass again for a recycled element mounted elsewhere,
@@ -479,6 +468,28 @@ namespace Velvet
             {
                 FiberFocusNavigator.ReleasePendingAttachHooks(element, _ctx);
             }
+        }
+
+        private void TearDownFocusScope(VisualElement scope)
+        {
+            if (!_ctx.FocusScopeBindings.Remove(scope, out var focusScopeBinding))
+            {
+                return;
+            }
+            // The registry entry is dropped BEFORE the restore focus fires: the restore's own FocusIn
+            // must not see the dying scope as a live contain scope, or the snap-back would revert the
+            // restore straight back into the detaching subtree. RestoreFocus itself must still run
+            // BEFORE the scope's content physically leaves the tree (UI Toolkit clears the focused element
+            // the moment it detaches — the same ordering RescueFocusFromWorldSpaceHost exists for).
+            if (focusScopeBinding.Settings.RestoreFocus && FiberFocusNavigator.IsFocusedWithinScope(scope))
+            {
+                var restore = focusScopeBinding.RestoreTarget;
+                if (restore != null && restore.panel != null && restore.canGrabFocus)
+                {
+                    restore.Focus();
+                }
+            }
+            FocusScopeDriver.Detach(scope, focusScopeBinding);
         }
 
         // Drag-and-drop bindings: the draggable's pointer-down armer unregisters, and an element that

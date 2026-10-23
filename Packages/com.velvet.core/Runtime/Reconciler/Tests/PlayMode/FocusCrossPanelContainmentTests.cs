@@ -134,7 +134,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalBesideAPortalSharingItsLayer() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
                 V.Portal(UILayer.Overlay, key: "inner", children: new VNode[]
@@ -197,7 +197,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalWithOneButtonBesideALayerButton() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
             }),
@@ -235,13 +235,13 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalBesideAContainedLayerDialog() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
             }),
             V.Portal(UILayer.Overlay, key: "dialog", children: new VNode[]
             {
-                V.FocusScope(name: "dialog", contain: true, children: new VNode[]
+                FocusScopeElement.Div(name: "dialog", contain: true, children: new VNode[]
                 {
                     V.Button(name: "d1"),
                 }),
@@ -300,7 +300,7 @@ namespace Velvet.Tests
             V.Button(name: "outside"),
             V.Portal(UILayer.Overlay, key: "modal", children: new VNode[]
             {
-                V.FocusScope(name: "modal", contain: true, children: new VNode[]
+                FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
                 {
                     V.Button(name: "d1"),
                 }),
@@ -332,7 +332,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalDeclaringAZIndexedPortalChild() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
                 V.Portal(UILayer.Overlay, key: "inner", children: new VNode[]
@@ -370,7 +370,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalDeclaringAnElementPortal() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
                 V.Portal(s_portalTarget, key: "elsewhere", children: new VNode[]
@@ -405,7 +405,7 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode OlderTreeModal() => V.FocusScope(name: "olderModal", contain: true, children: new VNode[]
+        private static VNode OlderTreeModal() => FocusScopeElement.Div(name: "olderModal", contain: true, children: new VNode[]
         {
             V.Button(name: "a1"),
         });
@@ -485,7 +485,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalBesideALayerGroup() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
                 V.Portal(UILayer.Overlay, key: "inner", children: new VNode[]
@@ -495,7 +495,7 @@ namespace Velvet.Tests
             }),
             V.Portal(UILayer.Overlay, key: "outer", children: new VNode[]
             {
-                V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+                FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
                 {
                     V.Button(name: "o1"),
                     V.Button(name: "o2"),
@@ -529,7 +529,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalDeclaringALayerPortalBesideAMainButton() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
                 V.Portal(UILayer.Overlay, key: "inner", children: new VNode[]
@@ -600,7 +600,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalDeclaringAWorldSpacePanelBesideAMainButton() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
                 V.WorldSpace(Vector3.zero, panelSize: new Vector2(400f, 400f), key: "world", children: new VNode[]
@@ -639,7 +639,7 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode NewerTreeModal() => V.FocusScope(name: "newerModal", contain: true, children: new VNode[]
+        private static VNode NewerTreeModal() => FocusScopeElement.Div(name: "newerModal", contain: true, children: new VNode[]
         {
             V.Button(name: "b1"),
         });

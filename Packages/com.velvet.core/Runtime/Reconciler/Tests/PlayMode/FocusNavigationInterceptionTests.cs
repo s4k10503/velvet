@@ -199,7 +199,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ContainedColumnHost() => V.Div(className: "flex-col", children: new VNode[]
         {
-            V.FocusScope(name: "scope", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "scope", contain: true, children: new VNode[]
             {
                 V.Button(name: "inside", className: "w-[100px] h-[40px]"),
             }),

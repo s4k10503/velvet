@@ -19,11 +19,11 @@ namespace Velvet.Tests
         private MountedTree _mounted;
 
         [Component]
-        private static VNode NestedGroupsHost() => V.FocusScope(name: "outer", singleTabStop: true,
+        private static VNode NestedGroupsHost() => FocusScopeElement.Div(name: "outer", singleTabStop: true,
             className: "flex-row w-[300px]", children: new VNode[]
             {
                 V.Button(name: "x", className: "w-[100px] h-[40px]"),
-                V.FocusScope(name: "inner", singleTabStop: true, className: "flex-row", children: new VNode[]
+                FocusScopeElement.Div(name: "inner", singleTabStop: true, className: "flex-row", children: new VNode[]
                 {
                     V.Button(name: "y", className: "w-[100px] h-[40px]"),
                 }),

@@ -61,7 +61,7 @@ namespace Velvet
             // The panel reports a focused field as the field, the unit FocusWalk.Collect keeps.
             var from = options?.From ?? root.panel?.focusController?.focusedElement as VisualElement;
             var order = new List<VisualElement>();
-            FocusWalk.Collect(root, order);
+            FocusWalk.CollectScope(root, order);
             var found = FocusWalk.Step(order, from, forward, options);
             found?.Focus();
             return found;
@@ -75,13 +75,17 @@ namespace Velvet
                 return null;
             }
             var order = new List<VisualElement>();
-            FocusWalk.Collect(root, order);
+            FocusWalk.CollectScope(root, order);
             // React Aria's focusFirst and focusLast read neither From nor Wrap.
             var found = FocusWalk.FindEdge(order, options, first);
             found?.Focus();
             return found;
         }
 
+        // A V.FocusScope's content is mounted among its parent's children rather than under an element of the
+        // scope's, so the walk up from this component's mount point meets its parent, not the scope: the nearest
+        // V.FocusScope is read off the fibers above instead, and it is the scope unless an element scope met
+        // first lies inside it.
         private VisualElement? FindScopeRoot()
         {
             var ctx = _fiber.Reconciler?.Context;
@@ -89,11 +93,25 @@ namespace Velvet
             {
                 return null;
             }
+            var range = NearestRangeAbove();
             for (var current = LogicalMountPoint(ctx); current != null; current = FiberFocusNavigator.LogicalParentOf(current))
             {
-                if (ctx.FocusScopeBindings.ContainsKey(current))
+                if (current is FocusScopeStart || !ctx.FocusScopeBindings.ContainsKey(current))
                 {
-                    return current;
+                    continue;
+                }
+                return range == null || FiberFocusNavigator.IsLogicallyWithin(current, range) ? current : range;
+            }
+            return range;
+        }
+
+        private FocusScopeStart? NearestRangeAbove()
+        {
+            for (var fiber = _fiber.Parent; fiber != null; fiber = fiber.Parent)
+            {
+                if (fiber.Props is FocusScopeRangeProps && FocusScopeRange.StartRenderedBy(fiber) is { } start)
+                {
+                    return start;
                 }
             }
             return null;
@@ -197,24 +215,44 @@ namespace Velvet
             return options.Accept == null || options.Accept(element) ? element : null;
         }
 
-        // A subtree under an element that is not displayed is skipped whole, as the engine's ring and React
-        // Aria's isElementVisible skip it; canGrabFocus reads only the element's own display. A field's parts are
-        // skipped too, so the field is one element.
-        internal static void Collect(VisualElement parent, List<VisualElement> order)
+        // The scope's elements: under its element, or between a range's sentinels.
+        internal static void CollectScope(VisualElement scope, List<VisualElement> order)
+        {
+            if (scope is not FocusScopeStart start)
+            {
+                Collect(scope, order);
+                return;
+            }
+            var content = new List<VisualElement>();
+            FocusScopeRange.AppendContent(start, content);
+            foreach (var child in content)
+            {
+                Visit(child, order);
+            }
+        }
+
+        private static void Collect(VisualElement parent, List<VisualElement> order)
         {
             var count = parent.hierarchy.childCount;
             for (var i = 0; i < count; i++)
             {
-                var child = parent.hierarchy[i];
-                if (child.resolvedStyle.display == DisplayStyle.None)
-                {
-                    continue;
-                }
-                order.Add(child);
-                if (!IsCompositeRoot(child))
-                {
-                    Collect(child, order);
-                }
+                Visit(parent.hierarchy[i], order);
+            }
+        }
+
+        // A subtree under an element that is not displayed is skipped whole, as the engine's ring and React
+        // Aria's isElementVisible skip it; canGrabFocus reads only the element's own display. A field's parts are
+        // skipped too, so the field is one element.
+        private static void Visit(VisualElement child, List<VisualElement> order)
+        {
+            if (child.resolvedStyle.display == DisplayStyle.None)
+            {
+                return;
+            }
+            order.Add(child);
+            if (!IsCompositeRoot(child))
+            {
+                Collect(child, order);
             }
         }
 

@@ -25,15 +25,15 @@ namespace Velvet.Tests
         [Component]
         private static VNode TwoGroupsHost() => V.Div(className: "flex-col", children: new VNode[]
         {
-            V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+            FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
             {
                 V.Button(name: "first", className: "w-[100px] h-[40px]"),
-                V.FocusScope(name: "nested", children: new VNode[]
+                FocusScopeElement.Div(name: "nested", children: new VNode[]
                 {
                     V.Button(name: "last", className: "w-[100px] h-[40px]"),
                 }),
             }),
-            V.FocusScope(name: "row", singleTabStop: true, className: "flex-row-reverse w-[200px]",
+            FocusScopeElement.Div(name: "row", singleTabStop: true, className: "flex-row-reverse w-[200px]",
                 children: new VNode[]
                 {
                     V.Button(name: "rowFirst", className: "w-[100px] h-[40px] focus-visible:bg-blue-400"),

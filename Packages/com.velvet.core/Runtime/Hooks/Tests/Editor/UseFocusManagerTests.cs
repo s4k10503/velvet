@@ -48,7 +48,7 @@ namespace Velvet.Tests
         private static VNode ScopeHost() => V.Div(children: new VNode[]
         {
             V.Button(name: "before"),
-            V.FocusScope(name: "scope", children: new VNode[]
+            FocusScopeElement.Div(name: "scope", children: new VNode[]
             {
                 V.Component(Probe, key: "probe"),
                 V.Div(name: "group", children: new VNode[] { V.Button(name: "m2") }),
@@ -298,7 +298,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode FieldsHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "scope", children: new VNode[]
+            FocusScopeElement.Div(name: "scope", children: new VNode[]
             {
                 V.Component(Probe, key: "probe"),
                 V.TextField(name: "text", label: "Name"),
@@ -395,7 +395,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ScopeDeclaringAPortal() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "scope", children: new VNode[]
+            FocusScopeElement.Div(name: "scope", children: new VNode[]
             {
                 V.Button(name: "s1"),
                 V.Portal(s_portalTarget, key: "portal", children: new VNode[]
@@ -423,12 +423,12 @@ namespace Velvet.Tests
         [Component]
         private static VNode ScopeInsideAPortal() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "outer", children: new VNode[]
+            FocusScopeElement.Div(name: "outer", children: new VNode[]
             {
                 V.Button(name: "s1"),
                 V.Portal(s_portalTarget, key: "portal", children: new VNode[]
                 {
-                    V.FocusScope(name: "inner", children: new VNode[]
+                    FocusScopeElement.Div(name: "inner", children: new VNode[]
                     {
                         V.Component(Probe, key: "probe"),
                     }),

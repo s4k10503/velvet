@@ -2179,14 +2179,14 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Container element whose subtree is a focus scope. Deviation
-        /// (documented): a renderless, sentinel-span scope is common elsewhere; Velvet's is a real VisualElement,
-        /// because UI Toolkit containment needs a subtree root for the scoped focus ring and the
-        /// membership test. Any existing container can be a scope via props
-        /// (<see cref="FiberElementProps.FocusScope"/>) — this factory is convenience for when no
-        /// container exists yet. Style it like any Div.
+        /// A focus scope over <paramref name="children"/>, React Aria's <c>FocusScope</c>. It renders no element
+        /// around them: they lay out as the parent's own children, between two hidden elements that mark where
+        /// the scope starts and ends, as React Aria's renders two hidden spans. To make an existing container
+        /// the scope instead, set its <see cref="FiberElementProps.FocusScope"/>.
         /// </summary>
-        /// <param name="contain">Tab/Shift-Tab wrap within the subtree; a 2D/pointer move that exits is
+        /// <param name="children">The scope's content.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="contain">Tab/Shift-Tab wrap within the scope; a 2D/pointer move that exits is
         /// snapped back within the same event flush unless it lands in a contained scope created after this
         /// one (a press on empty space that clears focus to nothing re-focuses on the panel's next tick, and
         /// so does focus that moves to another panel unless it lands in a portal declared inside the scope or
@@ -2194,59 +2194,32 @@ namespace Velvet
         /// <param name="restoreFocus">On unmount while holding focus, refocus the element that held focus
         /// when the scope mounted.</param>
         /// <param name="autoFocus">On mount (first attach only — never a keyed reorder's re-attach), focus
-        /// the scope's first focusable descendant.</param>
-        /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); arrow/dpad moves step
-        /// between members in hierarchy order and never leave the subtree.</param>
+        /// the scope's first focusable element.</param>
+        /// <param name="singleTabStop">The scope behaves as one Tab stop (roving); arrow/dpad moves step
+        /// between members in hierarchy order and never leave the scope.</param>
         /// <param name="orientation">With <paramref name="singleTabStop"/>, the axis arrow/dpad moves travel;
         /// a move on the other axis is ignored. Not read without <paramref name="singleTabStop"/>.</param>
         /// <param name="wrap">With <paramref name="singleTabStop"/>, an arrow/dpad move past one end lands on
         /// the other. Not read without <paramref name="singleTabStop"/>.</param>
-        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
-        /// <returns>The created <see cref="ElementNode"/>.</returns>
-        public static ElementNode FocusScope(
-            string? className = null,
+        /// <returns>The created <see cref="ComponentNode"/>.</returns>
+        public static ComponentNode FocusScope(
+            VNode?[]? children = null,
             string? key = null,
-            string? name = null,
             bool contain = false,
             bool restoreFocus = false,
             bool autoFocus = false,
             bool singleTabStop = false,
-            FiberElementProps? props = null,
-            StyleOverrides? styles = null,
-            Func<VisualElement, Action>? refCallback = null,
-            VNode?[]? children = null,
-            string? whileHoverClass = null,
-            string? whileTapClass = null,
-            string? whileFocusClass = null,
-            IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null,
             FocusScopeOrientation orientation = FocusScopeOrientation.Both,
-            FiberEventBinding[]? events = null,
             bool wrap = false)
         {
             VNode.RequireKey(key);
-            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
-            mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop)
+            var settings = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop)
             {
                 Orientation = orientation,
                 Wrap = wrap,
             };
-
-            return new ElementNode
-            {
-                Key = key,
-                ElementType = typeof(VisualElement),
-                Name = name,
-                ClassNames = ParseClassNames(className),
-                Props = mergedProps,
-                Styles = styles,
-                Children = children ?? EmptyChildren,
-                Events = events ?? EmptyEvents,
-                RefCallback = refCallback,
-                WhileHoverClass = whileHoverClass,
-                WhileTapClass = whileTapClass,
-                WhileFocusClass = whileFocusClass,
-            };
+            return Component(global::Velvet.FocusScopeRange.Render,
+                new FocusScopeRangeProps(settings, children ?? EmptyChildren), key);
         }
 
         /// <summary>

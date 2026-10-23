@@ -58,9 +58,9 @@ namespace Velvet
         private bool? _delegatesFocus;
 
         /// <summary>
-        /// Focus-scope behavior for this container element. Attachable to
-        /// ANY container — the modal Div you already have can be the scope; <c>V.FocusScope</c> is sugar for
-        /// when no container exists yet.
+        /// Focus-scope behavior for this container element, whose subtree is the scope. Attachable to
+        /// ANY container — the modal Div you already have can be the scope; <c>V.FocusScope</c> scopes
+        /// children without a container around them.
         /// </summary>
         public FocusScopeSettings? FocusScope { get => _focusScope; set { ThrowIfReadOnly(); _focusScope = value; } }
         private FocusScopeSettings? _focusScope;

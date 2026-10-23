@@ -53,11 +53,11 @@ namespace Velvet.Tests
         [Component]
         private static VNode TwoContainedScopesHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modalA", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modalA", contain: true, children: new VNode[]
             {
                 V.Button(name: "a1"),
             }),
-            V.FocusScope(name: "modalB", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modalB", contain: true, children: new VNode[]
             {
                 V.Button(name: "b1"),
             }),
@@ -80,11 +80,11 @@ namespace Velvet.Tests
         [Component]
         private static VNode ContainedScopeBeforeAPlainScope() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
             }),
-            V.FocusScope(name: "plain", children: new VNode[]
+            FocusScopeElement.Div(name: "plain", children: new VNode[]
             {
                 V.Button(name: "p1"),
             }),
@@ -107,7 +107,7 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode ModalDeclaringASamePanelPortal() => V.FocusScope(name: "modal", contain: true,
+        private static VNode ModalDeclaringASamePanelPortal() => FocusScopeElement.Div(name: "modal", contain: true,
             children: new VNode[]
             {
                 V.Button(name: "m1"),

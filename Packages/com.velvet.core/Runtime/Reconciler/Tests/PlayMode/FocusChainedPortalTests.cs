@@ -286,7 +286,7 @@ namespace Velvet.Tests
             V.Button(name: "main1"),
             V.Portal(UILayer.Overlay, key: "portal", focusOrder: PanelFocusOrder.Chained, children: new VNode[]
             {
-                V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+                FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
                 {
                     V.Button(name: "p1"),
                     V.Button(name: "p2"),
@@ -375,9 +375,9 @@ namespace Velvet.Tests
             V.Button(name: "main1"),
             V.Portal(UILayer.Overlay, key: "portal", focusOrder: PanelFocusOrder.Chained, children: new VNode[]
             {
-                V.FocusScope(name: "modal", contain: true, children: new VNode[]
+                FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
                 {
-                    V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+                    FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
                     {
                         V.Button(name: "p1"),
                         V.Button(name: "p2"),
@@ -419,7 +419,7 @@ namespace Velvet.Tests
             V.Portal(UILayer.Overlay, key: "portal", focusOrder: PanelFocusOrder.Chained, children: new VNode[]
             {
                 V.Button(name: "x"),
-                V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+                FocusScopeElement.Div(name: "group", singleTabStop: true, children: new VNode[]
                 {
                     V.Button(name: "g1"),
                     V.Button(name: "g2"),
@@ -456,7 +456,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ModalWithIsolatedPortalHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
             }),

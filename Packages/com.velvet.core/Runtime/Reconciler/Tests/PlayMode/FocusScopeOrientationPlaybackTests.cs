@@ -34,11 +34,11 @@ namespace Velvet.Tests
                 Group("rowH", FocusScopeOrientation.Horizontal, "flex-row w-[200px]"),
                 Group("live", live, "flex-col w-[100px]"),
                 Group("plain", FocusScopeOrientation.Horizontal, "flex-col w-[100px]", singleTabStop: false),
-                V.FocusScope(singleTabStop: true, className: "flex-row w-[200px]", children: new VNode[]
+                FocusScopeElement.Div(singleTabStop: true, className: "flex-row w-[200px]", children: new VNode[]
                 {
                     Group("nestVB", FocusScopeOrientation.Vertical, "flex-row w-[200px]"),
                 }),
-                V.FocusScope(singleTabStop: true, orientation: FocusScopeOrientation.Vertical,
+                FocusScopeElement.Div(singleTabStop: true, orientation: FocusScopeOrientation.Vertical,
                     className: "flex-row w-[200px]", children: new VNode[]
                     {
                         Group("nestBV", FocusScopeOrientation.Both, "flex-row w-[200px]"),
@@ -48,7 +48,7 @@ namespace Velvet.Tests
 
         private static VNode Group(
             string name, FocusScopeOrientation orientation, string className, bool singleTabStop = true)
-            => V.FocusScope(singleTabStop: singleTabStop, orientation: orientation, className: className, children: new VNode[]
+            => FocusScopeElement.Div(singleTabStop: singleTabStop, orientation: orientation, className: className, children: new VNode[]
             {
                 V.Button(name: name + "A", className: "w-[100px] h-[40px]"),
                 V.Button(name: name + "B", className: "w-[100px] h-[40px]"),
