@@ -121,15 +121,18 @@ namespace Velvet
             // The lead this one took over from is hidden until this one's tween draws it again.
             if (joins) SyncFollows(layoutId, ctx);
 
-            // A second patch before a layout settles the first replaces its wait rather than adding one.
+            // A second patch before a layout settles the first replaces its wait rather than adding one, and carries on
+            // from the box the first took from another holder, which this element has not been drawn at.
+            var taken = ctx.LayoutIdPendingSettles.TryGetValue(element, out var earlier) && earlier.From != null && !earlier.ReadOffItself;
             CancelPendingSettle(element, ctx);
+            var startBox = taken ? earlier!.From : oldBox;
             // One with no box to start from and not laid out yet waits for its first layout all the same, so that
             // a scaling Motion it mounted inside corrects it before that frame draws it.
-            if (oldBox is { } fromBox)
+            if (startBox is { } fromBox)
             {
                 Wait(element, new LayoutIdPendingSettle(fromBox, Layout(element), timing)
                 {
-                    ReadOffItself = readLive && ReferenceEquals(previous.Element, element),
+                    ReadOffItself = !taken && readLive && ReferenceEquals(previous.Element, element),
                 }, ctx);
             }
             else if (!IsFiniteRect(Layout(element)))
@@ -162,7 +165,7 @@ namespace Velvet
             // panel without a teardown carries one to a panel without a frame, and Velvet moves none between panels: a
             // portal given another target remounts its children (portals.md). A first-layout wait settles on an element in a panel.
             else if (host != null && ctx.LayoutIdFrames.ContainsKey(host)) Project(host, ctx);
-            RecordResting(element, ctx);
+            if (pending.From == null) RecordResting(element, ctx);
         }
 
         // Keeps the box a lead is laid out at as its id's snapshot when it holds none, so a teardown that can no longer read the
