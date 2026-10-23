@@ -399,7 +399,7 @@ namespace Velvet.Tests
         {
             // Arrange / Act
             var card = MountCard(V.Div(name: "card", className: "w-[100px] h-[40px] ring-2 ring-inset",
-                V.Div(name: "child", className: "w-[100px] h-[40px]")));
+                children: new[] { V.Div(name: "child", className: "w-[100px] h-[40px]") }));
 
             // Assert
             Assert.That(ChildOrder(card), Is.EqualTo("band,child"));
@@ -411,7 +411,7 @@ namespace Velvet.Tests
             var (shown, setShown) = Hooks.UseState(false);
             s_setShown = setShown;
             return V.Div(name: "card", className: "w-[100px] h-[40px] ring-2 ring-inset",
-                shown ? V.Div(name: "late", className: "w-[100px] h-[40px]") : null);
+                children: new[] { shown ? V.Div(name: "late", className: "w-[100px] h-[40px]") : null });
         }
 
         [Test]
