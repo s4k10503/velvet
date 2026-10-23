@@ -12,7 +12,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Measures a <c>backdrop-*</c> utility on a screen-space overlay panel, which draws into whatever target is bound
     /// when the overlays render. The engine's overlay render is run here with a render texture bound, since batch mode
-    /// does not run a <see cref="WaitForEndOfFrame"/> to read the screen after. The stage and the box span the target's
+    /// does not run a <c>WaitForEndOfFrame</c> to read the screen after. The stage and the box span the target's
     /// full height, so the readback's row order does not decide a sample.
     /// </summary>
     [Timeout(600000)]

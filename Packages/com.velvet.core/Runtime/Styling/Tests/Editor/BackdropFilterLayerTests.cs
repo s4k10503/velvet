@@ -267,7 +267,23 @@ namespace Velvet.Tests
             // pixel just right of the edge is mixed inside the box and pure blue above it.
             Assert.That((red.r > 200 && red.b < 20, inside.r > 60 && inside.b > 60, outside.b > 200 && outside.r < 20),
                 Is.EqualTo((true, true, true)), $"red={red} inside={inside} outside={outside} "
-                + $"api={SystemInfo.graphicsDeviceType} uvStartsAtTop={SystemInfo.graphicsUVStartsAtTop}");
+                + $"api={SystemInfo.graphicsDeviceType} uvStartsAtTop={SystemInfo.graphicsUVStartsAtTop} "
+                + $"window={width}x{height} stage={stage.worldBound} {LastFrame()}");
+        }
+
+        // The renderer's reading of the target as the layer last drew, which says where it copied from.
+        private static string LastFrame()
+        {
+            const BindingFlags Any = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance;
+            var frame = typeof(BackdropRenderer).GetField("s_frame", BindingFlags.NonPublic | BindingFlags.Static)
+                ?.GetValue(null);
+            if (frame == null)
+            {
+                return "frame=unread";
+            }
+            string Read(string field) => frame.GetType().GetField(field, Any)?.GetValue(frame)?.ToString() ?? "null";
+            return $"target={Read("_target")} targetSize={Read("_targetWidth")}x{Read("_targetHeight")} "
+                + $"viewport={Read("_viewport")} region={Read("Region")}";
         }
 
         [Test]
