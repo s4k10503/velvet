@@ -305,8 +305,9 @@ namespace Velvet
             => function is BackdropFunction.Grayscale or BackdropFunction.Invert or BackdropFunction.Sepia
                 or BackdropFunction.Opacity ? 1f : float.PositiveInfinity;
 
-        // False for a list the browser rejects. A url() names no filter Velvet can run, and CSS ignores the whole
-        // chain where one does not resolve, so a list holding one composes no function.
+        // False for a list the browser rejects. A url() names an SVG filter, which nothing here can resolve, and a
+        // reference that does not resolve runs as no function, the rest of the list running as written
+        // (styling-filters.md).
         public static bool TryParse(ReadOnlySpan<char> value, out BackdropOp[]? ops)
         {
             ops = null;
@@ -317,7 +318,7 @@ namespace Velvet
                 return true;
             }
             var list = new List<BackdropOp>();
-            var references = false;
+            var references = 0;
             while (value.Length > 0)
             {
                 if (!TryNextFunction(ref value, out var name, out var argument))
@@ -326,7 +327,7 @@ namespace Velvet
                 }
                 if (name.SequenceEqual("url".AsSpan()))
                 {
-                    references = true;
+                    references++;
                     continue;
                 }
                 if (!TryFunction(name, out var function) || !TryReadArgument(function, argument, false, out var op))
@@ -335,8 +336,8 @@ namespace Velvet
                 }
                 list.Add(op);
             }
-            ops = references ? Array.Empty<BackdropOp>() : list.ToArray();
-            return list.Count > 0 || references;
+            ops = list.ToArray();
+            return list.Count + references > 0;
         }
 
         // `name(argument)` at the head of value, which is left after it and the separators following it.

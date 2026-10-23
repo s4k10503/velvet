@@ -1,6 +1,9 @@
 using System;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
+using UnityEditorInternal;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -143,6 +146,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AListHoldingAReferenceNothingResolves_When_Mounted_Then_TheRestOfTheListRuns()
+        {
+            // Act
+            var glass = Mount("backdrop-filter-[url(#frost)_blur(4px)_grayscale(1)]");
+
+            // Assert
+            Assert.That(SpecOf(glass), Is.EqualTo("blur(4px) grayscale(1)"));
+        }
+
+        [Test]
         public void Given_ABlurReadingACustomProperty_When_Mounted_Then_ItBlursByThePropertysValue()
         {
             // Act
@@ -170,6 +183,66 @@ namespace Velvet.Tests
 
             // Assert — brightness 1 to 0.5, linear.
             Assert.That(ShownAmount(glass), Is.EqualTo(0.75f).Within(1e-3f));
+        }
+
+        // The window as it painted, read back through the editor's own capture of a window's pixels, and the scale from
+        // the window's points to those pixels.
+        private (Color32[] Pixels, int Width, int Height, float Scale) CaptureWindow()
+        {
+            var scale = EditorGUIUtility.pixelsPerPoint;
+            var width = Mathf.RoundToInt(_window.position.width * scale);
+            var height = Mathf.RoundToInt(_window.position.height * scale);
+            var target = new RenderTexture(width, height, 0);
+            try
+            {
+                _window.Focus();
+                typeof(EditorWindow).GetMethod("RepaintImmediately", BindingFlags.NonPublic | BindingFlags.Instance)
+                    ?.Invoke(_window, null);
+                InternalEditorUtility.CaptureEditorWindow(_window, target);
+                return (RenderTexturePixelReader.ReadPixels(target, new RectInt(0, 0, width, height)), width, height, scale);
+            }
+            finally
+            {
+                target.Release();
+                UnityEngine.Object.DestroyImmediate(target);
+            }
+        }
+
+        [Test]
+        public void Given_ABackdropBlurInAnEditorWindow_When_TheWindowIsCaptured_Then_TheEdgeBlursOnlyInsideTheBox()
+        {
+            // Arrange — red and blue halves meeting at x = 100, under a 60px box from (70, 70).
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "stage", className: "w-[200px] h-[200px]",
+                children: new VNode[]
+                {
+                    V.Div(className: "w-[100px] h-[200px] bg-[#ff0000]"),
+                    V.Div(className: "w-[100px] h-[200px] bg-[#0000ff]"),
+                    V.Div(name: "glass", className: "w-[60px] h-[60px] backdrop-blur-md"),
+                }));
+            var stage = _window.rootVisualElement.Q<VisualElement>("stage");
+            stage.style.flexDirection = FlexDirection.Row;
+            var glass = stage.Q<VisualElement>("glass");
+            glass.style.position = Position.Absolute;
+            glass.style.left = 70f;
+            glass.style.top = 70f;
+            ForcePanelUpdate(stage.panel);
+
+            // Act
+            var (pixels, width, height, scale) = CaptureWindow();
+            Color32 At(float x, float y)
+            {
+                var column = Mathf.Clamp(Mathf.FloorToInt((stage.worldBound.x + x) * scale), 0, width - 1);
+                var row = Mathf.Clamp(height - 1 - Mathf.FloorToInt((stage.worldBound.y + y) * scale), 0, height - 1);
+                return pixels[(row * width) + column];
+            }
+            var red = At(40f, 100f);
+            var inside = At(101f, 100f);
+            var outside = At(101f, 20f);
+
+            // Assert — the two halves read as themselves, which says the capture landed where the stage is; then the
+            // pixel just right of the edge is mixed inside the box and pure blue above it.
+            Assert.That((red.r > 200 && red.b < 20, inside.r > 60 && inside.b > 60, outside.b > 200 && outside.r < 20),
+                Is.EqualTo((true, true, true)), $"red={red} inside={inside} outside={outside}");
         }
 
         [Test]

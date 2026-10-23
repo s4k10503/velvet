@@ -245,7 +245,8 @@ brightness, contrast, grayscale, hue-rotate, invert, opacity, saturate, sepia, e
 holding its own slot. A function bracket the browser rejects (`backdrop-blur-[-4px]`) leaves the composed
 declaration invalid, so the element draws no backdrop filter; a list the browser rejects declares nothing, so the
 class under it holds the declaration; a name with no value (`backdrop-blur-huge`) adds nothing. A `url()` in a list
-names no filter Velvet can run, and CSS ignores the whole list where a reference does not resolve, so it draws none.
+names an SVG filter, which Velvet has none of, so it runs as no function and the rest of the list runs as written,
+as Chromium builds a backdrop filter whose reference does not resolve.
 The utilities work under variants (`hover:backdrop-blur-sm`), with the important modifier, and in the
 custom-property forms (`backdrop-blur-(--glass)`, [styling-custom-properties.md](styling-custom-properties.md)).
 
@@ -277,4 +278,5 @@ What remains different from a browser:
   in paint order.
 
 The layer is `Velvet/BackdropFilter`, a shader the build step [player-builds.md](player-builds.md) describes ships.
-`BackdropFilterPlaybackTests` renders it on a `RenderTexture` panel.
+`BackdropFilterPlaybackTests`, `BackdropFilterOverlayPlaybackTests` and `BackdropFilterLayerTests` render it on a
+`RenderTexture` panel, a screen-space overlay panel and an editor window's panel.

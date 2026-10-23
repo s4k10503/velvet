@@ -69,6 +69,30 @@ namespace Velvet.Tests
 
         private VisualElement Glass() => _host.Root.Q<VisualElement>("glass");
 
+        private sealed class Flag : Store<bool>
+        {
+            public Flag() : base(false) { }
+
+            public void Set(bool value) => SetState(_ => value);
+
+            protected override void ResetCore() => SetState(_ => false);
+        }
+
+        private static Flag s_dim;
+
+        [Component]
+        private static VNode Dimming()
+        {
+            var dim = Hooks.UseStore(s_dim, x => x);
+            return V.Div(name: "stage", className: $"w-[{Size}px] h-[{Size}px] bg-[#ff0000]", children: new VNode[]
+            {
+                V.Div(name: "glass", className: "w-[40px] h-[40px] " + (dim ? "backdrop-brightness-50" : "backdrop-brightness-100")),
+            });
+        }
+
+        private Color32 ReadAt(int x, int y)
+            => RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(x, Size - 1 - y, 1, 1))[0];
+
         // The pixel at a panel point; the readback runs bottom-up while panel y grows downward.
         private Color32 At(int x, int y) => _pixels[((Size - 1 - y) * Size) + x];
 
@@ -224,6 +248,68 @@ namespace Velvet.Tests
             Assert.That((Placed(Glass(), 5f, 30f, 40f), inside.r < 20 && inside.g > 100 && inside.g < 160
                     && inside.b > 100 && inside.b < 160),
                 Is.EqualTo((true, true)), $"inside={inside}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_TransitionAll_When_TheBackdropBrightnessHalves_Then_HalfTheDurationInPaintsThreeQuarters()
+        {
+            // Arrange — a held clock, so the frame read is the one half way through the second.
+            var clock = new HeldMotionClock();
+            s_dim = new Flag();
+            _host = new RenderTexturePanelHost(nameof(BackdropFilterPlaybackTests), Size, Size);
+            _mounted = V.Mount(_host.Root, V.Component(Dimming, key: "root"), new MountOptions { MotionClock = clock });
+            var style = Glass().style;
+            style.position = Position.Absolute;
+            style.left = 40f;
+            style.top = 40f;
+            style.transitionProperty = new System.Collections.Generic.List<StylePropertyName> { new("all") };
+            style.transitionDuration = new System.Collections.Generic.List<TimeValue> { new(1f, TimeUnit.Second) };
+            style.transitionTimingFunction = new System.Collections.Generic.List<EasingFunction> { new(EasingMode.Linear) };
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+            var before = ReadAt(60, 60);
+
+            // Act
+            s_dim.Set(true);
+            _mounted.FlushStateForTest();
+            clock.Now += 0.5;
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+            var halfWay = ReadAt(60, 60);
+
+            // Assert — red at brightness 1, then at 0.75 of it: 191.
+            Assert.That((before.r > 240, halfWay.r > 175 && halfWay.r < 207),
+                Is.EqualTo((true, true)), $"before={before} halfWay={halfWay}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ADropShadowOverATransparentBackdrop_When_Rendered_Then_TheShadowFillsWhereTheBackdropWasClear()
+        {
+            // Arrange — a red square on a clear target, under a box casting its backdrop's shadow 10px right in blue.
+            _host = new RenderTexturePanelHost(nameof(BackdropFilterPlaybackTests), Size, Size);
+            var settings = ((IRuntimePanel)_host.Root.panel).panelSettings;
+            settings.clearColor = true;
+            settings.colorClearValue = Color.clear;
+            _mounted = V.Mount(_host.Root, V.Div(name: "stage", className: $"w-[{Size}px] h-[{Size}px]", children: new VNode[]
+            {
+                V.Div(name: "square", className: "w-[20px] h-[20px] bg-[#ff0000]"),
+                V.Div(name: "glass", className: "w-[80px] h-[80px] backdrop-filter-[drop-shadow(10px_0_0_#0000ff)]"),
+            }));
+            foreach (var (name, at) in new[] { ("square", 40f), ("glass", 20f) })
+            {
+                var style = _host.Root.Q<VisualElement>(name).style;
+                style.position = Position.Absolute;
+                style.left = at;
+                style.top = at;
+            }
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+
+            // Act
+            var source = ReadAt(45, 50);
+            var shadow = ReadAt(65, 50);
+            var clear = ReadAt(65, 30);
+
+            // Assert
+            Assert.That((PureRed(source), shadow.b > 200 && shadow.r < 20 && shadow.a > 200, clear.a < 10),
+                Is.EqualTo((true, true, true)), $"source={source} shadow={shadow} clear={clear}");
         }
 
         [UnityTest]
