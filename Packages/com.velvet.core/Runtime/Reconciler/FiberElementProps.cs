@@ -58,9 +58,9 @@ namespace Velvet
         private bool? _delegatesFocus;
 
         /// <summary>
-        /// Focus-scope behavior for this container element. Attachable to
-        /// ANY container — the modal Div you already have can be the scope; <c>V.FocusScope</c> is sugar for
-        /// when no container exists yet.
+        /// Focus-scope behavior for this container element, whose subtree is the scope. Attachable to
+        /// ANY container — the modal Div you already have can be the scope; <c>V.FocusScope</c> scopes
+        /// children without a container around them.
         /// </summary>
         public FocusScopeSettings? FocusScope { get => _focusScope; set { ThrowIfReadOnly(); _focusScope = value; } }
         private FocusScopeSettings? _focusScope;
@@ -290,10 +290,10 @@ namespace Velvet
     /// inside the scope).</param>
     /// <param name="SingleTabStop">The subtree behaves as one Tab stop: Tab from inside exits past the
     /// remaining members (wrapping within the nearest containing scope, if any); Tab entering from outside
-    /// — in either direction — lands on the last-focused member, else the scope's first. Members keep
-    /// tabIndex 0, so engine 2D arrow/dpad navigation moves between them; a 2D move that lands outside the
-    /// subtree returns to the member it started from, and <see cref="Orientation"/> ignores one axis's
-    /// moves.</param>
+    /// — in either direction — lands on the last-focused member, else the scope's first. An arrow/d-pad move
+    /// steps to the next member in hierarchy order (right, down) or the previous one (left, up) and never
+    /// leaves the subtree; <see cref="Orientation"/> ignores one axis's moves and <see cref="Wrap"/> continues
+    /// past an end.</param>
     public sealed record FocusScopeSettings(
         bool Contain = false,
         bool RestoreFocus = false,
@@ -307,12 +307,20 @@ namespace Velvet
         /// it is not read.
         /// </summary>
         public FocusScopeOrientation Orientation { get; init; }
+
+        /// <summary>
+        /// Inside a <see cref="SingleTabStop"/> group, an arrow/d-pad move past the last member lands on the first
+        /// and one before the first lands on the last, as a React Aria radio group's arrows do. Without it the
+        /// move leaves focus where it is, as a React Aria toolbar's arrows do. Of nested groups, the outermost
+        /// one's value decides; without <see cref="SingleTabStop"/> it is not read.
+        /// </summary>
+        public bool Wrap { get; init; }
     }
 
     /// <summary>The axes an arrow/d-pad move may travel inside a <c>singleTabStop</c> group.</summary>
     public enum FocusScopeOrientation
     {
-        /// <summary>Moves on both axes travel between members; the geometry decides.</summary>
+        /// <summary>Moves on both axes travel between members.</summary>
         Both,
 
         /// <summary>Left and right moves travel; up and down keep focus on the member.</summary>

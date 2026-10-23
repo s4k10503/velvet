@@ -34,11 +34,11 @@ namespace Velvet.Tests
                 Group("rowH", FocusScopeOrientation.Horizontal, "flex-row w-[200px]"),
                 Group("live", live, "flex-col w-[100px]"),
                 Group("plain", FocusScopeOrientation.Horizontal, "flex-col w-[100px]", singleTabStop: false),
-                V.FocusScope(singleTabStop: true, className: "flex-row w-[200px]", children: new VNode[]
+                FocusScopeElement.Div(singleTabStop: true, className: "flex-row w-[200px]", children: new VNode[]
                 {
                     Group("nestVB", FocusScopeOrientation.Vertical, "flex-row w-[200px]"),
                 }),
-                V.FocusScope(singleTabStop: true, orientation: FocusScopeOrientation.Vertical,
+                FocusScopeElement.Div(singleTabStop: true, orientation: FocusScopeOrientation.Vertical,
                     className: "flex-row w-[200px]", children: new VNode[]
                     {
                         Group("nestBV", FocusScopeOrientation.Both, "flex-row w-[200px]"),
@@ -48,7 +48,7 @@ namespace Velvet.Tests
 
         private static VNode Group(
             string name, FocusScopeOrientation orientation, string className, bool singleTabStop = true)
-            => V.FocusScope(singleTabStop: singleTabStop, orientation: orientation, className: className, children: new VNode[]
+            => FocusScopeElement.Div(singleTabStop: singleTabStop, orientation: orientation, className: className, children: new VNode[]
             {
                 V.Button(name: name + "A", className: "w-[100px] h-[40px]"),
                 V.Button(name: name + "B", className: "w-[100px] h-[40px]"),
@@ -98,6 +98,8 @@ namespace Velvet.Tests
             result((held, start.panel.focusController.focusedElement));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AHorizontalGroup_When_ADownMoveWouldReachTheMemberBelow_Then_FocusStaysOnTheMember()
         {
@@ -112,6 +114,8 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AHorizontalGroup_When_AnUpMoveWouldReachTheMemberAbove_Then_FocusStaysOnTheMember()
         {
@@ -126,6 +130,8 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AVerticalGroup_When_ARightMoveWouldReachTheMemberBesideIt_Then_FocusStaysOnTheMember()
         {
@@ -140,6 +146,8 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AVerticalGroup_When_ALeftMoveWouldReachTheMemberBesideIt_Then_FocusStaysOnTheMember()
         {
@@ -154,6 +162,8 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AVerticalGroup_When_ADownMoveReachesTheMemberBelow_Then_FocusMovesThere()
         {
@@ -168,6 +178,8 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo((true, (Focusable)Element("colVB"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AHorizontalGroup_When_ARightMoveReachesTheMemberBesideIt_Then_FocusMovesThere()
         {
@@ -182,6 +194,8 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo((true, (Focusable)Element("rowHB"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AHorizontalGroup_When_ADownMoveIsIgnored_Then_TheMemberBelowReceivesNoFocusEvent()
         {
@@ -198,6 +212,8 @@ namespace Velvet.Tests
             Assert.That((outcome.Item1, focusIns), Is.EqualTo((true, 0)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AVerticalGroupNestedInABothGroup_When_ARightMoveReachesTheNextMember_Then_FocusMovesThere()
         {
@@ -212,6 +228,8 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo((true, (Focusable)Element("nestVBB"))));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AHorizontalGroup_When_ADownMoveIsIgnored_Then_TheFocusedMembersOwnHandlerStillSeesIt()
         {
@@ -228,6 +246,8 @@ namespace Velvet.Tests
             Assert.That((outcome.Item1, seen), Is.EqualTo((true, 1)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_ABothGroupNestedInAVerticalGroup_When_ARightMoveReachesTheNextMember_Then_FocusStaysOnTheMember()
         {
@@ -242,6 +262,8 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AGroupWhoseOrientationBecomesHorizontal_When_ADownMoveReachesTheMemberBelow_Then_FocusStaysOnTheMember()
         {
@@ -259,6 +281,8 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AVerticalGroup_When_ANoneMoveDispatchesFromAMemberWithAnotherBelow_Then_FocusStaysOnTheMember()
         {
@@ -273,6 +297,8 @@ namespace Velvet.Tests
             Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AScopeThatIsNotASingleTabStop_When_ItNamesAnOrientation_Then_ADownMoveStillTravels()
         {

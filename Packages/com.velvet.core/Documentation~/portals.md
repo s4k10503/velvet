@@ -152,11 +152,10 @@ frame and batchmode has no way to drive that.
 `FocusController` when focused, and a host torn down while it holds focus hands focus back to
 the main panel first (otherwise it would dangle on a destroyed `FocusController`, or — for a
 layer panel, which persists — simply vanish since UI Toolkit clears `focusedElement` as soon as
-the focused element leaves its panel's tree). Tab/Shift-Tab does not cross a panel boundary on
-its own: UI Toolkit's own focus ring unconditionally wraps within its own panel (confirmed from
-the engine source) and exposes no signal for "focus tried to leave the ring", which is why Velvet
-predicts and redirects the ring rather than hooking it. Chaining is a per-host opt-in and
-`Isolated` is the default — see "Cross-panel Tab order: `PanelFocusOrder`" below.
+the focused element leaves its panel's tree). By default a host's elements follow the declaring
+tree's own panel in Tab order, as a portal into `document.body` follows the rest of the document;
+Velvet carries Tab across each panel boundary itself, predicting where the engine's own ring would
+wrap rather than hooking it — see "Cross-panel Tab order: `PanelFocusOrder`" below.
 
 ## Screen-space layers: `V.Portal(layer:)`
 
@@ -238,11 +237,10 @@ and a host destroyed externally (a scene unload) is skipped safely on later patc
 
 ## Cross-panel Tab order: `PanelFocusOrder`
 
-Both host flavors accept a `focusOrder:` argument. The default, `Isolated`, wraps the host
-panel's focus ring internally so Tab never crosses the panel boundary. `Chained` joins the
-declaring panel's Tab order at the portal's call site with iframe semantics — see the focus
-guide for the full contract, including the one-tick deferral on the escape hop and why 2D
-navigation never crosses panels.
+Both host flavors accept a `focusOrder:` argument. The default, `Appended`, puts the host's elements
+after the declaring tree's own panel in Tab order; `Chained` puts them at the portal's call site with
+iframe semantics; `Isolated` keeps Tab wrapping within the host panel. The focus guide's
+[cross-panel Tab order](focus.md#cross-panel-tab-order-panelfocusorder) section owns the contract.
 
 ## Screen-space anchored elements: `V.Anchored`
 

@@ -53,16 +53,18 @@ namespace Velvet.Tests
         [Component]
         private static VNode TwoContainedScopesHost() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modalA", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modalA", contain: true, children: new VNode[]
             {
                 V.Button(name: "a1"),
             }),
-            V.FocusScope(name: "modalB", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modalB", contain: true, children: new VNode[]
             {
                 V.Button(name: "b1"),
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_TwoContainedScopes_When_FocusMovesFromTheNewerIntoTheOlder_Then_TheNewerScopeTakesItBack()
         {
@@ -80,17 +82,19 @@ namespace Velvet.Tests
         [Component]
         private static VNode ContainedScopeBeforeAPlainScope() => V.Div(children: new VNode[]
         {
-            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            FocusScopeElement.Div(name: "modal", contain: true, children: new VNode[]
             {
                 V.Button(name: "m1"),
             }),
-            V.FocusScope(name: "plain", children: new VNode[]
+            FocusScopeElement.Div(name: "plain", children: new VNode[]
             {
                 V.Button(name: "p1"),
             }),
         });
 
-        // GREEN_ON_BASE(characterization): the base snaps a landing in a plain scope back into the modal.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base snaps a landing in a plain scope back into the modal.
         // This case pins that a plain scope created after the modal does not rank as a newer contain scope.
         [Test]
         public void Given_AContainedScope_When_FocusMovesIntoAPlainScopeCreatedAfterIt_Then_TheScopeTakesItBack()
@@ -107,7 +111,7 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode ModalDeclaringASamePanelPortal() => V.FocusScope(name: "modal", contain: true,
+        private static VNode ModalDeclaringASamePanelPortal() => FocusScopeElement.Div(name: "modal", contain: true,
             children: new VNode[]
             {
                 V.Button(name: "m1"),
@@ -117,6 +121,8 @@ namespace Velvet.Tests
                 }),
             });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AContainedScope_When_FocusMovesToAPortalItDeclaredIntoTheSamePanel_Then_FocusStaysInThePortal()
         {
