@@ -214,6 +214,7 @@
 [Velvet] field Velvet.NetworkMode.Always: Velvet.NetworkMode
 [Velvet] field Velvet.NetworkMode.OfflineFirst: Velvet.NetworkMode
 [Velvet] field Velvet.NetworkMode.Online: Velvet.NetworkMode
+[Velvet] field Velvet.PanelFocusOrder.Appended: Velvet.PanelFocusOrder
 [Velvet] field Velvet.PanelFocusOrder.Chained: Velvet.PanelFocusOrder
 [Velvet] field Velvet.PanelFocusOrder.Isolated: Velvet.PanelFocusOrder
 [Velvet] field Velvet.PlayTrigger.Manual: Velvet.PlayTrigger
@@ -585,7 +586,7 @@
 [Velvet] method Velvet.V.Droppable(System.String, System.Object?, System.Boolean, System.String?, System.String?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
 [Velvet] method Velvet.V.ErrorBoundary(System.Func`2[System.Exception, Velvet.VNode], Velvet.VNode?[], System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.ErrorBoundary(System.Func`3[System.Exception, Velvet.ErrorBoundaryReset, Velvet.VNode], Velvet.VNode?[], System.Object?[]?, System.Action`1[Velvet.ErrorBoundaryResetDetails]?, System.String?): Velvet.ComponentNode
-[Velvet] method Velvet.V.FocusScope(System.String?, System.String?, System.String?, System.Boolean, System.Boolean, System.Boolean, System.Boolean, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FocusScopeOrientation, Velvet.FiberEventBinding[]?): Velvet.ElementNode
+[Velvet] method Velvet.V.FocusScope(Velvet.VNode?[]?, System.String?, System.Boolean, System.Boolean, System.Boolean, System.Boolean, Velvet.FocusScopeOrientation, System.Boolean): Velvet.ComponentNode
 [Velvet] method Velvet.V.Fragment(Velvet.VNode?[]): Velvet.FragmentNode
 [Velvet] method Velvet.V.Fragment(Velvet.VNode?[], System.String?): Velvet.FragmentNode
 [Velvet] method Velvet.V.Image(System.String?, System.String?, System.String?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
@@ -982,6 +983,7 @@
 [Velvet] property Velvet.FocusScopeSettings.Orientation: Velvet.FocusScopeOrientation
 [Velvet] property Velvet.FocusScopeSettings.RestoreFocus: System.Boolean
 [Velvet] property Velvet.FocusScopeSettings.SingleTabStop: System.Boolean
+[Velvet] property Velvet.FocusScopeSettings.Wrap: System.Boolean
 [Velvet] property Velvet.FragmentNode.Children: Velvet.VNode?[]
 [Velvet] property Velvet.GeometryChangedBinding.EventId: System.String
 [Velvet] property Velvet.GeometryChangedBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.GeometryChangedEvent]?

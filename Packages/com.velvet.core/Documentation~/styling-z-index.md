@@ -78,7 +78,8 @@ Tab order follows the declared position, not the band. The placeholder is a real
 slot; Tab reaching it forwards focus into the relocated element, and Tab leaving the relocated element continues
 from its declared slot. A Tab move that the engine would land inside a relocated element where it paints goes on
 past it instead, so an overlay declared before the content it covers is reached before the content, as in CSS. The
-ring a [`V.FocusScope`](focus.md) contains or makes a single tab stop is the engine's own, and follows the bands.
+ring a [`V.FocusScope`](focus.md) contains or makes a single tab stop is the engine's own, and follows the bands. A
+relocated element belongs to the scope that declares it, wherever it paints.
 
 ## Deviations from CSS
 

@@ -12,7 +12,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// An element Velvet releases leaves no focus behind in the panel it left: a Button that held focus and
-    /// comes back from the pool somewhere else behaves as a freshly constructed one.
+    /// comes back from the pool somewhere else behaves as a freshly constructed one. An element user code moves
+    /// out of a panel Velvet renders into leaves none behind either.
     /// </summary>
     internal sealed class PooledFocusMemoryTests
     {
@@ -503,6 +504,58 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((focusLanded, HeldFocus(controller).Item1), Is.EqualTo((true, (object)own)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AFieldWhoseFocusOutHidesAButton_When_FocusMovesToThatButtonAndItStaysHidden_Then_ThePanelKeepsNoReferenceToItByItsNextTick()
+        {
+            // Arrange
+            _released = V.Mount(FirstRoot, V.Component(FieldHidingAButtonOnFocusOut, key: "form"));
+            yield return Settle();
+            var field = FirstRoot.Q<VisualElement>("field");
+            var button = FirstRoot.Q<VisualElement>("button");
+            field.Focus();
+            var fieldFocused = FirstRoot.panel.focusController.focusedElement == field;
+            yield return null;
+            var controller = FirstRoot.panel.focusController;
+
+            // Act
+            button.Focus();
+            var hiddenByTheFocusOut = button.panel == null;
+            yield return Settle();
+
+            // Assert
+            var (last, focused) = HeldFocus(controller);
+            Assert.That(
+                (fieldFocused, hiddenByTheFocusOut, last, focused, button.hasFocusPseudoState),
+                Is.EqualTo((true, true, (object)null, (object)null, false)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AButtonFocusedInAPanelATreeRendersInto_When_UserCodeMovesItToAnotherPanelAndTheFirstRegainsFocus_Then_TheButtonIsNotFocused()
+        {
+            // Arrange — the Button is the test's own, beside the tree rather than in it.
+            var mountPoint = new VisualElement();
+            FirstRoot.Add(mountPoint);
+            _released = V.Mount(mountPoint, V.Component(SingleButton, key: "tree"));
+            var own = new Button { name = "own" };
+            FirstRoot.Add(own);
+            yield return Settle();
+            own.Focus();
+            var focusLanded = FirstRoot.panel.focusController.focusedElement == own;
+            yield return null;
+            SetFocusedPanel(null);
+            SecondRoot.Add(own);
+            yield return Settle();
+            var focusIns = 0;
+            own.RegisterCallback<FocusInEvent>(_ => focusIns++);
+
+            // Act
+            SetFocusedPanel(FirstRoot.panel);
+            yield return Settle();
+
+            // Assert
+            Assert.That((focusLanded, own.panel == SecondRoot.panel, focusIns), Is.EqualTo((true, true, 0)));
         }
 
         [Component]

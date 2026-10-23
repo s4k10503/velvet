@@ -544,24 +544,29 @@ namespace Velvet.Tests
             Assert.AreEqual(2, s_counter.SubscribeCalls);
         }
 
-        // GREEN_ON_BASE(characterization): the base's layout-phase check already ran the mount into the limit.
-        // On the head the check is a passive effect, and the sync-lane drain renders the re-render it asks for.
         [Test]
         public void Given_GetSnapshotBuildingANewValuePerRead_When_ItsPassiveCheckRuns_Then_ItRerendersPastTheUpdateDepthLimit()
         {
             // Arrange — the caching error is logged once however many renders follow: a second one fails the case
             // as an unexpected log
             LogAssert.Expect(LogType.Error, new Regex("getSnapshot returned a different value on two consecutive reads"));
-            LogAssert.Expect(LogType.Error, new Regex("Maximum update depth exceeded"));
             s_uncached = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(UncachedRender, key: "uncached"));
 
             // Act — the drain finds its tier empty and runs the mount's effects first
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var thrown = "nothing thrown";
+            try
+            {
+                mounted.GetSchedulerForTest().DrainImmediateForTest();
+            }
+            catch (InvalidOperationException exception)
+            {
+                thrown = exception.Message.Split('.')[0];
+            }
 
-            // Assert — more renders than the drain's nested-update cap, which only the limit ends; a drain that
-            // left the check's re-render to its next call would stop at two
-            Assert.That(s_uncachedRenders, Is.GreaterThan(50));
+            // Assert — more renders than the drain's nested-update cap, which only the limit ends, with React's
+            // error; a drain that left the check's re-render to its next call would stop at two
+            Assert.That((thrown, s_uncachedRenders > 50), Is.EqualTo(("Maximum update depth exceeded", true)));
         }
 
         [Test]

@@ -66,6 +66,9 @@ namespace Velvet.Tests
         private const string OwnSlotReader =
             "System.Boolean Velvet.StyleArbitraryValueResolver.DeclaresOwn("
             + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot)";
+        private const string OwnClaimantReader =
+            "System.String Velvet.StyleArbitraryValueResolver.OwnClaimant(UnityEngine.UIElements.VisualElement, "
+            + "Velvet.StyleArbitraryValueResolver/LayerMap, Velvet.StyleLonghand, System.Int64&)";
         private const string UniformScaleReader =
             "System.Single Velvet.StyleArbitraryValueResolver.UniformScaleFromClasses("
             + "UnityEngine.UIElements.VisualElement)";
@@ -161,6 +164,7 @@ namespace Velvet.Tests
         private static readonly string[] LayoutGateReadings =
         {
             "System.Boolean Velvet.StyleGridClass.HasGridClass(System.String[])",
+            "System.Void Velvet.FiberNodePatcher.ApplyCompositeFlowManipulator(UnityEngine.UIElements.VisualElement)",
             "System.Void Velvet.FiberNodePatcher.ApplyDivideManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[])",
             "System.Void Velvet.FiberNodePatcher.ApplyFlexMinSizeManipulator("
@@ -878,6 +882,26 @@ namespace Velvet.Tests
             // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
             Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
                 "a space margin or a divider gives way to the child's own class wherever it sits in the list");
+        }
+
+        // What shows the case can fail is OwnClaimant taking the last width class on the list rather than the one
+        // the stylesheet declares last: the arrangement ending on w-40 then grows 160px rather than 320px.
+        [Test]
+        [ReaderVerdict(OwnClaimantReader)]
+        public void Given_TwoWidthTokens_When_TheOrderTheyWereAddedInIsReversed_Then_AWrappingGapGrowsTheSameWidthBothWays()
+        {
+            // Arrange — _sizing.uss declares w-80 after w-40, so w-80 is the width either list resolves to.
+            var added = Carrying("w-40", "w-80");
+            var reversed = Carrying("w-80", "w-40");
+
+            // Act
+            StyleArbitraryValueResolver.HoldSizeGap(added, HeldSlot.Width, 16f, mine: false);
+            StyleArbitraryValueResolver.HoldSizeGap(reversed, HeldSlot.Width, 16f, mine: false);
+
+            // Assert — 320px plus the gap both ways, rather than merely equal: two misses would agree too.
+            Assert.That((added.style.width.value.value, reversed.style.width.value.value),
+                Is.EqualTo((336f, 336f)),
+                "the width a wrapping gap grows is the class the cascade declares last wherever it sits in the list");
         }
 
         // What shows the case can fail is IsContainer answering from the first class on the list: the arrangement

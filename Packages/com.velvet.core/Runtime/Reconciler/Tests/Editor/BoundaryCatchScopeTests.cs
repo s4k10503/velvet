@@ -17,7 +17,8 @@ namespace Velvet.Tests
     /// sit in an element or in a fragment, and its passive effect runs.</item>
     /// <item>On an update, a sibling behind the boundary renders what that update gave it.</item>
     /// <item>A component the failed output mounted never runs its effect, the boundary's own update included. One it had already mounted is
-    /// cleaned up once, in the commit, after the rest of the pass has rendered.</item>
+    /// cleaned up once, in the commit, after the rest of the pass has rendered. A component whose first render threw
+    /// in an update a boundary above the updating component caught is disposed.</item>
     /// <item>A boundary with no fallback passes the error on, and the boundary above replaces its own whole
     /// output with its fallback.</item>
     /// <item>The fallback never takes over an element of the boundary's output, one the failed output never
@@ -1331,6 +1332,50 @@ namespace Velvet.Tests
             // Assert — the fallback is read with the count, since an update that commits completes the enter
             Assert.That(Texts() + ",enters " + s_enterCompletions, Is.EqualTo("fallback,enters 0"));
         }
+
+        [Test]
+        public void Given_AComponentsOwnUpdateMountingAChildWhoseFirstRenderThrows_When_ABoundaryAboveItCatchesOnTheAbortingPath_Then_TheChildIsDisposed()
+        {
+            // Arrange — the update is the component's own pass, so the boundary above it catches on the aborting path
+            s_mountFailChild = null;
+            using var mounted = V.Mount(_root, V.Component(MountFailHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setMountFailShown.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback is read with it, since a child whose render does not throw stays mounted
+            Assert.That(Texts() + "," + (s_mountFailChild?.IsDisposed == true), Is.EqualTo("fallback,True"));
+        }
+
+        private static Action<bool> s_setMountFailShown;
+        private static ComponentFiber s_mountFailChild;
+
+        [Component(Compiler = false)]
+        private static VNode MountFailChildRender()
+        {
+            s_mountFailChild = FiberAmbientStack.Current;
+            throw new InvalidOperationException("Mount throw");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode MountFailParentRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_setMountFailShown = setShown;
+            return shown ? V.Component(MountFailChildRender, key: "child") : V.Label(text: "parent");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode MountFailBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(MountFailParentRender, key: "parent");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode MountFailHostRender()
+            => V.Div(children: new VNode[] { V.Component(MountFailBoundaryRender, key: "boundary") });
 
         private static Action<int> s_setAbortedEnterTick;
 

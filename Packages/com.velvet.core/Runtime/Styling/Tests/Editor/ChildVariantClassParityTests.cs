@@ -380,18 +380,17 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_GapAndChildVariantSameEdge_When_Reconciled_Then_GapWins()
+        public void Given_GapAndChildVariantSameEdge_When_Reconciled_Then_TheGapAddsToThePayload()
         {
-            // Arrange — [&>*]:ml-[2px] and gap-x-4 both target margin-left; the child-variant pass runs BEFORE
-            // gap, so gap owns the shared edge (its existing precedence over any per-child margin source).
+            // Arrange — [&>*]:ml-[2px] and gap-x-4 both target margin-left, where CSS adds a gap to the margin.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row gap-x-4 [&>*]:ml-[2px]", 3) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
 
-            // Assert — the 2nd child's leading margin is the gap value, not the child-variant's 2px.
-            Assert.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(Space4));
+            // Assert
+            Assert.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(Space4 + 2f));
         }
 
         #endregion

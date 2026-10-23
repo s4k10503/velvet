@@ -100,26 +100,33 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARunawayCommitPhaseWriteLoop_When_TheDrainHitsTheUpdateDepthCap_Then_ItLogsAndDropsTheRunawayUpdate()
+        public void Given_ARunawayCommitPhaseWriteLoop_When_TheDrainHitsTheUpdateDepthCap_Then_ItThrowsAndDropsTheRunawayUpdate()
         {
             // Arrange — mounted quiet, then the first store write starts the self-sustaining loop.
             using var store = new CounterStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(RunawayCommitWriteHost, key: "host"));
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
-            LogAssert.Expect(UnityEngine.LogType.Error, new System.Text.RegularExpressions.Regex("Maximum update depth"));
+            store.Increment();
 
             // Act — a single drain must terminate at the cap instead of spinning forever.
-            store.Increment();
-            scheduler.DrainImmediateForTest();
+            var thrown = "nothing thrown";
+            try
+            {
+                scheduler.DrainImmediateForTest();
+            }
+            catch (System.InvalidOperationException exception)
+            {
+                thrown = exception.Message.Split('.')[0];
+            }
 
-            // Assert — the loop genuinely ran (the spin counter committed past its initial value)
-            // and the runaway update was then DROPPED, not deferred: a deferred runaway would re-arm
-            // and burn the full cap again every frame forever, so the queue must end empty.
+            // Assert — the loop genuinely ran (the spin counter committed past its initial value), React's
+            // error ended it, and the runaway update was dropped rather than deferred: a deferred runaway would
+            // re-arm and burn the full cap again every frame, so the queue must end empty.
             Assert.That(
-                (_root.Q<Label>("spins").text != "spins-0", scheduler.ImmediatePendingCount),
-                Is.EqualTo((true, 0)),
-                "The capped drain must drop the runaway update after real passes ran");
+                (thrown, _root.Q<Label>("spins").text != "spins-0", scheduler.ImmediatePendingCount),
+                Is.EqualTo(("Maximum update depth exceeded", true, 0)),
+                "The capped drain must throw React's error and drop the runaway update after real passes ran");
         }
     }
 

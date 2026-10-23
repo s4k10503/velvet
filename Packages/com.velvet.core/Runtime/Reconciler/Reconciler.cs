@@ -772,7 +772,7 @@ namespace Velvet
                 AnchoredDriver.Detach(element, binding);
             }
             _ctx.AnchoredBindings.Clear();
-            // Focus-scope bindings own a registered attach callback each; the navigator's listener trios
+            // Focus-scope bindings own a registered attach callback each; the navigator's listeners
             // (and any still-pending attach hooks) sit on elements that outlive this reconciler, so both
             // are released explicitly.
             foreach (var (element, binding) in _ctx.FocusScopeBindings)
@@ -782,6 +782,8 @@ namespace Velvet
             _ctx.FocusScopeBindings.Clear();
             _ctx.ChainedPlaceholders.Clear();
             _ctx.ChainedHostRoots.Clear();
+            _ctx.AppendedPlaceholders.Clear();
+            _ctx.AppendedHosts.Clear();
             FiberFocusNavigator.DetachAll(_ctx);
         }
 
@@ -880,6 +882,12 @@ namespace Velvet
             }
 
             _ctx.GapManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.CompositeFlowManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.CompositeFlowManipulators.Clear();
             foreach (var (element, manipulator) in _ctx.DivideManipulators)
             {
                 element.RemoveManipulator(manipulator);

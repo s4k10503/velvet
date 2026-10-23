@@ -35,8 +35,8 @@ namespace Velvet
         // commit paths. The time-sliced path cannot use this — it must keep lisIndices alive in
         // KeyedReconcileState.LisIndices across a yield boundary between ComputeLis and Pass2Reorder —
         // so it rents the set itself and calls ComputeLisAnchors directly. The reorder region begins where
-        // the LIS scan does, so PlacementRange.ScanStart serves both.
-        internal void ComputeAnchorsAndReorder(
+        // the LIS scan does, so PlacementRange.ScanStart serves both. Returns what ReorderToNewElementOrder does.
+        internal bool ComputeAnchorsAndReorder(
             VisualElement? parent,
             List<(VisualElement? element, bool isExisting)> newElements,
             in PlacementRange range)
@@ -46,7 +46,7 @@ namespace Velvet
             try
             {
                 ComputeLisAnchors(parent, newElements, in range, lisIndices);
-                ReorderToNewElementOrder(parent, newElements, lisIndices, range.ScanStart);
+                return ReorderToNewElementOrder(parent, newElements, lisIndices, range.ScanStart);
             }
             finally
             {
@@ -209,13 +209,16 @@ namespace Velvet
         // The residual O(N·childCount) of the incremental Insert/RemoveAt shifts themselves is unchanged — only the
         // scan term is removed; the reorder still runs as one unyielded slice, so a huge single-frame rotation is
         // bounded by that structural cost, not by this lookup.
-        internal void ReorderToNewElementOrder(
+        // Returns whether it placed the elements out of the order the components in them were created in, which
+        // ComponentRegistry.CommitChildOrderToRows then gives their fibers.
+        internal bool ReorderToNewElementOrder(
             VisualElement? parent,
             System.Collections.Generic.List<(VisualElement? element, bool isExisting)> newElements,
             System.Collections.Generic.HashSet<int>? lisIndices,
             int slotStart)
         {
-            if (parent == null || lisIndices == null) return;
+            if (parent == null || lisIndices == null) return false;
+            var outOfCreationOrder = PlacesOutOfCreationOrder(parent, newElements);
             // The element that follows this whole range in the LIVE tree — the anchor for the range's right-most
             // element. The range currently occupies a contiguous block of its still-parented elements starting at
             // slotStart (Pass 2 Remove compacted out the dropped ones; freshly created elements are NOT yet
@@ -294,6 +297,37 @@ namespace Velvet
                     parent.Insert(end, element);
                     insertHint = end;
                 }
+            }
+            return outOfCreationOrder;
+        }
+
+        // A kept element whose new place is ahead of one kept before it, or a created one ahead of a kept one: the
+        // components inside a created element are created after those inside every kept one.
+        private bool PlacesOutOfCreationOrder(
+            VisualElement parent, System.Collections.Generic.List<(VisualElement? element, bool isExisting)> newElements)
+        {
+            var positions = _pool.RentElementIndexMap();
+            try
+            {
+                for (var i = 0; i < parent.childCount; i++) positions[parent.ElementAt(i)] = i;
+                var lastKept = -1;
+                var createdSeen = false;
+                foreach (var (element, isExisting) in newElements)
+                {
+                    if (element == null) continue;
+                    if (!isExisting || !positions.TryGetValue(element, out var position))
+                    {
+                        createdSeen = true;
+                        continue;
+                    }
+                    if (createdSeen || position < lastKept) return true;
+                    lastKept = position;
+                }
+                return false;
+            }
+            finally
+            {
+                _pool.ReturnElementIndexMap(positions);
             }
         }
 

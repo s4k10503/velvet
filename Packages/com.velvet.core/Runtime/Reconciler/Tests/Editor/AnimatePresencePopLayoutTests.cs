@@ -152,6 +152,7 @@ namespace Velvet.Tests
                 Is.EqualTo(Position.Absolute));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_AZManagedElementWrappingMotion_When_FindFirstMotionDescendantRuns_Then_ReturnsTheNestedMotion()
         {
@@ -169,6 +170,7 @@ namespace Velvet.Tests
             Assert.That(resolved, Is.SameAs(motion));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_ANewlyAddedZManagedPresenceChild_When_ItEntersAndDrains_Then_TheEnterDispatchTargetsTheRealElement()
         {
@@ -201,6 +203,7 @@ namespace Velvet.Tests
             Assert.That(real.style.transitionDuration.keyword, Is.Not.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_AZManagedPopLayoutExitInFlight_When_TheKeyReturnsBeforeItFinishes_Then_TheRealElementRejoinsFlowWithoutStrayGeometry()
         {
@@ -233,6 +236,7 @@ namespace Velvet.Tests
                 Is.EqualTo((Position.Absolute, StyleKeyword.Null, StyleKeyword.Null)));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_APopLayoutModeChild_When_ItStartsExiting_Then_ItsInlinePositionBecomesAbsolute()
         {
@@ -255,6 +259,7 @@ namespace Velvet.Tests
                 Is.EqualTo(Position.Absolute));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_APopLayoutModeChild_When_Pinned_Then_ItsInlineRectMatchesItsLastLaidOutBox()
         {
@@ -282,6 +287,7 @@ namespace Velvet.Tests
                 Is.EqualTo((lastLayout.x, lastLayout.y, lastLayout.width, lastLayout.height)));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_APopLayoutExitInFlight_When_TheKeyReturnsBeforeItFinishes_Then_ItsInlinePositionClearsToNull()
         {
@@ -308,6 +314,7 @@ namespace Velvet.Tests
                 Is.EqualTo((Position.Absolute, StyleKeyword.Null)));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_AKeyedFragmentChild_When_ItsPopLayoutExitStarts_Then_ItStaysInFlow()
         {
@@ -327,6 +334,7 @@ namespace Velvet.Tests
             Assert.That((item != null, item?.style.position.keyword), Is.EqualTo((true, (StyleKeyword?)StyleKeyword.Null)));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_AKeyedFragmentChildExiting_When_TheKeyReturnsBeforeItFinishes_Then_ItsArbitraryWidthSurvives()
         {
@@ -349,6 +357,7 @@ namespace Velvet.Tests
             Assert.That((item != null, item?.style.width.value.value), Is.EqualTo((true, (float?)60f)));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_ASyncModeChild_When_ItIsExiting_Then_ItsInlinePositionStaysNull()
         {
@@ -409,6 +418,8 @@ namespace Velvet.Tests
             PanelSimulator.ResetCurrentTime();
             _sim = new EditorPanelSimulator { panelSize = new Vector2(800, 600) };
             _sim.ResetTimePerSimulatedFrameToDefault();
+            // The row's flex-row is a stylesheet rule, and a laid-out gap spaces the direction the panel resolves.
+            VelvetStyleUtilities.AttachTo(_sim.rootVisualElement);
             s_store = null;
             s_itemClasses = null;
         }
@@ -444,6 +455,7 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(refactor): the fixture's SetUp now attaches the bundled sheet so the row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_AGapMarginedChild_When_ItsPopLayoutExitStarts_Then_ItStaysAtItsLastLaidOutPosition()
         {
@@ -467,6 +479,7 @@ namespace Velvet.Tests
             Assert.That(b.layout.x, Is.EqualTo(xBefore).Within(0.5f));
         }
 
+        // GREEN_ON_BASE(refactor): the fixture's SetUp now attaches the bundled sheet so the row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_AnArbitraryWidthChild_When_ItsPopLayoutExitIsCancelled_Then_TheWidthSurvives()
         {
@@ -492,6 +505,7 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("item-b").resolvedStyle.width, Is.EqualTo(60f).Within(0.5f));
         }
 
+        // GREEN_ON_BASE(refactor): the fixture's SetUp now attaches the bundled sheet so the row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_TheFirstChildExitsUnderPopLayout_When_TheGhostIsPinned_Then_TheSurvivorReflowsToTheFront()
         {
@@ -593,6 +607,7 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_ATrailingGapMarginedChildInAReversedRow_When_ItsPopLayoutExitStarts_Then_ItStaysAtItsLastLaidOutPosition()
         {
@@ -625,6 +640,7 @@ namespace Velvet.Tests
         // precondition). If the edge-flip regressed, that Assume would report Inconclusive rather than
         // Failed, which would not reliably turn CI red. This test asserts the same arrangement directly, so
         // a regression here fails loudly instead of merely invalidating a precondition elsewhere.
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_AFlexRowReverseGapContainer_When_Reconciled_Then_TheSecondChildCarriesTheTrailingMargin()
         {

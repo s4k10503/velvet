@@ -1037,8 +1037,8 @@ namespace Velvet
                 VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
                 if (oldNode.FocusOrder != newNode.FocusOrder)
                 {
-                    FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
-                        newNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
+                    FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost,
+                        newNode.FocusOrder, _ctx);
                 }
                 return target;
             }
@@ -1185,8 +1185,8 @@ namespace Velvet
             }
             if (oldNode.FocusOrder != newNode.FocusOrder)
             {
-                FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
-                    newNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
+                FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, record,
+                    newNode.FocusOrder, _ctx);
             }
 
             // Stamped as PatchPortal stamps (see its comment): a world-space panel can likewise mount with
@@ -2263,6 +2263,18 @@ namespace Velvet
 
             public void Update(StyleGapManipulator manipulator)
                 => manipulator.UpdateGap(_spec);
+        }
+
+        private readonly struct CompositeFlowOp : IManipulatorOp<StyleCompositeFlowManipulator>
+        {
+            public Dictionary<VisualElement, StyleCompositeFlowManipulator> Table(ReconcilerContext ctx)
+                => ctx.CompositeFlowManipulators;
+
+            public StyleCompositeFlowManipulator Create(ReconcilerContext ctx)
+                => new StyleCompositeFlowManipulator(ctx);
+
+            public void Update(StyleCompositeFlowManipulator manipulator)
+                => manipulator.Forward();
         }
 
         private readonly struct DivideOp : IManipulatorOp<StyleDivideManipulator>
@@ -3408,6 +3420,8 @@ namespace Velvet
         // load-bearing either.
         private void ApplyResolvedLayoutManipulators(VisualElement element, string[] classNames)
         {
+            // Ahead of gap, which reads the direction and wrap this writes onto the inner box.
+            ApplyCompositeFlowManipulator(element);
             if (StyleGridClass.HasGridClass(classNames))
             {
                 ApplyGapManipulator(element, classNames, gridSuppressed: true);
@@ -3422,6 +3436,11 @@ namespace Velvet
             ApplyFlexMinSizeManipulator(element, classNames);
             ApplyPointerEvents(element, classNames);
         }
+
+        // The widget's live classes are what it forwards (StyleCompositeFlowManipulator), so it takes no class array.
+        private void ApplyCompositeFlowManipulator(VisualElement element)
+            => Configure<CompositeFlowOp, StyleCompositeFlowManipulator>(element,
+                !ReferenceEquals(GetChildContainer(element), element), default);
 
         // Every Label and Button gets one, unlike the class-gated manipulators beside it: the automatic
         // minimum size applies to a text flex item whatever classes it carries, and the manipulator decides

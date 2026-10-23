@@ -691,10 +691,8 @@ namespace Velvet.Tests
                 }),
             });
 
-        // GREEN_ON_BASE(characterization): a gap's held child margin outranks a play's bracket margin as it does a child's own.
-        // Make the gap manipulator yield its held margin to the element's layers and this reddens.
         [Test]
-        public void Given_AGapRowChild_When_AnEnterShowsABracketMargin_Then_TheGapsHeldMarginStands()
+        public void Given_AGapRowChild_When_AnEnterShowsABracketMargin_Then_TheGapAddsToItWhileItShows()
         {
             // Arrange
             var element = MountOnFakeClock(V.Component(GapRowWithEnteringChild));
@@ -704,8 +702,9 @@ namespace Velvet.Tests
             Step(element);
             Step(element);
 
-            // Assert — the margin the play's ml-[3px] would have replaced is the one the gap holds once it is gone.
-            Assert.That(during, Is.EqualTo(element.style.marginLeft.value.value));
+            // Assert — gap-[10px] plus the play's ml-[3px] while it shows, as CSS adds a gap to an item's margin,
+            // and the gap alone once it is gone.
+            Assert.That((during, element.style.marginLeft.value.value), Is.EqualTo((13f, 10f)));
         }
 
         [Test]
