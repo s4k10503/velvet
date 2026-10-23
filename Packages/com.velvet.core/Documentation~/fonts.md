@@ -164,7 +164,7 @@ or they would list it back. The list inherits as the family does, and the residu
 are the assigned asset's.
 
 The fallback table belongs to the Font Asset, not to the label that named the list: every label showing
-that asset gets the fallbacks, and they stay until `VelvetFonts.Clear()`, which takes out those Velvet
+that asset gets the fallbacks, and one already showing it builds its text again when a list adds some, and they stay until `VelvetFonts.Clear()`, which takes out those Velvet
 added and leaves a table you configured as it was. A list that starts with `addr:` is one Addressables key.
 
 ## Swapping fonts at runtime (e.g. per-locale)

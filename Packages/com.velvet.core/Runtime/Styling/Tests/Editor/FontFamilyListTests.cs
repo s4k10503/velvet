@@ -127,6 +127,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AListResolvedTwice_When_TheTableGrows_Then_ThePrimaryIsAnnouncedOnce()
+        {
+            // Arrange
+            var latin = Register("Inter");
+            Register("Noto Sans JP");
+            var grown = new List<FontAsset>();
+            void OnGrew(FontAsset asset) => grown.Add(asset);
+            VelvetFontStack.Grew += OnGrew;
+
+            try
+            {
+                // Act
+                VelvetFonts.Resolve("Inter,Noto Sans JP", VelvetFontWeight.Normal, italic: false);
+                VelvetFonts.Resolve("Inter,Noto Sans JP", VelvetFontWeight.Normal, italic: false);
+            }
+            finally
+            {
+                VelvetFontStack.Grew -= OnGrew;
+            }
+
+            // Assert
+            Assert.That(grown, Is.EqualTo(new[] { latin }));
+        }
+
+        [Test]
         public void Given_AFamilyListClass_When_Applied_Then_TheLabelGetsTheFirstFamilysAsset()
         {
             // Arrange

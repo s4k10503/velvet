@@ -15,6 +15,10 @@ namespace Velvet
         // someone configured on the asset as it was.
         private static readonly Dictionary<FontAsset, List<FontAsset>> s_appended = new();
 
+        // Raised with the asset whose table Append just grew, for the labels already showing it
+        // (StyleFontResolver.MarkShowing).
+        public static event Action<FontAsset>? Grew;
+
         // The names of a family list, trimmed, unquoted and without the empty ones. A family starting with the
         // address prefix is one key whatever it holds.
         public static List<string> Split(string family)
@@ -81,6 +85,10 @@ namespace Velvet
                 }
                 added.Add(fallback);
                 changed = true;
+            }
+            if (changed)
+            {
+                Grew?.Invoke(primary);
             }
             return changed;
         }
