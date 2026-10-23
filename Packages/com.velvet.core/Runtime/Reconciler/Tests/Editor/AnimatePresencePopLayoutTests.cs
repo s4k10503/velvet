@@ -124,6 +124,7 @@ namespace Velvet.Tests
             return mounted;
         }
 
+        // GREEN_ON_BASE(refactor): the base pins the real element too; only the precondition's wording changed.
         [Test]
         public void Given_AZManagedKeyedChild_When_ItsPopLayoutExitStarts_Then_TheRealElementNotThePlaceholderIsPinned()
         {

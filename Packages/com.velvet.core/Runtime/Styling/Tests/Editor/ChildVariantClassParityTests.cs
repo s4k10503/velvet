@@ -235,6 +235,8 @@ namespace Velvet.Tests
             Assert.That(movedChild.ClassListContains("text-red-500"), Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base skips the absolute child too. It is read by name now, since it paints
+        // after its in-flow siblings and no longer sits at its declared index.
         [Test]
         public void Given_OutOfFlowChild_When_Reconciled_Then_NotGivenChildVariantPayload()
         {
