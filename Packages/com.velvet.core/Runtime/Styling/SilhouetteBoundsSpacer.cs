@@ -121,19 +121,6 @@ namespace Velvet
             return true;
         }
 
-        // The container's child count with a TRAILING run of spacers trimmed — the physical bound the reconciler
-        // used before it addressed slots logically. Superseded by LogicalChildSlots.Count, which counts rendered
-        // children wherever they sit; reach for that in reconciler code.
-        internal static int NonSpacerChildCount(VisualElement container)
-        {
-            var n = container.childCount;
-            while (n > 0 && IsSpacer(container[n - 1]))
-            {
-                n--;
-            }
-            return n;
-        }
-
         internal static void Remove(VisualElement caster, ref VisualElement? spacer)
         {
             if (spacer == null)

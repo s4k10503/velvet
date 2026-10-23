@@ -506,7 +506,7 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
 
-            Assert.That((scope.Root.childCount, SilhouetteBoundsSpacer.NonSpacerChildCount(scope.Root)),
+            Assert.That((scope.Root.childCount, LogicalChildSlots.Count(scope.Root)),
                 Is.EqualTo((2, 1)));
         }
 
@@ -703,7 +703,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoRingedSiblings_When_Reconciled_Then_NeitherBandIsCountedAsARenderedChild()
         {
-            // LogicalChildSlots.Count, not the superseded physical NonSpacerChildCount: the bands sit
+            // LogicalChildSlots.Count, not a physical count: the bands sit
             // ADJACENT to their elements rather than in a trailing run — which is what gives each band its
             // own element's paint position — and a count that only trims a trailing run reports 3 here.
             // Same control as the single-element case next door: the two discounted children.
@@ -722,7 +722,7 @@ namespace Velvet.Tests
         public void Given_ThreeRingedSiblings_When_TheMiddleOneIsRemoved_Then_TheSurvivorsKeepTheirSlotsAndBands()
         {
             // A keyed removal is where a miscounted invisible child surfaces: the reconciler addresses slots
-            // [0, NonSpacerChildCount), so a band counted as a rendered child mis-pairs the survivors —
+            // [0, LogicalChildSlots.Count), so a band counted as a rendered child mis-pairs the survivors —
             // measured, an adjacent-placement build left slot 1 holding "c" instead of a band. Pins the
             // surviving children AND the band count together, since either can be right while the other is not.
             using var scope = new ReconcilerScope();

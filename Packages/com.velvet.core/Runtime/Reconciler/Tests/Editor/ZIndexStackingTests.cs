@@ -876,7 +876,7 @@ namespace Velvet.Tests
             {
                 var buffer = typeof(FiberZLayerCoordinator).GetField(name, statics)?.GetValue(null)
                     ?? throw new MissingFieldException(nameof(FiberZLayerCoordinator), name);
-                held += ((System.Collections.ICollection)buffer).Count;
+                held += (int)buffer.GetType().GetProperty("Count")!.GetValue(buffer)!;
             }
             var pool = (System.Collections.IEnumerable)typeof(FiberZLayerCoordinator).GetField("s_entryPool", statics)!
                 .GetValue(null);

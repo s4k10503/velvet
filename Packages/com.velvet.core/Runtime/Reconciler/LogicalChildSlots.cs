@@ -47,8 +47,8 @@ namespace Velvet
             => SilhouetteBoundsSpacer.IsSpacer(child) || FiberZLayerCoordinator.IsRelocatedReal(child);
 
         /// <summary>
-        /// The number of rendered children — the exclusive upper bound of the logical slot range. Replaces
-        /// the physical <c>NonSpacerChildCount</c> wherever that was being read as "how many slots are there".
+        /// The number of rendered children — the exclusive upper bound of the logical slot range. Counts
+        /// what the reconciler addresses by slot, not the physical children.
         /// </summary>
         internal static int Count(VisualElement container)
         {

@@ -125,38 +125,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ContainerWithTrailingSpacer_When_Counted_Then_TheSpacerIsExcluded()
-        {
-            // Arrange — two rendered children then a spacer.
-            var container = new VisualElement();
-            container.Add(new VisualElement());
-            container.Add(new VisualElement());
-            var spacer = new VisualElement();
-            spacer.AddToClassList(SilhouetteBoundsSpacer.MarkerClass);
-            container.Add(spacer);
-
-            // Act / Assert
-            Assert.That(SilhouetteBoundsSpacer.NonSpacerChildCount(container), Is.EqualTo(2));
-        }
-
-        [Test]
-        public void Given_ContainerWithTwoTrailingSpacers_When_Counted_Then_BothAreExcluded()
-        {
-            // Arrange — one rendered child then two spacers (a skewed + shadowed caster).
-            var container = new VisualElement();
-            container.Add(new VisualElement());
-            for (var i = 0; i < 2; i++)
-            {
-                var s = new VisualElement();
-                s.AddToClassList(SilhouetteBoundsSpacer.MarkerClass);
-                container.Add(s);
-            }
-
-            // Act / Assert
-            Assert.That(SilhouetteBoundsSpacer.NonSpacerChildCount(container), Is.EqualTo(1));
-        }
-
-        [Test]
         public void Given_AllSidesScaleBorder_When_InsetParsed_Then_LeftMatchesTheScale()
         {
             SilhouetteBoundsSpacer.BorderInset(new[] { "border-8" }, out var left, out _);

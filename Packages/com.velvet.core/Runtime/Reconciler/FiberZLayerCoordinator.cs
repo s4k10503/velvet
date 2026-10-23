@@ -782,7 +782,12 @@ namespace Velvet
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
                 var child = parent.hierarchy[i];
-                if (ctx.StackingFacts.ContainsKey(child) && !LogicalChildSlots.IsInvisible(child))
+                if (LogicalChildSlots.IsInvisible(child))
+                {
+                    continue;
+                }
+                var real = ctx.ZLayerPlaceholders.TryGetValue(child, out var placed) ? placed : child;
+                if (ctx.StackingFacts.ContainsKey(real))
                 {
                     return true;
                 }

@@ -34,28 +34,6 @@ namespace Velvet
             return child.ClassListContains("absolute");
         }
 
-        // The off-panel (class-only) half of IsOutOfFlow's test, exposed standalone for callers that only have
-        // a VNode's declared classNames — not a live element — at reconcile time (the z-* scope gate: z-* takes
-        // effect only on an element that is ALSO position:absolute, decided before the element's class list has
-        // ever been attached to anything). Recognizes only the "absolute" utility class, the same limitation
-        // IsOutOfFlow's own off-panel fallback already has (an inline Styles.Position override is invisible
-        // here either way).
-        internal static bool IsOutOfFlowClass(string[] classNames)
-        {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (cls == "absolute")
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         // Folds container's child sequence into the given running hash: each child's identity plus its
         // in-flow / out-of-flow state, in child order. Shared by the index-driven child manipulators'
         // signature hashes (gap, grid, child-variant) so a child's out-of-flow transition (a PopLayout pin

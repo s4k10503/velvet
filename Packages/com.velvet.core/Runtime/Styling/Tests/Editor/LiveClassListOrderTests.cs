@@ -93,6 +93,8 @@ namespace Velvet.Tests
             "System.Int32 Velvet.BundledClassTransform.Signature(UnityEngine.UIElements.VisualElement)";
         private const string ClassTransformReader =
             "Velvet.BundledClassTransform/Declared Velvet.BundledClassTransform.Read(UnityEngine.UIElements.VisualElement)";
+        private const string RelationalSourceReader =
+            "System.Boolean Velvet.RelationalTreeWatch.IsSource(UnityEngine.UIElements.VisualElement)";
         private const string DeclaredKindReader =
             "Velvet.StyleRelativeLengths/Declared Velvet.StyleRelativeLengths.DeclaredKind("
             + "UnityEngine.UIElements.VisualElement, Velvet.StyleLonghand, UnityEngine.UIElements.StyleLength)";
@@ -220,6 +222,11 @@ namespace Velvet.Tests
             FiberElementFactory.ApplyClassNames(label, classNames);
             return label;
         }
+
+        private static readonly MethodInfo IsRelationalSource = typeof(RelationalTreeWatch)
+            .GetMethod("IsSource", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        private static bool SourceOf(VisualElement element) => (bool)IsRelationalSource.Invoke(null, new object[] { element });
 
         private static float? ScannedWidth(Label label)
         {
@@ -841,6 +848,25 @@ namespace Velvet.Tests
             string Sorted(VisualElement wrapper) => string.Join(" ", wrapper.GetClasses().OrderBy(c => c, StringComparer.Ordinal));
             Assert.That((Sorted(addedWrapper), Sorted(reversedWrapper)), Is.EqualTo(("self-end w-32", "self-end w-32")),
                 "the wrapper mirrors the set of the element's classes, whatever order they arrived in");
+        }
+
+        // What shows the case can fail is IsSource answering from the first class on the list: the arrangement
+        // that opens with p-2 then finds no source. The verdict is that only the set decides.
+        [Test]
+        [ReaderVerdict(RelationalSourceReader)]
+        public void Given_AGroupMarkerBesideAnotherClass_When_TheOrderTheyWereAddedInIsReversed_Then_TheElementIsASourceBothWays()
+        {
+            // Arrange
+            var added = Carrying("group/side", "p-2");
+            var reversed = Carrying("p-2", "group/side");
+
+            // Act
+            var fromAdded = SourceOf(added);
+            var fromReversed = SourceOf(reversed);
+
+            // Assert — both are sources rather than merely agreeing: two refusals would agree while measuring nothing.
+            Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
+                "a group or peer marker makes its element a relational source wherever it sits in the class list");
         }
 
         // What shows the case can fail is Scan taking the last width token in the list again: the two orders

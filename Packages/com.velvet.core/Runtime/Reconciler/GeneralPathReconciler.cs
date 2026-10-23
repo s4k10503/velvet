@@ -1644,6 +1644,7 @@ namespace Velvet
             {
                 // CommitLeaf records an element for every leaf it commits.
                 var row = commit.NewElements[i].element!;
+                if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
                 if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
                 AddWithPortalChildren(row, roots, i, commit, walk, hidden);
             }
@@ -1820,12 +1821,13 @@ namespace Velvet
             }
         }
 
-        private static HashSet<VisualElement> ElementsIn(GeneralCommitState commit, int from, int to)
+        private HashSet<VisualElement> ElementsIn(GeneralCommitState commit, int from, int to)
         {
             var elements = new HashSet<VisualElement>();
             for (var i = from; i < to; i++)
             {
-                elements.Add(commit.NewElements[i].element!);
+                var element = commit.NewElements[i].element!;
+                elements.Add(_ctx.ZLayerPlaceholders.TryGetValue(element, out var relocated) ? relocated : element);
             }
             return elements;
         }

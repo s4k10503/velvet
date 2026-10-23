@@ -267,9 +267,10 @@ namespace Velvet
         // post-patch re-fetch at the same slot picks up the new occupant without any change to those call sites.
         private void PatchZLayerElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
         {
-            var real = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
-            PatchElement(real, oldNode, newNode);
-            var classElement = FiberZLayerCoordinator.ClassElementOf(_ctx, real);
+            var slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
+            var classElement = _wrappers.ResolveWrapped(slot);
+            PatchElement(classElement, oldNode, newNode);
+            var real = ReferenceEquals(slot, element) ? ResolveOuter(classElement) : slot;
             FiberZLayerCoordinator.OnPatched(_ctx, real, classElement, newNode.ClassNames,
                 ResolveGateClasses(classElement, newNode.ClassNames), newNode.Props?.Anchored != null);
         }
@@ -346,7 +347,7 @@ namespace Velvet
         // outside a reconcile — unlike the clip-path wrapper layer, which swaps which element occupies the
         // element's own slot and is therefore forbidden inside a pointer / focus callback or a breakpoint
         // notification. The ring layer's overlay is a TRAILING, spacer-marked sibling, which occupies no slot
-        // (SilhouetteBoundsSpacer.NonSpacerChildCount trims it), so adding and removing it here is safe — and
+        // (LogicalChildSlots.IsInvisible skips it), so adding and removing it here is safe — and
         // that is precisely what makes focus:ring-* render instead of toggling an inert class.
         // The ORDER is load-bearing:
         // - Gradient runs after the node-style diff so its sizing reads whether an image override from that
