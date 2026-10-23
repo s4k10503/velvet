@@ -382,12 +382,9 @@ namespace Velvet
                 _ => throw new ArgumentOutOfRangeException(nameof(axis), axis, null),
             };
 
-            public LengthUnit UnitOf(ArbitraryProperty axis) => axis switch
-            {
-                ArbitraryProperty.TranslateX => TranslateXUnit,
-                ArbitraryProperty.TranslateY => TranslateYUnit,
-                _ => LengthUnit.Pixel,
-            };
+            public LengthUnit UnitOf(ArbitraryProperty axis)
+                => axis == ArbitraryProperty.TranslateX ? TranslateXUnit
+                    : axis == ArbitraryProperty.TranslateY ? TranslateYUnit : LengthUnit.Pixel;
 
             public bool HeldUnread(ArbitraryProperty axis) => (UnreadAxes & (1 << s_slotIndex[(int)axis])) != 0;
 
@@ -567,7 +564,7 @@ namespace Velvet
 
             private void AddSheet(string cls, long key, bool swapped)
             {
-                if (TryParseAxisReading(cls, out var axis, out var factor, out _) && axis == SpringAxis.Scale
+                if (TryParseAxisValue(cls, out var axis, out var factor) && axis == SpringAxis.Scale
                     && key >= _sheet.Key)
                 {
                     _sheet = new ScaleHolder { Key = key, Value = factor, Swapped = swapped };

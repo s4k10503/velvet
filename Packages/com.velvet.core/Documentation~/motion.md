@@ -778,9 +778,7 @@ while a single `rotate` and `scale` turn the squash axes with the element. An ev
 An important utility of the element's own (`!opacity-50`, `!rotate-45`) outranks the loop, as `!important` outranks a
 CSS animation: the loop leaves its slot alone and the utility's value shows. A value written into a looped slot
 from outside any Velvet render, such as `element.style.opacity = …` in a callback, is corrected on the loop's next
-tick, up to one tick later; the only notification UI Toolkit gives of an inline write is `IDebugPanelChangeReceiver`, one receiver per panel,
-available in development builds and the Editor alone and warning each time one is set, so a write in a release
-player cannot be answered sooner.
+tick, up to one tick later.
 
 A layoutId move on an element with a running `animate-bounce`, `animate-ping` or `animate-spin` composes with it as
 CSS composes a layout animation with a keyframe one: the move writes the element's translate, scale or rotate, and

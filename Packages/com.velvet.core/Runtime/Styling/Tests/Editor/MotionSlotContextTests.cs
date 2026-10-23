@@ -43,6 +43,12 @@ namespace Velvet.Tests
             return element;
         }
 
+        // Whether the element still transitions its height and no longer its width, which is what a play writing the
+        // width leaves of an `all`.
+        private static bool NarrowedOutOfWidth(VisualElement element)
+            => element.style.transitionProperty.value is { } names
+                && names.Contains(new StylePropertyName("height")) && !names.Contains(new StylePropertyName("width"));
+
         private static MotionSpringClassParser.SpringPlan Resolve(VisualElement element, string[] from, string[] to,
             ArbitraryProperty? driven = null)
             => MotionSpringClassParser.Resolve(from, to, 0f, 0f,
@@ -607,19 +613,19 @@ namespace Velvet.Tests
             Assert.That((top?.From, top?.To), Is.EqualTo(((float?)2f, (float?)32f)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already declines mixed-unit padding; computed sampling retains that unsupported conversion boundary.
         [Test]
-        public void Given_APercentPaddingStartAndAPixelTarget_When_Resolved_Then_TheUnsupportedConversionBuildsNoChannel()
+        public void Given_APercentPaddingStartAndAPixelTarget_When_Resolved_Then_TheStartIsThatPercentOfTheParentWidth()
         {
-            // Arrange
+            // Arrange — the parent is 200 wide and 100 tall, so a share of its height would start at 10.
             var element = MountInFixedParent();
             StyleArbitraryValueResolver.ApplyClassToken(element, "pt-[10%]", StyleLayerPriority.Base);
 
             // Act
-            var plan = Resolve(element, new[] { "pt-[10%]" }, new[] { "pt-[20px]" });
+            var plan = Resolve(element, new[] { "pt-[10%]" }, new[] { "pt-[40px]" });
+            var top = plan.Lengths?.Find(channel => channel.Property == ArbitraryProperty.PaddingTop);
 
             // Assert
-            Assert.That(plan.Lengths, Is.Null);
+            Assert.That((top?.From, top?.To), Is.EqualTo(((float?)20f, (float?)40f)));
         }
 
         [Test]
@@ -769,7 +775,6 @@ namespace Velvet.Tests
                 pair => (pair.owned, true, true, true, true, true, true, true, true))));
         }
 
-        // GREEN_ON_BASE(refactor): keys rows that this case mounts once and never reconciles again.
         [TestCase(TransitionType.Spring)]
         [TestCase(TransitionType.Bezier)]
         public void Given_AMountedClipWithCustomLengthAndOpacity_When_ChannelsAreReleased_Then_LayoutTransitionsReturnWhileTheWrapperStaysMounted(TransitionType type)
@@ -785,7 +790,7 @@ namespace Velvet.Tests
             var elements = operations.Select(operation => parent.Q<VisualElement>(operation)).ToArray();
             var wrappers = elements.Select(ClipPathLayoutBox.Of).ToArray();
             var states = new object[elements.Length];
-            var held = new bool[elements.Length];
+            var narrowed = new bool[elements.Length];
             for (var i = 0; i < elements.Length; i++)
             {
                 var plan = new MotionSpringClassParser.SpringPlan
@@ -808,8 +813,7 @@ namespace Velvet.Tests
                     states[i] = state;
                     BezierTweenDriver.ApplyCurrentValues(elements[i], state);
                 }
-                var properties = wrappers[i].style.transitionProperty.value;
-                held[i] = properties is { Count: 1 } && properties[0] == new StylePropertyName("none");
+                narrowed[i] = NarrowedOutOfWidth(wrappers[i]);
             }
 
             // Act
@@ -833,7 +837,7 @@ namespace Velvet.Tests
                 }
                 var opacity = element.style.opacity;
                 observed.Add((operations[i], !ReferenceEquals(element, wrapper), wrapper.parent == parent,
-                    held[i], wrapper.style.transitionProperty.keyword == StyleKeyword.Null,
+                    narrowed[i], wrapper.style.transitionProperty.keyword == StyleKeyword.Null,
                     releaseLength ? opacity.keyword == StyleKeyword.Undefined && opacity.value.Equals(0.25f)
                         : opacity.keyword == StyleKeyword.Null));
                 if (releaseLength)
@@ -948,7 +952,6 @@ namespace Velvet.Tests
             Assert.That(observed, Is.EqualTo(new[] { 2f, 2f }).Within(1e-5f));
         }
 
-        // GREEN_ON_BASE(refactor): keys rows that this case mounts once and never reconciles again.
         [Test]
         public void Given_AMountedClipWrapperWithACustomWidthPlay_When_AForeignTransitionListIsWritten_Then_TheNextFramePreservesItsNamesAndTimings()
         {
@@ -980,7 +983,7 @@ namespace Velvet.Tests
                 var bezier = type == TransitionType.Bezier ? BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, 1f) : null;
                 if (spring != null) MotionSpringDriver.ApplyCurrentValues(element, spring);
                 else BezierTweenDriver.ApplyCurrentValues(element, bezier);
-                var held = wrapper.style.transitionProperty.value.SequenceEqual(new[] { new StylePropertyName("none") });
+                var narrowed = NarrowedOutOfWidth(wrapper);
                 var initialOwner = spring != null ? spring.NativeLayoutOwner : bezier.NativeLayoutOwner;
                 wrapper.style.transitionProperty = new List<StylePropertyName>(properties);
                 wrapper.style.transitionDuration = new List<TimeValue>(durations);
@@ -995,7 +998,7 @@ namespace Velvet.Tests
                 if (spring != null) MotionSpringDriver.Step(element, spring, 0.05f);
                 else BezierTweenDriver.Step(element, bezier, 0.05f);
                 var nextOwner = spring != null ? spring.NativeLayoutOwner : bezier.NativeLayoutOwner;
-                observed.Add((type, !ReferenceEquals(element, wrapper), held, foreignWrite,
+                observed.Add((type, !ReferenceEquals(element, wrapper), narrowed, foreignWrite,
                     ReferenceEquals(initialOwner, wrapper) && ReferenceEquals(nextOwner, wrapper),
                     wrapper.style.width.value.value != 40f,
                     wrapper.style.transitionProperty.value.SequenceEqual(properties),
@@ -1800,7 +1803,6 @@ namespace Velvet.Tests
             Assert.That(read && value.Unit == unit ? value.Value : float.NaN, Is.EqualTo(expected).Within(0.02f));
         }
 
-        [TestCase("pt-[10%]", false)]
         [TestCase("w-[50%]", true)]
         [TestCase("w-[40px]", false, true)]
         public void Given_AConversionWithoutASupportedBasis_When_TheProviderSamplesIt_Then_ItDeclinesTheValue(

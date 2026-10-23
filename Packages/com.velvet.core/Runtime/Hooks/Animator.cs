@@ -302,13 +302,15 @@ namespace Velvet
             return end;
         }
 
+#pragma warning disable CS8524 // no discard arm: a new placement has to say where its segment starts
         private static double StartOf(AnimateAt at, double previousStart, double previousEnd) => at.Kind switch
         {
             AnimateAt.Placement.Absolute => Math.Max(0.0, at.Seconds),
             AnimateAt.Placement.WithPrevious => previousStart,
             AnimateAt.Placement.Offset => Math.Max(0.0, previousEnd + at.Seconds),
-            _ => previousEnd,
+            AnimateAt.Placement.AfterPrevious => previousEnd,
         };
+#pragma warning restore CS8524
 
         private static void AddTracks(List<ScopedTrack> tracks, VisualElement element, AnimateSegment segment, double start)
         {
@@ -450,14 +452,16 @@ namespace Velvet
         private float Read()
         {
             var shown = _element.resolvedStyle;
+#pragma warning disable CS8524 // no discard arm: a new channel has to say what it reads
             return _channel switch
             {
                 AnimateChannel.Opacity => shown.opacity,
                 AnimateChannel.X => ScopedPose.Of(_element).X,
                 AnimateChannel.Y => ScopedPose.Of(_element).Y,
                 AnimateChannel.Scale => shown.scale.value.x,
-                _ => shown.rotate.angle.ToDegrees(),
+                AnimateChannel.Rotate => shown.rotate.angle.ToDegrees(),
             };
+#pragma warning restore CS8524
         }
 
         private void Write(float value)

@@ -23,6 +23,9 @@
 [Velvet] ctor System.Runtime.CompilerServices.ModuleInitializerAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.AnchoredSettings.ctor(UnityEngine.Transform?, UnityEngine.Camera?, UnityEngine.Vector2, System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single]): System.Void
 [Velvet] ctor Velvet.AnimatePresenceNode.ctor(): System.Void
+[Velvet] ctor Velvet.AnimateSegment.ctor(System.String, Velvet.AnimateValues, Velvet.StyleTransitionConfig?, Velvet.AnimateAt): System.Void
+[Velvet] ctor Velvet.AnimateSegment.ctor(UnityEngine.UIElements.VisualElement, Velvet.AnimateValues, Velvet.StyleTransitionConfig?, Velvet.AnimateAt): System.Void
+[Velvet] ctor Velvet.BezierCurve.ctor(System.Single, System.Single, System.Single, System.Single): System.Void
 [Velvet] ctor Velvet.BlockerFunctionArgs.ctor(): System.Void
 [Velvet] ctor Velvet.BlurBinding.ctor(): System.Void
 [Velvet] ctor Velvet.ChangeEventBinding`1[T].ctor(): System.Void
@@ -73,6 +76,7 @@
 [Velvet] ctor Velvet.GeometryChangedBinding.ctor(): System.Void
 [Velvet] ctor Velvet.KeyDownBinding.ctor(): System.Void
 [Velvet] ctor Velvet.KeyUpBinding.ctor(): System.Void
+[Velvet] ctor Velvet.KeyframeStop.ctor(System.Single): System.Void
 [Velvet] ctor Velvet.MemoNode.ctor(): System.Void
 [Velvet] ctor Velvet.MemoizeMethodAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.MotionNode.ctor(): System.Void
@@ -122,6 +126,7 @@
 [Velvet] ctor Velvet.SearchParams.ctor(): System.Void
 [Velvet] ctor Velvet.SliderIntSettings.ctor(System.Nullable`1[System.Int32], System.Nullable`1[System.Int32], System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean], System.Nullable`1[System.Int32]): System.Void
 [Velvet] ctor Velvet.SliderSettings.ctor(System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean], System.Nullable`1[System.Single]): System.Void
+[Velvet] ctor Velvet.SpringPhysics.ctor(System.Single, System.Single, System.Single): System.Void
 [Velvet] ctor Velvet.StoreLogger.ctor(): System.Void
 [Velvet] ctor Velvet.StyleOverrides.ctor(): System.Void
 [Velvet] ctor Velvet.StylePropertyTransition.ctor(System.String, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single]): System.Void
@@ -332,11 +337,21 @@
 [Velvet] field Velvet.VirtualListScrollBehavior.Auto: Velvet.VirtualListScrollBehavior
 [Velvet] field Velvet.VirtualListScrollBehavior.Instant: Velvet.VirtualListScrollBehavior
 [Velvet] field Velvet.VirtualListScrollBehavior.Smooth: Velvet.VirtualListScrollBehavior
+[Velvet] method Velvet.AnimateAt.Offset(System.Single): Velvet.AnimateAt
+[Velvet] method Velvet.AnimateAt.Time(System.Single): Velvet.AnimateAt
+[Velvet] method Velvet.AnimateControls.Cancel(): System.Void
+[Velvet] method Velvet.AnimateControls.Pause(): System.Void
+[Velvet] method Velvet.AnimateControls.Play(): System.Void
+[Velvet] method Velvet.AnimateControls.Stop(): System.Void
+[Velvet] method Velvet.AnimateControls.Then(System.Action): System.Void
 [Velvet] method Velvet.AnimatePresenceNode.StaggerDelaySec(System.Int32, System.Int32): System.Single
 [Velvet] method Velvet.AnimationSequenceStep.Await(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.Call(System.Action): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.To(System.String, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single]): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.Wait(System.Single): Velvet.AnimationSequenceStep
+[Velvet] method Velvet.Animator.Animate(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimateSegment]): Velvet.AnimateControls
+[Velvet] method Velvet.Animator.Animate(System.String, Velvet.AnimateValues, Velvet.StyleTransitionConfig?): Velvet.AnimateControls
+[Velvet] method Velvet.Animator.Animate(UnityEngine.UIElements.VisualElement, Velvet.AnimateValues, Velvet.StyleTransitionConfig?): Velvet.AnimateControls
 [Velvet] method Velvet.ClickedEvent.PreventDefault(): System.Void
 [Velvet] method Velvet.ComponentContext`1[T].Create(T?): Velvet.ComponentContext`1[T]
 [Velvet] method Velvet.ComponentFiber.AppendChild(Velvet.ComponentFiber): System.Void
@@ -376,6 +391,7 @@
 [Velvet] method Velvet.Hooks.StoreMemoizedVNode(System.Int32, System.Object?[]?, Velvet.VNode): System.Void
 [Velvet] method Velvet.Hooks.TryGetMemoizedVNode(System.RuntimeMethodHandle, System.Object?[]?, System.Int32&, Velvet.VNode?&): System.Boolean
 [Velvet] method Velvet.Hooks.UseActionData`1(): T?
+[Velvet] method Velvet.Hooks.UseAnimate(): System.ValueTuple`2[Velvet.Ref`1[UnityEngine.UIElements.VisualElement], Velvet.Animator]
 [Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Object?[]?, System.Boolean, System.Boolean): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
 [Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Object?[]?, System.Int32, System.Boolean, System.Single): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
 [Velvet] method Velvet.Hooks.UseAsyncError(): System.Exception?
@@ -661,6 +677,8 @@
 [Velvet] method Velvet.VelvetFonts.Resolve(System.String?, Velvet.VelvetFontWeight, System.Boolean): Velvet.ResolvedFont
 [Velvet] method Velvet.VelvetFonts.TryLoadAddressableFont(System.String?, UnityEngine.TextCore.Text.FontAsset?&): System.Boolean
 [Velvet] method Velvet.VelvetFonts.Unregister(System.String?): System.Void
+[Velvet] method Velvet.VelvetKeyframes.Register(System.String, System.Collections.Generic.IReadOnlyList`1[Velvet.KeyframeStop], System.Single, System.Nullable`1[Velvet.BezierCurve]): System.Void
+[Velvet] method Velvet.VelvetKeyframes.Unregister(System.String): System.Boolean
 [Velvet] method Velvet.VelvetPreviewEnvironment.Dispose(): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.Dispose(): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory): System.Void
@@ -758,6 +776,13 @@
 [Velvet] property Velvet.AnchoredSettings.OccludeLayerMask: UnityEngine.LayerMask
 [Velvet] property Velvet.AnchoredSettings.Offset: UnityEngine.Vector2
 [Velvet] property Velvet.AnchoredSettings.Target: UnityEngine.Transform?
+[Velvet] property Velvet.AnimateAt.WithPrevious: Velvet.AnimateAt
+[Velvet] property Velvet.AnimateControls.Finished: Velvet.VelvetTask
+[Velvet] property Velvet.AnimateControls.IsFinished: System.Boolean
+[Velvet] property Velvet.AnimateControls.IsPaused: System.Boolean
+[Velvet] property Velvet.AnimateControls.IsStopped: System.Boolean
+[Velvet] property Velvet.AnimateControls.Speed: System.Single
+[Velvet] property Velvet.AnimateControls.TimeSec: System.Single
 [Velvet] property Velvet.AnimatePresenceNode.Children: Velvet.VNode?[]
 [Velvet] property Velvet.AnimatePresenceNode.DelayChildrenSec: System.Single
 [Velvet] property Velvet.AnimatePresenceNode.Initial: System.Boolean
@@ -766,6 +791,11 @@
 [Velvet] property Velvet.AnimatePresenceNode.Propagate: System.Boolean
 [Velvet] property Velvet.AnimatePresenceNode.StaggerDirection: System.Int32
 [Velvet] property Velvet.AnimatePresenceNode.StaggerSec: System.Single
+[Velvet] property Velvet.AnimateValues.Opacity: System.Single[]?
+[Velvet] property Velvet.AnimateValues.RotateDeg: System.Single[]?
+[Velvet] property Velvet.AnimateValues.Scale: System.Single[]?
+[Velvet] property Velvet.AnimateValues.X: System.Single[]?
+[Velvet] property Velvet.AnimateValues.Y: System.Single[]?
 [Velvet] property Velvet.AnimationSequenceControls.Cancel: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Pause: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Play: System.Action
@@ -791,6 +821,10 @@
 [Velvet] property Velvet.BaseElementNode.WhileFocusClass: System.String?
 [Velvet] property Velvet.BaseElementNode.WhileHoverClass: System.String?
 [Velvet] property Velvet.BaseElementNode.WhileTapClass: System.String?
+[Velvet] property Velvet.BezierCurve.X1: System.Single
+[Velvet] property Velvet.BezierCurve.X2: System.Single
+[Velvet] property Velvet.BezierCurve.Y1: System.Single
+[Velvet] property Velvet.BezierCurve.Y2: System.Single
 [Velvet] property Velvet.BlockerFunctionArgs.CurrentLocation: Velvet.RouterLocation?
 [Velvet] property Velvet.BlockerFunctionArgs.HistoryAction: Velvet.NavigationMode
 [Velvet] property Velvet.BlockerFunctionArgs.NextLocation: Velvet.RouterLocation
@@ -994,6 +1028,13 @@
 [Velvet] property Velvet.KeyDownBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyDownEvent]?
 [Velvet] property Velvet.KeyUpBinding.EventId: System.String
 [Velvet] property Velvet.KeyUpBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyUpEvent]?
+[Velvet] property Velvet.KeyframeStop.Ease: System.Nullable`1[Velvet.BezierCurve]
+[Velvet] property Velvet.KeyframeStop.Offset: System.Single
+[Velvet] property Velvet.KeyframeStop.Opacity: System.Nullable`1[System.Single]
+[Velvet] property Velvet.KeyframeStop.RotateDeg: System.Nullable`1[System.Single]
+[Velvet] property Velvet.KeyframeStop.Scale: System.Nullable`1[System.Single]
+[Velvet] property Velvet.KeyframeStop.TranslateXPx: System.Nullable`1[System.Single]
+[Velvet] property Velvet.KeyframeStop.TranslateYPx: System.Nullable`1[System.Single]
 [Velvet] property Velvet.MemoNode.Dependencies: System.Object?[]?
 [Velvet] property Velvet.MemoNode.Factory: System.Func`1[Velvet.VNode]
 [Velvet] property Velvet.MotionClock.GameTime: Velvet.MotionClock
@@ -1197,6 +1238,9 @@
 [Velvet] property Velvet.SliderSettings.Inverted: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.SliderSettings.LowValue: System.Nullable`1[System.Single]
 [Velvet] property Velvet.SliderSettings.Step: System.Nullable`1[System.Single]
+[Velvet] property Velvet.SpringPhysics.Damping: System.Single
+[Velvet] property Velvet.SpringPhysics.Mass: System.Single
+[Velvet] property Velvet.SpringPhysics.Stiffness: System.Single
 [Velvet] property Velvet.StoreLogger.Default: Velvet.StoreLogger
 [Velvet] property Velvet.Store`1[TState].Current: TState
 [Velvet] property Velvet.Store`1[TState].InitialState: TState
@@ -1229,7 +1273,9 @@
 [Velvet] property Velvet.StyleTransitionConfig.DelaySec: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.DurationSec: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.Easing: UnityEngine.UIElements.EasingMode
+[Velvet] property Velvet.StyleTransitionConfig.ExitBezier: System.Nullable`1[Velvet.BezierCurve]
 [Velvet] property Velvet.StyleTransitionConfig.ExitEasing: System.Nullable`1[UnityEngine.UIElements.EasingMode]
+[Velvet] property Velvet.StyleTransitionConfig.ExitSpring: System.Nullable`1[Velvet.SpringPhysics]
 [Velvet] property Velvet.StyleTransitionConfig.Layout: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.StyleTransitionConfig.Mass: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.PropertyOverrides: System.Collections.Generic.IReadOnlyList`1[Velvet.StylePropertyTransition]?
@@ -1311,12 +1357,18 @@
 [Velvet] property protected Velvet.Store`1[TState].Logger: Velvet.StoreLogger
 [Velvet] type System.Runtime.CompilerServices.ModuleInitializerAttribute
 [Velvet] type Velvet.AnchoredSettings
+[Velvet] type Velvet.AnimateAt
+[Velvet] type Velvet.AnimateControls
 [Velvet] type Velvet.AnimatePresenceMode
 [Velvet] type Velvet.AnimatePresenceNode
+[Velvet] type Velvet.AnimateSegment
+[Velvet] type Velvet.AnimateValues
 [Velvet] type Velvet.AnimationSequenceControls
 [Velvet] type Velvet.AnimationSequenceState
 [Velvet] type Velvet.AnimationSequenceStep
+[Velvet] type Velvet.Animator
 [Velvet] type Velvet.BaseElementNode
+[Velvet] type Velvet.BezierCurve
 [Velvet] type Velvet.BlockerFunctionArgs
 [Velvet] type Velvet.BlurBinding
 [Velvet] type Velvet.ChangeEventBinding`1[T]
@@ -1394,6 +1446,7 @@
 [Velvet] type Velvet.IStoreWriter`1[TState]
 [Velvet] type Velvet.KeyDownBinding
 [Velvet] type Velvet.KeyUpBinding
+[Velvet] type Velvet.KeyframeStop
 [Velvet] type Velvet.LoaderMode
 [Velvet] type Velvet.MemoNode
 [Velvet] type Velvet.MemoizeMethodAttribute
@@ -1468,6 +1521,7 @@
 [Velvet] type Velvet.SearchParamsSetter
 [Velvet] type Velvet.SliderIntSettings
 [Velvet] type Velvet.SliderSettings
+[Velvet] type Velvet.SpringPhysics
 [Velvet] type Velvet.StateUpdater`1[T]
 [Velvet] type Velvet.StoreLogger
 [Velvet] type Velvet.StoreShallowEqualityComparer
@@ -1505,6 +1559,7 @@
 [Velvet] type Velvet.VelvetFontWeight
 [Velvet] type Velvet.VelvetFontWeightEntry
 [Velvet] type Velvet.VelvetFonts
+[Velvet] type Velvet.VelvetKeyframes
 [Velvet] type Velvet.VelvetPreviewAttribute
 [Velvet] type Velvet.VelvetPreviewEnvironment
 [Velvet] type Velvet.VelvetPreviewHost

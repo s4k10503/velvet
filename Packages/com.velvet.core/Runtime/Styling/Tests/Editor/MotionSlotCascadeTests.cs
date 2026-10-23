@@ -95,10 +95,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnUnreadableCornerAfterAReadableShorthand_When_Resolved_Then_ThatCornerIsNotAnimated()
+        public void Given_AFullCornerAfterAShorthand_When_Resolved_Then_ThatCornerTakesTheFullRadiusAndTheOthersTheShorthand()
         {
-            // Arrange — .rounded-tl-full is declared after .rounded-3xl and holds the top-left corner at rest,
-            // and no magnitude is read from it.
+            // Arrange — .rounded-tl-full is declared after .rounded-3xl and holds the top-left corner at rest.
             var to = new[] { "rounded-3xl", "rounded-tl-full" };
 
             // Act
@@ -106,7 +105,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Lengths(plan), Is.EqualTo(
-                "BorderBottomLeftRadius:0->24 BorderBottomRightRadius:0->24 BorderTopRightRadius:0->24"));
+                "BorderBottomLeftRadius:0->24 BorderBottomRightRadius:0->24 BorderTopLeftRadius:0->9999 BorderTopRightRadius:0->24"));
         }
 
         [Test]
