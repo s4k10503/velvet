@@ -18,3 +18,6 @@
   suspended every transition on the element until it settled; the element's other transitions keep running, and
   a variant turning on a transition class mid-play is picked up. A Tween on a clock other than the panel's still
   lands everything its swap changes.
+- A Bezier play reads `PropertyOverrides` (each entry's delay, duration and easing for the channels it names) and
+  an exit can run its own curve through the new `StyleTransitionConfig.ExitBezier`; a Bezier config carrying
+  overrides ignored them before. A sequence step's hold counts a Bezier override that outlasts the play.

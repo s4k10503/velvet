@@ -49,6 +49,8 @@ namespace Velvet
             internal MotionPlayback? Playback { get; init; }
             // How a bezier or spring play repeats; a tween does not read it.
             internal MotionRepeat Repeat { get; init; }
+            // The per-property timings a bezier play gives the channels they name.
+            internal IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
         }
 
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
@@ -234,6 +236,7 @@ namespace Velvet
                 IsExit = false,
                 Playback = playback,
                 Repeat = repeat,
+                PropertyOverrides = propertyOverrides,
             };
 
             WarnRepeatNotPlayed(type, repeat);
@@ -484,6 +487,7 @@ namespace Velvet
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = true,
                 Repeat = config.PlayedRepeat,
+                PropertyOverrides = VariantOverrides(config, restoreFromOnCancel),
             };
 
             WarnRepeatNotPlayed(config.Type, play.Repeat);
@@ -500,10 +504,7 @@ namespace Velvet
 
             if (config.Type == TransitionType.Bezier)
             {
-                // One curve drives both directions (no ExitBezier* fields — mirrors the spring reusing its single
-                // stiffness/damping/mass for the exit). Deferred-to-attach when off-panel, same as the spring exit.
-                StartBezierVariant(in play, config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2,
-                    config.DurationSec);
+                StartBezierExit(in play, config);
                 return;
             }
 
@@ -853,9 +854,11 @@ namespace Velvet
         {
             // Copied out because a lambda cannot capture an `in` parameter.
             var repeat = play.Repeat;
+            var overrides = play.PropertyOverrides;
             StartDriven(in play, play.FromClasses, play.ToClasses,
                 plan => ValidateBezierParameters(x1, y1, x2, y2, durationSec)
-                    ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat)
+                    ? BezierTweenDriver.WithOverrides(
+                        BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat), overrides)
                     : null,
                 play.DelaySec + play.AdditionalDelaySec, removesToClasses: false);
         }
@@ -881,6 +884,17 @@ namespace Velvet
             => pending?.Spring is { } spring ? MotionSpringDriver.Drawn(spring)
                 : pending?.Bezier is { } bezier ? BezierTweenDriver.Drawn(bezier, pending.Playback?.Scale(1f) ?? 1f)
                 : null;
+
+        // Per-property overrides reach a variant exit alone.
+        private static IReadOnlyList<StylePropertyTransition>? VariantOverrides(StyleTransitionConfig config, bool variant)
+            => variant ? config.PropertyOverrides : null;
+
+        // Deferred-to-attach when off-panel, same as the spring exit.
+        private void StartBezierExit(in VariantPlay play, StyleTransitionConfig config)
+        {
+            var curve = config.ExitBezier ?? new BezierCurve(config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2);
+            StartBezierVariant(in play, curve.X1, curve.Y1, curve.X2, curve.Y2, config.DurationSec);
+        }
 
         // The bezier driver's half of a play, shared by a Bezier (StartBezierVariant) and a driven Tween. planFrom /
         // planTo: the classes the plan is read from, where a preset's tokens stand in for its classes. create: the

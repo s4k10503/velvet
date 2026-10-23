@@ -573,8 +573,8 @@ namespace Velvet
             }
         }
 
-        // Auto-derives a To step's hold from its transition when the step declares no explicit HoldSec. Only a
-        // Tween reads PropertyOverrides, mirroring StyleAnimationScheduler.SlowestPropertyTimeoutMs's own "slowest
+        // Auto-derives a To step's hold from its transition when the step declares no explicit HoldSec. A Tween and a
+        // Bezier read PropertyOverrides, mirroring StyleAnimationScheduler.SlowestPropertyTimeoutMs's own "slowest
         // overridden property wins" rule: a PropertyOverrides entry can give one property a longer duration/delay
         // than the top-level values (StyleTransitionConfig's own documented example: opacity in 0.15s while scale
         // takes 0.5s), and the walker must not advance past a Tween step while a property that override still
@@ -594,13 +594,9 @@ namespace Velvet
 
             var hold = transition.DurationSec + transition.DelaySec;
 
-            // Bezier playback drives every channel with the SAME curve and never reads PropertyOverrides (like a
-            // spring's single stiffness/damping/mass), so its real span is its passes plus DelaySec.
-            // Factoring a longer per-property override in here would park the walker on the step past the moment
-            // the tween it describes has actually finished.
             if (transition.Type == TransitionType.Bezier)
             {
-                return transition.DelaySec + (float)repeat.TotalSec(transition.DurationSec);
+                return transition.DelaySec + (float)MotionPlaySpan.BezierSpanSec(transition);
             }
 
             var overrides = transition.PropertyOverrides;

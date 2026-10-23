@@ -162,6 +162,13 @@ namespace Velvet
         public float BezierY2 { get; init; } = 1f;
 
         /// <summary>
+        /// The curve an exit of a <see cref="TransitionType.Bezier"/> play runs on, as Framer Motion's exit transition
+        /// carries an ease of its own. When null, <see cref="BezierX1"/> to <see cref="BezierY2"/> drive both directions.
+        /// Validated as those are.
+        /// </summary>
+        public BezierCurve? ExitBezier { get; init; }
+
+        /// <summary>
         /// Animation duration (seconds). Applied as the inline transition-duration style.
         /// For <see cref="TransitionType.Bezier"/> it IS the (fixed) duration, exactly as for a plain
         /// tween — only the easing sampling differs. For <see cref="TransitionType.Spring"/>, where none of
@@ -192,8 +199,8 @@ namespace Velvet
         /// Easing mode for exit. When null, <see cref="Easing"/> is reused.
         /// The presets in StyleTransition.cs typically use EaseOut for enter and EaseIn for exit.
         /// Ignored when <see cref="Type"/> is <see cref="TransitionType.Spring"/> or
-        /// <see cref="TransitionType.Bezier"/>: like a spring's single stiffness/damping/mass, one bezier curve
-        /// drives BOTH directions — there is no separate exit curve.
+        /// <see cref="TransitionType.Bezier"/>: a spring's single stiffness/damping/mass drives both directions, and a
+        /// bezier's exit curve is <see cref="ExitBezier"/>.
         /// </summary>
         public EasingMode? ExitEasing { get; init; }
 
@@ -412,6 +419,7 @@ namespace Velvet
                 BezierY1 = BezierY1,
                 BezierX2 = BezierX2,
                 BezierY2 = BezierY2,
+                ExitBezier = ExitBezier,
                 Repeat = repeat,
                 RepeatType = RepeatType,
                 RepeatDelaySec = RepeatDelaySec,
@@ -457,6 +465,7 @@ namespace Velvet
                 BezierY1 = BezierY1,
                 BezierX2 = BezierX2,
                 BezierY2 = BezierY2,
+                ExitBezier = ExitBezier,
                 Repeat = Repeat,
                 RepeatType = RepeatType,
                 RepeatDelaySec = RepeatDelaySec,
@@ -464,6 +473,23 @@ namespace Velvet
         }
 
         private static string[] ParseClasses(string? classNames) => Velvet.V.ParseClassNames(classNames);
+    }
+
+    /// <summary>A CSS <c>cubic-bezier(x1, y1, x2, y2)</c> control-point pair; see <see cref="StyleTransitionConfig.BezierX1"/>.</summary>
+    public readonly struct BezierCurve
+    {
+        public float X1 { get; }
+        public float Y1 { get; }
+        public float X2 { get; }
+        public float Y2 { get; }
+
+        public BezierCurve(float x1, float y1, float x2, float y2)
+        {
+            X1 = x1;
+            Y1 = y1;
+            X2 = x2;
+            Y2 = y2;
+        }
     }
 
     /// <summary>

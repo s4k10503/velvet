@@ -291,7 +291,7 @@ Property names are UI Toolkit `transition-property` spellings (`"opacity"`, `"tr
 property no override names animates on the enclosing config's timing, as a value missing from Framer's
 per-value map takes the default transition.
 Completion is sized off the **slowest** of those, so a long override finishes instead
-of being snapped when the top-level duration elapses. A `Tween` reads them on every variant swap:
+of being snapped when the top-level duration elapses. A `Tween` and a `Bezier` read them on every variant swap:
 mount enters, label changes and exits.
 
 ## Springs
@@ -497,8 +497,10 @@ for `cubic-bezier(0.42, 0, 0.58, 1)` rather than the Tailwind curve), it samples
 algorithm every browser's `cubic-bezier()` runs — via `BezierX1` / `BezierY1` / `BezierX2` /
 `BezierY2`. Unlike a spring it keeps a fixed `DurationSec`, exactly like a plain tween; only the
 shape of the easing differs. It shares Spring's channel scope (*Driven channels* above) and its
-one-curve-drives-both-directions contract —
-there is no separate exit curve, and `PropertyOverrides` is not read. Defaults to Tailwind's own
+one-curve-per-direction contract: `ExitBezier` gives an exit its own curve (`new BezierCurve(x1, y1, x2, y2)`),
+and `PropertyOverrides` gives the channels it names a timing of their own, each entry's delay, duration and easing
+(its curve where it names no easing, and the play's where it names no duration), which that channel plays once
+whatever the play repeats. Defaults to Tailwind's own
 default curve, `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates
 with the `ease-in-out` keyword. `BezierX1` / `BezierX2` must stay in `[0,1]`, since a CSS timing
 function is a function of time and so must be monotone; a value outside that range is invalid and

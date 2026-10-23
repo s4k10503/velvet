@@ -215,6 +215,57 @@ namespace Velvet
             return state;
         }
 
+        /// <summary>
+        /// Gives each channel a <see cref="StylePropertyTransition"/> names the timing that entry carries, the last entry
+        /// naming it winning: its delay and duration (the play's, where it names none) and its easing, or the play's own
+        /// curve where it names none. Such a channel plays its entry once whatever the play repeats.
+        /// </summary>
+        public static BezierTweenState? WithOverrides(BezierTweenState? state, IReadOnlyList<StylePropertyTransition>? overrides)
+        {
+            if (state == null || overrides == null || overrides.Count == 0)
+            {
+                return state;
+            }
+            Override(state, state.Opacity, StyleLonghandSet.Of(StyleLonghand.Opacity), overrides);
+            Override(state, state.TranslateX, StyleLonghandSet.Of(StyleLonghand.Translate), overrides);
+            Override(state, state.TranslateY, StyleLonghandSet.Of(StyleLonghand.Translate), overrides);
+            Override(state, state.Scale, StyleLonghandSet.Of(StyleLonghand.Scale), overrides);
+            Override(state, state.ScaleY, StyleLonghandSet.Of(StyleLonghand.Scale), overrides);
+            Override(state, state.Rotate, StyleLonghandSet.Of(StyleLonghand.Rotate), overrides);
+            foreach (var c in state.Colors ?? s_noColors)
+            {
+                Override(state, c.Progress, StyleArbitraryLonghands.Of(c.Property), overrides);
+            }
+            foreach (var l in state.Lengths ?? s_noLengths)
+            {
+                Override(state, l.Value, StyleArbitraryLonghands.Of(l.Property), overrides);
+            }
+            return state;
+        }
+
+        private static void Override(BezierTweenState state, BezierTweenChannel? channel, StyleLonghandSet longhands,
+            IReadOnlyList<StylePropertyTransition> overrides)
+        {
+            if (channel == null)
+            {
+                return;
+            }
+            for (var i = overrides.Count - 1; i >= 0; i--)
+            {
+                var entry = overrides[i];
+                if (!DrivenTweenTiming.Named(entry.Property).Overlaps(longhands))
+                {
+                    continue;
+                }
+                var delaySec = entry.DelaySec ?? 0f;
+                var durationSec = Mathf.Max(0f, entry.DurationSec ?? state.DurationSec);
+                channel.Timing = new TweenChannelTiming(delaySec, durationSec, entry.Easing ?? EasingMode.Linear,
+                    curve: !entry.Easing.HasValue);
+                state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, delaySec + durationSec);
+                return;
+            }
+        }
+
         private static readonly List<BezierColorChannel> s_noColors = new();
         private static readonly List<BezierLengthChannel> s_noLengths = new();
 

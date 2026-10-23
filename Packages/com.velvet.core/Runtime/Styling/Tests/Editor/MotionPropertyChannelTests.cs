@@ -232,6 +232,45 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABezierPlayWithAnOpacityOverride_When_SteppedToHalfTheDuration_Then_OnlyTheOverriddenChannelHasFinished()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0", "bg-black" }, new[] { "opacity-100", "bg-white" });
+            var state = BezierTweenDriver.WithOverrides(
+                BezierTweenDriver.Create(plan, LinearX1, LinearY1, LinearX2, LinearY2, durationSec: 1f),
+                new[] { new StylePropertyTransition("opacity", durationSec: 0.25f) });
+
+            // Act
+            if (state != null)
+            {
+                BezierTweenDriver.ApplyCurrentValues(element, state);
+                BezierTweenDriver.Step(element, state, 0.5f);
+            }
+
+            // Assert
+            Assert.That(state != null ? ((float, float)?)(element.style.opacity.value, element.style.backgroundColor.value.r) : null,
+                Is.EqualTo(((float, float)?)(1f, 0.5f)));
+        }
+
+        [Test]
+        public void Given_ABezierConfigWithAnExitCurve_When_GivenItsExitClasses_Then_TheExitCurveIsKept()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, ExitBezier = new BezierCurve(0.1f, 0.2f, 0.3f, 0.4f),
+            };
+
+            // Act
+            var exit = config.WithExitClasses("opacity-100", "opacity-0");
+
+            // Assert
+            Assert.That(exit.ExitBezier is { } curve ? (curve.X1, curve.Y1, curve.X2, curve.Y2) : default,
+                Is.EqualTo((0.1f, 0.2f, 0.3f, 0.4f)));
+        }
+
+        [Test]
         public void Given_APaddingShorthandPair_When_SteppedToHalfTheDuration_Then_AllFourEdgesCarryTheInterpolatedLength()
         {
             // Arrange

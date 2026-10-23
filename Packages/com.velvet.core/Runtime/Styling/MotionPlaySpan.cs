@@ -15,6 +15,17 @@ namespace Velvet
                     ? 0.0
                     : config.DelaySec + Of(config, fromClasses, toClasses, context);
 
+        // A Bezier play's passes, or where its slowest PropertyOverrides entry ends where that is later.
+        internal static double BezierSpanSec(StyleTransitionConfig config)
+        {
+            var span = MotionRepeat.Of(config).TotalSec(config.DurationSec);
+            foreach (var entry in config.PropertyOverrides ?? System.Array.Empty<StylePropertyTransition>())
+            {
+                span = System.Math.Max(span, (entry.DelaySec ?? 0f) + System.Math.Max(0f, entry.DurationSec ?? config.DurationSec));
+            }
+            return span;
+        }
+
         // context: what the play is planned against (StyleAnimationScheduler.SlotContext), so the span counts only
         // the channels the play has.
         public static double Of(StyleTransitionConfig config, string[]? fromClasses, string[]? toClasses,
@@ -27,7 +38,7 @@ namespace Velvet
                     // never runs.
                     return config.DurationSec > 0f
                         && !MotionSpringClassParser.Resolve(fromClasses, toClasses, context: context).IsEmpty
-                            ? MotionRepeat.Of(config).TotalSec(config.DurationSec)
+                            ? BezierSpanSec(config)
                             : 0.0;
                 case TransitionType.Spring:
                     // An instant spring ends where its delay does.
