@@ -2,8 +2,7 @@
 
 USS has no gradient, so Velvet resolves the gradient utilities itself and bakes the result into a
 texture it sets as the element's background image, stretched to the box and clipped to its
-`rounded-*` radius. On a `skew-*` element the same gradient is drawn by the sheared silhouette instead
-([player-builds.md](player-builds.md) covers the shader behind it).
+`rounded-*` radius. On a `skew-*` element the background image shears with the rest of the face.
 
 A gradient is laid out over the box's real proportions, as CSS lays it out: a diagonal angle
 (`bg-linear-45`), a conic and a radial circle are baked for the element's aspect, and baked again when a

@@ -4,8 +4,8 @@ What the package adds to a build, and what it costs you.
 
 ## Shaders
 
-Five of Velvet's paints are drawn by first-party shaders rather than by UI Toolkit's own: the shadow behind
-`shadow-*`, the sheared silhouette a `bg-gradient-*` gets on a `skew-*` element, the `brightness-*` /
+Four of Velvet's paints are drawn by first-party shaders rather than by UI Toolkit's own: the shadow behind
+`shadow-*`, the `brightness-*` /
 `saturate-*` / `drop-shadow-*` filters and the `backdrop-*` filters ([styling-filters.md](styling-filters.md) owns
 what those do), and the additive, multiply and VFX Graph layers of `V.Particles` ([particles.md](particles.md)
 owns those). The shader files live in `Runtime/Styles/Shaders/` and are looked up by name from C# alone.
@@ -15,13 +15,13 @@ in a scene. So the package adds them to **Graphics Settings ▸ Always Included 
 `IPreprocessBuildWithReport` step and removes them again in the matching post-process step. There is nothing
 to install, no list to maintain and no build step to run.
 
-That the seven names are in Always Included Shaders while the build runs is pinned by
+That the six names are in Always Included Shaders while the build runs is pinned by
 `BundledShaderInclusionTests`. If a shader-backed paint draws nothing in your build, the player log carries a
 `Shader not found` warning naming it, and that is a bug report worth filing.
 
 **What that costs.**
 
-- All seven shaders are compiled into every player build unless the project opts out. **Project Settings ▸
+- All six shaders are compiled into every player build unless the project opts out. **Project Settings ▸
   Velvet** lists each one; untick a shader and the build leaves it out of Always Included Shaders. The choice
   is saved in the project's ProjectSettings folder, so it travels with the project. A paint whose
   shader reaches the player by no other route draws nothing there and logs the warning described at the
