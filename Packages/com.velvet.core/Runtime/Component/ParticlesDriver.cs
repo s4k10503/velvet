@@ -1006,8 +1006,8 @@ namespace Velvet
                     var position = new Vector3(x + offset.x, y + offset.y, Vertex.nearZ);
                     mwd.SetNextVertex(new Vertex { position = position, tint = Tinted(s_colors[v], tint), uv = s_uvs[v] });
                 }
-                // UI Toolkit draws a triangle in one winding only, the one a front face has here, so a triangle its
-                // material keeps from the other side is indexed the other way round; ParticlesPlaybackTests'
+                // A triangle indexed the other way round from a front face draws no pixel in the element, so one
+                // its material keeps from the back is indexed as a front face is; ParticlesPlaybackTests'
                 // Given_AMeshParticleUnderAFrontCullingMaterial_When_Drawn_Then_OnlyItsBackFaceRenders pins that.
                 // MUTANT_SURVIVES(equivalent, boundary): a triangle whose corners turn neither way has no area, so either order draws no pixel.
                 var reversed = Turn(s_local[s_triangles[t]], s_local[s_triangles[t + 1]], s_local[s_triangles[t + 2]]) > 0f;
