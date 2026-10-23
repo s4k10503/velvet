@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
@@ -115,6 +116,44 @@ namespace Velvet
             {
                 ScopesChanged?.Invoke();
             }
+        }
+
+        private static readonly ConditionalWeakTable<VisualElement, string> s_seenMarkers = new();
+        private static readonly List<string> s_scratchMarkers = new();
+
+        // Compares the markers on element's live class list with the ones the last observation saw, which is how a
+        // marker written straight to the class list (AddToClassList("@container")) re-points descendants: no event
+        // announces it, so the element's next reconcile does.
+        internal static void ObserveMarkers(VisualElement element)
+        {
+            if (ScopesChanged == null)
+            {
+                return;
+            }
+            s_scratchMarkers.Clear();
+            foreach (var cls in element.GetClasses())
+            {
+                if (IsMarker(cls))
+                {
+                    s_scratchMarkers.Add(cls);
+                }
+            }
+            s_scratchMarkers.Sort(StringComparer.Ordinal);
+            var signature = s_scratchMarkers.Count == 0 ? string.Empty : string.Join(" ", s_scratchMarkers);
+            s_seenMarkers.TryGetValue(element, out var seen);
+            if ((seen ?? string.Empty) == signature)
+            {
+                return;
+            }
+            if (signature.Length == 0)
+            {
+                s_seenMarkers.Remove(element);
+            }
+            else
+            {
+                s_seenMarkers.AddOrUpdate(element, signature);
+            }
+            ScopesChanged?.Invoke();
         }
 
         // Whether every marker class in from is also in other.

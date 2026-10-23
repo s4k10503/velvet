@@ -227,6 +227,7 @@ namespace Velvet
                 ApplyVariantManipulators(element, newClasses);
                 StyleResponsiveScope.OnClassesChanged(oldClasses ?? Array.Empty<string>(), newClasses ?? Array.Empty<string>());
             }
+            StyleResponsiveScope.ObserveMarkers(element);
             // The font layer reads the COMPOSED source, so the class diff answers only half of whether its
             // input moved: applying a variant's payload moves the token set without moving either class
             // array, and a [&>*]: one moves nothing on the child at all. Lit tokens are the other half.

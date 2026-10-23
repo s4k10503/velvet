@@ -637,7 +637,8 @@ name, so a named container still answers the unnamed variants inside it.
 A descendant resolves the container each of its variants asks for when it attaches to the panel, and
 watches that container's width from then on. It resolves again whenever a render adds `@container` to an
 element's `className`, removes it, or renames it (`@container/a` to `@container/b`), so toggling the
-marker re-points the descendants already attached.
+marker re-points the descendants already attached. A marker written straight to the class list
+(`element.AddToClassList("@container")`) re-points them at that element's next render.
 
 ### Simulating a viewport: `velvet-viewport`
 
