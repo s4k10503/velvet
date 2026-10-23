@@ -143,6 +143,7 @@ namespace Velvet
             MotionClock.Forget(element);
             // A skewed parent's seat would otherwise compose the next consumer's translate.
             SeatedTranslate.Forget(element);
+            AuthoredTransform.Release(element);
             ResetInlineStyle(element.style);
             SuspenseHiddenElements.Release(element);
 

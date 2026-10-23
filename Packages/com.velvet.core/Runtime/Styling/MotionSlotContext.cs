@@ -390,7 +390,7 @@ namespace Velvet
         public bool TryReadScaleAxes(out Vector2 value)
         {
             var owner = Owner(ArbitraryProperty.Scale);
-            var inline = owner.style.scale;
+            var inline = AuthoredTransform.Scale(owner);
             if (inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(ArbitraryProperty.Scale))
             {
                 value = inline.value.value;
@@ -418,7 +418,7 @@ namespace Velvet
                 return TryReadResolved(slot, out value)
                     && (MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit));
             }
-            if (slot == ArbitraryProperty.Scale && Owner(slot).style.scale.keyword == StyleKeyword.Undefined)
+            if (slot == ArbitraryProperty.Scale && AuthoredTransform.Scale(Owner(slot)).keyword == StyleKeyword.Undefined)
             {
                 return TryReadInline(slot, out value);
             }
@@ -536,9 +536,9 @@ namespace Velvet
                 case ArbitraryProperty.TranslateY:
                     return Translate(slot, SeatedTranslate.Read(Owner(slot)), out value);
                 case ArbitraryProperty.Scale:
-                    return Scale(slot, style.scale, out value);
+                    return Scale(slot, AuthoredTransform.Scale(Owner(slot)), out value);
                 case ArbitraryProperty.Rotate:
-                    return Rotate(slot, style.rotate, out value);
+                    return Rotate(slot, AuthoredTransform.Rotate(Owner(slot)), out value);
                 case ArbitraryProperty.TextColor:
                     return Color(slot, style.color, out value);
                 case ArbitraryProperty.BackgroundColor:

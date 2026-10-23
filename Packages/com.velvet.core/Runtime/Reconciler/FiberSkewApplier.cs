@@ -290,10 +290,7 @@ namespace Velvet
         private void WriteTransform(VisualElement element, SkewSpec spec)
         {
             _ctx.SkewTransformed[element] = (spec.SourceX, spec.SourceY);
-            SkewTransformFactor.TryFactor(spec.XDeg, spec.YDeg, out var rotation, out var scale);
-            rotation.ToAngleAxis(out var angle, out var axis);
-            element.style.rotate = new Rotate(new Angle(angle, AngleUnit.Degree), axis);
-            element.style.scale = new Scale(new Vector3(scale, scale, 1f));
+            AuthoredTransform.Engage(element, spec.XDeg, spec.YDeg);
             SetPick(element, default);
         }
 
@@ -322,8 +319,7 @@ namespace Velvet
         private void ClearTransform(VisualElement element)
         {
             _ctx.SkewTransformed.Remove(element);
-            element.style.rotate = StyleKeyword.Null;
-            element.style.scale = StyleKeyword.Null;
+            AuthoredTransform.Release(element);
             ClearPick(element);
         }
     }

@@ -346,7 +346,7 @@ namespace Velvet
             internal Saved(VisualElement element)
             {
                 Translate = SeatedTranslate.Read(element);
-                Scale = element.style.scale;
+                Scale = AuthoredTransform.Scale(element);
                 TransitionProperty = element.style.transitionProperty;
                 TransitionDuration = element.style.transitionDuration;
                 TransitionTiming = element.style.transitionTimingFunction;
@@ -460,9 +460,9 @@ namespace Velvet
             }
             var value = transform ?? new DndSortingTransform(Vector2.zero);
             SeatedTranslate.Write(element, new Translate(value.Translate.x, value.Translate.y));
-            element.style.scale = value.Scale == Vector2.one
+            AuthoredTransform.SetScale(element, value.Scale == Vector2.one
                 ? _saved[element].Scale
-                : new StyleScale(new Scale(new Vector3(value.Scale.x, value.Scale.y, 1f)));
+                : new StyleScale(new Scale(new Vector3(value.Scale.x, value.Scale.y, 1f))));
         }
 
         // The session's own transition comes off first, so putting the translate back is not animated by it.
@@ -472,7 +472,7 @@ namespace Velvet
             element.style.transitionDuration = saved.TransitionDuration;
             element.style.transitionTimingFunction = saved.TransitionTiming;
             SeatedTranslate.Write(element, saved.Translate);
-            element.style.scale = saved.Scale;
+            AuthoredTransform.SetScale(element, saved.Scale);
         }
     }
 }
