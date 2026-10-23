@@ -87,6 +87,39 @@ namespace Velvet.Tests
         }
 
         // A holder torn down outside a render, as a recycled virtual-list row is, leaves its box and no entry naming it.
+        private static int s_rows;
+
+        // s_rows boxes, each under an id of its own.
+        [Component]
+        private static VNode ManyIdsRender()
+        {
+            var (_, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var rows = new VNode[s_rows];
+            for (var i = 0; i < rows.Length; i++)
+            {
+                rows[i] = V.Motion(key: $"row-{i}", layoutId: $"row-{i}", className: "absolute left-[0px] top-[0px] w-[10px] h-[10px]");
+            }
+            return V.Div(children: rows);
+        }
+
+        [Test]
+        public void Given_MoreIdsThanTheCapHoldingBoxes_When_TheirMotionsLeave_Then_OnlyTheCapKeepsABox()
+        {
+            // Arrange
+            s_rows = 300;
+            _mounted = V.Mount(Root, V.Component(ManyIdsRender, key: "root"));
+            Tick();
+            s_rows = 0;
+
+            // Act
+            s_setStep.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.LayoutIdRegistry.Count, Is.EqualTo(256));
+        }
+
         [Test]
         public void Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsItsBoxWithoutTheElement()
         {
