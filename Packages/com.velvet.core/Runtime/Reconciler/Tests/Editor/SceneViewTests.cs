@@ -857,6 +857,7 @@ namespace Velvet.Tests
             Assert.That(IsRed(cam.targetTexture), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): one tick after a resize renders the camera once, as it did before the feed.
         [Test]
         public void Given_AResizedSceneViewOutsidePlayMode_When_TheTickFiresOnce_Then_TheCameraRendersOnce()
         {
@@ -889,7 +890,7 @@ namespace Velvet.Tests
             Assert.That(renders, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): an editor panel's live SceneView repaints on each tick, as it did.
+        // GREEN_ON_BASE(characterization): an editor panel's live SceneView repaints on the tick its case fires, as it did.
         [Test]
         public void Given_ALiveSceneViewOnAnEditorPanel_When_TheTickFires_Then_TheElementRepaints()
         {
