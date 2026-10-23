@@ -93,9 +93,13 @@ namespace Velvet
 
         /// <summary>Droppables whose rect contains the pointer, edges included, ranked by the mean
         /// distance from the pointer to the rect's four corners, rounded to four decimals, smallest
-        /// first. Equal values keep registration order.</summary>
+        /// first. Equal values keep registration order. A query with no pointer collides with nothing.</summary>
         public static readonly DndCollisionDetection PointerWithin = (in DndCollisionQuery query) =>
         {
+            if (!query.HasPointer)
+            {
+                return Array.Empty<DndCollision>();
+            }
             DndCollision[]? found = null;
             var count = 0;
             var pointer = query.PointerPosition;

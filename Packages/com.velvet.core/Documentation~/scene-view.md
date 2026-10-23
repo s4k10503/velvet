@@ -11,10 +11,10 @@ V.SceneView(previewCamera, className: "w-64 h-64 rounded-lg border border-neutra
 
 There is no RenderTexture in the API — the framework owns it:
 
-- On layout, a RenderTexture is created at the element's **laid-out size in device pixels**
+- On layout, a RenderTexture is created at the element's **content-box size in device pixels**
   (the panel's scale factor is included, times `resolutionScale`, capped at 4096 — one shared
   shrink when either axis overflows, so the aspect is preserved) and assigned to
-  `camera.targetTexture`; the element shows it as its background image.
+  `camera.targetTexture`; a child the framework lays over the content box shows it.
 - A geometry change (the element resizes) recreates the texture at the new size and re-targets
   the camera. A zero-sized or unattached element holds no texture. A pixel-density change (a
   monitor DPI move, a panel-scale change) can leave the element's geometry where it was; the
@@ -30,19 +30,16 @@ There is no RenderTexture in the API — the framework owns it:
 
 ## Styling composes
 
-The output arrives through the element's background image, so the utility classes you would
-put on any box apply to the camera picture too — `rounded-*` corners clip it, `border-*`
-frames it, and sizing/layout utilities drive the render resolution itself.
+The output covers the element's content box, as a `<canvas>` bitmap does, so the utility classes
+you would put on any box compose with the camera picture: its own background (a color, a
+`BackgroundImage` passed through `styles:`, a gradient or `bg-[...]` utility) paints beneath the
+picture, `border-*` frames it, padding insets it, `rounded-*` corners clip it along the content
+edge (each corner's radius less the border and padding beside it, the larger side's where the two
+differ), and sizing/layout utilities drive the render resolution itself.
 
 `resolutionScale` decouples render cost from display size: `resolutionScale: 0.5` renders the
-camera at half the element's pixel size (the background scales it up). A non-positive or NaN
-scale throws at the factory.
-
-One property is spoken for: **the element's background image belongs to the camera output
-while its texture is live**. A `BackgroundImage` passed through `styles:` (or a gradient /
-`bg-[...]` utility) shows until the camera texture arrives, keeps receiving updates in a
-deferred slot while the feed is live, and returns when the camera releases (camera removed,
-element unmounting) — so a poster naturally brackets the feed's lifetime.
+camera at half the content box's pixel size (the picture is scaled up to the box). A non-positive
+or NaN scale throws at the factory.
 
 ## Live output
 
@@ -53,16 +50,22 @@ appear without any Velvet re-render. A `UseState`/store update is only needed wh
 A bound SceneView drives a small recurring tick while its texture is live. On an
 **editor-hosted panel**, which repaints only when dirty, it marks the element dirty, and **outside
 Play Mode** it calls `camera.Render()`, so a tool previewing a scene shows it live without
-entering Play Mode. The tick renders only a camera that is enabled and still targets the
-element's texture.
+entering Play Mode. The tick renders only a camera that is enabled, and leaves alone a camera user
+code pointed at a texture of its own.
 
 ## Notes
 
-- One camera renders into one SceneView at a time: mounting a second element with the same
-  camera re-targets it, and the earlier element freezes on its last rendered frame. Give each
-  SceneView its own camera.
+- Several SceneViews can show one camera. The element that claimed it last holds
+  `camera.targetTexture`; while the camera is enabled, each other element's tick, in Play Mode
+  too, points the camera at its own texture, renders it and points it back, and once the holder
+  releases the camera, the next tick of another element showing it claims it.
 - The camera keeps rendering while targeted (its own `enabled` flag is yours to manage —
-  disable cameras whose output is currently unnecessary).
-- The render pipeline is whichever the project uses: the element sets `camera.targetTexture`
-  and calls `camera.Render()`, and calls no pipeline-specific API. Velvet's own suites run
-  under URP.
+  disable cameras whose output is currently unnecessary), except while a positive-priority
+  `UseFrame` callback in the panel takes rendering over
+  ([particles.md](particles.md#useframe) owns that rule).
+- A camera held disabled for such a callback is enabled again before a scene save and before a
+  domain reload in the editor, so neither writes it disabled nor leaves it so; after a save the
+  element's next tick holds it again.
+- URP is the one render pipeline `V.SceneView` is tested under: Velvet's own suites run there.
+  The element sets `camera.targetTexture` and calls `camera.Render()`, and calls no
+  pipeline-specific API, but neither the Built-in Render Pipeline nor HDRP is tested.

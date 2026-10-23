@@ -248,8 +248,7 @@ namespace Velvet
             binding.Spec = spec;
             binding.Box = KeysFor(spec, SizeOf(element, binding), binding.BoxScale);
             binding.Texture = Hold(binding);
-            // As a utility's image, ranked below a StyleOverrides.BackgroundImage and written through the SceneView
-            // ownership gate, which defers it while a live camera feed keeps the slot.
+            // As a utility's image, ranked below a StyleOverrides.BackgroundImage.
             WriteImage(element, binding);
             WriteSize(element, binding);
             SyncGeometryWatch(element, binding);
@@ -306,10 +305,8 @@ namespace Velvet
             // written since (bg-[addr:…]) owns it, and the patch that wrote it did not touch this binding — and
             // only while the inline image is one Velvet wrote: one a refCallback wrote since stands. A
             // StyleOverrides.BackgroundImage showing over it does not stop the re-bake.
-            // A SceneViewElement's slot may be held by its camera, so it is always written.
-            if (element is not SceneViewElement
-                && (StyleArbitraryValueResolver.UtilityBackgroundImage(element).value.texture != binding.Texture
-                    || !StyleArbitraryValueResolver.ShowsOwnBackground(element)))
+            if (StyleArbitraryValueResolver.UtilityBackgroundImage(element).value.texture != binding.Texture
+                || !StyleArbitraryValueResolver.ShowsOwnBackground(element))
             {
                 return;
             }

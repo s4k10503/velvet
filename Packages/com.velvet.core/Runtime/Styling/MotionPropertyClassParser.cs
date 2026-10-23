@@ -20,8 +20,8 @@ namespace Velvet
     /// Scope. Colors: <c>bg-</c> / <c>text-</c> / <c>border-</c> against the palette (<see cref="VelvetPalette"/>),
     /// the <c>/alpha</c> modifier, and the bracket forms. Lengths: the spacing-scale families (sizing, position,
     /// padding, margin, flex-basis, with <c>-full</c> as 100%), the <c>rounded-*</c> radius scale
-    /// (<c>rounded-full</c> as 9999px), the <c>border-*</c> width scale, the <c>text-*</c> font-size and
-    /// <c>tracking-*</c> scales, and every bracket form <see cref="StyleArbitraryValueResolver.TryParse"/> already
+    /// (<c>rounded-full</c> as 9999px), the <c>border-*</c> width scale, the <c>text-*</c> font-size scale and
+    /// <c>tracking-normal</c>, and every bracket form <see cref="StyleArbitraryValueResolver.TryParse"/> already
     /// resolves onto one of those properties. Deliberately NOT recognized, each because the class alone cannot
     /// yield a number to interpolate: semantic theme tokens (<c>bg-primary</c>, <c>text-current</c>) have no C#
     /// mirror of their <c>--color-*</c> value; <c>-auto</c> lengths (<c>w-auto</c>, <c>basis-auto</c>,
@@ -69,18 +69,12 @@ namespace Velvet
         // --radius-full in _tokens.uss; MotionPresetScaleTests pins it.
         internal const float FullRadiusPx = 9999f;
 
-        // --text-* in _tokens.uss and the tracking-* rules in _typography.uss; MotionPresetScaleTests pins both.
+        // --text-* in _tokens.uss; MotionPresetScaleTests pins it.
         private static readonly Dictionary<string, float> s_fontSizeScale = new(StringComparer.Ordinal)
         {
             ["xs"] = 12f, ["sm"] = 14f, ["base"] = 16f, ["lg"] = 18f, ["xl"] = 20f, ["2xl"] = 24f,
             ["3xl"] = 30f, ["4xl"] = 36f, ["5xl"] = 48f, ["6xl"] = 60f, ["7xl"] = 72f, ["8xl"] = 96f,
             ["9xl"] = 128f,
-        };
-
-        private static readonly Dictionary<string, float> s_trackingScale = new(StringComparer.Ordinal)
-        {
-            ["tighter"] = -0.8f, ["tight"] = -0.4f, ["normal"] = 0f, ["wide"] = 0.4f, ["wider"] = 0.8f,
-            ["widest"] = 1.6f,
         };
 
         // The suffix-less utilities in the two non-spacing families, mapped to the prefix form
@@ -386,10 +380,12 @@ namespace Velvet
             }
             else if (prefix == "tracking-")
             {
-                if (!s_trackingScale.TryGetValue(suffix, out px))
+                // The other presets are em lengths measured on the element, which a play does not carry.
+                if (suffix != "normal")
                 {
                     return false;
                 }
+                px = 0f;
             }
             else if (prefix.StartsWith("border", StringComparison.Ordinal))
             {

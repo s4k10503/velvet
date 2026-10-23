@@ -10,8 +10,8 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the preset names a spring or bezier delta reads a magnitude from — the font-size and letter-spacing
-    /// scales, <c>rounded-full</c> and the <c>-full</c> keyword lengths — against the bundled stylesheets that
+    /// Pins the preset names a spring or bezier delta reads a magnitude from — the font-size scale,
+    /// <c>rounded-full</c> and the <c>-full</c> keyword lengths — against the bundled stylesheets that
     /// declare them.
     /// </summary>
     [TestFixture]
@@ -39,22 +39,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(";", read), Is.EqualTo(string.Join(";", declared)));
-        }
-
-        [Test]
-        public void Given_EveryTrackingStepTheTypographySheetDeclares_When_ReadAsATrackingPreset_Then_TheMagnitudeIsTheDeclaredSpacing()
-        {
-            // Arrange
-            var declared = Regex.Matches(Sheet("_typography.uss"), @"\.tracking-(?<name>[a-z]+)\s*\{\s*letter-spacing:\s*(?<px>-?[0-9.]+)(px)?;")
-                .Select(m => (name: m.Groups["name"].Value, px: float.Parse(m.Groups["px"].Value, System.Globalization.CultureInfo.InvariantCulture)))
-                .ToList();
-
-            // Act
-            var read = declared.Select(d => (d.name, target: DrivenTarget("tracking-[3px]", "tracking-" + d.name)));
-
-            // Assert
-            Assert.That(string.Join(";", read.Select(r => $"{r.name}={r.target}")),
-                Is.EqualTo(string.Join(";", declared.Select(d => $"{d.name}={d.px}Pixel"))));
         }
 
         [Test]

@@ -197,6 +197,15 @@
         "com.unity.modules.uielements": "1.0.0"
       }
     },
+    "com.unity.visualeffectgraph": {
+      "version": "17.3.0",
+      "depth": 0,
+      "source": "builtin",
+      "dependencies": {
+        "com.unity.shadergraph": "17.3.0",
+        "com.unity.render-pipelines.core": "17.3.0"
+      }
+    },
     "com.velvet.core": {
       "version": "file:com.velvet.core",
       "depth": 0,
@@ -204,6 +213,7 @@
       "dependencies": {
         "com.unity.addressables": "2.7.4",
         "com.unity.nuget.mono-cecil": "1.11.5",
+        "com.unity.modules.accessibility": "1.0.0",
         "com.unity.modules.uielements": "1.0.0"
       }
     },

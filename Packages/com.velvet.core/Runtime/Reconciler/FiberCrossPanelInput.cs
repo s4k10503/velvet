@@ -365,7 +365,7 @@ namespace Velvet
             where TEvent : PointerEventBase<TEvent>, new()
         {
             var mainPanel = mainPanelRoot.panel;
-            if (mainPanel == null) return;
+            if (mainPanel == null || mainPanel.contextType != ContextType.Player) return;
 
             List<PanelHostRecord>? candidates = null;
             foreach (var kvp in ctx.LayerHosts)

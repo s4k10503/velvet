@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -10,10 +11,10 @@ namespace Velvet.Tests
     /// Specifies the contract of <c>V.SceneView</c> — a Camera's output as an element:
     /// <list type="bullet">
     /// <item>Mounting creates the dedicated <see cref="SceneViewElement"/>; once layout resolves, the
-    /// framework creates a RenderTexture sized to the element's laid-out pixel size (times the
-    /// resolution scale), assigns it to <c>camera.targetTexture</c>, and shows it through the
-    /// element's background image — so background utilities and rounded corners apply to the camera
-    /// output.</item>
+    /// framework creates a RenderTexture sized to the element's content box in pixels (times the
+    /// resolution scale), assigns it to <c>camera.targetTexture</c>, and shows it through a child laid
+    /// over that content box, above the element's own background and beneath every other child, with
+    /// each corner rounded along the content edge.</item>
     /// <item>The texture follows the element: a geometry change re-sizes it (rounding the larger axis
     /// up to a shared quantization step and rescaling the other axis by the same factor, so its
     /// aspect ratio keeps matching the element's, so a minor resize reuses the existing texture
@@ -23,6 +24,10 @@ namespace Velvet.Tests
     /// <item>Release is polite: a camera whose targetTexture was reassigned by user code after mount is
     /// left untouched on unmount.</item>
     /// <item>A null camera mounts an inert element; a zero-sized element creates no texture.</item>
+    /// <item>Several elements can show one camera: each one the camera does not target is rendered into
+    /// by its own tick, and one targeting nothing is claimed back. A positive-priority UseFrame callback
+    /// in the panel takes rendering over, holding the camera disabled until it is gone, and enabling it
+    /// before the editor saves a scene or reloads assemblies.</item>
     /// </list>
     /// The EditMode panel comes from <see cref="HeadlessEditorPanelHost"/> and layout is driven
     /// explicitly (the scheduler does not tick in EditMode).
@@ -31,6 +36,7 @@ namespace Velvet.Tests
     {
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
+        private MountedTree _portalTree;
         private readonly List<Object> _spawned = new();
 
         private static StateUpdater<bool> s_setFlag;
@@ -45,6 +51,8 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
+            _portalTree?.Dispose();
+            _portalTree = null;
             _mounted?.Dispose();
             _mounted = null;
             _host?.Dispose();
@@ -74,6 +82,47 @@ namespace Velvet.Tests
             _mounted.FlushStateForTest();
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
         }
+
+        // A case that lays the panel out again before it fires the tick runs on the fake clock and steps it past
+        // the tick's interval, so its own drive fires the tick once whether or not a layout pass already ran the
+        // scheduler.
+        private void PutPanelOnFakeClock()
+        {
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
+        }
+
+        private void FireTick()
+        {
+            UseFrameFakeClockHost.Ms += 100;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+        }
+
+        private int _repaints;
+
+        // Counts the element's repaints from here on, after a layout pass that takes up whatever the arrangement
+        // left dirty: on an editor panel nothing but the tick marks a live SceneView dirty once its texture is in
+        // place, so a count above zero after FireTick and a layout pass says the tick ran.
+        private void CountRepaints(VisualElement element)
+        {
+            element.generateVisualContent += _ => _repaints++;
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            _repaints = 0;
+        }
+
+        private bool TickRan()
+        {
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            return _repaints > 0;
+        }
+
+        // Null where the element shows no camera output.
+        private static VisualElement Feed(VisualElement element) => element.Q(className: "velvet-scene-view-feed");
+
+        // Read through resolvedStyle: this editor's INLINE backgroundImage getter reconstructs the value
+        // without a RenderTexture case (a stored RT reads back as Null), while the computed style
+        // round-trips it.
+        private static RenderTexture FeedTexture(VisualElement element) => Feed(element)?.resolvedStyle.backgroundImage.renderTexture;
 
         #region Mount and texture creation
 
@@ -132,7 +181,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AMountedSceneView_When_LayoutResolves_Then_TheBackgroundCarriesTheSameTexture()
+        public void Given_AMountedSceneView_When_LayoutResolves_Then_TheFeedCarriesTheSameTexture()
         {
             // Arrange
             var cam = CreateCamera("cam");
@@ -140,12 +189,186 @@ namespace Velvet.Tests
             // Act
             MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]", name: "sv"));
 
-            // Assert — the element displays the exact texture the camera renders into. Read through
-            // resolvedStyle: this editor's INLINE backgroundImage getter reconstructs the value without a
-            // RenderTexture case (a stored RT reads back as Null), while the computed style round-trips it.
-            Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera received a texture");
+            // Assert — the element displays the exact texture the camera renders into.
             var el = _host.Root.Q<VisualElement>("sv");
-            Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.SameAs(cam.targetTexture));
+            Assert.That(FeedTexture(el), Is.Not.Null.And.SameAs(cam.targetTexture));
+        }
+
+        [Test]
+        public void Given_ALiveFeedOverAPoster_When_LayoutResolves_Then_TheElementKeepsThePoster()
+        {
+            // Arrange — as a canvas's CSS background stays beneath its bitmap.
+            var cam = CreateCamera("cam");
+            var poster = new Texture2D(4, 4);
+            _spawned.Add(poster);
+
+            // Act
+            MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]", name: "sv",
+                styles: new StyleOverrides { BackgroundImage = new StyleBackground(poster) }));
+
+            // Assert — read only while the camera holds a texture, so a feed that never went live reads null.
+            var el = _host.Root.Q<VisualElement>("sv");
+            Assert.That(cam.targetTexture != null ? el.resolvedStyle.backgroundImage.texture : null, Is.SameAs(poster));
+        }
+
+        [Test]
+        public void Given_ABorderedPaddedSceneView_When_LayoutResolves_Then_TheTextureMatchesTheContentBox()
+        {
+            // Arrange — a 2px border and 2px padding on each side leave a 128x64 content box.
+            var cam = CreateCamera("cam");
+
+            // Act
+            MountAndLayout(V.SceneView(cam, className: "w-[136px] h-[72px] border-[2px] p-[2px]"));
+
+            // Assert
+            Assert.That((cam.targetTexture.width, cam.targetTexture.height), Is.EqualTo((128, 64)));
+        }
+
+        [Test]
+        public void Given_ABorderedPaddedSceneView_When_LayoutResolves_Then_TheFeedCoversTheContentBox()
+        {
+            // Arrange — uneven sides, so a feed placed from the border box, or from the wrong side, lands
+            // elsewhere. SceneViewDriver.SyncFeed relies on this for absolute offsets being taken from the
+            // padding box.
+            var cam = CreateCamera("cam");
+            MountAndLayout(V.SceneView(cam, name: "sv",
+                className: "w-[128px] h-[64px] border-[2px] pl-[1px] pr-[7px] pt-[13px] pb-[4px]"));
+            var el = _host.Root.Q<VisualElement>("sv");
+
+            // Act — the feed joins during the first layout pass and is laid out by the next.
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(Feed(el)?.layout ?? Rect.zero, Is.EqualTo(el.contentRect));
+        }
+
+        // Top-left first and clockwise; -1 each where there is no feed.
+        private (float, float, float, float) FeedRadii(string className)
+        {
+            MountAndLayout(V.SceneView(CreateCamera("cam"), name: "sv", className: className));
+            var feed = Feed(_host.Root.Q<VisualElement>("sv"));
+            return feed == null
+                ? (-1f, -1f, -1f, -1f)
+                : (feed.resolvedStyle.borderTopLeftRadius, feed.resolvedStyle.borderTopRightRadius,
+                    feed.resolvedStyle.borderBottomRightRadius, feed.resolvedStyle.borderBottomLeftRadius);
+        }
+
+        [Test]
+        public void Given_ARoundedSceneViewDeeperAtItsSides_When_LayoutResolves_Then_EachFeedCornerLosesItsSidesInset()
+        {
+            // Arrange — insets of 10 left, 8 right, 3 top and 4 bottom beside a 20px radius.
+            const string className = "w-[128px] h-[64px] rounded-[20px] border-[2px] pl-[8px] pr-[6px] pt-[1px] pb-[2px]";
+
+            // Act
+            var radii = FeedRadii(className);
+
+            // Assert
+            Assert.That(radii, Is.EqualTo((10f, 12f, 12f, 10f)));
+        }
+
+        [Test]
+        public void Given_ARoundedSceneViewDeeperAtTopAndBottom_When_LayoutResolves_Then_EachFeedCornerLosesThatInset()
+        {
+            // Arrange — insets of 3 left, 4 right, 10 top and 8 bottom beside a 20px radius.
+            const string className = "w-[128px] h-[64px] rounded-[20px] border-[2px] pl-[1px] pr-[2px] pt-[8px] pb-[6px]";
+
+            // Act
+            var radii = FeedRadii(className);
+
+            // Assert
+            Assert.That(radii, Is.EqualTo((10f, 10f, 12f, 12f)));
+        }
+
+        [Component]
+        private static VNode ShiftingPaddingHost()
+        {
+            var (shifted, setShifted) = Hooks.UseState(false);
+            s_setFlag = setShifted;
+            return V.SceneView(s_camera, key: "sv", name: "sv", className: shifted
+                ? "w-[128px] h-[64px] pl-[5px] pr-[3px]"
+                : "w-[128px] h-[64px] pl-[1px] pr-[7px]");
+        }
+
+        [Test]
+        public void Given_APaddingShiftThatKeepsTheContentSize_When_TheTickFires_Then_TheFeedFollowsTheContentBox()
+        {
+            // Arrange — the content box moves 4px right at the same size, which re-derives no texture.
+            PutPanelOnFakeClock();
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(ShiftingPaddingHost, key: "root"));
+            var el = _host.Root.Q<VisualElement>("sv");
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Act
+            FireTick();
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(Feed(el)?.layout ?? Rect.zero, Is.EqualTo(el.contentRect));
+        }
+
+        [Test]
+        public void Given_ALiveSceneView_When_APortalRendersRowsIntoIt_Then_FirstLandsOnTheFirstRow()
+        {
+            // Arrange — the feed is a child the framework put there, which takes no place in the rows' order.
+            var cam = CreateCamera("cam");
+            MountAndLayout(V.SceneView(cam, name: "sv", className: "w-[128px] h-[64px]"));
+            var el = _host.Root.Q<VisualElement>("sv");
+
+            // Act
+            _portalTree = V.Mount(new VisualElement(), V.Portal(el, children: new VNode[]
+            {
+                V.Div(name: "row0", className: "first:w-[10px]"),
+                V.Div(name: "row1", className: "first:w-[10px]"),
+            }));
+
+            // Assert — the feed is read too, since without one the rows are the only children anyway.
+            Assert.That((Feed(el) != null, el.Q<VisualElement>("row0")?.style.width.value.value ?? -1f),
+                Is.EqualTo((true, 10f)));
+        }
+
+        [Test]
+        public void Given_ALiveSceneViewWithNoOtherChild_When_APortalRendersARowIntoIt_Then_TheFeedStaysBeneathTheRow()
+        {
+            // Arrange
+            var cam = CreateCamera("cam");
+            MountAndLayout(V.SceneView(cam, name: "sv", className: "w-[128px] h-[64px]"));
+            var el = _host.Root.Q<VisualElement>("sv");
+
+            // Act
+            _portalTree = V.Mount(new VisualElement(), V.Portal(el, children: new VNode[] { V.Div(name: "row0") }));
+
+            // Assert — the row is read too, since a row that never rendered leaves the feed first as well.
+            Assert.That((el.IndexOf(Feed(el)), el.IndexOf(el.Q<VisualElement>("row0"))), Is.EqualTo((0, 1)));
+        }
+
+        [Component]
+        private static VNode CameraToggleHost()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setFlag = setShown;
+            return V.SceneView(shown ? s_camera : null, key: "sv", name: "sv", className: "w-[128px] h-[64px]");
+        }
+
+        [Test]
+        public void Given_APortalRowInALiveSceneView_When_TheCameraLeavesAndReturns_Then_TheFeedStaysBeneathTheRow()
+        {
+            // Arrange — a portal renders a row into the element while its feed is live, and the camera leaves,
+            // which releases the texture and takes the feed out.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(CameraToggleHost, key: "root"));
+            var el = _host.Root.Q<VisualElement>("sv");
+            _portalTree = V.Mount(new VisualElement(), V.Portal(el, children: new VNode[] { V.Div(name: "row0") }));
+            s_setFlag.Invoke(false);
+            FlushAndLayout();
+
+            // Act — the camera returns, and the texture and its feed are created again.
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — the row is read too, since a row that never rendered leaves the feed first as well.
+            Assert.That((el.IndexOf(Feed(el)), el.IndexOf(el.Q<VisualElement>("row0"))), Is.EqualTo((0, 1)));
         }
 
         [Test]
@@ -426,7 +649,7 @@ namespace Velvet.Tests
         public void Given_AStyleOverrideBackgroundChange_When_Repatched_Then_TheLiveCameraTextureSurvives()
         {
             // Arrange — a poster placeholder passed through styles, cleared on a later render. The style
-            // diff must not blank the camera output the driver owns on the same property.
+            // diff and the re-render must leave the camera output in place.
             s_camera = CreateCamera("cam");
             s_poster = new Texture2D(4, 4);
             _spawned.Add(s_poster);
@@ -439,7 +662,7 @@ namespace Velvet.Tests
 
             // Assert
             var el = _host.Root.Q<VisualElement>("sv");
-            Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.SameAs(s_camera.targetTexture));
+            Assert.That(FeedTexture(el), Is.SameAs(s_camera.targetTexture));
         }
 
         #endregion
@@ -593,6 +816,7 @@ namespace Velvet.Tests
             Assert.That((rt.height <= 4096, Mathf.Abs(aspect - 20f) < 0.5f), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the tick re-derives a texture whose pixel scale went stale, as it did.
         [Test]
         public void Given_AStalePixelScale_When_TheEditorRepaintTickFires_Then_TheTextureIsRederived()
         {
@@ -600,6 +824,7 @@ namespace Velvet.Tests
             // no geometry event (points are unchanged) and no props pass, so only the recurring editor
             // repaint tick can notice. Staleness is simulated by doubling the scale on the live
             // binding directly — the same derivation input a density change moves.
+            PutPanelOnFakeClock();
             var cam = CreateCamera("cam");
             MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]", name: "sv"));
             Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
@@ -608,7 +833,7 @@ namespace Velvet.Tests
             binding.Settings = new SceneViewSettings(cam, 2f);
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
             Assert.That((cam.targetTexture.width, cam.targetTexture.height), Is.EqualTo((256, 128)));
@@ -635,29 +860,33 @@ namespace Velvet.Tests
         private static bool IsRed(RenderTexture texture) =>
             RenderTexturePixelReader.IsRedPixel(RenderTexturePixelReader.ReadPixels(texture, new RectInt(0, 0, 1, 1))[0]);
 
+        // GREEN_ON_BASE(characterization): the tick renders an enabled camera into its texture, as it did.
         [Test]
         public void Given_AnEnabledCameraOutsidePlayMode_When_TheTickFires_Then_TheCameraRendersIntoTheTexture()
         {
             // Arrange — the texture starts blue, so only a render of the red-clearing camera turns it red.
             TestGraphics.IgnoreIfHeadless("a camera render");
+            PutPanelOnFakeClock();
             var cam = CreateRedCamera();
             MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]"));
             Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
             Fill(cam.targetTexture, Color.blue);
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
             Assert.That(IsRed(cam.targetTexture), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): one tick after a resize renders the camera once, as it did before the feed.
         [Test]
         public void Given_AResizedSceneViewOutsidePlayMode_When_TheTickFiresOnce_Then_TheCameraRendersOnce()
         {
             // Arrange — the resize re-derives the texture and re-syncs the tick, which must leave one
             // tick running rather than a second beside the first.
             TestGraphics.IgnoreIfHeadless("a camera render");
+            PutPanelOnFakeClock();
             s_camera = CreateRedCamera();
             MountAndLayout(V.Component(ResizingHost, key: "root"));
             s_setFlag.Invoke(true);
@@ -672,7 +901,7 @@ namespace Velvet.Tests
             // Act
             try
             {
-                EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+                FireTick();
             }
             finally
             {
@@ -683,12 +912,13 @@ namespace Velvet.Tests
             Assert.That(renders, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): an editor panel's live SceneView repaints on each tick, as it did.
+        // GREEN_ON_BASE(characterization): an editor panel's live SceneView repaints on the tick its case fires, as it did.
         [Test]
         public void Given_ALiveSceneViewOnAnEditorPanel_When_TheTickFires_Then_TheElementRepaints()
         {
             // Arrange — an editor panel regenerates only what is marked dirty, and nothing but the tick
             // marks this element once its texture is in place.
+            PutPanelOnFakeClock();
             var cam = CreateCamera("cam");
             MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]", name: "sv"));
             var element = _host.Root.Q<VisualElement>("sv");
@@ -698,51 +928,55 @@ namespace Velvet.Tests
             repaints = 0;
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
 
             // Assert
             Assert.That(repaints, Is.GreaterThan(0));
         }
 
-        // GREEN_ON_BASE(characterization): the tick leaves a disabled camera's texture holding what it held before.
+        // GREEN_ON_BASE(characterization): a tick that ran leaves a disabled camera's texture as it was, as before.
         [Test]
         public void Given_ADisabledCameraOutsidePlayMode_When_TheTickFires_Then_TheCameraDoesNotRender()
         {
-            // Arrange
+            // Arrange — the repaint count says the tick ran, without which an unrendered texture proves nothing.
             TestGraphics.IgnoreIfHeadless("a camera render");
+            PutPanelOnFakeClock();
             var cam = CreateRedCamera();
-            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]"));
+            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]", name: "sv"));
             Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            CountRepaints(_host.Root.Q<VisualElement>("sv"));
             cam.enabled = false;
             Fill(cam.targetTexture, Color.blue);
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
-            Assert.That(IsRed(cam.targetTexture), Is.False);
+            Assert.That((IsRed(cam.targetTexture), TickRan()), Is.EqualTo((false, true)));
         }
 
-        // GREEN_ON_BASE(characterization): a texture user code gave the camera is never rendered into by the tick.
+        // GREEN_ON_BASE(characterization): a tick that ran leaves a texture user code gave the camera unrendered, as before.
         [Test]
         public void Given_AUserReassignedTargetOutsidePlayMode_When_TheTickFires_Then_TheCameraDoesNotRenderIntoIt()
         {
-            // Arrange
+            // Arrange — the repaint count says the tick ran, as in the disabled-camera case above.
             TestGraphics.IgnoreIfHeadless("a camera render");
+            PutPanelOnFakeClock();
             var cam = CreateRedCamera();
-            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]"));
+            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]", name: "sv"));
             Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            CountRepaints(_host.Root.Q<VisualElement>("sv"));
             var userTexture = new RenderTexture(64, 64, 24);
             _spawned.Add(userTexture);
             cam.targetTexture = userTexture;
             Fill(userTexture, Color.blue);
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
-            Assert.That(IsRed(userTexture), Is.False);
+            Assert.That((IsRed(userTexture), TickRan()), Is.EqualTo((false, true)));
         }
 
         [Test]
@@ -794,8 +1028,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AUserReassignedTarget_When_TheElementResizes_Then_TheLastFrameSurvives()
         {
-            // Arrange — user code borrowed the camera; a later RESIZE must not swap the background
-            // to a fresh texture nothing renders into, nor destroy the frame being shown.
+            // Arrange — user code borrowed the camera; a later RESIZE must not swap the feed to a
+            // fresh texture nothing renders into, nor destroy the frame being shown.
             s_camera = CreateCamera("cam");
             MountAndLayout(V.Component(ResizingSceneHost, key: "root"));
             var el = _host.Root.Q<VisualElement>("sv");
@@ -809,8 +1043,8 @@ namespace Velvet.Tests
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
-            // Assert — the background still shows the framework texture holding the last frame.
-            Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.SameAs(shown));
+            // Assert — the feed still shows the framework texture holding the last frame.
+            Assert.That(FeedTexture(el), Is.SameAs(shown));
         }
 
         [Test]
@@ -829,12 +1063,12 @@ namespace Velvet.Tests
 
             // Assert — the camera renders into the framework texture the element shows.
             var el = _host.Root.Q<VisualElement>("sv");
-            Assert.That(cam.targetTexture, Is.SameAs(el.resolvedStyle.backgroundImage.renderTexture));
+            Assert.That(cam.targetTexture, Is.SameAs(FeedTexture(el)));
         }
 
         #endregion
 
-        #region Background ownership
+        #region The element's own background
 
         private static Texture2D s_posterA;
         private static Texture2D s_posterB;
@@ -852,8 +1086,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ALiveCameraFeed_When_TheGradientClassChanges_Then_TheFeedIsNotClobbered()
         {
-            // Arrange — a gradient class and a live camera compete for the one backgroundImage slot;
-            // while the camera texture is live it owns the slot, and class-driven writers defer.
+            // Arrange — a gradient class beneath a live camera feed.
             s_camera = CreateCamera("cam");
             MountAndLayout(V.Component(GradientSwapHost, key: "root"));
             var el = _host.Root.Q<VisualElement>("sv");
@@ -864,8 +1097,8 @@ namespace Velvet.Tests
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
-            // Assert — the background still samples the live camera texture.
-            Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.SameAs(s_camera.targetTexture));
+            // Assert — the feed still samples the live camera texture.
+            Assert.That(FeedTexture(el), Is.SameAs(s_camera.targetTexture));
         }
 
         [Component]
@@ -903,30 +1136,327 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode ReleasingGradientHost()
+        private static VNode ReleasingHost()
         {
             var (released, setReleased) = Hooks.UseState(false);
             s_setFlag = setReleased;
-            return V.SceneView(released ? null : s_camera, key: "sv", name: "sv",
-                className: "w-[128px] h-[64px] bg-gradient-to-r from-red-500 to-blue-500");
+            return V.SceneView(released ? null : s_camera, key: "sv", name: "sv", className: "w-[128px] h-[64px]");
         }
 
         [Test]
-        public void Given_ALiveFeedOverAGradient_When_TheCameraIsRemoved_Then_TheGradientIsRestored()
+        public void Given_ALiveFeed_When_TheCameraIsRemoved_Then_TheFeedLeavesTheElement()
         {
             // Arrange
             s_camera = CreateCamera("cam");
-            MountAndLayout(V.Component(ReleasingGradientHost, key: "root"));
+            MountAndLayout(V.Component(ReleasingHost, key: "root"));
             var el = _host.Root.Q<VisualElement>("sv");
-            Assume.That(el?.resolvedStyle.backgroundImage.renderTexture, Is.Not.Null,
-                "Precondition: the camera feed owns the background");
+            var fedWhileLive = Feed(el) != null;
 
-            // Act — removing the camera releases the texture; the deferred class background returns.
+            // Act
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
-            // Assert — a baked gradient texture, not a blank slot, fills the element again.
-            Assert.That(el.resolvedStyle.backgroundImage.texture, Is.Not.Null);
+            // Assert — the feed is checked while the camera is live too, since a base with none passes
+            // the removal alone.
+            Assert.That((fedWhileLive, Feed(el) != null), Is.EqualTo((true, false)));
+        }
+
+        #endregion
+
+        #region One camera across several SceneViews
+
+        [Component]
+        private static VNode SharedCameraHost()
+        {
+            var (second, setSecond) = Hooks.UseState(false);
+            s_setFlag = setSecond;
+            return V.Div(className: "flex-col", children: new VNode[]
+            {
+                V.SceneView(s_camera, key: "a", name: "a", className: "w-[64px] h-[64px]"),
+                second ? V.SceneView(s_camera, key: "b", name: "b", className: "w-[64px] h-[64px]") : null,
+            });
+        }
+
+        // Mounts "a", then adds "b", whose explicit pass claims the shared camera last.
+        private void MountSharedCamera()
+        {
+            PutPanelOnFakeClock();
+            s_camera = CreateRedCamera();
+            MountAndLayout(V.Component(SharedCameraHost, key: "root"));
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+        }
+
+        private RenderTexture TextureOf(string name) =>
+            _mounted.Root.Reconciler.Context.SceneViewBindings[_host.Root.Q<VisualElement>(name)].Texture;
+
+        [Test]
+        public void Given_TwoSceneViewsSharingACamera_When_TheTickFires_Then_TheOneItDoesNotTargetIsRenderedInto()
+        {
+            // Arrange — the texture of the element the camera does not target starts blue, so only a render
+            // turns it red.
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            MountSharedCamera();
+            var first = s_camera.targetTexture == TextureOf("b") ? TextureOf("a") : TextureOf("b");
+            Fill(first, Color.blue);
+
+            // Act
+            FireTick();
+
+            // Assert
+            Assert.That(IsRed(first), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the element that claimed the shared camera last keeps it, as before.
+        [Test]
+        public void Given_TwoSceneViewsSharingACamera_When_TheTickFires_Then_TheCameraStillTargetsTheLaterOne()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            MountSharedCamera();
+
+            // Act
+            FireTick();
+
+            // Assert
+            Assert.That(s_camera.targetTexture, Is.SameAs(TextureOf("b")));
+        }
+
+        [Test]
+        public void Given_TwoSceneViewsSharingACamera_When_TheHolderUnmounts_Then_TheOtherClaimsTheCamera()
+        {
+            // Arrange — "a" sits first in a column, so removing "b" leaves its geometry, and with it the
+            // geometry-driven resync, alone.
+            MountSharedCamera();
+            var first = TextureOf("a");
+            s_setFlag.Invoke(false);
+            FlushAndLayout();
+
+            // Act
+            FireTick();
+
+            // Assert
+            Assert.That(s_camera.targetTexture, Is.SameAs(first));
+        }
+
+        #endregion
+
+        #region Rendering taken over by a positive-priority UseFrame
+
+        private static int s_framePriority;
+
+        [Component]
+        private static VNode FrameTaker()
+        {
+            Hooks.UseFrame(_ => { }, s_framePriority);
+            return V.Div(className: "w-[1px] h-[1px]");
+        }
+
+        [Component]
+        private static VNode TakeoverHost()
+        {
+            var (taking, setTaking) = Hooks.UseState(true);
+            s_setFlag = setTaking;
+            return V.Div(children: new VNode[]
+            {
+                V.SceneView(s_camera, key: "sv", name: "sv", className: "w-[64px] h-[64px]"),
+                taking ? V.Component(FrameTaker, key: "taker") : null,
+            });
+        }
+
+        [Component]
+        private static VNode TakeoverSwapHost()
+        {
+            var (swapped, setSwapped) = Hooks.UseState(false);
+            s_setFlag = setSwapped;
+            return V.Div(children: new VNode[]
+            {
+                V.SceneView(swapped ? s_cameraB : s_camera, key: "sv", name: "sv", className: "w-[64px] h-[64px]"),
+                V.Component(FrameTaker, key: "taker"),
+            });
+        }
+
+        [Component]
+        private static VNode TakeoverUnmountHost()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setFlag = setShown;
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.SceneView(s_camera, key: "sv", name: "sv", className: "w-[64px] h-[64px]") : null,
+                V.Component(FrameTaker, key: "taker"),
+            });
+        }
+
+        private void MountTakeover(int priority) => MountTakeover(priority, TakeoverHost);
+
+        private void MountTakeover(int priority, System.Func<VNode> host)
+        {
+            s_framePriority = priority;
+            s_camera = CreateCamera("cam");
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
+            MountAndLayout(V.Component(host, key: "root"));
+            _mounted.FlushEffectsForTest();
+        }
+
+        // Flips the host's flag, lets the effects it unmounts or mounts run, and fires the tick past its interval.
+        private void FlipAndTick(bool value)
+        {
+            s_setFlag.Invoke(value);
+            FlushAndLayout();
+            _mounted.FlushEffectsForTest();
+            UseFrameFakeClockHost.Ms += 100;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+        }
+
+        [Test]
+        public void Given_APositivePriorityFrameCallbackInThePanel_When_TheTickFires_Then_TheCameraIsHeldDisabled()
+        {
+            // Arrange
+            MountTakeover(1);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(s_camera.enabled, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a zero priority orders callbacks and leaves the camera alone, as before.
+        [Test]
+        public void Given_AZeroPriorityFrameCallbackInThePanel_When_TheTickFires_Then_TheCameraStaysEnabled()
+        {
+            // Arrange
+            MountTakeover(0);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(s_camera.enabled, Is.True);
+        }
+
+        [Test]
+        public void Given_ATakeoverThatEnds_When_TheTickFires_Then_TheCameraIsEnabledAgain()
+        {
+            // Arrange
+            MountTakeover(1);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var enabledWhileTaken = s_camera.enabled;
+
+            // Act
+            FlipAndTick(false);
+
+            // Assert — read while taken over too, since a base that never disables it passes the end alone.
+            Assert.That((enabledWhileTaken, s_camera.enabled), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_ATakeoverThatEndedAndStartsAgain_When_TheTickFires_Then_TheCameraIsHeldDisabledAgain()
+        {
+            // Arrange
+            MountTakeover(1);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FlipAndTick(false);
+            var enabledBetween = s_camera.enabled;
+
+            // Act
+            FlipAndTick(true);
+
+            // Assert — read between the two too, since a base that never disables it is enabled there.
+            Assert.That((enabledBetween, s_camera.enabled), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ATakenOverSceneView_When_ItsCameraIsSwapped_Then_TheOldCameraIsEnabledAgain()
+        {
+            // Arrange
+            s_cameraB = CreateCamera("camB");
+            MountTakeover(1, TakeoverSwapHost);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var enabledWhileTaken = s_camera.enabled;
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert
+            Assert.That((enabledWhileTaken, s_camera.enabled), Is.EqualTo((false, true)));
+        }
+
+        // Runs the subscribers SceneViewDriver declares on one of the editor's events, with the given arguments:
+        // the event's own invoker would run every other subscriber in the editor too.
+        private static void RunDriverSubscribers(System.Type owner, string trackerField, params object[] args)
+        {
+            var tracker = owner.GetField(trackerField, BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            var enumerator = (System.Collections.IEnumerator)tracker.GetType().GetMethod("GetEnumerator").Invoke(tracker, null);
+            var subscribers = new List<System.Delegate>();
+            try
+            {
+                while (enumerator.MoveNext())
+                {
+                    subscribers.Add((System.Delegate)enumerator.Current);
+                }
+            }
+            finally
+            {
+                (enumerator as System.IDisposable)?.Dispose();
+            }
+            foreach (var subscriber in subscribers)
+            {
+                if (subscriber.Method.DeclaringType == typeof(SceneViewDriver))
+                {
+                    subscriber.DynamicInvoke(args);
+                }
+            }
+        }
+
+        [Test]
+        public void Given_AHeldCamera_When_TheEditorIsAboutToReloadAssemblies_Then_TheCameraIsEnabledAgain()
+        {
+            // Arrange
+            MountTakeover(1);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var enabledWhileHeld = s_camera.enabled;
+
+            // Act
+            RunDriverSubscribers(typeof(UnityEditor.AssemblyReloadEvents), "m_BeforeAssemblyReloadEvent");
+
+            // Assert — read while held too, since a base that never holds it is enabled at the end alone.
+            Assert.That((enabledWhileHeld, s_camera.enabled), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AHeldCamera_When_TheEditorIsAboutToSaveAScene_Then_TheCameraIsEnabledAgain()
+        {
+            // Arrange
+            MountTakeover(1);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var enabledWhileHeld = s_camera.enabled;
+
+            // Act
+            RunDriverSubscribers(typeof(UnityEditor.SceneManagement.EditorSceneManager), "m_SceneSavingEvent",
+                s_camera.gameObject.scene, string.Empty);
+
+            // Assert — read while held too, since a base that never holds it is enabled at the end alone.
+            Assert.That((enabledWhileHeld, s_camera.enabled), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_ATakenOverSceneView_When_ItUnmounts_Then_ItsCameraIsEnabledAgain()
+        {
+            // Arrange
+            MountTakeover(1, TakeoverUnmountHost);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var enabledWhileTaken = s_camera.enabled;
+
+            // Act
+            s_setFlag.Invoke(false);
+            FlushAndLayout();
+
+            // Assert
+            Assert.That((enabledWhileTaken, s_camera.enabled), Is.EqualTo((false, true)));
         }
 
         #endregion

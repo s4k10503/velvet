@@ -384,10 +384,12 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   the bracket forms. These read a **separate literal scale mirroring the stylesheet's own
   declarations**, not the spacing scale — `border-2` is 2px, not `--space-2`. Same per-tick layout
   cost as the lengths above.
-- **Font size and letter spacing:** `text-[20px]` and `tracking-[2px]`, and the named presets, which read the
-  bundled scale (`text-xs` … `text-9xl` from `_tokens.uss`, `tracking-tighter` … `tracking-widest` from
-  `_typography.uss`), so a `text-sm` → `text-2xl` delta animates. A stylesheet that redeclares `--text-*`
-  moves the rendered size and not the size the play interpolates toward.
+- **Font size and letter spacing:** `text-[20px]` and `tracking-[2px]`, and the named font sizes, which read the
+  bundled scale (`text-xs` … `text-9xl` from `_tokens.uss`), so a `text-sm` → `text-2xl` delta animates. A stylesheet
+  that redeclares `--text-*` moves the rendered size and not the size the play interpolates toward. `tracking-normal`
+  is a pixel length of zero. The other tracking presets are not driven: `tracking-wide` is an em length measured on
+  the element, as `tracking-[0.025em]` is, which a play does not carry, so a delta through one lands instantly.
+  Reach for the pixel bracket when you want the spacing to move.
 - **The to-side must name a color or length.** A swapped-out value in the target's unit supplies
   the start unless a running Spring or Bezier play, or a native transition, is moving the slot; otherwise a mounted
   element supplies its current inline or displayed value. Width and height (min/max forms included), the

@@ -1196,9 +1196,10 @@ namespace Velvet
         /// clock did not move invokes nothing.
         /// <paramref name="priority"/> orders callbacks within the SAME panel — lower runs earlier,
         /// equal priorities run in subscription (mount) order, and this stays true across a keyed
-        /// reorder of the host. A positive priority has no side effect beyond ordering: Unity's
-        /// rendering is independent of this scheduler, so there is no internal render call for it to
-        /// take over. The latest render's priority applies live, the same way <paramref name="onFrame"/>
+        /// reorder of the host. A positive priority also takes rendering over, as in react-three-fiber:
+        /// while the host is attached, a <see cref="V.SceneView"/> showing its camera in the same panel
+        /// holds that camera disabled, and the callback renders it with <c>Camera.Render()</c>. The
+        /// latest render's priority applies live, the same way <paramref name="onFrame"/>
         /// does — changing it does not restart the subscription or move it among same-priority siblings.
         /// </summary>
         /// <param name="onFrame">Invoked once per frame with the elapsed time in seconds (always positive).</param>
@@ -1550,6 +1551,139 @@ namespace Velvet
                 // never changes and a patch leaves the installed ref untouched.
             }, setFocused, setFocusVisible);
             return new FocusRing(isFocused, isFocusVisible, refCallback);
+        }
+
+        #endregion
+
+        #region Drag and drop
+
+        /// <summary>
+        /// Returns the drag the nearest <c>V.DndContext</c> holds — dnd-kit's <c>useDndContext</c>. The component
+        /// re-renders when the active draggable, the target it is over, the collision ranking or the active rect
+        /// changes. Returns <see cref="DndContextState.Idle"/> under no <c>V.DndContext</c>, including under a scope
+        /// declared only through <see cref="FiberElementProps.DndContext"/>.
+        /// </summary>
+        /// <returns>The scope's current drag state.</returns>
+        public static DndContextState UseDndContext()
+        {
+            _ = Resolve("UseDndContext");
+            var store = UseContext(DndContextStore.Context) ?? DndContextStore.Detached;
+            return UseStore(store.State, static state => state);
+        }
+
+        /// <summary>
+        /// Returns the drag state of the draggable <paramref name="id"/> names under the nearest <c>V.DndContext</c>
+        /// — dnd-kit's <c>useDraggable</c>, read-only: the element still carries <c>V.Draggable</c> or the
+        /// <see cref="FiberElementProps.Draggable"/> slot. The component re-renders when the active draggable or
+        /// the target it is over changes, and on every move while this draggable is the one dragged, for
+        /// <see cref="DraggableState.Transform"/>.
+        /// </summary>
+        /// <param name="id">The draggable's id. Must not be null.</param>
+        /// <returns>The draggable's current drag state.</returns>
+        public static DraggableState UseDraggable(string id)
+        {
+            if (id == null) throw new ArgumentNullException(nameof(id));
+            _ = Resolve("UseDraggable");
+            var store = UseContext(DndContextStore.Context) ?? DndContextStore.Detached;
+            var (active, over) = UseStore(store.State, static state => (state.Active, state.Over));
+            var transform = UseStore(store.Transform,
+                applied => applied.ActiveId == id ? applied.Value : (UnityEngine.Vector2?)null);
+            var isDragging = active?.Id == id;
+            return new DraggableState(isDragging, active, over, isDragging ? transform : null);
+        }
+
+        /// <summary>
+        /// Returns the drag state of the droppable <paramref name="id"/> names under the nearest
+        /// <c>V.DndContext</c> — dnd-kit's <c>useDroppable</c>, read-only: the element still carries
+        /// <c>V.Droppable</c> or the <see cref="FiberElementProps.Droppable"/> slot. The component re-renders when
+        /// the active draggable or the target it is over changes.
+        /// </summary>
+        /// <param name="id">The droppable's id. Must not be null.</param>
+        /// <returns>The droppable's current drag state.</returns>
+        public static DroppableState UseDroppable(string id)
+        {
+            if (id == null) throw new ArgumentNullException(nameof(id));
+            _ = Resolve("UseDroppable");
+            var store = UseContext(DndContextStore.Context) ?? DndContextStore.Detached;
+            var (active, over) = UseStore(store.State, static state => (state.Active, state.Over));
+            return new DroppableState(over?.Id == id, active, over);
+        }
+
+        /// <summary>
+        /// Registers <paramref name="listener"/> with the nearest <c>V.DndContext</c> while the component is
+        /// mounted — dnd-kit's <c>useDndMonitor</c>. Each callback runs after the context's own callback of the
+        /// same name; the one a render passes is the one called, without registering again.
+        /// </summary>
+        /// <param name="listener">The callbacks to run. Must not be null.</param>
+        /// <exception cref="InvalidOperationException">No <c>V.DndContext</c> is above the component.</exception>
+        public static void UseDndMonitor(DndMonitorListener listener)
+        {
+            if (listener == null) throw new ArgumentNullException(nameof(listener));
+            var fiber = Resolve("UseDndMonitor");
+            var store = UseContext(DndContextStore.Context)
+                ?? throw new InvalidOperationException(
+                    $"{ComponentName(fiber)}: Hooks.UseDndMonitor must be called inside a V.DndContext.");
+            var relay = UseRef(() => new DndMonitorRelay()).Current!;
+            UseLayoutEffect(() =>
+            {
+                relay.Listener = listener;
+                return (Action?)null;
+            });
+            UseEffect(() => store.Register(relay.Forwarder), new object?[] { store, relay });
+        }
+
+        /// <summary>
+        /// Returns the sorting state of the item <paramref name="id"/> names in the nearest <c>V.SortableContext</c>
+        /// — dnd-kit's <c>useSortable</c>, read-only: the element is <c>V.Sortable</c>, which moves the items aside
+        /// itself. The component re-renders when the context's items, the active draggable or the target it is
+        /// over changes. Outside a <c>V.SortableContext</c> every index is -1 and the items are empty.
+        /// </summary>
+        /// <param name="id">The item's id. Must not be null.</param>
+        /// <returns>The item's sorting state.</returns>
+        public static SortableState UseSortable(string id)
+        {
+            if (id == null) throw new ArgumentNullException(nameof(id));
+            _ = Resolve("UseSortable");
+            var context = UseContext(DndSortableContextValue.Context);
+            var store = UseContext(DndContextStore.Context) ?? DndContextStore.Detached;
+            var (active, over) = UseStore(store.State, static state => (state.Active, state.Over));
+            var items = context?.Items ?? System.Array.Empty<string>();
+            var index = DndSortable.IndexOf(items, id);
+            var activeIndex = DndSortable.IndexOf(items, active?.Id);
+            var overIndex = DndSortable.IndexOf(items, over?.Id);
+            var newIndex = activeIndex >= 0 && overIndex >= 0 && index >= 0
+                ? DndSortable.IndexOf(DndSortable.ArrayMove(items, activeIndex, overIndex), id)
+                : index;
+            return new SortableState
+            {
+                Index = index,
+                ActiveIndex = activeIndex,
+                OverIndex = overIndex,
+                NewIndex = newIndex,
+                IsSorting = active != null,
+                IsDragging = active?.Id == id,
+                IsOver = over?.Id == id,
+                Items = items,
+                ContainerId = context?.Id,
+            };
+        }
+
+        // The registration UseDndMonitor holds for the component's life, forwarding to the listener its latest
+        // committed render passed.
+        private sealed class DndMonitorRelay
+        {
+            internal DndMonitorListener? Listener;
+            internal readonly DndMonitorListener Forwarder;
+
+            internal DndMonitorRelay()
+            {
+                Forwarder = new DndMonitorListener(
+                    args => Listener?.OnDragStart?.Invoke(args),
+                    args => Listener?.OnDragMove?.Invoke(args),
+                    args => Listener?.OnDragOver?.Invoke(args),
+                    args => Listener?.OnDragEnd?.Invoke(args),
+                    args => Listener?.OnDragCancel?.Invoke(args));
+            }
         }
 
         #endregion

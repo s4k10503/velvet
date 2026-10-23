@@ -200,6 +200,66 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APercentFontSize_When_Settled_Then_ItIsTakenOfTheParentsFontSize()
+        {
+            // Act
+            Mount("text-[10px] w-[300px] h-[200px]", "text-[150%] w-[10px] h-[10px]");
+
+            // Assert
+            Assert.That(Child.resolvedStyle.fontSize, Is.EqualTo(15f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_APercentLetterSpacing_When_Settled_Then_ItIsTakenOfTheElementsOwnFontSize()
+        {
+            // Act
+            Mount("text-[10px] w-[300px] h-[200px]", "text-[20px] tracking-[50%] w-[10px] h-[10px]");
+
+            // Assert
+            Assert.That(Child.resolvedStyle.letterSpacing, Is.EqualTo(10f).Within(0.01f));
+        }
+
+        [TestCase("tracking-widest", 40f, 4f)]
+        [TestCase("tracking-wider", 20f, 1f)]
+        [TestCase("tracking-wide", 40f, 1f)]
+        [TestCase("tracking-tight", 20f, -0.5f)]
+        [TestCase("tracking-tighter", 40f, -2f)]
+        public void Given_ATrackingPreset_When_Settled_Then_ItIsItsEmShareOfTheElementsOwnFontSize(
+            string preset, float fontSize, float expected)
+        {
+            // Act
+            Mount("text-[10px] w-[300px] h-[200px]",
+                "text-[" + fontSize.ToString(CultureInfo.InvariantCulture) + "px] " + preset + " w-[10px] h-[10px]");
+
+            // Assert
+            Assert.That(Child.resolvedStyle.letterSpacing, Is.EqualTo(expected).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_TrackingNormalUnderATrackedParent_When_Settled_Then_ItIsZero()
+        {
+            // Act
+            Mount("tracking-[5px] w-[300px] h-[200px]", "tracking-normal w-[10px] h-[10px]");
+
+            // Assert
+            Assert.That(Child.resolvedStyle.letterSpacing, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_ATrackingPreset_When_TheElementsFontGrows_Then_ItIsRemeasured()
+        {
+            // Arrange
+            Mount("text-[20px] w-[300px] h-[200px]", "tracking-wide w-[10px] h-[10px]");
+
+            // Act
+            s_parentClass.Set("text-[40px] w-[300px] h-[200px]");
+            Settle();
+
+            // Assert
+            Assert.That(Child.resolvedStyle.letterSpacing, Is.EqualTo(1f).Within(0.01f));
+        }
+
+        [Test]
         public void Given_AHalfViewportWidth_When_Settled_Then_ItIsHalfThePanelsWidth()
         {
             // Act
