@@ -1,8 +1,7 @@
 ### Changed
 
 - A skewed `V.Div`, `V.Button` or label is picked by its sheared shape instead of the bounding rectangle of the sheared
-  box: a pointer over a corner the shear leaves bare reaches what is behind the element, and one over the overhang
-  reaches it. The elements Velvet builds for those three are now `VisualElement`, `Button` and `Label` subclasses, so
+  box: a pointer over a corner the shear leaves bare reaches what is behind the element. The elements Velvet builds for those three are now `VisualElement`, `Button` and `Label` subclasses, so
   code that compares `GetType()` against `typeof(VisualElement)`, `typeof(Button)` or `typeof(Label)` must test with
   `is` instead.
 - A radius that does not fit its box is scaled on the elements Velvet builds for element and motion nodes, whatever

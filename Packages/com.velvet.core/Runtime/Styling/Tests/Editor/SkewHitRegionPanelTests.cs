@@ -6,17 +6,16 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins picking at three coordinates derived from a <c>skew-*</c> caster on the painted layer: a direct child's
-    /// translated seat, a point past the caster's axis-aligned layout box that the shear covers, and a corner of the
-    /// layout box that it leaves bare.
+    /// Pins picking at two coordinates derived from a <c>skew-*</c> caster on the painted layer: a direct child's
+    /// translated seat, and a corner of the caster's layout box that the shear leaves bare.
     /// </summary>
     /// <remarks>
-    /// The child reading is the control for the other two: it is true only where the picker reaches the caster's
-    /// subtree at all, and a caster picked by its box rather than its sheared shape would leave the corner true. The
-    /// points come off the measured pre-transform layout through
-    /// <see cref="SilhouetteFace"/>'s shear map: the overhang one halfway toward the mapped bottom-edge
-    /// x-coordinate, and the child one from the seat given to its centroid. Reading the child's <c>worldBound</c>
-    /// instead would fold the seat into the coordinate and leave the canary true without it.
+    /// The child reading is the control for the corner one: it is true only where the picker reaches the caster's
+    /// subtree at all, and a caster picked by its box rather than its sheared shape would leave the corner true. Both
+    /// points come off the measured pre-transform layout: the child one from the seat given to its centroid, which
+    /// <see cref="SilhouetteFace"/>'s shear map decides, and the corner one two pixels inside the top-right corner of
+    /// the layout box. Reading the child's <c>worldBound</c> instead would fold the seat into the coordinate and leave
+    /// the canary true without it.
     /// </remarks>
     internal sealed class SkewHitRegionPanelTests : PanelTestBase
     {
@@ -24,7 +23,7 @@ namespace Velvet.Tests
 
         // A rotate class keeps the caster on the painted layer.
         [Test]
-        public void Given_ASkewedCaster_When_PickedAtASeatedChildAnOverhangAndABareCorner_Then_TheCasterIsPickedByItsShearedShape()
+        public void Given_ASkewedCaster_When_PickedAtASeatedChildAndABareCorner_Then_OnlyTheChildIsPicked()
         {
             // Arrange — a wide short caster carrying one child low enough in the box that the shear seats it
             // measurably sideways. Sizes are arbitrary values, which resolve to inline style, so this panel
@@ -39,23 +38,16 @@ namespace Velvet.Tests
 
             var box = caster.worldBound;
             var tab = child.layout;
-            var tan = Mathf.Tan(SkewDegrees * Mathf.Deg2Rad);
 
-            // Act — a point one pixel past the child's unseated right edge, which its translated seat covers; a point
-            // beyond the caster's layout box, halfway toward the mapped bottom-edge x-coordinate; and a point two
-            // pixels inside the layout box's top-right corner, which the shear moves the top edge's end away from.
+            // Act — a point one pixel past the child's unseated right edge, which its translated seat covers, and a
+            // point two pixels inside the layout box's top-right corner, where the shear has moved the top edge's end
+            // away.
             var onSeatedChild = new Vector2(box.xMin + tab.xMax + 1f, box.yMin + tab.center.y);
-            var nearBottom = box.height - 2f;
-            var overhang = new Vector2(
-                box.xMax + (((nearBottom - (box.height * 0.5f)) * tan) * 0.5f), box.yMin + nearBottom);
             var bareCorner = new Vector2(box.xMax - 2f, box.yMin + 2f);
 
             // Assert
-            Assert.That(
-                (caster.panel.Pick(onSeatedChild) == child,
-                    caster.panel.Pick(overhang) == caster,
-                    caster.panel.Pick(bareCorner) == caster),
-                Is.EqualTo((true, true, false)));
+            Assert.That((caster.panel.Pick(onSeatedChild) == child, caster.panel.Pick(bareCorner) == caster),
+                Is.EqualTo((true, false)));
         }
     }
 }

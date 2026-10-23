@@ -355,7 +355,7 @@ then draws the element sheared about the pivot `origin-*` names, with its descen
 The sheared face keeps its overhang under a hidden overflow (`SkewTransformPlaybackTests` measures it).
 
 **What a pointer picks of a skewed element.** The sheared shape, not the bounding rectangle of the sheared box, so a
-click in a corner the shear leaves bare reaches what is behind and one in the overhang reaches the element. UI Toolkit
+click in a corner the shear leaves bare reaches what is behind the element. UI Toolkit
 reads whether an element overrides `ContainsPoint` from its type, so Velvet creates the plain `VisualElement`, `Button`
 and `Label` it builds for `V.Div`, `V.Button` and its labels as subclasses that do, and the shape each is picked by is
 set when a `skew-*` class reaches it. An element of any other type, a `V.TextField` or a `V.Toggle`, is picked by its
