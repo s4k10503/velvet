@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
@@ -47,7 +48,7 @@ namespace Velvet
         {
             if (name.Length > 0)
             {
-                return StyleRelationalVariantManipulator.FindAncestorWithClass(target, NamedContainerPrefix + name);
+                return StyleRelationalVariantManipulator.FindAncestorWithClass(target, NamedClass(name));
             }
 
             for (var ancestor = target.parent; ancestor != null; ancestor = ancestor.parent)
@@ -60,8 +61,34 @@ namespace Velvet
             return null;
         }
 
+        // The class list is a List<string> behind GetClasses' interface type, and walking it as one keeps the
+        // enumerator off the heap; ScopeWatch calls this on every tick.
+        // One string per distinct container name, so a repeated resolve does not build it again.
+        private static readonly Dictionary<string, string> s_namedClasses = new();
+
+        private static string NamedClass(string name)
+        {
+            if (!s_namedClasses.TryGetValue(name, out var cls))
+            {
+                cls = NamedContainerPrefix + name;
+                s_namedClasses.Add(name, cls);
+            }
+            return cls;
+        }
+
         private static bool IsContainer(VisualElement element)
         {
+            if (element.GetClasses() is List<string> list)
+            {
+                foreach (var cls in list)
+                {
+                    if (IsContainerClass(cls))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
             foreach (var cls in element.GetClasses())
             {
                 if (IsContainerClass(cls))
@@ -118,7 +145,49 @@ namespace Velvet
         }
 
         private static readonly ConditionalWeakTable<VisualElement, string> s_seenMarkers = new();
-        private static readonly System.Collections.Generic.List<string> s_scratchMarkers = new();
+        private static readonly List<string> s_scratchMarkers = new();
+
+        // Re-points a container-variant consumer when the container it asks for has changed under it with no
+        // render to say so, as a marker written straight to a class list (AddToClassList("@container")) changes
+        // it. It polls on the consumer's own element, so it runs only while that element is on a panel, and it
+        // exists only for consumers of a container variant — the follow-up to ObserveMarkers, which hears the
+        // same writes at the marked element's next render.
+        internal sealed class ScopeWatch
+        {
+            private readonly VisualElement _target;
+            private readonly Func<bool> _isStale;
+            private readonly Action _repoint;
+            private readonly Action _tick;
+            private IVisualElementScheduledItem? _item;
+
+            public ScopeWatch(VisualElement target, Func<bool> isStale, Action repoint)
+            {
+                _target = target;
+                _isStale = isStale;
+                _repoint = repoint;
+                _tick = Tick;
+            }
+
+            public void Start()
+            {
+                if (_item == null)
+                {
+                    _item = _target.schedule.Execute(_tick).Every(StyleAnimateDriver.TickMs);
+                    return;
+                }
+                _item.Resume();
+            }
+
+            public void Stop() => _item?.Pause();
+
+            private void Tick()
+            {
+                if (_target.panel != null && _isStale())
+                {
+                    _repoint();
+                }
+            }
+        }
 
         // Compares the markers on element's live class list with the ones the last observation saw, which is how a
         // marker written straight to the class list (AddToClassList("@container")) re-points descendants: no event

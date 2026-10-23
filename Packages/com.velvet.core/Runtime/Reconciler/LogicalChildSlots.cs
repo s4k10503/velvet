@@ -110,10 +110,11 @@ namespace Velvet
             }
             var rendered = 0;
             // Where an append lands, decided by the invisible child's KIND rather than its position. The
-            // kinds have opposite contracts: an element in the back z band, a SceneView's camera feed and a
-            // Particles element's layers must stay ahead of every rendered child, while the front band and
-            // a filter bounds spacer must stay last. So an append steps over a leading one of the first three —
-            // slot 0 of a parent holding nothing else resolves AFTER it — and stops before everything else.
+            // kinds have opposite contracts: an element in the back z band, a SceneView's camera feed, a
+            // Particles element's layers and an inset ring band must stay ahead of every rendered child, while
+            // the front band and a filter bounds spacer must stay last. So an append steps over a leading one of
+            // the first four — slot 0 of a parent holding nothing else resolves AFTER it — and stops before
+            // everything else.
             // Deciding this positionally instead ("anything invisible seen before the first rendered child is
             // leading") sent an append past a bounds spacer on a parent whose rendered children had all been
             // removed.
@@ -142,7 +143,8 @@ namespace Velvet
         private static bool StaysFirst(VisualElement child)
             => FiberZLayerCoordinator.IsBackBandMember(child)
                 || child.ClassListContains(SceneViewDriver.FeedMarkerClass)
-                || child.ClassListContains(ParticlesDriver.LayerMarkerClass);
+                || child.ClassListContains(ParticlesDriver.LayerMarkerClass)
+                || child.ClassListContains(RingOverlay.InsetMarkerClass);
 
         /// <summary>
         /// The logical slot a physical child index occupies — the number of rendered children before it.

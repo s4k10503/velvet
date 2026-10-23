@@ -320,8 +320,10 @@ placed directly after it inside the same parent. The ringed element's own layout
 band takes that element's own paint position, so overlapping `-space-x-*` avatars each carrying
 `ring-2 ring-white` occlude the previous one's band as they do on the web, and the order among several
 bands on one parent is their elements' order rather than the order the bands happened to be attached —
-two `focus:ring-2` siblings render the same whichever was focused first. `ring-inset` paints **over**
-an opaque full-bleed child, where CSS paints an inset box-shadow under the element's children.
+two `focus:ring-2` siblings render the same whichever was focused first. A `ring-inset` band is not a
+sibling: it is the element's own first child, stretched over its padding box, so it paints above the
+element's background and under its children, as an inset box-shadow does. The reconciler and the child
+variants skip it as they skip Velvet's other internal children.
 
 A band is drawn by a class that names one, as in Tailwind v4: `ring` (1px), `ring-<n>`, `ring-[…]`, `outline`
 (1px), `outline-<n>` and `outline-[…]`. `<n>` is any whole number of pixels written without a leading zero (`ring-3`),
@@ -585,7 +587,9 @@ A descendant resolves the container each of its variants asks for when it attach
 watches that container's width from then on. It resolves again whenever a render adds `@container` to an
 element's `className`, removes it, or renames it (`@container/a` to `@container/b`), so toggling the
 marker re-points the descendants already attached. A marker written straight to the class list
-(`element.AddToClassList("@container")`) re-points them at that element's next render.
+(`element.AddToClassList("@container")` or `RemoveFromClassList`) re-points them without a render: each
+attached descendant with a container variant checks, once per animation frame, that the container it
+resolved is still the nearest one.
 
 ### Simulating a viewport: `velvet-viewport`
 

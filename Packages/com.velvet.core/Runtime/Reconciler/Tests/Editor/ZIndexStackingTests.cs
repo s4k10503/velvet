@@ -831,6 +831,65 @@ namespace Velvet.Tests
             Assert.That(Names(front), Is.EqualTo("b,a"));
         }
 
+        private static ToggleStore<bool> s_leadingStore;
+
+        [Component]
+        private static VNode LeadingChildHost()
+        {
+            var swapped = Hooks.UseStore(s_leadingStore, x => x);
+            var a = V.Div(name: "a", key: "a", className: "absolute z-10");
+            var b = V.Div(name: "b", key: "b", className: "absolute z-10");
+            return V.Div(name: "parent", className: "relative ring-2 ring-inset",
+                children: swapped ? new VNode[] { b, a } : new VNode[] { a, b });
+        }
+
+        [Test]
+        public void Given_AnInsetRingedParent_When_ItsLayerResorts_Then_TheBandStillPaintsFirst()
+        {
+            // Arrange
+            using var store = new ToggleStore<bool>(false);
+            s_leadingStore = store;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(LeadingChildHost, key: "root"));
+
+            // Act
+            store.Set(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(root.Q<VisualElement>("parent")), Is.EqualTo("band,b,a"));
+        }
+
+        [Component]
+        private static VNode FeedChildHost()
+        {
+            var swapped = Hooks.UseStore(s_leadingStore, x => x);
+            var a = V.Div(name: "a", key: "a", className: "absolute z-10");
+            var b = V.Div(name: "b", key: "b", className: "absolute z-10");
+            return V.Div(name: "parent", className: "relative", children: swapped ? new VNode[] { b, a } : new VNode[] { a, b });
+        }
+
+        [Test]
+        public void Given_ACameraFeedAheadOfTheChildren_When_TheirLayerResorts_Then_TheFeedStillPaintsFirst()
+        {
+            // Arrange — the feed stands in for one SceneViewDriver hosts as its element's first child.
+            using var store = new ToggleStore<bool>(false);
+            s_leadingStore = store;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(FeedChildHost, key: "root"));
+            var parent = root.Q<VisualElement>("parent");
+            var feed = new VisualElement { name = "feed" };
+            feed.AddToClassList(SceneViewDriver.FeedMarkerClass);
+            parent.hierarchy.Insert(0, feed);
+
+            // Act
+            store.Set(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(parent), Is.EqualTo("feed,b,a"));
+        }
+
         [Component]
         private static VNode RingedEqualZMoveHost()
         {
