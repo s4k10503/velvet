@@ -28,6 +28,10 @@ namespace Velvet.TestUtilities
             var alive = 0;
             var alpha = 0;
             var start = Time.realtimeSinceStartup;
+            // Reads a copy played the way V.Particles plays its clone, not the scene's own effect.
+            var copy = Object.Instantiate(effect, effect.transform.position, effect.transform.rotation);
+            copy.gameObject.SetActive(true);
+            copy.Play();
             try
             {
                 var camera = go.AddComponent<Camera>();
@@ -39,11 +43,11 @@ namespace Velvet.TestUtilities
                 camera.backgroundColor = Color.clear;
                 camera.targetTexture = texture;
                 go.transform.SetPositionAndRotation(
-                    effect.transform.position - effect.transform.forward * 100f, effect.transform.rotation);
+                    copy.transform.position - copy.transform.forward * 100f, copy.transform.rotation);
                 while (alpha == 0 && Time.realtimeSinceStartup < start + WaitSeconds)
                 {
                     yield return null;
-                    alive = effect.aliveParticleCount;
+                    alive = copy.aliveParticleCount;
                     if (alive > 0)
                     {
                         camera.Render();
@@ -56,6 +60,7 @@ namespace Velvet.TestUtilities
                 texture.Release();
                 Object.Destroy(texture);
                 Object.Destroy(go);
+                Object.Destroy(copy.gameObject);
             }
             var reading = $"capability alive={alive} alpha={alpha} waited={Time.realtimeSinceStartup - start:F1}s "
                 + $"device={SystemInfo.graphicsDeviceType} {SystemInfo.graphicsDeviceVersion}";
