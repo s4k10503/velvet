@@ -470,8 +470,6 @@ namespace Velvet.Tests
             Assert.That(Width(child), Is.EqualTo((StyleKeyword.Undefined, 20f)));
         }
 
-        // GREEN_ON_BASE(refactor): the base restacks this element too. Its stacking is read through the relocation
-        // table and the parent's child order now, neither of which names a layer container.
         [Test]
         public void Given_AZIndexReadingADeclaration_When_TheDeclarationChanges_Then_TheElementRestacks()
         {
