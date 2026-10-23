@@ -1213,18 +1213,7 @@ namespace Velvet
 
             s_desired.Clear();
             s_placed.Clear();
-            // What an element holds ahead of its children, which paint over it: an inset ring band, a SceneView's
-            // camera feed and a Particles element's layers.
-            for (var i = 0; i < parent.hierarchy.childCount; i++)
-            {
-                var leading = parent.hierarchy[i];
-                if (leading.ClassListContains(RingOverlay.InsetMarkerClass)
-                    || leading.ClassListContains(SceneViewDriver.FeedMarkerClass)
-                    || leading.ClassListContains(ParticlesDriver.LayerMarkerClass))
-                {
-                    Place(leading);
-                }
-            }
+            PlaceLeadingInternals(parent);
             foreach (var entry in s_back) Place(entry.Real);
             foreach (var item in s_middle) Place(item.Element);
             foreach (var entry in s_front) Place(entry.Real);
@@ -1242,6 +1231,22 @@ namespace Velvet
             s_back.Clear();
             s_front.Clear();
             s_middle.Clear();
+        }
+
+        // What an element holds ahead of its children, which paint over it: an inset ring band, a SceneView's
+        // camera feed and a Particles element's layers.
+        private static void PlaceLeadingInternals(VisualElement parent)
+        {
+            for (var i = 0; i < parent.hierarchy.childCount; i++)
+            {
+                var leading = parent.hierarchy[i];
+                if (leading.ClassListContains(RingOverlay.InsetMarkerClass)
+                    || leading.ClassListContains(SceneViewDriver.FeedMarkerClass)
+                    || leading.ClassListContains(ParticlesDriver.LayerMarkerClass))
+                {
+                    Place(leading);
+                }
+            }
         }
 
         private static void Place(VisualElement element)
