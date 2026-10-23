@@ -958,10 +958,53 @@ cannot yet sample the interpolated motion between two of them, and running it ba
 step has no settled answer to whether the callback fires again. To reverse a transition a label started,
 flip that Motion's `animate` label back: see "Springs" for what an interrupted spring keeps.
 
-Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
-outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`
-relative-offset DSL) -- steps are a strict FIFO queue; two independently-timed tracks need two separate
-`UseAnimationSequence` coordinators.
+### Animating outside the Motion tree (`UseAnimate`)
+
+`Hooks.UseAnimate()` is Framer Motion's `useAnimate`: it returns a `scope` ref and an `Animator`. Give the root element
+the ref (`refCallback: scope.SetElement`), then animate elements inside it by reference or by selector, with no
+`V.Motion` or variant label involved:
+
+```csharp
+var (scope, animate) = Hooks.UseAnimate();
+
+Hooks.UseEffect(() =>
+{
+    // Alone:
+    animate.Animate(".card", new AnimateValues { Opacity = new[] { 0f, 1f }, Y = new[] { 24f, 0f } },
+        new StyleTransitionConfig { DurationSec = 0.4f });
+
+    // As a sequence whose segments overlap:
+    var controls = animate.Animate(new[]
+    {
+        new AnimateSegment("#title", new AnimateValues { Opacity = new[] { 1f } }),
+        new AnimateSegment(".row", new AnimateValues { X = new[] { -40f, 0f } }, at: AnimateAt.WithPrevious),
+        new AnimateSegment("#footer", new AnimateValues { Scale = new[] { 0.9f, 1f } }, at: AnimateAt.Offset(-0.2f)),
+    });
+    return null;
+}, Array.Empty<object?>());
+
+return V.Div(refCallback: scope.SetElement, children: ...);
+```
+
+- **Targets.** An element, or a selector resolved among the scope's descendants: `.class`, `#name`, a type name (`Button`),
+  compounds of them (`Button.primary`), descendants joined by a space, and groups joined by a comma. A selector call
+  throws while the scope ref holds no element.
+- **Values.** `AnimateValues` takes keyframe arrays for `Opacity`, `X` and `Y` (pixels), `Scale` (uniform) and `RotateDeg`.
+  Two or more run through in turn, evenly spaced over the transition; one is a value to head for from what the element
+  shows when that segment starts. They are written as inline styles, over the element's classes, and stay at the last
+  keyframe when the animation ends.
+- **Transition.** A `StyleTransitionConfig` per call or segment, 0.3 s when null. `Tween` runs `DurationSec` on `Easing`,
+  `Bezier` on its control points, and `Spring` as the spring it describes when the values are one or two keyframes (more
+  play as a tween of `DurationSec`). `DelaySec` delays the segment; `Repeat` and `PropertyOverrides` are not read here.
+- **Placement.** `AnimateAt` is Framer's `at`: after the previous segment ends by default, `AnimateAt.Time(s)` on the
+  timeline, `AnimateAt.WithPrevious` (`"<"`) at the previous segment's start, `AnimateAt.Offset(s)` (`"+0.5"` /
+  `"-0.2"`) from the previous segment's end.
+- **Controls.** `AnimateControls` carries `Play`, `Pause`, `Speed`, `TimeSec`, `IsFinished`, `Then(callback)`, the
+  awaitable `Finished`, `Stop()` (leave the values where they are) and `Cancel()` (put each begun value back at its first
+  keyframe). `Finished` is cancelled by either. A negative or non-finite `Speed` throws.
+- **Lifetime.** The animations step on the mount's frames and stop, as `Stop()` does, when the component unmounts.
+
+Not offered: a stagger option, and values beyond the five above.
 
 **A fixed number of passes** is the overload taking `iterations` in place of `loop` -- the Web Animations
 API's `iterations` and CSS's `animation-iteration-count`, so the count includes the first pass and Framer
