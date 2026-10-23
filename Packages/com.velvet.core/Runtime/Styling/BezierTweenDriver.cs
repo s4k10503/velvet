@@ -110,6 +110,9 @@ namespace Velvet
         public BezierTweenChannel? Rotate;
         public List<BezierColorChannel>? Colors;
         public List<BezierLengthChannel>? Lengths;
+        // The progress the paint layers are drawn at, and the hold it draws them under.
+        public BezierTweenChannel? PaintProgress;
+        public IMotionPaintLease? Paint;
         public VisualElement? NativeLayoutOwner;
 
         // CSS-parameter order: cubic-bezier(X1,Y1,X2,Y2).
@@ -286,6 +289,11 @@ namespace Velvet
             if (plan.Scale is { } s) state.Scale = new BezierTweenChannel(s.from, s.to);
             if (plan.ScaleY is { } sy) state.ScaleY = new BezierTweenChannel(sy.from, sy.to);
             if (plan.Rotate is { } r) state.Rotate = new BezierTweenChannel(r.from, r.to);
+            if (plan.Paint != null)
+            {
+                state.Paint = plan.Paint;
+                state.PaintProgress = new BezierTweenChannel(0f, 1f);
+            }
             if (plan.Colors != null)
             {
                 var colors = new List<BezierColorChannel>(plan.Colors.Count);
@@ -417,6 +425,7 @@ namespace Velvet
             if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
+            state.Paint?.Release();
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
@@ -677,6 +686,7 @@ namespace Velvet
             RetargetChannel(state, state.Scale, shared);
             RetargetChannel(state, state.ScaleY, shared);
             RetargetChannel(state, state.Rotate, shared);
+            RetargetChannel(state, state.PaintProgress, shared);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) RetargetChannel(state, c.Progress, shared);
@@ -827,6 +837,7 @@ namespace Velvet
                 var v = Value(state, state.Rotate, shared);
                 element.style.rotate = new Rotate(Angle.Degrees(v));
             }
+            state.Paint?.Apply(Value(state, state.PaintProgress!, shared));
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors)

@@ -132,8 +132,7 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
   fixed channel set. Spring and cubic-bezier exits drive the channels they can resolve a number
   for out of the class strings; *Driven channels* below is the single list of what that covers and
-  what it deliberately leaves out. A `skew-*` exit never animates under any driver, because skew
-  is a silhouette paint rather than a transform.
+  what it deliberately leaves out.
 - **A removed child's exits play however deep their Motion sits** — behind a component,
   `V.Memoized` or `V.Suspense`, or inside another element or Motion: a Motion plays the `exit` it
   declares, or one it inherits from the Motion above it the way an `animate` label is inherited, and
@@ -444,11 +443,21 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   moves the colour the play runs between. An element off its panel has no resolved properties, and the swap lands
   its semantic colour instantly.
 - **`aspect-[…]`, `aspect-square` and `aspect-video`** are length channels carrying the ratio.
+- **Paint layers** (`shadow-*`, `skew-*`, `bg-gradient-*`, `z-*`) are drawn by the play along one progress of its
+  own, under the Spring and Bezier drivers alike. The play holds the layers from its start: the class pass that
+  names the pose it ends on records that pose instead of applying it, and the last play to let go applies it, so a
+  layer stays attached afterwards only where the final class list names it. A layer a pose lacks is attached for
+  the play. A shadow interpolates layer by layer, a layer the other pose lacks being the same layer transparent at
+  zero offset, blur and spread; an inset layer against an outer one, or a colour read from the parent or the text
+  against a fixed one, steps at one half. A skew interpolates per axis. A gradient interpolates stop by stop when
+  both poses share shape, interpolation space and stop count, and steps at one half otherwise, a gradient against
+  none included. The gradient texture drawn along the way is the play's own and is destroyed when it ends. `z-*`
+  does not interpolate: the element stays at its start z for the play and takes the end z when the last play lets
+  go.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: `-auto` lengths (`w-auto`, `top-auto`) are modes, not magnitudes (a `-auto` start
-  reads from the layout and animates, and a `-auto` target is read as above); `shadow-*`, `skew-*` and gradients are baked silhouette paints;
-  `filter-*` transitions by its own path ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a
-  physical reparent.
+  reads from the layout and animates, and a `-auto` target is read as above); `filter-*` transitions by its own
+  path ([styling-filters.md](styling-filters.md#transitions)).
 - A target-only uniform scale lands instantly when the sampled x and y scale values differ. The edge
   a `divide-dashed` or `divide-dotted` divider draws is sampled as the color its dash takes.
 - **Percentage translate** (`translate-x-1/2`, `translate-x-full`, `translate-1/2`, `translate-full`, `translate-x-[50%]`)

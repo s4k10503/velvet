@@ -28,6 +28,7 @@ Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberKeying.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs	15
 Packages/com.velvet.core/Runtime/Reconciler/FiberOutletScope.cs	1
+Packages/com.velvet.core/Runtime/Reconciler/FiberPaintLeases.cs	6
 Packages/com.velvet.core/Runtime/Reconciler/FiberPropApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberRingApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberSliderKeyboard.cs	5

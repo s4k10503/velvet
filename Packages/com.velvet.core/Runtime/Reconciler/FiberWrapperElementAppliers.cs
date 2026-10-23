@@ -42,19 +42,27 @@ namespace Velvet
             _ring = new FiberRingApplier(ctx);
             _clipPath = new FiberClipPathApplier(ctx, wrappers);
             _gesture = new FiberGestureApplier(ctx);
+            ctx.PaintLeases = new FiberPaintLeases(ctx, _skew, _gradient, _boxShadow);
         }
 
         internal void ApplySkewOnCreate(VisualElement element, string[] classNames)
             => _skew.ApplySkewOnCreate(element, classNames);
 
         internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged)
-            => _skew.ApplySkewOnPatch(element, classNames, classesChanged);
+            => _ctx.PaintLeases!.Holds(element, FiberPaintLeases.Layer.Skew)
+                ? _ctx.PaintLeases.HeldSkew(element)
+                : _skew.ApplySkewOnPatch(element, classNames, classesChanged);
 
         internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)
             => _gradient.ApplyGradientOnCreate(element, classNames);
 
         internal void ApplyGradientOnPatch(VisualElement element, string[] classNames)
-            => _gradient.ApplyGradientOnPatch(element, classNames);
+        {
+            if (!_ctx.PaintLeases!.Holds(element, FiberPaintLeases.Layer.Gradient))
+            {
+                _gradient.ApplyGradientOnPatch(element, classNames);
+            }
+        }
 
         internal void ApplyAnimateOnCreate(VisualElement element, string[] classNames)
             => _animate.ApplyAnimateOnCreate(element, classNames);
@@ -73,7 +81,12 @@ namespace Velvet
 
         internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
             SkewSpec skew)
-            => _boxShadow.ApplyShadowOnPatch(element, classNames, clipActive, skew);
+        {
+            if (!_ctx.PaintLeases!.Holds(element, FiberPaintLeases.Layer.Shadow))
+            {
+                _boxShadow.ApplyShadowOnPatch(element, classNames, clipActive, skew);
+            }
+        }
 
         internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)
             => _borderStyle.ApplyBorderStyleOnCreate(element, classNames);

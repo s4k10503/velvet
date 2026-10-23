@@ -89,8 +89,11 @@ namespace Velvet
             public LengthUnit TranslateXUnit;
             public LengthUnit TranslateYUnit;
 
+            // The play's hold on the paint layers, drawn along one progress of its own.
+            public IMotionPaintLease? Paint;
+
             public bool IsEmpty => Opacity == null && TranslateX == null && TranslateY == null
-                && Scale == null && Rotate == null && Colors == null && Lengths == null;
+                && Scale == null && Rotate == null && Colors == null && Lengths == null && Paint == null;
         }
 
         // Mirrors _effects.uss's fixed opacity scale exactly (a class outside this exact set has no matching

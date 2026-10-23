@@ -138,6 +138,9 @@ namespace Velvet
         public SpringChannel? Rotate;
         public List<SpringColorChannel>? Colors;
         public List<SpringLengthChannel>? Lengths;
+        // The progress the paint layers are drawn at, and the hold it draws them under.
+        public SpringChannel? PaintProgress;
+        public IMotionPaintLease? Paint;
         public VisualElement? NativeLayoutOwner;
 
         public float Stiffness;
@@ -199,6 +202,11 @@ namespace Velvet
             if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to);
             if (plan.ScaleY is { } sy) state.ScaleY = new SpringChannel(sy.from, sy.to);
             if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to);
+            if (plan.Paint != null)
+            {
+                state.Paint = plan.Paint;
+                state.PaintProgress = new SpringChannel(0f, 1f) { Normalized = true };
+            }
             if (plan.Colors != null)
             {
                 var colors = new List<SpringColorChannel>(plan.Colors.Count);
@@ -376,6 +384,7 @@ namespace Velvet
             {
                 element.style.rotate = new Rotate(Angle.Degrees(state.Rotate.Integrator.Value));
             }
+            state.Paint?.Apply(state.PaintProgress!.Integrator.Value);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors)
@@ -422,6 +431,7 @@ namespace Velvet
             if (state.Scale != null) settled &= SampleRepeating(state, state.Scale, dtSec, seekScale);
             if (state.ScaleY != null) settled &= SampleRepeating(state, state.ScaleY, dtSec, seekScale);
             if (state.Rotate != null) settled &= SampleRepeating(state, state.Rotate, dtSec, seekScale);
+            if (state.PaintProgress != null) settled &= SampleRepeating(state, state.PaintProgress, dtSec, seekScale);
             if (state.Colors != null)
             {
                 foreach (var color in state.Colors) settled &= SampleRepeating(state, color.Progress, dtSec, seekScale);
@@ -717,6 +727,7 @@ namespace Velvet
             if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
+            state.Paint?.Release();
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
@@ -901,6 +912,7 @@ namespace Velvet
             HaltChannel(state.Scale);
             HaltChannel(state.ScaleY);
             HaltChannel(state.Rotate);
+            HaltChannel(state.PaintProgress);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) HaltChannel(c.Progress);
@@ -953,6 +965,7 @@ namespace Velvet
             if (state.Scale != null) action(state.Scale);
             if (state.ScaleY != null) action(state.ScaleY);
             if (state.Rotate != null) action(state.Rotate);
+            if (state.PaintProgress != null) action(state.PaintProgress);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) action(c.Progress);

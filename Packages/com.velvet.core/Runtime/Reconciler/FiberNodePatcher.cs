@@ -298,6 +298,11 @@ namespace Velvet
             var classified = FiberZLayerCoordinator.TryClassify(newNode.ClassNames, newNode.Props, out var newResolvedZ);
             var isZ = FiberZLayerCoordinator.Stacks(_ctx, FiberZLayerCoordinator.ClassElementOf(_ctx, real), classified,
                 ref newResolvedZ);
+            if (_ctx.PaintLeases!.Holds(real, FiberPaintLeases.Layer.Z))
+            {
+                _ctx.PaintLeases.NoteZ(real, isZ, newResolvedZ);
+                return;
+            }
             var placeholder = FiberZLayerCoordinator.PlaceholderOf(_ctx, real);
             if (placeholder == null)
             {
@@ -326,6 +331,11 @@ namespace Velvet
                 RestingClassSet(motion, newNode.ClassNames).Merged, newNode.Props, out var resolvedZ);
             var isZ = FiberZLayerCoordinator.Stacks(_ctx, motion, classified, ref resolvedZ);
             // Read again after the patch, for the reason PatchZLayerElement gives.
+            if (_ctx.PaintLeases!.Holds(motion, FiberPaintLeases.Layer.Z))
+            {
+                _ctx.PaintLeases.NoteZ(motion, isZ, resolvedZ);
+                return;
+            }
             var placeholder = FiberZLayerCoordinator.PlaceholderOf(_ctx, motion);
             if (placeholder == null)
             {
@@ -430,6 +440,7 @@ namespace Velvet
                 StyleAnimateDriver.NotifySubtreeStyleChanged(element);
                 _ctx.StyleAnimationScheduler.ResyncTransitions(element);
             }
+            _ctx.PaintLeases!.Note(element, classNames);
             _appliers.ApplyGradientOnPatch(element, classNames);
             _appliers.ApplyAnimateOnPatch(element, classNames);
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);

@@ -727,6 +727,7 @@ namespace Velvet
             slots.ForExit = isExit;
             var plan = MotionSpringClassParser.ResolveResting(fromClasses, toClasses, restingTranslate, slots);
             plan = StartFromHeld(element, plan, fromClasses, toClasses);
+            plan.Paint = Context?.PaintLeases?.Open(element, fromClasses, toClasses, isExit);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
@@ -764,6 +765,7 @@ namespace Velvet
 
             if (state == null)
             {
+                plan.Paint?.Release();
                 onComplete?.Invoke();
                 return;
             }
@@ -941,6 +943,7 @@ namespace Velvet
             slots.ForExit = play.IsExit;
             var plan = MotionSpringClassParser.ResolveResting(planFrom, planTo, restingTranslate, slots);
             plan = StartFromHeld(element, plan, planFrom, planTo);
+            plan.Paint = Context?.PaintLeases?.Open(element, planFrom, planTo, play.IsExit);
             // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
@@ -965,6 +968,7 @@ namespace Velvet
 
             if (state == null)
             {
+                plan.Paint?.Release();
                 onComplete?.Invoke();
                 return;
             }
