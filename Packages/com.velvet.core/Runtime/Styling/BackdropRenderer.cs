@@ -251,8 +251,6 @@ namespace Velvet
                 Graphics.CopyTexture(_target, 0, 0, Region.x, Region.y, Region.width, Region.height, texture, 0, 0, 0, 0);
                 return texture;
             }
-            // A back buffer's rows come top first where texture rows start at the top, a render texture's in the
-            // region's order (BackdropFilterLayerTests' editor-window case).
             var flips = _target == null && SystemInfo.graphicsUVStartsAtTop;
             var commands = BackdropRenderer.Commands;
             commands.Clear();
