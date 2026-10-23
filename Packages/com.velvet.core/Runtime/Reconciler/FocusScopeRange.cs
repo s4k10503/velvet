@@ -1,6 +1,5 @@
 #nullable enable
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -35,7 +34,7 @@ namespace Velvet
     // one parent's children, and everything under them.
     internal static class FocusScopeRange
     {
-        private static readonly ConditionalWeakTable<ComponentFiber, StartHolder> s_starts = new();
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ComponentFiber, StartHolder> s_starts = new();
 
         // Bindings on mounted starts, across every tree. While there are none, a walk asks no parent for its
         // ranges.
