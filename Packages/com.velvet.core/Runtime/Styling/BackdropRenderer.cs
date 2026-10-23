@@ -251,12 +251,16 @@ namespace Velvet
                 Graphics.CopyTexture(_target, 0, 0, Region.x, Region.y, Region.width, Region.height, texture, 0, 0, 0, 0);
                 return texture;
             }
+            // A back buffer's rows come top first where texture rows start at the top, a render texture's in the
+            // region's order (BackdropFilterLayerTests' editor-window case).
+            var flips = _target == null && SystemInfo.graphicsUVStartsAtTop;
             var commands = BackdropRenderer.Commands;
             commands.Clear();
             commands.DisableScissorRect();
             commands.Blit(BuiltinRenderTextureType.CurrentActive, texture,
-                new Vector2((float)Region.width / _targetWidth, (float)Region.height / _targetHeight),
-                new Vector2((float)Region.x / _targetWidth, (float)Region.y / _targetHeight));
+                new Vector2((float)Region.width / _targetWidth, (flips ? -1f : 1f) * Region.height / _targetHeight),
+                new Vector2((float)Region.x / _targetWidth,
+                    flips ? 1f - ((float)Region.y / _targetHeight) : (float)Region.y / _targetHeight));
             Graphics.ExecuteCommandBuffer(commands);
             Rebound = true;
             return texture;

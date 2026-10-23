@@ -382,6 +382,7 @@ namespace Velvet
         internal static bool TryReadArgument(BackdropFunction function, ReadOnlySpan<char> value, bool negate, out BackdropOp op)
         {
             op = default;
+            value = value.Trim("_ ".AsSpan());
             if (function == BackdropFunction.DropShadow)
             {
                 var parsed = StyleFilterValueParser.TryParseShadow(value, out var shadow);
@@ -399,7 +400,10 @@ namespace Velvet
                 op = new BackdropOp(function, Mathf.Min(amount, 1f));
                 return parsed;
             }
-            if (StyleFilterValueParser.TryParseFilterValue(StyleBackdropClass.NameOf(function) + "-", value, negate,
+            // CSS takes no negative blur radius. TryParseFilterValue reads one, the filter utilities rejecting it with
+            // the same sign test in StyleCompositeRejection.Accepts.
+            if ((function == BackdropFunction.Blur && value[0] == '-')
+                || StyleFilterValueParser.TryParseFilterValue(StyleBackdropClass.NameOf(function) + "-", value, negate,
                     out var style) != true)
             {
                 return false;

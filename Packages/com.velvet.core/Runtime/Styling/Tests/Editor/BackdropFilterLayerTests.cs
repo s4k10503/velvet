@@ -102,6 +102,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ANegativeBlurAfterASpace_When_Mounted_Then_TheElementGetsNoBackdropFilter()
+        {
+            // Act — the `_` is a space the browser skips before the sign.
+            var glass = Mount("backdrop-grayscale backdrop-blur-[_-4px]");
+
+            // Assert
+            Assert.That(SpecOf(glass), Is.EqualTo("none"));
+        }
+
+        [Test]
+        public void Given_AListHoldingANegativeBlur_When_Mounted_Then_TheClassUnderItHoldsTheDeclaration()
+        {
+            // Act — Tailwind emits backdrop-filter-[…] after backdrop-brightness-*, so the list holds the declaration
+            // where it is taken.
+            var glass = Mount("backdrop-filter-[blur(-4px)] backdrop-brightness-50");
+
+            // Assert
+            Assert.That(SpecOf(glass), Is.EqualTo("brightness(0.5)"));
+        }
+
+        [Test]
         public void Given_TwoBlursWrittenInReverse_When_Mounted_Then_TheOneTailwindEmitsLastHoldsTheBlur()
         {
             // Act — Tailwind emits backdrop-blur-sm after backdrop-blur-lg, as it does shadow-sm after shadow-lg.
@@ -242,7 +263,8 @@ namespace Velvet.Tests
             // Assert — the two halves read as themselves, which says the capture landed where the stage is; then the
             // pixel just right of the edge is mixed inside the box and pure blue above it.
             Assert.That((red.r > 200 && red.b < 20, inside.r > 60 && inside.b > 60, outside.b > 200 && outside.r < 20),
-                Is.EqualTo((true, true, true)), $"red={red} inside={inside} outside={outside}");
+                Is.EqualTo((true, true, true)), $"red={red} inside={inside} outside={outside} "
+                + $"api={SystemInfo.graphicsDeviceType} uvStartsAtTop={SystemInfo.graphicsUVStartsAtTop}");
         }
 
         [Test]

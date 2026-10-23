@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -9,8 +11,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Measures a <c>backdrop-*</c> utility on a screen-space overlay panel, which draws into whatever target is bound
-    /// when the overlays render, read back with <see cref="ScreenCapture"/> at the end of the frame. The stage and the
-    /// box span the screen's full height, so the capture's row order does not decide a sample.
+    /// when the overlays render. The engine's overlay render is run here with a render texture bound, since batch mode
+    /// does not run a <see cref="WaitForEndOfFrame"/> to read the screen after. The stage and the box span the target's
+    /// full height, so the readback's row order does not decide a sample.
     /// </summary>
     [Timeout(600000)]
     internal sealed class BackdropFilterOverlayPlaybackTests
@@ -24,13 +27,13 @@ namespace Velvet.Tests
         {
             _mounted?.Dispose();
             _mounted = null;
-            if (_docGo != null) Object.Destroy(_docGo);
-            if (_settings != null) Object.Destroy(_settings);
+            if (_docGo != null) UnityEngine.Object.Destroy(_docGo);
+            if (_settings != null) UnityEngine.Object.Destroy(_settings);
             yield return null;
         }
 
         [UnityTest]
-        public IEnumerator Given_ABackdropBlurOnAnOverlayPanel_When_TheScreenIsCaptured_Then_TheEdgeBlursOnlyInsideTheBox()
+        public IEnumerator Given_ABackdropBlurOnAnOverlayPanel_When_TheOverlayRenders_Then_TheEdgeBlursOnlyInsideTheBox()
         {
             // Arrange — red and blue halves meeting at the screen's middle, under a 60px box astride it.
             var width = Screen.width;
@@ -57,19 +60,38 @@ namespace Velvet.Tests
             yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.5);
 
             // Act
-            yield return new WaitForEndOfFrame();
-            var capture = new RenderTexture(width, height, 0);
-            ScreenCapture.CaptureScreenshotIntoRenderTexture(capture);
-            var row = RenderTexturePixelReader.ReadPixels(capture, new RectInt(0, height / 2, width, 1));
-            capture.Release();
-            Object.Destroy(capture);
+            var row = RenderOverlayInto(document.rootVisualElement.panel, width, height);
             var red = row[edge - 60];
             var inside = row[edge + 1];
             var blue = row[edge + 60];
 
-            // Assert — the halves read as themselves outside the box, which says the capture holds the panel.
+            // Assert — the halves read as themselves outside the box, which says the readback holds the panel.
             Assert.That((red.r > 200 && red.b < 20, inside.r > 60 && inside.b > 60, blue.b > 200 && blue.r < 20),
                 Is.EqualTo((true, true, true)), $"red={red} inside={inside} blue={blue} screen={width}x{height}");
+        }
+
+        // The middle row of what the overlay draws into a cleared target of the screen's size, through the call the
+        // player loop renders each overlay panel with.
+        private static Color32[] RenderOverlayInto(IPanel panel, int width, int height)
+        {
+            var render = typeof(UIDocument).Assembly.GetType("UnityEngine.UIElements.UIElementsRuntimeUtility")
+                ?.GetMethod("RenderPanel", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+                ?? throw new MissingMethodException("UIElementsRuntimeUtility", "RenderPanel");
+            var target = new RenderTexture(width, height, 24);
+            var previous = RenderTexture.active;
+            try
+            {
+                RenderTexture.active = target;
+                GL.Clear(true, true, Color.clear);
+                render.Invoke(null, new object[] { panel, true });
+                return RenderTexturePixelReader.ReadPixels(target, new RectInt(0, height / 2, width, 1));
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                target.Release();
+                UnityEngine.Object.Destroy(target);
+            }
         }
     }
 }
