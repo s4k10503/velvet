@@ -2053,10 +2053,10 @@ namespace Velvet
         /// logical tree: context and state cross, and an <c>events:</c> handler on a logical ancestor
         /// of the call site also fires for a pointer / key / focus event raised on a child, bridged
         /// synthetically across the separate host Panel. Velvet does not arbitrate world-space pointer
-        /// DELIVERY itself the way it does screen-space layer picking order: a <c>BoxCollider</c> sized
-        /// to the panel is attached to the host, and Unity's own runtime input system drives picking
-        /// and delivery through it once a Play session is running (see the package's cross-panel input
-        /// routing docs). The event bridging above applies to whatever that system delivers, as well as
+        /// DELIVERY itself the way it does screen-space layer picking order: Unity's own runtime input
+        /// system picks the host through the collider the host's <c>UIDocument</c> keeps on it and delivers
+        /// pointer input once a Play session is running (see the package's cross-panel input routing
+        /// docs). The event bridging above applies to whatever that system delivers, as well as
         /// to a programmatically dispatched event (e.g. in tests).
         /// </summary>
         /// <param name="position">World position of the panel host.</param>
@@ -2121,12 +2121,12 @@ namespace Velvet
         /// that excludes it.</param>
         /// <param name="occludeLayerMask">Which colliders count as occluders when <paramref name="occlude"/>
         /// is true. Null (default) resolves to <see cref="Physics.DefaultRaycastLayers"/>.</param>
-        /// <param name="distanceFactor">When set, scales the element by this value divided by its current
-        /// distance to the camera, faking perspective size
-        /// falloff for otherwise-flat screen-space content. Null (default) leaves the element unscaled and
-        /// never touches <c>style.scale</c>, so it composes with a <c>scale-*</c> class or a Motion scale
-        /// variant on the same element; a non-null value OWNS that style slot every tick instead and will
-        /// fight either of those for it. Must be positive when supplied.</param>
+        /// <param name="distanceFactor">When set, scales the element by this value divided by the world
+        /// height the camera sees at the target, as drei's <c>distanceFactor</c> does: <c>2 * tan(fov / 2) *
+        /// distance</c> for a perspective camera, <c>2 * orthographicSize</c> for an orthographic one. Null
+        /// (default) leaves the element unscaled and never touches <c>style.scale</c>, so it composes with a
+        /// <c>scale-*</c> class or a Motion scale variant on the same element; a non-null value OWNS that style
+        /// slot every tick instead and will fight either of those for it. Must be positive when supplied.</param>
         /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="distanceFactor"/> is &lt;= 0, NaN, or positive infinity.</exception>

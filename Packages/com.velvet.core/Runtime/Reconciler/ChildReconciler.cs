@@ -523,8 +523,7 @@ namespace Velvet
             {
                 // Also lands here when a scene unload killed a previously created host:
                 // the dead record is replaced so new portals mount into a live panel.
-                layerHost = PanelHostFactory.CreateLayerHost(layer, placeholder.panel, _ctx);
-                _ctx.LayerHosts[layer] = layerHost;
+                layerHost = PanelHostFactory.ReplaceLayerHost(layer, placeholder.panel, _ctx);
             }
             else
             {

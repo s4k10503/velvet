@@ -362,7 +362,7 @@ namespace Velvet
             OccludeLayerMask = occludeLayerMask ?? Physics.DefaultRaycastLayers;
             DistanceFactor = distanceFactor.HasValue
                 ? VelvetArgUtil.RequirePositiveFinite(distanceFactor.Value, nameof(distanceFactor),
-                    "distanceFactor must be positive; it is the reference distance at which scale is 1.")
+                    "distanceFactor must be positive; the scale is it divided by the camera's visible height at the target.")
                 : null;
         }
     }
