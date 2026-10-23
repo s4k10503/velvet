@@ -63,7 +63,7 @@ namespace Velvet.Tests
             var origin = caster.resolvedStyle.transformOrigin;
 
             // Assert
-            Assert.That(new[] { origin.x.value, origin.y.value }, Is.EqualTo(new[] { 0f, 0f }));
+            Assert.That(new[] { origin.x, origin.y }, Is.EqualTo(new[] { 0f, 0f }));
         }
 
         [Test]
