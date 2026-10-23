@@ -26,7 +26,6 @@
 1c0696a5e4d4	Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Styling/StyleBackgroundImageResolver.cs,Runtime/Styling/StyleBorderStyleClass.cs,Runtime/Styling/StyleChildVariantClass.cs,Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleFilterValueParser.cs,Runtime/Styling/StyleFontClass.cs,Runtime/Styling/StyleGapClass.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleGridClass.cs,Runtime/Styling/StyleOutOfFlowChild.cs,Runtime/Styling/StyleRingClass.cs,Runtime/Styling/StyleShadowClass.cs,Runtime/Styling/StyleSkewClass.cs,Runtime/Styling/StyleVariantPayload.cs,Runtime/Styling/StyleZIndexClass.cs
 1c4c21ad1aa2	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 1ce0f9ad1d05	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
-1d21ef665b63	Runtime/Reconciler/DndActiveDrag.cs,Runtime/Reconciler/FiberFocusNavigator.cs
 1e4c7126accb	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 1f25354289da	Runtime/Preview/VelvetPreviewRegistry.cs,Runtime/Styling/MotionSlotContext.cs
 2040fb9f384d	Runtime/Reconciler/ChildReconciler.cs,Runtime/Reconciler/GeneralPathReconciler.cs
@@ -62,7 +61,6 @@
 3c0b127051cc	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 3daf8f4f460c	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 3fb449b8b760	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
-417f31a7dbaf	Runtime/Reconciler/DndActiveDrag.cs,Runtime/Reconciler/FiberFocusNavigator.cs
 418b2dd64ab5	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
 456804161837	Runtime/Styling/StyleConditionalVariantManipulator.cs,Runtime/Styling/StyleContainerVariantManipulator.cs,Runtime/Styling/StyleRelationalVariantManipulator.cs
 46c53788c185	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs,Runtime/Styling/StyleTextItemManipulator.cs
@@ -146,7 +144,6 @@
 912432e490df	Runtime/Styling/StyleRingClass.cs,Runtime/Styling/VelvetPalette.cs
 9173cd8ff28b	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 9254272bc5aa	Runtime/Reconciler/FiberTextFieldLength.cs,Runtime/Styling/MotionClock.cs,Runtime/Styling/MotionOpacity.cs
-9268efd8c671	Runtime/Reconciler/DndActiveDrag.cs,Runtime/Reconciler/FiberFocusNavigator.cs
 92d110f5c880	Runtime/Reconciler/ChildReconciler.cs,Runtime/Reconciler/GeneralPathReconciler.cs
 9383b8104235	Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleSkewClass.cs
 938d50c4fb1d	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
