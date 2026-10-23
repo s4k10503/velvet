@@ -4,7 +4,7 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The className-driven effect appliers: the wrapper-less layers (skew silhouettes, gradient backgrounds,
+    // The className-driven effect appliers: the wrapper-less layers (gradient backgrounds,
     // box shadow, animate-* motion, ring/outline — each the element's own generateVisualContent / inline
     // style or a reconciler-invisible sibling, no structural element in the element's own slot) and the one
     // structural-WRAPPER layer (clip-path), plus the gesture (whileHover/whileTap/whileFocus) manipulator.
@@ -50,10 +50,13 @@ namespace Velvet
         internal void ApplySkewOnCreate(VisualElement element, string[] classNames)
             => _skew.ApplySkewOnCreate(element, classNames);
 
-        internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged)
-            => _ctx.PaintLeases!.Holds(element, FiberPaintLeases.Layer.Skew)
-                ? _ctx.PaintLeases.HeldSkew(element)
-                : _skew.ApplySkewOnPatch(element, classNames, classesChanged);
+        internal void ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged)
+        {
+            if (!_ctx.PaintLeases!.Holds(element, FiberPaintLeases.Layer.Skew))
+            {
+                _skew.ApplySkewOnPatch(element, classNames, classesChanged);
+            }
+        }
 
         internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)
             => _gradient.ApplyGradientOnCreate(element, classNames);
@@ -81,12 +84,11 @@ namespace Velvet
         internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)
             => _boxShadow.ApplyShadowOnCreate(element, classNames);
 
-        internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
-            SkewSpec skew)
+        internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive)
         {
             if (!_ctx.PaintLeases!.Holds(element, FiberPaintLeases.Layer.Shadow))
             {
-                _boxShadow.ApplyShadowOnPatch(element, classNames, clipActive, skew);
+                _boxShadow.ApplyShadowOnPatch(element, classNames, clipActive);
             }
         }
 

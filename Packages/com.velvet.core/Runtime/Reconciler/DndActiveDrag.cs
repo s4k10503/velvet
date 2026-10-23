@@ -521,7 +521,7 @@ namespace Velvet
             _origin = _pressPosition;
             _originRect = _source.worldBound;
             _containerRect = _source.parent?.worldBound;
-            _savedTranslate = SeatedTranslate.Read(_source);
+            _savedTranslate = _source.style.translate;
             _baseTranslate = ResolveBaseTranslate(_savedTranslate);
             _rawDelta = Vector2.zero;
             _delta = Vector2.zero;
@@ -790,7 +790,7 @@ namespace Velvet
                 return;
             }
             var applied = _baseTranslate + _delta + ScrollCompensation();
-            SeatedTranslate.Write(_source, new Translate(applied.x, applied.y));
+            _source.style.translate = new Translate(applied.x, applied.y);
         }
 
         private Vector2 ScrollCompensation()
@@ -1333,7 +1333,7 @@ namespace Velvet
             // Restore symmetry runs on the activation-time snapshots (see the field-block note).
             if (_activeMovement == DragMovement.Translate)
             {
-                SeatedTranslate.Write(_source, _savedTranslate);
+                _source.style.translate = _savedTranslate;
             }
         }
 

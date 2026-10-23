@@ -354,24 +354,29 @@ hovered), and an important one (`!skew-6`, `skew-6!`, `hover:!skew-6`) over ever
 gives 6° on both). A bare value is a whole number of degrees written without a leading zero, so
 `skew-x-07` is declined, as Tailwind declines it.
 
-**How `skew-*` is drawn.** An element with no other source of `rotate` or `scale` takes its skew as its own
-transform: Velvet writes the inline `rotate` and `scale` slots with a uniform scale and one 3D rotation whose
-projection onto the panel is the shear (`skewX() skewY()` as the single 2x2 matrix Tailwind composes). UI Toolkit
-then draws the element sheared about the pivot `origin-*` names, with its descendants under the same transform.
-The sheared face keeps its overhang under a hidden overflow (`SkewTransformPlaybackTests` measures it).
+**How `skew-*` is drawn.** A skewed element takes its skew as its own transform: Velvet writes the inline `rotate` and
+`scale` slots with a scale and one 3D rotation whose projection onto the panel is the matrix CSS composes, the
+individual `rotate` and `scale` properties and then `skewX() skewY()` (`R(θ) · diag(sx, sy) · K`, a negative scale
+carried as a reflection in the scale's y). The rotate and scale come from whichever of these the element has, behind a
+variant or not, and the slots are written again when any of them changes:
 
-**What a pointer picks of a skewed element.** The sheared shape, not the bounding rectangle of the sheared box, so a
-click in a corner the shear leaves bare reaches what is behind the element. UI Toolkit
+- a `rotate-*` or uniform `scale-*` class, read off the element's class list (`BundledClassTransform`) — a rule of your
+  own stylesheet that sets `rotate` or `scale` on a skewed element is not read, since the inline composite outranks
+  it;
+- an inline rotate or scale, which is where `rotate-[…]`, `scale-[…]`, `scale-x-*` and `scale-y-*` land, and what an
+  `animate-*` preset, a `V.Motion` channel or a `layoutId` move writes (`AuthoredTransform`).
+
+UI Toolkit then draws the element sheared about the pivot `origin-*` names, with its text and descendants under the
+same transform. The sheared face keeps its overhang under a hidden overflow (`SkewTransformPlaybackTests` measures it),
+a `shadow-*`, a gradient and a dashed border are drawn under the transform with the rest of the face, and the angles a
+`V.Motion` animates are written into the same slots.
+
+**What a pointer picks of a skewed element.** The shape the transform draws, not the bounding rectangle of the
+transformed box, so a click in a corner the shear leaves bare reaches what is behind the element. UI Toolkit
 reads whether an element overrides `ContainsPoint` from its type, so Velvet creates the plain `VisualElement`, `Button`
 and `Label` it builds for `V.Div`, `V.Button` and its labels as subclasses that do, and the shape each is picked by is
 set when a `skew-*` class reaches it. An element of any other type, a `V.TextField` or a `V.Toggle`, is picked by its
 rectangle. The shape is the box without its rounded corners.
-
-An element that also carries a `rotate-*` or `scale-*` class (behind a variant too), an `animate-*` preset, or a
-`V.Motion` keeps the older painted layer, since those write the same slots: the caster's own face is repainted
-sheared in its generated content, and each direct in-flow child is seated with an inline `translate` that puts its
-centroid where the shear would carry it. There the caster's own text neither shears nor moves, descendants are seated rather than
-sheared, and `origin-*` does not move the pivot.
 
 **How a radius larger than its box fits.** A radius that does not fit its box, whether a `rounded-*` class, an
 arbitrary value, a rule of your own or one your code writes, is scaled the way CSS scales it: once two adjacent
@@ -397,21 +402,19 @@ paint keeps what lies inside it:
 | Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
 | `shadow-*` | the outer layers are painted on a sibling over the element, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) is drawn inside the padding box |
-| `skew-*` (and a gradient on a skewed element) | where the skew is the element's transform, the sheared face keeps its overhang. Where it keeps the painted layer (see above), the shear overhang past the box edge is cut and the rest of the face renders; children are clipped to the upright box, not to the sheared face CSS clips them to |
+| `skew-*` (and a gradient on a skewed element) | the sheared face keeps its overhang |
 | `border-dashed` / `border-dotted` | the outline lies in the border band, which the padding-box clip excludes, so it is painted on a sibling over the element |
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is painted on a sibling over that child |
 | `overline` | unaffected — the rule sits inside the content box |
 
-A `shadow-*`, and a `skew-*` on the painted layer, takes ownership of the element's face: it suppresses the native
-background and border and repaints both in its own generated content, which the padding-box clip would cut at the
-border. While the element clips, a `skew-*` paints its border, and the background beneath it, on a sibling placed
-over the element and outside its clip, and a `shadow-*` leaves a solid border and its background to UI Toolkit and
-paints a dashed or dotted one, and its outer layers, the same way, so the border and the shadow are drawn whole, as
+A `shadow-*` takes ownership of the element's face: it suppresses the native background and border and repaints both
+in its own generated content, which the padding-box clip would cut at the border. While the element clips, a
+`shadow-*` leaves a solid border and its background to UI Toolkit and paints a dashed or dotted one, and its outer
+layers, on a sibling placed over the element and outside its clip, so the border and the shadow are drawn whole, as
 CSS draws them:
 
 ```csharp
-// Border and the background beneath it intact.
-V.Div(className: "-skew-x-6 rotate-0 overflow-hidden bg-white border-2 border-black rounded-lg");
+// Border and the shadow intact.
 V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-dashed border-black rounded-lg");
 ```
 

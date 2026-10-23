@@ -2026,6 +2026,7 @@ namespace Velvet
                 var previousUniform = UniformScaleClassFallback(element);
                 StyleClassProjection.OnInlineLayersChanged(element, map.Projection);
                 RefreshScaleClassFallback(element, map, previousUniform);
+                AuthoredTransform.Resync(element);
             }
         }
 
@@ -3034,6 +3035,7 @@ namespace Velvet
         // re-apply can claim or release the element and so edit the list.
         internal static void NotifyClassesChanged(VisualElement element, float? previousUniform = null)
         {
+            AuthoredTransform.Resync(element);
             s_layers.TryGetValue(element, out var map);
             if (map != null)
             {
@@ -3685,20 +3687,20 @@ namespace Velvet
             var hasY = TryWinningAxis(map, ArbitraryProperty.TranslateY, out var yw);
             if (!hasX && !hasY)
             {
-                SeatedTranslate.Write(element, StyleKeyword.Null);
+                element.style.translate = StyleKeyword.Null;
                 return;
             }
             // Both axes are written by one translate declaration, which a rejected value holding either one makes
             // invalid, leaving no translation.
             if ((hasX && xw.Rejected) || (hasY && yw.Rejected))
             {
-                SeatedTranslate.Write(element, new StyleTranslate(StyleKeyword.None));
+                element.style.translate = new StyleTranslate(StyleKeyword.None);
                 return;
             }
             // A keyword axis is an axis at its initial value, which translates by nothing.
             var x = hasX && xw.Keyword == StyleKeyword.Undefined ? new Length(xw.Value, xw.Unit) : new Length(0f);
             var y = hasY && yw.Keyword == StyleKeyword.Undefined ? new Length(yw.Value, yw.Unit) : new Length(0f);
-            SeatedTranslate.Write(element, new Translate(x, y));
+            element.style.translate = new Translate(x, y);
         }
 
         // The layer holding one translate axis: the winning layer of the axis or of Translate, which writes both,
@@ -3734,28 +3736,28 @@ namespace Velvet
             var hasY = TryWinningScaleAxis(map, ArbitraryProperty.ScaleY, out var yw, out _);
             if (!hasX && !hasY && !TryWinningLayer(map, ArbitraryProperty.Scale, out _))
             {
-                element.style.scale = StyleKeyword.Null;
+                AuthoredTransform.SetScale(element, StyleKeyword.Null);
                 return;
             }
             if (TryDrawnScaleBracket(map, out var uw))
             {
                 // A keyword is scale at its initial value, which scales by one.
                 var factor = uw.Keyword == StyleKeyword.Undefined ? uw.Value : 1f;
-                element.style.scale = new Scale(new Vector2(factor, factor));
+                AuthoredTransform.SetScale(element, new Scale(new Vector2(factor, factor)));
                 return;
             }
             // As for translate, over the scale declaration the axes share; a uniform scale-<n> writes that same
             // declaration, so none of it is drawn.
             if ((hasX && xw.Rejected) || (hasY && yw.Rejected))
             {
-                element.style.scale = new StyleScale(StyleKeyword.None);
+                AuthoredTransform.SetScale(element, new StyleScale(StyleKeyword.None));
                 return;
             }
             var uniform = UniformScaleFromClasses(element);
             // A keyword axis is an axis at its initial value, which scales by one.
             var x = hasX ? (xw.Keyword == StyleKeyword.Undefined ? xw.Value : 1f) : uniform;
             var y = hasY ? (yw.Keyword == StyleKeyword.Undefined ? yw.Value : 1f) : uniform;
-            element.style.scale = new Scale(new Vector2(x, y));
+            AuthoredTransform.SetScale(element, new Scale(new Vector2(x, y)));
         }
 
         // scale-[…] declares scale itself rather than the axis variables, and Tailwind emits it after an axis utility
@@ -4366,9 +4368,9 @@ namespace Velvet
         {
             if (style.Property == ArbitraryProperty.Rotate)
             {
-                element.style.rotate = style.Keyword == StyleKeyword.Undefined
+                AuthoredTransform.SetRotate(element, style.Keyword == StyleKeyword.Undefined
                     ? new Rotate(new Angle(style.Value, AngleUnit.Degree))
-                    : new StyleRotate(style.Keyword);
+                    : new StyleRotate(style.Keyword));
                 return;
             }
             element.style.transformOrigin = style.Keyword == StyleKeyword.Undefined
@@ -4467,7 +4469,7 @@ namespace Velvet
             switch (property)
             {
                 case ArbitraryProperty.Rotate:
-                    element.style.rotate = StyleKeyword.Null;
+                    AuthoredTransform.SetRotate(element, StyleKeyword.Null);
                     return true;
                 case ArbitraryProperty.TransformOrigin:
                     element.style.transformOrigin = StyleKeyword.Null;
@@ -4496,13 +4498,13 @@ namespace Velvet
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
                 case ArbitraryProperty.Translate:
-                    SeatedTranslate.Write(element, StyleKeyword.Null);
+                    element.style.translate = StyleKeyword.Null;
                     return true;
                 case ArbitraryProperty.Scale:
                 case ArbitraryProperty.ScaleBoth:
                 case ArbitraryProperty.ScaleX:
                 case ArbitraryProperty.ScaleY:
-                    element.style.scale = StyleKeyword.Null;
+                    AuthoredTransform.SetScale(element, StyleKeyword.Null);
                     return true;
                 case ArbitraryProperty.TransitionDuration:
                     element.style.transitionDuration = StyleKeyword.Null;

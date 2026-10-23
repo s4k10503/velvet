@@ -53,13 +53,13 @@ namespace Velvet
         // projection handed back is read in its place, off the projection that took the record or else restored
         // (Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate).
         public static float RotateOf(VisualElement element, LayoutIdProjection? projection, float restored) =>
-            projection is { WritesRotate: true } ? projection.DrawnRotate : Unspun(element, element.style.rotate, projection?.RestoredRotate ?? restored);
+            projection is { WritesRotate: true } ? projection.DrawnRotate : Unspun(element, AuthoredTransform.Rotate(element), projection?.RestoredRotate ?? restored);
 
         // The rotate the element is drawn at less a running spin's turn, which the spin adds to the element's own
         // (StyleAnimateDriver.WriteRotation) rather than being a rotate of the element's own.
         private static float Unspun(VisualElement element, StyleRotate inline, float restored) =>
             StyleAnimateDriver.TryReadSpinOwn(element, inline, out _, out var own) ? own
-            : float.IsNaN(restored) ? element.resolvedStyle.rotate.angle.ToDegrees() : restored;
+            : float.IsNaN(restored) ? AuthoredTransform.ResolvedRotate(element).angle.ToDegrees() : restored;
 
         // Written into the four corners of into, which is returned. A pass that reads them again, as a member behind the
         // lead does each frame, hands an array it keeps, so that reading them allocates nothing
@@ -101,7 +101,7 @@ namespace Velvet
         // element's own from then on, as AdoptForeignWrites takes the transform; a radius slot corner by corner.
         public static void Adopt(VisualElement element, LayoutIdProjection projection)
         {
-            var rotate = element.style.rotate;
+            var rotate = AuthoredTransform.Rotate(element);
             if (projection.WritesRotate && rotate != projection.WrittenRotate) projection.OwnInlineRotate = rotate;
             if (!projection.WritesRadii) return;
             for (var corner = 0; corner < 4; corner++)
@@ -150,12 +150,12 @@ namespace Velvet
         // has run (Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform).
         public static float OwnRotate(VisualElement element, LayoutIdProjection projection, float dtSec)
         {
-            var inline = projection.WritesRotate ? projection.OwnInlineRotate : element.style.rotate;
+            var inline = projection.WritesRotate ? projection.OwnInlineRotate : AuthoredTransform.Rotate(element);
             if (!projection.WritesRotate)
             {
                 if (StyleAnimateDriver.TryReadSpinOwn(element, inline, out _, out var unspun)) return unspun;
                 if (inline.keyword == StyleKeyword.Undefined) return inline.value.angle.ToDegrees();
-                return float.IsNaN(projection.RestoredRotate) ? element.resolvedStyle.rotate.angle.ToDegrees() : projection.RestoredRotate;
+                return float.IsNaN(projection.RestoredRotate) ? AuthoredTransform.ResolvedRotate(element).angle.ToDegrees() : projection.RestoredRotate;
             }
             var declared = DeclaredRotate(element, projection);
             return projection.RotateCarry.Step(declared.angle.ToDegrees(), Tag(declared), dtSec, element, "rotate", null);
@@ -169,7 +169,7 @@ namespace Velvet
 
         // Null where an inline rotate outranks the classes.
         private static float? Unstyled(VisualElement element) =>
-            element.style.rotate.keyword == StyleKeyword.Null ? BundledClassTransform.DeclaredRotate(element)?.angle.ToDegrees() : null;
+            AuthoredTransform.Rotate(element).keyword == StyleKeyword.Null ? BundledClassTransform.DeclaredRotate(element)?.angle.ToDegrees() : null;
 
         // The rotate the element is given while the projection writes the slot, which the slot holds once it is handed back.
         public static Rotate DeclaredRotate(VisualElement element, LayoutIdProjection projection)
@@ -240,9 +240,9 @@ namespace Velvet
                 // Left alone, the slot shows a class change once the style pass takes it.
                 if (float.IsNaN(rotate) || Mathf.Approximately(rotate, Unstyled(element) ?? own)) return;
                 // A running spin's frame in the slot is the spin's; what it turns from is the element's own.
-                projection.OwnInlineRotate = StyleAnimateDriver.TryReadSpinOwn(element, element.style.rotate, out var spinOwn, out _)
+                projection.OwnInlineRotate = StyleAnimateDriver.TryReadSpinOwn(element, AuthoredTransform.Rotate(element), out var spinOwn, out _)
                     ? spinOwn
-                    : element.style.rotate;
+                    : AuthoredTransform.Rotate(element);
                 projection.WritesRotate = true;
                 projection.StartRotate = own;
                 projection.RotateCarry.Land(own, Tag(DeclaredRotate(element, projection)));
@@ -253,8 +253,8 @@ namespace Velvet
             projection.DrawnRotate = float.IsNaN(rotate) ? OwnRotate(element, projection, dtSec) : rotate;
             // A running spin leaves the slot to the projection and its turn is added here, as the projection adds a
             // bounce's lift or a ping's growth.
-            element.style.rotate = new Rotate(new Angle(projection.DrawnRotate + StyleAnimateDriver.CurrentSpinDeg(element), AngleUnit.Degree));
-            projection.WrittenRotate = element.style.rotate;
+            AuthoredTransform.SetRotate(element, new Rotate(new Angle(projection.DrawnRotate + StyleAnimateDriver.CurrentSpinDeg(element), AngleUnit.Degree)));
+            projection.WrittenRotate = AuthoredTransform.Rotate(element);
         }
 
         // Draws the element with the given radii, or its own for null, so that the scale it is drawn at leaves them as
@@ -482,10 +482,10 @@ namespace Velvet
         // whatever changed meanwhile.
         private static void Restore(VisualElement element, LayoutIdProjection projection)
         {
-            if (projection.WritesRotate) element.style.rotate = projection.OwnInlineRotate;
+            if (projection.WritesRotate) AuthoredTransform.SetRotate(element, projection.OwnInlineRotate);
             var slot = MotionLayoutIdDriver.Box(element);
-            if (projection.WritesTranslate) SeatedTranslate.Write(slot, projection.OwnInlineTranslate);
-            if (projection.WritesScale) slot.style.scale = projection.OwnInlineScale;
+            if (projection.WritesTranslate) slot.style.translate = projection.OwnInlineTranslate;
+            if (projection.WritesScale) AuthoredTransform.SetScale(slot, projection.OwnInlineScale);
             if (!projection.WritesRadii) return;
             ProjectedCornerFace.End(element);
             for (var corner = 0; corner < 4; corner++)

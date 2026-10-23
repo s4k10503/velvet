@@ -4,15 +4,14 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     /// <summary>
-    /// Keeps a filtered caster's own <c>generateVisualContent</c> overflow (a sheared skew silhouette, a
-    /// drop-shadow bleed) from being clipped when UI Toolkit renders the element through a filter.
+    /// Keeps a filtered caster's own <c>generateVisualContent</c> overflow (a drop-shadow bleed) from being
+    /// clipped when UI Toolkit renders the element through a filter.
     /// </summary>
     /// <remarks>
     /// An inline <c>style.filter</c> promotes the element to a nested render tree whose offscreen texture is
     /// sized to the element's <c>boundingBox</c> — the layout rect unioned with each LAYOUT child's box, never
-    /// the element's own gVC paint. So any paint drawn outside the layout rect (which the skew / shadow paints
-    /// do by design) falls outside that texture and is dropped, collapsing a sheared silhouette back to a
-    /// rectangle. UITK exposes no API to widen an element's own render bounds.
+    /// the element's own gVC paint. So any paint drawn outside the layout rect (which the shadow paint
+    /// does by design) falls outside that texture and is dropped. UITK exposes no API to widen an element's own render bounds.
     /// <para>
     /// The fix is a transparent, picking-ignored, absolutely-positioned SPACER child sized to the paint's
     /// overflow AABB: <c>UpdateBoundingBox</c> unions a child's layout rect into the parent's boundingBox, which
@@ -67,8 +66,7 @@ namespace Velvet
 
             // Keep it in the trailing spacer zone (after every rendered child) so the child reconciler's
             // [0, vnodeChildCount) indexing never reaches it. "After all rendered children" (not "strictly
-            // last") keeps a second spacer — a skewed element that also drops a shadow — stable instead of the
-            // two ping-ponging for the last slot each sync.
+            // last") keeps a second spacer stable instead of the two ping-ponging for the last slot each sync.
             if (!IsAfterAllRenderedChildren(caster, spacer))
             {
                 if (spacer.parent == caster)
@@ -142,13 +140,8 @@ namespace Velvet
             spacer = null;
         }
 
-        // The overflow AABB of a sheared silhouette in the caster's local space: the box [0,w]x[0,h] grown by
-        // ExpandForShear, which owns the shear model.
-        internal static Rect ShearedAabb(float w, float h, float tanX, float tanY)
-            => ExpandForShear(new Rect(0f, 0f, w, h), tanX, tanY);
-
         // Grows a rect outward, about its centre, by the overhang Tailwind's skewX() skewY() shear gives its own
-        // extent, so a shadow quad on a skewed caster — which shears with the caster — stays covered.
+        // extent, which BoxShadowBaker.ShadowRect takes for the quad of a sheared shadow.
         internal static Rect ExpandForShear(Rect r, float tanX, float tanY)
         {
             var halfW = (0.5f * r.width * Mathf.Abs(1f + (tanX * tanY))) + (0.5f * r.height * Mathf.Abs(tanX));
@@ -260,8 +253,8 @@ namespace Velvet
         }
 
         // The caster's laid-out size, or false when layout has not resolved one yet (pre-layout / EditMode,
-        // where the spacer attaches unsized and the geometry callback re-sizes it). Shared by the skew and
-        // shadow layers so the "laid out" gate cannot drift between them.
+        // where the spacer attaches unsized and the geometry callback re-sizes it). Shared by the
+        // shadow layer and the particle spacer so the "laid out" gate cannot drift between them.
         internal static bool TryGetLayoutSize(VisualElement element, out float w, out float h)
         {
             w = element.layout.width;

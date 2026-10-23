@@ -104,22 +104,32 @@ namespace Velvet
                 model.SeedBaseLayer(element);
             }
             model.RawAdded(element, cls, priority);
+            AuthoredTransform.Resync(element);
         }
 
         // The removal half of RawAdded. It also forgets the class at the base priority, where a seed adopted it
         // if the model was built while the class was on.
         public static void RawRemoved(VisualElement element, string cls)
-            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawRemoved(element, cls);
+        {
+            StyleArbitraryValueResolver.TryGetProjection(element)?.RawRemoved(element, cls);
+            AuthoredTransform.Resync(element);
+        }
 
         // The writer's removal of a class a variant payload in force still holds, which stays on the list: only
         // the rank a play gave it above the base goes.
         public static void RawReleased(VisualElement element, string cls)
-            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawReleased(element, cls);
+        {
+            StyleArbitraryValueResolver.TryGetProjection(element)?.RawReleased(element, cls);
+            AuthoredTransform.Resync(element);
+        }
 
         // Ranks a class a play ranked above the base as the element's own from now on. A class the play's rank no
         // longer holds — taken off since, or never ranked — is left alone, so a rank never outlives its class.
         public static void RawRested(VisualElement element, string cls)
-            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawRested(element, cls);
+        {
+            StyleArbitraryValueResolver.TryGetProjection(element)?.RawRested(element, cls);
+            AuthoredTransform.Resync(element);
+        }
 
         // Whether cls is element's own while the projection keeps it off the live class list: declared by its
         // className, or put on by a play (RawAdded).

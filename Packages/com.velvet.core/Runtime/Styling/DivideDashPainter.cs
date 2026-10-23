@@ -61,7 +61,7 @@ namespace Velvet
     // Attaches / updates / detaches a divided child's dashed / dotted divider paint. The binding must register
     // on each DIVIDED CHILD's own generateVisualContent, not the container's: a container's generateVisualContent
     // always paints BEHIND its children, so a divider drawn from the container would be hidden under any child
-    // with an opaque background — the same reason SkewSilhouette paints on the skewed element itself. Keyed per
+    // with an opaque background — the same reason the shadow paints on the shadowed element itself. Keyed per
     // child in ReconcilerContext.DivideDashBindings; torn down by FiberElementCleaner (so a keyed-list reorder
     // recycling one child independently of its container is still caught) and swept by Reconciler.Dispose.
     //

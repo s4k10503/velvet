@@ -1,6 +1,5 @@
 using NUnit.Framework;
 using UnityEngine;
-using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -9,8 +8,7 @@ namespace Velvet.Tests
     /// diagonal angle's gradient line runs the length the box gives it, a corner direction keeps its 50%
     /// line through the two other corners, a conic sweeps physical angles, and a radial is the
     /// farthest-corner ellipse. The bake cases take the aspect directly and read texels, so a texel's
-    /// coordinates are the gradient parameter's inputs; the shader cases read the same four shapes off the
-    /// sheared-silhouette bake of a 128 x 64 box. GWT, one assert per case.
+    /// coordinates are the gradient parameter's inputs. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class GradientBoxAspectTests
@@ -32,35 +30,9 @@ namespace Velvet.Tests
             return red;
         }
 
-        // The red channel of the silhouette bake of a 128 x 64 box without corner radii, at a pixel measured
-        // from the box's top-left. Null when the bake could not run. The texture carries a 2px margin
-        // around the box and reads bottom-up.
-        private static float? SilhouetteRed(string shape, float boxX, float boxY)
-        {
-            var tex = GradientSilhouetteBaker.Bake(Extract(shape), 128f, 64f, 0f, 0f, Vector4.zero);
-            if (tex == null)
-            {
-                return null;
-            }
-            var red = tex.GetPixel(2 + Mathf.FloorToInt(boxX), tex.height - 1 - (2 + Mathf.FloorToInt(boxY))).r;
-            Object.DestroyImmediate(tex);
-            return red;
-        }
-
-        private static float? SilhouetteRedOf(GradientSpec spec, float boxX, float boxY)
-        {
-            var tex = GradientSilhouetteBaker.Bake(spec, 128f, 64f, 0f, 0f, Vector4.zero);
-            if (tex == null)
-            {
-                return null;
-            }
-            var red = tex.GetPixel(2 + Mathf.FloorToInt(boxX), tex.height - 1 - (2 + Mathf.FloorToInt(boxY))).r;
-            Object.DestroyImmediate(tex);
-            return red;
-        }
-
         #region Bake
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_A45DegreeGradient_When_BakedForAWideBox_Then_TheTopLeftCornerIsAThirdAlong()
         {
@@ -72,6 +44,7 @@ namespace Velvet.Tests
             Assert.That(red, Is.EqualTo(1f / 3f).Within(0.02f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ToTopRight_When_BakedForAWideBox_Then_TheLeftEdgeMiddleIsAQuarterAlong()
         {
@@ -84,6 +57,7 @@ namespace Velvet.Tests
             Assert.That(red, Is.EqualTo(0.25f).Within(0.02f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AConic_When_BakedForAWideBox_Then_TheTopRightCornerIsAtItsPhysicalAngle()
         {
@@ -94,6 +68,7 @@ namespace Velvet.Tests
             Assert.That(red, Is.EqualTo(63.43f / 360f).Within(0.01f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ARadialAtTheTopMiddle_When_Baked_Then_TheTopRightCornerIsOnTheFarthestCornerEllipse()
         {
@@ -107,6 +82,7 @@ namespace Velvet.Tests
 
         #endregion
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ACircleToTheClosestSide_When_BakedForAWideBox_Then_ItsRadiusIsHalfTheHeight()
         {
@@ -118,6 +94,7 @@ namespace Velvet.Tests
             Assert.That(red, Is.EqualTo(0.52f).Within(0.02f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ACircleOfFixedRadius_When_BakedForAKnownWidth_Then_TheRadiusIsInPixels()
         {
@@ -132,6 +109,7 @@ namespace Velvet.Tests
             Assert.That(red, Is.EqualTo(0.26f).Within(0.02f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ACircleToTheClosestSide_When_RadiiAreRead_Then_BothAreTheNearestSide()
         {
@@ -142,6 +120,7 @@ namespace Velvet.Tests
             Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((50, 50)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ACircleToTheFarthestSide_When_RadiiAreRead_Then_BothAreTheFarthestSide()
         {
@@ -152,6 +131,7 @@ namespace Velvet.Tests
             Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((100, 100)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ACircleToTheClosestCorner_When_RadiiAreRead_Then_BothAreTheCornerDistance()
         {
@@ -162,6 +142,7 @@ namespace Velvet.Tests
             Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((112, 112)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ACircleToTheFarthestCornerOffCentre_When_RadiiAreRead_Then_BothAreTheFarthestCornerDistance()
         {
@@ -172,6 +153,7 @@ namespace Velvet.Tests
             Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((224, 224)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AnEllipseToTheClosestSide_When_RadiiAreRead_Then_ItHasTheNearestHalfWidthAndHeight()
         {
@@ -182,6 +164,7 @@ namespace Velvet.Tests
             Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((100, 50)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AnEllipseToTheFarthestSideOffCentre_When_RadiiAreRead_Then_ItHasTheFarthestWidthAndHeight()
         {
@@ -192,6 +175,7 @@ namespace Velvet.Tests
             Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((200, 100)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AnEllipseToTheClosestCorner_When_RadiiAreRead_Then_ItIsTheClosestSideEllipseThroughTheCorner()
         {
@@ -202,6 +186,7 @@ namespace Velvet.Tests
             Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((141, 71)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ADefaultRadial_When_RadiiAreRead_Then_ItIsTheFarthestCornerEllipse()
         {
@@ -212,6 +197,7 @@ namespace Velvet.Tests
             Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((141, 71)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AnEllipseOfAPercentageAndALength_When_RadiiAreRead_Then_ThePercentageIsOfTheBox()
         {
@@ -222,6 +208,7 @@ namespace Velvet.Tests
             Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((100, 20)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ACircleOfFixedRadius_When_RadiiAreRead_Then_BothAreThatRadius()
         {
@@ -232,6 +219,7 @@ namespace Velvet.Tests
             Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((30, 30)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ACircle_When_Asked_Then_ItDependsOnTheAspect()
         {
@@ -242,6 +230,7 @@ namespace Velvet.Tests
             Assert.That(depends, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AnEllipseToTheClosestSide_When_Asked_Then_ItDoesNotDependOnTheAspect()
         {
@@ -252,6 +241,7 @@ namespace Velvet.Tests
             Assert.That(depends, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AnEllipseOfPercentages_When_Asked_Then_ItDoesNotDependOnTheAspect()
         {
@@ -262,6 +252,7 @@ namespace Velvet.Tests
             Assert.That(depends, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AnEllipseOfLengths_When_Asked_Then_ItDependsOnTheBoxSize()
         {
@@ -272,6 +263,7 @@ namespace Velvet.Tests
             Assert.That(absolute, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ACircleToTheClosestSide_When_Asked_Then_ItDoesNotDependOnTheBoxSize()
         {
@@ -282,6 +274,7 @@ namespace Velvet.Tests
             Assert.That(absolute, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AClosestSideEllipseAndA200PercentStop_When_BakedAtACorner_Then_TheColourKeepsRunningPastTheRadius()
         {
@@ -297,6 +290,7 @@ namespace Velvet.Tests
             Assert.That(past, Is.EqualTo(0.7071f).Within(0.02f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ADiscWithAHardEdge_When_BakedPastIt_Then_TheLaterColourPaintsOutside()
         {
@@ -311,6 +305,7 @@ namespace Velvet.Tests
             Assert.That(ColorUtility.ToHtmlStringRGBA(corner), Is.EqualTo("0000FFFF"));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ADiscWithAHardEdge_When_BakedInsideIt_Then_TheEarlierColourPaintsAtTheCentre()
         {
@@ -335,6 +330,7 @@ namespace Velvet.Tests
             return size;
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AGradientToTheRight_When_Baked_Then_ItIsOneRow()
         {
@@ -345,6 +341,7 @@ namespace Velvet.Tests
             Assert.That(size, Is.EqualTo((128, 1)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AGradientToTheBottom_When_Baked_Then_ItIsOneColumn()
         {
@@ -355,6 +352,7 @@ namespace Velvet.Tests
             Assert.That(size, Is.EqualTo((1, 128)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ADiagonalGradient_When_Baked_Then_ItIsSquare()
         {
@@ -365,6 +363,7 @@ namespace Velvet.Tests
             Assert.That(size, Is.EqualTo((128, 128)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AGradientToTheRight_When_BakedAtAResolution_Then_TheRowIsThatLong()
         {
@@ -375,6 +374,7 @@ namespace Velvet.Tests
             Assert.That(size, Is.EqualTo((1024, 1)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ADiagonalGradient_When_BakedAtAResolution_Then_TheSquareIsThatLong()
         {
@@ -385,6 +385,7 @@ namespace Velvet.Tests
             Assert.That(size, Is.EqualTo((512, 512)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AHardStopBakedForALongRow_When_Read_Then_TheEdgeFallsBetweenTwoNeighbouringTexels()
         {
@@ -400,6 +401,7 @@ namespace Velvet.Tests
             Assert.That(edge, Is.EqualTo(("FF0000FF", "0000FFFF")));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AHardStop_When_Asked_Then_ItHasASharpFeature()
         {
@@ -410,6 +412,7 @@ namespace Velvet.Tests
             Assert.That(GradientBackground.HasSharpFeature(spec), Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ASmoothGradient_When_Asked_Then_ItHasNoSharpFeature()
         {
@@ -420,6 +423,7 @@ namespace Velvet.Tests
             Assert.That(sharp, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AStopInPixels_When_Asked_Then_ItHasASharpFeature()
         {
@@ -434,6 +438,7 @@ namespace Velvet.Tests
 
         #region Which gradients depend on the box
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ADiagonalAngle_When_Asked_Then_ItDependsOnTheAspect()
         {
@@ -444,6 +449,7 @@ namespace Velvet.Tests
             Assert.That(depends, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AnAngleAlongAnAxis_When_Asked_Then_ItDoesNotDependOnTheAspect()
         {
@@ -454,6 +460,7 @@ namespace Velvet.Tests
             Assert.That(depends, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ANegativeAngleAlongAnAxis_When_Asked_Then_ItDoesNotDependOnTheAspect()
         {
@@ -464,6 +471,7 @@ namespace Velvet.Tests
             Assert.That(depends, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ACornerDirection_When_Asked_Then_ItDoesNotDependOnTheAspect()
         {
@@ -474,6 +482,7 @@ namespace Velvet.Tests
             Assert.That(depends, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AConic_When_Asked_Then_ItDependsOnTheAspect()
         {
@@ -484,6 +493,7 @@ namespace Velvet.Tests
             Assert.That(depends, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ARadial_When_Asked_Then_ItDoesNotDependOnTheAspect()
         {
@@ -498,6 +508,7 @@ namespace Velvet.Tests
 
         #region Aspect key
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ABoxTwiceAsWideAsTall_When_Keyed_Then_ItIsOneOctaveOfSteps()
         {
@@ -508,6 +519,7 @@ namespace Velvet.Tests
             Assert.That(key, Is.EqualTo(32));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ABoxTwiceAsTallAsWide_When_Keyed_Then_ItIsOneOctaveOfStepsTheOtherWay()
         {
@@ -518,6 +530,7 @@ namespace Velvet.Tests
             Assert.That(key, Is.EqualTo(-32));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_ABoxWithNoSizeYet_When_Keyed_Then_ItIsASquare()
         {
@@ -528,6 +541,7 @@ namespace Velvet.Tests
             Assert.That(key, Is.Zero);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its silhouette-bake helpers and this bake case reads none of them.
         [Test]
         public void Given_AnExtremelyWideBox_When_Keyed_Then_TheKeyIsHeldToFourOctaves()
         {
@@ -536,231 +550,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(key, Is.EqualTo(128));
-        }
-
-        #endregion
-
-        #region Silhouette shader
-
-        [Test]
-        public void Given_A45DegreeGradient_When_SilhouetteBakedForAWideBox_Then_TheTopLeftIsAThirdAlong()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act — a point just inside the corner, on the same perpendicular to the line as the corner.
-            var red = SilhouetteRed("bg-linear-45", 10f, 10f);
-
-            // Assert — NaN when the bake did not run.
-            Assert.That(red ?? float.NaN, Is.EqualTo(1f / 3f).Within(0.03f));
-        }
-
-        [Test]
-        public void Given_ToTopRight_When_SilhouetteBakedForAWideBox_Then_TheLeftEdgeMiddleIsAQuarterAlong()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act
-            var red = SilhouetteRed("bg-gradient-to-tr", 2f, 32f);
-
-            // Assert
-            Assert.That(red ?? float.NaN, Is.EqualTo(0.256f).Within(0.03f));
-        }
-
-        [Test]
-        public void Given_AConic_When_SilhouetteBakedForAWideBox_Then_TheTopRightIsAtItsPhysicalAngle()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act — 56.5px right of and 25.5px above the centre: 65.7° clockwise from up.
-            var red = SilhouetteRed("bg-conic", 120f, 6f);
-
-            // Assert
-            Assert.That(red ?? float.NaN, Is.EqualTo(0.1825f).Within(0.03f));
-        }
-
-        [Test]
-        public void Given_ARadialAtTheTopMiddle_When_SilhouetteBaked_Then_TheTopRightIsOnTheFarthestCornerEllipse()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act — (120.5, 6.5) of the 128 x 64 box.
-            var red = SilhouetteRed("bg-radial-[at_top]", 120f, 6f);
-
-            // Assert
-            Assert.That(red ?? float.NaN, Is.EqualTo(0.628f).Within(0.03f));
-        }
-
-        [Test]
-        public void Given_AStopFadingToTransparent_When_SilhouetteBaked_Then_TheMidpointKeepsTheStopsColour()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act — half transparent red across the middle of the box.
-            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#ff0000,transparent]" }, out var spec);
-            var tex = GradientSilhouetteBaker.Bake(spec, 128f, 64f, 0f, 0f, Vector4.zero);
-            var red = float.NaN;
-            if (tex != null)
-            {
-                red = tex.GetPixel(2 + 64, tex.height / 2).r;
-                Object.DestroyImmediate(tex);
-            }
-
-            // Assert
-            Assert.That(red, Is.GreaterThan(0.95f));
-        }
-
-        [Test]
-        public void Given_ACircleToTheClosestSide_When_SilhouetteBakedForAWideBox_Then_ItsRadiusIsHalfTheHeight()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act — 16.5px right of the centre of 128 x 64 with a 32px radius; an ellipse would read 0.26.
-            var red = SilhouetteRed("bg-radial-[circle_closest-side]", 80f, 32f);
-
-            // Assert
-            Assert.That(red ?? float.NaN, Is.EqualTo(0.516f).Within(0.03f));
-        }
-
-        [Test]
-        public void Given_ACircleOfFixedRadius_When_SilhouetteBaked_Then_TheRadiusIsInPixels()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act — 16.5px out on a 20px radius.
-            var red = SilhouetteRed("bg-radial-[circle_20px]", 80f, 32f);
-
-            // Assert
-            Assert.That(red ?? float.NaN, Is.EqualTo(0.825f).Within(0.03f));
-        }
-
-        [Test]
-        public void Given_ACircleAndA200PercentStop_When_SilhouetteBakedPastTheRadius_Then_TheColourKeepsRunning()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act — 56.5px out on a 32px radius is 1.77 radii, 88% of the way to a stop at 200%.
-            StyleGradientClass.TryExtract(new[] { "bg-radial-[circle_closest-side,#000000,#ffffff_200%]" }, out var spec);
-            var red = SilhouetteRedOf(spec, 120f, 32f);
-
-            // Assert
-            Assert.That(red ?? float.NaN, Is.EqualTo(0.883f).Within(0.03f));
-        }
-
-
-        private static Color? SilhouettePixelOf(GradientSpec spec, float boxX, float boxY)
-        {
-            var tex = GradientSilhouetteBaker.Bake(spec, 128f, 64f, 0f, 0f, Vector4.zero);
-            if (tex == null)
-            {
-                return null;
-            }
-            var pixel = tex.GetPixel(2 + Mathf.FloorToInt(boxX), tex.height - 1 - (2 + Mathf.FloorToInt(boxY)));
-            Object.DestroyImmediate(tex);
-            return pixel;
-        }
-
-        [Test]
-        public void Given_RedToBlueInHsl_When_SilhouetteBaked_Then_TheMidpointIsMagenta()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act
-            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_hsl,#ff0000,#0000ff]" }, out var spec);
-            var middle = SilhouettePixelOf(spec, 64f, 32f);
-
-            // Assert
-            Assert.That(middle.HasValue ? middle.Value.r - middle.Value.g : float.NaN, Is.GreaterThan(0.9f));
-        }
-
-        [Test]
-        public void Given_RedToBlueInHslTheLongWay_When_SilhouetteBaked_Then_TheMidpointIsGreen()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act
-            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_hsl_longer_hue,#ff0000,#0000ff]" }, out var spec);
-            var middle = SilhouettePixelOf(spec, 64f, 32f);
-
-            // Assert
-            Assert.That(middle.HasValue ? middle.Value.g : float.NaN, Is.GreaterThan(0.95f));
-        }
-
-        [Test]
-        public void Given_RedToBlueInOklch_When_SilhouetteBaked_Then_TheMidpointIsTheArcsBrightRed()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act
-            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_oklch,#ff0000,#0000ff]" }, out var spec);
-            var middle = SilhouettePixelOf(spec, 64f, 32f);
-
-            // Assert
-            Assert.That(middle.HasValue ? middle.Value.r : float.NaN, Is.EqualTo(0.726f).Within(0.04f));
-        }
-
-        [Test]
-        public void Given_RedToBlueInLch_When_SilhouetteBaked_Then_TheMidpointIsTheArcsBrightRed()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act
-            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_lch,#ff0000,#0000ff]" }, out var spec);
-            var middle = SilhouettePixelOf(spec, 64f, 32f);
-
-            // Assert
-            Assert.That(middle.HasValue ? middle.Value.r : float.NaN, Is.EqualTo(0.958f).Within(0.04f));
-        }
-
-        [Test]
-        public void Given_RedToBlueInLab_When_SilhouetteBaked_Then_TheMidpointIsTheMeanInLab()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act
-            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_lab,#ff0000,#0000ff]" }, out var spec);
-            var middle = SilhouettePixelOf(spec, 64f, 32f);
-
-            // Assert
-            Assert.That(middle.HasValue ? middle.Value.r : float.NaN, Is.EqualTo(0.754f).Within(0.04f));
-        }
-
-        [Test]
-        public void Given_BlackToWhiteInLinearLight_When_SilhouetteBaked_Then_TheMidpointIsBrighterThanInSrgb()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act
-            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_srgb-linear,#000000,#ffffff]" }, out var spec);
-            var middle = SilhouettePixelOf(spec, 64f, 32f);
-
-            // Assert
-            Assert.That(middle.HasValue ? middle.Value.r : float.NaN, Is.EqualTo(0.738f).Within(0.03f));
-        }
-
-        [Test]
-        public void Given_AColourHint_When_SilhouetteBaked_Then_TheMidMixIsAtTheHint()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act — pixel 32 of 128 is at 0.254 of the way along; the hint is at 25%.
-            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000,25%,#ffffff]" }, out var spec);
-            var pixel = SilhouettePixelOf(spec, 32f, 32f);
-
-            // Assert
-            Assert.That(pixel.HasValue ? pixel.Value.r : float.NaN, Is.EqualTo(0.5f).Within(0.04f));
-        }
-
-        [Test]
-        public void Given_StopsInPixels_When_SilhouetteBakedForTheElementsSize_Then_TheyAreFractionsOfTheLine()
-        {
-            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
-
-            // Act — the line is 128px: a stop at 64px is half way, so pixel 32 is half way to it.
-            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000_0px,#ffffff_64px]" }, out var spec);
-            var pixel = SilhouettePixelOf(spec, 32f, 32f);
-
-            // Assert
-            Assert.That(pixel.HasValue ? pixel.Value.r : float.NaN, Is.EqualTo(0.504f).Within(0.04f));
         }
 
         #endregion

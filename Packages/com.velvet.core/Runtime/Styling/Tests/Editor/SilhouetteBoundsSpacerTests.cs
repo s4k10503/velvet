@@ -5,83 +5,18 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the pure geometry of the filter bounds-spacer — the sheared silhouette AABB, the shear growth
-    /// applied to a shadow quad, the axis-aligned union, and the trailing-spacer child count — alongside two
-    /// related silhouette-layer contracts: <see cref="SilhouetteFaceStash"/>'s <c>includeBackground</c> flag
-    /// (the skew / drop-shadow layers own the whole face and suppress both background and border, while the
-    /// border-dashed layer restyles only the border and must never touch the background), and that the skew
-    /// silhouette's suppression-sentinel test is BIT-EXACT rather than Unity's approximate <c>Color</c> equality
+    /// Specifies the pure geometry of the filter bounds-spacer — the axis-aligned union, the growth a shadow quad takes
+    /// from a shear and the border inset —
+    /// alongside two related silhouette-layer contracts: <see cref="SilhouetteFaceStash"/>'s
+    /// <c>includeBackground</c> flag (the drop-shadow layer owns the whole face and suppresses both background and
+    /// border, while the border-dashed layer restyles only the border and must never touch the background), and that
+    /// the suppression-sentinel test is BIT-EXACT rather than Unity's approximate <c>Color</c> equality
     /// (epsilon ~1e-5), so a genuine authored color that merely lands in the narrow band around the sentinel is
     /// not misclassified. GWT, one assert each; these need no panel.
     /// </summary>
     [TestFixture]
     internal sealed class SilhouetteBoundsSpacerTests
     {
-        [Test]
-        public void Given_ASkewX_When_AabbComputed_Then_ItGrowsWidthByHeightTimesTan()
-        {
-            // Arrange — a 100x40 box sheared on X by tan = 0.5.
-            // Act
-            var aabb = SilhouetteBoundsSpacer.ShearedAabb(100f, 40f, 0.5f, 0f);
-
-            // Assert — width grows by h*|tanX| = 40*0.5 = 20 (10 each side).
-            Assert.That(aabb.width, Is.EqualTo(120f).Within(1e-4f));
-        }
-
-        [Test]
-        public void Given_ASkewX_When_AabbComputed_Then_ItOverhangsLeftByHalfHeightTimesTan()
-        {
-            // Act
-            var aabb = SilhouetteBoundsSpacer.ShearedAabb(100f, 40f, 0.5f, 0f);
-
-            // Assert — the left overhang is -(h/2)*|tanX| = -10.
-            Assert.That(aabb.xMin, Is.EqualTo(-10f).Within(1e-4f));
-        }
-
-        [Test]
-        public void Given_ASkewY_When_AabbComputed_Then_ItGrowsHeightByWidthTimesTan()
-        {
-            // Act
-            var aabb = SilhouetteBoundsSpacer.ShearedAabb(100f, 40f, 0f, 0.25f);
-
-            // Assert — height grows by w*|tanY| = 100*0.25 = 25.
-            Assert.That(aabb.height, Is.EqualTo(65f).Within(1e-4f));
-        }
-
-        [Test]
-        public void Given_ASkewOnBothAxes_When_AabbComputed_Then_ItsWidthFollowsTheSkewXSkewYProduct()
-        {
-            // Arrange — skewX() skewY() maps x to x + u·tanX·tanY + v·tanX, so a 100x40 box at tanX = 0.5 and
-            // tanY = 0.25 spans 100·(1 + 0.125) + 40·0.5 = 132.5 horizontally.
-            // Act
-            var aabb = SilhouetteBoundsSpacer.ShearedAabb(100f, 40f, 0.5f, 0.25f);
-
-            // Assert
-            Assert.That(aabb.width, Is.EqualTo(132.5f).Within(1e-4f));
-        }
-
-        [Test]
-        public void Given_ABoxSkewedOnBothAxes_When_ItsTopRightCornerIsSheared_Then_XFollowsTheSkewXSkewYProduct()
-        {
-            // Arrange — the corner (200, 0) of a 200x60 box is u = 100, v = -30 from its centre; at tanX = 0.5
-            // and tanY = 0.25 it lands at x = 200 + 100·0.125 − 30·0.5 = 197.5.
-            // Act
-            var corner = SilhouetteFace.Shear(new Vector2(200f, 0f), 200f, 60f, 0.5f, 0.25f);
-
-            // Assert
-            Assert.That(corner.x, Is.EqualTo(197.5f).Within(1e-4f));
-        }
-
-        [Test]
-        public void Given_NoSkew_When_AabbComputed_Then_ItIsExactlyTheBox()
-        {
-            // Act
-            var aabb = SilhouetteBoundsSpacer.ShearedAabb(100f, 40f, 0f, 0f);
-
-            // Assert
-            Assert.That(aabb, Is.EqualTo(new Rect(0f, 0f, 100f, 40f)));
-        }
-
         [Test]
         public void Given_TwoRects_When_Unioned_Then_TheResultEnclosesBoth()
         {
@@ -276,7 +211,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADefaultStash_When_Stashed_Then_BothBackgroundAndBorderAreSuppressed()
         {
-            // Arrange — the default (includeBackground:true) stash pins SkewBinding / BoxShadowBinding's
+            // Arrange — the default (includeBackground:true) stash pins BoxShadowBinding's
             // existing behavior: it owns the whole face.
             var element = ColoredElement();
             var stash = new SilhouetteFaceStash();
@@ -291,11 +226,12 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its shear-growth cases and this one reads none of them.
         [Test]
         public void Given_AColorInTheEpsilonBandAroundTheSentinel_When_Tested_Then_ItIsNotTheSentinel()
         {
             // Arrange — a real authored color a hair off the sentinel alpha, inside Unity's approximate == band.
-            var sentinel = SkewSilhouette.SuppressedColor;
+            var sentinel = SilhouetteFace.SuppressedColor;
             var nearButReal = new Color(sentinel.r, sentinel.g, sentinel.b, sentinel.a + 5e-6f);
             Assume.That(nearButReal == sentinel, Is.True,
                 "Precondition: Unity's approximate == misreads this near color as the sentinel");
@@ -304,11 +240,12 @@ namespace Velvet.Tests
             Assert.That(SilhouetteFace.IsSentinel(nearButReal), Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its shear-growth cases and this one reads none of them.
         [Test]
         public void Given_TheExactSentinelColor_When_Tested_Then_ItIsTheSentinel()
         {
             // Arrange/Act/Assert — the real suppression write must still be recognized.
-            Assert.That(SilhouetteFace.IsSentinel(SkewSilhouette.SuppressedColor), Is.True);
+            Assert.That(SilhouetteFace.IsSentinel(SilhouetteFace.SuppressedColor), Is.True);
         }
     }
 }

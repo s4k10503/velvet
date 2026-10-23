@@ -378,9 +378,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   on an off-panel element it starts at identity. A both-axis `translate-8` or `translate-[10px]` drives the
   x and y channels with its one value.
 - **Skew angles.** `skew-x-*`, `skew-y-*` and `skew-*` (a bracket angle included) animate as degrees, on the
-  spring Framer Motion gives a transform value by default (500 stiffness, 25 damping). The angle is painted onto the
-  element's sheared silhouette, so an element that rests unskewed is skewed for the length of a play that starts or ends
-  on an angle. A pose that names no angle on an axis leaves it where the classes rest.
+  spring Framer Motion gives a transform value by default (500 stiffness, 25 damping). The angle is written into the
+  element's rotate and scale slots with the rest of its transform, so an element that rests unskewed is skewed for the
+  length of a play that starts or ends on an angle. A pose that names no angle on an axis leaves it where the classes rest.
 - **Colors.** `background-color`, `color` and `border-color`, from palette utilities
   (`bg-red-500`), the alpha modifier (`bg-red-500/50`) and the bracket forms (`bg-[#1e293b]`).
   Interpolation is straight RGBA, the same path UI Toolkit's own color transition takes, so
@@ -707,7 +707,7 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   corners are drawn circular; a percent radius, which scales with the box, is left as it is. A style takes one
   length per corner, so while the two axes scale differently the Motion's radius slots hold none and Velvet
   paints its background colour, background image (a `bg-gradient-*` included), border and ring rounded per
-  axis — on a `shadow-*`, `skew-*` or `border-dashed` Motion the face, border, dashed outline and skewed gradient
+  axis — on a `shadow-*` or `border-dashed` Motion the face, border and dashed outline
   those layers paint too; a shadow is drawn on screen with circular corners and its offset as written, as
   Framer's `correctBoxShadow` draws it, and with its blur and spread as written on both axes, where Framer's are
   the written ones over the mean of the two scales, stretched on each axis by its own —, its colours following its classes and the transitions it declares for

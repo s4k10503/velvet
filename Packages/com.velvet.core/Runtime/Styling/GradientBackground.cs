@@ -639,7 +639,7 @@ namespace Velvet
         }
 
         // The unit direction a linear gradient runs in, for an angle in CSS degrees (0 = to top, clockwise),
-        // in a box whose x points right and y down. Shared with the skew silhouette bake.
+        // in a box whose x points right and y down.
         internal static Vector2 LinearDirection(float angleDeg)
         {
             var rad = angleDeg * Mathf.Deg2Rad;
@@ -715,7 +715,7 @@ namespace Velvet
         // to where it was written. t is held inside [0, MaxParameter] (a radial's has no upper bound), which
         // settles a stop at the very start or end of the line the way CSS does: where stops share a position
         // the later one starts there, and a hard stop at 100% of a box-long line never shows its later
-        // colour. The skew silhouette shader evaluates the same walk.
+        // colour.
         private static Color ColorAt(ResolvedStops stops, float t, GradientType type, GradientInterp interp, HueMethod method)
         {
             t = type == GradientType.Radial ? Mathf.Max(t, 0f) : Mathf.Clamp(t, 0f, MaxParameter);

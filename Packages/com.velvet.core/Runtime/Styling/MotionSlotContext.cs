@@ -390,13 +390,13 @@ namespace Velvet
         public bool TryReadScaleAxes(out Vector2 value)
         {
             var owner = Owner(ArbitraryProperty.Scale);
-            var inline = owner.style.scale;
+            var inline = AuthoredTransform.Scale(owner);
             if (inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(ArbitraryProperty.Scale))
             {
                 value = inline.value.value;
                 return true;
             }
-            var resolved = owner.resolvedStyle.scale.value;
+            var resolved = AuthoredTransform.ResolvedScale(owner).value;
             value = new Vector2(resolved.x, resolved.y);
             return !float.IsNaN(value.x) && !float.IsNaN(value.y) && !float.IsInfinity(value.x) && !float.IsInfinity(value.y);
         }
@@ -418,7 +418,7 @@ namespace Velvet
                 return TryReadResolved(slot, out value)
                     && (MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit));
             }
-            if (slot == ArbitraryProperty.Scale && Owner(slot).style.scale.keyword == StyleKeyword.Undefined)
+            if (slot == ArbitraryProperty.Scale && AuthoredTransform.Scale(Owner(slot)).keyword == StyleKeyword.Undefined)
             {
                 return TryReadInline(slot, out value);
             }
@@ -433,14 +433,13 @@ namespace Velvet
             return MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit);
         }
 
-        // What the element showed on slot at its last style pass, in unit, a skewed parent's seat taken off a
-        // translate (SeatedTranslate.Unseated); false where it cannot be read so.
+        // What the element showed on slot at its last style pass, in unit; false where it cannot be read so.
         public bool TryReadShown(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
         {
             if (slot == ArbitraryProperty.TranslateX || slot == ArbitraryProperty.TranslateY)
             {
                 var owner = Owner(slot);
-                var own = SeatedTranslate.Unseated(owner, owner.resolvedStyle.translate);
+                var own = owner.resolvedStyle.translate;
                 return Pixels(slot, slot == ArbitraryProperty.TranslateX ? own.x : own.y, out value)
                     && (value.Unit == unit || TryConvert(slot, ref value, unit));
             }
@@ -534,11 +533,11 @@ namespace Velvet
                     return Float(slot, style.opacity, out value);
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
-                    return Translate(slot, SeatedTranslate.Read(Owner(slot)), out value);
+                    return Translate(slot, Owner(slot).style.translate, out value);
                 case ArbitraryProperty.Scale:
-                    return Scale(slot, style.scale, out value);
+                    return Scale(slot, AuthoredTransform.Scale(Owner(slot)), out value);
                 case ArbitraryProperty.Rotate:
-                    return Rotate(slot, style.rotate, out value);
+                    return Rotate(slot, AuthoredTransform.Rotate(Owner(slot)), out value);
                 case ArbitraryProperty.TextColor:
                     return Color(slot, style.color, out value);
                 case ArbitraryProperty.BackgroundColor:
@@ -582,11 +581,11 @@ namespace Velvet
                     return Pixels(slot, resolved.translate.y, out value);
                 case ArbitraryProperty.Scale:
                 {
-                    var scale = resolved.scale.value;
+                    var scale = AuthoredTransform.ResolvedScale(Owner(slot)).value;
                     return scale.x.Equals(scale.y) && Pixels(slot, scale.x, out value);
                 }
                 case ArbitraryProperty.Rotate:
-                    return Pixels(slot, resolved.rotate.angle.ToDegrees(), out value);
+                    return Pixels(slot, AuthoredTransform.ResolvedRotate(Owner(slot)).angle.ToDegrees(), out value);
                 case ArbitraryProperty.TextColor:
                     value = new ArbitraryStyle(slot, resolved.color);
                     return true;

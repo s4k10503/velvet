@@ -265,8 +265,8 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
-          "anchor": "internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)",
-          "neuter": "return default;"
+          "anchor": "internal void ApplySkewOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)",
+          "neuter": "return;"
         }
       ]
     },
@@ -301,11 +301,6 @@
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs",
           "anchor": "internal void ApplyGradientOnPatch(VisualElement element, string[] classNames)",
           "neuter": "return;"
-        },
-        {
-          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
-          "anchor": "private static void SyncSkewGradient(VisualElement element, SkewBinding binding, string[] classNames)",
-          "neuter": "return;"
         }
       ]
     },
@@ -338,7 +333,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs",
-          "anchor": "SkewSpec skew)",
+          "anchor": "internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive)",
           "neuter": "return;"
         }
       ]
@@ -890,19 +885,10 @@
       "platform": "EditMode"
     },
     {
-      "fixture": "Velvet.Tests.SkewChildTranslateManipulatorTests",
-      "cuts": [
-        "skew-applier"
-      ],
-      "caseScopes": [],
-      "platform": "EditMode"
-    },
-    {
       "fixture": "Velvet.Tests.PaintBindingPatchTests",
       "cuts": [
         "gradient-applier",
-        "shadow-applier",
-        "skew-applier"
+        "shadow-applier"
       ],
       "caseScopes": [
         {
@@ -912,10 +898,6 @@
         {
           "mechanism": "shadow",
           "pattern": "Shadow"
-        },
-        {
-          "mechanism": "skew",
-          "pattern": "Skew"
         }
       ],
       "platform": "EditMode"
@@ -1086,6 +1068,14 @@
       ],
       "caseScopes": [],
       "platform": "PlayMode"
+    },
+    {
+      "fixture": "Velvet.Tests.SkewTransformAppliedTests",
+      "cuts": [
+        "skew-applier"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
     }
   ]
 }

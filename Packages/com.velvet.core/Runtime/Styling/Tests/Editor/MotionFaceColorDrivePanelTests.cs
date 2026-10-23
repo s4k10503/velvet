@@ -6,9 +6,8 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// A bezier play driving the background colour of a skewed V.Motion, whose skew layer suppresses the native
-    /// background and repaints it sheared: the face shows the driven colour, as an unskewed twin playing the same
-    /// play shows it inline, and the suppression stays in the slot under the drive.
+    /// A bezier play driving the background colour of a skewed V.Motion: the face shows the driven colour, as an
+    /// unskewed twin playing the same play shows it.
     /// </summary>
     internal sealed class MotionFaceColorDrivePanelTests : PanelTestBase
     {
@@ -29,7 +28,7 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel, UseFrameFakeClockHost.ReadFakeClock);
             _mounted = V.Mount(_window.rootVisualElement, V.Div(className: "flex flex-row", children: new VNode[]
             {
-                Driven("b", "-skew-x-6 rotate-0"),
+                Driven("b", "-skew-x-6"),
                 Driven("c", string.Empty),
             }));
             var skewed = _window.rootVisualElement.Q("b");
@@ -50,29 +49,17 @@ namespace Velvet.Tests
             return red > 0.05f && red < 0.95f ? red : float.NaN;
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
-        public void Given_ASkewedMotionDrivingItsBackground_When_ThePlayIsPartWay_Then_TheSkewFaceShowsTheDrivenColor()
+        public void Given_ASkewedMotionDrivingItsBackground_When_ThePlayIsPartWay_Then_ItShowsTheColourItsUnskewedTwinShows()
         {
-            // Arrange / Act
+            // Arrange
             var (skewed, twin) = MountPartWay();
 
-            // Assert — -1 where no skew binding was built, which neither a channel nor PartWay's NaN equals.
-            Assert.That(_mounted.Root.Reconciler.Context.SkewBindings.TryGetValue(skewed, out var binding)
-                ? binding.BgColor.r
-                : -1f, Is.EqualTo(PartWay(twin)).Within(1e-3f));
-        }
+            // Act
+            var shown = skewed.style.backgroundColor.value.r;
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
-        [Test]
-        public void Given_ASkewedMotionDrivingItsBackground_When_ThePlayIsPartWay_Then_TheSuppressionStaysInTheSlot()
-        {
-            // Arrange / Act
-            var (skewed, twin) = MountPartWay();
-
-            // Assert — read as false where the twin's play is not part way, so a play that never ran cannot pass.
-            Assert.That(!float.IsNaN(PartWay(twin)) && SilhouetteFace.IsSentinel(skewed.style.backgroundColor.value),
-                Is.True);
+            // Assert
+            Assert.That(shown, Is.EqualTo(PartWay(twin)).Within(1e-3f));
         }
     }
 }

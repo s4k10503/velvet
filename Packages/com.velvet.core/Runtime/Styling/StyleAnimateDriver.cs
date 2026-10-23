@@ -431,9 +431,9 @@ namespace Velvet
         {
             var style = element.style;
             binding.Opacity.Seed(style.opacity);
-            binding.Rotation.Seed(style.rotate);
-            binding.Scale.Seed(style.scale);
-            binding.Translation.Seed(SeatedTranslate.Read(element));
+            binding.Rotation.Seed(AuthoredTransform.Rotate(element));
+            binding.Scale.Seed(AuthoredTransform.Scale(element));
+            binding.Translation.Seed(element.style.translate);
         }
 
         /// <summary>
@@ -515,7 +515,7 @@ namespace Velvet
             else if (binding.Spec.Mode == AnimateMode.Spin)
             {
                 // Same ownership rule as the Pulse branch below, over the rotate slot.
-                element.style.rotate = StyleKeyword.Null;
+                AuthoredTransform.SetRotate(element, StyleKeyword.Null);
             }
             else if (binding.Spec.Mode == AnimateMode.Pulse)
             {
@@ -528,12 +528,12 @@ namespace Velvet
             {
                 // Same ownership rule as the Pulse and Spin branches, over the opacity and scale slots.
                 MotionOpacity.Write(element, StyleKeyword.Null);
-                element.style.scale = StyleKeyword.Null;
+                AuthoredTransform.SetScale(element, StyleKeyword.Null);
             }
             else if (binding.Spec.Mode == AnimateMode.Bounce)
             {
                 // Same ownership rule as the Spin branch, over the translate slot.
-                SeatedTranslate.Write(element, StyleKeyword.Null);
+                element.style.translate = StyleKeyword.Null;
             }
             else if (binding.Spec.Mode == AnimateMode.Custom)
             {
@@ -546,9 +546,9 @@ namespace Velvet
         {
             var slots = keyframes.Slots;
             if ((slots & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None) MotionOpacity.Write(element, StyleKeyword.Null);
-            if ((slots & MotionTransitionSlots.Rotate) != MotionTransitionSlots.None) element.style.rotate = StyleKeyword.Null;
-            if ((slots & MotionTransitionSlots.Scale) != MotionTransitionSlots.None) element.style.scale = StyleKeyword.Null;
-            if ((slots & MotionTransitionSlots.Translate) != MotionTransitionSlots.None) SeatedTranslate.Write(element, StyleKeyword.Null);
+            if ((slots & MotionTransitionSlots.Rotate) != MotionTransitionSlots.None) AuthoredTransform.SetRotate(element, StyleKeyword.Null);
+            if ((slots & MotionTransitionSlots.Scale) != MotionTransitionSlots.None) AuthoredTransform.SetScale(element, StyleKeyword.Null);
+            if ((slots & MotionTransitionSlots.Translate) != MotionTransitionSlots.None) element.style.translate = StyleKeyword.Null;
         }
 
         // Re-asserts a pan mode's background sizing. A steady-state patch (the animate spec is unchanged) may
@@ -779,10 +779,10 @@ namespace Velvet
         private static void WriteRotation(VisualElement element, StyleAnimateBinding binding,
             MotionTransitionSlots driven, float t)
         {
-            var own = binding.Rotation.Own(element.style.rotate, Adopts(driven, MotionTransitionSlots.Rotate));
+            var own = binding.Rotation.Own(AuthoredTransform.Rotate(element), Adopts(driven, MotionTransitionSlots.Rotate));
             var turn = ReadRotationDeg(element, binding, own) + SpinAngleDeg(t);
-            element.style.rotate = new Rotate(Angle.Degrees(turn));
-            binding.Rotation.Wrote(element.style.rotate);
+            AuthoredTransform.SetRotate(element, new Rotate(Angle.Degrees(turn)));
+            binding.Rotation.Wrote(AuthoredTransform.Rotate(element));
         }
 
         private static void ApplyPing(VisualElement element, StyleAnimateBinding binding, float t,
@@ -798,10 +798,10 @@ namespace Velvet
             if ((free & ~yielded & MotionTransitionSlots.Scale) != MotionTransitionSlots.None)
             {
                 // The keyframes' scale(2) multiplies the element's own `scale` rather than replacing it.
-                var inline = binding.Scale.Own(element.style.scale, Adopts(driven, MotionTransitionSlots.Scale));
+                var inline = binding.Scale.Own(AuthoredTransform.Scale(element), Adopts(driven, MotionTransitionSlots.Scale));
                 var own = ReadScale(element, binding, inline);
-                element.style.scale = new Scale(new Vector3(own.x * factor, own.y * factor, own.z));
-                binding.Scale.Wrote(element.style.scale);
+                AuthoredTransform.SetScale(element, new Scale(new Vector3(own.x * factor, own.y * factor, own.z)));
+                binding.Scale.Wrote(AuthoredTransform.Scale(element));
             }
         }
 
@@ -816,8 +816,8 @@ namespace Velvet
             {
                 return;
             }
-            var turnInline = binding.Rotation.Own(element.style.rotate, Adopts(driven, MotionTransitionSlots.Rotate));
-            var scaleInline = binding.Scale.Own(element.style.scale, Adopts(driven, MotionTransitionSlots.Scale));
+            var turnInline = binding.Rotation.Own(AuthoredTransform.Rotate(element), Adopts(driven, MotionTransitionSlots.Rotate));
+            var scaleInline = binding.Scale.Own(AuthoredTransform.Scale(element), Adopts(driven, MotionTransitionSlots.Scale));
             var turn = ReadRotationDeg(element, binding, turnInline);
             var scale = ReadScale(element, binding, scaleInline);
             var lift = BounceOffsetPx(BounceLift(t), height, turn, scale.y);
@@ -826,12 +826,12 @@ namespace Velvet
             {
                 return;
             }
-            var translation = binding.Translation.Own(SeatedTranslate.Read(element), Adopts(driven, MotionTransitionSlots.Translate));
+            var translation = binding.Translation.Own(element.style.translate, Adopts(driven, MotionTransitionSlots.Translate));
             var own = ReadTranslate(element, binding, translation);
             var x = LengthPx(own.x, width) + lift.x;
             var y = LengthPx(own.y, height) + lift.y;
-            SeatedTranslate.Write(element, new Translate(new Length(x), new Length(y), own.z));
-            binding.Translation.Wrote(SeatedTranslate.Read(element));
+            element.style.translate = new Translate(new Length(x), new Length(y), own.z);
+            binding.Translation.Wrote(element.style.translate);
         }
 
         // One frame of a registered animation at loop position t. Each property composes with the element's own the
@@ -849,18 +849,18 @@ namespace Velvet
             }
             if (keyframes.Rotate != null && (free & ~yielded & MotionTransitionSlots.Rotate) != MotionTransitionSlots.None)
             {
-                var inline = binding.Rotation.Own(element.style.rotate, Adopts(driven, MotionTransitionSlots.Rotate));
+                var inline = binding.Rotation.Own(AuthoredTransform.Rotate(element), Adopts(driven, MotionTransitionSlots.Rotate));
                 var turn = ReadRotationDeg(element, binding, inline) + keyframes.Rotate.Eval(t, 0f, 0f, timing);
-                element.style.rotate = new Rotate(Angle.Degrees(turn));
-                binding.Rotation.Wrote(element.style.rotate);
+                AuthoredTransform.SetRotate(element, new Rotate(Angle.Degrees(turn)));
+                binding.Rotation.Wrote(AuthoredTransform.Rotate(element));
             }
             if (keyframes.Scale != null && (free & ~yielded & MotionTransitionSlots.Scale) != MotionTransitionSlots.None)
             {
-                var inline = binding.Scale.Own(element.style.scale, Adopts(driven, MotionTransitionSlots.Scale));
+                var inline = binding.Scale.Own(AuthoredTransform.Scale(element), Adopts(driven, MotionTransitionSlots.Scale));
                 var own = ReadScale(element, binding, inline);
                 var factor = keyframes.Scale.Eval(t, 1f, 1f, timing);
-                element.style.scale = new Scale(new Vector3(own.x * factor, own.y * factor, own.z));
-                binding.Scale.Wrote(element.style.scale);
+                AuthoredTransform.SetScale(element, new Scale(new Vector3(own.x * factor, own.y * factor, own.z)));
+                binding.Scale.Wrote(AuthoredTransform.Scale(element));
             }
             if ((keyframes.TranslateX != null || keyframes.TranslateY != null)
                 && (free & ~yielded & MotionTransitionSlots.Translate) != MotionTransitionSlots.None)
@@ -872,13 +872,13 @@ namespace Velvet
         private static void ApplyCustomTranslate(VisualElement element, StyleAnimateBinding binding, KeyframeSet keyframes,
             float t, MotionTransitionSlots driven)
         {
-            var translation = binding.Translation.Own(SeatedTranslate.Read(element), Adopts(driven, MotionTransitionSlots.Translate));
+            var translation = binding.Translation.Own(element.style.translate, Adopts(driven, MotionTransitionSlots.Translate));
             var own = ReadTranslate(element, binding, translation);
             var (width, height) = (element.resolvedStyle.width, element.resolvedStyle.height);
             var x = LengthPx(own.x, float.IsNaN(width) ? 0f : width) + (keyframes.TranslateX?.Eval(t, 0f, 0f, binding.Spec.Timing) ?? 0f);
             var y = LengthPx(own.y, float.IsNaN(height) ? 0f : height) + (keyframes.TranslateY?.Eval(t, 0f, 0f, binding.Spec.Timing) ?? 0f);
-            SeatedTranslate.Write(element, new Translate(new Length(x), new Length(y), own.z));
-            binding.Translation.Wrote(SeatedTranslate.Read(element));
+            element.style.translate = new Translate(new Length(x), new Length(y), own.z);
+            binding.Translation.Wrote(element.style.translate);
         }
 
         // A translate component in pixels; a percentage is of the element's own extent along that axis.

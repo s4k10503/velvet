@@ -159,7 +159,7 @@ namespace Velvet
         public float SimulatedSeconds;
         // An inline filter renders the element through an offscreen tree sized to its layout boundingBox, so
         // the particle geometry drawn beyond the host rect clips; a last-child spacer widens the boundingBox to
-        // cover them (shared with the skew / shadow paints via SilhouetteBoundsSpacer). Unlike those static
+        // cover them (shared with the shadow paint via SilhouetteBoundsSpacer). Unlike those static
         // AABBs the particles move every frame, hence the quantize + last-applied cache below: without them
         // the spacer would re-layout (and the filter texture reallocate) on every tick.
         public bool WantSpacer;
@@ -228,7 +228,7 @@ namespace Velvet
             var binding = new ParticlesBinding(settings);
             binding.OnGenerate = mgc => Paint(mgc, element, element, binding, 0);
             // Append: the particles are the element's CONTENT, drawn over any backdrop paint — a
-            // co-resident shadow / skew silhouette prepends its callback precisely so that content
+            // co-resident shadow silhouette prepends its callback precisely so that content
             // registered later covers it.
             element.generateVisualContent += binding.OnGenerate;
             // A recurring item like this repaint tick survives a keyed reorder's detach/re-attach on

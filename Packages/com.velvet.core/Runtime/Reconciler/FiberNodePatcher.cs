@@ -23,7 +23,7 @@ namespace Velvet
             // hover:/focus:/dark: clip payload toggles — the class toggle alone does nothing in UITK.
             _ctx.ClipPathReResolve = _appliers.ReResolveClipPathLive;
             // Same seam for every other class-driven pass a variant can change — the layout manipulators and
-            // the paint layers (skew / gradient / animate / shadow / border-style). A variant that toggles
+            // the paint layers (gradient / animate / shadow / border-style) and the skew. A variant that toggles
             // one of their gate tokens changes what the element should carry, and that toggle never reaches
             // the reconciled class array those passes are otherwise configured from.
             _ctx.VariantGatedReSync = ReSyncVariantGatedPasses;
@@ -394,14 +394,11 @@ namespace Velvet
         //   diff shows over its bake; the two images themselves are ranked by StyleArbitraryValueResolver.
         // - animate-* motion runs after the gradient (a pan mode reads the live gradient) and reconciles
         //   its own restart/attach/detach against the new class list.
-        // - Skew is a wrapper-less paint (the sheared silhouette is the element's own generateVisualContent);
-        //   its stash / spec sync must observe this patch's freshly-applied class styling, so it follows the
-        //   passes that apply it. Its resolved X angle is forwarded so the shadow gate never re-parses the
-        //   skew family.
-        // - The shadow paint follows skew (a skewed caster's shadow follows the sheared silhouette) and reads
-        //   the caller's clipActive verdict.
-        // - border-dashed / border-dotted runs strictly AFTER skew and shadow so it reads their final
-        //   ownership — while either owns the face the dashed layer defers (the border stays solid), so an
+        // - Skew composes into the inline rotate and scale slots, which the passes that apply the class
+        //   styling also write, so it follows them.
+        // - The shadow paint reads the caller's clipActive verdict.
+        // - border-dashed / border-dotted runs strictly AFTER shadow so it reads its final
+        //   ownership — while the shadow owns the face the dashed layer defers (the border stays solid), so an
         //   add/remove of skew/shadow in the same pass resolves without a race.
         // - The ring overlay and the backdrop layer run last. Neither owns any part of the element's face or contends
         //   with the layers above, so their position here is not load-bearing; they sit at the end because both
@@ -422,8 +419,8 @@ namespace Velvet
             _appliers.ApplyAnimateOnPatch(element, classNames);
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);
             _appliers.ApplyParticlesSpacer(element, classNames);
-            var skew = _appliers.ApplySkewOnPatch(element, classNames, classesChanged);
-            _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skew);
+            _appliers.ApplySkewOnPatch(element, classNames, classesChanged);
+            _appliers.ApplyShadowOnPatch(element, classNames, clipActive);
             _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
             _appliers.ApplyBackdropOnPatch(element, classNames);

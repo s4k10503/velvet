@@ -141,8 +141,8 @@ namespace Velvet
             StyleFilterTransitionDriver.Release(element);
             // The clock its last mount recorded would otherwise answer for the next consumer's filter tweens.
             MotionClock.Forget(element);
-            // A skewed parent's seat would otherwise compose the next consumer's translate.
-            SeatedTranslate.Forget(element);
+            // A skew composed into the rotate and scale would otherwise outlive the element's last use.
+            AuthoredTransform.Release(element);
             ResetInlineStyle(element.style);
             SuspenseHiddenElements.Release(element);
 

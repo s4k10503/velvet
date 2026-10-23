@@ -12,15 +12,11 @@ namespace Velvet
         SkewPickRegion? PickRegion { get; set; }
     }
 
-    // The shape a skewed element is picked by: its box sheared by the tangents it paints with, or the box alone where
-    // the shear is the element's transform. In that case each corner is taken to where the element is drawn
-    // (worldTransform) and back through WorldToLocal; SkewTransformPlaybackTests holds the outcome to a pointer over the
-    // drawn shape.
+    // The shape a skewed element is picked by: its box with each corner taken to where the element is drawn
+    // (worldTransform) and back through WorldToLocal, which is how a pointer arrives. SkewTransformPlaybackTests holds
+    // the outcome to a pointer over the drawn shape.
     internal sealed class SkewPickRegion
     {
-        public float TanX;
-        public float TanY;
-
         public bool Contains(VisualElement element, Vector2 local)
         {
             var width = element.layout.width;
@@ -29,10 +25,10 @@ namespace Velvet
             {
                 return false;
             }
-            var q0 = Corner(element, new Vector2(0f, 0f), width, height);
-            var q1 = Corner(element, new Vector2(width, 0f), width, height);
-            var q2 = Corner(element, new Vector2(width, height), width, height);
-            var q3 = Corner(element, new Vector2(0f, height), width, height);
+            var q0 = Corner(element, new Vector2(0f, 0f));
+            var q1 = Corner(element, new Vector2(width, 0f));
+            var q2 = Corner(element, new Vector2(width, height));
+            var q3 = Corner(element, new Vector2(0f, height));
             var s0 = Side(q0, q1, local);
             var s1 = Side(q1, q2, local);
             var s2 = Side(q2, q3, local);
@@ -42,15 +38,9 @@ namespace Velvet
             return allNonNegative || allNonPositive;
         }
 
-        private Vector2 Corner(VisualElement element, Vector2 corner, float width, float height)
+        private static Vector2 Corner(VisualElement element, Vector2 corner)
         {
-            var sheared = SilhouetteFace.Shear(corner, width, height, TanX, TanY);
-            // Painted, the shear is in the element's own space, which a point arrives in as it is.
-            if (TanX != 0f || TanY != 0f)
-            {
-                return sheared;
-            }
-            var world = element.worldTransform.MultiplyPoint3x4(new Vector3(sheared.x, sheared.y, 0f));
+            var world = element.worldTransform.MultiplyPoint3x4(new Vector3(corner.x, corner.y, 0f));
             return element.WorldToLocal(new Vector2(world.x, world.y));
         }
 

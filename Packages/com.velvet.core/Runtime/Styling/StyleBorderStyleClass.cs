@@ -26,7 +26,7 @@ namespace Velvet
 
     // Parses Velvet's border line-style utilities: border-dashed / border-dotted / border-solid. UI Toolkit
     // has no CSS border-style property, so a dashed / dotted border is painted by BorderStyleSilhouette (the
-    // element's own generateVisualContent, like the skew silhouette) while the native border color is
+    // element's own generateVisualContent) while the native border color is
     // suppressed and its width kept (the box still reserves the same layout space). border-solid is a
     // recognized reset — it overrides an earlier border-dashed in the cascade, keeping the native solid
     // border. Same shape as StyleSkewClass: a cheap gate plus a cascade-correct extractor (last recognized

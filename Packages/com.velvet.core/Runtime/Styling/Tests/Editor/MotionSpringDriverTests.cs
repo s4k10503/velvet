@@ -665,8 +665,7 @@ namespace Velvet.Tests
                 type: TransitionType.Spring, stiffness: 100f, damping: 20f, mass: 1f);
 
             // Assert
-            Assert.That(ctx.SkewBindings.TryGetValue(element, out var binding) ? binding.Spec.XDeg : float.NaN,
-                Is.EqualTo(12f));
+            Assert.That(AuthoredTransform.TryGetSkew(element, out var xDeg, out _) ? xDeg : float.NaN, Is.EqualTo(12f));
         }
 
         [Test]
@@ -681,12 +680,11 @@ namespace Velvet.Tests
                 toClasses: new[] { "opacity-100" }, durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f);
 
             // Assert
-            Assert.That(ctx.SkewBindings.TryGetValue(element, out var binding) ? binding.Spec.XDeg : float.NaN,
-                Is.EqualTo(12f));
+            Assert.That(AuthoredTransform.TryGetSkew(element, out var xDeg, out _) ? xDeg : float.NaN, Is.EqualTo(12f));
         }
 
         [Test]
-        public void Given_ASkewPlayOnAnUnskewedElement_When_ItIsCancelled_Then_TheSkewBindingIsGone()
+        public void Given_ASkewPlayOnAnUnskewedElement_When_ItIsCancelled_Then_TheSkewIsGone()
         {
             // Arrange
             var ctx = new ReconcilerContext();
@@ -699,7 +697,8 @@ namespace Velvet.Tests
             ctx.StyleAnimationScheduler.CancelEnter(element);
 
             // Assert
-            Assert.That(ctx.SkewBindings.ContainsKey(element), Is.False);
+            Assert.That((ctx.SkewTransformed.ContainsKey(element), ctx.SkewDriven.ContainsKey(element)),
+                Is.EqualTo((false, false)));
         }
 
         [Test]

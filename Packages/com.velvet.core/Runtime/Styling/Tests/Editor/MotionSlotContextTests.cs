@@ -174,43 +174,8 @@ namespace Velvet.Tests
                 Is.EqualTo(translate ? new[] { 10f, 60f } : new[] { 0.3f, 0f }).Within(1e-5f));
         }
 
-        [Test]
-        public void Given_ASeatedChildWithItsOwnTranslate_When_ATranslatePlayResolves_Then_ItStartsFromTheOwnTranslate()
-        {
-            // Arrange — the seat shifts the slot by -8px (the centroid sits above the caster's centre
-            // under a positive shear), so a read of the slot would start the play from -4px.
-            var element = MountInFixedParent();
-            element.style.translate = new Translate(4f, 0f, 0f);
-            SeatedTranslate.Seat(element, new SeatFrame(10f, 10f, 100f, 100f, 0.2f, 0f));
-
-            // Act
-            var plan = Resolve(element, new string[0], new[] { "translate-x-[20px]" });
-
-            // Assert
-            Assert.That(plan.TranslateX?.from ?? float.NaN, Is.EqualTo(4f).Within(1e-5f));
-        }
-
         private static readonly System.Reflection.MethodInfo s_createProjection = typeof(MotionLayoutIdDriver)
             .GetMethod("CreateProjection", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-
-        [Test]
-        public void Given_ASeatedChildWithItsOwnTranslate_When_ALayoutIdProjectionStarts_Then_ItStartsFromTheOwnTranslate()
-        {
-            // Arrange — the seat shifts the drawn translate by -8px, so the resolved style reads -4px where the child's
-            // own is 4px.
-            var element = MountInFixedParent();
-            element.style.translate = new Translate(4f, 0f, 0f);
-            SeatedTranslate.Seat(element, new SeatFrame(10f, 10f, 100f, 100f, 0.2f, 0f));
-            EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
-            var seated = Mathf.Abs(element.resolvedStyle.translate.x + 4f) < 1e-3f;
-
-            // Act
-            var projection = (LayoutIdProjection)s_createProjection.Invoke(null,
-                new object[] { element, element.parent, new ReconcilerContext() });
-
-            // Assert — read as NaN where the seat never reached the resolved style, so the case cannot pass without it.
-            Assert.That(seated ? projection.StartTranslate.x : float.NaN, Is.EqualTo(4f).Within(1e-3f));
-        }
 
         [Test]
         public void Given_AMountedTranslateWithOnlyAYTarget_When_Resolved_Then_XKeepsItsFrameAndYStartsFromItsFrame()

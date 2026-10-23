@@ -9,8 +9,8 @@ using static Velvet.TestUtilities.PlayModeRealtimeTestHelpers;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins, by real GPU pixel readback, that a skew written as a uniform scale and one 3D rotation
-    /// (<see cref="SkewTransformFactor"/>) is drawn by UI Toolkit as the shear it stands for.
+    /// Pins, by real GPU pixel readback, that a skew written as a scale and one 3D rotation
+    /// (<see cref="AuthoredTransform"/>, <see cref="SkewTransformFactor"/>) is drawn by UI Toolkit as the shear it stands for.
     /// </summary>
     [Timeout(600000)]
     internal sealed class SkewTransformPlaybackTests
@@ -92,12 +92,7 @@ namespace Velvet.Tests
         private IEnumerator Mount(float xDeg, float yDeg, string extraClasses = "")
         {
             var box = MountBox(extraClasses);
-            if (SkewTransformFactor.TryFactor(xDeg, yDeg, out var rotation, out var scale))
-            {
-                rotation.ToAngleAxis(out var angle, out var axis);
-                box.style.rotate = new Rotate(new Angle(angle, AngleUnit.Degree), axis);
-                box.style.scale = new Scale(new Vector3(scale, scale, 1f));
-            }
+            AuthoredTransform.Engage(box, xDeg, yDeg);
             return WaitRealtimeDraining(0.8, _host.TargetTexture);
         }
 

@@ -476,10 +476,10 @@ namespace Velvet
                     WriteTranslate(value);
                     break;
                 case AnimateChannel.Scale:
-                    _element.style.scale = new Scale(new Vector2(value, value));
+                    AuthoredTransform.SetScale(_element, new Scale(new Vector2(value, value)));
                     break;
                 default:
-                    _element.style.rotate = new Rotate(Angle.Degrees(value));
+                    AuthoredTransform.SetRotate(_element, new Rotate(Angle.Degrees(value)));
                     break;
             }
         }
@@ -489,7 +489,7 @@ namespace Velvet
             var pose = ScopedPose.Of(_element);
             if (_channel == AnimateChannel.X) pose.X = value;
             else pose.Y = value;
-            SeatedTranslate.Write(_element, new Translate(new Length(pose.X), new Length(pose.Y)));
+            _element.style.translate = new Translate(new Length(pose.X), new Length(pose.Y));
         }
     }
 }

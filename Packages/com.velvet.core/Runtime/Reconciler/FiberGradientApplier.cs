@@ -4,8 +4,7 @@ namespace Velvet
 {
     // The wrapper-less PAINT layer for bg-gradient-* utilities: bakes the gradient to a texture and
     // applies it as the element's own background-image (UI Toolkit clips it to the element's
-    // border-radius). Defers to a skew binding when one owns the element's face (see FiberSkewApplier),
-    // since a skewed caster paints its gradient on the sheared mesh instead.
+    // border-radius).
     internal sealed class FiberGradientApplier
     {
         private readonly ReconcilerContext _ctx;
@@ -25,18 +24,10 @@ namespace Velvet
             {
                 return;
             }
-            // A skewed element owns its gradient (ApplySkewOnCreate ran first and fed the spec into the
-            // skew binding, which paints it on the sheared mesh). Defer — a straight background-image here
-            // would render a second, un-sheared rectangle behind the slant.
-            if (_ctx.SkewBindings.ContainsKey(element))
-            {
-                return;
-            }
             _ctx.GradientBackgrounds[element] = GradientBackground.Bind(element, spec);
         }
 
-        // Patch-time reconciliation of an element's gradient against its new class list. Mirrors the
-        // skew layer's four cases: re-apply on a changed spec, attach a newly-gradiented element, clear one
+        // Patch-time reconciliation of an element's gradient against its new class list: re-apply on a changed spec, attach a newly-gradiented element, clear one
         // whose gradient classes were removed, or the steady state (spec unchanged), which skips the re-bake
         // and only re-syncs the sizing to whether a StyleOverrides.BackgroundImage shows over the bake (the
         // image itself is ranked by StyleArbitraryValueResolver, so DiffStyles cannot leave it stale).
@@ -47,12 +38,7 @@ namespace Velvet
             var want = StyleGradientClass.HasGradientClass(classNames)
                 && StyleGradientClass.TryExtract(classNames, out spec);
 
-            // A skewed element paints its gradient on the sheared mesh (ApplySkewOnPatch runs after this and
-            // feeds it the spec), so the straight background-image path must stand down. Drop any straight
-            // gradient left from a prior non-skew state so the un-sheared rectangle does not linger behind the
-            // slant; the same drop clears one whose gradient classes were removed.
-            var skewed = StyleSkewClass.TryExtract(classNames, out _);
-            if (skewed || !want)
+            if (!want)
             {
                 if (bound)
                 {

@@ -91,14 +91,14 @@ namespace Velvet
         }
     }
 
-    // Shared face-painting kernel for the wrapper-less silhouette layers (skew + drop shadow). Both layers
+    // Shared face-painting kernel for the wrapper-less silhouette layers (drop shadow, dashed border). They
     // suppress an element's native rectangular background / border (UI Toolkit draws those at a fixed point in
     // its pipeline, BEFORE generateVisualContent, so a painter that needs to sit behind OR ahead of the fill —
-    // a sheared face, an offset shadow halo — cannot interleave with the native chrome) and REPAINT that chrome
-    // in the element's own generateVisualContent: SkewSilhouette repaints it sheared; BoxShadowSilhouette
-    // repaints it UPRIGHT (tanX = tanY = 0) on top of the outer shadow quads, keeping the fill above their
-    // anti-aliased cut edge. The two shared pieces are the captured-face STASH (sentinel suppression + color capture +
-    // patch-time re-sync) and the rounded-rect path BUILDER (sheared, an upright box being the zero-shear case).
+    // an offset shadow halo — cannot interleave with the native chrome) and REPAINT that chrome
+    // in the element's own generateVisualContent: BoxShadowSilhouette repaints it UPRIGHT (tanX = tanY = 0) on top
+    // of the outer shadow quads, keeping the fill above their anti-aliased cut edge. The two shared pieces are the
+    // captured-face STASH (sentinel suppression + color capture + patch-time re-sync) and the rounded-rect path
+    // BUILDER (sheared, an upright box being the zero-shear case).
     internal static class SilhouetteFace
     {
         // Suppression sentinel: visually nothing at 1/255 alpha, but distinguishable from both the unset
@@ -415,7 +415,7 @@ namespace Velvet
     }
 
     // The face colors of one element, with the sentinel-suppression machinery that hides the native rectangular
-    // background/border so a silhouette layer can repaint them. Owned by a SkewBinding / BoxShadowBinding /
+    // background/border so a silhouette layer can repaint them. Owned by a BoxShadowBinding /
     // BorderStyleBinding; its lifecycle (TryStash on attach, SyncOnPatch on a class change, Release on detach) is
     // driven by that binding.
     //
