@@ -162,7 +162,7 @@ namespace Velvet
             VisualElement target, string payload, bool on, long effectivePriority,
             ReconcilerContext? ctx, int declaration)
         {
-            var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
+            var core = StyleArbitraryValueResolver.StripImportant(payload, out var important);
             // Resolved on the element into a payload of its own, which comes back through Apply.
             if (StyleCustomPropertyClass.IsCustomPropertyToken(core))
             {
@@ -200,13 +200,14 @@ namespace Velvet
                 return TrackVariantGate(ctx, target, payload, key, declaration, on);
             }
 
+            var live = StyleClipPathClass.LiveClassName(core, important);
             if (on)
             {
-                StyleClassProjection.Add(target, core, key);
+                StyleClassProjection.Add(target, live, key);
             }
             else
             {
-                StyleClassProjection.Remove(target, core, key);
+                StyleClassProjection.Remove(target, live, key);
             }
 
             return TrackVariantGate(ctx, target, payload, key, declaration, on);
@@ -276,7 +277,7 @@ namespace Velvet
         // Records a toggled payload that is one of the gate tokens, returning true when the tracked set
         // changed. Returns false without touching anything for the parameterless callers (no context to
         // record into) and for the overwhelmingly common non-gate payload. An important font, text-effect, gap,
-        // divide, pointer-events or skew token keeps its bang, which is what lets it outrank the element's own important
+        // divide, pointer-events, skew or box-shadow token keeps its bang, which is what lets it outrank the element's own important
         // base token in the composed source; the other gate families read the bare core.
         private static bool TrackVariantGate(ReconcilerContext? ctx, VisualElement target, string payload,
             long priority, int declaration, bool on)
@@ -291,6 +292,7 @@ namespace Velvet
             => StyleFontClass.IsFontToken(core) || StyleTextEffectClass.IsTextEffectToken(core)
                 || StylePointerEventsClass.IsPointerEventsToken(core)
                 || StyleSkewClass.IsSkewClass(core)
+                || StyleShadowClass.IsShadowClass(core) || StyleShadowClass.IsInsetBoxShadowClass(core)
                 || (StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core))
                 || StyleDivideClass.IsDivideToken(core);
 

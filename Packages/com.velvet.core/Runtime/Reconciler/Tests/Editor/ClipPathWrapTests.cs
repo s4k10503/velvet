@@ -281,6 +281,22 @@ namespace Velvet.Tests
                 Is.EqualTo(ClipPathKind.Circle));
         }
 
+        [Test]
+        public void Given_AnImportantClipBeforeAPlainOne_When_Reconciled_Then_TheImportantShapeHolds()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "!" + Triangle + " clip-path-[circle(50%)]", name: "card") });
+
+            // Assert
+            var inner = scope.Root.Q<VisualElement>("card");
+            Assert.That(scope.Reconciler.Context.ClipPathBindings.TryGetValue(inner, out var binding)
+                ? binding.Spec?.Kind.ToString()
+                : "unbound", Is.EqualTo(ClipPathKind.Polygon.ToString()));
+        }
+
         // Patch: class addition / removal
 
         [Test]

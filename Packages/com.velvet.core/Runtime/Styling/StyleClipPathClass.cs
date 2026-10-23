@@ -108,6 +108,12 @@ namespace Velvet
         public static bool IsClipPathClass(string? cls)
             => cls == NoneClass || (cls != null && cls.StartsWith(ArbitraryPrefix, StringComparison.Ordinal));
 
+        // The name core, a class without its important modifier, takes on the live class list. An important
+        // clip-path keeps its bang there, since TryExtractLive reads the list and an important clip outranks every
+        // plain one wherever it sits.
+        public static string LiveClassName(string core, bool important)
+            => important && IsClipPathClass(core) ? "!" + core : core;
+
         // True when the class list resolves to an ACTIVE clip (a parseable clip-path-[…] not
         // overridden by a later clip-path-none). Used by the Motion create-path warning; the patch
         // layers resolve clip state once in ApplyClipPathOnPatch and pass it along instead.
@@ -126,13 +132,16 @@ namespace Velvet
             }
 
             var found = false;
+            var heldImportant = false;
             foreach (var cls in classNames)
             {
-                if (TryParse(cls, out var parsed, out var wantClip))
+                // A recognized utility overrides earlier ones of its importance and plain ones; clip-path-none flips
+                // found back to false.
+                if (TryParse(cls, out var parsed, out var wantClip, out var important) && (important || !heldImportant))
                 {
-                    // A recognized utility overrides earlier ones; clip-path-none flips found back to false.
                     found = wantClip;
                     spec = wantClip ? parsed : null;
+                    heldImportant = important;
                 }
             }
             return found;
@@ -172,7 +181,8 @@ namespace Velvet
                     leaf = payload;
                     peeled = true;
                 }
-                if (peeled && leaf != null && leaf.StartsWith(ArbitraryPrefix, StringComparison.Ordinal))
+                leaf = StyleArbitraryValueResolver.StripImportant(leaf ?? string.Empty, out _);
+                if (peeled && leaf.StartsWith(ArbitraryPrefix, StringComparison.Ordinal))
                 {
                     return true;
                 }
@@ -192,21 +202,25 @@ namespace Velvet
                 return false;
             }
             var found = false;
+            var heldImportant = false;
             foreach (var cls in element.GetClasses())
             {
-                if (TryParse(cls, out var parsed, out var wantClip))
+                if (TryParse(cls, out var parsed, out var wantClip, out var important) && (important || !heldImportant))
                 {
                     found = wantClip;
                     spec = wantClip ? parsed : null;
+                    heldImportant = important;
                 }
             }
             return found;
         }
 
-        private static bool TryParse(string? cls, out ClipPathSpec? spec, out bool wantClip)
+        // important says the class carries the important modifier (!clip-path-[…], clip-path-[…]!).
+        private static bool TryParse(string? cls, out ClipPathSpec? spec, out bool wantClip, out bool important)
         {
             spec = null;
             wantClip = false;
+            cls = StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out important);
             if (string.IsNullOrEmpty(cls))
             {
                 return false;

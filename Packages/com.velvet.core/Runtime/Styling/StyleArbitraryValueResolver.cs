@@ -3118,7 +3118,7 @@ namespace Velvet
             }
             else if (addToClassListFallback)
             {
-                element.AddToClassList(core);
+                element.AddToClassList(StyleClipPathClass.LiveClassName(core, (priority & StyleLayerPriority.Important) != 0));
             }
         }
 
@@ -3136,7 +3136,7 @@ namespace Velvet
             }
             else
             {
-                element.RemoveFromClassList(core);
+                element.RemoveFromClassList(StyleClipPathClass.LiveClassName(core, (priority & StyleLayerPriority.Important) != 0));
             }
         }
 

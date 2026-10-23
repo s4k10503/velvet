@@ -163,12 +163,18 @@ namespace Velvet
         // filter (StyleFilterValueParser.TryParseDropShadow), composed apart from this paint as CSS composes
         // filter apart from box-shadow.
         public static bool IsShadowClass(string cls)
-            => !string.IsNullOrEmpty(cls) && (cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal));
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            return !string.IsNullOrEmpty(core) && (core == "shadow" || core.StartsWith("shadow-", StringComparison.Ordinal));
+        }
 
         // inset-shadow-* and inset-ring-* write layers of the same box-shadow, so they are drawn by this paint.
         private static bool IsInsetLayerClass(string cls)
-            => !string.IsNullOrEmpty(cls) && (cls == "inset-ring" || cls.StartsWith("inset-shadow-", StringComparison.Ordinal)
-                || cls.StartsWith("inset-ring-", StringComparison.Ordinal));
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            return !string.IsNullOrEmpty(core) && (core == "inset-ring" || core.StartsWith("inset-shadow-", StringComparison.Ordinal)
+                || core.StartsWith("inset-ring-", StringComparison.Ordinal));
+        }
 
         // Cheap early-out gate: true when ANY class is shadow or inset-ring, or begins with shadow-, inset-shadow- or
         // inset-ring-. Used to skip the full parse on the ~99% of elements that carry no shadow class and no binding.
@@ -198,6 +204,9 @@ namespace Velvet
             public Color? Colour;
             // -inherit, which takes the parent's colour for this family and keeps each layer's own where it has none.
             public bool Inherit;
+            // Whether an important class holds the layers (with their /N), or the colour.
+            public bool LayersImportant;
+            public bool ColourImportant;
 
             public ShadowSpec[] Resolved(ShadowColourFamily family)
             {
@@ -237,6 +246,8 @@ namespace Velvet
             public float Width;
             public Color? Colour;
             public bool Inherit;
+            public bool WidthImportant;
+            public bool ColourImportant;
 
             public ShadowSpec[] Resolved()
                 => Width > 0f
@@ -293,8 +304,10 @@ namespace Velvet
 
         // Reads cls into the family root names when it is one of its utilities: a size (the bare root is the empty
         // suffix, a preset of shadow's and of none of inset-shadow's), its -none, a bracketed shadow list, or a colour.
+        // An important class takes the slot it writes from a plain one, as `box-shadow: … !important` does.
         private static bool TryRead(string cls, string root, Dictionary<string, ShadowSpec[]> presets, ref ShadowFamily family)
         {
+            cls = StyleArbitraryValueResolver.StripImportant(cls, out var important);
             if (string.IsNullOrEmpty(cls) || !cls.StartsWith(root, StringComparison.Ordinal))
             {
                 return false;
@@ -310,23 +323,43 @@ namespace Velvet
                 {
                     return false;
                 }
-                family.Inherit = true;
-                family.Colour = null;
+                if (Takes(ref family.ColourImportant, important))
+                {
+                    family.Inherit = true;
+                    family.Colour = null;
+                }
                 return true;
             }
             if (TryReadColour(suffix, out var colour))
             {
-                colour.a *= alpha ?? 1f;
-                family.Colour = colour;
-                family.Inherit = false;
+                if (Takes(ref family.ColourImportant, important))
+                {
+                    colour.a *= alpha ?? 1f;
+                    family.Colour = colour;
+                    family.Inherit = false;
+                }
                 return true;
             }
             if (!TryReadSize(suffix, presets, alpha, out var layers))
             {
                 return false;
             }
-            family.Layers = layers;
-            family.SizeAlpha = alpha;
+            if (Takes(ref family.LayersImportant, important))
+            {
+                family.Layers = layers;
+                family.SizeAlpha = alpha;
+            }
+            return true;
+        }
+
+        // Whether a class of this importance takes a slot whose holder's importance is held, which it then holds.
+        private static bool Takes(ref bool held, bool important)
+        {
+            if (held && !important)
+            {
+                return false;
+            }
+            held = important;
             return true;
         }
 
@@ -352,9 +385,13 @@ namespace Velvet
         // inset-ring (1px), inset-ring-<n>, inset-ring-[<length>] and inset-ring-<colour>, as Tailwind reads them.
         private static void TryReadInsetRing(string cls, ref InsetRing ring)
         {
+            cls = StyleArbitraryValueResolver.StripImportant(cls, out var important);
             if (cls == "inset-ring")
             {
-                ring.Width = 1f;
+                if (Takes(ref ring.WidthImportant, important))
+                {
+                    ring.Width = 1f;
+                }
                 return;
             }
             if (string.IsNullOrEmpty(cls) || !cls.StartsWith("inset-ring-", StringComparison.Ordinal))
@@ -369,17 +406,20 @@ namespace Velvet
             var width = alpha == null ? InsetRingWidth(suffix) : null;
             if (width != null)
             {
-                ring.Width = width.Value;
+                if (Takes(ref ring.WidthImportant, important))
+                {
+                    ring.Width = width.Value;
+                }
             }
             else if (suffix == "inherit")
             {
-                if (alpha == null)
+                if (alpha == null && Takes(ref ring.ColourImportant, important))
                 {
                     ring.Inherit = true;
                     ring.Colour = null;
                 }
             }
-            else if (TryReadColour(suffix, out var colour))
+            else if (TryReadColour(suffix, out var colour) && Takes(ref ring.ColourImportant, important))
             {
                 colour.a *= alpha ?? 1f;
                 ring.Colour = colour;

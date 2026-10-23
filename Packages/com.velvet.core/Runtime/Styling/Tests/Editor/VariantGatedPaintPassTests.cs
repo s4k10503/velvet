@@ -87,6 +87,24 @@ namespace Velvet.Tests
             Assert.That(SkewX(scope, card), Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads neither bang, so the payload's size paints there; once the
+        // base's bang is read, only the payload's own bang keeps it painting.
+        [Test]
+        public void Given_AnImportantShadowAndADarkImportantShadow_When_TheThemeTurnsDark_Then_ThePayloadsSizeIsPainted()
+        {
+            // Arrange — a plain payload would lose to the important base, so the payload keeps its bang.
+            using var scope = new ReconcilerScope();
+            var card = Mount(scope, "!shadow-sm dark:!shadow-2xl");
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert — shadow-2xl is one layer of blur 50, shadow-sm two layers of blur 3 and 2.
+            Assert.That(scope.Reconciler.Context.ShadowBindings.TryGetValue(card, out var binding)
+                ? binding.Layers.Length + " " + binding.Layers[0].Blur
+                : "none", Is.EqualTo("1 50"));
+        }
+
         [Test]
         public void Given_ADarkGatedSkewApplied_When_TheThemeTurnsLight_Then_TheFaceIsReturned()
         {
