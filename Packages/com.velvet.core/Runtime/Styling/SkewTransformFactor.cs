@@ -14,16 +14,29 @@ namespace Velvet
             var tx = Mathf.Tan(xDeg * Mathf.Deg2Rad);
             var ty = Mathf.Tan(yDeg * Mathf.Deg2Rad);
             // skewX(x) * skewY(y)
-            var a = 1f + (tx * ty);
-            var b = tx;
-            var c = ty;
-            var d = 1f;
+            var ok = TryFactor(1f + (tx * ty), tx, ty, 1f, out rotation, out var drawn);
+            scale = drawn.x;
+            return ok;
+        }
+
+        // The matrix [[a, b], [c, d]] as the pair of slots that draw it: scale.x * Matrix4x4.Rotate(rotation) has it
+        // as its top-left block. A rotation cannot reflect, so a matrix of negative determinant has its second column
+        // negated before it is factored and that reflection goes to the scale's y, which CSS `scale` takes negative.
+        // False for a matrix that collapses the plane or holds a value no float carries.
+        public static bool TryFactor(float a, float b, float c, float d, out Quaternion rotation, out Vector2 scale)
+        {
+            rotation = Quaternion.identity;
+            scale = Vector2.one;
             var determinant = (a * d) - (b * c);
-            if (!(determinant > 1e-6f) || float.IsInfinity(a) || float.IsNaN(a))
+            if (float.IsNaN(determinant) || float.IsInfinity(determinant) || Mathf.Abs(determinant) <= 1e-6f)
             {
-                rotation = Quaternion.identity;
-                scale = 1f;
                 return false;
+            }
+            var reflected = determinant < 0f;
+            if (reflected)
+            {
+                b = -b;
+                d = -d;
             }
             var e = (a + d) * 0.5f;
             var f = (a - d) * 0.5f;
@@ -41,7 +54,7 @@ namespace Velvet
             rotation = Quaternion.AngleAxis(after * Mathf.Rad2Deg, Vector3.forward)
                 * Quaternion.AngleAxis(foreshorten * Mathf.Rad2Deg, Vector3.right)
                 * Quaternion.AngleAxis(before * Mathf.Rad2Deg, Vector3.forward);
-            scale = larger;
+            scale = new Vector2(larger, reflected ? -larger : larger);
             return true;
         }
     }
