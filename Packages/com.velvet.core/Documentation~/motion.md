@@ -394,6 +394,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   instantly. A color or length with no
   compatible effective to-side target lands instantly; classes left in place can provide that target when
   the swap removes a from-side class.
+  A slot only the from-side names, or one the to-side leaves to a `-auto` length, heads for what the element shows on
+  it when the play starts if the element already carries the pose it plays into (a mount enter, whose resting
+  classes are applied) and that differs from the from-side's value; otherwise it lands with the swap.
 - **Classes on one side that write the same slot resolve as the cascade resolves them.** A shorthand
   is read slot by slot — `p-8` as four edges, `size-*` as a width and a height, `rounded-*` as four
   corners, `border-*` as four widths — and each slot animates toward whichever class holds it at
@@ -440,7 +443,7 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
 - **`aspect-[…]`, `aspect-square` and `aspect-video`** are length channels carrying the ratio.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: `-auto` lengths (`w-auto`, `top-auto`) are modes, not magnitudes (a `-auto` start
-  reads from the layout and animates); `shadow-*`, `skew-*` and gradients are baked silhouette paints;
+  reads from the layout and animates, and a `-auto` target is read as above); `shadow-*`, `skew-*` and gradients are baked silhouette paints;
   `filter-*` transitions by its own path ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a
   physical reparent.
 - A target-only uniform scale lands instantly when the sampled x and y scale values differ. The edge
@@ -742,8 +745,9 @@ while a single `rotate` and `scale` turn the squash axes with the element. An ev
 An important utility of the element's own (`!opacity-50`, `!rotate-45`) outranks the loop, as `!important` outranks a
 CSS animation: the loop leaves its slot alone and the utility's value shows. A value written into a looped slot
 from outside any Velvet render, such as `element.style.opacity = …` in a callback, is corrected on the loop's next
-tick, up to one tick later; UI Toolkit raises no event for an inline write (its setters only bump the element's
-version), so a write cannot be answered sooner.
+tick, up to one tick later; the only notification UI Toolkit gives of an inline write is `IDebugPanelChangeReceiver`, one receiver per panel,
+available in development builds and the Editor alone and warning each time one is set, so a write in a release
+player cannot be answered sooner.
 
 A layoutId move on an element with a running `animate-bounce`, `animate-ping` or `animate-spin` composes with it as
 CSS composes a layout animation with a keyframe one: the move writes the element's translate, scale or rotate, and

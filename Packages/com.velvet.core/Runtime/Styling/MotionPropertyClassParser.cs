@@ -222,6 +222,23 @@ namespace Velvet
             return index >= 0 && index < s_drivable.Length && s_drivable[index];
         }
 
+        /// <summary>
+        /// Resolves <c>w-auto</c>, <c>top-auto</c> and the rest of the <c>-auto</c> lengths to the property they leave
+        /// unset: a mode with no magnitude, whose value a drive reads off the element once it has had its layout.
+        /// </summary>
+        internal static bool TryParseAuto(string className, out ArbitraryProperty property)
+        {
+            property = default;
+            var core = StyleArbitraryValueResolver.StripImportant(className, out _);
+            if (!core.EndsWith("-auto", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var prefix = core.Substring(0, core.Length - "auto".Length);
+            return s_fullFamilies.Contains(prefix) && !prefix.StartsWith("max-", StringComparison.Ordinal)
+                && StyleArbitraryValueResolver.TryGetProperty(prefix, out property);
+        }
+
         // The semantic colour utilities, each with the custom property its sheet rule reads. Those properties change
         // with the theme, so a drive reads them off the live element (MotionSlotContext.TryReadThemeColor) rather than
         // mirroring a value; MotionPresetScaleTests pins this table against _palette.uss.

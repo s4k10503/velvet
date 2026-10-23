@@ -23,3 +23,5 @@
   overrides ignored them before. A sequence step's hold counts a Bezier override that outlasts the play.
 - An important utility on an element with an `animate-*` loop (`!opacity-50 animate-pulse`) holds its slot against
   the loop, where the loop overwrote it on every tick.
+- A slot only the leaving pose names, or one the entering pose leaves `-auto`, is driven toward what the element
+  shows there when it already carries the pose it plays into.

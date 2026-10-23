@@ -358,6 +358,9 @@ namespace Velvet
             public LengthUnit TranslateXUnit { get; init; }
             public LengthUnit TranslateYUnit { get; init; }
             public Dictionary<ArbitraryProperty, ArbitraryStyle>? Properties { get; init; }
+            // The longhands held by a token no magnitude is read from, and those held by a -auto length.
+            public StyleLonghandSet UnreadProperties { get; init; }
+            public StyleLonghandSet AutoProperties { get; init; }
             public int SwappedAxes { get; init; }
             public StyleLonghandSet SwappedProperties { get; init; }
 
@@ -435,6 +438,7 @@ namespace Velvet
         {
             var fromProperties = fromSide.Properties;
             var toProperties = toSide.Properties;
+            PairRestingTargets(in fromSide, in toSide, context, ref plan);
             if (toProperties == null)
             {
                 return;
@@ -460,6 +464,39 @@ namespace Velvet
                     .Add(new LengthChannelPlan(property, from.Value, to.Value, to.Unit));
             }
         }
+
+        // A slot only the from-side reads, or one the to-side leaves to a -auto length, heads for what the element shows
+        // on it now, where that differs from the from-side's value: an element that already carries the pose it plays
+        // into shows that pose's value, where one still showing the from-side would read its own back and
+        // stand still. Without a panel to read, or a unit to read it in, the slot lands with the swap.
+        private static void PairRestingTargets(in SideScan fromSide, in SideScan toSide, MotionSlotContext? context,
+            ref SpringPlan plan)
+        {
+            if (context is not { CarriesTarget: true } || fromSide.Properties == null)
+            {
+                return;
+            }
+            foreach (var (property, from) in fromSide.Properties)
+            {
+                var longhands = StyleArbitraryLonghands.Of(property);
+                var named = toSide.Properties != null && toSide.Properties.ContainsKey(property);
+                if (named || toSide.UnreadProperties.Overlaps(longhands)
+                    || !context.TryReadResting(property, from.Unit, out var resting) || SameValue(property, from, resting))
+                {
+                    continue;
+                }
+                if (MotionPropertyClassParser.IsColor(property))
+                {
+                    (plan.Colors ??= new List<ColorChannelPlan>()).Add(new ColorChannelPlan(property, from.Color, resting.Color));
+                    continue;
+                }
+                (plan.Lengths ??= new List<LengthChannelPlan>())
+                    .Add(new LengthChannelPlan(property, from.Value, resting.Value, from.Unit));
+            }
+        }
+
+        private static bool SameValue(ArbitraryProperty property, ArbitraryStyle a, ArbitraryStyle b)
+            => MotionPropertyClassParser.IsColor(property) ? a.Color == b.Color : Mathf.Abs(a.Value - b.Value) < 0.01f;
 
         #region Per-axis scale
 
@@ -671,6 +708,8 @@ namespace Velvet
             public bool Readable;
             public bool Swapped;
             public bool Rejected;
+            // Held by a -auto length, which has no magnitude but is not a token the cascade cannot read.
+            public bool Auto;
             public ArbitraryStyle Value;
         }
 
@@ -801,6 +840,8 @@ namespace Velvet
                 TranslateXUnit = AxisUnit(claims, ArbitraryProperty.TranslateX),
                 TranslateYUnit = AxisUnit(claims, ArbitraryProperty.TranslateY),
                 Properties = properties,
+                UnreadProperties = HeldLonghands(claims, auto: false),
+                AutoProperties = HeldLonghands(claims, auto: true),
                 SwappedAxes = swappedAxes,
                 SwappedProperties = swappedProperties,
                 UnreadAxes = unreadAxes,
@@ -908,6 +949,20 @@ namespace Velvet
             return claim.Readable ? claim.Value.Value : null;
         }
 
+        // The longhands of the property slots a token holds that no magnitude is read from, the -auto lengths apart.
+        private static StyleLonghandSet HeldLonghands(SlotClaim[] claims, bool auto)
+        {
+            var held = StyleLonghandSet.Empty;
+            for (var i = AxisSlotCount; i < claims.Length; i++)
+            {
+                if (claims[i].Claimed && !claims[i].Readable && claims[i].Auto == auto)
+                {
+                    held = held.Union(StyleArbitraryLonghands.Of(s_slots[i]));
+                }
+            }
+            return held;
+        }
+
         private static LengthUnit AxisUnit(SlotClaim[] claims, ArbitraryProperty axis)
         {
             var claim = claims[s_slotIndex[(int)axis]];
@@ -951,12 +1006,7 @@ namespace Velvet
             {
                 return;
             }
-            var hasAxisValue = TryParseAxisReading(className, out var readAxis, out var axisValue, out var axisUnit);
-            // TryRank leaves a both-axis translate's TranslateAxis unset, so the token writes exactly the two translate slots.
-            var bothTranslateAxes = TryParseBothTranslateAxes(className, out var bothAxesValue, out var bothAxesUnit);
-            var property = default(ArbitraryStyle);
-            var hasProperty = !hasAxisValue && (MotionPropertyClassParser.TryParse(className, out property)
-                || (context != null && MotionPropertyClassParser.TryParseThemeColor(className, context, out property)));
+            var read = ReadToken(className, context);
             for (var i = 0; i < claims.Length; i++)
             {
                 var slot = s_slots[i];
@@ -969,26 +1019,60 @@ namespace Velvet
                 claims[i] = new SlotClaim
                 {
                     Claimed = true, Precedence = token.Precedence, Swapped = swapped, Rejected = token.Rejected,
+                    Auto = i >= AxisSlotCount && IsSubset(slotLonghands, read.AutoLonghands),
                 };
                 // MUTANT_SURVIVES(equivalent, clause removed): deleting the slot comparison changes no admitted write.
                 // Axis-readable opacity/scale/rotate tokens write one axis; per-axis translates set TranslateAxis.
-                if ((hasAxisValue && slot == AxisSlot(readAxis)) || bothTranslateAxes)
+                if ((read.HasAxisValue && slot == AxisSlot(read.Axis)) || read.BothTranslateAxes)
                 {
                     claims[i].Readable = true;
-                    claims[i].Value = bothTranslateAxes
-                        ? new ArbitraryStyle(slot, bothAxesValue, bothAxesUnit)
-                        : new ArbitraryStyle(slot, axisValue, axisUnit);
+                    claims[i].Value = read.BothTranslateAxes
+                        ? new ArbitraryStyle(slot, read.BothValue, read.BothUnit)
+                        : new ArbitraryStyle(slot, read.AxisValue, read.AxisUnit);
                 }
-                else if (hasProperty && i >= AxisSlotCount
-                    && IsSubset(slotLonghands, StyleArbitraryLonghands.Of(property.Property)))
+                else if (read.HasProperty && i >= AxisSlotCount
+                    && IsSubset(slotLonghands, StyleArbitraryLonghands.Of(read.Property.Property)))
                 {
                     claims[i].Readable = true;
                     claims[i].Value = MotionPropertyClassParser.IsColor(slot)
-                        ? new ArbitraryStyle(slot, property.Color)
-                        : new ArbitraryStyle(slot, property.Value, property.Unit);
+                        ? new ArbitraryStyle(slot, read.Property.Color)
+                        : new ArbitraryStyle(slot, read.Property.Value, read.Property.Unit);
                 }
             }
         }
+
+        // What a class reads as: an axis value, both translate axes at once, a color or length, or a -auto length.
+        private struct TokenReading
+        {
+            public bool HasAxisValue;
+            public SpringAxis Axis;
+            public float AxisValue;
+            public LengthUnit AxisUnit;
+            // TryRank leaves a both-axis translate's TranslateAxis unset, so the token writes exactly the two translate slots.
+            public bool BothTranslateAxes;
+            public float BothValue;
+            public LengthUnit BothUnit;
+            public bool HasProperty;
+            public ArbitraryStyle Property;
+            public StyleLonghandSet AutoLonghands;
+        }
+
+        private static TokenReading ReadToken(string className, MotionSlotContext? context)
+        {
+            var read = new TokenReading();
+            read.HasAxisValue = TryParseAxisReading(className, out read.Axis, out read.AxisValue, out read.AxisUnit);
+            read.BothTranslateAxes = TryParseBothTranslateAxes(className, out read.BothValue, out read.BothUnit);
+            read.HasProperty = !read.HasAxisValue && (MotionPropertyClassParser.TryParse(className, out read.Property)
+                || (context != null && MotionPropertyClassParser.TryParseThemeColor(className, context, out read.Property)));
+            read.AutoLonghands = read.HasAxisValue || read.HasProperty ? StyleLonghandSet.Empty : AutoLonghands(className);
+            return read;
+        }
+
+        // The longhands a -auto length writes, none for any other class.
+        private static StyleLonghandSet AutoLonghands(string className)
+            => MotionPropertyClassParser.TryParseAuto(className, out var property)
+                ? StyleArbitraryLonghands.Of(property)
+                : StyleLonghandSet.Empty;
 
         private readonly struct RankedToken
         {

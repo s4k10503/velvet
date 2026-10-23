@@ -29,6 +29,38 @@ namespace Velvet
         // element's own, and reads no current value and no other resting holder.
         public bool Attached { get; }
 
+        // Whether the element already carries the pose a play heads for, so that what it shows is the target: every
+        // class of the pose is on it and none that only the pose it leaves has. A class the element holds as an inline
+        // value is on no class list and decides nothing.
+        public bool CarriesTarget { get; private init; }
+
+        private static bool CarriesPose(VisualElement element, string[]? pose, string[]? left)
+        {
+            var present = new HashSet<string>(element.GetClasses(), StringComparer.Ordinal);
+            var carried = false;
+            foreach (var core in ClassNames(pose))
+            {
+                if (!present.Contains(core)) return false;
+                carried = true;
+            }
+            var posed = new HashSet<string>(ClassNames(pose), StringComparer.Ordinal);
+            foreach (var core in ClassNames(left))
+            {
+                if (present.Contains(core) && !posed.Contains(core)) return false;
+            }
+            return carried;
+        }
+
+        // The classes that can be told by the class list.
+        private static IEnumerable<string> ClassNames(string[]? classes)
+        {
+            foreach (var cls in classes ?? Array.Empty<string>())
+            {
+                var core = StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out _);
+                if (core.Length > 0 && !StyleArbitraryValueResolver.IsInlineResolved(core)) yield return core;
+            }
+        }
+
         public static MotionSlotContext? Read(VisualElement element, string[]? fromClasses, string[]? toClasses,
             Func<ArbitraryProperty, bool> drivenByRunningPlay, Func<ArbitraryProperty, bool>? drivenByLivePlay = null)
         {
@@ -36,7 +68,10 @@ namespace Velvet
             {
                 return null;
             }
-            var context = new MotionSlotContext(element, drivenByRunningPlay, attached: true);
+            var context = new MotionSlotContext(element, drivenByRunningPlay, attached: true)
+            {
+                CarriesTarget = CarriesPose(element, toClasses, fromClasses),
+            };
             if (drivenByLivePlay != null) context._drivenByLivePlay = drivenByLivePlay;
             return Swapping(context, fromClasses, toClasses);
         }
@@ -290,6 +325,18 @@ namespace Velvet
         // its styles; false before that.
         public bool TryReadThemeColor(string variable, out Color color)
             => _element.customStyle.TryGetValue(new CustomStyleProperty<Color>(variable), out color);
+
+        /// <summary>
+        /// What the element shows on <paramref name="slot"/> now, in <paramref name="unit"/>, for a slot only one side of
+        /// a swap names: the value a play heads for when the element already carries the pose it plays into. False
+        /// where a play or a native transition is moving the slot, or the value cannot be put in the unit.
+        /// </summary>
+        public bool TryReadResting(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
+        {
+            value = default;
+            return !DrivenByLivePlay(slot) && !NativeTransitionRunning(slot) && TryReadResolved(slot, out value)
+                && (MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit));
+        }
 
         // The scale the element draws on each axis: its inline scale where that is set and no native transition is
         // moving it, else the resolved one.
