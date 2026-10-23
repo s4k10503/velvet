@@ -249,6 +249,7 @@ namespace Velvet
             {
                 return;
             }
+            ClaimMove(evt);
             // A stale Pending (the release happened where this panel could not observe it) must never
             // spuriously activate: any move arriving without the PRIMARY button held discards the
             // session lazily. Specifically bit 0, not the whole bitfield — a secondary-button drag after
@@ -453,7 +454,7 @@ namespace Velvet
                 {
                     continue;
                 }
-                if (!ReferenceEquals(FindEnclosingScope(binding.Anchor ?? positioner, _ctx, out _), _scopeElement))
+                if (!ReferenceEquals(FindEnclosingScope(positioner, _ctx, out _), _scopeElement))
                 {
                     continue;
                 }
@@ -543,10 +544,11 @@ namespace Velvet
 
         private void OnDragMove(PointerMoveEvent evt)
         {
-            if (evt.pointerId != _pointerId)
+            if (_closed || evt.pointerId != _pointerId)
             {
                 return;
             }
+            ClaimMove(evt);
             // A phantom session (the primary release happened where no observer could see it — a
             // capture-only delivery, or off-window) dies on the first buttonless motion instead of
             // dragging with nothing held. This MOVE-side check is the mouse phantom guard (a mouse
@@ -1009,6 +1011,42 @@ namespace Velvet
             }
         }
 
+        // The engine's own mark for a move a draggable owns: a reorderable ListView's dragger and a touch
+        // ScrollView skip a move carrying it, so neither starts its own gesture under a press this session holds.
+        // The mark is set in the trickle phase, before either one's bubble-phase handler reads it.
+        private static readonly System.Reflection.PropertyInfo? s_handledByDraggable =
+            EngineMember.PointerMoveHandledByDraggable.ResolveProperty();
+
+        private static void ClaimMove(PointerMoveEvent evt) => s_handledByDraggable?.SetValue(evt, true);
+
+        // An element of the press chain leaving the tree mid-session takes this session's callbacks and its hold
+        // on the pointer with it, and drops out of the release settle: a pooled element is free for any role
+        // before the session closes, and the settle would otherwise settle whatever it has become.
+        internal void ForgetPressChainElement(VisualElement element)
+        {
+            if (_closed || !_pressChain.Remove(element))
+            {
+                return;
+            }
+            UnregisterFrom(element, _onPendingMove);
+            UnregisterFrom(element, _onPendingUp);
+            UnregisterFrom(element, _onPendingCancel);
+            UnregisterFrom(element, _onDragMove);
+            UnregisterFrom(element, _onDragUp);
+            UnregisterFrom(element, _onDragDown);
+            UnregisterFrom(element, _onDragCancel);
+            element.ReleasePointer(_pointerId);
+        }
+
+        private static void UnregisterFrom<TEvent>(VisualElement element, EventCallback<TEvent>? callback)
+            where TEvent : EventBase<TEvent>, new()
+        {
+            if (callback != null)
+            {
+                element.UnregisterCallback(callback, TrickleDown.TrickleDown);
+            }
+        }
+
         private static bool IsPressClaimedBelow(VisualElement source, VisualElement? target, ReconcilerContext ctx)
         {
             var claimed = false;
@@ -1080,10 +1118,12 @@ namespace Velvet
             return new Vector2(x, y);
         }
 
-        private static VisualElement? FindEnclosingScope(
+        // Over logical parents: what a portal relocated pairs with the scope around the portal's call site, as a
+        // React portal's children read the context where the portal is declared.
+        internal static VisualElement? FindEnclosingScope(
             VisualElement element, ReconcilerContext ctx, out DndScopeBinding? binding)
         {
-            for (var current = element; current != null; current = current.parent)
+            for (var current = element; current != null; current = FiberFocusNavigator.LogicalParentOf(current))
             {
                 if (ctx.DndScopeBindings.TryGetValue(current, out var found))
                 {

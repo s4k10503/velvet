@@ -61,15 +61,10 @@ namespace Velvet
         }
     }
 
-    // Bookkeeping for one V.DragOverlay positioner: where it was declared and the one-shot
-    // unsupported-panel warning — the positioner element itself is the registry key, and all session
-    // state lives on DndActiveDrag.
+    // Bookkeeping for one V.DragOverlay positioner: the one-shot unsupported-panel warning — the positioner
+    // element itself is the registry key, and all session state lives on DndActiveDrag.
     internal sealed class DndOverlayBinding
     {
-        // The placeholder V.DragOverlay's portal leaves at its declaring position, which is what pairs the
-        // overlay with a scope: the positioner itself sits in the layer panel, under no scope. Null for a
-        // positioner whose DragOverlay prop is declared outside any portal.
-        public VisualElement? Anchor;
         public bool WarnedUnsupportedPanel;
     }
 
@@ -179,7 +174,7 @@ namespace Velvet
             positioner.pickingMode = PickingMode.Ignore;
             positioner.style.position = Position.Absolute;
             positioner.style.display = DisplayStyle.None;
-            return new DndOverlayBinding { Anchor = ctx.CurrentPortalPlaceholder };
+            return new DndOverlayBinding();
         }
 
         public static void Detach(VisualElement positioner, ReconcilerContext ctx)
