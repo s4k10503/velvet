@@ -193,11 +193,12 @@ namespace Velvet
         // once the rank RawAdded gives it outranks what took it, or once that goes.
         private static void Add(VisualElement element, string cls, long priority)
         {
+            var wasOnList = element.ClassListContains(cls);
             if (!StyleClassProjection.Suppresses(element, cls))
             {
                 element.AddToClassList(cls);
             }
-            StyleClassProjection.RawAdded(element, cls, priority);
+            StyleClassProjection.RawAdded(element, cls, priority, wasOnList);
         }
 
         private static void ShowInline(VisualElement element, string core, long priority)

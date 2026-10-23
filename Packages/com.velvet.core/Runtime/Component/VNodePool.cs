@@ -363,7 +363,7 @@ namespace Velvet
 
         // Pooled labels have been reset via FiberLabelPoolHelper.ResetLabelForReuse.
         private static readonly ElementPool<Label> s_labelPool =
-            new(() => new Label(string.Empty), FiberLabelPoolHelper.ResetLabelForReuse, MaxLabelPoolSize);
+            new(() => new SkewPickLabel(string.Empty), FiberLabelPoolHelper.ResetLabelForReuse, MaxLabelPoolSize);
 
         // The marker _preflight.uss resets margin and padding under. It is added here, where every Label
         // Velvet creates is rented, and not to the pool's reset, so a Label UI Toolkit builds inside one of
@@ -388,7 +388,7 @@ namespace Velvet
 
         // Pooled buttons have been reset via FiberButtonPoolHelper.ResetButtonForReuse.
         private static readonly ElementPool<Button> s_buttonPool =
-            new(() => new Button(), FiberButtonPoolHelper.ResetButtonForReuse, MaxButtonPoolSize);
+            new(() => new SkewPickButton(), FiberButtonPoolHelper.ResetButtonForReuse, MaxButtonPoolSize);
 
         // The marker _preflight.uss gives a Button Velvet creates its white-space under, added at the rent for
         // the reason VelvetLabelClassName is.

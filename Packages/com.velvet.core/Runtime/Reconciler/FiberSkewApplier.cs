@@ -37,6 +37,7 @@ namespace Velvet
             }
             var binding = SkewSilhouette.Attach(element, spec);
             _ctx.SkewBindings[element] = binding;
+            SetPick(element, spec);
             // A skewed element OWNS any bg-gradient-* on it: the silhouette paints the gradient on a
             // sheared mesh (the rectangular background-image the non-skew path would set cannot follow the
             // shear). ApplyGradientOnCreate runs next and defers to this binding.
@@ -107,6 +108,7 @@ namespace Velvet
             if (want && bound)
             {
                 binding.Spec = spec;
+                SetPick(element, spec);
                 SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
                 // The manipulator reads Spec live, so the just-changed angle re-seats the children here.
                 SkewSilhouette.SyncChildTranslate(binding);
@@ -119,6 +121,7 @@ namespace Velvet
             {
                 var fresh = SkewSilhouette.Attach(element, spec);
                 _ctx.SkewBindings[element] = fresh;
+                SetPick(element, spec);
                 SkewSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true);
                 SyncSkewGradient(element, fresh, newClassNames);
                 SkewSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
@@ -128,6 +131,7 @@ namespace Velvet
             {
                 SkewSilhouette.Detach(element, binding);
                 _ctx.SkewBindings.Remove(element);
+                ClearPick(element);
             }
             return default;
         }
@@ -211,6 +215,29 @@ namespace Velvet
             rotation.ToAngleAxis(out var angle, out var axis);
             element.style.rotate = new Rotate(new Angle(angle, AngleUnit.Degree), axis);
             element.style.scale = new Scale(new Vector3(scale, scale, 1f));
+            SetPick(element, default);
+        }
+
+        // The shape the element is picked by (SkewPickRegion): its box sheared by the painted layer's tangents, which
+        // are zero where the shear is the element's transform. Only the element types Velvet creates as ISkewPickTarget
+        // have one; any other picks by its rectangle.
+        private static void SetPick(VisualElement element, SkewSpec spec)
+        {
+            if (element is not ISkewPickTarget target)
+            {
+                return;
+            }
+            var region = target.PickRegion ??= new SkewPickRegion();
+            region.TanX = Mathf.Tan(spec.XDeg * Mathf.Deg2Rad);
+            region.TanY = Mathf.Tan(spec.YDeg * Mathf.Deg2Rad);
+        }
+
+        private static void ClearPick(VisualElement element)
+        {
+            if (element is ISkewPickTarget target)
+            {
+                target.PickRegion = null;
+            }
         }
 
         private void ClearTransform(VisualElement element)
@@ -218,6 +245,7 @@ namespace Velvet
             _ctx.SkewTransformed.Remove(element);
             element.style.rotate = StyleKeyword.Null;
             element.style.scale = StyleKeyword.Null;
+            ClearPick(element);
         }
     }
 }

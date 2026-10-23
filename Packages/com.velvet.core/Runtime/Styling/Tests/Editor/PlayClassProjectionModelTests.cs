@@ -34,6 +34,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APlayThatShowedAClassBeforeAnyPayloadExisted_When_ThePlayEndsUnderAPayloadOfItAndThePayloadTurnsOff_Then_TheClassGoes()
+        {
+            // Arrange — the play's add builds the element's model, and the class is no class of the element's own.
+            var element = new VisualElement();
+            StyleAnimationClassUtils.AddClasses(element, new[] { "bg-blue-500" }, StyleLayerPriority.Animation);
+            StyleClassProjection.Add(element, "bg-blue-500", StyleLayerPriority.Hover);
+            StyleAnimationClassUtils.RemoveClasses(element, new[] { "bg-blue-500" });
+
+            // Act
+            StyleClassProjection.Remove(element, "bg-blue-500", StyleLayerPriority.Hover);
+
+            // Assert
+            Assert.IsFalse(element.ClassListContains("bg-blue-500"));
+        }
+
+        [Test]
         public void Given_APlayShowingAClassTheClassNameDeclaresImportant_When_TheClassNameDropsIt_Then_TheClassGoes()
         {
             // Arrange

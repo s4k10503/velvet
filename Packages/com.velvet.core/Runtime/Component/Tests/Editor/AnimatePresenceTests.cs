@@ -158,7 +158,7 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
 
             // Assert — AnimatePresence is DOM-less, so the Motion (a Button) sits directly in Root.
-            Assert.That(Root.ElementAt(0), Is.TypeOf<Button>());
+            Assert.That(Root.ElementAt(0), Is.InstanceOf<Button>());
         }
 
         [Test]

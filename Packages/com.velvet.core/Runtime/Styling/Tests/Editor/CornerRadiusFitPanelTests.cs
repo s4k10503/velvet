@@ -18,6 +18,8 @@ namespace Velvet.Tests
     {
         private const string WideBox = "w-[330px] h-[34px]";
 
+        private const string OwnRadiusSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/OwnRadiusRule.uss";
+
         private static StateUpdater<string> s_setClass;
 
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
@@ -298,6 +300,54 @@ namespace Velvet.Tests
             // Assert
             var radii = Radii(Box);
             Assert.That(new[] { radii[0], radii[1] }, Is.EqualTo(new[] { 80f * 100f / 140f, 60f * 100f / 140f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ABoxWithNoRoundedClassWhoseCodeWritesARadiusBeyondItsHeight_When_LaidOut_Then_EveryCornerTakesHalfTheHeight()
+        {
+            // Arrange — no class on the element declares a radius, and 400 on each corner overlaps on every side.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "box", className: WideBox));
+            Box.style.borderTopLeftRadius = 400f;
+            Box.style.borderTopRightRadius = 400f;
+            Box.style.borderBottomRightRadius = 400f;
+            Box.style.borderBottomLeftRadius = 400f;
+
+            // Act
+            ForcePanelUpdate(Box.panel);
+
+            // Assert
+            Assert.That(Radii(Box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ABoxWhoseOwnStylesheetGivesItARadiusBeyondItsHeight_When_LaidOut_Then_EveryCornerTakesHalfTheHeight()
+        {
+            // Arrange — the radius is the application's rule, which no Velvet class names.
+            _window.rootVisualElement.styleSheets.Add(
+                UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(OwnRadiusSheet));
+
+            // Act
+            var box = MountBox($"{WideBox} own-radius");
+
+            // Assert
+            Assert.That(Radii(box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ABoxFittedFromItsOwnStylesheetRadius_When_ItGrowsToFitIt_Then_TheSlotIsHandedBackToTheStylesheet()
+        {
+            // Arrange
+            _window.rootVisualElement.styleSheets.Add(
+                UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(OwnRadiusSheet));
+            var box = MountSwitchable($"{WideBox} own-radius");
+            var fittedWhileShort = IsNear(box.resolvedStyle.borderTopLeftRadius, 17f);
+
+            // Act — 400 across an 800px side fits unscaled.
+            SwitchClass("w-[800px] h-[800px] own-radius");
+
+            // Assert
+            Assert.That((fittedWhileShort, box.style.borderTopLeftRadius.keyword, box.resolvedStyle.borderTopLeftRadius),
+                Is.EqualTo((true, StyleKeyword.Null, 400f)));
         }
     }
 }

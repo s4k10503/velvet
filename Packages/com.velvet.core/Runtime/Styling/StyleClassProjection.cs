@@ -91,7 +91,7 @@ namespace Velvet
         // play's class outranks the element's own, and a payload's removal leaves it on. The writer's removal
         // takes it off whatever else wants it, a variant payload in force aside (RawReleased). The base priority
         // takes the model-free path, as Add's does.
-        public static void RawAdded(VisualElement element, string cls, long priority)
+        public static void RawAdded(VisualElement element, string cls, long priority, bool wasOnList = true)
         {
             var model = StyleArbitraryValueResolver.TryGetProjection(element);
             if (model == null)
@@ -102,6 +102,12 @@ namespace Velvet
                 }
                 model = StyleArbitraryValueResolver.GetOrCreateProjection(element);
                 model.SeedBaseLayer(element);
+                // The seed adopts a class the writer has just put on as the element's own, and a release of it
+                // (RawReleased) leaves that entry holding it after the payload that kept it turns off.
+                if (!wasOnList)
+                {
+                    model.DropRaw(cls);
+                }
             }
             model.RawAdded(element, cls, priority);
         }
@@ -189,8 +195,8 @@ namespace Velvet
             {
                 foreach (var cls in element.GetClasses())
                 {
-                    StyleUtilityProperties.TryGet(cls, out var rule);
-                    _entries.Add(new Entry(cls, StyleLayerPriority.Base, rule.Properties, (int)rule.Gate));
+                    var (properties, gate) = RuleOf(element, cls);
+                    _entries.Add(new Entry(cls, StyleLayerPriority.Base, properties, gate));
                 }
             }
 
@@ -198,8 +204,8 @@ namespace Velvet
             {
                 if (IndexOf(cls, priority) < 0)
                 {
-                    StyleUtilityProperties.TryGet(cls, out var rule);
-                    _entries.Add(new Entry(cls, priority, rule.Properties, (int)rule.Gate));
+                    var (properties, gate) = RuleOf(element, cls);
+                    _entries.Add(new Entry(cls, priority, properties, gate));
                 }
                 Recompute(element);
                 if (IsAlive(cls))
@@ -235,6 +241,36 @@ namespace Velvet
                 }
             }
 
+            // What a class writes and under which gate: the bundled table's answer, else the properties a probe read
+            // off the application's own rule (StyleUserClassProperties), empty until it has.
+            private static (StyleLonghandSet Properties, int Gate) RuleOf(VisualElement element, string cls)
+            {
+                if (StyleUtilityProperties.TryGet(cls, out var rule))
+                {
+                    return (rule.Properties, (int)rule.Gate);
+                }
+                StyleUserClassProperties.TryGet(element, cls, out var learned);
+                return (learned, (int)StyleUtilityGate.None);
+            }
+
+            // Gives the entries of cls the properties a probe has now read for it, and ranks again.
+            public void Learn(VisualElement element, string cls, StyleLonghandSet properties)
+            {
+                var learned = false;
+                for (var i = 0; i < _entries.Count; i++)
+                {
+                    if (_entries[i].Class == cls && _entries[i].Properties.IsEmpty)
+                    {
+                        _entries[i] = _entries[i].WithProperties(properties);
+                        learned = true;
+                    }
+                }
+                if (learned)
+                {
+                    Recompute(element);
+                }
+            }
+
             // A ranking-only entry: its writer puts the class on the live list, and the entry keeps it there only
             // against a payload's removal (Holds skips it). It lives only while the class is on that list or
             // suppressed by this model: RawRemoved drops it, and so does the className's Remove once nothing else
@@ -251,8 +287,8 @@ namespace Velvet
                 // it.
                 if (IndexOfRaw(cls, priority) < 0)
                 {
-                    StyleUtilityProperties.TryGet(cls, out var rule);
-                    _entries.Add(new Entry(cls, priority, rule.Properties, (int)rule.Gate, rankOnly: true));
+                    var (properties, gate) = RuleOf(element, cls);
+                    _entries.Add(new Entry(cls, priority, properties, gate, rankOnly: true));
                 }
                 Recompute(element);
             }
@@ -300,7 +336,7 @@ namespace Velvet
 
             // Drops cls's ranking-only entries and its base one: a seed adopts a raw class there if the model is
             // built while the class is on.
-            private void DropRaw(string cls)
+            public void DropRaw(string cls)
             {
                 for (var i = _entries.Count - 1; i >= 0; i--)
                 {
@@ -770,6 +806,8 @@ namespace Velvet
             public bool RankOnly { get; }
 
             public Entry WithDead(bool dead) => new Entry(Class, Priority, Properties, Gate, dead, RankOnly);
+
+            public Entry WithProperties(StyleLonghandSet properties) => new Entry(Class, Priority, properties, Gate, Dead, RankOnly);
         }
 
         // One registered arbitrary-value layer, as the projection sees it.

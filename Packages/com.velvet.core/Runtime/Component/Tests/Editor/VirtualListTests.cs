@@ -410,7 +410,7 @@ namespace Velvet.Tests
             controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
 
             // Assert: item 0 is a fresh VisualElement, not the old Label patched in place.
-            Assert.That(visibleContainer.ElementAt(0).GetType(), Is.EqualTo(typeof(VisualElement)));
+            Assert.That(visibleContainer.ElementAt(0), Is.Not.InstanceOf<Label>());
         }
 
         #endregion

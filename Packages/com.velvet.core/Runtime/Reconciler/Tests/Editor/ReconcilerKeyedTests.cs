@@ -934,7 +934,7 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, oldTree, new[] { K("x"), K("a"), V.Button(text: "t", key: "t") });
 
             // Assert
-            Assert.That(Root.ElementAt(2), Is.TypeOf<Button>());
+            Assert.That(Root.ElementAt(2), Is.InstanceOf<Button>());
         }
 
         // GREEN_ON_BASE(characterization): the base stops the trim where an unkeyed tail's index moved.

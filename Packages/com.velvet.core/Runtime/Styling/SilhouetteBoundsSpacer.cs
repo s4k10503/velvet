@@ -95,14 +95,16 @@ namespace Velvet
         // z-index layer container (FiberZLayerCoordinator's front/back containers, which are equally
         // reconciler-invisible — a z-marked absolute child's real element lives inside one instead of at its
         // logical slot), a ring overlay (RingOverlay's band, hosted beside the element it rings rather than
-        // wrapped around it), a face border overlay (FaceBorderOverlay, hosted the same way), OR a backdrop layer
-        // (BackdropFilterLayer, hosted before its element).
+        // wrapped around it), a face border overlay (FaceBorderOverlay, hosted the same way), a backdrop layer
+        // (BackdropFilterLayer, hosted before its element), OR the container a class probe hosts for the length of one
+        // style pass (StyleUserClassProperties).
         internal static bool IsSpacer(VisualElement child)
             => child != null
                 && (child.ClassListContains(MarkerClass)
                     || child.ClassListContains(RingOverlay.MarkerClass)
                     || child.ClassListContains(FaceBorderOverlay.MarkerClass)
                     || child.ClassListContains(BackdropFilterLayer.MarkerClass)
+                    || child.ClassListContains(StyleUserClassProperties.MarkerClass)
                     || FiberZLayerCoordinator.IsLayerContainer(child));
 
         // True when spacer is a child of caster and no RENDERED (non-spacer) child follows it — the placement
