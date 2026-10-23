@@ -53,6 +53,12 @@ namespace Velvet
             [""] = 1f, ["0"] = 0f, ["2"] = 2f, ["4"] = 4f, ["8"] = 8f,
         };
 
+        // The aspect-ratio rules in _state_variants.uss; MotionPresetScaleTests pins them.
+        private static readonly Dictionary<string, float> s_aspectPresets = new(StringComparer.Ordinal)
+        {
+            ["aspect-square"] = 1f, ["aspect-video"] = 1.7778f,
+        };
+
         // The families whose `-full` is 100% of the containing block; padding and margin have no such utility.
         private static readonly HashSet<string> s_fullFamilies = new(StringComparer.Ordinal)
         {
@@ -113,6 +119,12 @@ namespace Velvet
                 return true;
             }
 
+            if (s_aspectPresets.TryGetValue(core, out var ratio))
+            {
+                style = new ArbitraryStyle(ArbitraryProperty.AspectRatio, ratio, LengthUnit.Pixel);
+                return true;
+            }
+
             return TryParsePaletteColor(core, out style)
                 || TryParsePresetLength(core, out style);
         }
@@ -157,8 +169,8 @@ namespace Velvet
         // The properties a per-frame driver may own. Opacity and the transform quartet are excluded because
         // MotionSpringClassParser's own axes already drive them (with their identity-value fallbacks and the
         // translate/scale composition their shared inline styles need); filter-* is excluded because
-        // StyleFilterTransitionDriver owns the composed inline filter list; aspect-ratio and
-        // transition-duration are excluded as configuration rather than visual magnitudes.
+        // StyleFilterTransitionDriver owns the composed inline filter list; transition-duration is excluded as
+        // configuration rather than a visual magnitude.
         private static readonly bool[] s_drivable = BuildDrivable();
 
         private static bool[] BuildDrivable()
@@ -193,7 +205,7 @@ namespace Velvet
                 ArbitraryProperty.BorderWidth, ArbitraryProperty.BorderTopWidth, ArbitraryProperty.BorderRightWidth,
                 ArbitraryProperty.BorderBottomWidth, ArbitraryProperty.BorderLeftWidth,
 
-                ArbitraryProperty.FontSize, ArbitraryProperty.LetterSpacing,
+                ArbitraryProperty.FontSize, ArbitraryProperty.LetterSpacing, ArbitraryProperty.AspectRatio,
             };
 
             var table = new bool[Enum.GetValues(typeof(ArbitraryProperty)).Length];
@@ -208,6 +220,53 @@ namespace Velvet
         {
             var index = (int)property;
             return index >= 0 && index < s_drivable.Length && s_drivable[index];
+        }
+
+        // The semantic colour utilities, each with the custom property its sheet rule reads. Those properties change
+        // with the theme, so a drive reads them off the live element (MotionSlotContext.TryReadThemeColor) rather than
+        // mirroring a value; MotionPresetScaleTests pins this table against _palette.uss.
+        private static readonly Dictionary<string, string> s_themeColors = BuildThemeColors();
+
+        private static Dictionary<string, string> BuildThemeColors()
+        {
+            var table = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var name in new[]
+                {
+                    "background", "danger", "highlight", "neutral", "overlay", "primary", "primary-faint", "primary-soft",
+                    "success", "surface", "surface-strong", "white-soft",
+                })
+            {
+                table["bg-" + name] = "--color-" + name;
+            }
+            table["text-accent"] = "--color-accent-strong";
+            table["text-strong"] = "--color-text";
+            table["text-subtle"] = "--color-text-subtle";
+            table["border-accent"] = "--color-accent-strong";
+            table["border-default"] = "--color-border";
+            table["border-strong"] = "--color-border-strong";
+            return table;
+        }
+
+        internal static IReadOnlyDictionary<string, string> ThemeColors => s_themeColors;
+
+        /// <summary>
+        /// Resolves a semantic colour utility (<c>bg-primary</c>, <c>border-default</c>) to the colour its custom
+        /// property holds on the element <paramref name="context"/> reads, which a theme change moves; false off a
+        /// panel, where the element resolves none.
+        /// </summary>
+        internal static bool TryParseThemeColor(string className, MotionSlotContext context, out ArbitraryStyle style)
+        {
+            style = default;
+            var core = StyleArbitraryValueResolver.StripImportant(className, out _);
+            if (!s_themeColors.TryGetValue(core, out var variable) || !context.TryReadThemeColor(variable, out var color))
+            {
+                return false;
+            }
+            var property = core.StartsWith("bg-", StringComparison.Ordinal) ? ArbitraryProperty.BackgroundColor
+                : core.StartsWith("text-", StringComparison.Ordinal) ? ArbitraryProperty.TextColor
+                : ArbitraryProperty.BorderColor;
+            style = new ArbitraryStyle(property, color);
+            return true;
         }
 
         // bg-/text-/border- against a palette NAME (bg-red-500, text-white, border-black). The bracket and

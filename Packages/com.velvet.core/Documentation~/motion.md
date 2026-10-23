@@ -388,9 +388,10 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   moves the rendered size and not the size the play interpolates toward.
 - **The to-side must name a color or length.** A swapped-out value in the target's unit supplies
   the start unless a running Spring or Bezier play, or a native transition, is moving the slot; otherwise a mounted
-  element supplies its current inline or displayed value. Width and height, including their min/max
-  forms, can convert between pixels and percentages through the parent's content box. Other mixed-unit
-  pairs, or an off-panel target with no matching-unit start, land instantly. A color or length with no
+  element supplies its current inline or displayed value. Width and height (min/max forms included), the
+  `top`/`right`/`bottom`/`left` offsets, padding and margin can convert between pixels and percentages through
+  the parent's content box. Other mixed-unit pairs, or an off-panel target with no matching-unit start, land
+  instantly. A color or length with no
   compatible effective to-side target lands instantly; classes left in place can provide that target when
   the swap removes a from-side class.
 - **Classes on one side that write the same slot resolve as the cascade resolves them.** A shorthand
@@ -432,13 +433,16 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)). This holds for a play that is planned; a swap whose
   target a resting holder under a variant outranks plans none for that slot (*Classes on one side* above), as a
   class change that leaves the computed value alone starts no transition.
+- **Semantic colours** (`bg-primary`, `text-subtle`, `border-default`, the rest of the sheet's role tokens) are read
+  from the live element's `--color-*` custom property when the play starts, so a dark theme or a theme override
+  moves the colour the play runs between. An element off its panel has no resolved properties, and the swap lands
+  its semantic colour instantly.
+- **`aspect-[…]`, `aspect-square` and `aspect-video`** are length channels carrying the ratio.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
-  subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
-  `--color-*` with no C# mirror; `-auto` lengths (`w-auto`, `top-auto`) are
-  modes, not magnitudes; `shadow-*`, `skew-*` and
-  gradients are baked silhouette paints; `filter-*` transitions by its own path
-  ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
-  parser, so a ratio change snaps.
+  subsystem owns the slot: `-auto` lengths (`w-auto`, `top-auto`) are modes, not magnitudes (a `-auto` start
+  reads from the layout and animates); `shadow-*`, `skew-*` and gradients are baked silhouette paints;
+  `filter-*` transitions by its own path ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a
+  physical reparent.
 - A target-only uniform scale lands instantly when the sampled x and y scale values differ. The edge
   a `divide-dashed` or `divide-dotted` divider draws is sampled as the color its dash takes.
 - **Percentage translate** (`translate-x-1/2`, `translate-x-full`, `translate-1/2`, `translate-full`, `translate-x-[50%]`)

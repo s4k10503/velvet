@@ -439,8 +439,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ASemanticThemeTokenPair_When_Resolved_Then_NoColorChannelIsPlanned()
         {
-            // Arrange / Act — bg-primary / bg-surface resolve through --color-* theme tokens that have no C#
-            // mirror, so no numeric endpoint exists to interpolate between.
+            // Arrange / Act — bg-primary / bg-surface resolve through --color-* custom properties that only a panel
+            // holds for an element, so off a panel no endpoint exists to interpolate between.
             var plan = MotionSpringClassParser.Resolve(new[] { "bg-surface" }, new[] { "bg-primary" });
 
             // Assert

@@ -286,6 +286,11 @@ namespace Velvet
             }
         }
 
+        // The colour custom property variable holds on the element, which a panel resolves once the element has had
+        // its styles; false before that.
+        public bool TryReadThemeColor(string variable, out Color color)
+            => _element.customStyle.TryGetValue(new CustomStyleProperty<Color>(variable), out color);
+
         // The scale the element draws on each axis: its inline scale where that is set and no native transition is
         // moving it, else the resolved one.
         public bool TryReadScaleAxes(out Vector2 value)
@@ -559,8 +564,15 @@ namespace Velvet
                 return true;
             }
             var parent = Owner(slot).hierarchy.parent;
-            var horizontal = slot is ArbitraryProperty.Width or ArbitraryProperty.MinWidth or ArbitraryProperty.MaxWidth;
-            var vertical = slot is ArbitraryProperty.Height or ArbitraryProperty.MinHeight or ArbitraryProperty.MaxHeight;
+            // Padding and margin percentages are of the containing block's width on every edge.
+            var horizontal = slot is ArbitraryProperty.Width or ArbitraryProperty.MinWidth or ArbitraryProperty.MaxWidth
+                or ArbitraryProperty.Left or ArbitraryProperty.Right
+                or ArbitraryProperty.PaddingTop or ArbitraryProperty.PaddingRight or ArbitraryProperty.PaddingBottom
+                or ArbitraryProperty.PaddingLeft
+                or ArbitraryProperty.MarginTop or ArbitraryProperty.MarginRight or ArbitraryProperty.MarginBottom
+                or ArbitraryProperty.MarginLeft;
+            var vertical = slot is ArbitraryProperty.Height or ArbitraryProperty.MinHeight or ArbitraryProperty.MaxHeight
+                or ArbitraryProperty.Top or ArbitraryProperty.Bottom;
             if (parent == null || (!horizontal && !vertical))
             {
                 return false;

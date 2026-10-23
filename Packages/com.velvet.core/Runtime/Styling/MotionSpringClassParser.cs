@@ -745,7 +745,7 @@ namespace Velvet
                 var places = StyleRuleOrder.OrdinalsOf(classes);
                 for (var i = 0; i < classes.Length; i++)
                 {
-                    Claim(classes[i], places[i], claims, in importantClasses, swapped: true);
+                    Claim(classes[i], places[i], claims, in importantClasses, swapped: true, context);
                 }
             }
 
@@ -805,7 +805,7 @@ namespace Velvet
             {
                 if (context.Attached || cls.StartsWith("!", StringComparison.Ordinal))
                 {
-                    Claim(cls, 0, claims, in importantClasses);
+                    Claim(cls, 0, claims, in importantClasses, context: context);
                 }
             }
             for (var i = 0; i < claims.Length; i++)
@@ -930,7 +930,7 @@ namespace Velvet
         }
 
         private static void Claim(string className, int index, SlotClaim[] claims,
-            in StyleLonghandSet importantClasses, bool swapped = false)
+            in StyleLonghandSet importantClasses, bool swapped = false, MotionSlotContext? context = null)
         {
             if (string.IsNullOrEmpty(className)
                 || !TryRank(className, index, out var token))
@@ -945,7 +945,8 @@ namespace Velvet
             // TryRank leaves a both-axis translate's TranslateAxis unset, so the token writes exactly the two translate slots.
             var bothTranslateAxes = TryParseBothTranslateAxes(className, out var bothAxesValue, out var bothAxesUnit);
             var property = default(ArbitraryStyle);
-            var hasProperty = !hasAxisValue && MotionPropertyClassParser.TryParse(className, out property);
+            var hasProperty = !hasAxisValue && (MotionPropertyClassParser.TryParse(className, out property)
+                || (context != null && MotionPropertyClassParser.TryParseThemeColor(className, context, out property)));
             for (var i = 0; i < claims.Length; i++)
             {
                 var slot = s_slots[i];
