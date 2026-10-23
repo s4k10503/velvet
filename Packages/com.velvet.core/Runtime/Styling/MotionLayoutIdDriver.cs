@@ -62,13 +62,6 @@ namespace Velvet
             return false;
         }
 
-        // TEMPORARY trace of the registry and wait writes, read by one diagnostic test.
-        internal static System.Text.StringBuilder? Log;
-
-        private static string Tag(VisualElement? element) => element == null ? "null" : element.name;
-
-        private static string Tag(LayoutIdBox? box) => box is { } b ? $"({b.PanelCentre.x:0},{b.PanelCentre.y:0} parented={b.Parent != null})" : "none";
-
         private static int s_pass;
         // How long the frame running the current pass stepped the tweens by, 0 for a pass outside one.
         private static float s_passDt;
@@ -150,7 +143,6 @@ namespace Velvet
 
         private static void Wait(VisualElement element, LayoutIdPendingSettle pending, ReconcilerContext ctx)
         {
-            Log?.AppendLine($"Wait: {Tag(element)} from={Tag(pending.From)} readOff={pending.ReadOffItself}");
             pending.Callback = _ => Settle(element, ctx);
             pending.Target = Box(element);
             pending.Target.RegisterCallback(pending.Callback);
@@ -160,7 +152,6 @@ namespace Velvet
         private static void Settle(VisualElement element, ReconcilerContext ctx)
         {
             if (!ctx.LayoutIdPendingSettles.TryGetValue(element, out var pending)) return;
-            Log?.AppendLine($"Settle: {Tag(element)} from={Tag(pending.From)} layout={Layout(element)}");
             // An ancestor whose layout moved settles in this same layout pass, and this element's old box is
             // taken into the frame that ancestor is drawn in, so the ancestor goes first whichever event fires
             // first.
@@ -235,7 +226,6 @@ namespace Velvet
             // fire after the move that drew the box has ended
             // (Given_ALayoutIdMotionPatchedMidTweenWithoutMoving_When_ALaterLayoutChangeMovesIt_Then_ItDoesNotStartFromWhereTheTweenDrewItThen).
             var fromBox = pending.From!.Value;
-            Log?.AppendLine($"Start: {Tag(element)} fromBox={Tag(fromBox)} readOff={pending.ReadOffItself}");
             if (pending.ReadOffItself && !IsMoving(element, ctx) && TryReadBox(element, pending.PatchedLayout, ctx, out var redrawn))
             {
                 fromBox = redrawn;
@@ -255,7 +245,6 @@ namespace Velvet
             var shared = !pending.ReadOffItself;
             var crossfades = shared && ctx.LayoutIdMembers[layoutId].Count > 1 && !Crossfading(parent, ctx);
             var moves = pending.Timing.Animates() && (shared || !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty);
-            Log?.AppendLine($"Start: from={from} layout={layout} shared={shared} moves={moves}");
 
             ctx.LayoutIdProjections.TryGetValue(element, out var projection);
             if (!moves && projection == null && IsUnit(parentScale)) return;
@@ -886,7 +875,6 @@ namespace Velvet
         {
             if (ctx.LayoutIdPendingSettles.Remove(element, out var pending))
             {
-                Log?.AppendLine($"CancelPendingSettle: {Tag(element)} from={Tag(pending.From)}");
                 var target = pending.Target ?? element;
                 // MUTANT_SURVIVES(equivalent): a callback left registered finds its element's wait gone, or finds
                 // the wait that replaced it, which that wait's own callback settles on the same event.
@@ -1004,7 +992,6 @@ namespace Velvet
         // in this render or a later one, as Framer's stack keeps the snapshot of its last lead.
         private static void RemoveMember(VisualElement element, string layoutId, ReconcilerContext ctx)
         {
-            Log?.AppendLine($"RemoveMember: {Tag(element)} {layoutId}");
             var members = ctx.LayoutIdMembers[layoutId];
             members.Remove(element);
             if (members.Count == 0) ctx.LayoutIdMembers.Remove(layoutId);
@@ -1082,7 +1069,6 @@ namespace Velvet
                 if (ReferenceEquals(member.panel?.visualTree, fadeHost))
                 {
                     member.style.visibility = ctx.LayoutIdFollows[member];
-                    Log?.AppendLine($"Follower projection: {Tag(member)} of {Tag(lead)}");
                     var projection = ctx.LayoutIdProjections.GetValueOrDefault(member) ?? CreateProjection(member, fadeHost, ctx);
                     projection.Leader = lead;
                     projection.Moving = false;
@@ -1132,10 +1118,8 @@ namespace Velvet
 
         // Writes an id's entry, keeping the per-parent index ForgetParent reads and the bound on the boxes kept
         // without a holder.
-        private static void SetEntry(ReconcilerContext ctx, string layoutId, VisualElement? element, LayoutIdBox? box,
-            [System.Runtime.CompilerServices.CallerMemberName] string caller = "")
+        private static void SetEntry(ReconcilerContext ctx, string layoutId, VisualElement? element, LayoutIdBox? box)
         {
-            Log?.AppendLine($"SetEntry by {caller}: {layoutId} element={Tag(element)} box={Tag(box)}");
             DropIndex(ctx, layoutId);
             ctx.LayoutIdRegistry[layoutId] = (element, box);
             if (box?.Parent is { } parent)
@@ -1157,7 +1141,6 @@ namespace Velvet
 
         private static void RemoveEntry(ReconcilerContext ctx, string layoutId)
         {
-            Log?.AppendLine($"RemoveEntry: {layoutId}");
             DropIndex(ctx, layoutId);
             ctx.LayoutIdRegistry.Remove(layoutId);
         }

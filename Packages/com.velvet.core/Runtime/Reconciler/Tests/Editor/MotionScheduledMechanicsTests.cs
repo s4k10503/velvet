@@ -875,56 +875,36 @@ namespace Velvet.Tests
             ? $" (parented={b.Parent != null}, local={b.Local}, centre={b.PanelCentre}, size={b.PanelSize})"
             : "";
 
-        // What the element's projection holds, for a failure message.
-        private static string ProjectionReading(ReconcilerContext ctx, VisualElement element) =>
-            element != null && ctx.LayoutIdProjections.TryGetValue(element, out var p)
-                ? $"projection from={p.From}, moving={p.Moving}, progress={(p.Progress == null ? "null" : p.Progress.Value.ToString())}, scale={p.Scale}, parentScale={p.ParentScale}, "
-                    + $"shared={p.Shared}, writesTranslate={p.WritesTranslate}, written={p.WrittenTranslate.keyword}"
-                : "no projection";
-
         [Test]
         public void Given_ALayoutIdRowAScrollTookOutOfRange_When_ALaterRenderMountsAnotherUnderItsId_Then_ItTweensFromTheRowsBox()
         {
-            // Arrange — the rows re-render once after layout, so row-0 holds its own box when the scroll takes it.
+            // Arrange — the list scrolled for real, so the range it renders on later layouts stays past row-0, and the
+            // rows re-rendered once after layout so row-0 held its own box when the scroll took it.
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            scrollView.style.height = 100f;
             Root.Add(scrollView);
             using var controller = new FiberVirtualListController(scrollView, LayoutIdRows(), _reconciler);
             controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
             Tick();
             controller.Update(LayoutIdRows());
             Tick();
+            scrollView.scrollOffset = new Vector2(0f, 500f);
+            Tick();
             var ctx = _reconciler.Context;
-            var row0 = Root.Q<VisualElement>("row-0");
-            var before = $"{RegistryReading(ctx, "row-0")}; row layout={row0?.layout.ToString() ?? "null"}, parented={row0?.hierarchy.parent != null}";
-            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 100f);
-            var afterScroll = RegistryReading(ctx, "row-0");
+            var scrolled = $"row-0 in the tree={Root.Q<VisualElement>("row-0") != null}, {RegistryReading(ctx, "row-0")}";
             var host = new VisualElement();
             Root.Add(host);
 
             // Act
-            MotionLayoutIdDriver.Log = new System.Text.StringBuilder();
             _reconciler.Reconcile(host, Array.Empty<VNode>(), new VNode[]
             {
                 V.Motion(name: "remount", layoutId: "row-0", transition: s_layoutSpring,
                     className: "left-[300px] top-[0px] w-[100px] h-[50px]"),
             });
-            var remount = host.Q<VisualElement>("remount");
-            var beforeTick = $"{RegistryReading(ctx, "row-0")}; layout={remount?.layout.ToString() ?? "null"}; {ProjectionReading(ctx, remount)}";
             Tick();
-            var translated = remount == null ? float.NaN : TranslateX(remount);
-            var afterTick = $"{RegistryReading(ctx, "row-0")}; layout={remount?.layout.ToString() ?? "null"}; {ProjectionReading(ctx, remount)}";
-            Tick();
-            var afterSecondTick = $"{RegistryReading(ctx, "row-0")}; layout={remount?.layout.ToString() ?? "null"}; {ProjectionReading(ctx, remount)}";
-            var trace = MotionLayoutIdDriver.Log.ToString();
-            MotionLayoutIdDriver.Log = null;
 
             // Assert — the row stood 300px left of where the new Motion does.
-            var diagnostic = $"before the scroll [{before}]; after it [{afterScroll}]; after the mount [{RegistryReading(ctx, "row-0")}]; "
-                + $"translate={remount?.style.translate.keyword}/{remount?.style.translate.value.x.value}, "
-                + $"projected={remount != null && ctx.LayoutIdProjections.ContainsKey(remount)}, "
-                + $"waiting={remount != null && ctx.LayoutIdPendingSettles.ContainsKey(remount)}, "
-                + $"hostWorld={host.worldBound}; right after the mount [{beforeTick}]; after one frame [{afterTick}]; after two [{afterSecondTick}]; trace:\n{trace}";
-            Assert.That(translated, Is.LessThan(-200f), diagnostic);
+            Assert.That(TranslateX(host.Q<VisualElement>("remount")), Is.LessThan(-200f), $"after the scroll [{scrolled}]");
         }
 
         [Test]
