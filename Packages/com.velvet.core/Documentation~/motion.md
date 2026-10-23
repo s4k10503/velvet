@@ -374,15 +374,18 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   and position fractions (`w-1/2`, `left-1/2`), and the bracket forms. These dirty Yoga layout on
   every tick — the whole subtree relayouts each frame for the length of the play — so reach for a
   transform channel first and animate a length only where the reflow is the point.
+- **`-full` lengths and `rounded-full`.** `w-full`, `min-h-full`, `size-full`, `left-full`, `inset-x-full` and
+  the rest of the sizing, position and `basis-` families read as 100%, in the unit the fractions use.
+  `rounded-full` reads as the stylesheet's `--radius-full`, 9999px, so a radius animates toward it and the
+  corner clamps at half the box as it does at rest.
 - **Border widths,** from the `border-*` width utilities (`border`, `border-2`, `border-t-4`) and
   the bracket forms. These read a **separate literal scale mirroring the stylesheet's own
   declarations**, not the spacing scale — `border-2` is 2px, not `--space-2`. Same per-tick layout
   cost as the lengths above.
-- **Font size and letter spacing, bracket forms only:** `text-[20px]` and `tracking-[2px]` are
-  driven. The named presets are not — `text-lg` resolves through a `--text-*` token and
-  `tracking-wide` through a fixed named step, neither of which has a C# mirror to read a magnitude
-  from — so a `text-sm` → `text-2xl` delta lands instantly while `text-[14px]` → `text-[24px]`
-  animates. Reach for the bracket form when you want the size to move.
+- **Font size and letter spacing:** `text-[20px]` and `tracking-[2px]`, and the named presets, which read the
+  bundled scale (`text-xs` … `text-9xl` from `_tokens.uss`, `tracking-tighter` … `tracking-widest` from
+  `_typography.uss`), so a `text-sm` → `text-2xl` delta animates. A stylesheet that redeclares `--text-*`
+  moves the rendered size and not the size the play interpolates toward.
 - **The to-side must name a color or length.** A swapped-out value in the target's unit supplies
   the start unless a running Spring or Bezier play, or a native transition, is moving the slot; otherwise a mounted
   element supplies its current inline or displayed value. Width and height, including their min/max
@@ -432,9 +435,8 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   class change that leaves the computed value alone starts no transition.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
-  `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
-  (`tracking-wide`) names likewise, per the bullet above; keyword lengths (`w-auto`, `w-full`) are
-  modes, not magnitudes; `rounded-full` is a saturating radius sentinel; `shadow-*`, `skew-*` and
+  `--color-*` with no C# mirror; `-auto` lengths (`w-auto`, `top-auto`) are
+  modes, not magnitudes; `shadow-*`, `skew-*` and
   gradients are baked silhouette paints; `filter-*` transitions by its own path
   ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
   parser, so a ratio change snaps.

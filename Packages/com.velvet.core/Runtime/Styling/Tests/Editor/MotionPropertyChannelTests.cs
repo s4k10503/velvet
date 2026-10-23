@@ -14,7 +14,7 @@ namespace Velvet.Tests
     /// (<see cref="MotionPropertyClassParser"/> / <see cref="MotionSpringClassParser.Resolve"/>), the values the
     /// drivers write while ticking, the shorthand fan-out on both the write and the clear side, the suspension
     /// of the element's own native USS transition while a driver owns its inline styles, and the deliberate
-    /// holes (one-sided and mixed-unit pairs, the radius sentinel, semantic theme tokens) that keep falling back
+    /// holes (one-sided and mixed-unit pairs, semantic theme tokens) that keep falling back
     /// to the plain class swap.
     /// </summary>
     /// <remarks>
@@ -399,14 +399,14 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARoundedFullSide_When_Resolved_Then_NoRadiusChannelIsPlanned()
+        public void Given_ARoundedFullTarget_When_Resolved_Then_EveryCornerChannelEndsAtTheFullRadius()
         {
-            // Arrange / Act — rounded-full is a saturating radius sentinel rather than a magnitude, so animating
-            // toward it would read as a wildly oversized radius rather than as a shape change.
+            // Arrange / Act
             var plan = MotionSpringClassParser.Resolve(new[] { "rounded-none" }, new[] { "rounded-full" });
 
             // Assert
-            Assert.That(plan.IsEmpty, Is.True);
+            Assert.That(string.Join(",", plan.Lengths?.Select(l => l.To) ?? Enumerable.Empty<float>()),
+                Is.EqualTo("9999,9999,9999,9999"));
         }
 
         [Test]

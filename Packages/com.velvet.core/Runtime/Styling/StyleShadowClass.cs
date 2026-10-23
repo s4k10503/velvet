@@ -152,9 +152,8 @@ namespace Velvet
         // Single source for the --radius-* scale, keyed by the suffix after a rounded-* prefix (the empty
         // string being bare `rounded`) — shared so a per-class radius recognizer (MotionPropertyClassParser)
         // resolves the SAME magnitudes instead of holding a second copy that could drift, mirroring
-        // StyleArbitraryValueResolver.TryGetSpacingPx's precedent. `full` is deliberately absent: it is a
-        // saturating radius sentinel (--radius-full is deliberately oversized), not a magnitude a caller
-        // can interpolate through.
+        // StyleArbitraryValueResolver.TryGetSpacingPx's precedent. `full` is not on this scale: shadows
+        // resolve it from the geometry, and MotionPropertyClassParser.FullRadiusPx carries it for a drive.
         internal static bool TryGetRadiusPx(string suffix, out float px) => RadiusScale.TryGetValue(suffix, out px);
 
         // True when cls belongs to the shadow family this layer owns (recognized or not-yet-valid).

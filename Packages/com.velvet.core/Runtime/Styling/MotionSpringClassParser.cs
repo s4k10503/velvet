@@ -27,7 +27,7 @@ namespace Velvet
     /// The color- and length-valued properties are recognized by <see cref="MotionPropertyClassParser"/> and
     /// carried in the same plan (see <see cref="SpringPlan.Colors"/> / <see cref="SpringPlan.Lengths"/>). A class
     /// neither parser reads a magnitude from (a percentage-based translate like <c>translate-x-1/2</c>, a per-axis
-    /// <c>scale-x-</c>, <c>rounded-full</c>, or anything outside the property parser's own documented scope) is
+    /// <c>scale-x-</c>, or anything outside the property parser's own documented scope) is
     /// not animated, and where it is the token the cascade lets hold a slot, that slot is not animated from the
     /// other tokens on its side either — see <see cref="Claim"/>.
     /// </remarks>
