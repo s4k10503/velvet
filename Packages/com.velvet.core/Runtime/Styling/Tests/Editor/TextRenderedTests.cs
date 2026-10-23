@@ -105,16 +105,20 @@ namespace Velvet.Tests
             // Arrange — the engine elides a leaf's text, not the string it was handed, from the start or the
             // middle, so the leaf holds the string it shows as its text.
             _mounted = V.Mount(_window.rootVisualElement, V.Label(
-                className: "uppercase text-ellipsis", text: "hello",
+                className: "uppercase", text: "hello",
                 refCallback: element =>
                 {
+                    // Inline, because the panel of this fixture carries no bundled sheet to resolve text-ellipsis.
+                    element.style.textOverflow = TextOverflow.Ellipsis;
                     element.style.unityTextOverflowPosition = TextOverflowPosition.Start;
                     return null;
                 }));
             var label = _window.rootVisualElement.Q<Label>();
             var panel = _window.rootVisualElement.panel;
 
-            // Act
+            // Act — the first repaint finds the ellipsis resolved, the tick after it builds the string again.
+            ForcePanelUpdate(panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(panel);
             ForcePanelUpdate(panel);
             EditorPanelTestHelpers.DriveSchedulerOnce(panel);
 
