@@ -33,8 +33,11 @@ namespace Velvet.Tests
     /// <item>A boundary a parked transition has mounted reports in the commit that completes the transition, and
     /// one the transition parked short of reports without waiting for it. The passive effect of a child the
     /// parked pass mounted is held with the pass, so its error is caught only once the pass has completed.</item>
-    /// <item>Once a chain of follow-up commits reaches its bound, the next entry neither runs the chain again
-    /// nor delivers the report it left, and a parked transition still runs the layout effects it held.</item>
+    /// <item>A chain of follow-up commits stops at React's nested-update limit of 50 with a "Maximum update depth
+    /// exceeded" exception. Once it has, the next entry neither runs the chain again nor delivers the report it
+    /// left, and a parked transition still runs the layout effects it held.</item>
+    /// <item>A resource that faults below an error boundary inside a Suspense has the Suspense reveal that error
+    /// boundary's fallback, reported once.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -222,6 +225,28 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Outcome(), Is.EqualTo(Reported));
+        }
+
+        [Test]
+        public void Given_AnErrorBoundaryBetweenASuspenseAndAChildReadingAResource_When_TheResourceFaults_Then_TheSuspenseRevealsTheErrorBoundarysFallback()
+        {
+            // Arrange
+            s_source = new VelvetTaskCompletionSource<string>();
+            s_child = () => V.Component(ReadResourceRender, key: "child");
+            _mounted = V.Mount(
+                _root,
+                V.Component(SuspenseAroundBoundaryRender, key: "suspense-host"),
+                new MountOptions { OnCaughtError = (exception, _) => _calls.Add(exception.Message) });
+
+            // Act
+            s_source.TrySetException(new InvalidOperationException("boom"));
+            _mounted.FlushStateForTest();
+
+            // Assert — every label is read, since a Suspense still loading keeps its fallback beside what the error
+            // boundary showed
+            Assert.That(
+                $"{string.Join(", ", _calls)} | {string.Join("|", _root.Query<Label>().ToList().ConvertAll(label => label.text))}",
+                Is.EqualTo("boom | fallback"));
         }
 
         [Test]
@@ -547,6 +572,27 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
+        }
+
+        [Test]
+        public void Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnItsFirst75Mounts_When_TheChainRuns_Then_ReactsNestedUpdateLimitStopsIt()
+        {
+            // Arrange — 75 fallbacks in a row throw, a chain React's limit of 50 commits stops and one of 100 lets settle
+            _mounted = V.Mount(_root, V.Component(ShortRefallingBoundaryRender, key: "boundary"), CountingReports);
+
+            // Act
+            var outcome = "settled";
+            try
+            {
+                _mounted.FlushEffectsForTest();
+            }
+            catch (InvalidOperationException exception)
+            {
+                outcome = exception.Message.Split('.')[0];
+            }
+
+            // Assert
+            Assert.That(outcome, Is.EqualTo("Maximum update depth exceeded"));
         }
 
         [Test]
@@ -1107,6 +1153,28 @@ namespace Velvet.Tests
             return V.Component(ThrowInPassiveEffectRender, key: "child");
         }
 
+        private const int ShortRefallingChainLength = 75;
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode ShortRefallingBoundaryRender()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                var mount = s_fallbackMounts++;
+                return V.Component(ShortRefallingFallbackRender, mount, key: "fallback-" + mount);
+            });
+            return V.Component(ThrowInPassiveEffectRender, key: "child");
+        }
+
+        [Component]
+        private static VNode ShortRefallingFallbackRender(int mount)
+        {
+            Hooks.UseLayoutEffect(
+                (Func<Action>)(() => mount < ShortRefallingChainLength ? throw new InvalidOperationException("boom") : (Action)null),
+                new object[] { mount });
+            return V.Label(text: "fallback");
+        }
+
         private const int RefallingChainLength = 300;
 
         [Component]
@@ -1165,6 +1233,12 @@ namespace Velvet.Tests
             Hooks.UseFallback(_ => V.Component(FallbackWithLayoutEffectRender, key: "fallback"));
             return V.Component(ThrowOnUpdateRender, key: "child");
         }
+
+        [Component]
+        private static VNode SuspenseAroundBoundaryRender()
+            => V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[] { V.Component(BoundaryRender, key: "boundary") });
 
         [Component]
         private static VNode SuspenseHostRender()

@@ -1492,18 +1492,7 @@ namespace Velvet
                         if (hides) SetPrimaryHidden(walk, commit!, preCount, primaryEnd, boundaryFiber, hidden: true);
                         else if (commit != null) RollbackCommitTo(commit, preCount, fibersBefore, newFibers);
                         else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
-                        if (suspense.Fallback != null)
-                        {
-                            var enclosingFallbackOwner = _ctx.EnterSuspenseFallback(boundaryFiber);
-                            try
-                            {
-                                ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fallbackPosition);
-                            }
-                            finally
-                            {
-                                _ctx.LeaveSuspenseFallback(enclosingFallbackOwner);
-                            }
-                        }
+                        if (suspense.Fallback != null) ExpandSuspenseFallback(walk, suspense.Fallback, fallbackPosition, boundaryFiber);
                     }
                     else if (primaryWasHidden)
                     {
@@ -1524,6 +1513,20 @@ namespace Velvet
             else
             {
                 _ctx.MarkSuspensePrimaryReproduced(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
+            }
+        }
+
+        private void ExpandSuspenseFallback(
+            InlineWalk walk, VNode fallback, WalkPosition fallbackPosition, ComponentFiber? boundaryFiber)
+        {
+            var enclosingFallbackOwner = _ctx.EnterSuspenseFallback(boundaryFiber);
+            try
+            {
+                ExpandInlineRecursive(walk, new[] { fallback }, fallbackPosition);
+            }
+            finally
+            {
+                _ctx.LeaveSuspenseFallback(enclosingFallbackOwner);
             }
         }
 

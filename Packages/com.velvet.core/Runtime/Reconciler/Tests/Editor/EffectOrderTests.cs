@@ -573,7 +573,8 @@ namespace Velvet.Tests
     /// effects immediately after its own render, so an earlier sibling's layout effect fired before a later
     /// sibling had even rendered. Across the drain, every layout-effect cleanup runs before any setup, each a
     /// child before its parent, and components in tree order whatever order their updates were enqueued in,
-    /// siblings and cousins alike.
+    /// siblings and cousins alike. The passive effects of the drain run in tree order too, whether a component was
+    /// flushed on its own or rendered by its parent's pass.
     /// </summary>
     [TestFixture]
     internal sealed class LayoutEffectDrainPhaseTests
@@ -725,6 +726,85 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(", ", s_log), Is.EqualTo("first-child:setup, second-child:setup"));
+        }
+
+        [Test]
+        public void Given_SiblingsWhoseUpdatesAreEnqueuedOutOfTreeOrder_When_TheirPassiveEffectsFlush_Then_TheyRunInTreeOrder()
+        {
+            // Arrange — no component above the three stages a passive effect, so each is a root of the order
+            using var mounted = V.Mount(_root, V.Component(PassiveOwnStateHost, key: "host"));
+            mounted.FlushEffectsForTest();
+            s_log.Clear();
+            s_setters["second"].Invoke(1);
+            s_setters["first"].Invoke(1);
+            s_setters["third"].Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("first:passive, second:passive, third:passive"));
+        }
+
+        [Test]
+        public void Given_ASiblingFlushedOnItsOwnAheadOfAParentWhosePassReachesALaterSibling_When_TheirPassiveEffectsFlush_Then_TheSiblingsRunInTreeOrderBeforeTheParent()
+        {
+            // Arrange — the first sibling's own flush stages it after the second, which the parent's pass staged as
+            // it rendered, and both are staged below the parent
+            using var mounted = V.Mount(_root, V.Component(MemoPassiveHost, key: "host"));
+            mounted.FlushEffectsForTest();
+            s_log.Clear();
+            s_setters["first"].Invoke(1);
+            s_setters["host"].Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("first:passive, second:passive, host:passive"));
+        }
+
+        [Component]
+        private static VNode PassiveOwnStateSibling(string name)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setters[name] = setTick;
+            Hooks.UseEffect(() => { s_log.Add(name + ":passive"); return (Action)null; }, new object[] { tick });
+            return V.Label(text: name);
+        }
+
+        [Component]
+        private static VNode PassiveOwnStateHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(PassiveOwnStateSibling, "first", key: "first"),
+                V.Component(PassiveOwnStateSibling, "second", key: "second"),
+                V.Component(PassiveOwnStateSibling, "third", key: "third"),
+            });
+
+        // Memoized, so the host's pass renders only the sibling whose props it changed.
+        [Component(Memoize = true)]
+        private static VNode MemoPassiveSibling((string Name, int Tick) props)
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_setters[props.Name] = setOwn;
+            Hooks.UseEffect(() => { s_log.Add(props.Name + ":passive"); return (Action)null; }, new object[] { props.Tick, own });
+            return V.Label(text: props.Name);
+        }
+
+        [Component]
+        private static VNode MemoPassiveHost()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setters["host"] = setTick;
+            Hooks.UseEffect(() => { s_log.Add("host:passive"); return (Action)null; }, new object[] { tick });
+            return V.Div(children: new VNode[]
+            {
+                V.Component(MemoPassiveSibling, ("first", 0), key: "first"),
+                V.Component(MemoPassiveSibling, ("second", tick), key: "second"),
+            });
         }
 
         [Component]
