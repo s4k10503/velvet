@@ -361,12 +361,12 @@ namespace Velvet
 
         internal static DndSortableSession? TryBegin(DndActiveDrag drag)
         {
-            if (!drag.Context.DraggableBindings.TryGetValue(drag.Source, out var binding)
-                || binding.Settings.Sortable is not { } membership)
+            if (!drag.Context.DraggableBindings.TryGetValue(drag.Source, out var binding))
             {
                 return null;
             }
-            return new DndSortableSession(drag, membership.Store);
+            var membership = binding.Settings.Sortable;
+            return membership == null ? null : new DndSortableSession(drag, membership.Store);
         }
 
         internal static SortableInfo? InfoOf(DraggableSettings settings)

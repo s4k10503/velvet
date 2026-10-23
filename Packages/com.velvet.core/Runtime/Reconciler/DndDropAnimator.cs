@@ -86,7 +86,8 @@ namespace Velvet
         {
             foreach (var binding in ctx.DragOverlayBindings.Values)
             {
-                if (binding.Drop is { } run && ReferenceEquals(run.HiddenSource, element))
+                var run = binding.Drop;
+                if (run != null && ReferenceEquals(run.HiddenSource, element))
                 {
                     RestoreSource(run);
                 }
@@ -122,22 +123,26 @@ namespace Velvet
         private static Vector2? TargetOf(Run run)
         {
             var source = FindSource(run);
-            return source?.panel != null
-                && DndOverlayDriver.TryLocalPosition(
-                    run.Positioner, source.panel, source.worldBound.position, run.Context, out var at)
-                ? at
-                : null;
+            if (source?.panel == null)
+            {
+                return null;
+            }
+            var found = DndOverlayDriver.TryLocalPosition(
+                run.Positioner, source.panel, source.worldBound.position, run.Context, out var at);
+            return found ? at : null;
         }
 
         private static void Measure(Run run, long now)
         {
             var source = FindSource(run);
             var style = run.Positioner.style;
-            if (source == null || TargetOf(run) is not { } to)
+            var target = source != null ? TargetOf(run) : null;
+            if (source == null || target == null)
             {
                 Stop(run.Binding);
                 return;
             }
+            var to = target.Value;
             var from = new Vector2(style.left.value.value, style.top.value.value);
             if ((to - from).sqrMagnitude < 1e-6f)
             {
@@ -155,8 +160,13 @@ namespace Velvet
 
         private static bool IsOnSource(VisualElement positioner, VisualElement source, ReconcilerContext ctx)
         {
-            if (source.panel == null
-                || !DndOverlayDriver.TryLocalPosition(positioner, source.panel, source.worldBound.position, ctx, out var at))
+            if (source.panel == null)
+            {
+                return false;
+            }
+            var found = DndOverlayDriver.TryLocalPosition(
+                positioner, source.panel, source.worldBound.position, ctx, out var at);
+            if (!found)
             {
                 return false;
             }

@@ -125,7 +125,10 @@ namespace Velvet
         public DragActivation? Activation { get; }
 
         protected override bool TryActivate(EventBase evt, DndSensorActivation activation)
-            => evt is PointerDownEvent down && DndActiveDrag.ArmPointer(activation, down, Activation);
+        {
+            var down = evt as PointerDownEvent;
+            return down != null && DndActiveDrag.ArmPointer(activation, down, Activation);
+        }
     }
 
     /// <summary>The keys <see cref="DndKeyboardSensor"/> starts, cancels and ends a drag with.</summary>
@@ -204,7 +207,8 @@ namespace Velvet
 
         protected override bool TryActivate(EventBase evt, DndSensorActivation activation)
         {
-            if (evt is not KeyDownEvent key || !Contains(Codes.Start, key.keyCode))
+            var key = evt as KeyDownEvent;
+            if (key == null || !Contains(Codes.Start, key.keyCode))
             {
                 return false;
             }
