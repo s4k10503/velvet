@@ -1089,6 +1089,83 @@ namespace Velvet.Tests
 
         private int NotGreen() => CountWhere(new RectInt(0, 0, 300, 300), p => !IsGreen(p));
 
+        private static int AlphaTexels(RenderTexture texture)
+        {
+            if (texture == null)
+            {
+                return -1;
+            }
+            var pixels = RenderTexturePixelReader.ReadPixels(texture, new RectInt(0, 0, texture.width, texture.height));
+            var count = 0;
+            foreach (var pixel in pixels)
+            {
+                if (pixel.a > 0)
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        // Renders the clone through a plain camera of its own, to tell a graph the device cannot draw from one the
+        // element's bake camera fails to show.
+        private static int ControlCameraAlphaTexels(VisualEffect clone)
+        {
+            var go = new GameObject("velvet-vfx-control-camera");
+            var texture = new RenderTexture(128, 128, 24);
+            var renderers = clone.GetComponentsInChildren<Renderer>(true);
+            try
+            {
+                go.transform.SetPositionAndRotation(
+                    clone.transform.position - clone.transform.forward * 100f, clone.transform.rotation);
+                var camera = go.AddComponent<Camera>();
+                camera.enabled = false;
+                camera.orthographic = true;
+                camera.orthographicSize = 2f;
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = Color.clear;
+                camera.cullingMask = -1;
+                camera.targetTexture = texture;
+                foreach (var renderer in renderers)
+                {
+                    renderer.forceRenderingOff = false;
+                }
+                camera.Render();
+                return AlphaTexels(texture);
+            }
+            finally
+            {
+                foreach (var renderer in renderers)
+                {
+                    renderer.forceRenderingOff = true;
+                }
+                texture.Release();
+                UnityEngine.Object.Destroy(texture);
+                UnityEngine.Object.Destroy(go);
+            }
+        }
+
+        private static string DescribeRenderers(Renderer[] renderers)
+        {
+            var parts = new List<string>();
+            foreach (var renderer in renderers ?? Array.Empty<Renderer>())
+            {
+                parts.Add(renderer == null
+                    ? "destroyed"
+                    : $"{renderer.GetType().Name} enabled={renderer.enabled} off={renderer.forceRenderingOff} visible={renderer.isVisible}");
+            }
+            return string.Join("; ", parts);
+        }
+
+        private static bool ShadersCompiling()
+        {
+#if UNITY_EDITOR
+            return UnityEditor.ShaderUtil.anythingCompiling;
+#else
+            return false;
+#endif
+        }
+
         [UnityTest]
         public IEnumerator Given_AManualVisualEffectGraph_When_PlayedThenStopped_Then_ItDrawsOnlyWhilePlaying()
         {
@@ -1103,11 +1180,23 @@ namespace Velvet.Tests
 
             // Act
             element.Play();
-            yield return WaitRealtimeDraining(1.0, _host.TargetTexture);
-            var playing = NotGreen();
-            var clone = _mounted.Root.Reconciler.Context.ParticlesBindings[element].EffectHost;
-            var state = $"drawn={playing} asset={clone.visualEffectAsset != null} alive={clone.aliveParticleCount} "
-                + $"awake={clone.HasAnySystemAwake()} culled={clone.culled} device={SystemInfo.graphicsDeviceType}";
+            var series = new List<int>();
+            var playing = 0;
+            for (var second = 0; second < 20 && playing == 0; second++)
+            {
+                yield return WaitRealtimeDraining(1.0, _host.TargetTexture);
+                playing = NotGreen();
+                series.Add(playing);
+            }
+            var binding = _mounted.Root.Reconciler.Context.ParticlesBindings[element];
+            var clone = binding.EffectHost;
+            var state = $"drawn-per-second=[{string.Join(",", series)}] asset={clone.visualEffectAsset != null} "
+                + $"alive={clone.aliveParticleCount} awake={clone.HasAnySystemAwake()} culled={clone.culled} "
+                + $"bakedAlpha={AlphaTexels(binding.EffectTexture)} controlAlpha={ControlCameraAlphaTexels(clone)} "
+                + $"renderers=[{DescribeRenderers(binding.EffectRenderers)}] compiling={ShadersCompiling()} "
+                + $"device={SystemInfo.graphicsDeviceType} {SystemInfo.graphicsDeviceVersion} "
+                + $"computeBufferInputsVertex={SystemInfo.maxComputeBufferInputsVertex}";
+            TestContext.Out.WriteLine(state);
             element.Stop();
             yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
 
