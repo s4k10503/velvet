@@ -132,8 +132,7 @@ actual content at that screen position wins, and the main panel's own processing
 
 **`V.WorldSpace` picking.** A world-space host's `UIDocument` keeps a collider on the host's GameObject while a
 Play session runs, and Unity's runtime input system picks and delivers through it. Velvet adds no collider of
-its own: a second one, placed for a different pivot than the document's, would sit partly outside the panel
-and take rays meant for other objects. `PortalLayersPlaybackTests` pins that the host carries exactly the one
+its own. `PortalLayersPlaybackTests` pins that the host carries exactly the one
 the document keeps.
 
 **Focus.** A focusable element inside a host panel is tracked correctly by that panel's own
@@ -194,7 +193,7 @@ The host object itself is hidden from the Hierarchy:
 One engine fact bounds this feature: **a screen-space panel always composites over the 3D
 scene** — the compositor draws overlay panels after cameras, and `sortingOrder` only orders
 panels among themselves. UI that must sit *among or behind scene geometry* is world-space
-territory.
+territory. `PanelRenderModeContractTests` pins that Unity offers no render mode between the two.
 
 Layer order anchors to the **declaring panel's** `sortingOrder` (base −100 / +100 / +200), so
 two mounted trees whose main panels share a `sortingOrder` produce layers that tie across the
