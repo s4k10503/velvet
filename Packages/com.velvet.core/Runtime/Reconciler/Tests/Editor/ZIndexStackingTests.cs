@@ -349,6 +349,38 @@ namespace Velvet.Tests
             Assert.That((whileHovered, ZBandProbe.PaintOrder(parent)), Is.EqualTo(("b,a", "a,b")));
         }
 
+        [Test]
+        public void Given_AHoverFlexParent_When_HoverStartsAndEnds_Then_ItsChildrenTakeAndLoseTheirFlexOrder()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Div(name: "parent", className: "hover:flex", children: new VNode[]
+                {
+                    V.Div(name: "a", className: "order-2"),
+                    V.Div(name: "b"),
+                }),
+            });
+            var parent = scope.Root.Q<VisualElement>("parent");
+
+            // Act
+            var beforeHover = ZBandProbe.PaintOrder(parent);
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                parent.SimulateEvent(over);
+            }
+            var whileHovered = ZBandProbe.PaintOrder(parent);
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                parent.SimulateEvent(leave);
+            }
+
+            // Assert
+            Assert.That((beforeHover, whileHovered, ZBandProbe.PaintOrder(parent)),
+                Is.EqualTo(("a,b", "b,a", "a,b")));
+        }
+
         private static ToggleStore<string> s_transitionStore;
 
         [Component]

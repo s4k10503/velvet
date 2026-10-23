@@ -19,11 +19,14 @@ namespace Velvet
 
         private static bool IsPositionUtility(string core) => core == "absolute" || core == "relative";
 
+        private static bool IsContainerUtility(string core) => core == "flex" || core == "grid";
+
         // A gate class just appeared on (or left) the live class list without passing through the reconciler, so
         // the layout manipulators and paint layers those tokens gate must be re-derived here — nothing else will
         // run until the element's next patch, which may never come (a breakpoint crossing re-renders nothing).
         private static void SignalToggles(
-            ReconcilerContext? ctx, VisualElement control, bool gateChanged, VisualElement? changedBox, bool positionChanged)
+            ReconcilerContext? ctx, VisualElement control, bool gateChanged, VisualElement? changedBox, bool positionChanged,
+            bool containerChanged)
         {
             if (ctx == null)
             {
@@ -40,6 +43,10 @@ namespace Velvet
             if (positionChanged)
             {
                 FiberZLayerCoordinator.OnPositionToggled(ctx, control);
+            }
+            if (containerChanged)
+            {
+                FiberZLayerCoordinator.OnContainerToggled(ctx, control);
             }
         }
 
@@ -77,6 +84,8 @@ namespace Velvet
             var gateChanged = false;
             // Set when this call toggled a position utility, which decides how the element's parent stacks it.
             var positionChanged = false;
+            // Set when this call toggled flex or grid, which decides whether the element's children take a flex order.
+            var containerChanged = false;
 
             for (var index = 0; index < payloads.Length; index++)
             {
@@ -108,6 +117,7 @@ namespace Velvet
                 }
                 // The condition belongs to the control and the paint to its input box (StyleInputBoxSurface).
                 positionChanged |= IsPositionUtility(core);
+                containerChanged |= IsContainerUtility(core);
                 var dest = DestinationOf(ctx, control, core, on);
                 var effectivePriority = important ? StyleLayerPriority.ImportantOf(priority) : priority;
 
@@ -148,7 +158,7 @@ namespace Velvet
                 }
             }
 
-            SignalToggles(ctx, control, gateChanged, boxChanged ? box : null, positionChanged);
+            SignalToggles(ctx, control, gateChanged, boxChanged ? box : null, positionChanged, containerChanged);
 
             SilhouetteFaceStash.NotifyClassesChanged(control);
             if (box != null)

@@ -443,6 +443,17 @@ namespace Velvet
             }
         }
 
+        // A variant moved control's flex or grid utility on or off: whether its children take a flex order changed.
+        internal static void OnContainerToggled(ReconcilerContext ctx, VisualElement control)
+        {
+            MarkPending(ctx, control);
+            if (ctx.SharedReconcileDepth == 0)
+            {
+                DrainTeardowns(ctx);
+                ResortLayers(ctx);
+            }
+        }
+
         private static void Settle(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
         {
             if (facts == null && !s_held.TryGetValue(real, out _))
