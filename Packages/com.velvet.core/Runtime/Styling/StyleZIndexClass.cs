@@ -11,32 +11,19 @@ namespace Velvet
     // property (z-[var(--z)], z-(--z)).
     internal static class StyleZIndexClass
     {
+        private const string Prefix = "z-";
+
         // Cheap early-out gate: true when ANY class looks like a z-* utility (after stripping a leading "-").
-        // Routed through StripImportant first (mirrors StyleFontClass.IsArbitraryFontClass) so this gate agrees
-        // with TryParse on what counts as "a z-* utility" — otherwise "!z-10" would fail this early-out and
-        // TryExtract would never even attempt it, silently leaving an important-modified z-* class unclassified.
         public static bool HasZIndexClass(string[] classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (IsZIndexClass(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return StyleIntegerUtility.HasToken(classNames, Prefix);
         }
 
         // Whether cls is one HasZIndexClass counts as a z-* utility.
         public static bool IsZIndexClass(string cls)
         {
-            var core = string.IsNullOrEmpty(cls) ? null : StyleArbitraryValueResolver.StripImportant(cls, out _);
-            var offset = core != null && core.Length > 0 && core[0] == '-' ? 1 : 0;
-            return core != null && core.Length >= offset + 2 && core[offset] == 'z' && core[offset + 1] == '-';
+            return !string.IsNullOrEmpty(cls)
+                && StyleIntegerUtility.IsToken(StyleArbitraryValueResolver.StripImportant(cls, out _), Prefix);
         }
 
         // Resolves the z-* value the cascade would: an important token (!z-10 / z-10!) beats every plain one
@@ -48,46 +35,14 @@ namespace Velvet
         // winnerClass is the class the value came from, null where no z utility parsed.
         public static bool TryExtract(string[] classNames, out int z, out string? winnerClass)
         {
-            z = 0;
-            winnerClass = null;
-            if (classNames == null)
-            {
-                return false;
-            }
-
-            // A null value is z-auto, so whether an important token was seen is tracked apart from its value.
-            int? plain = null;
-            int? important = null;
-            string? plainClass = null;
-            string? importantClass = null;
-            foreach (var cls in classNames)
-            {
-                if (!TryParse(cls, out var parsed, out var bang))
-                {
-                    continue;
-                }
-                if (bang)
-                {
-                    (important, importantClass) = (parsed, cls);
-                }
-                else
-                {
-                    (plain, plainClass) = (parsed, cls);
-                }
-            }
-            var winner = importantClass != null ? important : plain;
-            winnerClass = importantClass ?? plainClass;
-            z = winner.GetValueOrDefault();
-            return winner.HasValue;
+            return StyleIntegerUtility.TryExtract(classNames, s_parse, out z, out winnerClass);
         }
 
-        // The utility a z-* class reading a custom property is read as (StyleCustomPropertyClass.Consumer), for
-        // a class with its important bang stripped; null for any other class.
-        public static string? VariableUtility(string core)
-            => StyleCustomPropertyClass.Consumer(core) is { } utility
-                && utility.StartsWith(utility[0] == '-' ? "-z-[" : "z-[", StringComparison.Ordinal)
-                ? utility
-                : null;
+        private static readonly StyleIntegerUtility.Parse s_parse = TryParse;
+
+        // The utility a z-* class reading a custom property is read as, for a class with its important bang stripped;
+        // null for any other class.
+        public static string? VariableUtility(string core) => StyleIntegerUtility.VariableUtility(core, "z-[", "-z-[");
 
         // A null z is z-auto.
         public static bool TryParse(string cls, out int? z) => TryParse(cls, out z, out _);
@@ -115,32 +70,17 @@ namespace Velvet
                 return true;
             }
 
-            var negate = cls[0] == '-';
-            var offset = negate ? 1 : 0;
-            if (cls.Length <= offset + 2 || cls[offset] != 'z' || cls[offset + 1] != '-')
+            if (!StyleIntegerUtility.TryParse(cls, Prefix, out var value))
             {
                 return false;
             }
-            long value;
-            if (StyleArbitraryValueResolver.TryStripBrackets(cls, offset + 2, out var inner))
-            {
-                if (!TryParseSignedDigits(inner, out value))
-                {
-                    return false;
-                }
-            }
-            else if (!TryParseBare(cls.AsSpan(offset + 2), out value))
-            {
-                return false;
-            }
-            // CSS clamps an integer beyond the range it supports, so such a value stacks at that end of it.
-            z = (int)Math.Clamp(negate ? -value : value, int.MinValue, int.MaxValue);
+            z = value;
             return true;
         }
 
         // Tailwind's isPositiveInteger: the digits must print back unchanged through a JavaScript number, so a
         // leading zero, a sign and a fraction are declined, and so is a long run the number prints differently.
-        private static bool TryParseBare(ReadOnlySpan<char> digits, out long value)
+        internal static bool TryParseBare(ReadOnlySpan<char> digits, out long value)
         {
             if ((digits.Length > 1 && digits[0] == '0') || !TryParseDigits(digits, out value))
             {
@@ -214,7 +154,7 @@ namespace Velvet
         }
 
         // A CSS <integer>: an optional sign, then digits.
-        private static bool TryParseSignedDigits(ReadOnlySpan<char> text, out long value)
+        internal static bool TryParseSignedDigits(ReadOnlySpan<char> text, out long value)
         {
             var sign = text.IsEmpty ? '\0' : text[0];
             var negative = sign == '-';

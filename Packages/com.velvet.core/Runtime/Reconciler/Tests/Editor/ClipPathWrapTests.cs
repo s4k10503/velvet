@@ -293,6 +293,22 @@ namespace Velvet.Tests
                 Is.EqualTo(ClipPathKind.Circle));
         }
 
+        [Test]
+        public void Given_AnImportantClipBeforeAPlainOne_When_Reconciled_Then_TheImportantShapeHolds()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "!" + Triangle + " clip-path-[circle(50%)]", name: "card") });
+
+            // Assert
+            var inner = scope.Root.Q<VisualElement>("card");
+            Assert.That(scope.Reconciler.Context.ClipPathBindings.TryGetValue(inner, out var binding)
+                ? binding.Spec?.Kind.ToString()
+                : "unbound", Is.EqualTo(ClipPathKind.Polygon.ToString()));
+        }
+
         // Patch: class addition / removal
 
         [Test]
@@ -502,7 +518,7 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
 
-            Assert.That((scope.Root.childCount, SilhouetteBoundsSpacer.NonSpacerChildCount(scope.Root)),
+            Assert.That((scope.Root.childCount, LogicalChildSlots.Count(scope.Root)),
                 Is.EqualTo((2, 1)));
         }
 
@@ -699,7 +715,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoRingedSiblings_When_Reconciled_Then_NeitherBandIsCountedAsARenderedChild()
         {
-            // LogicalChildSlots.Count, not the superseded physical NonSpacerChildCount: the bands sit
+            // LogicalChildSlots.Count, not a physical count: the bands sit
             // ADJACENT to their elements rather than in a trailing run — which is what gives each band its
             // own element's paint position — and a count that only trims a trailing run reports 3 here.
             // Same control as the single-element case next door: the two discounted children.
@@ -718,7 +734,7 @@ namespace Velvet.Tests
         public void Given_ThreeRingedSiblings_When_TheMiddleOneIsRemoved_Then_TheSurvivorsKeepTheirSlotsAndBands()
         {
             // A keyed removal is where a miscounted invisible child surfaces: the reconciler addresses slots
-            // [0, NonSpacerChildCount), so a band counted as a rendered child mis-pairs the survivors —
+            // [0, LogicalChildSlots.Count), so a band counted as a rendered child mis-pairs the survivors —
             // measured, an adjacent-placement build left slot 1 holding "c" instead of a band. Pins the
             // surviving children AND the band count together, since either can be right while the other is not.
             using var scope = new ReconcilerScope();
@@ -753,22 +769,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsLayerContainer()
+        public void Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsFrontBand()
         {
-            // A z-* absolute element is relocated out of its ordinary slot into a layer container, leaving a
-            // placeholder behind. The band is hosted on the element's parent, so it has to follow — placement
-            // is drained at the reconcile boundary, AFTER the relocation, and re-derives the host from the
-            // element rather than caching the parent it had at create time.
+            // A z-* absolute element is relocated out of its ordinary slot into its parent's front band, leaving
+            // a placeholder behind. The band is placed directly after the element, so it has to follow it there
+            // — the arrangement keeps a band after the element it sits after.
             using var scope = new ReconcilerScope();
 
             Mount(scope, new VNode[] { V.Div(className: "absolute z-10 ring-2", name: "card") });
 
-            // Relocated AND accompanied: the band is beside the element in its ordinary slot too, so asking
-            // only where the band is holds equally for an element that never left.
+            // Relocated AND accompanied: the band sits after the element in its ordinary slot too, so asking only
+            // where the band is holds equally for an element that never left.
             var card = scope.Root.Q<VisualElement>("card");
-            Assert.That(
-                (FiberZLayerCoordinator.IsLayerContainer(card.parent), RingOverlayIn(card.parent) != null),
-                Is.EqualTo((true, true)));
+            Assert.That(ZBandProbe.Names(ZBandProbe.Band(card.parent, front: true)), Is.EqualTo("card,band"));
         }
 
         [Test]

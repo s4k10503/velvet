@@ -73,6 +73,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantSizeBeforeAPlainOne_When_Extracted_Then_TheImportantSizeHolds()
+        {
+            // Act — box-shadow: … !important outranks the later plain declaration.
+            var found = StyleShadowClass.TryExtract(new[] { "!shadow-2xl", "shadow-sm" }, out var spec);
+
+            // Assert
+            Assert.That(found ? Describe(spec) : "none", Is.EqualTo("0 25 50 -12 0.25"));
+        }
+
+        [Test]
         public void Given_ATailwindPreset_When_Extracted_Then_ItsLayersAreBlack()
         {
             // Act

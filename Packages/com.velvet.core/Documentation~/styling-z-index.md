@@ -1,9 +1,10 @@
-# Styling notes: z-index stacking
+# Styling notes: z-index and paint order
 
-Velvet's `z-*` utilities bring CSS `z-index` to `position: absolute` descendants, compared among
-sibling elements that share one direct parent. Unity UI Toolkit has no `z-index` property (and no
-flex `order` analog either): paint order, pointer-pick order, and Yoga's own flex layout placement
-are all tied to a single physical child list.
+Velvet paints an element's children in the order CSS paints siblings: unpositioned children first, in flex order;
+then positioned children and those at `z-0`, in flex order; then positive `z-*`, by value. Negative `z-*` paints
+first of all, behind every other child, by value. Unity UI Toolkit has no `z-index` or flex `order`: paint order,
+pointer-pick order and layout order all follow one child list, so Velvet reorders that list and keeps each element's
+layout and declared position where CSS has them.
 
 ```csharp
 V.Div(className: "relative w-64 h-64", children: new VNode[]
@@ -14,12 +15,20 @@ V.Div(className: "relative w-64 h-64", children: new VNode[]
 });
 ```
 
-## The scope gate: `absolute` + `z-*`
+## Which children paint where
 
-`z-*` only takes effect on an element that is **also** out of flow — either the `absolute` utility
-class, or `V.Anchored` (which forces `position: absolute` itself). On an in-flow element `z-*` is a
-**documented no-op** — see [Scope cuts](#scope-cuts). A `V.Motion` takes `z-*` the same way a `V.Div`
-does.
+| Child | Paints |
+|---|---|
+| `-z-<n>` and the other negative forms | first, lowest z first |
+| unpositioned (no `absolute`, `relative` or `V.Anchored`, z auto) | next, in flex order |
+| positioned with z auto (`absolute`, `relative`, `V.Anchored`), and `z-0` | next, in flex order |
+| `z-<n>` above 0 | last, lowest z first |
+
+Equal places keep flex order, which is declared order unless [`order-*`](styling-flexbox-and-gap.md#flex-order)
+says otherwise. `z-*` takes effect on any child, in flow or not, as it does on a flex item in CSS: an in-flow `z-10`
+paints over the siblings declared after it and still lays out where it is declared. So does a `relative` card
+followed by an unpositioned sibling, as in CSS, where an earlier positioned sibling paints over a later unpositioned
+one.
 
 | Utility | Resolved z |
 |---|---|
@@ -35,55 +44,51 @@ beyond the 32-bit integer range stacks at that end of it, as CSS clamps it (`z-2
 important `z-*` wins over every plain one on the same element wherever it sits in the class list, and within
 either group the one Tailwind emits last wins (`z-20 z-10` gives 20).
 
+A `z-*` or `order-*` behind a variant (`hover:z-10`, `md:z-10`, `group-hover:z-20`, `dark:order-first`) restacks the
+element while the variant holds and puts it back when it stops, ranked against the base class as every
+[variant payload](styling-variants.md) is. So does a position utility behind a variant (`md:absolute`).
+
 ## How it works
 
-`VisualElement.hierarchy` moves the same node in the Yoga layout tree that it moves for paint, and
-the reconciler assumes a live child's physical index tracks its logical one — so `z-*` never
-physically reorders the declaring children list. Instead:
+An element that paints away from its declared slot is **relocated within its own parent**: a hidden,
+zero-footprint **placeholder** — a real, displayed, zero-size element (not `display: none`, which would drop it from
+the focus ring) — keeps the declared slot, so the reconciler, `first:`/`last:`/`odd:`/`even:`/`nth-child`
+structural variants, `peer-*:` searches and Tab order all still see it there, while the element itself is sorted to
+where it paints:
 
-- The first `z-*` element of each sign (non-negative / negative) under a stacking parent lazily
-  creates a **layer container** — a plain, reconciler-invisible `VisualElement` sized to the
-  parent's own content box. The **front** layer (non-negative z) is always the parent's last
-  child; the **back** layer (negative z) is always its *first* child.
-- A z-marked element's real content relocates into its layer container, sorted by resolved z and,
-  among equal values, by declared position, as CSS stacks equal z in tree order (a keyed reorder of
-  equal-z siblings re-sorts the layer when the pass or time-sliced slice ends), while a hidden, zero-footprint **placeholder** — a real, displayed,
-  zero-size element (not `display: none`, which would drop it from the focus ring) — is left at
-  its declared position so the reconciler, `first:`/`last:`/`odd:`/`even:`/`nth-child` structural
-  variants, and Tab order all still see it there.
-- The layer container is geometrically coincident with the stacking parent's content box, so a
-  relocated `absolute` child's `left`/`top` (already parent-relative in UI Toolkit) resolve to the
-  same on-screen position at its declared slot or inside the container — no re-projection.
-- Creating or growing a layer container runs only from the post-reconcile-pass safe point a
-  `V.Portal` mount resolves from, and the container uses the same reconciler-invisible-child
-  convention as the internal filter bounds-spacer.
+- the **back band** — negative z — ahead of the declared slots;
+- the **front band** — positive z, and the positioned children and `z-0` where an unpositioned sibling would
+  otherwise paint over one of them — after them.
 
-## Scope cuts
+A relocated element that takes part in flex layout keeps its place in the row or column: Velvet lays it out at its
+declared slot (or at the slot its flex order gives it) whatever position it paints from. That takes an engine member
+([player-builds.md](player-builds.md)); where it does not resolve, an in-flow `z-*` element stays at its declared
+slot, unstacked. An `absolute` element lays out against its parent as it does unrelocated, so moving it never moves
+it on screen.
 
-- **In-flow `z-*` is a no-op.** The classic "overlapping cards with a negative margin and `z-10`,
-  no `.absolute`" pattern needs `.absolute` too: reordering an in-flow child for paint would move
-  its Yoga layout position with it, and there is no separate flex `order` to reorder instead.
-- **Negative z never escapes the element's own parent's background.** UI Toolkit has exactly one
-  paint traversal; a child can only paint after its own parent's background within that walk.
-  Escaping "behind the parent" would mean hoisting the child to become the parent's own preceding
-  *sibling*, which breaks containing-block/clipping semantics (an `overflow-hidden` parent would
-  no longer clip it).
-- **Comparison is sibling-scope only.** Velvet does not implement CSS stacking-context formation
-  or nesting (`opacity < 1`, `transform`, `filter`, `isolation`, … are stacking-context triggers
-  elsewhere in the spec); every z comparison is against the direct siblings sharing one immediate
-  parent.
-- **Tab order follows the declared position, not the layer.** The placeholder is a real Tab stop
-  at the element's declared slot; Tab reaching it forwards focus into the relocated element, and
-  Tab leaving the relocated element's own subtree redirects to the declared position's next
-  sibling — so `z-*` never changes keyboard navigation order.
-- **A relocation preserves focus.** A z change within one layer re-sorts the layer without the
-  element leaving the panel. Gaining or losing a z, and a sign flip between the front and back
-  layers, move the real element to another parent, which detaches and re-inserts it — UI Toolkit
-  clears `FocusController.focusedElement` the instant an element leaves its panel's visual tree,
-  even for an immediate same-panel reattachment — so the relocation rescues and restores focus
-  when the moving element (or a descendant of it) holds it.
-- **`group-`/`peer-` cross the layer boundary.** A z-managed element's physical parent is its layer
-  container, one hop different from its logical parent. `group-*:` ancestor lookups are unaffected
-  (the container is a transparent hop on the way up). A `peer-*:` search walks declared siblings: a
-  z-managed consumer searches from its declared position, and a z-managed `peer` source is found
-  through the placeholder at its declared slot.
+The element never leaves its parent: its events bubble through the parent as they would from its slot, it inherits
+the parent's styles, and the parent's clipping applies. A reordering never detaches it from the panel either, so
+gaining, changing or losing a `z-*` keeps its running transitions, its pointer capture and its focus.
+
+A ring band (`ring-*`) stays directly after the element it rings, wherever that paints.
+
+## Tab order
+
+Tab order follows the declared position, not the band. The placeholder is a real Tab stop at the element's declared
+slot; Tab reaching it forwards focus into the relocated element, and Tab leaving the relocated element continues
+from its declared slot. A Tab move that the engine would land inside a relocated element where it paints goes on
+past it instead, so an overlay declared before the content it covers is reached before the content, as in CSS. The
+ring a [`V.FocusScope`](focus.md) contains or makes a single tab stop is the engine's own, and follows the bands. A
+relocated element belongs to the scope that declares it, wherever it paints.
+
+## Deviations from CSS
+
+- **Comparison is sibling-scope only.** Velvet does not form CSS stacking contexts: every comparison is among the
+  children of one parent, and a parent's subtree paints as one block at the parent's own place. In CSS a `z-10`
+  inside a parent that forms no stacking context competes with that parent's siblings and their descendants.
+- **Negative z never paints behind its own parent.** A `-z-*` child paints after its parent's background and border,
+  ahead of the parent's other children. In CSS it paints behind a parent that forms no stacking context.
+- **Absolutely positioned children take no flex order.** As in CSS, `order-*` on an `absolute` child changes
+  nothing; its place among the positioned children is its declared one.
+- **A parent that is neither `flex` nor `grid` gives `order-*` nothing to move.** As in CSS, the order of a child of
+  such a parent is its declared one.

@@ -17,6 +17,39 @@ namespace Velvet
         // array is that array's own order.
         public const int NoDeclaration = int.MinValue;
 
+        private static bool IsPositionUtility(string core) => core == "absolute" || core == "relative";
+
+        private static bool IsContainerUtility(string core) => core == "flex" || core == "grid";
+
+        // A gate class just appeared on (or left) the live class list without passing through the reconciler, so
+        // the layout manipulators and paint layers those tokens gate must be re-derived here — nothing else will
+        // run until the element's next patch, which may never come (a breakpoint crossing re-renders nothing).
+        private static void SignalToggles(
+            ReconcilerContext? ctx, VisualElement control, bool gateChanged, VisualElement? changedBox, bool positionChanged,
+            bool containerChanged)
+        {
+            if (ctx == null)
+            {
+                return;
+            }
+            if (gateChanged)
+            {
+                ctx.VariantGatedReSync?.Invoke(control);
+            }
+            if (changedBox != null)
+            {
+                ctx.VariantGatedReSync?.Invoke(changedBox);
+            }
+            if (positionChanged)
+            {
+                FiberZLayerCoordinator.OnPositionToggled(ctx, control);
+            }
+            if (containerChanged)
+            {
+                FiberZLayerCoordinator.OnContainerToggled(ctx, control);
+            }
+        }
+
         // Applies (when on is true) or clears each payload on target.
         // A payload containing [ that parses as an arbitrary value is applied as an inline style at
         // priority; otherwise it is projected onto the class list at that same priority. Either way the
@@ -49,6 +82,10 @@ namespace Velvet
             // re-derives the grid from its FINAL token set instead of first building a one-column grid from
             // the half-applied one.
             var gateChanged = false;
+            // Set when this call toggled a position utility, which decides how the element's parent stacks it.
+            var positionChanged = false;
+            // Set when this call toggled flex or grid, which decides whether the element's children take a flex order.
+            var containerChanged = false;
 
             for (var index = 0; index < payloads.Length; index++)
             {
@@ -79,6 +116,8 @@ namespace Velvet
                     continue;
                 }
                 // The condition belongs to the control and the paint to its input box (StyleInputBoxSurface).
+                positionChanged |= IsPositionUtility(core);
+                containerChanged |= IsContainerUtility(core);
                 var dest = DestinationOf(ctx, control, core, on);
                 var effectivePriority = important ? StyleLayerPriority.ImportantOf(priority) : priority;
 
@@ -119,18 +158,7 @@ namespace Velvet
                 }
             }
 
-            if (gateChanged)
-            {
-                // A gate class just appeared on (or left) the live class list without passing through the
-                // reconciler, so the layout manipulators and paint layers those tokens gate must be
-                // re-derived here — nothing else will run until the element's next patch, which may never
-                // come (a breakpoint crossing re-renders nothing).
-                ctx?.VariantGatedReSync?.Invoke(control);
-            }
-            if (boxChanged)
-            {
-                ctx?.VariantGatedReSync?.Invoke(box!);
-            }
+            SignalToggles(ctx, control, gateChanged, boxChanged ? box : null, positionChanged, containerChanged);
 
             SilhouetteFaceStash.NotifyClassesChanged(control);
             if (box != null)
@@ -162,7 +190,7 @@ namespace Velvet
             VisualElement target, string payload, bool on, long effectivePriority,
             ReconcilerContext? ctx, int declaration)
         {
-            var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
+            var core = StyleArbitraryValueResolver.StripImportant(payload, out var important);
             // Resolved on the element into a payload of its own, which comes back through Apply.
             if (StyleCustomPropertyClass.IsCustomPropertyToken(core))
             {
@@ -200,13 +228,14 @@ namespace Velvet
                 return TrackVariantGate(ctx, target, payload, key, declaration, on);
             }
 
+            var live = StyleClipPathClass.LiveClassName(core, important);
             if (on)
             {
-                StyleClassProjection.Add(target, core, key);
+                StyleClassProjection.Add(target, live, key);
             }
             else
             {
-                StyleClassProjection.Remove(target, core, key);
+                StyleClassProjection.Remove(target, live, key);
             }
 
             return TrackVariantGate(ctx, target, payload, key, declaration, on);
@@ -276,7 +305,7 @@ namespace Velvet
         // Records a toggled payload that is one of the gate tokens, returning true when the tracked set
         // changed. Returns false without touching anything for the parameterless callers (no context to
         // record into) and for the overwhelmingly common non-gate payload. An important font, text-effect, gap,
-        // divide, pointer-events or skew token keeps its bang, which is what lets it outrank the element's own important
+        // divide, pointer-events, skew or box-shadow token keeps its bang, which is what lets it outrank the element's own important
         // base token in the composed source; the other gate families read the bare core.
         private static bool TrackVariantGate(ReconcilerContext? ctx, VisualElement target, string payload,
             long priority, int declaration, bool on)
@@ -289,15 +318,18 @@ namespace Velvet
 
         private static bool IsImportanceAware(string core)
             => StyleFontClass.IsFontToken(core) || StyleTextEffectClass.IsTextEffectToken(core)
+                || IsStackingToken(core)
                 || StylePointerEventsClass.IsPointerEventsToken(core)
                 || StyleSkewClass.IsSkewClass(core)
+                || StyleShadowClass.IsShadowClass(core) || StyleShadowClass.IsInsetBoxShadowClass(core)
                 || (StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core))
                 || StyleDivideClass.IsDivideToken(core);
 
         // The utility tokens whose mere PRESENCE in a class array decides what a class-driven pass builds:
         // the three layout manipulators and the pointer-events scope (FiberNodePatcher.ApplyLayoutManipulators),
         // the seven wrapper-less paint layers (FiberNodePatcher.ApplyResolvedClassPasses), the inline font layer
-        // (FiberNodePatcher.ApplyFontLayer) and the text-effect cascade (FiberNodePatcher.ApplyTextEffects).
+        // (FiberNodePatcher.ApplyFontLayer), the text-effect cascade (FiberNodePatcher.ApplyTextEffects) and the
+        // sibling stacking (FiberZLayerCoordinator.OnResolved).
         // Each family answers for its own prefix set so this gate cannot drift from the array scans those
         // passes run.
         //
@@ -318,6 +350,13 @@ namespace Velvet
                 || StyleRingClass.IsRingClass(core)
                 || StyleBackdropClass.IsBackdropClass(core)
                 || StyleFontClass.IsFontToken(core)
-                || StyleTextEffectClass.IsTextEffectToken(core);
+                || StyleTextEffectClass.IsTextEffectToken(core)
+                || IsStackingToken(core);
+
+        // z-* and order-*, which FiberZLayerCoordinator reads out of the class source to arrange the element among
+        // its siblings.
+        private static bool IsStackingToken(string core)
+            => core.StartsWith("z-", System.StringComparison.Ordinal) || core.StartsWith("-z-", System.StringComparison.Ordinal)
+                || StyleOrderClass.IsOrderToken(core);
     }
 }

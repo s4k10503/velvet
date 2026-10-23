@@ -23,7 +23,7 @@ Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs	2
 Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs	2
 Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberEventBindingManager.cs	2
-Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs	12
+Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs	14
 Packages/com.velvet.core/Runtime/Reconciler/FiberGestureApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberKeying.cs	1
@@ -35,7 +35,7 @@ Packages/com.velvet.core/Runtime/Reconciler/FiberRingApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberSliderKeyboard.cs	5
 Packages/com.velvet.core/Runtime/Reconciler/FiberTextFieldLength.cs	7
 Packages/com.velvet.core/Runtime/Reconciler/FiberWrapperElementAppliers.cs	1
-Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs	3
+Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs	18
 Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs	6
 Packages/com.velvet.core/Runtime/Reconciler/PanelFocusMemory.cs	5
 Packages/com.velvet.core/Runtime/Reconciler/PanelHostFactory.cs	1
@@ -75,7 +75,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleCompositeRejection.cs	6
 Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.Stylesheet.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.Substitution.cs	2
-Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs	12
+Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs	16
 Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleDivideManipulator.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleFamilyOrder.cs	3
@@ -87,6 +87,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleGridClass.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleHasVariantManipulator.cs	4
 Packages/com.velvet.core/Runtime/Styling/StyleInlineSheetOrder.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleInputBoxSurface.cs	2
+Packages/com.velvet.core/Runtime/Styling/StyleIntegerUtility.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleLengthExpression.cs	6
 Packages/com.velvet.core/Runtime/Styling/StyleRelativeLengths.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs	9
@@ -102,8 +103,9 @@ Packages/com.velvet.core/Runtime/Styling/StyleTextEffectResolver.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleTransformValueParser.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleUtilityProperties.g.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleVariantPayload.cs	6
-Packages/com.velvet.core/Runtime/Styling/StyleZIndexClass.cs	2
+Packages/com.velvet.core/Runtime/Styling/StyleZIndexClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/TransformOriginSparing.cs	2
+Packages/com.velvet.core/Runtime/Styling/VariantSignalSource.cs	1
 Packages/com.velvet.core/Runtime/Styling/VelvetFonts.cs	5
 Packages/com.velvet.core/Runtime/Styling/VelvetPalette.cs	1
 Packages/com.velvet.core/Runtime/Styling/VelvetStyleUtilities.cs	1

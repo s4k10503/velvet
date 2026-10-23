@@ -45,12 +45,45 @@ namespace Velvet
 
         // Suspended state of time-sliced reconciliation.
         // null indicates no suspension (the normal state).
-        internal IndexedReconcileState? PendingIndexedState { get; private set; }
+        internal IndexedReconcileState? PendingIndexedState
+        {
+            get => _pendingIndexedState;
+            private set
+            {
+                _pendingIndexedState = value;
+                NoteParkedParent();
+            }
+        }
 
         // Suspended state of keyed reconciliation. null indicates no suspension.
         // The intermediate buffers used by Pass 2 are owned by this state (not returned to the
         // Pool while suspended).
-        internal KeyedReconcileState? PendingKeyedState { get; private set; }
+        internal KeyedReconcileState? PendingKeyedState
+        {
+            get => _pendingKeyedState;
+            private set
+            {
+                _pendingKeyedState = value;
+                NoteParkedParent();
+            }
+        }
+
+        private IndexedReconcileState? _pendingIndexedState;
+        private KeyedReconcileState? _pendingKeyedState;
+
+        // Tells the context which parent this instance's diff is parked over, if any (ReconcilerContext.ParkedDiffParents).
+        private void NoteParkedParent()
+        {
+            var parent = _pendingIndexedState?.Parent ?? _pendingKeyedState?.Parent;
+            if (parent == null)
+            {
+                _ctx.ParkedDiffParents.Remove(this);
+            }
+            else
+            {
+                _ctx.ParkedDiffParents[this] = parent;
+            }
+        }
 
         // The boundary reproductions the state above still owes a removal pass, carried until the slice
         // that resumes it runs them. Instance state rather than context state like the lists it feeds,
@@ -177,9 +210,9 @@ namespace Velvet
             FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, parent);
 
             // Slot indices are LOGICAL throughout: a slot counts rendered children only, and the
-            // reconciler-invisible ones (a z-index layer container, a filter bounds spacer, a ring band)
+            // reconciler-invisible ones (a relocated z-* element, a filter bounds spacer, a ring band)
             // are skipped by the one conversion applied where the DOM is actually touched — see
-            // LogicalChildSlots. This entry used to fold a back z-layer container's leading offset into
+            // LogicalChildSlots. This entry used to fold a back band's leading offset into
             // slotStart instead, which worked only while every invisible child was pinned to one end of the
             // list; a band that must sit beside its own element cannot be. Nothing is corrected here now,
             // and the parked-slot rebasing that existed to keep those baked-in offsets true across a
@@ -295,7 +328,7 @@ namespace Velvet
         }
 
         // Drains what the pass that just finished deferred: each Portal's and WorldSpace node's children, and
-        // each z-* element's placement in its layer container. A Portal's children reconcile can queue more;
+        // each relocated z-* element's arrival in its parent. A Portal's children reconcile can queue more;
         // they join the same queue, drained FIFO until empty, so a Portal mounts at the logical slot
         // (LogicalChildSlots.Count) after every earlier-drained Portal's children in the same target.
         // Called only from Reconciler.FinishTopLevelPass, which Reconcile's and ContinueReconcile's top-level
@@ -317,19 +350,15 @@ namespace Velvet
                 }
                 if (node is ZLayerMountNode zLayerMount)
                 {
-                    // Not a host mount: the real element is already fully built (CreateElement / a
-                    // patch-time none-to-z transition ran its whole child reconcile inline, under live
-                    // context, like any ordinary sibling) — only its CONTAINER placement was deferred,
-                    // because placeholder.parent (the stacking parent) is only knowable now. No target
-                    // resolution, no nested Reconcile, no PortalState entry: resolve the layer placement
-                    // and move on to the next queued entry.
+                    // Not a host mount: the real element is already fully built (CreateElement ran its whole
+                    // child reconcile inline, under live context, like any ordinary sibling) — only its arrival
+                    // in the parent was deferred, because placeholder.parent is only knowable now. No target
+                    // resolution, no nested Reconcile, no PortalState entry.
                     // Ahead of the containment below rather than inside it: that catch answers for a failed
                     // target resolution and this arm resolves none — it performs the whole placement, and
                     // the insert that lands the element runs the panel-attach callbacks a V.Custom<T>
                     // subclass registered on it (PortalLayersTests pins that the insert reaches them).
-                    // Leaving that application throw on the render's own escape path is the decision here;
-                    // contained, it is reported to the console with `real` already in the container and no
-                    // ZLayerMembers entry, which is the key Reposition needs to move it again.
+                    // Leaving that application throw on the render's own escape path is the decision here.
                     FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
                     continue;
                 }
@@ -381,7 +410,7 @@ namespace Velvet
                 var resolvedTarget = target!;
                 // Append after the target's existing rendered children: LogicalChildSlots.Count is the
                 // logical slot the next child takes, and the conversion at each DOM touch is what keeps a
-                // trailing filter bounds-spacer last and skips a leading z-layer container. Stored logical,
+                // trailing filter bounds-spacer last and skips a leading back-band z-* element. Stored logical,
                 // which is the basis every consumer of PortalState.SlotStart now shares — it no longer has to
                 // be re-derived against the target's live physical structure, so a container appearing or
                 // disappearing between this mount and a later patch cannot move it.

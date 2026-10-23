@@ -254,7 +254,11 @@ that simulates a viewport re-points them, [as below](#simulating-a-viewport-velv
 descendant's `group-hover:` payload toggles when that container is hovered. `peer-*` reacts to
 **marked previous siblings**: add `peer` to one element, and a later sibling's `peer-checked:`
 payload toggles with that peer's checked state. With several marked ancestors or previous siblings,
-the payload holds while any one of them is in the state. Tailwind's **named** forms are supported, so
+the payload holds while any one of them is in the state. A source already under the pointer, or already
+holding focus, when a consumer mounts or moves lights the consumer at once; a source already pressed lights a
+`group-active:` / `peer-active:` consumer only from its next press. A source that code outside a render adds,
+removes or reorders is picked up at the panel's next scheduler update, while a `group` / `peer` class that code
+adds to or removes from an element already in the tree is read at the next render. Tailwind's **named** forms are supported, so
 multiple groups / peers can coexist without cross-talk:
 
 ```csharp
@@ -301,7 +305,8 @@ Velvet writes down a subtree — `pointer-events-none` / `pointer-events-auto`
 `font-[…]` forms; and the axes Velvet writes into the displayed string — `uppercase` / `lowercase` /
 `capitalize` / `normal-case`, `underline` / `line-through` / `overline` / `no-underline`,
 `whitespace-pre-line`, `leading-*`, with the wrap mode `text-balance` / `text-pretty` write onto the
-text. Each resolves at mount and on every toggle in both directions, and
+text; and the sibling paint and flex order — `z-*` and `order-*` ([styling-z-index.md](styling-z-index.md)). Each
+resolves at mount and on every toggle in both directions, and
 the order they compose in is preserved on a toggle just as on a render — so
 `className="gap-4 md:grid md:grid-cols-3"` is a
 gapped flex row below `md` and a three-column grid (spaced by the grid, which owns its gap) from `md`

@@ -109,7 +109,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_APeerHoverChildAfterAZManagedPeer_When_TheRelocatedPeerIsHovered_Then_ThePayloadIsAppliedToTheChild()
         {
-            // Arrange — the peer is absolute with a z-* utility, so it relocates into its parent's front z-layer
+            // Arrange — the peer is absolute with a z-* utility, so it relocates into its parent's front band
             // and only its placeholder precedes the child.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(
                 "relative",
@@ -127,8 +127,7 @@ namespace Velvet.Tests
             // Assert — the relocation is a term: a peer left at its declared slot is found without the
             // placeholder ever being read.
             Assert.That(
-                (peer.parent != null && peer.parent.ClassListContains(FiberZLayerCoordinator.FrontMarkerClass),
-                    child.ClassListContains("bg-on")),
+                (ZBandProbe.InBand(peer, front: true), child.ClassListContains("bg-on")),
                 Is.EqualTo((true, true)));
         }
 
@@ -282,6 +281,29 @@ namespace Velvet.Tests
 
             // Assert — B's binding kept its own live manipulator, so the inner re-hover re-applies the leaf.
             Assert.IsTrue(child.ClassListContains("bg-red"));
+        }
+
+        // GREEN_ON_BASE(characterization): each named binding's layer is keyed by its own rule place on the base.
+        // The case pins that a named source's exit clears only its own value, where the two shared one layer once.
+        [Test]
+        public void Given_TwoNamedGroupHoverWidths_When_TheLaterNamedSourceStopsHovering_Then_TheEarlierWidthHolds()
+        {
+            // Arrange — both named sources hovered, so the later-ordered name's width wins.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(
+                "group/a",
+                V.Div("group/b", V.Label(name: "child", className: "group-hover/a:w-[10px] group-hover/b:w-[20px]"))));
+            var a = _window.rootVisualElement.Q<VisualElement>(className: "group/a");
+            var b = _window.rootVisualElement.Q<VisualElement>(className: "group/b");
+            var child = _window.rootVisualElement.Q<Label>("child");
+            Fire<PointerOverEvent>(a);
+            Fire<PointerOverEvent>(b);
+            var whileBoth = child.style.width.value.value;
+
+            // Act
+            FirePointerOutOutside(b);
+
+            // Assert
+            Assert.That((whileBoth, child.style.width.value.value), Is.EqualTo((20f, 10f)));
         }
 
         [Test]

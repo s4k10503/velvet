@@ -209,19 +209,24 @@ namespace Velvet
         }
     }
 
-    // The front (non-negative z) and back (negative z) layer containers a stacking-context parent lazily
-    // grows, one of each on first use. Either may be null (no member of that sign has mounted yet).
+    // What FiberZLayerCoordinator last arranged a parent's children into: whether its positioned children paint in the
+    // band after its unpositioned ones, and whether its layout list holds a relocated child's box at another child's
+    // index.
     internal sealed class ZLayerHostRecord
     {
-        public VisualElement? Front;
-        public VisualElement? Back;
+        public bool Lifted;
+        public bool Swapped;
     }
 
-    // Per-z-managed-element bookkeeping: which placeholder stands in its logical slot, which layer container
-    // currently holds it, the stacking parent both are scoped to, and its last resolved z. Keyed by the REAL
-    // element in ReconcilerContext.ZLayerMembers; the reverse index (placeholder -> real) is ZLayerPlaceholders.
+    // Per-relocated-element bookkeeping: the placeholder standing in its declared slot, the parent both share, and
+    // the z (null for auto) and flex order it was last arranged at. Keyed by the REAL element in
+    // ReconcilerContext.ZLayerMembers; the reverse index (placeholder -> real) is ZLayerPlaceholders.
     internal readonly record struct ZLayerMember(
-        VisualElement Placeholder, VisualElement Container, VisualElement StackingParent, int ResolvedZ);
+        VisualElement Placeholder, VisualElement StackingParent, int? Z, int Order);
+
+    // The z (null for auto) and flex order an element's classes give it, recorded for an element whose classes name
+    // either or a position (FiberZLayerCoordinator.Record).
+    internal readonly record struct StackingFacts(int? Z, int Order);
 
     // Shared helpers for maintaining the multi-Portal slot range invariant.
     internal static class PortalSlotTracker
@@ -582,6 +587,8 @@ namespace Velvet
         public Dictionary<VisualElement, StyleConditionalVariantManipulator> ConditionalVariantManipulators { get; } = new();
         public Dictionary<VisualElement, StyleContainerVariantManipulator> ContainerVariantManipulators { get; } = new();
         public Dictionary<VisualElement, StyleRelationalVariantManipulator> RelationalVariantManipulators { get; } = new();
+        // The panels this context's relational consumers live on, heard for a source that joins outside a pass.
+        public RelationalTreeWatch RelationalTreeWatch { get; }
 
         // The RelationalSourceSets hooking each relational source element (see RelationalSourceSet).
         public Dictionary<VisualElement, List<RelationalSourceSet>> RelationalVariantSources { get; } = new();
@@ -1544,58 +1551,63 @@ namespace Velvet
         // boundary does it (Reconciler.FinishTopLevelPass).
         internal HashSet<VisualElement> PortalTargetsToRestyle { get; } = new();
 
-        // Per-stacking-context-parent z-layer containers (FiberZLayerCoordinator), lazily created on first
-        // z-marked absolute child. NOT a pure side-table: the record's Front/Back reference live VisualElement
-        // containers that are ordinary (if empty) children of the key until FiberZLayerCoordinator.DrainTeardowns
-        // removes them — but the dictionary ENTRY itself is dropped exactly like a pure side-table (a plain
-        // Remove) once both containers are gone, since the containers' own subtree teardown already runs
-        // through the ordinary recursive cleanup that reaches them as ordinary children of a departing parent.
+        // The parents FiberZLayerCoordinator has relocated children of, with how it last arranged them. An entry is
+        // dropped once the parent holds no relocated child.
         public Dictionary<VisualElement, ZLayerHostRecord> ZLayerHosts { get; } = new();
 
-        // Placeholder -> real element, for a z-managed slot currently routed into its layer container. Mirrors
-        // PortalState's placeholder-keyed role: FiberElementCleaner's CleanupZLayerPlaceholder consults this
-        // (keyed by the PLACEHOLDER, which is what a normal slot removal or subtree teardown physically
-        // reaches) to find and tear down the real element living elsewhere in the tree. NOT a pure side-table
-        // — removing an entry here always accompanies detaching the real element from its container.
+        // Placeholder -> real element, for a slot whose element FiberZLayerCoordinator relocated within its parent.
+        // FiberElementCleaner's CleanupZLayerPlaceholder consults this (keyed by the PLACEHOLDER, which is what a
+        // slot removal or subtree teardown reaches) to tear down the real element. NOT a pure side-table: removing
+        // an entry here always accompanies retiring the real element.
         public Dictionary<VisualElement, VisualElement> ZLayerPlaceholders { get; } = new();
 
         // The elements whose class list FiberZLayerCoordinator.TryClassify last classified, keyed by the element
         // carrying the classes, so a z a custom property supplies can stack one that its patch left unstacked.
         internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> ZLayerCandidates { get; } = new();
 
-        // The exiting children a PopLayout presence pinned out of flow, keyed by the element holding their slot, which
-        // stack in the front layer for as long as they exit (FiberZLayerCoordinator.PinnedGhostZ). An entry is taken
-        // when the exit is cancelled or the ghost is removed.
+        // The exiting children a PopLayout presence pinned out of flow, keyed by the ghost element, which paint as
+        // positioned children for as long as they exit (FiberZLayerCoordinator.PinnedGhostZ). An entry is taken when
+        // the exit is cancelled or the ghost is removed.
         internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> PinnedGhosts { get; } = new();
 
-        // The pinned ghosts still to be moved into their layer, which the end of the pass that pinned them does
-        // (FiberZLayerCoordinator.DrainGhostStacks): the commit that is running still holds each one at its slot.
-        internal List<VisualElement> PendingGhostStacks { get; } = new();
-
-        // Real element -> its z-layer bookkeeping. A pure side-table (its own teardown is a plain Remove — the
-        // container detach and placeholder bookkeeping live in ZLayerPlaceholders/ZLayerHosts instead), so it
-        // is enrolled in _pureElementSideTables: a departing real element (however it is reached — its own
-        // placeholder's cleanup, or the ordinary recursive walk into its layer container) drops its entry the
-        // same way MotionAppliedClasses/TextEffects/etc. do.
+        // Real element -> its relocation bookkeeping. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, ZLayerMember> ZLayerMembers { get; } = new();
 
-        // Layer containers whose membership changed this pass and so need an emptiness re-check once the pass
-        // is over. Container PRESENCE changes (creating one for the first time, or removing one once its last
-        // member left) touch the stacking parent's OWN child list — safe only from the same post-pass drain
-        // context DrainPendingPortalMounts already runs from, never synchronously mid-diff (a mid-pass removal
-        // of a LEADING back container would shift every ordinary sibling index a live Common/Keyed loop is
-        // still iterating by absolute position). Pure membership changes within an ALREADY-EXISTING container
-        // never touch this set — they run synchronously, from anywhere. Drained (and cleared) by
-        // FiberZLayerCoordinator.DrainTeardowns, called from Reconciler.FinishTopLevelPass's finally, after
-        // DrainPendingPortalMounts.
-        public HashSet<VisualElement> PendingZLayerTeardownChecks { get; } = new();
+        // Slot element -> the z, flex order and position its classes give it, for an element whose classes name
+        // any of them. A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, StackingFacts> StackingFacts { get; } = new();
 
-        // Stacking parents a member was placed under or whose children a pass reconciled; drained by
-        // FiberZLayerCoordinator.ResortLayers at the end of each top-level pass, after the teardown checks above.
+        // Retired placeholders and anchors still standing in their parent, removed by
+        // FiberZLayerCoordinator.DrainTeardowns once no diff can be holding a physical index into that parent.
+        public HashSet<VisualElement> PendingZLayerRemovals { get; } = new();
+
+        // Relocated elements whose placeholder was torn down while they still stood in their parent, with the
+        // element FiberElementCleaner returns to the pool for each; released at the end of the top-level pass for
+        // the reason PendingZLayerRemovals waits.
+        internal List<(VisualElement Real, VisualElement Poolable)> PendingZLayerDeadReals { get; } = new();
+
+        // Parents whose children a pass reconciled or whose stacking facts changed; drained by
+        // FiberZLayerCoordinator.ResortLayers at the end of each top-level pass.
         public HashSet<VisualElement> PendingZLayerResorts { get; } = new();
 
-        // FiberZLayerCoordinator's placeholder -> declared index, filled and cleared within one layer check.
-        internal Dictionary<VisualElement, int> ZLayerDeclaredIndex { get; } = new();
+        // FiberZLayerCoordinator.ResortLayers' working copy of PendingZLayerResorts, kept so a drain allocates nothing.
+        internal List<VisualElement> ZLayerArrangeQueue { get; } = new();
+
+        // The parent each time-sliced diff parked over, by the ChildReconciler that parked it. A parent a diff is
+        // parked over keeps its slot occupants until the diff finishes (FiberZLayerCoordinator.Arrange).
+        internal Dictionary<object, VisualElement> ParkedDiffParents { get; } = new();
+
+        internal bool IsParkedParent(VisualElement parent)
+        {
+            foreach (var parked in ParkedDiffParents.Values)
+            {
+                if (ReferenceEquals(parked, parent))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
 
         // Guards FiberCrossPanelPointerRouter.AttachToMainPanel against attaching twice on the same
         // main panel — V.Mount is idempotent-safe to call from a component's own render (uncommon but
@@ -3274,6 +3286,7 @@ namespace Velvet
             EventManager = new FiberEventBindingManager(BatchScheduler);
             FiberElementFactory = new FiberElementFactory(EventManager);
             ComponentRegistry = new ComponentRegistry(this);
+            RelationalTreeWatch = new RelationalTreeWatch(this);
             FiberMemoCache = new FiberMemoCache();
             StyleAnimationScheduler = new StyleAnimationScheduler { Context = this };
             ComponentContextStack = new ComponentContextStack();
@@ -3312,6 +3325,7 @@ namespace Velvet
                 FontScope.Inheritors,
                 ZLayerHosts,
                 ZLayerMembers,
+                StackingFacts,
             };
             FiberPortalRegistry.TargetRegistered += OnPortalTargetRegistered;
         }

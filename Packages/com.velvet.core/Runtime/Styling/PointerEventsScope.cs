@@ -12,8 +12,8 @@ namespace Velvet
     // whole of pointer-events-auto: the element keeps whatever mode it had, which is how an Ignore Velvet set on a
     // wrapper or a control set on itself survives inside an auto subtree.
     //
-    // The walk follows the raw hierarchy, which is what reaches a control's internal parts. A z-* element hoisted
-    // into a layer container is reached with the rest: the container is a child of the element's own parent.
+    // The walk follows the raw hierarchy, which is what reaches a control's internal parts. A z-* element relocated
+    // among its siblings is reached with the rest: it stays a child of its own parent.
     //
     // A context's scopes are walked again at the end of each of its top-level reconcile passes, or once at the end
     // of a batch drain for all of the drain's passes (OnPassEnd, OnDrainEnd), and at once where a variant toggle or

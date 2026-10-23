@@ -34,28 +34,6 @@ namespace Velvet
             return child.ClassListContains("absolute");
         }
 
-        // The off-panel (class-only) half of IsOutOfFlow's test, exposed standalone for callers that only have
-        // a VNode's declared classNames — not a live element — at reconcile time (the z-* scope gate: z-* takes
-        // effect only on an element that is ALSO position:absolute, decided before the element's class list has
-        // ever been attached to anything). Recognizes only the "absolute" utility class, the same limitation
-        // IsOutOfFlow's own off-panel fallback already has (an inline Styles.Position override is invisible
-        // here either way).
-        internal static bool IsOutOfFlowClass(string[] classNames)
-        {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (cls == "absolute")
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         // Folds container's child sequence into the given running hash: each child's identity plus its
         // in-flow / out-of-flow state, in child order. Shared by the index-driven child manipulators'
         // signature hashes (gap, grid, child-variant) so a child's out-of-flow transition (a PopLayout pin
@@ -76,23 +54,12 @@ namespace Velvet
             }
         }
 
-        // The index of container's last child that is the author's, -1 when there is none — the child the
+        // Container's last child that is the author's, in declared order, null when there is none — the child the
         // manipulators following Tailwind's `> :not(:last-child)` exempt. `:last-child` counts an absolutely
-        // positioned child, so only the children Velvet inserts itself, which SilhouetteBoundsSpacer.IsSpacer
-        // names, are passed over.
-        internal static int LastSpacedIndex(VisualElement container)
-        {
-            var last = -1;
-            var count = container.childCount;
-            for (var i = 0; i < count; i++)
-            {
-                if (!SilhouetteBoundsSpacer.IsSpacer(container[i]))
-                {
-                    last = i;
-                }
-            }
-            return last;
-        }
+        // positioned child, so only the children Velvet inserts itself are passed over, and a relocated z-* element
+        // counts at its declared slot (FiberZLayerCoordinator.LastDeclaredChild).
+        internal static VisualElement? LastSpacedChild(VisualElement container)
+            => FiberZLayerCoordinator.LastDeclaredChild(container);
 
         // Whether child is display:none — through the hidden utility or an inline display — and so has no box
         // for CSS gap to space or to count as the first.

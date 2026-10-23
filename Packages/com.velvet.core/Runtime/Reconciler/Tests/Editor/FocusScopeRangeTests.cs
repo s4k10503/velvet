@@ -66,6 +66,77 @@ namespace Velvet.Tests
             V.Button(name: "after"),
         });
 
+        [Component]
+        private static VNode ScopeDeclaringAZIndexedChild() => V.Div(name: "row", children: new VNode[]
+        {
+            V.FocusScope(contain: true, children: new VNode[]
+            {
+                V.Button(name: "s1"),
+                V.Button(name: "zp", className: "absolute z-10"),
+            }),
+            V.Button(name: "after"),
+        });
+
+        private FocusScopeStart StartInRow()
+        {
+            foreach (var child in Q("row").hierarchy.Children())
+            {
+                if (child is FocusScopeStart start)
+                {
+                    return start;
+                }
+            }
+            return null;
+        }
+
+        [Test]
+        public void Given_AZIndexedChildOfAFocusScope_When_TheRangeIsAskedWhetherItContainsIt_Then_ItDoes()
+        {
+            // Arrange
+            Mount(ScopeDeclaringAZIndexedChild);
+            var zp = Q("zp");
+
+            // Act
+            var contains = FocusScopeRange.Contains(StartInRow(), zp);
+
+            // Assert
+            Assert.That((_mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(zp), contains), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AZIndexedChildOfAFocusScope_When_TheStartsAroundItAreAppended_Then_ItsScopeIsTheOnlyOne()
+        {
+            // Arrange
+            Mount(ScopeDeclaringAZIndexedChild);
+            var zp = Q("zp");
+            var starts = new List<FocusScopeStart>();
+
+            // Act
+            FocusScopeRange.AppendStartsAround(zp, starts);
+
+            // Assert
+            Assert.That(
+                (_mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(zp), starts.Count == 1 && ReferenceEquals(starts[0], StartInRow())),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AZIndexedChildOfAFocusScope_When_TheContentIsAppended_Then_ItHoldsTheRealElementAtItsDeclaredPlace()
+        {
+            // Arrange
+            Mount(ScopeDeclaringAZIndexedChild);
+            var content = new List<VisualElement>();
+
+            // Act
+            FocusScopeRange.AppendContent(StartInRow(), content);
+
+            // Assert
+            Assert.That(
+                (_mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(Q("zp")),
+                    string.Join(",", content.ConvertAll(element => element.name))),
+                Is.EqualTo((true, "s1,zp")));
+        }
+
         [Test]
         public void Given_AFocusScope_When_Mounted_Then_ItsChildrenStandAmongItsParentsChildrenBetweenTwoUndisplayedElements()
         {

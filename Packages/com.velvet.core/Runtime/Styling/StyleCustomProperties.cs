@@ -76,6 +76,8 @@ namespace Velvet
             public readonly bool ModifierReadsVariable;
             // A z-* reader, whose value restacks the element (TryVariableZ) rather than being applied as a payload.
             public readonly bool StacksZ;
+            // An order-* reader, whose value reorders the element among its siblings (TryVariableOrder) the same way.
+            public readonly bool StacksOrder;
             // The resolution the applied state came from, null when the last one resolved nothing.
             public string? Source;
             public bool Resolved;
@@ -97,6 +99,7 @@ namespace Velvet
                 EffectiveHint = Shape.Hint ?? AddedHint;
                 Sides = StyleCustomPropertyClass.SidesOf(utility, Shape);
                 StacksZ = StyleZIndexClass.VariableUtility(utility) != null;
+                StacksOrder = StyleOrderClass.VariableUtility(utility) != null;
                 var readsVariable = utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0;
                 ModifierReadsVariable = Shape.HasModifier
                     && utility.IndexOf("var(", Math.Max(Shape.MainClose, 0), StringComparison.OrdinalIgnoreCase) >= 0;
@@ -470,14 +473,11 @@ namespace Velvet
                 return;
             }
             var source = resolved ? s_built.ToString() : null;
-            if (consumer.StacksZ)
+            if (consumer.StacksZ || consumer.StacksOrder)
             {
                 consumer.Source = source;
                 consumer.Resolved = true;
-                if (consumer.Context != null && TryVariableZ(target, out var z))
-                {
-                    FiberZLayerCoordinator.Restack(consumer.Context, target, z);
-                }
+                Restack(target, consumer);
                 return;
             }
             var split = source == null ? null : Split(consumer, source);
@@ -509,6 +509,25 @@ namespace Velvet
             SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
         }
 
+        private static void Restack(VisualElement target, Consumer consumer)
+        {
+            if (consumer.Context == null)
+            {
+                return;
+            }
+            if (consumer.StacksZ)
+            {
+                if (TryVariableZ(target, out var z))
+                {
+                    FiberZLayerCoordinator.Restack(consumer.Context, target, z);
+                }
+            }
+            else if (TryVariableOrder(target, out var order))
+            {
+                FiberZLayerCoordinator.Reorder(consumer.Context, target, order ?? 0);
+            }
+        }
+
         // Whether the z-* class that wins on element reads a custom property, and z the integer that resolves to,
         // null where it resolves to none: nothing, `auto` or a value that is no integer. False where a literal
         // z-* class wins, and where no class list is recorded for element.
@@ -529,6 +548,32 @@ namespace Velvet
                         && StyleZIndexClass.TryParse(consumer.Source, out var parsed))
                     {
                         z = parsed;
+                        break;
+                    }
+                }
+            }
+            return true;
+        }
+
+        // TryVariableZ's order-* counterpart: order is the integer the winning order-* class's custom property
+        // resolves to, null where it resolves to none, which leaves the element at order 0 as CSS's initial value.
+        public static bool TryVariableOrder(VisualElement element, out int? order)
+        {
+            order = null;
+            if (!s_classes.TryGetValue(element, out var classes) || !StyleOrderClass.TryExtract(classes, out _, out var winner)
+                || winner == null
+                || StyleOrderClass.VariableUtility(StyleArbitraryValueResolver.StripImportant(winner, out _)) is not { } utility)
+            {
+                return false;
+            }
+            if (s_consumers.TryGetValue(element, out var consumers))
+            {
+                foreach (var consumer in consumers.Entries)
+                {
+                    if (consumer.Utility == utility && consumer.Source != null
+                        && StyleOrderClass.TryParse(consumer.Source, out var parsed))
+                    {
+                        order = parsed;
                         break;
                     }
                 }

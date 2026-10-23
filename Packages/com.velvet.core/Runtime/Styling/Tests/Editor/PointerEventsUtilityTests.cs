@@ -492,7 +492,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AZIndexedChildOfANoneScope_When_ItIsHoistedIntoItsLayerContainer_Then_ItIgnoresPicking()
+        public void Given_AZIndexedChildOfANoneScope_When_ItIsRelocatedIntoItsFrontBand_Then_ItIgnoresPicking()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Div(name: "scope", className: "pointer-events-none",
@@ -501,8 +501,8 @@ namespace Velvet.Tests
             // Act
             var floating = _root.Q<VisualElement>("floating");
 
-            // Assert — that the child was hoisted rides along, since one left in its own slot is reached either way.
-            Assert.That((FiberZLayerCoordinator.IsLayerContainer(floating.parent), floating.pickingMode),
+            // Assert — that the child was relocated rides along, since one left in its own slot is reached either way.
+            Assert.That((ZBandProbe.InBand(floating, front: true), floating.pickingMode),
                 Is.EqualTo((true, PickingMode.Ignore)));
         }
 

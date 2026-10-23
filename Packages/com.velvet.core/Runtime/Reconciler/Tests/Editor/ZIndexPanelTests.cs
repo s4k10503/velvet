@@ -6,12 +6,11 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies the <c>z-*</c> stacking feature's behavior on a real (headless) editor panel: the parts that
-    /// need resolved layout or the engine's own focus ring — coordinate neutrality (relocating an absolute
-    /// child into its layer container must not move it, since the container is coincident with the stacking
-    /// parent's own content box), focus order (a z-relocated element's placeholder is a real, displayed,
-    /// zero-size proxy tab stop, so Tab order follows the DECLARED position, not wherever the layer container
-    /// physically paints), and event bubbling (a relocated element's physical ancestor chain still passes
-    /// through its own stacking parent, one hop deeper via the container). GWT, one assert per case.
+    /// need resolved layout or the engine's own focus ring — coordinate neutrality (relocating a child within
+    /// its parent must not move it), focus order (a z-relocated element's placeholder is a real, displayed,
+    /// zero-size proxy tab stop, so Tab order follows the DECLARED position, not wherever the band physically
+    /// paints), and event bubbling (a relocated element stays a child of its own parent). GWT, one assert per
+    /// case.
     /// </summary>
     [TestFixture]
     internal sealed class ZIndexPanelTests
@@ -38,6 +37,7 @@ namespace Velvet.Tests
             s_coordinateStore = null;
             s_resortZStore = null;
             s_resortZContainerStore = null;
+            s_firstClass = null;
         }
 
         [TearDown]
@@ -94,16 +94,69 @@ namespace Velvet.Tests
                 "Precondition: the child mounted as a genuinely out-of-flow absolute sibling");
             var before = _host.Root.Q<VisualElement>("child").worldBound;
 
-            // Act — relocates the same element into the front layer container.
+            // Act — relocates the same element into its parent's front band.
             store.Set(true);
             _mounted.FlushStateForTest();
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
-            Assume.That(_mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(_host.Root.Q<VisualElement>("child")),
-                Is.True, "Precondition: the child actually relocated into a z-layer container");
+            var child = _host.Root.Q<VisualElement>("child");
 
-            // Assert — the layer container is coincident with the stacking parent's own content box, so the
-            // child's left/top (parent-relative) resolve to the identical world rect.
-            Assert.That(_host.Root.Q<VisualElement>("child").worldBound, Is.EqualTo(before));
+            // Assert — the child stays a child of the same parent, so its left/top resolve to the identical world
+            // rect. The relocation is a term: a child left in its slot keeps its rect as well.
+            Assert.That((ZBandProbe.InBand(child, front: true), child.worldBound), Is.EqualTo((true, before)));
+        }
+
+        #endregion
+
+        #region Layout of a relocated in-flow element
+
+        private static string s_firstClass;
+
+        [Component]
+        private static VNode InFlowHost() => V.Div(name: "parent", className: "flex flex-row w-[100px] h-[20px]",
+            children: new VNode[]
+            {
+                V.Div(name: "first", className: s_firstClass + " w-[20px] h-[10px]"),
+                V.Div(name: "second", className: "w-[30px] h-[10px]"),
+            });
+
+        [TestCase("z-10")]
+        [TestCase("relative")]
+        public void Given_AnInFlowChildPaintingAfterItsLaterSibling_When_LaidOut_Then_ItKeepsItsDeclaredPlaceInTheRow(
+            string paintClass)
+        {
+            // Arrange
+            s_firstClass = paintClass;
+
+            // Act
+            Mount(InFlowHost);
+
+            // Assert — it paints after "second" and still lays out ahead of it.
+            Assert.That(
+                (ZBandProbe.PaintOrder(_host.Root.Q<VisualElement>("parent")),
+                    _host.Root.Q<VisualElement>("first").layout.x, _host.Root.Q<VisualElement>("second").layout.x),
+                Is.EqualTo(("second,first", 0f, 20f)));
+        }
+
+        [Component]
+        private static VNode OrderHost() => V.Div(name: "parent", className: "flex flex-row w-[100px] h-[20px]",
+            children: new VNode[]
+            {
+                V.Div(name: "a", className: "order-2 w-[10px] h-[10px]"),
+                V.Div(name: "b", className: "w-[10px] h-[10px]"),
+                V.Div(name: "c", className: "order-1 w-[10px] h-[10px]"),
+            });
+
+        [Test]
+        public void Given_FlexOrderClasses_When_LaidOut_Then_TheRowFollowsFlexOrder()
+        {
+            // Arrange / Act
+            Mount(OrderHost);
+
+            // Assert
+            Assert.That(
+                (_host.Root.Q<VisualElement>("b").layout.x, _host.Root.Q<VisualElement>("c").layout.x,
+                    _host.Root.Q<VisualElement>("a").layout.x),
+                Is.EqualTo((0f, 10f, 20f)));
         }
 
         #endregion
@@ -132,7 +185,7 @@ namespace Velvet.Tests
             // FocusIn forwarding hands focus into the real z-managed element.
             SendMove(before, NavigationMoveEvent.Direction.Next);
             Assume.That(_mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(_host.Root.Q<Button>("zmanaged")),
-                Is.True, "Precondition: the z-managed button actually relocated into a layer container");
+                Is.True, "Precondition: the z-managed button actually relocated into its parent's front band");
 
             // Assert
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(_host.Root.Q<Button>("zmanaged")));
@@ -141,8 +194,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_FocusInsideAZManagedButton_When_TabDispatchesForward_Then_FocusContinuesToItsDeclaredSuccessorNotWhereverTheLayerPaints()
         {
-            // Arrange — the layer container is trailing (the button physically paints as the parent's LAST
-            // child), so the engine's own ring would otherwise have nothing (or something unrelated) after it.
+            // Arrange — the front band is trailing (the button physically paints as the parent's LAST child),
+            // so the engine's own ring would otherwise have nothing (or something unrelated) after it.
             Mount(FocusOrderHost);
             var zmanaged = _host.Root.Q<Button>("zmanaged");
             zmanaged.Focus();
@@ -152,10 +205,42 @@ namespace Velvet.Tests
             // Act
             SendMove(zmanaged, NavigationMoveEvent.Direction.Next);
             Assume.That(_mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(zmanaged),
-                Is.True, "Precondition: the z-managed button actually relocated into a layer container");
+                Is.True, "Precondition: the z-managed button actually relocated into its parent's front band");
 
             // Assert — focus continues to "after", the TRUE next sibling at the element's declared position.
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(_host.Root.Q<Button>("after")));
+        }
+
+        [Component]
+        private static VNode LiftedFocusHost() => V.Div(name: "ancestor", children: new VNode[]
+        {
+            V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Button(name: "overlay", className: "absolute"),
+                V.Button(name: "content"),
+            }),
+            V.Button(name: "outerAfter"),
+        });
+
+        [Test]
+        public void Given_AnOverlayPaintingAfterTheContentItPrecedes_When_TabDispatchesFromTheContent_Then_FocusLeavesTheParentInsteadOfReturningToTheOverlay()
+        {
+            // Arrange — the overlay is positioned and declared first, so it paints in the parent's front band,
+            // physically after "content", where the engine's own ring would go next.
+            Mount(LiftedFocusHost);
+            var content = _host.Root.Q<Button>("content");
+            content.Focus();
+            Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(content),
+                "Precondition: the content button holds focus");
+
+            // Act
+            SendMove(content, NavigationMoveEvent.Direction.Next);
+
+            // Assert — the relocation is a term: an overlay left in its slot is already behind "content".
+            Assert.That(
+                (ZBandProbe.InBand(_host.Root.Q<Button>("overlay"), front: true),
+                    _host.Panel.focusController.focusedElement),
+                Is.EqualTo((true, (Focusable)_host.Root.Q<Button>("outerAfter"))));
         }
 
         #endregion
@@ -179,11 +264,10 @@ namespace Velvet.Tests
             Mount(BubbleHost);
             var received = 0;
             _host.Root.Q<VisualElement>("ancestor").RegisterCallback<PointerDownEvent>(_ => received++);
-            Assume.That(_host.Root.Q<VisualElement>("zchild").parent?.ClassListContains(FiberZLayerCoordinator.FrontMarkerClass),
-                Is.True, "Precondition: zchild's real element physically relocated into the front layer container");
+            Assume.That(ZBandProbe.InBand(_host.Root.Q<VisualElement>("zchild"), front: true),
+                Is.True, "Precondition: zchild's real element physically relocated into its parent's front band");
 
-            // Act — dispatched through the real panel: zchild -> its layer container -> the stacking parent
-            // ("parent") -> "ancestor", one hop deeper than an ordinary sibling but never leaving the panel.
+            // Act — dispatched through the real panel: zchild -> its parent ("parent") -> "ancestor".
             _host.Root.Q<VisualElement>("zchild").SendPointerDownEvent(UnityEngine.Vector2.zero);
 
             // Assert
@@ -216,7 +300,7 @@ namespace Velvet.Tests
             Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(button),
                 "Precondition: the z-managed button holds focus before the resort");
 
-            // Act — bumps z-10 -> z-20 within the same front container.
+            // Act — bumps z-10 -> z-20 within the same front band.
             store.Set(true);
             _mounted.FlushStateForTest();
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
@@ -242,9 +326,7 @@ namespace Velvet.Tests
         public void Given_FocusInsideAButtonNestedInAZManagedDiv_When_TheDivsZChanges_Then_TheInnerButtonStillHoldsFocusAfterTheResort()
         {
             // Arrange — the focused element is a DESCENDANT of the z-managed element, not the z-managed
-            // element itself (every other resort test in this file focuses the z-managed element directly,
-            // which only pins CaptureFocusForRescue's ReferenceEquals(focused, moving) branch, never its
-            // moving.Contains(focused) branch).
+            // element itself, which every other resort test in this file focuses directly.
             using var store = new ToggleStore<bool>(false);
             s_resortZContainerStore = store;
             Mount(ResortZContainerHost);
@@ -253,8 +335,8 @@ namespace Velvet.Tests
             Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(inner),
                 "Precondition: the inner button holds focus before the resort");
 
-            // Act — bumps z-10 -> z-20: Reposition detaches and re-inserts the z-managed div (and its whole
-            // subtree, "inner" included) within the same front container.
+            // Act — bumps z-10 -> z-20, which re-sorts the z-managed div (and its whole subtree, "inner"
+            // included) within the same front band.
             store.Set(true);
             _mounted.FlushStateForTest();
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
@@ -298,8 +380,8 @@ namespace Velvet.Tests
         #region Focus exit past the stacking parent's own boundary
 
         // "zlast" is the stacking parent's own LOGICALLY LAST child, so its placeholder's physical
-        // ring-neighbour is the trailing front container itself (real's own layer), not another ordinary
-        // sibling the way FocusOrderHost's "after" is.
+        // ring-neighbour is the trailing front band itself (real's own), not another ordinary sibling the way
+        // FocusOrderHost's "after" is.
         [Component]
         private static VNode ZExitForwardHost() => V.Div(name: "ancestor", children: new VNode[]
         {
@@ -322,10 +404,10 @@ namespace Velvet.Tests
                 "Precondition: the z-managed button holds focus");
 
             // Act — the naive one-step ring walk from "zlast"'s placeholder re-enters the trailing front
-            // container (its own physical ring-neighbour), landing back on "zlast" itself.
+            // band (its own physical ring-neighbour), landing back on "zlast" itself.
             SendMove(zlast, NavigationMoveEvent.Direction.Next);
             Assume.That(_mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(zlast), Is.True,
-                "Precondition: the z-managed button actually relocated into the front layer container");
+                "Precondition: the z-managed button actually relocated into its parent's front band");
 
             // Assert — RED without the fix: the redirect lands back on "zlast" itself (a no-op) instead of
             // escaping past "parent" to "outerAfter", the true next stop under the shared ancestor.
@@ -333,8 +415,8 @@ namespace Velvet.Tests
         }
 
         // "zfirst" is the stacking parent's own LOGICALLY FIRST child and negative-z, so its placeholder's
-        // physical ring-neighbour going backward is the LEADING back container itself — the symmetric
-        // mirror of the forward/trailing-front-container case above.
+        // physical ring-neighbour going backward is the LEADING back band itself — the symmetric mirror of the
+        // forward/trailing-front-band case above.
         [Component]
         private static VNode ZExitBackwardHost() => V.Div(name: "ancestor", children: new VNode[]
         {
@@ -357,10 +439,10 @@ namespace Velvet.Tests
                 "Precondition: the z-managed button holds focus");
 
             // Act — the naive one-step ring walk from "zfirst"'s placeholder re-enters the leading back
-            // container (its own physical ring-neighbour going backward), landing back on "zfirst" itself.
+            // band (its own physical ring-neighbour going backward), landing back on "zfirst" itself.
             SendMove(zfirst, NavigationMoveEvent.Direction.Previous);
             Assume.That(_mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(zfirst), Is.True,
-                "Precondition: the z-managed button actually relocated into the back layer container");
+                "Precondition: the z-managed button actually relocated into its parent's back band");
 
             // Assert — RED without the fix: the redirect lands back on "zfirst" itself (a no-op) instead of
             // escaping past "parent" to "outerBefore", the true previous stop under the shared ancestor.
@@ -369,12 +451,12 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Focus exit past a co-tenant sharing the same layer container
+        #region Focus exit past a co-tenant sharing the same band
 
         // "zb" is "parent"'s own LOGICALLY LAST child, but its LOWER z (10, vs "za"'s 20) sorts it
-        // PHYSICALLY FIRST within the shared front container — the declaration/physical-order mismatch that
+        // PHYSICALLY FIRST within the shared front band — the declaration/physical-order mismatch that
         // exposes a co-tenant landing: the very next ring step past "zb" itself is "za" (the OTHER
-        // z-managed sibling sharing that SAME container), not something genuinely outside it.
+        // z-managed sibling sharing that SAME band), not something genuinely outside it.
         [Component]
         private static VNode ZExitCoTenantForwardHost() => V.Div(name: "ancestor", children: new VNode[]
         {
@@ -388,10 +470,10 @@ namespace Velvet.Tests
         });
 
         [Test]
-        public void Given_AZManagedButtonsRingNeighbourIsACoTenantInTheSameContainer_When_TabDispatchesForward_Then_FocusStillExitsPastTheStackingParent()
+        public void Given_AZManagedButtonsRingNeighbourIsACoTenantInTheSameBand_When_TabDispatchesForward_Then_FocusStillExitsPastTheStackingParent()
         {
-            // Arrange — "za" and "zb" share the front container ("za" sorts after "zb": z-20 > z-10), so
-            // "zb"'s very next physical ring step lands on "za", not outside the container.
+            // Arrange — "za" and "zb" share the front band ("za" sorts after "zb": z-20 > z-10), so "zb"'s very
+            // next physical ring step lands on "za", not outside the band.
             Mount(ZExitCoTenantForwardHost);
             var zb = _host.Root.Q<Button>("zb");
             zb.Focus();
@@ -401,11 +483,11 @@ namespace Velvet.Tests
             // Act
             SendMove(zb, NavigationMoveEvent.Direction.Next);
             Assume.That(_mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(zb), Is.True,
-                "Precondition: \"zb\" actually relocated into the shared front layer container");
+                "Precondition: \"zb\" actually relocated into the shared front band");
 
             // Assert — RED without the fix: the walk stops the instant it steps past "zb" itself, landing on
-            // "za" (a co-tenant sharing the SAME container) instead of continuing until it is genuinely
-            // outside the whole container — past "parent" — onto "outerAfter".
+            // "za" (a co-tenant sharing the SAME band) instead of continuing until it is genuinely outside every
+            // relocated element — past "parent" — onto "outerAfter".
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(_host.Root.Q<Button>("outerAfter")));
         }
 
@@ -429,8 +511,8 @@ namespace Velvet.Tests
             Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(zonly),
                 "Precondition: the z-managed (and only) button holds focus");
 
-            // Act — TryZLayerExit's own walk stays inside the container or wraps back onto the placeholder
-            // itself every step, so it falls through to "no valid exit" (returns false) instead of
+            // Act — TryZLayerExit's own walk stays inside the relocated button or wraps back onto the
+            // placeholder itself every step, so it falls through to "no valid exit" (returns false) instead of
             // redirecting anywhere.
             SendMove(zonly, NavigationMoveEvent.Direction.Next);
 

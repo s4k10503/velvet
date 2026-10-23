@@ -8,20 +8,18 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies the reconciler-side mechanics of the <c>z-*</c> stacking feature (FiberZLayerCoordinator /
-    /// StyleZIndexClass): a z-marked <c>absolute</c> element's real content relocates into a lazily-created
-    /// per-stacking-parent layer container (front for z &gt;= 0, back — the parent's own LEADING child, so it
-    /// paints behind ordinary siblings — for negative z), while a hidden placeholder holds its logical slot for
-    /// the reconciler, structural variants, and focus order. None of this needs a live panel: physical DOM
-    /// structure, element identity across patches, and reconciler slot-range correctness are all observable on
-    /// a bare (unattached) tree. GWT, one assert per case.
+    /// StyleZIndexClass): a z-marked element is relocated within its own parent into a band — the front band after
+    /// the declared slots for z &gt;= 0, the back band ahead of them for negative z — while a hidden placeholder
+    /// holds its logical slot for the reconciler, structural variants, and focus order. None of this needs a live
+    /// panel: physical DOM structure, element identity across patches, and reconciler slot-range correctness are
+    /// all observable on a bare (unattached) tree. GWT, one assert per case.
     /// <para>
-    /// Every fact about the coordinator itself that a case depends on — a layer container exists, an element is
+    /// Every fact about the coordinator itself that a case depends on — a band holds an element, an element is
     /// z-managed, the transition under test actually ran — is a term inside that case's single assertion rather
-    /// than an <c>Assume</c>. A coordinator that attaches no layer container still satisfies most of these
-    /// assertions on their own, so stating those facts as preconditions reports Inconclusive, which no reporter
-    /// counts as a failure. The reads below tolerate a null element so that an unattached container — which
-    /// puts the real element out of reach of the <c>Q</c> query that fetched it — reports which term went
-    /// wrong instead of a thrown lookup.
+    /// than an <c>Assume</c>. A coordinator that relocates nothing still satisfies most of these assertions on
+    /// their own, so stating those facts as preconditions reports Inconclusive, which no reporter counts as a
+    /// failure. The reads below tolerate a null element so that a missing one reports which term went wrong
+    /// instead of a thrown lookup.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -45,6 +43,7 @@ namespace Velvet.Tests
         private static ToggleStore<bool> s_faceResortStore;
         private static ToggleStore<bool> s_typeFlipStore;
         private static ToggleStore<bool> s_signFlipStore;
+        private static ToggleStore<bool> s_clipAddedStore;
         private static ToggleStore<bool> s_moveStore;
         private static bool s_zParkZManaged;
         private static ComponentFiber s_zParkFiber;
@@ -77,6 +76,7 @@ namespace Velvet.Tests
             s_faceResortStore = null;
             s_typeFlipStore = null;
             s_signFlipStore = null;
+            s_clipAddedStore = null;
             s_moveStore = null;
             s_zParkZManaged = false;
             s_zParkFiber = null;
@@ -106,46 +106,48 @@ namespace Velvet.Tests
             s_sliceAClass = null;
             s_sliceBClass = null;
             s_sliceKeyed = false;
+            s_transitionStore = null;
         }
 
-        // Finds the front (z >= 0) or back (negative z) layer container directly under parent, or null when
-        // no z-managed child of that sign has mounted yet.
-        private static VisualElement FindLayerContainer(VisualElement parent, bool front)
+        // A live view of parent's front (z >= 0) or back (negative z) band: the relocated elements painting after
+        // or ahead of its declared slots, each with the ring band hosted after it, read afresh on every access.
+        private sealed class BandView
         {
-            var marker = front ? FiberZLayerCoordinator.FrontMarkerClass : FiberZLayerCoordinator.BackMarkerClass;
-            foreach (var child in parent.Children())
+            private readonly VisualElement _parent;
+            private readonly bool _front;
+
+            public BandView(VisualElement parent, bool front)
             {
-                if (child.ClassListContains(marker))
-                {
-                    return child;
-                }
+                _parent = parent;
+                _front = front;
             }
-            return null;
+
+            private List<VisualElement> Members => ZBandProbe.Band(_parent, _front);
+
+            public bool Any => Members.Count > 0;
+
+            public int childCount => Members.Count;
+
+            public VisualElement ElementAt(int index) => index >= 0 && index < Members.Count ? Members[index] : null;
+
+            public bool Contains(VisualElement element) => element != null && Members.Contains(element);
+
+            public string Names => ZBandProbe.Names(Members);
         }
+
+        private static BandView Band(VisualElement parent, bool front) => new(parent, front);
 
         private static bool IsZManaged(ReconcilerContext ctx, VisualElement element)
             => element != null && ctx.ZLayerMembers.ContainsKey(element);
 
-        private static string Names(VisualElement container)
-        {
-            if (container == null)
-            {
-                return null;
-            }
-            var names = new List<string>();
-            foreach (var child in container.Children())
-            {
-                names.Add(child.ClassListContains(RingOverlay.MarkerClass) ? "band" : child.name);
-            }
-            return string.Join(",", names);
-        }
+        private static string Names(BandView band) => band.Names;
 
         #region Physical order
 
         [Test]
-        public void Given_MultipleAbsoluteSiblingsWithDifferentPositiveZ_When_Mounted_Then_TheyArePhysicallySortedByZUnderTheFrontLayer()
+        public void Given_MultipleAbsoluteSiblingsWithDifferentPositiveZ_When_Mounted_Then_TheyArePhysicallySortedByZInTheFrontBand()
         {
-            // Arrange / Act — declared out of ascending order; the front layer must still sort them.
+            // Arrange / Act — declared out of ascending order; the front band must still sort them.
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
             {
@@ -154,11 +156,11 @@ namespace Velvet.Tests
                 V.Div(name: "z10", className: "absolute z-10"),
                 V.Div(name: "z20", className: "absolute z-20"),
             }));
-            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
+            var front = Band(root.Q<VisualElement>("parent"), front: true);
 
             // Assert
             Assert.That(
-                (front != null, front?.ElementAt(0).name, front?.ElementAt(1).name, front?.ElementAt(2).name),
+                (front.Any, front.ElementAt(0)?.name, front.ElementAt(1)?.name, front.ElementAt(2)?.name),
                 Is.EqualTo((true, "z10", "z20", "z30")));
         }
 
@@ -175,16 +177,15 @@ namespace Velvet.Tests
             }));
             var parent = root.Q<VisualElement>("parent");
 
-            // Assert — the back layer container is parent's own first physical child.
-            Assert.That(parent.ElementAt(0), Is.SameAs(FindLayerContainer(parent, front: false)));
+            // Assert — negz, in the back band, is parent's own first physical child.
+            Assert.That(parent.ElementAt(0), Is.SameAs(Band(parent, front: false).ElementAt(0)).And.Not.Null);
         }
 
         [Test]
         public void Given_ANegativeZChild_When_Mounted_Then_ItNeverEscapesToBeforeItsOwnStackingParent()
         {
-            // Arrange / Act — negative z is a genuine engine dead end (one paint traversal; a child can only
-            // paint after its own parent's background): the back layer is always the stacking parent's OWN
-            // leading child, never hoisted to become the parent's preceding sibling under the grandparent.
+            // Arrange / Act — the back band is always the stacking parent's OWN leading children, never hoisted to
+            // become the parent's preceding sibling under the grandparent.
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Div(name: "grandparent", children: new VNode[]
             {
@@ -198,36 +199,25 @@ namespace Velvet.Tests
 
             // Assert — "before" is still the grandparent's first child; "parent" was never reordered around it.
             Assert.That(
-                (FindLayerContainer(root.Q<VisualElement>("parent"), front: false) != null,
+                (Band(root.Q<VisualElement>("parent"), front: false).Any,
                     root.Q<VisualElement>("grandparent").ElementAt(0).name),
                 Is.EqualTo((true, "before")));
         }
 
         [Test]
-        public void Given_AZClassOnAnInFlowChildAndOnAnOutOfFlowSibling_When_Mounted_Then_OnlyTheOutOfFlowChildsParentGrowsALayerContainer()
+        public void Given_AZClassOnAnInFlowChild_When_Mounted_Then_ItPaintsInTheFrontBandAfterItsLaterSibling()
         {
-            // Arrange / Act — two stacking-parent candidates identical but for their own child's "absolute":
-            // the scope gate requires z-* to ALSO be out-of-flow, so the in-flow one is a documented no-op.
-            // The control parent is what makes the absent container a claim about that gate rather than about
-            // nothing — a coordinator that creates no container for anyone reads identically on its own.
+            // Arrange / Act — CSS stacks a flex item by its z-index whether or not it is positioned, so an
+            // in-flow z-10 paints over the sibling declared after it.
             var root = new VisualElement();
-            using var mounted = V.Mount(root, V.Div(name: "wrapper", children: new VNode[]
+            using var mounted = V.Mount(root, V.Div(name: "parent", children: new VNode[]
             {
-                V.Div(name: "parent", className: "relative", children: new VNode[]
-                {
-                    V.Div(name: "child", className: "z-10"),
-                }),
-                V.Div(name: "control-parent", className: "relative", children: new VNode[]
-                {
-                    V.Div(name: "control-child", className: "absolute z-10"),
-                }),
+                V.Div(name: "child", className: "z-10"),
+                V.Div(name: "sibling"),
             }));
 
             // Assert
-            Assert.That(
-                (FindLayerContainer(root.Q<VisualElement>("control-parent"), front: true) != null,
-                    FindLayerContainer(root.Q<VisualElement>("parent"), front: true) != null),
-                Is.EqualTo((true, false)));
+            Assert.That(ZBandProbe.PaintOrder(root.Q<VisualElement>("parent")), Is.EqualTo("sibling,child"));
         }
 
         [Component]
@@ -241,28 +231,196 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AParentWhoseOnlyChildIsANegativeZElement_When_TheNextRenderPrependsAnOrdinaryElement_Then_TheBackContainerStaysTheParentsFirstPhysicalChild()
+        public void Given_AParentWhoseOnlyChildIsANegativeZElement_When_TheNextRenderPrependsAnOrdinaryElement_Then_TheBackBandStaysTheParentsFirstPhysicalChild()
         {
-            // Arrange — the back container is parent's only physical child besides negz's own placeholder;
-            // declaring a new leading Button forces a positional type-flip at slot 0 (Button replaces negz
-            // there), transiently leaving the back container as parent's SOLE remaining child mid-diff.
+            // Arrange — negz is parent's only physical child besides its own placeholder; declaring a new leading
+            // Button forces a positional type-flip at slot 0 (Button replaces negz there), so negz is torn down
+            // and created again, declared after the Button.
             using var store = new ToggleStore<bool>(false);
             s_typeFlipStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(TypeFlipHost, key: "root"));
             var parent = root.Q<VisualElement>("parent");
-            var backContainerExistedBeforeTheFlip = FindLayerContainer(parent, front: false) != null;
+            var backBandHeldNegzBeforeTheFlip = Band(parent, front: false).Names == "negz";
 
             // Act — declares [Button, negz]: a positional type-flip at slot 0.
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — the back container is still parent's first physical child, not displaced behind Button.
-            var backContainerAfterTheFlip = FindLayerContainer(parent, front: false);
+            // Assert — the back band is still parent's first physical child, not displaced behind Button.
             Assert.That(
-                (backContainerExistedBeforeTheFlip,
-                    ReferenceEquals(parent.ElementAt(0), backContainerAfterTheFlip)),
-                Is.EqualTo((true, true)));
+                (backBandHeldNegzBeforeTheFlip, parent.ElementAt(0).name, Band(parent, front: false).Names),
+                Is.EqualTo((true, "negz", "negz")));
+        }
+
+        #endregion
+
+        #region CSS paint order among siblings
+
+        [Test]
+        public void Given_AnAbsoluteChildDeclaredBeforeAnUnpositionedSibling_When_Mounted_Then_ItPaintsAfterIt()
+        {
+            // Arrange / Act — CSS paints every positioned child after the unpositioned ones, z-index auto or not.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "overlay", className: "absolute inset-0"),
+                V.Div(name: "content"),
+            }));
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(root.Q<VisualElement>("parent")), Is.EqualTo("content,overlay"));
+        }
+
+        [Test]
+        public void Given_AZ0ChildBeforeAPositionedAutoSibling_When_Mounted_Then_TheyPaintInTreeOrderAfterTheUnpositioned()
+        {
+            // Arrange / Act — z-index 0 and auto paint in one layer in tree order; neither outranks the other.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "zero", className: "absolute z-0"),
+                V.Div(name: "auto", className: "absolute"),
+                V.Div(name: "plain"),
+            }));
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(root.Q<VisualElement>("parent")), Is.EqualTo("plain,zero,auto"));
+        }
+
+        [Test]
+        public void Given_FlexOrderClasses_When_Mounted_Then_TheChildrenPaintInFlexOrder()
+        {
+            // Arrange / Act — flex items paint in order-modified document order.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "flex flex-row", children: new VNode[]
+            {
+                V.Div(name: "a", className: "order-2"),
+                V.Div(name: "b"),
+                V.Div(name: "c", className: "order-1"),
+            }));
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(root.Q<VisualElement>("parent")), Is.EqualTo("b,c,a"));
+        }
+
+        [Test]
+        public void Given_OrderClassesOnAParentThatIsNotFlex_When_Mounted_Then_TheChildrenPaintInDeclaredOrder()
+        {
+            // Arrange / Act — a flex order moves flex and grid items alone, and this parent is neither.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "a", className: "order-2"),
+                V.Div(name: "b"),
+                V.Div(name: "c", className: "order-1"),
+            }));
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(root.Q<VisualElement>("parent")), Is.EqualTo("a,b,c"));
+        }
+
+        [Test]
+        public void Given_AHoverZClass_When_HoverStartsAndEnds_Then_TheElementRestacksBothWays()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Div(name: "parent", className: "relative", children: new VNode[]
+                {
+                    V.Div(name: "a", className: "absolute hover:z-10"),
+                    V.Div(name: "b", className: "absolute"),
+                }),
+            });
+            var parent = scope.Root.Q<VisualElement>("parent");
+            var a = scope.Root.Q<VisualElement>("a");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                a.SimulateEvent(over);
+            }
+            var whileHovered = ZBandProbe.PaintOrder(parent);
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                a.SimulateEvent(leave);
+            }
+
+            // Assert
+            Assert.That((whileHovered, ZBandProbe.PaintOrder(parent)), Is.EqualTo(("b,a", "a,b")));
+        }
+
+        [Test]
+        public void Given_AHoverFlexParent_When_HoverStartsAndEnds_Then_ItsChildrenTakeAndLoseTheirFlexOrder()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Div(name: "parent", className: "hover:flex", children: new VNode[]
+                {
+                    V.Div(name: "a", className: "order-2"),
+                    V.Div(name: "b"),
+                }),
+            });
+            var parent = scope.Root.Q<VisualElement>("parent");
+
+            // Act
+            var beforeHover = ZBandProbe.PaintOrder(parent);
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                parent.SimulateEvent(over);
+            }
+            var whileHovered = ZBandProbe.PaintOrder(parent);
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                parent.SimulateEvent(leave);
+            }
+
+            // Assert
+            Assert.That((beforeHover, whileHovered, ZBandProbe.PaintOrder(parent)),
+                Is.EqualTo(("a,b", "b,a", "a,b")));
+        }
+
+        private static ToggleStore<string> s_transitionStore;
+
+        [Component]
+        private static VNode TransitionHost()
+        {
+            var className = Hooks.UseStore(s_transitionStore, x => x);
+            return V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "child", className: className),
+                V.Div(name: "sibling", className: "absolute"),
+            });
+        }
+
+        [Test]
+        public void Given_AnElementOnAPanel_When_ItsZAppearsFlipsSignAndLeaves_Then_ItNeverLeavesThePanel()
+        {
+            // Arrange
+            using var store = new ToggleStore<string>("absolute");
+            s_transitionStore = store;
+            using var host = new HeadlessEditorPanelHost();
+            var root = new VisualElement();
+            host.Root.Add(root);
+            using var mounted = V.Mount(root, V.Component(TransitionHost, key: "root"));
+            var child = root.Q<VisualElement>("child");
+            var detaches = 0;
+            child.RegisterCallback<DetachFromPanelEvent>(_ => detaches++);
+
+            // Act
+            store.Set("absolute z-10");
+            mounted.FlushStateForTest();
+            var relocated = IsZManaged(mounted.Root.Reconciler.Context, child);
+            store.Set("absolute -z-10");
+            mounted.FlushStateForTest();
+            store.Set("absolute");
+            mounted.FlushStateForTest();
+
+            // Assert — the relocation is a term: an element never relocated never leaves the panel either.
+            Assert.That((relocated, detaches), Is.EqualTo((true, 0)));
         }
 
         #endregion
@@ -284,18 +442,18 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABackZMarkedChildAmongKeyedSiblings_When_TheSiblingsReorderAddAndRemoveAcrossMultipleRerenders_Then_TheyStillCommitTheLatestDeclaredOrder()
         {
-            // Arrange — a back-managed sibling (the leading-offset case) interspersed among keyed buttons.
+            // Arrange — a back-band sibling (the leading-offset case) interspersed among keyed buttons.
             using var store = new ToggleStore<string>("abc");
             s_churnStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(ChurnList, key: "root"));
             var list = root.Q<VisualElement>("list");
-            var backContainerExistedBeforeTheChurn = FindLayerContainer(list, front: false) != null;
+            var backBandHeldTheChildBeforeTheChurn = Band(list, front: false).Names == "zchild";
 
             // Act — reorder, then insert, then remove ordinary keyed siblings across successive re-renders
-            // while the leading back-layer container stays present the whole time: an insertion/removal shifts
-            // every subsequent index differently than a pure LIS reorder, so both need their own coverage here,
-            // not just the reorder the original regression pinned.
+            // while the leading back band stays present the whole time: an insertion/removal shifts every
+            // subsequent index differently than a pure LIS reorder, so both need their own coverage here, not
+            // just the reorder the original regression pinned.
             store.Set("cba");
             mounted.FlushStateForTest();
             store.Set("bac");
@@ -306,10 +464,9 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert — the ordinary siblings' physical order matches the latest declared order: their own
-            // slot-range math was never corrupted by the interspersed leading container, across reorder,
-            // insert, and remove alike.
+            // slot-range math was never corrupted by the leading band, across reorder, insert, and remove alike.
             var names = list.Query<Button>().ToList().ConvertAll(b => b.name);
-            Assert.That((backContainerExistedBeforeTheChurn, string.Join(",", names)),
+            Assert.That((backBandHeldTheChildBeforeTheChurn, string.Join(",", names)),
                 Is.EqualTo((true, "item-a,item-c,item-d")));
         }
 
@@ -371,7 +528,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheLastZMarkedChildUnderAParent_When_ItUnmounts_Then_TheLayerContainerIsRemoved()
+        public void Given_TheLastZMarkedChildUnderAParent_When_ItUnmounts_Then_NeitherItNorItsPlaceholderRemains()
         {
             // Arrange
             using var store = new ToggleStore<bool>(true);
@@ -379,16 +536,14 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(TeardownHost, key: "root"));
             var parent = root.Q<VisualElement>("parent");
-            var containerExistedBeforeTheUnmount = FindLayerContainer(parent, front: true) != null;
+            var relocatedBeforeTheUnmount = Band(parent, front: true).Names == "zchild";
 
             // Act
             store.Set(false);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(
-                (containerExistedBeforeTheUnmount, FindLayerContainer(parent, front: true) != null),
-                Is.EqualTo((true, false)));
+            // Assert — the element stays in its parent past the removal of its placeholder, until the pass ends.
+            Assert.That((relocatedBeforeTheUnmount, parent.childCount), Is.EqualTo((true, 0)));
         }
 
         #endregion
@@ -439,7 +594,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnOrdinaryAbsoluteElement_When_ItGainsAZClass_Then_TheSameElementInstanceRelocatesIntoTheLayer()
+        public void Given_AnOrdinaryAbsoluteElement_When_ItGainsAZClass_Then_TheSameElementInstanceRelocatesIntoTheFrontBand()
         {
             // Arrange
             using var store = new ToggleStore<bool>(false);
@@ -454,12 +609,12 @@ namespace Velvet.Tests
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — the SAME instance is now registered as z-managed AND physically sits in the front layer.
-            // Registration alone survives a coordinator that never attaches a container, which would leave the
+            // Assert — the SAME instance is now registered as z-managed AND physically sits in the front band.
+            // Registration alone survives a coordinator that never moves the element, which would leave the
             // relocation this case is named for unmeasured.
             Assert.That(
                 (startedAsAnOrdinaryDirectChild, IsZManaged(ctx, child),
-                    ReferenceEquals(child.parent, FindLayerContainer(root.Q<VisualElement>("parent"), front: true))),
+                    Band(root.Q<VisualElement>("parent"), front: true).Contains(child)),
                 Is.EqualTo((true, true, true)));
         }
 
@@ -484,7 +639,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(ResortHost, key: "root"));
             var a = root.Q<VisualElement>("a");
             var b = root.Q<VisualElement>("b");
-            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
+            var front = Band(root.Q<VisualElement>("parent"), front: true);
             var sortedAThenB = front is { childCount: 2 }
                 && ReferenceEquals(front.ElementAt(0), a) && ReferenceEquals(front.ElementAt(1), b);
 
@@ -492,7 +647,7 @@ namespace Velvet.Tests
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — the front container's order flips, using the SAME two element instances.
+            // Assert — the front band's order flips, using the SAME two element instances.
             var sortedBThenA = front is { childCount: 2 }
                 && ReferenceEquals(front.ElementAt(0), b) && ReferenceEquals(front.ElementAt(1), a);
             Assert.That((sortedAThenB, sortedBThenA), Is.EqualTo((true, true)));
@@ -520,15 +675,16 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(FaceResortHost, key: "root"));
             var a = root.Q<VisualElement>("a");
             FaceBorderOverlay.Ensure(a, (_, _, _) => { });
-            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
-            var placedBefore = front != null && front.IndexOf(OverlayIn(front)) == front.IndexOf(a) + 1;
+            var parent = root.Q<VisualElement>("parent");
+            var placedBefore = parent.IndexOf(OverlayIn(parent)) == parent.IndexOf(a) + 1;
 
             // Act — a becomes z-10, which sorts it ahead of b and c.
             store.Set(true);
             mounted.FlushStateForTest();
 
             // Assert
-            var placedAfter = front != null && front.IndexOf(a) == 0 && front.IndexOf(OverlayIn(front)) == 1;
+            var placedAfter = parent.IndexOf(a) < parent.IndexOf(root.Q<VisualElement>("b"))
+                && parent.IndexOf(OverlayIn(parent)) == parent.IndexOf(a) + 1;
             Assert.That((placedBefore, placedAfter), Is.EqualTo((true, true)));
         }
 
@@ -554,27 +710,58 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the deferred sign flip lands the same instance in the new back
-        // container on the base too; this replaces the case that pinned the mount-order tiebreak it carried.
         [Test]
-        public void Given_AZManagedElement_When_ItsSignFlipsToAContainerThatDoesNotYetExist_Then_TheSameElementLandsInTheNewBackContainer()
+        public void Given_AZManagedElement_When_ItsSignFlips_Then_TheSameElementMovesFromTheFrontBandToTheBackBand()
         {
-            // Arrange — z-10 only: the front container exists, no back container has ever been created.
+            // Arrange — z-10: the element paints in the front band.
             using var store = new ToggleStore<bool>(false);
             s_signFlipStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(SignFlipHost, key: "root"));
             var child = root.Q<VisualElement>("child");
-            Assume.That(FindLayerContainer(root.Q<VisualElement>("parent"), front: false), Is.Null,
-                "Precondition: no back container exists to flip into");
+            var parent = root.Q<VisualElement>("parent");
+            var inFrontBefore = Band(parent, front: true).Contains(child);
 
-            // Act — flip to -z-10: Reposition finds no back container for this parent and defers through the
-            // same enqueue/drain path a fresh mount uses.
+            // Act — flip to -z-10.
             store.Set(true);
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(FindLayerContainer(root.Q<VisualElement>("parent"), front: false)?.Contains(child), Is.True);
+            Assert.That((inFrontBefore, Band(parent, front: false).Contains(child)), Is.EqualTo((true, true)));
+        }
+
+        [Component]
+        private static VNode ClipAddedHost()
+        {
+            var clipped = Hooks.UseStore(s_clipAddedStore, x => x);
+            return V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "card", className: "absolute z-10 w-[10px] h-[10px]"
+                    + (clipped ? " clip-path-[circle(40%)]" : "")),
+                V.Div(name: "next"),
+            });
+        }
+
+        [Test]
+        public void Given_ARelocatedElement_When_APatchWrapsItInAClipPath_Then_TheWrapperIsWhatPaintsInTheFrontBand()
+        {
+            // Arrange
+            using var store = new ToggleStore<bool>(false);
+            s_clipAddedStore = store;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(ClipAddedHost, key: "root"));
+
+            // Act
+            store.Set(true);
+            mounted.FlushStateForTest();
+
+            // Assert — the wrapper replaced the card in the band, and the card sits inside it.
+            var wrapper = root.Q<VisualElement>("card").parent;
+            Assert.That(
+                (wrapper.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass),
+                    Band(root.Q<VisualElement>("parent"), front: true).Contains(wrapper),
+                    ReferenceEquals(wrapper.parent, root.Q<VisualElement>("parent"))),
+                Is.EqualTo((true, true, true)));
         }
 
         #endregion
@@ -612,7 +799,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert — CSS paints equal z in tree order, so the later-declared "second" is the later child.
-            Assert.That(Names(FindLayerContainer(root.Q<VisualElement>("parent"), front: true)),
+            Assert.That(Names(Band(root.Q<VisualElement>("parent"), front: true)),
                 Is.EqualTo("first,second"));
         }
 
@@ -633,7 +820,7 @@ namespace Velvet.Tests
             s_equalZMoveStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(EqualZMoveHost, key: "root"));
-            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
+            var front = Band(root.Q<VisualElement>("parent"), front: true);
             Assume.That(Names(front), Is.EqualTo("a,b"), "Precondition: mounted in declared order");
 
             // Act — a keyed move of the placeholders; neither element's z changes.
@@ -661,7 +848,7 @@ namespace Velvet.Tests
             s_equalZMoveStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(RingedEqualZMoveHost, key: "root"));
-            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
+            var front = Band(root.Q<VisualElement>("parent"), front: true);
             Assume.That(Names(front), Is.EqualTo("a,b,band"), "Precondition: mounted in declared order");
 
             // Act
@@ -691,7 +878,7 @@ namespace Velvet.Tests
             s_sameLayerStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(SameLayerHost, key: "root"));
-            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
+            var front = Band(root.Q<VisualElement>("parent"), front: true);
             Assume.That(Names(front), Is.EqualTo("a,b"), "Precondition: mounted in z order");
 
             // Act
@@ -746,9 +933,7 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the merge base never re-sorts a layer after placing it, so the
-        // disorder survives there too; this pins that the post-pass resort this change adds stays scoped to a
-        // stacking parent whose children a pass reconciled.
+        // The arrangement at a pass end is scoped to a stacking parent whose children the pass reconciled.
         [Test]
         public void Given_ALayerPutOutOfOrderOutsideARender_When_AnUnrelatedComponentReRenders_Then_TheLayerIsNotResorted()
         {
@@ -757,9 +942,9 @@ namespace Velvet.Tests
             s_tickStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(UnrelatedRenderHost, key: "root"));
-            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
+            var front = Band(root.Q<VisualElement>("parent"), front: true);
             root.Q<VisualElement>("a").PlaceInFront(root.Q<VisualElement>("b"));
-            Assume.That(Names(front), Is.EqualTo("b,a"), "Precondition: the layer is out of declared order");
+            Assume.That(Names(front), Is.EqualTo("b,a"), "Precondition: the band is out of declared order");
 
             // Act — only the ticker re-renders; "parent"'s children are not reconciled.
             store.Set(1);
@@ -771,11 +956,8 @@ namespace Velvet.Tests
             Assert.That(Names(front), Is.EqualTo("b,a"));
         }
 
-        // Two equal-z members whose placeholders both sit outside the stacking parent compare equal, and a tie is
-        // in order.
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Given_AnInOrderLayerPendingAResort_When_ThePostPassResortRuns_Then_ItAllocatesNothing(bool placeholdersOutside)
+        [Test]
+        public void Given_AnInOrderBandPendingAnArrangement_When_ThePostPassArrangementRuns_Then_ItAllocatesNothing()
         {
             // Arrange
             var root = new VisualElement();
@@ -786,13 +968,6 @@ namespace Velvet.Tests
             }));
             var ctx = mounted.Root.Reconciler.Context;
             var parent = root.Q<VisualElement>("parent");
-            if (placeholdersOutside)
-            {
-                foreach (var real in new[] { root.Q<VisualElement>("a"), root.Q<VisualElement>("b") })
-                {
-                    ctx.ZLayerMembers[real] = ctx.ZLayerMembers[real] with { Placeholder = new VisualElement() };
-                }
-            }
             void MarkPending() => FiberZLayerCoordinator.NoteChildrenReconciled(ctx, parent);
             MarkPending();
             FiberZLayerCoordinator.ResortLayers(ctx);
@@ -807,7 +982,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoZManagedSiblings_When_TheirMountPassEnds_Then_TheResortsDeclaredIndexHoldsNoElement()
+        public void Given_TwoZManagedSiblings_When_TheirMountPassEnds_Then_TheArrangementsBuffersHoldNoElement()
         {
             // Arrange
             var root = new VisualElement();
@@ -819,16 +994,44 @@ namespace Velvet.Tests
                 V.Div(name: "b", className: "absolute z-10"),
             }));
 
-            // Assert
-            Assert.That(mounted.Root.Reconciler.Context.ZLayerDeclaredIndex, Is.Empty);
+            // Assert — the buffers outlive the call, so an element left in one outlives its tree.
+            Assert.That(ElementsHeldByArrangementBuffers(), Is.EqualTo(0));
         }
 
-        // Reposition is called with no child reconcile over the stacking parent to mark it pending, so only the
-        // placement itself can. Without the resort, what the layer shows is where the placement inserted.
-        [TestCase("a", 30, true, "b,a", TestName = "AZChangeWithinTheLayerIsResorted")]
-        [TestCase("c", 20, false, "a,b,c", TestName = "AnArrivalFromTheBackLayerGoesAfterItsEqualZ")]
-        public void Given_AMountedLayer_When_AMemberIsRepositionedOutsideAChildReconcile_Then_TheFrontLayerHoldsZThenTreeOrder(
-            string moved, int newZ, bool resort, string expected)
+        // The elements FiberZLayerCoordinator's static arrangement buffers still reference.
+        private static int ElementsHeldByArrangementBuffers()
+        {
+            const System.Reflection.BindingFlags statics =
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+            var held = 0;
+            foreach (var name in new[] { "s_entries", "s_back", "s_front", "s_middle", "s_followers", "s_desired",
+                         "s_placed", "s_rank", "s_layout", "s_retiredHere" })
+            {
+                var buffer = typeof(FiberZLayerCoordinator).GetField(name, statics)?.GetValue(null)
+                    ?? throw new MissingFieldException(nameof(FiberZLayerCoordinator), name);
+                held += (int)buffer.GetType().GetProperty("Count")!.GetValue(buffer)!;
+            }
+            var pool = (System.Collections.IEnumerable)typeof(FiberZLayerCoordinator).GetField("s_entryPool", statics)!
+                .GetValue(null);
+            foreach (var entry in pool)
+            {
+                foreach (var field in entry.GetType().GetFields())
+                {
+                    if (field.FieldType == typeof(VisualElement) && field.GetValue(entry) != null)
+                    {
+                        held++;
+                    }
+                }
+            }
+            return held;
+        }
+
+        // Restack is reached with no child reconcile over the parent to mark it pending, so only the
+        // restack itself can arrange the parent.
+        [TestCase("a", 30, "b,a", TestName = "AZChangeWithinTheBandIsResorted")]
+        [TestCase("c", 20, "a,b,c", TestName = "AnArrivalFromTheBackBandGoesAfterItsEqualZ")]
+        public void Given_AMountedBand_When_AMemberIsRestackedOutsideAPass_Then_TheFrontBandHoldsZThenTreeOrder(
+            string moved, int newZ, string expected)
         {
             // Arrange — c is declared last, so tree order puts it after the z-20 b it joins.
             var root = new VisualElement();
@@ -839,54 +1042,46 @@ namespace Velvet.Tests
                 V.Div(name: "c", className: "absolute -z-10"),
             }));
             var ctx = mounted.Root.Reconciler.Context;
-            var real = root.Q<VisualElement>(moved);
 
             // Act
-            FiberZLayerCoordinator.Reposition(ctx, ctx.ZLayerMembers[real].Placeholder, real, newZ);
-            if (resort)
-            {
-                FiberZLayerCoordinator.ResortLayers(ctx);
-            }
+            FiberZLayerCoordinator.Restack(ctx, root.Q<VisualElement>(moved), newZ);
 
             // Assert
-            Assert.That(Names(FindLayerContainer(root.Q<VisualElement>("parent"), front: true)), Is.EqualTo(expected));
+            Assert.That(Names(Band(root.Q<VisualElement>("parent"), front: true)), Is.EqualTo(expected));
         }
 
         #endregion
 
-        #region Relational variants across the layer boundary
+        #region Relational variants across a relocation
 
         [Test]
-        public void Given_AZManagedConsumerAndAnOrdinaryPeerSource_When_ResolvingTheLogicalPeerSearchOrigin_Then_ItStillFindsTheOrdinarySource()
+        public void Given_AZManagedConsumerBetweenTwoPeerSources_When_ResolvingThePeerSearch_Then_ItFindsOnlyTheOneDeclaredBeforeIt()
         {
-            // Arrange — parent: [source(ordinary, "peer"), consumer(z-managed)]. The consumer's real element
-            // physically lives in the front layer container, whose preceding siblings are unrelated same-layer
-            // members, not "source" — the fix routes the search through the consumer's PLACEHOLDER position.
+            // Arrange — parent: [source(ordinary, "peer"), consumer(z-managed), later(ordinary, "peer")]. The
+            // consumer's real element physically paints in the front band, after both sources — the search
+            // routes through the consumer's PLACEHOLDER position instead, which only "source" precedes.
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
             {
                 V.Div(name: "source", className: "peer"),
                 V.Div(name: "consumer", className: "absolute z-10"),
+                V.Div(name: "later", className: "peer"),
             }));
             var ctx = mounted.Root.Reconciler.Context;
-            var consumer = root.Q<VisualElement>("consumer");
 
             // Act
             var found = new List<VisualElement>();
-            StyleRelationalVariantManipulator.FindSources(consumer, isPeer: true, "peer", ctx, found);
+            StyleRelationalVariantManipulator.FindSources(root.Q<VisualElement>("consumer"), isPeer: true, "peer", ctx, found);
 
-            // Assert — the consumer's relocation is a term: left at its ordinary slot it is "source"'s own
-            // physical next sibling, and the search resolves without ever consulting a placeholder.
-            Assert.That(
-                (IsZManaged(ctx, consumer), found.Count == 1 && ReferenceEquals(found[0], root.Q<VisualElement>("source"))),
-                Is.EqualTo((true, true)));
+            // Assert
+            Assert.That(string.Join(",", found.ConvertAll(e => e.name)), Is.EqualTo("source"));
         }
 
         [Test]
         public void Given_AZManagedPeerSourceAndAnOrdinaryConsumer_When_ResolvingThePeerSearch_Then_ItFindsTheRelocatedSource()
         {
             // Arrange — parent: [source(z-managed, "peer"), consumer(ordinary)]. Only the source's placeholder
-            // sits among the consumer's preceding siblings.
+            // sits among the consumer's preceding siblings; the source itself paints after the consumer.
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
             {
@@ -912,11 +1107,11 @@ namespace Velvet.Tests
         #region Per-parent isolation
 
         [Test]
-        public void Given_TwoSiblingStackingParentsEachWithZManagedChildren_When_Mounted_Then_TheirLayerContainersAndOrderingDoNotCrossTalk()
+        public void Given_TwoSiblingStackingParentsEachWithZManagedChildren_When_Mounted_Then_TheirBandsAndOrderingDoNotCrossTalk()
         {
-            // Arrange / Act — two INDEPENDENT stacking parents, each growing its own container; per-parent
-            // keying (ZLayerHosts is keyed by the stacking parent element, not a single global registry) must
-            // keep them from cross-talking.
+            // Arrange / Act — two INDEPENDENT stacking parents, each arranging its own band; per-parent keying
+            // (ZLayerHosts is keyed by the stacking parent element, not a single global registry) must keep them
+            // from cross-talking.
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Div(name: "wrapper", children: new VNode[]
             {
@@ -930,15 +1125,12 @@ namespace Velvet.Tests
                     V.Div(name: "b1", className: "absolute z-20"),
                 }),
             }));
-            var frontA = FindLayerContainer(root.Q<VisualElement>("parentA"), front: true);
-            var frontB = FindLayerContainer(root.Q<VisualElement>("parentB"), front: true);
+            var frontA = Band(root.Q<VisualElement>("parentA"), front: true);
+            var frontB = Band(root.Q<VisualElement>("parentB"), front: true);
 
-            // Assert — parentA's container holds only its own two children, correctly sorted, unaffected by
-            // parentB's own separate single member.
-            Assert.That(
-                (frontA != null, ReferenceEquals(frontA, frontB), frontA?.childCount == 2,
-                    frontA?.ElementAt(0).name, frontA?.ElementAt(1).name),
-                Is.EqualTo((true, false, true, "a2", "a1")));
+            // Assert — parentA's band holds only its own two children, correctly sorted, unaffected by parentB's own
+            // separate single member.
+            Assert.That((frontA.Names, frontB.Names), Is.EqualTo(("a2,a1", "b1")));
         }
 
         #endregion
@@ -946,12 +1138,12 @@ namespace Velvet.Tests
         #region V.Anchored without the "absolute" class
 
         [Test]
-        public void Given_AnAnchoredElementWithNoAbsoluteClass_When_ItCarriesAZClass_Then_ItStillRelocatesIntoTheLayerContainer()
+        public void Given_AnAnchoredElementWithNoAbsoluteClass_When_ItCarriesAZClass_Then_ItStillRelocatesIntoTheFrontBand()
         {
             // Arrange / Act — V.Anchored forces position:absolute via AnchoredDriver.Attach as a plain inline
-            // style (never through the "absolute" utility class), so TryClassify's out-of-flow half must accept
-            // Props.Anchored on its own. AnchoredDriver.Sync bails cleanly with no live panel (element.panel ==
-            // null), so this needs no host panel, like every other test in this fixture.
+            // style (never through the "absolute" utility class), so the coordinator reads Props.Anchored as a
+            // position of its own. AnchoredDriver.Sync bails cleanly with no live panel (element.panel == null),
+            // so this needs no host panel, like every other test in this fixture.
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
             {
@@ -962,9 +1154,9 @@ namespace Velvet.Tests
             var child = root.Q<VisualElement>("child").parent;
             var carriesNoAbsoluteClass = child != null && !child.ClassListContains("absolute");
 
-            // Assert — TryClassify's Props.Anchored half classified it anyway. The absent utility class is a
-            // term rather than a precondition because the class-based half would classify the child on its own,
-            // so gaining it would make this pass for the wrong reason.
+            // Assert — the anchoring classified it anyway. The absent utility class is a term rather than a
+            // precondition because the class would classify the child on its own, so gaining it would make this
+            // pass for the wrong reason.
             Assert.That((carriesNoAbsoluteClass, IsZManaged(ctx, child)), Is.EqualTo((true, true)));
         }
 
@@ -999,15 +1191,13 @@ namespace Velvet.Tests
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — the SAME real element instance is still registered, now with its placeholder physically
-            // last among the LOGICAL (non-spacer) children — list's own trailing front layer container is not
-            // itself a logical child, so the last logical slot is NonSpacerChildCount - 1, not childCount - 1;
-            // default (false/null Placeholder) if the registration itself was lost, so this also proves the
-            // "stays registered" half.
+            // Assert — the SAME real element instance is still registered, now with its placeholder in the LAST
+            // logical slot — zchild itself, painting in the front band, is not a logical child; default (null
+            // Placeholder) if the registration itself was lost, so this also proves the "stays registered" half.
             var list = root.Q<VisualElement>("list");
             var memberAfter = default(ZLayerMember);
             if (zchild != null) { ctx.ZLayerMembers.TryGetValue(zchild, out memberAfter); }
-            var lastLogicalIndex = SilhouetteBoundsSpacer.NonSpacerChildCount(list) - 1;
+            var lastLogicalIndex = LogicalChildSlots.ToPhysical(list, LogicalChildSlots.Count(list) - 1);
             var stillRegisteredAtTrackedPosition = memberAfter.Placeholder != null
                 && ReferenceEquals(list.ElementAt(lastLogicalIndex), memberAfter.Placeholder);
             Assert.That((registeredBeforeTheMove, stillRegisteredAtTrackedPosition), Is.EqualTo((true, true)));
@@ -1033,18 +1223,15 @@ namespace Velvet.Tests
                     }),
                 }),
             }));
-            var outerFront = FindLayerContainer(root.Q<VisualElement>("outer"), front: true);
+            var outerFront = Band(root.Q<VisualElement>("outer"), front: true);
             var innerParent = root.Q<VisualElement>("innerParent");
-            var innerFront = innerParent == null ? null : FindLayerContainer(innerParent, front: true);
+            var innerFront = innerParent == null ? null : Band(innerParent, front: true);
 
-            // Assert — innerParent (reached inside mid's relocated real content) grew its OWN front container,
-            // holding "inner", independent of mid's own relocation under outer. Both layers are terms of the
-            // same comparison: "independently" is a claim about the pair, so outer's own container cannot be a
+            // Assert — innerParent (reached inside mid's relocated real content) arranged its OWN front band,
+            // holding "inner", independent of mid's own relocation under outer. Both bands are terms of the same
+            // comparison: "independently" is a claim about the pair, so outer's own band cannot be a
             // precondition to it.
-            Assert.That(
-                (outerFront != null,
-                    innerFront != null && ReferenceEquals(innerFront.ElementAt(0), root.Q<VisualElement>("inner"))),
-                Is.EqualTo((true, true)));
+            Assert.That((outerFront.Names, innerFront?.Names), Is.EqualTo(("mid", "inner")));
         }
 
         #endregion
@@ -1072,7 +1259,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AMotionWithAnAbsoluteAndZClass_When_Mounted_Then_ItIsRelocatedIntoTheFrontLayer()
+        public void Given_AMotionWithAnAbsoluteAndZClass_When_Mounted_Then_ItIsRelocatedIntoTheFrontBand()
         {
             // Arrange
             var root = new VisualElement();
@@ -1087,12 +1274,12 @@ namespace Velvet.Tests
             var m = root.Q<VisualElement>("m");
             Assert.That(
                 (IsZManaged(mounted.Root.Reconciler.Context, m),
-                    ReferenceEquals(m?.parent, FindLayerContainer(root.Q<VisualElement>("parent"), front: true))),
+                    Band(root.Q<VisualElement>("parent"), front: true).Contains(m)),
                 Is.EqualTo((true, true)));
         }
 
         [Test]
-        public void Given_AnOrdinaryAbsoluteMotion_When_ItGainsAZClass_Then_TheSameElementRelocatesIntoTheLayer()
+        public void Given_AnOrdinaryAbsoluteMotion_When_ItGainsAZClass_Then_TheSameElementRelocatesIntoTheFrontBand()
         {
             // Arrange
             using var store = new ToggleStore<string>("absolute");
@@ -1139,8 +1326,8 @@ namespace Velvet.Tests
             var (mounted, root) = MountMotion(store);
             using var _ = mounted;
             var m = root.Q<VisualElement>("m");
-            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
-            var firstBeforeTheChange = ReferenceEquals(front?.ElementAt(0), m);
+            var front = Band(root.Q<VisualElement>("parent"), front: true);
+            var firstBeforeTheChange = ReferenceEquals(front.ElementAt(0), m);
 
             // Act
             store.Set("absolute z-30");
@@ -1148,15 +1335,15 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (firstBeforeTheChange, ReferenceEquals(front?.ElementAt(front.childCount - 1), m)),
+                (firstBeforeTheChange, ReferenceEquals(front.ElementAt(front.childCount - 1), m)),
                 Is.EqualTo((true, true)));
         }
 
         #endregion
 
-        #region Time-sliced staleness of the baked leading offset
+        #region Time-sliced slot integrity across a relocation
 
-        // item0 alone toggles between plain and z-managed (negative, so a BACK container is at stake); item1
+        // item0 alone toggles between plain and z-managed (negative, so the BACK band is at stake); item1
         // through item9 stay ordinary. Every child is a fresh VNode each render (no ILPP memo, no shared
         // instances), so no Common-phase iteration ever takes the ReferenceEquals fast path — matching
         // TimeSlicedFiberTests' own FlatListRender shape, which is what makes "a tiny budget parks after
@@ -1180,8 +1367,8 @@ namespace Velvet.Tests
         }
 
         // The "itemN" (N >= 1) direct children of root, in physical order, joined into one comparable string —
-        // a back container (unnamed) and item0's own placeholder (also unnamed) are both naturally excluded, so
-        // this reads purely as "where did item1..item9 end up, and under what name".
+        // item0 and its own placeholder (unnamed) are both excluded, so this reads purely as "where did
+        // item1..item9 end up, and under what name".
         private static string TrailingItemOrder(VisualElement root)
         {
             var names = new List<string>();
@@ -1199,75 +1386,71 @@ namespace Velvet.Tests
             "item1,item2,item3,item4,item5,item6,item7,item8,item9";
 
         [Test]
-        public void Given_ATimeSlicedPassParksRightAfterQueuingTheFirstBackContainerMember_When_TheSameFinallyDrainCreatesTheContainer_Then_TheParkedSlotStartIsRebasedSoTrailingItemsResumeAtCorrectIndices()
+        public void Given_ATimeSlicedPassParksRightAfterRelocatingAnElementIntoTheBackBand_When_ThePassResumes_Then_TrailingItemsResumeAtCorrectIndices()
         {
-            // Arrange — mount fully ordinary: no z anywhere yet, so no back container exists.
+            // Arrange — mount fully ordinary: no z anywhere yet, so the back band is empty.
             s_zParkZManaged = false;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(ZParkHost, key: "root"));
-            var noBackContainerBeforeTheReRender = FindLayerContainer(root, front: false) == null;
+            var noBackBandBeforeTheReRender = !Band(root, front: false).Any;
 
             // Act — item0 turns z-managed under a tiny forced budget: the Common-phase loop patches item0's
-            // class, relocates it out (enqueuing the deferred z-mount) since no back container exists yet, then
-            // the tiny budget parks immediately after — all within this ONE top-level Reconcile() call, whose
-            // own finally-drain then creates the FIRST back container, physically shifting every trailing item
-            // (and item0's own placeholder) by +1.
+            // class, which puts a placeholder at its slot, then the tiny budget parks immediately after — all
+            // within this ONE top-level Reconcile() call, whose own end then sorts item0 into the back band,
+            // physically ahead of every trailing item.
             s_zParkZManaged = true;
             s_zParkFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_zParkFiber.FlushStateWithTinyBudgetForTest();
             var parkedAfterItem0 = s_zParkFiber.HasPendingReconcileWorkForTest();
             s_zParkFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — every trailing item resumed and patched at its correct (post-shift) physical index.
-            // RED without the fix: the resumed slice keeps reading one slot short of where the container's
-            // insertion actually left each row, so each iteration patches (and renames, via PatchCommon) the
-            // WRONG physical element — a cascading off-by-one that leaves a stale/duplicated name in this join.
-            // The shift itself is a term too: with no container created there is nothing to rebase against and
-            // the order alone reads correct.
+            // Assert — every trailing item resumed and patched at its correct physical index: an off-by-one
+            // resume patches (and renames, via PatchCommon) the WRONG physical element, leaving a stale or
+            // duplicated name in this join. The relocation itself is a term too: with item0 left in its slot
+            // nothing moved for the resume to miss, and the order alone reads correct.
             Assert.That(
-                (noBackContainerBeforeTheReRender, parkedAfterItem0,
-                    FindLayerContainer(root, front: false) != null, TrailingItemOrder(root)),
-                Is.EqualTo((true, true, true, ExpectedTrailingItemOrder)));
+                (noBackBandBeforeTheReRender, parkedAfterItem0,
+                    Band(root, front: false).Names, TrailingItemOrder(root)),
+                Is.EqualTo((true, true, "item0", ExpectedTrailingItemOrder)));
         }
 
         [Test]
-        public void Given_ATimeSlicedPassParksRightAfterTheLastBackContainerMemberLeaves_When_TheSameFinallyDrainRemovesTheContainer_Then_TheParkedSlotStartIsRebasedSoTrailingItemsResumeAtCorrectIndices()
+        public void Given_ATimeSlicedPassParksRightAfterTheBackBandsOnlyElementReturnsToItsSlot_When_ThePassResumes_Then_TrailingItemsResumeAtCorrectIndices()
         {
             // Arrange — mount with item0 ALREADY z-managed (synchronous: the mount runs on a zero budget, which
-            // the tiny-budget flush below does not reach), so the back container exists cleanly beforehand.
+            // the tiny-budget flush below does not reach), so the back band holds it cleanly beforehand.
             s_zParkZManaged = true;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(ZParkHost, key: "root"));
-            var backContainerExistedBeforeTheReRender = FindLayerContainer(root, front: false) != null;
+            var backBandHeldItem0BeforeTheReRender = Band(root, front: false).Names == "item0";
 
             // Act — item0 turns back to ordinary under a tiny forced budget: the Common-phase loop patches
-            // item0's class, synchronously detaches it from the (now-empty) back container and marks the
-            // container for a teardown check, then the tiny budget parks immediately after — all within this
-            // ONE top-level Reconcile() call, whose own finally-drain then REMOVES the now-empty back
-            // container, physically shifting every trailing item back by -1.
+            // item0's class, which exchanges it with its placeholder, then the tiny budget parks immediately
+            // after — all within this ONE top-level Reconcile() call, whose own end then removes the retired
+            // placeholder, physically shifting every trailing item back by -1.
             s_zParkZManaged = false;
             s_zParkFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_zParkFiber.FlushStateWithTinyBudgetForTest();
             var parkedAfterItem0 = s_zParkFiber.HasPendingReconcileWorkForTest();
             s_zParkFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — mirrors the creation-direction test above, in the opposite (-1) direction: every trailing
-            // item resumed at its correct (post-shift) physical index instead of one slot past it.
+            // Assert — mirrors the relocation-direction test above, in the opposite direction: every trailing
+            // item resumed at its correct physical index instead of one slot past it.
             Assert.That(
-                (backContainerExistedBeforeTheReRender, parkedAfterItem0,
-                    FindLayerContainer(root, front: false) == null, TrailingItemOrder(root)),
+                (backBandHeldItem0BeforeTheReRender, parkedAfterItem0,
+                    !Band(root, front: false).Any, TrailingItemOrder(root)),
                 Is.EqualTo((true, true, true, ExpectedTrailingItemOrder)));
         }
 
         #endregion
 
-        #region Cross-fiber MountSlotStart contamination from container churn
+        #region Cross-fiber MountSlotStart contamination from a relocation
 
         // A parent Div hosting two independent inline-mounted sibling fibers (mirrors TimeSlicedFiberTests'
         // own SiblingHostRender two-fiber shape). A's own re-render can turn its own first item z-managed,
-        // creating (or, symmetrically, emptying) the shared parent's back container from INSIDE A's own
-        // Reconcile() call; B's own INDEPENDENT later re-render must still patch its own items at their
-        // correct physical slots. No time-slicing anywhere in this region — the leak this pins is a plain
+        // relocating it into (or, symmetrically, out of) the shared parent's back band from INSIDE A's own
+        // Reconcile() call; B's own INDEPENDENT later re-render must still patch its own items at their correct
+        // physical slots. No time-slicing anywhere in this region — the leak this pins is a plain
         // childCount measurement around a synchronous Reconcile call, not a parked-state concern.
         [Component]
         private static VNode CrossFiberSiblingHost() => V.Div(
@@ -1318,66 +1501,64 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnInlineSiblingFiberTurnsItsOwnFirstItemZManaged_When_AnIndependentSiblingFiberLaterReRendersItsOwnItems_Then_TheLaterSiblingsItemsPatchAtTheirCorrectPhysicalSlots()
         {
-            // Arrange — mount fully ordinary: no z anywhere yet, so A's transition below creates the
-            // shared host's very first back container.
+            // Arrange — mount fully ordinary: no z anywhere yet, so A's transition below puts the shared host's
+            // first element into its back band.
             s_crossFiberAZManaged = false;
             s_crossFiberBName = "b0";
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossFiberSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-fiber-host");
-            var noBackContainerBeforeATransition = FindLayerContainer(host, front: false) == null;
+            var noBackBandBeforeATransition = !Band(host, front: false).Any;
 
-            // Act — A turns its own first item z-managed: A's own Reconcile() call's top-level finally
-            // creates the back container synchronously within that SAME call, before A's own before/after
-            // childCount measurement (ReconcileIntoSlotRange) completes.
+            // Act — A turns its own first item z-managed: A's patch puts a placeholder at a0's slot within that
+            // SAME call, before A's own before/after measurement (ReconcileIntoSlotRange) completes, and the
+            // call's end sorts a0 into the back band.
             s_crossFiberAZManaged = true;
             s_crossFiberAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossFiberAFiber);
-            var aCreatedTheBackContainer = FindLayerContainer(host, front: false) != null;
+            var aFilledTheBackBand = Band(host, front: false).Names == "a0";
 
             // Act — B re-renders independently, renaming its own first item.
             s_crossFiberBName = "b0-renamed";
             s_crossFiberBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossFiberBFiber);
 
-            // Assert — RED without the fix: A's own transition leaks the container's +1 into B's
-            // MountSlotStart, so B's diff runs one physical slot high — it patches the element that is
-            // actually its own "b1" with "b0"'s new name and creates a duplicate "b1" past the end,
-            // leaving a stale, untouched "b0" behind instead of the single renamed item in order.
+            // Assert — a +1 from A's relocation leaking into B's MountSlotStart runs B's diff one physical slot
+            // high: it patches the element that is actually its own "b1" with "b0"'s new name and creates a
+            // duplicate "b1" past the end, leaving a stale, untouched "b0" behind instead of the single renamed
+            // item in order.
             Assert.That(
-                (noBackContainerBeforeATransition, aCreatedTheBackContainer, CrossFiberBOrder(host)),
+                (noBackBandBeforeATransition, aFilledTheBackBand, CrossFiberBOrder(host)),
                 Is.EqualTo((true, true, "b0-renamed,b1")));
         }
 
         [Test]
         public void Given_AnInlineSiblingFiberRemovesItsOwnZClass_When_AnIndependentSiblingFiberLaterReRendersItsOwnItems_Then_TheLaterSiblingsItemsStillPatchAtTheirCorrectPhysicalSlots()
         {
-            // Arrange — mount with A's first item ALREADY z-managed, so the back container exists cleanly
-            // from the synchronous mount, before either fiber's own contamination-prone re-render runs.
+            // Arrange — mount with A's first item ALREADY z-managed, so the back band holds it cleanly from the
+            // synchronous mount, before either fiber's own contamination-prone re-render runs.
             s_crossFiberAZManaged = true;
             s_crossFiberBName = "b0";
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossFiberSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-fiber-host");
-            var backContainerExistedBeforeATeardown = FindLayerContainer(host, front: false) != null;
+            var backBandHeldA0BeforeATeardown = Band(host, front: false).Names == "a0";
 
-            // Act — A removes its own item's z class: A's own Reconcile() call's top-level finally REMOVES
-            // the now-empty back container synchronously within that SAME call — the teardown-direction
-            // counterpart of the creation above.
+            // Act — A removes its own item's z class: A's patch returns a0 to its slot within that SAME call,
+            // and the call's end removes the retired placeholder — the counterpart of the relocation above.
             s_crossFiberAZManaged = false;
             s_crossFiberAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossFiberAFiber);
-            var aRemovedTheBackContainer = FindLayerContainer(host, front: false) == null;
+            var aEmptiedTheBackBand = !Band(host, front: false).Any;
 
             // Act — B re-renders independently, renaming its own first item.
             s_crossFiberBName = "b0-renamed";
             s_crossFiberBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossFiberBFiber);
 
-            // Assert — the teardown (-1) direction stays consistent with the creation (+1) direction
-            // above: nothing breaks after the un-contamination.
+            // Assert — the return direction stays consistent with the relocation direction above.
             Assert.That(
-                (backContainerExistedBeforeATeardown, aRemovedTheBackContainer, CrossFiberBOrder(host)),
+                (backBandHeldA0BeforeATeardown, aEmptiedTheBackBand, CrossFiberBOrder(host)),
                 Is.EqualTo((true, true, "b0-renamed,b1")));
         }
 
@@ -1434,16 +1615,16 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingCreatesTheSharedParentsFirstBackContainer_Then_TheParkedFiberResumesAtRebasedPhysicalIndices()
+        public void Given_AFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingRelocatesTheSharedParentsFirstElementIntoItsBackBand_Then_TheParkedFiberResumesAtItsSlots()
         {
-            // Arrange — A mounts with a large flat list; B mounts ordinary (no z yet), so no back
-            // container exists when A's own park (below) begins.
+            // Arrange — A mounts with a large flat list; B mounts ordinary (no z yet), so the back band is empty
+            // when A's own park (below) begins.
             s_crossParkACount = 30;
             s_crossParkBZManaged = false;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossParkSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-host");
-            var noBackContainerBeforeBTransition = FindLayerContainer(host, front: false) == null;
+            var noBackBandBeforeBTransition = !Band(host, front: false).Any;
             var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
@@ -1456,42 +1637,40 @@ namespace Velvet.Tests
             var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkAFiber);
 
             // Act — B re-renders synchronously (Normal lane), turning its own first item z-managed: the
-            // shared host's FIRST negative-z child ever, so B's own top-level drain creates the back
-            // container while A is STILL parked.
+            // shared host's FIRST negative-z child, which B's pass relocates into the back band while A is
+            // STILL parked.
             s_crossParkBZManaged = true;
             s_crossParkBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkBFiber);
-            var bCreatedTheBackContainer = FindLayerContainer(host, front: false) != null;
+            var bFilledTheBackBand = Band(host, front: false).Any;
 
             // Act — drive A's still-parked pass to completion.
             s_crossParkAFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — every one of A's 60 items landed at its correct (post-shift) physical slot in
-            // order. RED without the ParkedBaselineFibers rebase branch: A's resume writes one slot short
-            // of where the container's insertion actually left each row, scrambling the tail it still had
-            // to create. A's own MountSlotStart is never touched by B's commit — this pins the parked
-            // PendingIndexedState rebase specifically, independent of ComponentFiber.MountSlotStart
-            // propagation.
+            // Assert — every one of A's 60 items landed at its slot in order: a resume reading B's relocation
+            // as a shift of its own slots scrambles the tail it still had to create. A's own MountSlotStart is
+            // never touched by B's commit — this pins the parked PendingIndexedState specifically, independent
+            // of ComponentFiber.MountSlotStart propagation.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpa" + i); }
             Assert.That(
-                (noBackContainerBeforeBTransition, aParked, aRegisteredAsParkedBaseline,
-                    bCreatedTheBackContainer, CrossParkAOrder(host)),
+                (noBackBandBeforeBTransition, aParked, aRegisteredAsParkedBaseline,
+                    bFilledTheBackBand, CrossParkAOrder(host)),
                 Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
 
         [Test]
-        public void Given_AFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingRemovesTheSharedParentsOnlyBackContainer_Then_TheParkedFiberResumesAtRebasedPhysicalIndices()
+        public void Given_AFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingReturnsTheSharedParentsOnlyBackBandElement_Then_TheParkedFiberResumesAtItsSlots()
         {
-            // Arrange — the teardown-direction mirror of the creation test above: B mounts ALREADY
-            // z-managed, so the shared host's back container exists cleanly from the synchronous initial
-            // mount, before A's own park (below) begins.
+            // Arrange — the return-direction mirror of the relocation test above: B mounts ALREADY z-managed, so
+            // the shared host's back band holds it cleanly from the synchronous initial mount, before A's own
+            // park (below) begins.
             s_crossParkACount = 3;
             s_crossParkBZManaged = true;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossParkSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-host");
-            var backContainerExistedBeforeBTeardown = FindLayerContainer(host, front: false) != null;
+            var backBandHeldBBeforeBTeardown = Band(host, front: false).Any;
             var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
@@ -1503,25 +1682,24 @@ namespace Velvet.Tests
             var aParked = s_crossParkAFiber.HasPendingReconcileWorkForTest();
             var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkAFiber);
 
-            // Act — B re-renders synchronously (Normal lane), flipping its own first item back to
-            // ordinary: the shared host's ONLY back-container member leaves, so B's own top-level drain
-            // REMOVES the now-empty container while A is STILL parked — the teardown-direction
-            // counterpart of the creation test above.
+            // Act — B re-renders synchronously (Normal lane), flipping its own first item back to ordinary:
+            // the shared host's ONLY back-band element returns to its slot while A is STILL parked — the
+            // counterpart of the relocation test above.
             s_crossParkBZManaged = false;
             s_crossParkBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkBFiber);
-            var bRemovedTheBackContainer = FindLayerContainer(host, front: false) == null;
+            var bEmptiedTheBackBand = !Band(host, front: false).Any;
 
             // Act — drive A's still-parked pass to completion.
             s_crossParkAFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — every one of A's 60 items landed at its correct (post-shift-back) physical slot in
-            // order — the -1 teardown direction stays consistent with the +1 creation direction above.
+            // Assert — every one of A's 60 items landed at its slot in order — the return direction stays
+            // consistent with the relocation direction above.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpa" + i); }
             Assert.That(
-                (backContainerExistedBeforeBTeardown, aParked, aRegisteredAsParkedBaseline,
-                    bRemovedTheBackContainer, CrossParkAOrder(host)),
+                (backBandHeldBBeforeBTeardown, aParked, aRegisteredAsParkedBaseline,
+                    bEmptiedTheBackBand, CrossParkAOrder(host)),
                 Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
 
@@ -1575,7 +1753,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AKeyedFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingCreatesTheSharedParentsFirstBackContainer_Then_TheParkedFiberResumesAtRebasedPhysicalIndices()
+        public void Given_AKeyedFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingRelocatesTheSharedParentsFirstElementIntoItsBackBand_Then_TheParkedFiberResumesAtItsSlots()
         {
             // Arrange — A mounts with a large KEYED flat list, so its own park exercises
             // RebasePendingSlotStart's PendingKeyedState branch (via ContinueKeyed) instead of the
@@ -1585,7 +1763,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossParkKeyedSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-keyed-host");
-            var noBackContainerBeforeBTransition = FindLayerContainer(host, front: false) == null;
+            var noBackBandBeforeBTransition = !Band(host, front: false).Any;
             var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
@@ -1598,39 +1776,37 @@ namespace Velvet.Tests
             var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkKeyedAFiber);
 
             // Act — B re-renders synchronously (Normal lane), turning its own first item z-managed: the
-            // shared host's FIRST negative-z child ever, so B's own top-level drain creates the back
-            // container while A is STILL parked.
+            // shared host's FIRST negative-z child, which B's pass relocates into the back band while A is
+            // STILL parked.
             s_crossParkKeyedBZManaged = true;
             s_crossParkKeyedBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkKeyedBFiber);
-            var bCreatedTheBackContainer = FindLayerContainer(host, front: false) != null;
+            var bFilledTheBackBand = Band(host, front: false).Any;
 
             // Act — drive A's still-parked pass to completion.
             s_crossParkKeyedAFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — every one of A's 60 items landed at its correct (post-shift) physical slot in
-            // order. RED without the PendingKeyedState branch of the ParkedBaselineFibers rebase: A's
-            // resume writes one slot short of where the container's insertion actually left each row.
+            // Assert — every one of A's 60 items landed at its slot in order, through the keyed resume.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpka" + i); }
             Assert.That(
-                (noBackContainerBeforeBTransition, aParked, aRegisteredAsParkedBaseline,
-                    bCreatedTheBackContainer, CrossParkKeyedAOrder(host)),
+                (noBackBandBeforeBTransition, aParked, aRegisteredAsParkedBaseline,
+                    bFilledTheBackBand, CrossParkKeyedAOrder(host)),
                 Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
 
         [Test]
-        public void Given_AKeyedFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingRemovesTheSharedParentsOnlyBackContainer_Then_TheParkedFiberResumesAtRebasedPhysicalIndices()
+        public void Given_AKeyedFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingReturnsTheSharedParentsOnlyBackBandElement_Then_TheParkedFiberResumesAtItsSlots()
         {
-            // Arrange — the teardown-direction mirror of the keyed creation test above, completing the
-            // {positional, keyed} x {creation, teardown} matrix: B mounts ALREADY z-managed so the back
-            // container exists before A's keyed park begins.
+            // Arrange — the return-direction mirror of the keyed relocation test above, completing the
+            // {positional, keyed} x {relocation, return} matrix: B mounts ALREADY z-managed so the back band
+            // holds it before A's keyed park begins.
             s_crossParkKeyedACount = 30;
             s_crossParkKeyedBZManaged = true;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossParkKeyedSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-keyed-host");
-            var backContainerExistedBeforeBTeardown = FindLayerContainer(host, front: false) != null;
+            var backBandHeldBBeforeBTeardown = Band(host, front: false).Any;
             var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; left parked while
@@ -1641,30 +1817,29 @@ namespace Velvet.Tests
             var aParked = s_crossParkKeyedAFiber.HasPendingReconcileWorkForTest();
             var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkKeyedAFiber);
 
-            // Act — B re-renders synchronously (Normal lane), flipping its own first item back to
-            // ordinary: the shared host's ONLY back-container member leaves, so B's own top-level drain
-            // REMOVES the now-empty container while A is STILL parked.
+            // Act — B re-renders synchronously (Normal lane), flipping its own first item back to ordinary:
+            // the shared host's ONLY back-band element returns to its slot while A is STILL parked.
             s_crossParkKeyedBZManaged = false;
             s_crossParkKeyedBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkKeyedBFiber);
-            var bRemovedTheBackContainer = FindLayerContainer(host, front: false) == null;
+            var bEmptiedTheBackBand = !Band(host, front: false).Any;
 
             // Act — drive A's still-parked pass to completion.
             s_crossParkKeyedAFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — the -1 teardown direction stays consistent with the +1 creation direction for the
-            // keyed branch too: every one of A's 60 items landed at its correct (post-shift-back) slot.
+            // Assert — the return direction stays consistent with the relocation direction for the keyed
+            // branch too: every one of A's 60 items landed at its slot.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpka" + i); }
             Assert.That(
-                (backContainerExistedBeforeBTeardown, aParked, aRegisteredAsParkedBaseline,
-                    bRemovedTheBackContainer, CrossParkKeyedAOrder(host)),
+                (backBandHeldBBeforeBTeardown, aParked, aRegisteredAsParkedBaseline,
+                    bEmptiedTheBackBand, CrossParkKeyedAOrder(host)),
                 Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
 
         #endregion
 
-        #region Draining a resumed slice's own deferred z-layer mount
+        #region Arranging at a resumed slice's own completion
 
         [Component]
         private static VNode DrainZLayerHost()
@@ -1682,43 +1857,38 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ATransitionPassParksBeforeReachingANewZManagedItem_When_TheZTransitionRunsEntirelyInTheResumedSlice_Then_ItsRealContentIsAttachedInTheBackContainerAfterThePassCompletes()
+        public void Given_ATransitionPassParksBeforeReachingANewZManagedItem_When_TheZTransitionRunsEntirelyInTheResumedSlice_Then_ItPaintsInTheBackBandAfterThePassCompletes()
         {
             // Arrange — mount fully ordinary.
             s_drainZManaged = false;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(DrainZLayerHost, key: "root"));
             var item1 = root.Q<VisualElement>("item1");
-            var noBackContainerBeforeTheReRender = FindLayerContainer(root, front: false) == null;
+            var noBackBandBeforeTheReRender = !Band(root, front: false).Any;
 
             // Act — item1 turns z-managed under a tiny forced budget: the first slice parks right after
-            // item0's own iteration, BEFORE the diff even reaches item1 — so item1's own transition (and
-            // its deferred z-mount enqueue, since no back container exists yet) runs entirely inside a
-            // RESUMED slice, never inside the one Reconciler.Reconcile call whose own top-level finally
-            // already drains.
+            // item0's own iteration, BEFORE the diff even reaches item1 — so item1's own transition runs
+            // entirely inside a RESUMED slice, never inside the one Reconciler.Reconcile call whose own end
+            // arranges the parent.
             s_drainZManaged = true;
             s_drainFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_drainFiber.FlushStateWithTinyBudgetForTest();
             var parkedBeforeItem1 = s_drainFiber.HasPendingReconcileWorkForTest();
             s_drainFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — RED without draining at a resumed slice's own completion: nothing ever creates the
-            // back container (creation itself lives behind the drain) and item1's real content stays
-            // orphaned (parent null), so BOTH sides must be pinned non-null — a bare reference comparison
-            // would let null == null pass for exactly the broken state.
-            var backContainer = FindLayerContainer(root, front: false);
+            // Assert — the resumed slice's own completion arranges the parent too, or item1 stays where its
+            // placeholder put it, right after its slot.
             Assert.That(
-                (noBackContainerBeforeTheReRender, parkedBeforeItem1, backContainer != null,
-                    ReferenceEquals(item1.parent, backContainer)),
-                Is.EqualTo((true, true, true, true)));
+                (noBackBandBeforeTheReRender, parkedBeforeItem1, Band(root, front: false).Names),
+                Is.EqualTo((true, true, "item1")));
         }
 
         #endregion
 
-        #region A resume tick that creates the container and re-parks
+        #region A resume tick that relocates an element and re-parks
 
         [Test]
-        public void Given_AParkedFibersOwnResumeTickCreatesItsContainerAndReParks_When_ItFinishes_Then_TrailingItemsLandAtCorrectIndices()
+        public void Given_AParkedFibersOwnResumeTickRelocatesAnElementAndReParks_When_ItFinishes_Then_TrailingItemsLandAtCorrectIndices()
         {
             // Arrange — mount fully ordinary (reuses DrainZLayerHost: item1 is the one the toggle below
             // turns z-managed).
@@ -1726,10 +1896,10 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(DrainZLayerHost, key: "root"));
             var ctx = mounted.Root.Reconciler.Context;
-            var noBackContainerBeforeTheReRender = FindLayerContainer(root, front: false) == null;
+            var noBackBandBeforeTheReRender = !Band(root, front: false).Any;
 
             // Act — tick 1 (via FlushState): item0 parks first, which is what registers the fiber in
-            // ParkedBaselineFibers BEFORE its own later container-creating tick runs.
+            // ParkedBaselineFibers BEFORE its own later relocating tick runs.
             s_drainZManaged = true;
             s_drainFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_drainFiber.FlushStateWithTinyBudgetForTest();
@@ -1737,22 +1907,20 @@ namespace Velvet.Tests
             var registeredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_drainFiber);
 
             // Act — tick 2 (a single manual resume, which continues at the tiny budget tick 1 captured on the
-            // fiber): processes item1, creating the shared parent's first back container INSIDE this tick's drain,
-            // then re-parks immediately after (item2..item9 remain), still registered in
-            // ParkedBaselineFibers.
+            // fiber): processes item1, relocating it into the shared parent's back band INSIDE this tick, then
+            // re-parks immediately after (item2..item9 remain), still registered in ParkedBaselineFibers.
             FiberWorkLoop.ContinueReconcile(s_drainFiber);
-            var resumeTickCreatedTheBackContainer = FindLayerContainer(root, front: false) != null;
+            var resumeTickFilledTheBackBand = Band(root, front: false).Names == "item1";
             var reParkedWhileStillRegistered = s_drainFiber.HasPendingReconcileWorkForTest();
 
             // Act — drain the remainder; what this case reads is already fully determined by tick 2 above.
             s_drainFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — RED without the fix: every trailing item resumes two physical slots ahead of where
-            // the container's single insertion left it.
+            // Assert — item1 stands in the back band ahead of the trailing items, and each of item2..item9 lands at its slot.
             Assert.That(
-                (noBackContainerBeforeTheReRender, parkedAfterItem0, registeredAsParkedBaseline,
-                    resumeTickCreatedTheBackContainer, reParkedWhileStillRegistered, TrailingItemOrder(root)),
-                Is.EqualTo((true, true, true, true, true, "item2,item3,item4,item5,item6,item7,item8,item9")));
+                (noBackBandBeforeTheReRender, parkedAfterItem0, registeredAsParkedBaseline,
+                    resumeTickFilledTheBackBand, reParkedWhileStillRegistered, TrailingItemOrder(root)),
+                Is.EqualTo((true, true, true, true, true, ExpectedTrailingItemOrder)));
         }
 
         #endregion
@@ -1778,12 +1946,11 @@ namespace Velvet.Tests
             return V.Fragment(children: children);
         }
 
-        // GREEN_ON_BASE(characterization): the base moves the element within its layer the moment it patches,
-        // so a layer read between slices is in order there too; the post-pass resort has to give the same
-        // reading at the end of a slice that parks the pass.
+        // The arrangement at the end of a slice that parks the pass sorts the band, though the parked diff keeps
+        // every slot occupant where it is.
         [TestCase("z-30", "z-20", 0, TestName = "TheChangedElementIsPatchedInTheFirstSlice")]
         [TestCase("z-10", "z-5", 1, TestName = "TheChangedElementIsPatchedInAResumedSlice")]
-        public void Given_AParkedTimeSlicedPass_When_AZChangeWithinTheLayerWasPatchedInASlice_Then_TheLayerIsInOrderBeforeThePassFinishes(
+        public void Given_AParkedTimeSlicedPass_When_AZChangeWithinTheBandWasPatchedInASlice_Then_TheBandIsInOrderBeforeThePassFinishes(
             string aAfter, string bAfter, int resumes)
         {
             // Arrange — a at z-10 and b at z-20 mount in that order; the tiny budget parks after one node.
@@ -1791,7 +1958,7 @@ namespace Velvet.Tests
             s_sliceBClass = "z-20";
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(SlicedLayerHost, key: "root"));
-            var front = FindLayerContainer(root, front: true);
+            var front = Band(root, front: true);
             Assume.That(Names(front), Is.EqualTo("a,b"), "Precondition: mounted in z order");
 
             // Act
@@ -1811,7 +1978,7 @@ namespace Velvet.Tests
 
         [TestCase(false, TestName = "AnUnkeyedDiffResumes")]
         [TestCase(true, TestName = "AKeyedDiffResumes")]
-        public void Given_ALayerPutOutOfOrderWhileAPassIsParked_When_ThePassResumes_Then_TheLayerIsBackInZOrder(bool keyed)
+        public void Given_ABandPutOutOfOrderWhileAPassIsParked_When_ThePassResumes_Then_TheBandIsBackInZOrder(bool keyed)
         {
             // Arrange — a at z-10 and b at z-20, neither of which the re-render changes, so no slice places a
             // member; the tiny budget parks the re-render after its first node.
@@ -1820,11 +1987,11 @@ namespace Velvet.Tests
             s_sliceKeyed = keyed;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(SlicedLayerHost, key: "root"));
-            var front = FindLayerContainer(root, front: true);
+            var front = Band(root, front: true);
             s_sliceFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_sliceFiber.FlushStateWithTinyBudgetForTest();
             root.Q<VisualElement>("a").PlaceInFront(root.Q<VisualElement>("b"));
-            Assume.That(Names(front), Is.EqualTo("b,a"), "Precondition: the layer is out of z order");
+            Assume.That(Names(front), Is.EqualTo("b,a"), "Precondition: the band is out of z order");
 
             // Act
             s_sliceFiber.DrainTimeSlicedReconcileForTest();
@@ -1838,12 +2005,12 @@ namespace Velvet.Tests
         #region Structural variants across a stacking parent
 
         // negz is declared LAST (not first) so "ordinary"/"second" are genuinely the 1st/2nd LOGICAL siblings
-        // — GetOrCreateContainer always inserts a back container at the stacking parent's own PHYSICAL index 0
-        // regardless of where among the siblings the negative-z element itself was declared, so this still
-        // makes the back container physically precede both of them. appendThird changes ONLY the child COUNT
-        // (a brand-new, structural-class-free sibling), never ordinary/second's own className — so their own
-        // ApplyStructuralVariantConfig never re-fires; only "parent"'s own post-children container sweep
-        // (ApplyStructuralVariants) re-derives their positions when this toggles.
+        // — the back band sits at the stacking parent's own PHYSICAL front regardless of where among the
+        // siblings the negative-z element itself was declared, so negz still physically precedes both of them.
+        // appendThird changes ONLY the child COUNT (a brand-new, structural-class-free sibling), never
+        // ordinary/second's own className — so their own ApplyStructuralVariantConfig never re-fires; only
+        // "parent"'s own post-children sweep (ApplyStructuralVariants) re-derives their positions when this
+        // toggles.
         [Component]
         private static VNode StructuralSweepHost()
         {
@@ -1862,32 +2029,31 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OrdinarySiblingsCarryingFirstAndNthChildVariants_When_ANewSiblingIsAppendedAfterABackContainerAlreadyExists_Then_TheContainerSweepStillExcludesTheContainerFromTheirPositions()
+        public void Given_OrdinarySiblingsCarryingFirstAndNthChildVariants_When_ANewSiblingIsAppendedAfterTheBackBandHoldsAnElement_Then_TheSweepStillExcludesItFromTheirPositions()
         {
-            // Arrange — mount with the back container already created. A FRESH mount's own post-children sweep
-            // runs BEFORE the finally-drain that creates the container (FiberZLayerCoordinator.
-            // GetOrCreateContainer), so this first sweep computes ordinary/second's positions with no container
-            // to subtract yet — correct at that instant, but not a pin of the subtraction itself; only a LATER
-            // sweep, re-triggered with the container already physically present, exercises that.
+            // Arrange — mount with negz already in the back band. A FRESH mount's own post-children sweep runs
+            // BEFORE the pass end that sorts negz there, so this first sweep computes ordinary/second's positions
+            // with nothing ahead of them yet — correct at that instant, but not a pin of the exclusion itself;
+            // only a LATER sweep, re-triggered with negz already physically ahead of them, exercises that.
             using var store = new ToggleStore<bool>(false);
             s_structuralSweepStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(StructuralSweepHost, key: "root"));
-            var backContainerExistedAtMount = FindLayerContainer(root.Q<VisualElement>("parent"), front: false) != null;
+            var backBandHeldNegzAtMount = Band(root.Q<VisualElement>("parent"), front: false).Names == "negz";
             var ordinaryCarriedItsMountTimePayload = root.Q<VisualElement>("ordinary").ClassListContains("bg-mark");
 
             // Act — append an unrelated new sibling: "parent" itself re-patches (a genuine child-count change),
-            // so its own post-children pass re-derives every position via the container sweep
-            // (FiberNodePatcher.ApplyStructuralVariants) — this time with the back container already present.
+            // so its own post-children pass re-derives every position via the sweep
+            // (FiberNodePatcher.ApplyStructuralVariants) — this time with negz already physically first.
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — RED if the re-derived sweep counts the back container as a sibling: it would read "ordinary" as
-            // sibling index 1 (the back container counted as index 0) and "second" as index 2, matching neither
+            // Assert — RED if the re-derived sweep counts negz as a sibling at its band position: it would read
+            // "ordinary" as sibling index 1 (negz counted as index 0) and "second" as index 2, matching neither
             // first: nor nth-child(2) (which expects 0-based index 1) — un-applying the payload each correctly
             // held after the mount.
             Assert.That(
-                (backContainerExistedAtMount, ordinaryCarriedItsMountTimePayload,
+                (backBandHeldNegzAtMount, ordinaryCarriedItsMountTimePayload,
                     root.Q<VisualElement>("ordinary").ClassListContains("bg-mark"),
                     root.Q<VisualElement>("second").ClassListContains("bg-mark")),
                 Is.EqualTo((true, true, true, true)));
@@ -1897,7 +2063,7 @@ namespace Velvet.Tests
         // logical sibling 0), so its LATER re-render (triggered by its own store subscription) reconciles
         // directly against "parent" (its shared MountPoint, via ChildReconciler.Reconcile's slot-range
         // addressing) without StructuralPatchParentHost itself ever re-rendering. That is deliberate: "parent"
-        // itself getting patched would ALSO re-run its own post-children container sweep (ApplyStructuralVariants
+        // itself getting patched would ALSO re-run its own post-children sweep (ApplyStructuralVariants
         // — the same hunk StructuralSweepHost above exercises), which would re-derive (and so silently mask a
         // broken) logical-index conversion in ApplyStructuralVariantConfig moments later in the very same
         // patch. Only isolating "ordinary"'s own re-render like this exercises ApplyStructuralVariantConfig's
@@ -1917,14 +2083,14 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnOrdinarySiblingPatchedWithAFirstVariant_When_ABackContainerAlreadyExists_Then_ItsImmediateEvaluationExcludesTheContainer()
+        public void Given_AnOrdinarySiblingPatchedWithAFirstVariant_When_TheBackBandAlreadyHoldsAnElement_Then_ItsImmediateEvaluationExcludesIt()
         {
-            // Arrange — mount with the back container already created; "ordinary" has no structural class yet.
+            // Arrange — mount with negz already in the back band; "ordinary" has no structural class yet.
             using var store = new ToggleStore<bool>(false);
             s_structuralPatchStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(StructuralPatchParentHost, key: "root"));
-            var backContainerExistedBeforeThePatch = FindLayerContainer(root.Q<VisualElement>("parent"), front: false) != null;
+            var backBandHeldNegzBeforeThePatch = Band(root.Q<VisualElement>("parent"), front: false).Names == "negz";
 
             // Act — "ordinary"'s own fiber re-renders (StructuralPatchParentHost's own fiber is never marked
             // dirty and stays untouched), patching its className to add first: while it is already parented —
@@ -1933,10 +2099,10 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert — RED if ApplyStructuralVariantConfig evaluates on physical indices: the
-            // immediate evaluation would read "ordinary"'s raw physical index (1, the back container counted as
-            // index 0) against the raw count, never matching first: (which expects index 0).
+            // immediate evaluation would read "ordinary"'s raw physical index (1, negz counted as index 0) against
+            // the raw count, never matching first: (which expects index 0).
             Assert.That(
-                (backContainerExistedBeforeThePatch, root.Q<VisualElement>("ordinary").ClassListContains("bg-mark")),
+                (backBandHeldNegzBeforeThePatch, root.Q<VisualElement>("ordinary").ClassListContains("bg-mark")),
                 Is.EqualTo((true, true)));
         }
 
@@ -1944,9 +2110,9 @@ namespace Velvet.Tests
         public void Given_AZManagedElementCarryingLastVariant_When_ItIsLogicallyTheLastDeclaredChild_Then_ItsRealElementGetsThePayload()
         {
             // Arrange/Act — "zlast"'s placeholder sits at parent's own last ordinary slot (its real content
-            // lives in the trailing front layer container instead); last: must resolve against the
-            // PLACEHOLDER's logical position (FiberNodePatcher.ApplyStructuralVariants' ZLayerPlaceholders
-            // resolution), not the real element's physical position inside the layer container.
+            // paints in the trailing front band instead); last: must resolve against the PLACEHOLDER's logical
+            // position (FiberNodePatcher.ApplyStructuralVariants' ZLayerPlaceholders resolution), not the real
+            // element's physical position in the band.
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
             {

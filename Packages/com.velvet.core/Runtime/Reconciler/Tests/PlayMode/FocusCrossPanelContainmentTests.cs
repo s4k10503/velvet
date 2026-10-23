@@ -357,7 +357,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
         // That renders the element scope V.FocusScope rendered on the base.
         // Before that, as characterization: the base never pulls focus back from a panel it manages.
-        // This case pins that a z-indexed portal child, which leaves its slot for a layer container, still
+        // This case pins that a z-indexed portal child, which leaves its slot for the front band, still
         // counts as the portal's content.
         [UnityTest]
         public IEnumerator Given_AContainedScope_When_FocusMovesToAZIndexedChildOfAPortalDeclaredInsideIt_Then_FocusStaysThere()

@@ -360,6 +360,12 @@ namespace Velvet
         internal static readonly EngineMember LayoutNodeHasNewLayout =
             ReadProperty(UIElements, LayoutNodeType, "HasNewLayout", "System.Boolean");
 
+        // ChildLayoutOrder's rebuild of a parent's layout children in an order other than its paint order.
+        internal static readonly EngineMember LayoutNodeClear = Method(UIElements, LayoutNodeType, "Clear", "System.Void");
+
+        internal static readonly EngineMember LayoutNodeInsert =
+            Method(UIElements, LayoutNodeType, "Insert", "System.Void", "System.Int32", LayoutNodeType);
+
         internal static readonly EngineMember ElementLastLayout = Field(UIElements, VisualElementType, "lastLayout", "UnityEngine.Rect");
 
         internal static readonly EngineMember ElementIncrementVersion = Method(UIElements, VisualElementType,
@@ -370,6 +376,27 @@ namespace Velvet
 
         internal static readonly EngineMember PanelDuringLayoutPhase = ReadProperty(UIElements,
             "UnityEngine.UIElements.BaseVisualElementPanel", "duringLayoutPhase", "System.Boolean");
+
+        // RelationalTreeWatch's hearing of a hierarchy change made outside a pass.
+        private const string PanelType = "UnityEngine.UIElements.BaseVisualElementPanel";
+        private const string HierarchyEventType = "UnityEngine.UIElements.HierarchyEvent";
+        private const string HierarchyChangeType = "UnityEngine.UIElements.HierarchyChangeType";
+        private const string HierarchyChangeShape = "enum:" + HierarchyChangeType;
+
+        internal static readonly EngineMember PanelHierarchyChangedAdd =
+            Method(UIElements, PanelType, "add_hierarchyChanged", "System.Void", HierarchyEventType);
+
+        internal static readonly EngineMember PanelHierarchyChangedRemove =
+            Method(UIElements, PanelType, "remove_hierarchyChanged", "System.Void", HierarchyEventType);
+
+        internal static readonly EngineMember HierarchyAddedToParent =
+            Field(UIElements, HierarchyChangeType, "AddedToParent", HierarchyChangeShape);
+
+        internal static readonly EngineMember HierarchyRemovedFromParent =
+            Field(UIElements, HierarchyChangeType, "RemovedFromParent", HierarchyChangeShape);
+
+        internal static readonly EngineMember HierarchyChildrenReordered =
+            Field(UIElements, HierarchyChangeType, "ChildrenReordered", HierarchyChangeShape);
 
         // A shape every type satisfies, for a member typed by a generic parameter.
         private const string AnyShape = "*";

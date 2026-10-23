@@ -87,9 +87,12 @@ namespace Velvet
             return null;
         }
 
-        // Whether `child`, one of the start's siblings, lies between the start and its end.
+        // Whether `child`, one of the start's siblings, lies between the start and its end. A relocated element is
+        // read at its placeholder: it paints in its parent's front band, past the end, yet belongs to the scope that
+        // declares it.
         internal static bool Brackets(FocusScopeStart start, VisualElement child)
         {
+            child = FiberFocusNavigator.PlaceholderOf(child) ?? child;
             var parent = start.hierarchy.parent;
             if (parent == null || !ReferenceEquals(child.hierarchy.parent, parent))
             {
@@ -137,6 +140,7 @@ namespace Velvet
         // Appends the starts of the ranges bracketing `child` among its parent's children, outermost first.
         internal static void AppendStartsAround(VisualElement child, List<FocusScopeStart> into)
         {
+            child = FiberFocusNavigator.PlaceholderOf(child) ?? child;
             var parent = child.hierarchy.parent;
             if (parent == null)
             {
@@ -162,7 +166,8 @@ namespace Velvet
             into.RemoveRange(floor, into.Count - floor);
         }
 
-        // The elements between the start and its end, in order.
+        // The elements between the start and its end, in order. A relocated element stands where its placeholder does,
+        // and is left out where it paints.
         internal static void AppendContent(FocusScopeStart start, List<VisualElement> into)
         {
             var parent = start.hierarchy.parent;
@@ -186,7 +191,10 @@ namespace Velvet
                 {
                     depth--;
                 }
-                into.Add(sibling);
+                if (FiberFocusNavigator.PlaceholderOf(sibling) == null)
+                {
+                    into.Add(FiberFocusNavigator.RelocatedRealOf(sibling) ?? sibling);
+                }
             }
         }
 

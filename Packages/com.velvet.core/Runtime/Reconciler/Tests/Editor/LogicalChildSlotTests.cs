@@ -31,14 +31,9 @@ namespace Velvet.Tests
 
         private static VisualElement Rendered(string name) => new() { name = name };
 
-        // The one invisible kind that must stay a parent's FIRST physical child, as against the trailing
+        // The one invisible kind that must paint ahead of a parent's declared slots, as against the trailing
         // kinds Invisible() stands in for.
-        private static VisualElement BackLayerContainer()
-        {
-            var e = new VisualElement { name = "back" };
-            e.AddToClassList(FiberZLayerCoordinator.BackMarkerClass);
-            return e;
-        }
+        private static VisualElement BackBandMember() => ZBandProbe.BackBandMember("back");
 
         private static VisualElement Container(params VisualElement[] children)
         {
@@ -93,12 +88,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OnlyABackLayerContainer_When_ResolvingTheAppendPosition_Then_ItLandsAfterIt()
+        public void Given_OnlyABackBandElement_When_ResolvingTheAppendPosition_Then_ItLandsAfterIt()
         {
-            // Arrange & Act — the back container must stay the parent's first physical child, so an append
+            // Arrange & Act — a back-band element must stay ahead of the parent's declared slots, so an append
             // cannot resolve to 0. Its KIND is what decides this, not its position: see the trailing-kind
             // twin below, which sits at the same index and must get the opposite answer.
-            var container = Container(BackLayerContainer());
+            var container = Container(BackBandMember());
 
             // Assert
             Assert.That(LogicalChildSlots.ToPhysical(container, 0), Is.EqualTo(1));
@@ -108,7 +103,7 @@ namespace Velvet.Tests
         public void Given_ATrailingInvisibleChild_When_ResolvingTheAppendPosition_Then_ItLandsBeforeIt()
         {
             // Arrange & Act — a filter bounds spacer must stay last, which pulls the append position the
-            // opposite way from the back container above.
+            // opposite way from the back-band element above.
             var container = Container(Rendered("a"), Invisible());
 
             // Assert
@@ -119,7 +114,7 @@ namespace Velvet.Tests
         public void Given_OnlyATrailingInvisibleChild_When_ResolvingTheAppendPosition_Then_ItStillLandsBeforeIt()
         {
             // Arrange & Act — the discriminating pair for the rule being kind-aware rather than positional:
-            // this spacer is the parent's ONLY child, exactly as the back container is above, and must get
+            // this spacer is the parent's ONLY child, exactly as the back-band element is above, and must get
             // the opposite answer. Reachable — a filtered element whose rendered children have all been
             // removed and which then gains one back.
             var container = Container(Invisible());

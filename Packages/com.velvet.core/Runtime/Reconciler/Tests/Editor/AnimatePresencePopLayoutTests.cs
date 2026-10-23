@@ -84,7 +84,7 @@ namespace Velvet.Tests
         }
 
         // "item-b" itself is z-managed (absolute + z-10): its real content relocates into "presence-host"'s own
-        // front layer container, with a Motion child (found via FindFirstMotionDescendant, since the presence
+        // front band, with a Motion child (found via FindFirstMotionDescendant, since the presence
         // child's own node is the Div wrapper, not a MotionNode) driving the actual enter/exit variants — an
         // "animated top-most modal" shape. The wrapper Div carries the name and the key; the z-layer placeholder
         // FiberZLayerCoordinator.CreatePlaceholder builds carries no name at all, so a query by name always
@@ -124,7 +124,7 @@ namespace Velvet.Tests
             return mounted;
         }
 
-        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
+        // GREEN_ON_BASE(refactor): the base pins the real element too; only the precondition's wording changed.
         [Test]
         public void Given_AZManagedKeyedChild_When_ItsPopLayoutExitStarts_Then_TheRealElementNotThePlaceholderIsPinned()
         {
@@ -138,7 +138,7 @@ namespace Velvet.Tests
             var scheduler = ctx.BatchScheduler;
             var item = _window.rootVisualElement.Q<VisualElement>("item-b");
             Assume.That(ctx.ZLayerMembers.ContainsKey(item), Is.True,
-                "Precondition: item-b actually relocated into its layer container");
+                "Precondition: item-b actually relocated into the front band");
             Assume.That(float.IsFinite(item.layout.width), Is.True,
                 "Precondition: item-b's pre-exit rect is finite");
 
@@ -189,9 +189,9 @@ namespace Velvet.Tests
             Assume.That(_window.rootVisualElement.Q<VisualElement>("item-b"), Is.Null,
                 "Precondition: item-b has not mounted yet");
 
-            // Act — add "b"; its EnqueueMount and this render's enter dispatch both run inside this SAME
-            // synchronous pass, before the post-pass drain that (without eagerly registering the pair at
-            // enqueue time) would be the only place ZLayerPlaceholders learns about it.
+            // Act — add "b"; its creation and this render's enter dispatch both run inside this SAME
+            // synchronous pass, before the post-pass drain that (without registering the pair at creation,
+            // FiberZLayerCoordinator.OnCreated) would be the only place ZLayerPlaceholders learns about it.
             store.Set("abc");
             scheduler.DrainImmediateForTest();
 
@@ -223,9 +223,8 @@ namespace Velvet.Tests
             store.Set("abc");
             scheduler.DrainImmediateForTest();
 
-            // Assert — the cancel clears item-b's own pin (position back to Null, rejoining the front layer
-            // container's normal flow) AND leaves its width untouched by the nested Motion's own w-[60px]
-            // class: RestorePopLayoutChildToFlow reapplies the ANCHOR's own declared classes (item-b's
+            // Assert — the cancel clears item-b's own pin (position back to Null, rejoining
+            // normal flow) AND leaves its width untouched by the nested Motion's own w-[60px] class: RestorePopLayoutChildToFlow reapplies the ANCHOR's own declared classes (item-b's
             // "absolute z-10", neither an arbitrary-value token), not the differently-classed Motion nested
             // inside it — a stray reapply from the wrong element's class list would otherwise leave a
             // concrete (non-Null) width behind. The pin itself is asserted first: an element that was never
@@ -259,9 +258,21 @@ namespace Velvet.Tests
                 Is.EqualTo(Position.Absolute));
         }
 
-        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
+        private static string[] ItemsInPaintOrder(VisualElement host)
+        {
+            var names = new List<string>();
+            foreach (var child in host.Children())
+            {
+                if (child.name != null && child.name.StartsWith("item-", StringComparison.Ordinal))
+                {
+                    names.Add(child.name);
+                }
+            }
+            return names.ToArray();
+        }
+
         [Test]
-        public void Given_APopLayoutModeChild_When_ItStartsExiting_Then_ItPaintsInTheFrontLayer()
+        public void Given_APopLayoutModeChild_When_ItStartsExiting_Then_ItPaintsAfterTheSiblingsDeclaredAfterIt()
         {
             // Arrange
             using var store = new SetStore();
@@ -274,12 +285,12 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
 
             // Assert
-            Assert.That(_window.rootVisualElement.Q<VisualElement>("item-b").parent?.ClassListContains(
-                FiberZLayerCoordinator.FrontMarkerClass), Is.EqualTo(true));
+            Assert.That(ItemsInPaintOrder(_window.rootVisualElement.Q<VisualElement>("presence-host")),
+                Is.EqualTo(new[] { "item-a", "item-c", "item-b" }));
         }
 
         [Test]
-        public void Given_APopLayoutExitInFlight_When_TheKeyReturnsBeforeItFinishes_Then_ItLeavesTheFrontLayerForItsHost()
+        public void Given_APopLayoutExitInFlight_When_TheKeyReturnsBeforeItFinishes_Then_ItPaintsInItsDeclaredPlaceAgain()
         {
             // Arrange
             using var store = new SetStore();
@@ -288,16 +299,16 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             store.Set("ac");
             scheduler.DrainImmediateForTest();
-            var inLayerWhileExiting = _window.rootVisualElement.Q<VisualElement>("item-b").parent?.ClassListContains(
-                FiberZLayerCoordinator.FrontMarkerClass);
+            var host = _window.rootVisualElement.Q<VisualElement>("presence-host");
+            var whileExiting = ItemsInPaintOrder(host);
 
             // Act
             store.Set("abc");
             scheduler.DrainImmediateForTest();
 
             // Assert
-            Assert.That((inLayerWhileExiting, _window.rootVisualElement.Q<VisualElement>("item-b").parent?.name),
-                Is.EqualTo(((bool?)true, "presence-host")));
+            Assert.That((string.Join(",", whileExiting), string.Join(",", ItemsInPaintOrder(host))),
+                Is.EqualTo(("item-a,item-c,item-b", "item-a,item-b,item-c")));
         }
 
         [Test]

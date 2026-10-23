@@ -459,12 +459,11 @@ namespace Velvet
                 return true;
             }
 
-            // Same-panel counterpart: focus sits inside a z-relocated element's subtree (its real element
-            // physically lives in a layer container, elsewhere in the same panel) and this move would leave
-            // that subtree — redirect to the panel-ring neighbour of its PLACEHOLDER (its declared position)
-            // instead of wherever the layer container happens to sit physically. Reached only when neither
-            // Contain nor SingleTabStop claims this focus (both returned above), mirroring the chained escape's
-            // own scope precedence.
+            // Same-panel counterpart: a z-relocated element physically sits in its parent's band, away from its
+            // declared slot, so a move into, out of or past one is redirected to the neighbour in declared order
+            // instead of wherever the band happens to sit physically. Reached only when neither Contain nor
+            // SingleTabStop claims this focus (both returned above), mirroring the chained escape's own scope
+            // precedence.
             return TryZLayerExit(in move);
         }
 
@@ -668,86 +667,80 @@ namespace Velvet
             return null;
         }
 
-        // Same-panel counterpart to TryChainedEscape. `focused` sits inside a z-relocated real element's
-        // subtree, so the engine's own ring prediction reflects where that element physically paints (its
-        // layer container), not its declared position. A prediction that STAYS inside the real element's own
-        // subtree is left alone (moving between two focusables both inside it never crosses its boundary);
-        // only a prediction that would LEAVE it gets redirected, to the panel ring's neighbour of the
-        // element's PLACEHOLDER — its logical position — instead. No panel hop (same panel throughout), so
-        // this redirects synchronously, unlike the cross-panel chained escape.
+        // Same-panel counterpart to TryChainedEscape. The engine's own ring follows where a z-relocated element
+        // physically paints (its parent's band), not its declared position, so wherever one exists the move is
+        // redirected to the neighbour in declared order (LogicalNeighbour) when that differs from the engine's
+        // prediction. No panel hop (same panel throughout), so this redirects synchronously, unlike the
+        // cross-panel chained escape.
         private static bool TryZLayerExit(in NavigationMove move)
         {
-            var evt = move.Evt;
-            var panel = move.Panel;
-            var panelRoot = move.PanelRoot;
-            var focused = move.Focused;
-            var forward = move.Forward;
             var ctx = move.Ctx;
-            var real = FindEnclosingZLayerReal(focused, ctx, out var placeholder, out var container);
-            if (real == null)
+            if (ctx.ZLayerMembers.Count == 0)
             {
                 return false;
             }
-
-            var direction = ToRingDirection(forward);
-            var ring = new VisualElementFocusRing(panelRoot);
-            var predicted = ring.GetNextFocusable(focused, direction) as VisualElement;
-            if (predicted != null && real.Contains(predicted))
+            var direction = ToRingDirection(move.Forward);
+            var ring = new VisualElementFocusRing(move.PanelRoot);
+            var predicted = ring.GetNextFocusable(move.Focused, direction) as VisualElement;
+            var landing = LogicalNeighbour(ring, move.Focused, predicted, direction, ctx);
+            if (landing == null || ReferenceEquals(landing, predicted) || !landing.canGrabFocus)
             {
                 return false;
             }
-
-            // The placeholder's own physical ring-neighbour can BE the layer container itself (or a landing
-            // inside it, on ANY co-tenant's real — not only this element's own): a trailing front container
-            // sits right after its stacking parent's last ordinary slot, so when the z-managed element is
-            // that parent's logically LAST child (forward) — or, symmetrically, a leading back container's
-            // FIRST child (backward) — the very next ring step from the placeholder re-enters the container
-            // instead of escaping past it. With 2+ z-managed siblings sharing that container, this can land on
-            // a DIFFERENT member's real (physically adjacent within the same container) rather than this
-            // element's own, which the OLD "inside real's own subtree" test would wrongly accept as an escape
-            // — so the walk is scoped to the whole CONTAINER (any co-tenant's real), not just `real`. A
-            // landing on a NEIGHBOUR's PLACEHOLDER is unaffected: a placeholder lives in the stacking parent's
-            // own slot range, never as a child of the container (see InsertByZ / Place), so it is never
-            // "inside container" and the walk correctly stops there — the legitimate adjacent-sibling handoff
-            // (OnFocusIn forwards from a placeholder to its own real) that the existing backward test relies
-            // on. Keep walking past any container landing until it is genuinely outside the container
-            // entirely, bounded exactly like the SingleTabStop exit walk above so a pathological ring cannot
-            // spin this forever; a ring with nothing else reachable (every walk stays inside the container, or
-            // wraps back to the placeholder itself) falls through to "no valid exit".
-            var landing = ring.GetNextFocusable(placeholder, direction) as VisualElement;
-            var guard = MaxRingWalk;
-            while (landing != null && (ReferenceEquals(landing, container) || container.Contains(landing)) && guard-- > 0)
-            {
-                landing = ring.GetNextFocusable(landing, direction) as VisualElement;
-            }
-
-            if (landing == null || ReferenceEquals(landing, placeholder) || !landing.canGrabFocus
-                || ReferenceEquals(landing, container) || container.Contains(landing))
-            {
-                return false;
-            }
-            Redirect(evt, panel, ResolveScopeEntryTarget(landing, ctx));
+            Redirect(move.Evt, move.Panel, ResolveScopeEntryTarget(landing, ctx));
             return true;
         }
 
+        // The neighbour of `focused` in declared order, given the engine's physical prediction. A landing inside a
+        // relocated element is skipped, since that element is entered through its placeholder (SkipRelocated). A
+        // move that leaves a relocated element — focused's own, or one around it — leaves it at its declared
+        // slot, so the walk starts over from that element's placeholder, once per relocated element it leaves.
+        private static VisualElement? LogicalNeighbour(VisualElementFocusRing ring, VisualElement focused,
+            VisualElement? predicted, FocusChangeDirection direction, ReconcilerContext ctx)
+        {
+            var landing = SkipRelocated(ring, predicted, direction, ctx, from: focused);
+            var scope = FindEnclosingZLayerReal(focused, ctx, out var placeholder);
+            var guard = MaxRingWalk;
+            while (scope != null && (landing == null || !scope.Contains(landing)) && guard-- > 0)
+            {
+                landing = SkipRelocated(ring, ring.GetNextFocusable(placeholder, direction) as VisualElement, direction,
+                    ctx, from: placeholder!);
+                scope = scope.parent == null ? null : FindEnclosingZLayerReal(scope.parent, ctx, out placeholder);
+            }
+            return landing;
+        }
+
+        // Walks the ring on from landing while it lands inside a relocated element that does not hold `from`: such
+        // an element is entered through its placeholder, never where it paints. Bounded like the SingleTabStop exit
+        // walk so a pathological ring cannot spin this forever.
+        private static VisualElement? SkipRelocated(VisualElementFocusRing ring, VisualElement? landing,
+            FocusChangeDirection direction, ReconcilerContext ctx, VisualElement from)
+        {
+            var guard = MaxRingWalk;
+            while (landing != null && guard-- > 0
+                && FindEnclosingZLayerReal(landing, ctx, out _) is { } relocated && !relocated.Contains(from))
+            {
+                landing = ring.GetNextFocusable(landing, direction) as VisualElement;
+            }
+            return landing;
+        }
+
         // Walks UP from `element` (inclusive) for the nearest ancestor currently registered as a z-managed
-        // real element (ReconcilerContext.ZLayerMembers), returning it, its placeholder, and the layer
-        // container it currently lives in. Physical containment, mirroring ScopeWalk's physical walk
-        // — robust across pool reuse and independent of any logical-tree bookkeeping.
+        // real element (ReconcilerContext.ZLayerMembers), returning it and its placeholder. Physical containment,
+        // mirroring ScopeWalk's physical walk — robust across pool reuse and independent of any
+        // logical-tree bookkeeping.
         private static VisualElement? FindEnclosingZLayerReal(
-            VisualElement element, ReconcilerContext ctx, out VisualElement? placeholder, out VisualElement? container)
+            VisualElement element, ReconcilerContext ctx, out VisualElement? placeholder)
         {
             for (var current = element; current != null; current = current.parent)
             {
                 if (ctx.ZLayerMembers.TryGetValue(current, out var member))
                 {
                     placeholder = member.Placeholder;
-                    container = member.Container;
                     return current;
                 }
             }
             placeholder = null;
-            container = null;
             return null;
         }
 
@@ -1139,17 +1132,40 @@ namespace Velvet
             return false;
         }
 
+        // The placeholder standing at a z-managed element's declared slot, null for any other element.
+        internal static VisualElement? PlaceholderOf(VisualElement element)
+        {
+            foreach (var ctx in s_attachedContexts)
+            {
+                if (ctx.ZLayerMembers.TryGetValue(element, out var member))
+                {
+                    return member.Placeholder;
+                }
+            }
+            return null;
+        }
+
+        // The z-managed element a placeholder stands in for, null for any other element.
+        internal static VisualElement? RelocatedRealOf(VisualElement placeholder)
+        {
+            foreach (var ctx in s_attachedContexts)
+            {
+                if (ctx.ZLayerPlaceholders.TryGetValue(placeholder, out var real))
+                {
+                    return real;
+                }
+            }
+            return null;
+        }
+
         // The physical parent, except that content an element was relocated out of its declared slot stands
         // at that slot: a z-managed element at its placeholder, and a portal target's child at the placeholder
         // whose slot range holds it.
         internal static VisualElement? LogicalParentOf(VisualElement current)
         {
-            foreach (var ctx in s_attachedContexts)
+            if (PlaceholderOf(current) is { } held)
             {
-                if (ctx.ZLayerMembers.TryGetValue(current, out var member))
-                {
-                    return member.Placeholder;
-                }
+                return held;
             }
             var parent = current.parent;
             if (parent == null)
