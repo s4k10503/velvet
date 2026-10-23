@@ -799,10 +799,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AHoveredAndFocusedChild_When_BothClassesSetTheColor_Then_TheFocusClassWins()
+        public void Given_AHoveredAndFocusedChild_When_BothClassesSetTheColor_Then_TheHoverClassWins()
         {
-            // Arrange — focus: sits after hover: in Tailwind's variant order, as the tap case's classes do.
-            var (child, reference) = Mount("", "", hover: "bg-blue-500", focus: "bg-red-500", reference: "bg-red-500");
+            // Arrange — whileHover ranks above whileFocus, so the hover class holds the color while both are on.
+            var (child, reference) = Mount("", "", hover: "bg-red-500", focus: "bg-blue-500", reference: "bg-red-500");
             Hover(child, true);
 
             // Act
