@@ -25,15 +25,16 @@ namespace Velvet
         /// After every element of the panel the tree is mounted on, where a portal into a document's body puts its
         /// content: Tab past that panel's last element enters the host at its first, Tab past the host's last
         /// element moves on to the next appended host or back round to that panel's first, and Shift-Tab runs the
-        /// other way. Hosts follow each other in the order their first appended portal mounted.
+        /// other way. Hosts follow each other in the order each came to hold an appended portal.
         /// </summary>
         Appended,
     }
 
     // Reconciler-side bookkeeping for one focus scope, keyed in ReconcilerContext.FocusScopeBindings by the
-    // scope root element, or by a V.FocusScope's start sentinel. Mutable per-scope focus state the navigator maintains from FocusIn
-    // events: the member that last held focus (SingleTabStop re-entry / Contain snap-back target). The
-    // element focused when the scope mounted, RestoreFocus's target on unmount, is React Aria's nodeToRestore.
+    // scope root element, or by a V.FocusScope's start sentinel. Mutable per-scope focus state the navigator
+    // maintains from FocusIn events: the member that last held focus (SingleTabStop re-entry / Contain snap-back
+    // target). The element focused when the scope mounted, RestoreFocus's target on unmount, is React Aria's
+    // nodeToRestore.
     internal sealed class FocusScopeBinding
     {
         public FocusScopeSettings Settings;
@@ -1339,16 +1340,17 @@ namespace Velvet
                     if (!_ownRead)
                     {
                         _ownRead = true;
+                        // Read before the element's own scope is returned, which is inside them.
+                        if (FocusScopeRange.Live > 0)
+                        {
+                            _starts ??= new List<FocusScopeStart>();
+                            FocusScopeRange.AppendStartsAround(_current, _starts);
+                        }
                         if (_current is not FocusScopeStart && TryBinding(_current, out var own))
                         {
                             Scope = _current;
                             Binding = own;
                             return true;
-                        }
-                        if (FocusScopeRange.Live > 0)
-                        {
-                            _starts ??= new List<FocusScopeStart>();
-                            FocusScopeRange.AppendStartsAround(_current, _starts);
                         }
                     }
                     while (_starts is { Count: > 0 })

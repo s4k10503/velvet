@@ -2420,7 +2420,8 @@ namespace Velvet
             VNode.RequireKey(key);
             var positionerProps = VNodePool.RentProps();
             positionerProps.DragOverlay = new DragOverlaySettings();
-            return Portal(UILayer.Overlay, key: key, children: new VNode?[]
+            // A drag preview is not a place Tab goes.
+            return Portal(UILayer.Overlay, key: key, focusOrder: PanelFocusOrder.Isolated, children: new VNode?[]
             {
                 new ElementNode
                 {

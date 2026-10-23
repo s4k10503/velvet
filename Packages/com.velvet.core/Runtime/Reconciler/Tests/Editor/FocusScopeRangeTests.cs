@@ -117,6 +117,38 @@ namespace Velvet.Tests
             Assert.That((held, Focused), Is.EqualTo((true, (Focusable)s1)));
         }
 
+        // The inner scope is a container element's, so the walk out from "n2" meets that element's scope before
+        // the sentinels bracketing it.
+        [Component]
+        private static VNode ContainedRowAroundAnElementScope() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "before"),
+            V.FocusScope(contain: true, children: new VNode[]
+            {
+                V.Button(name: "n1"),
+                FocusScopeElement.Div(name: "inner", children: new VNode[] { V.Button(name: "n2") }),
+            }),
+            V.Button(name: "after"),
+        });
+
+        // GREEN_ON_BASE(characterization): the base's V.FocusScope wraps its children in an element, whose scope
+        // contains the inner one's elements the same way. This case pins that a scope with no element still does.
+        [Test]
+        public void Given_AContainedFocusScopeAroundAnElementScope_When_TabDispatchesFromTheInnerScopesLastElement_Then_FocusWrapsToTheOuterScopesFirst()
+        {
+            // Arrange
+            Mount(ContainedRowAroundAnElementScope);
+            var n2 = Q("n2");
+            n2.Focus();
+            var held = Focused == n2;
+
+            // Act
+            SendMove(n2, NavigationMoveEvent.Direction.Next);
+
+            // Assert
+            Assert.That((held, Focused), Is.EqualTo((true, (Focusable)Q("n1"))));
+        }
+
         [Component]
         private static VNode GroupRow() => V.Div(children: new VNode[]
         {
