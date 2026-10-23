@@ -63,6 +63,9 @@ code pointed at a texture of its own.
   disable cameras whose output is currently unnecessary), except while a positive-priority
   `UseFrame` callback in the panel takes rendering over
   ([particles.md](particles.md#useframe) owns that rule).
-- The render pipeline is whichever the project uses: the element sets `camera.targetTexture`
-  and calls `camera.Render()`, and calls no pipeline-specific API. Velvet's own suites run
-  under URP.
+- A camera held disabled for such a callback is enabled again before a scene save and before a
+  domain reload in the editor, so neither writes it disabled nor leaves it so; after a save the
+  element's next tick holds it again.
+- URP is the one render pipeline `V.SceneView` is tested under: Velvet's own suites run there.
+  The element sets `camera.targetTexture` and calls `camera.Render()`, and calls no
+  pipeline-specific API, but neither the Built-in Render Pipeline nor HDRP is tested.

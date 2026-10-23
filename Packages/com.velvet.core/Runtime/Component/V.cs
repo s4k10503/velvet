@@ -994,10 +994,10 @@ namespace Velvet
 
         /// <summary>
         /// Creates a Particles element that simulates <paramref name="effect"/> in a hidden,
-        /// framework-owned host and draws the live particles as textured quads inside the element —
-        /// no camera, no world-space canvas, no render-pipeline coupling. The simulation host is
-        /// instantiated on mount (its renderer disabled; only the simulation is consumed), destroyed
-        /// on unmount, and recreated when <paramref name="effect"/> changes.
+        /// framework-owned host and draws the geometry its renderers build inside the element, with no
+        /// camera and no world-space canvas. The simulation host is instantiated on mount (its renderers
+        /// disabled; only the simulation is consumed), destroyed on unmount, and recreated when
+        /// <paramref name="effect"/> changes.
         /// </summary>
         /// <param name="effect">The source ParticleSystem (typically a prefab reference) to simulate.
         /// Null mounts an inert element until an effect is supplied.</param>
@@ -1035,16 +1035,86 @@ namespace Velvet
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            if (playOn is not (PlayTrigger.Mount or PlayTrigger.Manual))
-            {
-                throw new ArgumentOutOfRangeException(nameof(playOn), playOn,
-                    "V.Particles takes a member of PlayTrigger as its playOn.");
-            }
+            RequirePlayTrigger(playOn);
             // Validated BEFORE renting pooled props so a throwing call leaks nothing (the settings
             // constructor fail-fasts on an invalid mapping for every construction path, this factory
             // included). Always carried (even with a null effect): the patcher needs the settings on
             // BOTH sides of a diff to see an effect arriving or leaving as a settings change.
             var particles = new ParticlesSettings(effect, playOn, pixelsPerUnit);
+            return ParticlesNode(particles, className, key, name, styles, refCallback, whileHoverClass, whileTapClass,
+                whileFocusClass, data, aria, events);
+        }
+
+        /// <summary>
+        /// Creates a Particles element that plays a VFX Graph <paramref name="visualEffect"/> in a hidden,
+        /// framework-owned clone and shows what a camera under that clone renders of it, over the element's
+        /// laid-out box. The clone is instantiated on mount, destroyed on unmount, and recreated when
+        /// <paramref name="visualEffect"/> changes.
+        /// </summary>
+        /// <param name="visualEffect">The source VisualEffect (typically a prefab reference) to play.
+        /// Null mounts an inert element until an effect is supplied.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <param name="playOn">When the effect starts: on mount (default) or never (manual control).</param>
+        /// <param name="pixelsPerUnit">World-unit → element-pixel mapping, centered on the element. Must be positive.</param>
+        /// <param name="styles">Inline style overrides applied on top of USS classes.</param>
+        /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element (gesture-driven).</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element (gesture-driven).</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus (gesture-driven).</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <returns>The created <see cref="ElementNode"/> representing this particles element.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="pixelsPerUnit"/> is not positive,
+        /// or when <paramref name="playOn"/> names no member of <see cref="PlayTrigger"/>.</exception>
+        public static ElementNode Particles(
+            UnityEngine.VFX.VisualEffect? visualEffect,
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            PlayTrigger playOn = PlayTrigger.Mount,
+            float pixelsPerUnit = 100f,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
+        {
+            VNode.RequireKey(key);
+            RequirePlayTrigger(playOn);
+            var particles = new ParticlesSettings(null, playOn, pixelsPerUnit) { VisualEffect = visualEffect };
+            return ParticlesNode(particles, className, key, name, styles, refCallback, whileHoverClass, whileTapClass,
+                whileFocusClass, data, aria, events);
+        }
+
+        private static void RequirePlayTrigger(PlayTrigger playOn)
+        {
+            if (playOn is not (PlayTrigger.Mount or PlayTrigger.Manual))
+            {
+                throw new ArgumentOutOfRangeException(nameof(playOn), playOn,
+                    "V.Particles takes a member of PlayTrigger as its playOn.");
+            }
+        }
+
+        private static ElementNode ParticlesNode(
+            ParticlesSettings particles,
+            string? className,
+            string? key,
+            string? name,
+            StyleOverrides? styles,
+            Func<VisualElement, Action>? refCallback,
+            string? whileHoverClass,
+            string? whileTapClass,
+            string? whileFocusClass,
+            IReadOnlyDictionary<string, string>? data,
+            IReadOnlyDictionary<string, string>? aria,
+            FiberEventBinding[]? events)
+        {
             var props = VNodePool.RentProps();
             props.Particles = particles;
 

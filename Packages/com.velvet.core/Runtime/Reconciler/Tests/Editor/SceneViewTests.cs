@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -12,8 +13,8 @@ namespace Velvet.Tests
     /// <item>Mounting creates the dedicated <see cref="SceneViewElement"/>; once layout resolves, the
     /// framework creates a RenderTexture sized to the element's content box in pixels (times the
     /// resolution scale), assigns it to <c>camera.targetTexture</c>, and shows it through a child laid
-    /// over that content box, above the element's own background, with each corner rounded along the
-    /// content edge.</item>
+    /// over that content box, above the element's own background and beneath every other child, with
+    /// each corner rounded along the content edge.</item>
     /// <item>The texture follows the element: a geometry change re-sizes it (rounding the larger axis
     /// up to a shared quantization step and rescaling the other axis by the same factor, so its
     /// aspect ratio keeps matching the element's, so a minor resize reuses the existing texture
@@ -25,7 +26,8 @@ namespace Velvet.Tests
     /// <item>A null camera mounts an inert element; a zero-sized element creates no texture.</item>
     /// <item>Several elements can show one camera: each one the camera does not target is rendered into
     /// by its own tick, and one targeting nothing is claimed back. A positive-priority UseFrame callback
-    /// in the panel takes rendering over, holding the camera disabled until it is gone.</item>
+    /// in the panel takes rendering over, holding the camera disabled until it is gone, and enabling it
+    /// before the editor saves a scene or reloads assemblies.</item>
     /// </list>
     /// The EditMode panel comes from <see cref="HeadlessEditorPanelHost"/> and layout is driven
     /// explicitly (the scheduler does not tick in EditMode).
@@ -290,6 +292,34 @@ namespace Velvet.Tests
             // Assert — the feed is read too, since without one the rows are the only children anyway.
             Assert.That((Feed(el) != null, el.Q<VisualElement>("row0")?.style.width.value.value ?? -1f),
                 Is.EqualTo((true, 10f)));
+        }
+
+        [Component]
+        private static VNode CameraToggleHost()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setFlag = setShown;
+            return V.SceneView(shown ? s_camera : null, key: "sv", name: "sv", className: "w-[128px] h-[64px]");
+        }
+
+        [Test]
+        public void Given_APortalRowInALiveSceneView_When_TheCameraLeavesAndReturns_Then_TheFeedStaysBeneathTheRow()
+        {
+            // Arrange — a portal renders a row into the element while its feed is live, and the camera leaves,
+            // which releases the texture and takes the feed out.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(CameraToggleHost, key: "root"));
+            var el = _host.Root.Q<VisualElement>("sv");
+            _portalTree = V.Mount(new VisualElement(), V.Portal(el, children: new VNode[] { V.Div(name: "row0") }));
+            s_setFlag.Invoke(false);
+            FlushAndLayout();
+
+            // Act — the camera returns, and the texture and its feed are created again.
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — the row is read too, since a feed that never came back leaves the row first as well.
+            Assert.That((el.IndexOf(Feed(el)), el.IndexOf(el.Q<VisualElement>("row0"))), Is.EqualTo((0, 1)));
         }
 
         [Test]
@@ -1292,6 +1322,64 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((enabledWhileTaken, s_camera.enabled), Is.EqualTo((false, true)));
+        }
+
+        // Runs the subscribers SceneViewDriver declares on one of the editor's events, with the given arguments:
+        // the event's own invoker would run every other subscriber in the editor too.
+        private static void RunDriverSubscribers(System.Type owner, string trackerField, params object[] args)
+        {
+            var tracker = owner.GetField(trackerField, BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            var enumerator = (System.Collections.IEnumerator)tracker.GetType().GetMethod("GetEnumerator").Invoke(tracker, null);
+            var subscribers = new List<System.Delegate>();
+            try
+            {
+                while (enumerator.MoveNext())
+                {
+                    subscribers.Add((System.Delegate)enumerator.Current);
+                }
+            }
+            finally
+            {
+                (enumerator as System.IDisposable)?.Dispose();
+            }
+            foreach (var subscriber in subscribers)
+            {
+                if (subscriber.Method.DeclaringType == typeof(SceneViewDriver))
+                {
+                    subscriber.DynamicInvoke(args);
+                }
+            }
+        }
+
+        [Test]
+        public void Given_AHeldCamera_When_TheEditorIsAboutToReloadAssemblies_Then_TheCameraIsEnabledAgain()
+        {
+            // Arrange
+            MountTakeover(1);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var enabledWhileHeld = s_camera.enabled;
+
+            // Act
+            RunDriverSubscribers(typeof(UnityEditor.AssemblyReloadEvents), "m_BeforeAssemblyReloadEvent");
+
+            // Assert — read while held too, since a base that never holds it is enabled at the end alone.
+            Assert.That((enabledWhileHeld, s_camera.enabled), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AHeldCamera_When_TheEditorIsAboutToSaveAScene_Then_TheCameraIsEnabledAgain()
+        {
+            // Arrange
+            MountTakeover(1);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var enabledWhileHeld = s_camera.enabled;
+
+            // Act
+            RunDriverSubscribers(typeof(UnityEditor.SceneManagement.EditorSceneManager), "m_SceneSavingEvent",
+                s_camera.gameObject.scene, string.Empty);
+
+            // Assert — read while held too, since a base that never holds it is enabled at the end alone.
+            Assert.That((enabledWhileHeld, s_camera.enabled), Is.EqualTo((false, true)));
         }
 
         [Test]

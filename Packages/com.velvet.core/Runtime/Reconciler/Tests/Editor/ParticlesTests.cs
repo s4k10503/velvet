@@ -17,7 +17,8 @@ namespace Velvet.Tests
     /// <item>A null effect mounts an inert element with no host. Every system under the effect is
     /// hosted: each child's renderer is disabled and each always simulates.</item>
     /// <item>The host stands at the source's world position and rotation, and a sub-emitter cloned from
-    /// outside the effect keeps its offset from it. The host holds no camera that renders.</item>
+    /// outside the effect keeps its offset from it. A ParticleSystem's host holds no camera that renders; a
+    /// VisualEffect's clone keeps every renderer under it forced off but while its own camera renders it.</item>
     /// <item>An invalid pixelsPerUnit fails fast at the factory.</item>
     /// <item>The filter bounds-spacer (<see cref="SilhouetteBoundsSpacer"/>) also applies at the
     /// Particles reconcile boundary: a filter would clip the particle quads that draw beyond the host
@@ -132,11 +133,12 @@ namespace Velvet.Tests
             Assert.That((hostRenderer.enabled, sourceRenderer.enabled), Is.EqualTo((false, true)));
         }
 
+        // GREEN_ON_BASE(refactor): the cast only picks the ParticleSystem overload out of the two V.Particles now has; an inert mount is the base's behaviour.
         [Test]
         public void Given_ANullEffect_When_Mounted_Then_TheElementMountsInertWithNoHost()
         {
             // Arrange & Act
-            MountAndLayout(V.Particles(null, className: "w-[128px] h-[128px]", name: "px"));
+            MountAndLayout(V.Particles((ParticleSystem)null, className: "w-[128px] h-[128px]", name: "px"));
 
             // Assert
             Assert.That((CountSystems(), _host.Root.Q<VisualElement>("px") != null),
@@ -834,6 +836,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(binding.RepaintTick, Is.Null);
+        }
+
+        [Test]
+        public void Given_AMountedVisualEffect_When_TheTickRendersIt_Then_EveryRendererUnderTheCloneIsForcedOffAfter()
+        {
+            // Arrange — a quad under the effect stands in for what a graph draws; no other camera may draw its clone.
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
+            var go = new GameObject("fx-vfx");
+            _spawned.Add(go);
+            var effect = go.AddComponent<UnityEngine.VFX.VisualEffect>();
+            GameObject.CreatePrimitive(PrimitiveType.Quad).transform.SetParent(go.transform, false);
+            MountAndLayout(V.Particles(effect, name: "px-vfx", className: "w-[128px] h-[128px]"));
+            var binding = _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-vfx")];
+
+            // Act
+            _fakeMs += 20;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert — the texture is read too, since it exists only once the tick has rendered, and the renderers
+            // are counted, since none at all would satisfy the rest.
+            Assert.That((binding.EffectTexture != null, binding.EffectRenderers.Any(), binding.EffectRenderers.All(r => r.forceRenderingOff)),
+                Is.EqualTo((true, true, true)));
         }
 
         // The hosted clone of the source's single child system, reached through the element's binding.

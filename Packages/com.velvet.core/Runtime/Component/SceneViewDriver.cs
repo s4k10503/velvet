@@ -55,6 +55,31 @@ namespace Velvet
         // texture can tell a camera it shares with that element from one user code took over.
         private static readonly HashSet<RenderTexture> s_feedTextures = new();
 
+        // Every binding holding its camera disabled.
+        private static readonly HashSet<SceneViewBinding> s_holding = new();
+
+#if UNITY_EDITOR
+        // A domain reload drops a binding whose mount nothing disposed without detaching it, and a scene save
+        // writes each camera's enabled flag, so each held camera is enabled before either; after a save the next
+        // tick holds it again.
+        static SceneViewDriver()
+        {
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += ReleaseEveryHeldCamera;
+            UnityEditor.SceneManagement.EditorSceneManager.sceneSaving += ReleaseEveryHeldCameraBeforeSaving;
+        }
+
+        private static void ReleaseEveryHeldCameraBeforeSaving(UnityEngine.SceneManagement.Scene scene, string path)
+            => ReleaseEveryHeldCamera();
+#endif
+
+        private static void ReleaseEveryHeldCamera()
+        {
+            foreach (var binding in new List<SceneViewBinding>(s_holding))
+            {
+                ReleaseHeldCamera(binding);
+            }
+        }
+
         // Repaint cadence (~60fps), matching the recurring-tick interval the style animation drivers
         // schedule with. Shared with the sibling per-frame element driver (ParticlesDriver).
         internal const long RepaintIntervalMs = 16;
@@ -210,12 +235,15 @@ namespace Velvet
         // corner's radius less the border and padding beside it, the larger side's where the two differ.
         // Absolute offsets are taken from the padding box, so the padding alone insets the feed; SceneViewTests'
         // Given_ABorderedPaddedSceneView_When_LayoutResolves_Then_TheFeedCoversTheContentBox pins that.
+        // The feed stays the first child, beneath every child rendered into the element, so it is inserted there
+        // rather than appended: a feed added again after a release would otherwise land after any child a portal
+        // rendered into the element meanwhile.
         private static void SyncFeed(VisualElement element, SceneViewBinding binding)
         {
             var feed = binding.Feed!;
-            if (feed.parent != element)
+            if (feed.parent != element || element.IndexOf(feed) != 0)
             {
-                element.Add(feed);
+                element.Insert(0, feed);
             }
             var s = element.resolvedStyle;
             feed.style.left = s.paddingLeft;
@@ -283,15 +311,7 @@ namespace Velvet
             {
                 return false;
             }
-            var pixelScale = binding.Settings.ResolutionScale * element.scaledPixelsPerPoint;
-            pw = Mathf.Max(1, Mathf.RoundToInt(w * pixelScale));
-            ph = Mathf.Max(1, Mathf.RoundToInt(h * pixelScale));
-            if (pw > MaxTextureSize || ph > MaxTextureSize)
-            {
-                var shrink = Mathf.Min((float)MaxTextureSize / pw, (float)MaxTextureSize / ph);
-                pw = Mathf.Clamp(Mathf.FloorToInt(pw * shrink), 1, MaxTextureSize);
-                ph = Mathf.Clamp(Mathf.FloorToInt(ph * shrink), 1, MaxTextureSize);
-            }
+            DevicePixels(w, h, binding.Settings.ResolutionScale * element.scaledPixelsPerPoint, out pw, out ph);
             var useWidthAsBasis = DecideWidthAsBasis(binding.WidthWasQuantizedAxis, pw, ph);
             usedWidthAsBasis = useWidthAsBasis;
 
@@ -308,6 +328,20 @@ namespace Velvet
                 ph = quantizedH;
             }
             return true;
+        }
+
+        // A size in points times the pixel scale, floored at one pixel and held under the ceiling as described
+        // over TryComputePixelSize. ParticlesEffectView sizes its texture through it too.
+        internal static void DevicePixels(float w, float h, float pixelScale, out int pw, out int ph)
+        {
+            pw = Mathf.Max(1, Mathf.RoundToInt(w * pixelScale));
+            ph = Mathf.Max(1, Mathf.RoundToInt(h * pixelScale));
+            if (pw > MaxTextureSize || ph > MaxTextureSize)
+            {
+                var shrink = Mathf.Min((float)MaxTextureSize / pw, (float)MaxTextureSize / ph);
+                pw = Mathf.Clamp(Mathf.FloorToInt(pw * shrink), 1, MaxTextureSize);
+                ph = Mathf.Clamp(Mathf.FloorToInt(ph * shrink), 1, MaxTextureSize);
+            }
         }
 
         // Symmetric hysteresis: the axis last COMMITTED as the basis keeps being used unless the OTHER
@@ -425,6 +459,7 @@ namespace Velvet
                 {
                     camera.enabled = false;
                     binding.HeldCamera = camera;
+                    s_holding.Add(binding);
                 }
             }
             else
@@ -440,6 +475,7 @@ namespace Velvet
                 binding.HeldCamera.enabled = true;
             }
             binding.HeldCamera = null;
+            s_holding.Remove(binding);
         }
 
         private static void StopRepaintTick(SceneViewBinding binding)

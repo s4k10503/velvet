@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using UnityEngine.VFX;
 using Velvet.TestUtilities;
 using static Velvet.TestUtilities.PlayModeRealtimeTestHelpers;
 
@@ -18,9 +19,10 @@ namespace Velvet.Tests
     /// element, child systems draw beside the root unless their renderer is off, and a system denser
     /// than one mesh allocation draws every particle. What a renderer builds is what draws: meshes
     /// culled as their material says, stretched billboards, texture-sheet frames, trails with their own
-    /// material, and particles no larger than the renderer lets them be against the element. The host
+    /// material, and particles no larger than the renderer lets them be against the element. Materials
+    /// tint and blend what they draw, and systems draw in their renderers' sorting order. The host
     /// stands where the source does, so collision and trigger sub-emitters fire against the source's
-    /// colliders.
+    /// colliders. A VisualEffect is shown through the texture a camera renders of it.
     /// </summary>
     /// <remarks>
     /// The raised per-test budget covers a software-rasterizer quirk, not slow assertions: on a
@@ -864,6 +866,140 @@ namespace Velvet.Tests
 
             // Assert — the strip the particle crossed in its first half unit.
             Assert.That(CountWhere(new RectInt(60, 145, 40, 10), IsBlue), Is.GreaterThan(200));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ATrailedParticleRenderingInModeNone_When_ItMoves_Then_ItsTrailRenders()
+        {
+            // Arrange — the trailed particle above with its renderer drawing no particles, only trails.
+            var effect = CreateQuietSystem("fx-trail-only");
+            _effectGo = effect.gameObject;
+            var trails = effect.trails;
+            trails.enabled = true;
+            trails.sizeAffectsWidth = false;
+            trails.widthOverTrail = 0.3f;
+            trails.minVertexDistance = 0.05f;
+            var renderer = effect.GetComponent<ParticleSystemRenderer>();
+            renderer.renderMode = ParticleSystemRenderMode.None;
+            renderer.trailMaterial = ParticleMaterial(TwoTone(Color.blue, Color.blue), CullMode.Off);
+            MountPanel(effect, PlayTrigger.Mount);
+            EmitAt(MountedHost(), new Vector3(-1f, 0f, 0f), new Vector3(2f, 0f, 0f), 0.05f, Color.white);
+
+            // Act
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
+
+            // Assert
+            Assert.That(CountWhere(new RectInt(60, 145, 40, 10), IsBlue), Is.GreaterThan(200));
+        }
+
+        // The 80px square inside the 100px billboard a unit-sized particle at the element's center draws.
+        private static readonly RectInt Core = new(110, 110, 80, 80);
+
+        private static bool IsYellow(Color32 p) => p.r > 140 && p.g > 140 && p.b < 90;
+
+        // A system that draws one untextured particle of its own color at the element's center.
+        private ParticleSystem CreateCenteredSystem(string name, Material material)
+        {
+            var system = CreateQuietSystem(name);
+            system.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
+            return system;
+        }
+
+        private ParticleSystem HostedChild(string name) => MountedHost().transform.Find(name).GetComponent<ParticleSystem>();
+
+        [UnityTest]
+        public IEnumerator Given_AWhiteParticleUnderABlueBaseColor_When_Drawn_Then_ItRendersBlue()
+        {
+            // Arrange
+            var material = ParticleMaterial(null, CullMode.Off);
+            material.SetColor("_BaseColor", Color.blue);
+            var effect = CreateCenteredSystem("fx-tint", material);
+            _effectGo = effect.gameObject;
+            MountPanel(effect, PlayTrigger.Mount);
+            EmitAt(MountedHost(), Vector3.zero, Vector3.zero, 1f, Color.white);
+
+            // Act
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+
+            // Assert
+            Assert.That(CountWhere(Core, IsBlue), Is.GreaterThan(5000));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ARedParticleUnderAnAdditiveMaterialOverAGreenElement_When_Drawn_Then_TheRedAddsToTheGreen()
+        {
+            // Arrange — the blend factors URP's Additive mode sets.
+            var material = ParticleMaterial(null, CullMode.Off);
+            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)BlendMode.One);
+            var effect = CreateCenteredSystem("fx-additive", material);
+            _effectGo = effect.gameObject;
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root, V.Particles(effect, className: "w-[300px] h-[300px] bg-[#00ff00]"));
+            EmitAt(MountedHost(), Vector3.zero, Vector3.zero, 1f, Color.red);
+
+            // Act
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+
+            // Assert
+            Assert.That(CountWhere(Core, IsYellow), Is.GreaterThan(5000));
+        }
+
+        // Mounts a red system first in the hierarchy and a blue one after it, each drawing a particle at the
+        // element's center, after configure sets their renderers up.
+        private IEnumerator MountRedOverBlue(Action<ParticleSystemRenderer, ParticleSystemRenderer> configure)
+        {
+            var red = CreateCenteredSystem("fx-red", ParticleMaterial(null, CullMode.Off));
+            var blue = CreateCenteredSystem("fx-blue", ParticleMaterial(null, CullMode.Off));
+            configure(red.GetComponent<ParticleSystemRenderer>(), blue.GetComponent<ParticleSystemRenderer>());
+            MountPanel(CreateSilentRootOver(red, blue), PlayTrigger.Mount);
+            EmitAt(HostedChild("fx-red"), Vector3.zero, Vector3.zero, 1f, Color.red);
+            EmitAt(HostedChild("fx-blue"), Vector3.zero, Vector3.zero, 1f, Color.blue);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnEarlierSystemWithTheHigherOrderInLayer_When_Drawn_Then_ItDrawsOverTheLaterOne()
+        {
+            // Arrange & Act — drawn in hierarchy order, the blue system would cover the red one.
+            yield return MountRedOverBlue((red, blue) => red.sortingOrder = 1);
+
+            // Assert
+            Assert.That(CountRed(Core), Is.GreaterThan(5000));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ALaterSystemWithTheLargerSortingFudge_When_Drawn_Then_TheEarlierOneDrawsOverIt()
+        {
+            // Arrange & Act — both stand at the same distance from the camera, so only the fudge separates them.
+            yield return MountRedOverBlue((red, blue) => blue.sortingFudge = 100f);
+
+            // Assert
+            Assert.That(CountRed(Core), Is.GreaterThan(5000));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AVisualEffectWithAQuadUnderIt_When_FramesAdvance_Then_TheQuadRendersOverTheElementAndNothingElseDoes()
+        {
+            // Arrange — a VisualEffect with no graph, and a red unit quad under it standing in for what a graph draws;
+            // the element's green background is what the texture must leave showing around the quad.
+            _effectGo = new GameObject("fx-vfx");
+            var effect = _effectGo.AddComponent<VisualEffect>();
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.transform.SetParent(_effectGo.transform, false);
+            var material = Own(new Material(Shader.Find("Universal Render Pipeline/Unlit")));
+            material.SetColor("_BaseColor", Color.red);
+            material.SetFloat("_Cull", (float)CullMode.Off);
+            quad.GetComponent<MeshRenderer>().sharedMaterial = material;
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root, V.Particles(effect, className: "w-[300px] h-[300px] bg-[#00ff00]"));
+
+            // Act
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+
+            // Assert — the corner lies outside the 100px quad at the element's center.
+            Assert.That((CountRed(Core) > 5000, CountWhere(new RectInt(10, 10, 60, 60), IsGreen) > 3000),
+                Is.EqualTo((true, true)));
         }
 
         [UnityTest]
