@@ -16,8 +16,6 @@ namespace Velvet
     // between pure math (ComputeSidePieces) and the live-Painter2D fill call (PaintSide).
     internal static class TextOverlinePainter
     {
-        private const float TopOffsetFraction = 0.15f;
-
         // Typical browsers stroke an underline/overline at roughly 1/16th of the font size; floored at 1px
         // so a small font size never thins the rule to an invisible sub-pixel stroke.
         private const float ThicknessDivisor = 16f;
@@ -50,12 +48,15 @@ namespace Velvet
             var width = Mathf.Clamp(measuredWidth, 0f, contentRect.width);
             var x0 = ResolveStartX(contentRect, width, align);
             var firstLineTop = ResolveFirstLineTop(contentRect, textBlockHeight, align);
-            var y = firstLineTop + (fontSize * TopOffsetFraction);
+            var thickness = ResolveThickness(fontSize);
+            // The stroke is centered on its path, so it is moved down half its width to put its top edge on
+            // the first line's top, where CSS puts the overline's.
+            var y = firstLineTop + (thickness * 0.5f);
             rule = new OverlineRule
             {
                 From = new Vector2(x0, y),
                 To = new Vector2(x0 + width, y),
-                LineWidth = ResolveThickness(fontSize),
+                LineWidth = thickness,
             };
             return true;
         }

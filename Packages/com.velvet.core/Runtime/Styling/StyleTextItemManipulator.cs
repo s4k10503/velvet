@@ -15,6 +15,10 @@ namespace Velvet
             _ctx = ctx;
         }
 
+        // What the target shows, which is its text unless the text-effect resolver gave the engine another string.
+        protected string DisplayedText(TextElement textElement)
+            => StyleTextEffectResolver.DisplayedText(_ctx, textElement);
+
         // Subclasses compare a freshly computed signature against these and record it once a derive settles.
         protected int _lastSignature;
         protected bool _hasSignature;

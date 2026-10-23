@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
+using TextElement = UnityEngine.UIElements.TextElement;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -20,7 +23,80 @@ namespace Velvet
     /// </summary>
     public static class StyleFontResolver
     {
-        private const string AddressPrefix = "addr:";
+        private const string AddressPrefix = VelvetFontStack.AddressPrefix;
+
+        // The elements a font was resolved for, which a grown fallback table has to reach (MarkShowing): the
+        // table answers for them in the text they already generated. Weak, so a released element goes with its
+        // entry; Seen holds the membership so an element is listed once.
+        private static readonly List<WeakReference<VisualElement>> s_resolved = new();
+        private static readonly ConditionalWeakTable<VisualElement, object> s_seen = new();
+        private static int s_pruneAt = 64;
+
+        static StyleFontResolver()
+        {
+            VelvetFontStack.Grew += MarkShowing;
+        }
+
+        private static void Remember(VisualElement element)
+        {
+            var seen = s_seen.TryGetValue(element, out _);
+            if (seen)
+            {
+                return;
+            }
+            s_seen.Add(element, element);
+            if (s_resolved.Count >= s_pruneAt)
+            {
+                s_resolved.RemoveAll(Released);
+                s_pruneAt = Math.Max(64, s_resolved.Count * 2);
+            }
+            s_resolved.Add(new WeakReference<VisualElement>(element));
+        }
+
+        private static bool Released(WeakReference<VisualElement> entry)
+        {
+            var alive = entry.TryGetTarget(out _);
+            return !alive;
+        }
+
+        // Builds the text again of every label under a resolved element that shows asset, so the entries just
+        // added to its fallback table reach glyphs it has already laid out.
+        private static void MarkShowing(FontAsset asset)
+        {
+            foreach (var entry in s_resolved.ToArray())
+            {
+                var alive = entry.TryGetTarget(out var element);
+                if (!alive)
+                {
+                    continue;
+                }
+                if (element.panel != null)
+                {
+                    MarkSubtree(element, asset);
+                }
+            }
+        }
+
+        private static void MarkIfShowing(TextElement text, FontAsset asset)
+        {
+            if (text.resolvedStyle.unityFontDefinition.fontAsset == asset)
+            {
+                text.MarkDirtyText();
+            }
+        }
+
+        private static void MarkSubtree(VisualElement element, FontAsset asset)
+        {
+            if (element is TextElement)
+            {
+                MarkIfShowing((TextElement)element, asset);
+            }
+            var count = element.hierarchy.childCount;
+            for (var i = 0; i < count; i++)
+            {
+                MarkSubtree(element.hierarchy[i], asset);
+            }
+        }
 
         /// <summary>
         /// Extracts the font intent from <paramref name="classNames"/> and applies it, or clears the
@@ -124,11 +200,13 @@ namespace Velvet
             }
             else
             {
-                var resolved = VelvetFonts.Resolve(family, weight, intent.Italic);
+                var resolved = VelvetFonts.Resolve(family, weight, intent.Italic, intent.HasStretch ? intent.Stretch : 100f);
                 asset = resolved.Asset;
                 residualBold = resolved.ResidualBold;
                 residualItalic = resolved.ResidualItalic;
             }
+
+            Remember(element);
 
             bool needStyle;
             bool bold;

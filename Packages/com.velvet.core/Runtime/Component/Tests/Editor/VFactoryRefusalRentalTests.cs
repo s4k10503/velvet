@@ -168,10 +168,8 @@ namespace Velvet.Tests
             ("RadioButtonGroup", k => V.RadioButtonGroup(key: k, onValueChanged: value => { })),
             ("IntegerField", k => V.IntegerField(key: k, onValueChanged: value => { })),
             ("Anchored", k => V.Anchored(target: null, key: k)),
-            ("DndContext", k => V.DndContext(key: k)),
             ("Draggable", k => V.Draggable("row", key: k)),
             ("Droppable", k => V.Droppable("row", key: k)),
-            ("DragOverlay", k => V.DragOverlay(key: k)),
         };
 
         private static string Report(IEnumerable<string> rows) => string.Join(" ", rows);

@@ -16,6 +16,7 @@ namespace Velvet
         internal const string FilterBrightness = "Velvet/FilterBrightness";
         internal const string FilterSaturate = "Velvet/FilterSaturate";
         internal const string FilterDropShadow = "Velvet/FilterDropShadow";
+        internal const string ParticleBlend = "Velvet/ParticleBlend";
         internal const string BackdropFilter = "Velvet/BackdropFilter";
 
         internal static readonly string[] Names =
@@ -25,6 +26,7 @@ namespace Velvet
             FilterBrightness,
             FilterSaturate,
             FilterDropShadow,
+            ParticleBlend,
             BackdropFilter,
         };
 

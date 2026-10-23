@@ -84,12 +84,11 @@
 .text-clip { text-overflow: clip; }
 .text-ellipsis { text-overflow: ellipsis; }
 
-/* Letter Spacing (Tailwind: tracking-*). USS letter-spacing has no `em` unit, so the em scale is
-   baked at Tailwind's 16px root font (tighter -0.05em, tight -0.025em, wide 0.025em, wider 0.05em,
-   widest 0.1em → the px values below), exact at the default text size (use tracking-[Npx] for others). */
-.tracking-normal { letter-spacing: 0; }
-.tracking-tight { letter-spacing: -0.4px; }
-.tracking-tighter { letter-spacing: -0.8px; }
-.tracking-wide { letter-spacing: 0.4px; }
-.tracking-wider { letter-spacing: 0.8px; }
-.tracking-widest { letter-spacing: 1.6px; }
+/* Letter Spacing (Tailwind: tracking-*) has no rule here: its scale is in em, which USS letter-spacing
+   cannot spell, so StyleArbitraryValueResolver measures it on the element like tracking-[0.025em]. */
+
+/* Font smoothing (Tailwind: antialiased / subpixel-antialiased), as the two modes of
+   -unity-editor-text-rendering-mode: sdf is grayscale smoothing from one scalable atlas, bitmap one
+   atlas per size. */
+.antialiased { -unity-editor-text-rendering-mode: sdf; }
+.subpixel-antialiased { -unity-editor-text-rendering-mode: bitmap; }
