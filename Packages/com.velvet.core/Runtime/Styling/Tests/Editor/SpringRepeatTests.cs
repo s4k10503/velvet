@@ -76,6 +76,7 @@ namespace Velvet.Tests
 
         // Framer's spring generator rests where the speed is no more than restSpeed and the distance left no more
         // than restDelta, both inclusive: 2 and 0.5 for a travel of 5 or more, 0.01 and 0.005 under it.
+        // GREEN_ON_BASE(refactor): the rest test held these inclusive thresholds on the base too; this change only adds the rest-speed argument.
         [TestCase(10.0, 0.5, 0.0)]
         [TestCase(10.0, 0.0, 2.0)]
         [TestCase(1.0, 0.005, 0.0)]
