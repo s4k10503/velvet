@@ -254,22 +254,21 @@ namespace Velvet
         // measured, and then the text carries no tag. Kept per font asset (or legacy font) instance and style, since
         // the advance of a digit scales with the font size and the letter spacing is taken out of the measurement;
         // a font the definition does not name, the panel's default, is measured each time rather than keyed by
-        // nothing. The instance id is not reused, so a replaced asset is a new key, and the registry changing
-        // drops the rest.
-        private static readonly Dictionary<(int Font, UnityEngine.FontStyle Style), float> s_digitCells = new();
+        // nothing. A replaced asset is a new object and so a new key, and the registry changing drops the rest.
+        private static readonly Dictionary<(UnityEngine.Object Font, UnityEngine.FontStyle Style), float> s_digitCells = new();
 
         static StyleTextEffectResolver()
         {
             VelvetFonts.FontsChanged += s_digitCells.Clear;
         }
 
-        private static int FontIdentity(FontDefinition definition)
+        private static UnityEngine.Object FontIdentity(FontDefinition definition)
         {
             if (definition.fontAsset != null)
             {
-                return definition.fontAsset.GetInstanceID();
+                return definition.fontAsset;
             }
-            return definition.font != null ? definition.font.GetInstanceID() : 0;
+            return definition.font != null ? definition.font : null;
         }
 
         private static float DigitCell(TextElement element)
@@ -277,7 +276,7 @@ namespace Velvet
             var style = element.resolvedStyle;
             var key = (FontIdentity(style.unityFontDefinition), style.unityFontStyleAndWeight);
             var cell = 0f;
-            var named = key.Item1 != 0;
+            var named = key.Item1 != null;
             var known = named && s_digitCells.TryGetValue(key, out cell);
             if (known)
             {
