@@ -2026,6 +2026,7 @@ namespace Velvet
                 var previousUniform = UniformScaleClassFallback(element);
                 StyleClassProjection.OnInlineLayersChanged(element, map.Projection);
                 RefreshScaleClassFallback(element, map, previousUniform);
+                AuthoredTransform.Resync(element);
             }
         }
 
@@ -3034,6 +3035,7 @@ namespace Velvet
         // re-apply can claim or release the element and so edit the list.
         internal static void NotifyClassesChanged(VisualElement element, float? previousUniform = null)
         {
+            AuthoredTransform.Resync(element);
             s_layers.TryGetValue(element, out var map);
             if (map != null)
             {

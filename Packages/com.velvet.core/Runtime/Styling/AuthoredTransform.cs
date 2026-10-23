@@ -64,6 +64,17 @@ namespace Velvet
             Write(element, state);
         }
 
+        // Composes the slots again for an element whose class list moved: a rotate-* or scale-* class gives the
+        // rotate or scale no writer has set, so a class that came or went moves the composite. Nothing for an
+        // element with no skew.
+        public static void Resync(VisualElement element)
+        {
+            if (s_states.TryGetValue(element, out var state))
+            {
+                Write(element, state);
+            }
+        }
+
         // Puts the slots back to what the writers intend. A pooled element's reset calls it too, to drop the record
         // before it nulls the slots.
         public static void Release(VisualElement element)
@@ -79,7 +90,7 @@ namespace Velvet
 
         private static void Write(VisualElement element, State state)
         {
-            ComposedSlots(state, out var rotate, out var scale);
+            ComposedSlots(element, state, out var rotate, out var scale);
             element.style.rotate = rotate;
             element.style.scale = scale;
         }
@@ -87,10 +98,18 @@ namespace Velvet
         // R(theta) * diag(sx, sy) * skewX(x) skewY(y), the order CSS applies the individual `rotate` and `scale`
         // properties around `transform`, as the slots that draw it. A rotation about an axis other than z is read by
         // its angle alone, as the 2D rotate utilities are the only writers.
-        private static void ComposedSlots(State state, out Rotate rotate, out Scale scale)
+        private static void ComposedSlots(VisualElement element, State state, out Rotate rotate, out Scale scale)
         {
-            var theta = RotateRadians(state.Rotate);
-            var drawnScale = ScaleAxes(state.Scale);
+            // An inline value outranks the stylesheet's, so the classes speak only for a slot no writer has set.
+            var declared = state.Rotate.keyword == StyleKeyword.Null || state.Scale.keyword == StyleKeyword.Null
+                ? BundledClassTransform.OfClasses(element)
+                : (RotateDegrees: 0f, Scale: Vector3.one);
+            var theta = state.Rotate.keyword == StyleKeyword.Null
+                ? declared.RotateDegrees * Mathf.Deg2Rad
+                : RotateRadians(state.Rotate);
+            var drawnScale = state.Scale.keyword == StyleKeyword.Null
+                ? new Vector2(declared.Scale.x, declared.Scale.y)
+                : ScaleAxes(state.Scale);
             var tx = Mathf.Tan(state.SkewXDeg * Mathf.Deg2Rad);
             var ty = Mathf.Tan(state.SkewYDeg * Mathf.Deg2Rad);
             var cos = Mathf.Cos(theta);

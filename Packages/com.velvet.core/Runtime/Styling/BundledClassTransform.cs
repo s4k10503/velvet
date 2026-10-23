@@ -97,8 +97,26 @@ namespace Velvet
 
         private static Declared Read(VisualElement element)
         {
-            var declared = new Declared { Scale = Vector3.one, Origin = new Vector2(0.5f, 0.5f) };
             var unread = SheetRules.Unread(element);
+            var declared = ReadClasses(element, ref unread);
+            declared.Read = (ScaleBit | RotateBit | OriginBit) & ~unread;
+            return declared;
+        }
+
+        // What the bundled single-class utilities on the element's class list give it, whether or not the bundled
+        // sheet is attached: the rotate in degrees (zero where none) and the uniform scale. For an element whose
+        // transform the reconciler composes itself (AuthoredTransform), where the cascade's own answer is hidden
+        // behind the inline slot it writes.
+        internal static (float RotateDegrees, Vector3 Scale) OfClasses(VisualElement element)
+        {
+            var unread = 0;
+            var declared = ReadClasses(element, ref unread);
+            return (declared.Rotate, declared.Scale);
+        }
+
+        private static Declared ReadClasses(VisualElement element, ref int unread)
+        {
+            var declared = new Declared { Scale = Vector3.one, Origin = new Vector2(0.5f, 0.5f) };
             int scaleAt = -1, rotateAt = -1, originAt = -1;
             // Of two bundled classes on the list declaring a property, the one later in the cascade holds it.
             foreach (var cls in element.GetClasses())
@@ -123,7 +141,6 @@ namespace Velvet
                 }
             }
             declared.RotateNone = rotateAt < 0;
-            declared.Read = (ScaleBit | RotateBit | OriginBit) & ~unread;
             return declared;
         }
 

@@ -6,30 +6,6 @@ namespace Velvet.Tests
 {
     internal sealed class AuthoredTransformTests
     {
-        // The matrix the two inline slots draw: the top-left block of the rotation, its columns scaled.
-        private static float[] Drawn(VisualElement element)
-        {
-            var rotate = element.style.rotate.value;
-            var carried = Matrix4x4.Rotate(Quaternion.AngleAxis(rotate.angle.ToDegrees(), rotate.axis));
-            var scale = element.style.scale.value.value;
-            return new[] { scale.x * carried.m00, scale.y * carried.m01, scale.x * carried.m10, scale.y * carried.m11 };
-        }
-
-        // rotate(theta) * scale(sx, sy) * skewX(x) skewY(y)
-        private static float[] Composite(float rotateDeg, float scaleX, float scaleY, float xDeg, float yDeg)
-        {
-            var tx = Mathf.Tan(xDeg * Mathf.Deg2Rad);
-            var ty = Mathf.Tan(yDeg * Mathf.Deg2Rad);
-            var cos = Mathf.Cos(rotateDeg * Mathf.Deg2Rad);
-            var sin = Mathf.Sin(rotateDeg * Mathf.Deg2Rad);
-            var p00 = cos * scaleX;
-            var p01 = -sin * scaleY;
-            var p10 = sin * scaleX;
-            var p11 = cos * scaleY;
-            var k = 1f + (tx * ty);
-            return new[] { (p00 * k) + (p01 * ty), (p00 * tx) + p01, (p10 * k) + (p11 * ty), (p10 * tx) + p11 };
-        }
-
         [Test]
         public void Given_ASkewOnAnElementWithNoOtherWriter_When_Engaged_Then_TheSlotsCarryTheShear()
         {
@@ -40,11 +16,11 @@ namespace Velvet.Tests
             AuthoredTransform.Engage(element, 12f, 6f);
 
             // Assert
-            Assert.That(Drawn(element), Is.EqualTo(Composite(0f, 1f, 1f, 12f, 6f)).Within(1e-4f));
+            Assert.That(SkewCompositeMath.Drawn(element), Is.EqualTo(SkewCompositeMath.Composite(0f, 1f, 1f, 12f, 6f)).Within(1e-4f));
         }
 
         [Test]
-        public void Given_AnAuthoredRotateAndScale_When_ASkewIsEngaged_Then_TheSlotsCarryTheComposite()
+        public void Given_AnAuthoredRotateAndScale_When_ASkewIsEngaged_Then_TheSlotsCarryTheSkewCompositeMath.Composite()
         {
             // Arrange
             var element = new VisualElement();
@@ -55,11 +31,11 @@ namespace Velvet.Tests
             AuthoredTransform.Engage(element, -12f, 6f);
 
             // Assert
-            Assert.That(Drawn(element), Is.EqualTo(Composite(30f, 2f, 0.5f, -12f, 6f)).Within(1e-4f));
+            Assert.That(SkewCompositeMath.Drawn(element), Is.EqualTo(SkewCompositeMath.Composite(30f, 2f, 0.5f, -12f, 6f)).Within(1e-4f));
         }
 
         [Test]
-        public void Given_ASkewedElement_When_ARotateIsWritten_Then_TheSlotsCarryTheNewComposite()
+        public void Given_ASkewedElement_When_ARotateIsWritten_Then_TheSlotsCarryTheNewSkewCompositeMath.Composite()
         {
             // Arrange
             var element = new VisualElement();
@@ -69,7 +45,7 @@ namespace Velvet.Tests
             AuthoredTransform.SetRotate(element, new Rotate(new Angle(45f, AngleUnit.Degree)));
 
             // Assert
-            Assert.That(Drawn(element), Is.EqualTo(Composite(45f, 1f, 1f, 12f, 0f)).Within(1e-4f));
+            Assert.That(SkewCompositeMath.Drawn(element), Is.EqualTo(SkewCompositeMath.Composite(45f, 1f, 1f, 12f, 0f)).Within(1e-4f));
         }
 
         [Test]
@@ -83,7 +59,7 @@ namespace Velvet.Tests
             AuthoredTransform.Engage(element, 12f, 6f);
 
             // Assert
-            Assert.That(Drawn(element), Is.EqualTo(Composite(0f, 1f, -1f, 12f, 6f)).Within(1e-4f));
+            Assert.That(SkewCompositeMath.Drawn(element), Is.EqualTo(SkewCompositeMath.Composite(0f, 1f, -1f, 12f, 6f)).Within(1e-4f));
         }
 
         [Test]

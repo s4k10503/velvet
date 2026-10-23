@@ -90,7 +90,7 @@ namespace Velvet
             {
                 return default;
             }
-            if (SettleTransform(element, newClassNames, has, transformed, bound))
+            if (SettleTransform(element, newClassNames, has, transformed, bound, classesChanged))
             {
                 return default;
             }
@@ -221,8 +221,7 @@ namespace Velvet
             => !_ctx.MotionNodes.ContainsKey(element) && !_ctx.ElementToLayoutId.ContainsKey(element)
                 && !CarriesTransformSource(classNames);
 
-        // A class that writes rotate or scale, whatever variant or modifier it sits behind, or a preset that animates
-        // them.
+        // A preset that animates rotate or scale, whatever variant or modifier it sits behind.
         private static bool CarriesTransformSource(string[] classNames) => Array.Exists(classNames, IsTransformSource);
 
         private static bool IsTransformSource(string cls)
@@ -253,15 +252,14 @@ namespace Velvet
             {
                 core = core.Slice(1);
             }
-            return core.StartsWith("rotate".AsSpan(), StringComparison.Ordinal)
-                || core.StartsWith("scale".AsSpan(), StringComparison.Ordinal)
-                || core.StartsWith("animate".AsSpan(), StringComparison.Ordinal)
+            return core.StartsWith("animate".AsSpan(), StringComparison.Ordinal)
                 || core.StartsWith("anim-".AsSpan(), StringComparison.Ordinal);
         }
 
         // Moves the element between the transform and the painted layer as its classes now call for. True where the
         // element takes the skew as a transform, so the painted layer has nothing to do.
-        private bool SettleTransform(VisualElement element, string[] classNames, bool has, bool transformed, bool bound)
+        private bool SettleTransform(VisualElement element, string[] classNames, bool has, bool transformed, bool bound,
+            bool classesChanged)
         {
             SkewSpec spec = default;
             var want = has && StyleSkewClass.TryExtract(classNames, out spec);
@@ -277,6 +275,10 @@ namespace Velvet
                 if (!owned)
                 {
                     WriteTransform(element, spec);
+                }
+                else if (classesChanged)
+                {
+                    AuthoredTransform.Resync(element);
                 }
                 return true;
             }
