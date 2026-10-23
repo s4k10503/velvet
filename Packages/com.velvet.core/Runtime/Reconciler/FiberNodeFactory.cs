@@ -541,7 +541,7 @@ namespace Velvet
                 target = FiberNodePatcher.PortalContainerOf(FiberPortalRegistry.Get(portalNode.TargetId!));
                 if (target == null)
                 {
-                    FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
+                    FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Its children mount once an element is registered under that id.");
                     var placeholder = CreateHiddenPlaceholder();
                     _ctx.PortalState[placeholder] = new PortalSlotInfo(
                         null, 0, 0, portalNode.TargetId, _ctx.FiberStack.Current);

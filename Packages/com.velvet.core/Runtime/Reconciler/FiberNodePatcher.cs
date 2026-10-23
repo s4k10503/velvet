@@ -1077,25 +1077,15 @@ namespace Velvet
         {
             if (newNode.Layer is { } layer)
             {
-                // The per-layer framework host was created when the mount drained and persists
-                // until reconciler disposal, so a patch resolves it from the table. A record whose
-                // GameObject a scene unload killed reads as dead here and counts as missing.
                 describe = layer.ToString();
-                if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost) || layerHost.Document == null)
+                // A layer whose host was never created is one whose mount failed, which repeats here: only a
+                // record whose GameObject died is replaced.
+                if (!_ctx.LayerHosts.ContainsKey(layer))
                 {
                     FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
                     return null;
                 }
-                // Recurring re-sync point for late declaring resolution and runtime drift.
-                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
-                var target = layerHost.Document.rootVisualElement;
-                VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
-                if (oldNode.FocusOrder != newNode.FocusOrder)
-                {
-                    FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost,
-                        newNode.FocusOrder, _ctx);
-                }
-                return target;
+                return ResolveLayerTarget(placeholder, oldNode, newNode, layer);
             }
 
             if (newNode.TargetElement is { } held)
@@ -1140,33 +1130,72 @@ namespace Velvet
             var resolvedTarget = PortalContainerOf(FiberPortalRegistry.Get(describe));
             if (resolvedTarget == null)
             {
-                FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
+                FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Its children mount once an element is registered under that id.");
                 return null;
             }
             return RebaseOnto(placeholder, resolvedTarget);
         }
 
+        // A layer portal's host is looked up in the table, and replaced as ChildReconciler.ResolveLayerPortalTarget
+        // replaces one at mount when a scene unload killed its GameObject. Children that mounted into the dead
+        // host unmount and mount again into the replacement, as they do when an id names another element.
+        private VisualElement ResolveLayerTarget(
+            VisualElement placeholder, PortalNode oldNode, PortalNode newNode, UILayer layer)
+        {
+            var known = _ctx.LayerHosts.TryGetValue(layer, out var held);
+            var alive = known && held!.Document != null;
+            var layerHost = alive ? held! : PanelHostFactory.ReplaceLayerHost(layer, placeholder.panel, _ctx);
+            if (alive)
+            {
+                // Recurring re-sync point for late declaring resolution and runtime drift.
+                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
+            }
+            var target = layerHost.Document.rootVisualElement;
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
+            // Another portal on the layer may have replaced the host already, which leaves this one's range
+            // addressing the dead root.
+            var hasRange = _ctx.PortalState.TryGetValue(placeholder, out var recorded);
+            var leftDeadHost = hasRange && recorded.Target != null && !ReferenceEquals(recorded.Target, target);
+            if (leftDeadHost)
+            {
+                _host.ReleasePortalRangeForRetarget(placeholder);
+                RebaseRangeOnto(placeholder, target);
+            }
+            if (!alive || leftDeadHost || oldNode.FocusOrder != newNode.FocusOrder)
+            {
+                FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost, newNode.FocusOrder, _ctx);
+            }
+            return target;
+        }
+
         private VisualElement RebaseOnto(VisualElement placeholder, VisualElement resolvedTarget)
         {
-            // Each caller hands this a range that addresses nothing on resolvedTarget — the unregistered mount
-            // recorded slot 0 against no element at all, a retarget emptied the range it held on a different
-            // one — so the range is rebased to the end of whatever resolvedTarget already holds, the slot
-            // ChildReconciler's deferred-mount pass would have taken. Patching from an unrebased slot 0 instead
-            // diffs this Portal's first child against the container's own.
-            if (_ctx.PortalState.TryGetValue(placeholder, out var released))
-            {
-                _ctx.PortalState[placeholder] = released with
-                {
-                    SlotStart = LogicalChildSlots.Count(resolvedTarget),
-                    SlotLength = 0,
-                };
-            }
+            RebaseRangeOnto(placeholder, resolvedTarget);
             // The mount-time attach (ChildReconciler's same-panel drain branch) never ran for this
             // target — a mount while the id was unregistered enqueued no drain entry at all, and a
             // retarget resolves an element that mount never saw — so this patch is where the same-panel
             // synthetic-bubbling bridge gets attached.
             _ctx.BindPortalTarget(resolvedTarget);
             return resolvedTarget;
+        }
+
+        // Each caller hands this a range that addresses nothing on resolvedTarget — the unregistered mount
+        // recorded slot 0 against no element at all, a retarget emptied the range it held on a different
+        // one — so the range is rebased to the end of whatever resolvedTarget already holds, the slot
+        // ChildReconciler's deferred-mount pass would have taken. Patching from an unrebased slot 0 instead
+        // diffs this Portal's first child against the container's own.
+        private void RebaseRangeOnto(VisualElement placeholder, VisualElement resolvedTarget)
+        {
+            if (_ctx.PortalState.TryGetValue(placeholder, out var released))
+            {
+                _ctx.PortalState[placeholder] = released with
+                {
+                    SlotStart = LogicalChildSlots.Count(resolvedTarget),
+                    SlotLength = 0,
+                    First = null,
+                    Last = null,
+                };
+            }
         }
 
         // Captures declaringFiber's current direct children, in a set rented from the shared pool, so a later
@@ -1203,6 +1232,17 @@ namespace Velvet
             }
         }
 
+        private PanelHostRecord ReplaceWorldSpaceHost(VisualElement placeholder, PanelHostRecord dead, WorldSpaceNode node)
+        {
+            _host.ReleasePortalRangeForRetarget(placeholder);
+            PanelHostFactory.Destroy(dead);
+            var fresh = PanelHostFactory.CreateWorldSpaceHost(node, placeholder.panel, _ctx);
+            _ctx.WorldSpaceBindings[placeholder] = fresh;
+            RebaseRangeOnto(placeholder, fresh.Document.rootVisualElement);
+            FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, fresh, node.FocusOrder, _ctx);
+            return fresh;
+        }
+
         // Applies the diff for a WorldSpaceNode: the host transform and virtual panel size follow
         // the node, and the children reconcile through the same slot bookkeeping every portal
         // flavor uses (the world-space host root is the recorded target).
@@ -1215,15 +1255,10 @@ namespace Velvet
             }
             if (record.Document == null)
             {
-                // A scene unload can kill the host GameObject while the owning fiber tree survives
-                // (a persistent root anchoring per-scene world-space UI). Patching a dead document
-                // would throw out of the whole reconcile pass, so every patch skips it on this same
-                // warning path — the record stays so later patches keep landing here rather than
-                // degrading into the missing-record corruption error (mirrors the layer flavor);
-                // remount the world-space node to rebuild its host.
-                FiberLogger.LogWarning("WorldSpace",
-                    "Host died externally (scene unload?). Patch skipped; remount the world-space node to rebuild its host.");
-                return;
+                // A scene unload can kill the host GameObject while the owning fiber tree survives (a
+                // persistent root anchoring per-scene world-space UI). The children that mounted into it unmount
+                // and mount again into a fresh host, as they do when an id names another element.
+                record = ReplaceWorldSpaceHost(placeholder, record, newNode);
             }
             // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
             // world-space panels depth-sort in the scene, not by sorting order).
@@ -1282,6 +1317,9 @@ namespace Velvet
                 return;
             }
 
+            // The rows this patch is about to add, remove and replace are not read as the range until it records
+            // them again, since a row put ahead of the first one would otherwise move the start under the patch.
+            _ctx.PortalState.Unanchor(placeholder);
             var oldChildren = oldChildrenRaw ?? Array.Empty<VNode>();
             var newChildren = newChildrenRaw ?? Array.Empty<VNode>();
             // LOGICAL counts on both sides of the reconcile, matching the basis SlotStart and SlotLength are
@@ -1336,9 +1374,10 @@ namespace Velvet
             // the children actually live. For an already-recorded portal this rewrites the same
             // reference.
             _ctx.PortalState[placeholder] = prevState with { Target = target, SlotLength = newSlotLength };
+            _ctx.PortalState.Anchor(placeholder);
 
             var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
-            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, placeholder, prevState, unshifted);
+            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, placeholder, prevState, unshifted);
             FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, prevState, unshifted);
             FiberCommitWork.RebaseOwnRows(_ctx, target);
         }
