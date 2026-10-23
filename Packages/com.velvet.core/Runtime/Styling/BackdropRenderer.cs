@@ -288,9 +288,11 @@ namespace Velvet
             return texture;
         }
 
-        public RenderTexture Temporary(GraphicsFormat format)
+        public RenderTexture Temporary(GraphicsFormat format) => Temporary(format, Region.width, Region.height);
+
+        public RenderTexture Temporary(GraphicsFormat format, int width, int height)
         {
-            var texture = RenderTexture.GetTemporary(new RenderTextureDescriptor(Region.width, Region.height, format, 0)
+            var texture = RenderTexture.GetTemporary(new RenderTextureDescriptor(width, height, format, 0)
             {
                 msaaSamples = 1,
             });
@@ -393,6 +395,10 @@ namespace Velvet
         // An intermediate result holds the encoded values the arithmetic runs on, so it is no sRGB texture.
         private const GraphicsFormat Intermediate = GraphicsFormat.R8G8B8A8_UNorm;
 
+        // The reach one pass of the shader holds a Gaussian to, in texels (MAX_REACH there).
+        private const float MaxReach = 1024f;
+        private const int MaxHalvings = 14;
+
         private readonly BackdropFrame _frame;
         private readonly Material _material;
         private readonly List<RenderTexture> _temporaries;
@@ -447,6 +453,12 @@ namespace Velvet
                 return;
             }
             Finish();
+            var halvings = HalvingsFor(sigma);
+            if (halvings > 0)
+            {
+                _pass = new BackdropPass { Source = BlurHalved(_pass, sigma, halvings) };
+                return;
+            }
             _pass.Direction = new Vector2(1f / _frame.Region.width, 0f);
             _pass.Sigma = sigma;
             var horizontal = Execute();
@@ -465,6 +477,12 @@ namespace Velvet
             var source = _pass.Source;
             var before = new List<BackdropStep>(_pass.Before);
             var sigma = step.C * _frame.PixelScale;
+            var halvings = HalvingsFor(sigma);
+            if (halvings > 0)
+            {
+                DropShadowHalved(source, before, step, sigma, halvings);
+                return;
+            }
             _pass.Mode = BackdropShader.ShadowAlpha;
             _pass.Direction = new Vector2(1f / _frame.Region.width, 0f);
             _pass.Sigma = sigma;
@@ -484,6 +502,71 @@ namespace Velvet
             _pass = new BackdropPass { Source = Execute() };
         }
 
+        // The shadow's alpha offset at full size, blurred on a halved texture, and combined under the source with no
+        // blur left to run.
+        private void DropShadowHalved(BackdropSource source, List<BackdropStep> before, in BackdropStep step, float sigma,
+            int halvings)
+        {
+            _pass.Mode = BackdropShader.ShadowAlpha;
+            _pass.Offset = new Vector2(step.A * _frame.PixelScale / _frame.Region.width,
+                -step.B * _frame.PixelScale / _frame.Region.height);
+            var shifted = Execute();
+            var alpha = BlurHalved(new BackdropPass { Source = shifted }, sigma, halvings);
+            _pass = new BackdropPass
+            {
+                Source = source,
+                Mode = BackdropShader.ShadowCombine,
+                Shadow = alpha.Texture,
+                ShadowColor = step.Color,
+            };
+            _pass.Before.AddRange(before);
+            _pass = new BackdropPass { Source = Execute() };
+        }
+
+        // How many times a texture is halved before the deviation's reach fits one pass.
+        private static int HalvingsFor(float sigma)
+        {
+            var halvings = 0;
+            while (halvings < MaxHalvings && Mathf.Ceil(3f * sigma / (1 << halvings)) > MaxReach)
+            {
+                halvings++;
+            }
+            return halvings;
+        }
+
+        // The Gaussian on a texture halved the given number of times, upsampled back to the region's size. The first
+        // halving runs the given pass, which blurs nothing, so its colour functions apply to the source.
+        private BackdropSource BlurHalved(BackdropPass first, float sigma, int halvings)
+        {
+            var region = _frame.Region;
+            var width = region.width;
+            var height = region.height;
+            var current = first.Source;
+            for (var i = 0; i < halvings; i++)
+            {
+                width = Math.Max(1, (width + 1) / 2);
+                height = Math.Max(1, (height + 1) / 2);
+                _pass = i == 0 ? first : new BackdropPass { Source = current };
+                current = Execute(width, height);
+            }
+            _pass = new BackdropPass
+            {
+                Source = current,
+                Direction = new Vector2(1f / width, 0f),
+                Sigma = sigma * width / region.width,
+            };
+            current = Execute(width, height);
+            _pass = new BackdropPass
+            {
+                Source = current,
+                Direction = new Vector2(0f, 1f / height),
+                Sigma = sigma * height / region.height,
+            };
+            current = Execute(width, height);
+            _pass = new BackdropPass { Source = current };
+            return Execute();
+        }
+
         // Runs the pending pass where it blurs or combines, leaving a fresh pass reading its result.
         private void Finish()
         {
@@ -493,9 +576,11 @@ namespace Velvet
             }
         }
 
-        private BackdropSource Execute()
+        private BackdropSource Execute() => Execute(_frame.Region.width, _frame.Region.height);
+
+        private BackdropSource Execute(int width, int height)
         {
-            var destination = _frame.Temporary(Intermediate);
+            var destination = _frame.Temporary(Intermediate, width, height);
             _temporaries.Add(destination);
             _pass.SetOn(_material);
             BackdropRenderer.Blit(_material, _pass.Source.Texture, destination);

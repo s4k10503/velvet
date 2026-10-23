@@ -328,5 +328,35 @@ namespace Velvet.Tests
                     PureRed(outside)),
                 Is.EqualTo((true, true, true)), $"inside={inside} outside={outside}");
         }
+
+        [UnityTest]
+        public IEnumerator Given_ABackdropBlurPastTheShadersReach_When_Rendered_Then_APixelBeyondThatReachFromTheEdgeIsBlended()
+        {
+            // Arrange — a red block 1000 pixels wide and blue after it, under a box over both. A deviation of 1000
+            // reaches 3000 pixels, past the 1024 one pass of the shader holds; the sample sits 1100 pixels from the
+            // edge, where a blur cut at 1024 pixels sees only blue.
+            const int width = 2400;
+            const int sample = 2100;
+            _host = new RenderTexturePanelHost(nameof(BackdropFilterPlaybackTests), width, 16);
+            _mounted = V.Mount(_host.Root, V.Div(name: "stage", className: $"w-[{width}px] h-[16px]", children: new VNode[]
+            {
+                V.Div(name: "red", className: "w-[1000px] h-[16px] bg-[#ff0000]"),
+                V.Div(name: "blue", className: $"w-[{width - 1000}px] h-[16px] bg-[#0000ff]"),
+                V.Div(name: "glass", className: $"w-[{width}px] h-[16px] backdrop-blur-[1000px]"),
+            }));
+            _host.Root.Q<VisualElement>("stage").style.flexDirection = FlexDirection.Row;
+            var glass = Glass();
+            glass.style.position = Position.Absolute;
+            glass.style.left = 0f;
+            glass.style.top = 0f;
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+
+            // Act
+            var far = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(sample, 8, 1, 1))[0];
+
+            // Assert
+            Assert.That((Near(glass.worldBound.width, width), far.r > 10 && far.b > 100),
+                Is.EqualTo((true, true)), $"far={far} glass={glass.worldBound}");
+        }
     }
 }
