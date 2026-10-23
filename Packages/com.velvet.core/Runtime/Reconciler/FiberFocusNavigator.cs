@@ -803,6 +803,7 @@ namespace Velvet
             {
                 return;
             }
+            PanelFocusMemory.Watch(target);
 
             // Ahead of the placeholder forwarding below, which would carry a landing on a placeholder
             // outside the group on to whatever that placeholder stands for.
