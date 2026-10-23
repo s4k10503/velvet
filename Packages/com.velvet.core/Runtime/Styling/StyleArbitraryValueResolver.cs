@@ -3350,7 +3350,11 @@ namespace Velvet
             ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property) | rewritten);
             // A write the clip wrapper took (ClipPathLayoutBox.BoxFor) goes back under what is held there.
             var box = ClipPathLayoutBox.Of(element);
-            if (!ReferenceEquals(box, element) && s_layers.TryGetValue(box, out var boxMap))
+            if (ReferenceEquals(box, element))
+            {
+                return;
+            }
+            if (s_layers.TryGetValue(box, out var boxMap))
             {
                 ReassertHolds(box, boxMap, HeldSlotGroups.SlotsOf(property));
             }
