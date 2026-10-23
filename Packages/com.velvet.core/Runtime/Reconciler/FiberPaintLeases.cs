@@ -79,8 +79,9 @@ namespace Velvet
             }
         }
 
-        internal SkewSpec HeldSkew(VisualElement element)
-            => _ctx.SkewBindings.TryGetValue(element, out var binding) ? binding.Spec : default;
+        // The angles the element's transform shears by now.
+        private static SkewSpec ShownSkew(VisualElement element)
+            => AuthoredTransform.TryGetSkew(element, out var x, out var y) ? new SkewSpec(x, y, null, null) : default;
 
         // The z a patch resolved while the play held the stack position, applied when the play lets go.
         internal void NoteZ(VisualElement element, bool stacked, int resolvedZ)
@@ -170,7 +171,7 @@ namespace Velvet
 
             private void TakeLive()
             {
-                _skewFrom = _owner.HeldSkew(_element);
+                _skewFrom = ShownSkew(_element);
                 _shadowFrom = _owner._ctx.ShadowBindings.TryGetValue(_element, out var shadow)
                     ? shadow.Layers : Array.Empty<ShadowSpec>();
                 _gradientFrom = LiveGradient();
@@ -184,10 +185,6 @@ namespace Velvet
 
             private GradientSpec? LiveGradient()
             {
-                if (_owner._ctx.SkewBindings.TryGetValue(_element, out var skew))
-                {
-                    return skew.HasGradient ? skew.Gradient : null;
-                }
                 return _owner._ctx.GradientBackgrounds.TryGetValue(_element, out var gradient) ? gradient.Spec : null;
             }
 
@@ -243,12 +240,11 @@ namespace Velvet
             private void Attach(string[] classNames)
             {
                 var ctx = _owner._ctx;
-                if ((Layers & Layer.Skew) != 0 && !ctx.SkewBindings.ContainsKey(_element) && _skewTo.Active)
+                if ((Layers & Layer.Skew) != 0 && !ctx.SkewTransformed.ContainsKey(_element) && _skewTo.Active)
                 {
                     _owner._skew.ApplySkewOnCreate(_element, classNames);
                 }
-                if ((Layers & Layer.Gradient) != 0 && !ctx.GradientBackgrounds.ContainsKey(_element)
-                    && !ctx.SkewBindings.ContainsKey(_element) && _gradientTo != null)
+                if ((Layers & Layer.Gradient) != 0 && !ctx.GradientBackgrounds.ContainsKey(_element) && _gradientTo != null)
                 {
                     _owner._gradient.ApplyGradientOnCreate(_element, classNames);
                 }
@@ -282,21 +278,19 @@ namespace Velvet
                 }
                 var ctx = _owner._ctx;
                 var skew = (Layers & Layer.Skew) != 0
-                    ? MotionPaintInterpolation.Skew(_skewFrom, _skewTo, progress) : _owner.HeldSkew(_element);
-                if ((Layers & Layer.Skew) != 0 && ctx.SkewBindings.TryGetValue(_element, out var skewBinding))
+                    ? MotionPaintInterpolation.Skew(_skewFrom, _skewTo, progress) : ShownSkew(_element);
+                if ((Layers & Layer.Skew) != 0 && ctx.SkewTransformed.ContainsKey(_element))
                 {
-                    skewBinding.Spec = skew;
-                    SkewSilhouette.SyncChildTranslate(skewBinding);
-                    _element.MarkDirtyRepaint();
+                    AuthoredTransform.Engage(_element, skew.XDeg, skew.YDeg);
                 }
                 _skewShown = skew;
                 if ((Layers & Layer.Gradient) != 0)
                 {
                     DrawGradient(progress);
                 }
-                if ((Layers & (Layer.Shadow | Layer.Skew)) != 0)
+                if ((Layers & Layer.Shadow) != 0)
                 {
-                    DrawShadow(progress, skew);
+                    DrawShadow(progress);
                 }
                 _drawn = true;
             }
@@ -318,11 +312,6 @@ namespace Velvet
             private void SetGradient(GradientSpec? spec)
             {
                 var ctx = _owner._ctx;
-                if (ctx.SkewBindings.TryGetValue(_element, out var skew))
-                {
-                    SkewSilhouette.SetGradient(_element, skew, spec != null, spec ?? default);
-                    return;
-                }
                 var bound = ctx.GradientBackgrounds.TryGetValue(_element, out var current);
                 if (spec is not { } value)
                 {
@@ -343,23 +332,19 @@ namespace Velvet
                 }
             }
 
-            private void DrawShadow(float progress, SkewSpec skew)
+            private void DrawShadow(float progress)
             {
                 var ctx = _owner._ctx;
                 if (!ctx.ShadowBindings.TryGetValue(_element, out var binding))
                 {
                     return;
                 }
-                var layers = (Layers & Layer.Shadow) != 0
-                    ? MotionPaintInterpolation.Shadow(_shadowFrom, _shadowTo, progress) : binding.Layers;
+                var layers = MotionPaintInterpolation.Shadow(_shadowFrom, _shadowTo, progress);
                 _shadowShown = layers;
                 BoxShadowSilhouette.Sync(_element, binding, new BoxShadowSyncRequest
                 {
                     Layers = layers,
                     ClassNames = binding.ClassNames ?? Array.Empty<string>(),
-                    SkewXDeg = skew.XDeg,
-                    SkewYDeg = skew.YDeg,
-                    CasterSkewed = ctx.SkewBindings.ContainsKey(_element),
                 });
             }
 

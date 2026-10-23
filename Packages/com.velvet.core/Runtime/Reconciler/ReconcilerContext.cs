@@ -1347,6 +1347,11 @@ namespace Velvet
         // that won on each axis. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, (string? X, string? Y)> SkewTransformed { get; } = new();
 
+        // The angles the classes resolve to for an element whose skew a motion play is drawing, which the play's
+        // channels run toward and away from (FiberSkewApplier.Drive). A pure side-table, enrolled in
+        // _pureElementSideTables.
+        public Dictionary<VisualElement, (float X, float Y)> SkewDriven { get; } = new();
+
         // The holds Motion plays take on an element's paint layers (FiberPaintLeases). Set by the wrapper-element
         // appliers, which own the layers' appliers.
         public FiberPaintLeases? PaintLeases { get; set; }
@@ -3312,6 +3317,7 @@ namespace Velvet
                 LayoutIdExiting,
                 LayoutIdRestored,
                 SkewTransformed,
+                SkewDriven,
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,

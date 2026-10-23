@@ -34,17 +34,8 @@ namespace Velvet
             {
                 return;
             }
-            // A skewed caster's shadow follows the sheared silhouette (the box-shadow behavior);
-            // create-time resolves the skew here, the patch path forwards it from ApplySkewOnPatch.
-            var skew = StyleSkewClass.TryExtract(classNames, out var extracted) ? extracted : default;
-            // ApplySkewOnCreate ran before this (the factory order), so a skewed caster already has a
-            // SkewSilhouette owning its face. When skewed, the shadow paints ONLY the shadow quad (the skew
-            // layer repaints the sheared fill/border); when upright, the shadow paint owns the face itself,
-            // suppressing the native chrome and repainting an upright fill over the shadow quad. skew-y casters
-            // have an X angle of 0 yet are skewed, so this gate is the SkewBindings presence, not the X angle.
             var casterSkewed = _ctx.SkewBindings.ContainsKey(element);
-            var shadowBinding = BoxShadowSilhouette.Attach(element, spec, classNames, skew.XDeg, skew.YDeg,
-                casterSkewed);
+            var shadowBinding = BoxShadowSilhouette.Attach(element, spec, classNames, 0f, 0f, casterSkewed);
             _ctx.ShadowBindings[element] = shadowBinding;
             BoxShadowSilhouette.SetWantSpacer(element, shadowBinding, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
         }

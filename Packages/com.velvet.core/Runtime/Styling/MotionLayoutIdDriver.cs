@@ -274,14 +274,14 @@ namespace Velvet
         {
             var slot = Box(element);
             var translate = SeatedTranslate.Read(slot);
-            var scale = slot.style.scale;
+            var scale = AuthoredTransform.Scale(slot);
             // Where the element is drawn, which an inline value it was just given is not until a style pass has run: what a
             // projection that ended earlier in this render handed back, else the resolved style
             // (Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform), less a skewed
             // parent's seat, which the projection's own writes compose again (SeatedTranslate).
             ctx.LayoutIdRestored.Remove(element, out var restored);
             var startTranslate = restored.Translate ?? SeatedTranslate.Unseated(slot, slot.resolvedStyle.translate);
-            var startScale = restored.Scale ?? slot.resolvedStyle.scale.value;
+            var startScale = restored.Scale ?? AuthoredTransform.ResolvedScale(slot).value;
             // A running bounce or ping has its frame in the slot, and the frame is the loop's rather than the element's.
             // A correction wrapper's slots are the projection's alone, so the loops stay on the Motion inside it.
             if (ReferenceEquals(slot, element))
@@ -571,8 +571,8 @@ namespace Velvet
             var target = OwnScale(element, projection);
             var own = Carried(element, projection.ScaleCarries, target, Vector2Int.zero, dtSec, "scale");
             var ping = projection.Boxed ? 1f : StyleAnimateDriver.CurrentPingFactor(element);
-            slot.style.scale = new Scale(new Vector3(own.x * scale.x * ping, own.y * scale.y * ping, target.z));
-            projection.WrittenScale = slot.style.scale;
+            AuthoredTransform.SetScale(slot, new Scale(new Vector3(own.x * scale.x * ping, own.y * scale.y * ping, target.z)));
+            projection.WrittenScale = AuthoredTransform.Scale(slot);
         }
 
         // Called by LayoutIdLook's tail on each step after the projection has ended, over dtSec more: draws the translate
@@ -599,7 +599,7 @@ namespace Velvet
             var slot = Box(element);
             var translate = SeatedTranslate.Read(slot);
             if (projection.WritesTranslate && translate != projection.WrittenTranslate) projection.OwnInlineTranslate = translate;
-            var scale = slot.style.scale;
+            var scale = AuthoredTransform.Scale(slot);
             if (projection.WritesScale && scale != projection.WrittenScale) projection.OwnInlineScale = scale;
         }
 
@@ -803,7 +803,7 @@ namespace Velvet
             if (projection.WritesScale && LayoutIdLook.Landed(projection.ScaleCarries))
             {
                 restored.Scale = new Vector3(projection.ScaleCarries[0].Value, projection.ScaleCarries[1].Value, OwnScale(element, projection).z);
-                Box(element).style.scale = projection.OwnInlineScale;
+                AuthoredTransform.SetScale(Box(element), projection.OwnInlineScale);
                 projection.WritesScale = false;
             }
             // A slot that runs on past the move keeps it from a loop until it lands (LayoutIdLook.Hand).

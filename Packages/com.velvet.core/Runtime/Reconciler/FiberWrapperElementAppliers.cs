@@ -52,7 +52,7 @@ namespace Velvet
 
         internal SkewSpec ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged)
             => _ctx.PaintLeases!.Holds(element, FiberPaintLeases.Layer.Skew)
-                ? _ctx.PaintLeases.HeldSkew(element)
+                ? default
                 : _skew.ApplySkewOnPatch(element, classNames, classesChanged);
 
         internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)

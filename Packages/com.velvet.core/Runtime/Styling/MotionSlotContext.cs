@@ -396,7 +396,7 @@ namespace Velvet
                 value = inline.value.value;
                 return true;
             }
-            var resolved = owner.resolvedStyle.scale.value;
+            var resolved = AuthoredTransform.ResolvedScale(owner).value;
             value = new Vector2(resolved.x, resolved.y);
             return !float.IsNaN(value.x) && !float.IsNaN(value.y) && !float.IsInfinity(value.x) && !float.IsInfinity(value.y);
         }
@@ -582,11 +582,11 @@ namespace Velvet
                     return Pixels(slot, resolved.translate.y, out value);
                 case ArbitraryProperty.Scale:
                 {
-                    var scale = resolved.scale.value;
+                    var scale = AuthoredTransform.ResolvedScale(Owner(slot)).value;
                     return scale.x.Equals(scale.y) && Pixels(slot, scale.x, out value);
                 }
                 case ArbitraryProperty.Rotate:
-                    return Pixels(slot, resolved.rotate.angle.ToDegrees(), out value);
+                    return Pixels(slot, AuthoredTransform.ResolvedRotate(Owner(slot)).angle.ToDegrees(), out value);
                 case ArbitraryProperty.TextColor:
                     value = new ArbitraryStyle(slot, resolved.color);
                     return true;

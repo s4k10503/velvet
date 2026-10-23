@@ -1496,13 +1496,11 @@ namespace Velvet
         // The angles the element's classes resolve its skew to, which a play's skew channels run toward or away from.
         private (float X, float Y) RestingSkew(VisualElement element)
         {
-            var binding = Context?.SkewBindings.GetValueOrDefault(element);
-            if (binding == null)
+            if (Context?.SkewDriven.TryGetValue(element, out var resting) == true)
             {
-                return default;
+                return resting;
             }
-            var spec = binding.Driven ? binding.Final : binding.Spec;
-            return (spec.XDeg, spec.YDeg);
+            return AuthoredTransform.TryGetSkew(element, out var x, out var y) ? (x, y) : default;
         }
 
         private FiberSkewApplier? _skewDriver;

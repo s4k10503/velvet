@@ -29,6 +29,18 @@ namespace Velvet
         public static StyleScale Scale(VisualElement element)
             => s_states.TryGetValue(element, out var state) ? state.Scale : element.style.scale;
 
+        // The angles the slots shear by now; false where the element carries no skew.
+        public static bool TryGetSkew(VisualElement element, out float xDeg, out float yDeg)
+        {
+            if (!s_states.TryGetValue(element, out var state))
+            {
+                (xDeg, yDeg) = (0f, 0f);
+                return false;
+            }
+            (xDeg, yDeg) = (state.SkewXDeg, state.SkewYDeg);
+            return true;
+        }
+
         public static void SetRotate(VisualElement element, StyleRotate value)
         {
             if (!s_states.TryGetValue(element, out var state))
@@ -100,20 +112,11 @@ namespace Velvet
         // its angle alone, as the 2D rotate utilities are the only writers.
         private static void ComposedSlots(VisualElement element, State state, out Rotate rotate, out Scale scale)
         {
-            // An inline value outranks the stylesheet's, so the classes speak only for a slot no writer has set.
-            var declared = state.Rotate.keyword == StyleKeyword.Null || state.Scale.keyword == StyleKeyword.Null
-                ? BundledClassTransform.OfClasses(element)
-                : (RotateDegrees: 0f, Scale: Vector3.one);
-            var theta = state.Rotate.keyword == StyleKeyword.Null
-                ? declared.RotateDegrees * Mathf.Deg2Rad
-                : RotateRadians(state.Rotate);
-            var drawnScale = state.Scale.keyword == StyleKeyword.Null
-                ? new Vector2(declared.Scale.x, declared.Scale.y)
-                : ScaleAxes(state.Scale);
+            var (theta, drawnScale) = Unskewed(element, state);
             var tx = Mathf.Tan(state.SkewXDeg * Mathf.Deg2Rad);
             var ty = Mathf.Tan(state.SkewYDeg * Mathf.Deg2Rad);
-            var cos = Mathf.Cos(theta);
-            var sin = Mathf.Sin(theta);
+            var cos = Mathf.Cos(theta * Mathf.Deg2Rad);
+            var sin = Mathf.Sin(theta * Mathf.Deg2Rad);
             var p00 = cos * drawnScale.x;
             var p01 = -sin * drawnScale.y;
             var p10 = sin * drawnScale.x;
@@ -130,10 +133,36 @@ namespace Velvet
             scale = new Scale(new Vector3(factor.x, factor.y, 1f));
         }
 
-        private static float RotateRadians(StyleRotate rotate)
-            => rotate.keyword == StyleKeyword.Undefined ? rotate.value.angle.ToDegrees() * Mathf.Deg2Rad : 0f;
+        // The rotate in degrees and the scale on each axis the element would be drawn with had it no skew. An inline
+        // value outranks the stylesheet's, so the classes speak only for a slot no writer has set.
+        private static (float Degrees, Vector2 Scale) Unskewed(VisualElement element, State state)
+        {
+            var rotated = state.Rotate.keyword != StyleKeyword.Null;
+            var scaled = state.Scale.keyword != StyleKeyword.Null;
+            var declared = rotated && scaled ? (RotateDegrees: 0f, Scale: Vector3.one) : BundledClassTransform.OfClasses(element);
+            var degrees = !rotated ? declared.RotateDegrees
+                : state.Rotate.keyword == StyleKeyword.Undefined ? state.Rotate.value.angle.ToDegrees() : 0f;
+            var axes = !scaled ? new Vector2(declared.Scale.x, declared.Scale.y)
+                : state.Scale.keyword == StyleKeyword.Undefined ? new Vector2(state.Scale.value.value.x, state.Scale.value.value.y)
+                : Vector2.one;
+            return (degrees, axes);
+        }
 
-        private static Vector2 ScaleAxes(StyleScale scale)
-            => scale.keyword == StyleKeyword.Undefined ? new Vector2(scale.value.value.x, scale.value.value.y) : Vector2.one;
+        // What the element is drawn at, less the skew: its resolved style, or the value its writers and classes give
+        // it where the resolved one is the composite.
+        public static Rotate ResolvedRotate(VisualElement element)
+            => s_states.TryGetValue(element, out var state)
+                ? new Rotate(new Angle(Unskewed(element, state).Degrees, AngleUnit.Degree))
+                : element.resolvedStyle.rotate;
+
+        public static Scale ResolvedScale(VisualElement element)
+        {
+            if (!s_states.TryGetValue(element, out var state))
+            {
+                return element.resolvedStyle.scale;
+            }
+            var axes = Unskewed(element, state).Scale;
+            return new Scale(new Vector3(axes.x, axes.y, 1f));
+        }
     }
 }
