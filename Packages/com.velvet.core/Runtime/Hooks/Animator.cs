@@ -369,8 +369,6 @@ namespace Velvet
 
         private bool IsSpring => _transition is { Type: TransitionType.Spring } && _keys.Length <= 2;
 
-        private (float Stiffness, float Damping, float Mass) Physics => (_transition!.Stiffness, _transition.Damping, _transition.Mass);
-
         // A spring runs until it rests, a tween for its duration.
         private static float DurationOf(float[] keys, StyleTransitionConfig? transition, float defaultSec)
         {
@@ -430,7 +428,9 @@ namespace Velvet
             }
             if (IsSpring)
             {
-                return MotionSpringDriver.SampleSpring(_keys[0], _keys[1], 1f, 0f, local, Physics, _transition!.SpringSettleSec);
+                var spring = _transition!;
+                return MotionSpringDriver.SampleSpring(_keys[0], _keys[1], 1f, 0f, local,
+                    (spring.Stiffness, spring.Damping, spring.Mass), spring.SpringSettleSec);
             }
             var progress = Ease(_durationSec > 0f ? (float)(local / _durationSec) : 1f);
             var position = progress * (_keys.Length - 1);
