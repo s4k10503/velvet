@@ -877,8 +877,8 @@ namespace Velvet.Tests
 
         // What the element's projection holds, for a failure message.
         private static string ProjectionReading(ReconcilerContext ctx, VisualElement element) =>
-            ctx.LayoutIdProjections.TryGetValue(element, out var p)
-                ? $"projection from={p.From}, moving={p.Moving}, progress={p.Progress.Value}, scale={p.Scale}, parentScale={p.ParentScale}, "
+            element != null && ctx.LayoutIdProjections.TryGetValue(element, out var p)
+                ? $"projection from={p.From}, moving={p.Moving}, progress={(p.Progress == null ? "null" : p.Progress.Value.ToString())}, scale={p.Scale}, parentScale={p.ParentScale}, "
                     + $"shared={p.Shared}, writesTranslate={p.WritesTranslate}, written={p.WrittenTranslate.keyword}"
                 : "no projection";
 
@@ -895,7 +895,7 @@ namespace Velvet.Tests
             Tick();
             var ctx = _reconciler.Context;
             var row0 = Root.Q<VisualElement>("row-0");
-            var before = $"{RegistryReading(ctx, "row-0")}; row layout={row0.layout}, parented={row0.hierarchy.parent != null}";
+            var before = $"{RegistryReading(ctx, "row-0")}; row layout={row0?.layout.ToString() ?? "null"}, parented={row0?.hierarchy.parent != null}";
             controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 100f);
             var afterScroll = RegistryReading(ctx, "row-0");
             var host = new VisualElement();
@@ -908,17 +908,18 @@ namespace Velvet.Tests
                     className: "left-[300px] top-[0px] w-[100px] h-[50px]"),
             });
             var remount = host.Q<VisualElement>("remount");
-            var beforeTick = $"{RegistryReading(ctx, "row-0")}; layout={remount.layout}; {ProjectionReading(ctx, remount)}";
+            var beforeTick = $"{RegistryReading(ctx, "row-0")}; layout={remount?.layout.ToString() ?? "null"}; {ProjectionReading(ctx, remount)}";
             Tick();
-            var translated = TranslateX(remount);
-            var afterTick = $"{RegistryReading(ctx, "row-0")}; layout={remount.layout}; {ProjectionReading(ctx, remount)}";
+            var translated = remount == null ? float.NaN : TranslateX(remount);
+            var afterTick = $"{RegistryReading(ctx, "row-0")}; layout={remount?.layout.ToString() ?? "null"}; {ProjectionReading(ctx, remount)}";
             Tick();
-            var afterSecondTick = $"{RegistryReading(ctx, "row-0")}; layout={remount.layout}; {ProjectionReading(ctx, remount)}";
+            var afterSecondTick = $"{RegistryReading(ctx, "row-0")}; layout={remount?.layout.ToString() ?? "null"}; {ProjectionReading(ctx, remount)}";
 
             // Assert — the row stood 300px left of where the new Motion does.
             var diagnostic = $"before the scroll [{before}]; after it [{afterScroll}]; after the mount [{RegistryReading(ctx, "row-0")}]; "
-                + $"remount layout={remount.layout}, translate={remount.style.translate.keyword}/{remount.style.translate.value.x.value}, "
-                + $"projected={ctx.LayoutIdProjections.ContainsKey(remount)}, waiting={ctx.LayoutIdPendingSettles.ContainsKey(remount)}, "
+                + $"translate={remount?.style.translate.keyword}/{remount?.style.translate.value.x.value}, "
+                + $"projected={remount != null && ctx.LayoutIdProjections.ContainsKey(remount)}, "
+                + $"waiting={remount != null && ctx.LayoutIdPendingSettles.ContainsKey(remount)}, "
                 + $"hostWorld={host.worldBound}; right after the mount [{beforeTick}]; after one frame [{afterTick}]; after two [{afterSecondTick}]";
             Assert.That(translated, Is.LessThan(-200f), diagnostic);
         }
