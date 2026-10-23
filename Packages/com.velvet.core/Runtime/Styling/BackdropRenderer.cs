@@ -251,7 +251,11 @@ namespace Velvet
                 Graphics.CopyTexture(_target, 0, 0, Region.x, Region.y, Region.width, Region.height, texture, 0, 0, 0, 0);
                 return texture;
             }
-            var flips = _target == null;
+            if (_target == null && Application.isEditor)
+            {
+                return ReadBack(texture);
+            }
+            var flips = _target == null && SystemInfo.graphicsUVStartsAtTop;
             var commands = BackdropRenderer.Commands;
             commands.Clear();
             commands.DisableScissorRect();
@@ -260,6 +264,26 @@ namespace Velvet
                 new Vector2((float)Region.x / _targetWidth,
                     flips ? 1f - ((float)Region.y / _targetHeight) : (float)Region.y / _targetHeight));
             Graphics.ExecuteCommandBuffer(commands);
+            Rebound = true;
+            return texture;
+        }
+
+        // An editor window's back buffer, which a blit from the active target did not return the stage from on
+        // OpenGLCore (BackdropFilterLayerTests), is read through ReadPixels, whose rows start at the bottom on every
+        // API, and uploaded into the capture.
+        private RenderTexture ReadBack(RenderTexture texture)
+        {
+            var readback = new Texture2D(Region.width, Region.height, TextureFormat.RGBA32, false, false);
+            try
+            {
+                readback.ReadPixels(new Rect(Region.x, Region.y, Region.width, Region.height), 0, 0, false);
+                readback.Apply(false);
+                Graphics.Blit(readback, texture);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(readback);
+            }
             Rebound = true;
             return texture;
         }
