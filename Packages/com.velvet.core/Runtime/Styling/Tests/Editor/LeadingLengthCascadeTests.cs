@@ -41,14 +41,14 @@ namespace Velvet.Tests
         {
             _mounted = V.Mount(_window.rootVisualElement, tree);
             ForcePanelUpdate(_window.rootVisualElement.panel);
-            return _window.rootVisualElement.Q<Label>().text;
+            return RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>());
         }
 
         private string UpdateAndReadText()
         {
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
             ForcePanelUpdate(_window.rootVisualElement.panel);
-            return _window.rootVisualElement.Q<Label>().text;
+            return RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>());
         }
 
         [Test]
@@ -103,6 +103,42 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(text, Is.EqualTo("<line-height=30px>hi</line-height>"));
+        }
+
+        [Test]
+        public void Given_AnEmMixedWithAPixelLength_When_ALargerLabelIsUnderIt_Then_TheLabelGetsTheSumAtTheDeclaringSize()
+        {
+            // Act
+            var text = MountAndReadText(
+                V.Div(className: "text-[20px] leading-[calc(1em+4px)]", V.Label(className: "text-[40px]", text: "hi")));
+
+            // Assert
+            Assert.That(text, Is.EqualTo("<line-height=24px>hi</line-height>"));
+        }
+
+        [Test]
+        public void Given_AViewportWidthLeading_When_Mounted_Then_TheLabelGetsThatShareOfTheWindowsContent()
+        {
+            // Act
+            var text = MountAndReadText(V.Div(className: "leading-[10vw]", V.Label(text: "hi")));
+
+            // Assert — the window's content is what vw measures in an editor window (ViewportWindowTests).
+            var content = _window.rootVisualElement.layout.width;
+            Assert.That(PixelsOf(text), Is.EqualTo(content / 10f).Within(0.01f));
+        }
+
+        private static float PixelsOf(string tagged)
+        {
+            var start = tagged.IndexOf("<line-height=", System.StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return float.NaN;
+            }
+            start += "<line-height=".Length;
+            var end = tagged.IndexOf("px>", start, System.StringComparison.Ordinal);
+            return end < 0
+                ? float.NaN
+                : float.Parse(tagged.Substring(start, end - start), System.Globalization.CultureInfo.InvariantCulture);
         }
 
         [Test]
@@ -173,6 +209,7 @@ namespace Velvet.Tests
     {
         protected override Rect WindowSize => new Rect(0, 0, 600, 600);
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_NoBundledSheet_When_APercentLeadingIsLaidOut_Then_TheLabelGetsTheElementsLength()
         {
@@ -183,7 +220,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Assert
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=30px>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=30px>hi</line-height>"));
         }
     }
 }

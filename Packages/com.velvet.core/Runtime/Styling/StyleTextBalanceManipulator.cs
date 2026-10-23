@@ -229,7 +229,7 @@ namespace Velvet
                 return own;
             }
             var room = ParentContentRoom(textElement, parent);
-            var displayed = textElement.text ?? string.Empty;
+            var displayed = DisplayedText(textElement);
             if (_hasDecision && _decisionOwn == own && _decisionRoom == room
                 && string.Equals(_decisionDisplayed, displayed, StringComparison.Ordinal)
                 && string.Equals(_decisionFor, text, StringComparison.Ordinal))

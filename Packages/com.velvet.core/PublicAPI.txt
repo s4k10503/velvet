@@ -68,7 +68,7 @@
 [Velvet] ctor Velvet.FocusManagerOptions.ctor(UnityEngine.UIElements.VisualElement?, System.Boolean, System.Boolean, System.Func`2[UnityEngine.UIElements.VisualElement, System.Boolean]?): System.Void
 [Velvet] ctor Velvet.FocusOutBinding.ctor(): System.Void
 [Velvet] ctor Velvet.FocusScopeSettings.ctor(System.Boolean, System.Boolean, System.Boolean, System.Boolean): System.Void
-[Velvet] ctor Velvet.FontIntent.ctor(System.String?, System.Boolean, Velvet.VelvetFontWeight, System.Boolean, System.Boolean, System.Boolean): System.Void
+[Velvet] ctor Velvet.FontIntent.ctor(System.String?, System.Boolean, Velvet.VelvetFontWeight, System.Boolean, System.Boolean, System.Boolean, System.Single, System.Boolean): System.Void
 [Velvet] ctor Velvet.FragmentNode.ctor(): System.Void
 [Velvet] ctor Velvet.GeometryChangedBinding.ctor(): System.Void
 [Velvet] ctor Velvet.KeyDownBinding.ctor(): System.Void
@@ -189,8 +189,10 @@
 [Velvet] field Velvet.FontIntent.Family: System.String?
 [Velvet] field Velvet.FontIntent.HasFamily: System.Boolean
 [Velvet] field Velvet.FontIntent.HasItalic: System.Boolean
+[Velvet] field Velvet.FontIntent.HasStretch: System.Boolean
 [Velvet] field Velvet.FontIntent.HasWeight: System.Boolean
 [Velvet] field Velvet.FontIntent.Italic: System.Boolean
+[Velvet] field Velvet.FontIntent.Stretch: System.Single
 [Velvet] field Velvet.FontIntent.Weight: Velvet.VelvetFontWeight
 [Velvet] field Velvet.HookServiceContext.Ref: Velvet.ComponentContext`1[Velvet.IHookServiceResolver?]
 [Velvet] field Velvet.LoaderMode.Await: Velvet.LoaderMode
@@ -314,6 +316,7 @@
 [Velvet] field Velvet.VelvetFontWeight.Thin: Velvet.VelvetFontWeight
 [Velvet] field Velvet.VelvetFontWeightEntry.italic: UnityEngine.TextCore.Text.FontAsset?
 [Velvet] field Velvet.VelvetFontWeightEntry.italicAddress: System.String?
+[Velvet] field Velvet.VelvetFontWeightEntry.stretch: System.Single
 [Velvet] field Velvet.VelvetFontWeightEntry.upright: UnityEngine.TextCore.Text.FontAsset?
 [Velvet] field Velvet.VelvetFontWeightEntry.uprightAddress: System.String?
 [Velvet] field Velvet.VelvetFontWeightEntry.weight: Velvet.VelvetFontWeight
@@ -660,6 +663,7 @@
 [Velvet] method Velvet.VelvetFonts.Register(System.Collections.Generic.IEnumerable`1[Velvet.VelvetFontFamily]?, System.String?): System.Void
 [Velvet] method Velvet.VelvetFonts.Register(Velvet.VelvetFontFamily?): System.Void
 [Velvet] method Velvet.VelvetFonts.Resolve(System.String?, Velvet.VelvetFontWeight, System.Boolean): Velvet.ResolvedFont
+[Velvet] method Velvet.VelvetFonts.Resolve(System.String?, Velvet.VelvetFontWeight, System.Boolean, System.Single): Velvet.ResolvedFont
 [Velvet] method Velvet.VelvetFonts.TryLoadAddressableFont(System.String?, UnityEngine.TextCore.Text.FontAsset?&): System.Boolean
 [Velvet] method Velvet.VelvetFonts.Unregister(System.String?): System.Void
 [Velvet] method Velvet.VelvetPreviewEnvironment.Dispose(): System.Void

@@ -167,11 +167,7 @@ namespace Velvet
             // Named filter presets (blur-sm, contrast-125, hue-rotate-90, ...) are non-bracket too, parsed first.
             if (className.IndexOf('[') < 0)
             {
-                if (StyleFilterValueParser.TryParseFilterPreset(className, out result))
-                {
-                    return true;
-                }
-                return TryParseStaticScale(className, out result);
+                return TryParsePreset(className, out result);
             }
 
             var bracketStart = className.IndexOf('[', offset);
@@ -359,6 +355,13 @@ namespace Velvet
                 return TryParseRelativeLength(property, valueSpan, negate, out result);
             }
 
+            // A font size or a letter spacing in percent is a multiple of a font size, so it is measured as an em
+            // is (RelativeLengthPanelTests holds the measured result) rather than written as a percent length.
+            if (IsPercentOfFont(property, unit))
+            {
+                return TryParseRelativeLength(property, valueSpan, negate, out result);
+            }
+
             // FloatSetters write a StyleFloat, which carries no unit, and none of their longhands takes a
             // percentage in CSS.
             if (unit == LengthUnit.Percent && FloatSetters.ContainsKey(property))
@@ -398,6 +401,10 @@ namespace Velvet
             }
             return true;
         }
+
+        private static bool IsPercentOfFont(ArbitraryProperty property, LengthUnit unit)
+            => unit == LengthUnit.Percent
+                && (property == ArbitraryProperty.FontSize || property == ArbitraryProperty.LetterSpacing);
 
         private static bool IsBorderWidth(ArbitraryProperty property)
             => property is ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth
@@ -805,7 +812,7 @@ namespace Velvet
             }
             // Named filter presets (blur-sm, contrast-125, hue-rotate-90, ...) are non-bracket resolver tokens
             // too, so the one dispatch gate also claims them (incl. the negated -hue-rotate-N).
-            if (StyleFilterValueParser.IsFilterPreset(cls))
+            if (StyleFilterValueParser.IsFilterPreset(cls) || s_trackingEm.ContainsKey(cls))
             {
                 return true;
             }
@@ -871,6 +878,54 @@ namespace Velvet
         private static bool IsMarginName(ReadOnlySpan<char> body)
             => body.StartsWith("m-") || body.StartsWith("mx-") || body.StartsWith("my-") || body.StartsWith("mt-")
                 || body.StartsWith("mr-") || body.StartsWith("mb-") || body.StartsWith("ml-");
+
+        // Tailwind v4's tracking scale, in em of the element's own font size. No stylesheet declares these
+        // classes: letter-spacing has no em unit in USS, so the scale is measured on the element like a bracketed
+        // tracking-[0.025em] (RelativeLengthAxis.OwnFont).
+        private static readonly Dictionary<string, string> s_trackingEm = new(StringComparer.Ordinal)
+        {
+            ["tracking-tighter"] = "-0.05em",
+            ["tracking-tight"] = "-0.025em",
+            ["tracking-normal"] = "0em",
+            ["tracking-wide"] = "0.025em",
+            ["tracking-wider"] = "0.05em",
+            ["tracking-widest"] = "0.1em",
+        };
+
+        // The non-bracket names: a filter preset, a tracking preset, or one of the static scales.
+        private static bool TryParsePreset(string className, out ArbitraryStyle result)
+        {
+            if (StyleFilterValueParser.TryParseFilterPreset(className, out result))
+            {
+                return true;
+            }
+            if (TryParseTrackingPreset(className, out result))
+            {
+                return true;
+            }
+            return TryParseStaticScale(className, out result);
+        }
+
+        private static bool TryParseTrackingPreset(string className, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!s_trackingEm.TryGetValue(className, out var length))
+            {
+                return false;
+            }
+            // Zero is zero at any font size, so it lands without waiting for a measurement.
+            if (className == "tracking-normal")
+            {
+                result = new ArbitraryStyle(ArbitraryProperty.LetterSpacing, 0f, LengthUnit.Pixel);
+                return true;
+            }
+            if (!StyleLengthExpression.TryParse(length.AsSpan(), out var expression))
+            {
+                return false;
+            }
+            result = new ArbitraryStyle(ArbitraryProperty.LetterSpacing, expression!);
+            return true;
+        }
 
         // grow-<N> / shrink-<N>: Tailwind's bare factor, a whole number spelled without a sign or a leading
         // zero. grow-0 and shrink-0 are USS classes, so zero is left to the class list.
