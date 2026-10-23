@@ -22,6 +22,9 @@ namespace Velvet
         // Whether an exit plays it (StyleLayerPriority.Exit).
         bool IsExit { set; }
 
+        // The y factor of a scale with its own, which masks with Scale.
+        IGestureMaskable? ScaleY { get; }
+
         (IGestureMaskable? Opacity, IGestureMaskable? TranslateX, IGestureMaskable? TranslateY, IGestureMaskable? Scale,
             IGestureMaskable? Rotate) Scalars { get; }
 
@@ -77,6 +80,7 @@ namespace Velvet
         public static void MaskChannels(VisualElement element, IGestureMaskableState state, StyleLonghandSet named)
         {
             MaskScalars(element, named, state.Scalars);
+            Mask(state.ScaleY, named, StyleLonghand.Scale);
             MaskProperties(element, state.ColorChannels, named);
             MaskProperties(element, state.LengthChannels, named);
             StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);

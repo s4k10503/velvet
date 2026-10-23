@@ -9,3 +9,5 @@
   channel of a Spring or Bezier play, in percent of the element's own box, where it used to apply with the
   swap. An element that rests at `-translate-x-1/2` and plays a swap on its other axis keeps that percentage
   for the play; it was written back in pixels before.
+- `scale-x-*` and `scale-y-*` are scale channels of a Spring or Bezier play, each axis read as the element
+  draws it (`scale-50 scale-x-75` is 0.75 by 0.5), where a swap naming one used to apply with the swap.

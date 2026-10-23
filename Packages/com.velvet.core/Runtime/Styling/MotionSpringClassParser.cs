@@ -26,8 +26,7 @@ namespace Velvet
     /// define plus their arbitrary-value/spacing-scale equivalents in <see cref="StyleArbitraryValueResolver"/>.
     /// The color- and length-valued properties are recognized by <see cref="MotionPropertyClassParser"/> and
     /// carried in the same plan (see <see cref="SpringPlan.Colors"/> / <see cref="SpringPlan.Lengths"/>). A class
-    /// neither parser reads a magnitude from (a percentage-based translate like <c>translate-x-1/2</c>, a per-axis
-    /// <c>scale-x-</c>, or anything outside the property parser's own documented scope) is
+    /// neither parser reads a magnitude from (anything outside the property parser's own documented scope) is
     /// not animated, and where it is the token the cascade lets hold a slot, that slot is not animated from the
     /// other tokens on its side either — see <see cref="Claim"/>.
     /// </remarks>
@@ -79,6 +78,8 @@ namespace Velvet
             public (float from, float to)? TranslateX;
             public (float from, float to)? TranslateY;
             public (float from, float to)? Scale;
+            // The y factor of a scale that differs per axis, Scale being its x factor; null for a uniform scale.
+            public (float from, float to)? ScaleY;
             public (float from, float to)? Rotate;
             public List<ColorChannelPlan>? Colors;
             public List<LengthChannelPlan>? Lengths;
@@ -112,9 +113,8 @@ namespace Velvet
         /// magnitude shared from <see cref="StyleArbitraryValueResolver"/>'s own preset tables (single-sourced
         /// rather than a second hand-copied dictionary) — then falls back to
         /// <see cref="StyleArbitraryValueResolver.TryParse"/> for the bracket/spacing-scale forms that have no
-        /// USS class at all (<c>translate-x-4</c>, <c>-rotate-6</c>, <c>opacity-[.5]</c>, …). Percentage-based
-        /// translate and per-axis scale-x-/scale-y- are recognized by that resolver but rejected here (out of
-        /// scope — see the type doc).
+        /// USS class at all (<c>translate-x-4</c>, <c>-rotate-6</c>, <c>opacity-[.5]</c>, …). A per-axis
+        /// scale-x-/scale-y- is read per axis by <c>PairScaleAxes</c> instead.
         /// </summary>
         internal static bool TryParseAxisValue(string className, out SpringAxis axis, out float value)
             => TryParseAxisReading(className, out axis, out value, out var unit) && unit == LengthUnit.Pixel;
@@ -238,6 +238,7 @@ namespace Velvet
             PairTranslate(in from, in to, restingTranslate, reading, ref plan);
             plan.Scale = PairAxis(in from, in to, ArbitraryProperty.Scale, 1f, reading, out _);
             plan.Rotate = PairAxis(in from, in to, ArbitraryProperty.Rotate, 0f, reading, out _);
+            PairScaleAxes(fromClasses, toClasses, context, reading, ref plan);
             return plan;
         }
 
@@ -248,6 +249,7 @@ namespace Velvet
             if (plan.TranslateXUnit == start.TranslateXUnit) plan.TranslateX = StartingFrom(plan.TranslateX, start.TranslateX);
             if (plan.TranslateYUnit == start.TranslateYUnit) plan.TranslateY = StartingFrom(plan.TranslateY, start.TranslateY);
             plan.Scale = StartingFrom(plan.Scale, start.Scale);
+            plan.ScaleY = StartingFrom(plan.ScaleY, start.ScaleY ?? start.Scale);
             plan.Rotate = StartingFrom(plan.Rotate, start.Rotate);
             StartingFrom(plan.Colors, start.Colors, static (p, s) => p.Property == s.Property,
                 static (p, s) => new ColorChannelPlan(p.Property, s.From, p.To));
@@ -458,6 +460,175 @@ namespace Velvet
                     .Add(new LengthChannelPlan(property, from.Value, to.Value, to.Unit));
             }
         }
+
+        #region Per-axis scale
+
+        // What one side's scale tokens give each axis, as the resolver's ApplyCombinedScale draws them: an axis
+        // layer (scale-x-*, scale-y-*, a negated or unlisted scale-<n>) takes its axis over the sheet's scale-<n>
+        // class, which the other axis falls back on; a scale-[…] at or above every axis layer is drawn alone.
+        private struct ScaleReading
+        {
+            public float X;
+            public float Y;
+            public bool Swapped;
+            public bool PerAxis;
+            public bool Rejected;
+        }
+
+        private struct ScaleHolder
+        {
+            public long Key;
+            public float Value;
+            public bool Swapped;
+        }
+
+        private static bool TryReadScale(string[]? swapClasses, MotionSlotContext? context, out ScaleReading reading)
+        {
+            reading = default;
+            ScaleHolder x = new() { Key = -1 }, y = new() { Key = -1 }, both = new() { Key = -1 },
+                sheet = new() { Key = -1 }, bracket = new() { Key = -1 };
+            var perAxis = false;
+            var rejected = false;
+            var importantClasses = CollectImportantClasses(swapClasses ?? Array.Empty<string>(), context);
+
+            // A holder of equal rank replaces the one before it, resting classes being collected first, as Claim does.
+            void Collect(string cls, int index, bool swapped)
+            {
+                if (string.IsNullOrEmpty(cls) || !TryRank(cls, index, out var token)
+                    || !token.Written.Contains(StyleLonghand.Scale)
+                    || (!token.Important && IsSubset(token.Written, importantClasses)))
+                {
+                    return;
+                }
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                if (!token.Inline)
+                {
+                    if (TryParseAxisReading(cls, out var axis, out var factor, out _) && axis == SpringAxis.Scale
+                        && token.Precedence >= sheet.Key)
+                    {
+                        sheet = new ScaleHolder { Key = token.Precedence, Value = factor, Swapped = swapped };
+                    }
+                    return;
+                }
+                if (!StyleArbitraryValueResolver.TryParseLayer(core, out var layer))
+                {
+                    return;
+                }
+                if (layer.Rejected)
+                {
+                    rejected = true;
+                    return;
+                }
+                var held = new ScaleHolder
+                {
+                    Key = token.Precedence, Value = layer.Keyword == StyleKeyword.Undefined ? layer.Value : 1f,
+                    Swapped = swapped,
+                };
+                switch (layer.Property)
+                {
+                    case ArbitraryProperty.ScaleX:
+                        perAxis = true;
+                        if (held.Key >= x.Key) x = held;
+                        break;
+                    case ArbitraryProperty.ScaleY:
+                        perAxis = true;
+                        if (held.Key >= y.Key) y = held;
+                        break;
+                    case ArbitraryProperty.ScaleBoth:
+                        if (held.Key >= both.Key) both = held;
+                        break;
+                    case ArbitraryProperty.Scale:
+                        if (held.Key >= bracket.Key) bracket = held;
+                        break;
+                }
+            }
+
+            if (context != null)
+            {
+                foreach (var cls in context.RestingClasses())
+                {
+                    if (context.Attached || cls.StartsWith("!", StringComparison.Ordinal))
+                    {
+                        Collect(cls, 0, swapped: false);
+                    }
+                }
+            }
+            if (swapClasses != null)
+            {
+                var places = StyleRuleOrder.OrdinalsOf(swapClasses);
+                for (var i = 0; i < swapClasses.Length; i++)
+                {
+                    Collect(swapClasses[i], places[i], swapped: true);
+                }
+            }
+            if (x.Key < 0 && y.Key < 0 && both.Key < 0 && sheet.Key < 0 && bracket.Key < 0 && !rejected)
+            {
+                return false;
+            }
+
+            ScaleHolder AxisHolder(ScaleHolder axis) => both.Key > axis.Key ? both : axis;
+            var xLayer = AxisHolder(x);
+            var yLayer = AxisHolder(y);
+            reading = new ScaleReading { PerAxis = perAxis, Rejected = rejected };
+            if (bracket.Key >= 0 && (xLayer.Key < 0 || bracket.Key >= xLayer.Key)
+                && (yLayer.Key < 0 || bracket.Key >= yLayer.Key))
+            {
+                (reading.X, reading.Y, reading.Swapped) = (bracket.Value, bracket.Value, bracket.Swapped);
+                return true;
+            }
+            var xHolder = xLayer.Key >= 0 ? xLayer : sheet;
+            var yHolder = yLayer.Key >= 0 ? yLayer : sheet;
+            reading.X = xHolder.Key >= 0 ? xHolder.Value : 1f;
+            reading.Y = yHolder.Key >= 0 ? yHolder.Value : 1f;
+            reading.Swapped = (xHolder.Key >= 0 && xHolder.Swapped) || (yHolder.Key >= 0 && yHolder.Swapped);
+            return true;
+        }
+
+        // Replaces the uniform scale channel with an x and a y one where a side names an axis of its own. The sides
+        // are read here rather than through the slot claims, which keep one winner per slot.
+        private static void PairScaleAxes(string[]? fromClasses, string[]? toClasses, MotionSlotContext? context,
+            MotionSlotContext? reading, ref SpringPlan plan)
+        {
+            var hasFrom = TryReadScale(fromClasses, context, out var from);
+            var hasTo = TryReadScale(toClasses, context, out var to);
+            if (!(from.PerAxis || to.PerAxis))
+            {
+                return;
+            }
+            plan.Scale = null;
+            plan.ScaleY = null;
+            if (from.Rejected || to.Rejected
+                || (context != null && (context.HoldsGesture(ArbitraryProperty.Scale)
+                    || context.HasImportantInlineOutsideSwap(ArbitraryProperty.Scale)
+                    || context.HoldsRestingVariant(ArbitraryProperty.Scale))))
+            {
+                return;
+            }
+            var target = hasTo ? new Vector2(to.X, to.Y) : Vector2.one;
+            Vector2 start;
+            if (hasFrom && HoldsExplicitStart(reading, from.Swapped, ArbitraryProperty.Scale))
+            {
+                start = new Vector2(from.X, from.Y);
+            }
+            else if (reading != null)
+            {
+                if (!reading.TryReadScaleAxes(out start))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                start = Vector2.one;
+            }
+            plan.Scale = (start.x, target.x);
+            if (start.x != start.y || target.x != target.y)
+            {
+                plan.ScaleY = (start.y, target.y);
+            }
+        }
+
+        #endregion
 
         #region Which token holds each slot
 

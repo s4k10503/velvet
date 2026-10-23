@@ -118,6 +118,8 @@ namespace Velvet
         (IGestureMaskable? Opacity, IGestureMaskable? TranslateX, IGestureMaskable? TranslateY, IGestureMaskable? Scale,
             IGestureMaskable? Rotate) IGestureMaskableState.Scalars => (Opacity, TranslateX, TranslateY, Scale, Rotate);
 
+        IGestureMaskable? IGestureMaskableState.ScaleY => ScaleY;
+
         IReadOnlyList<IPropertyChannel>? IGestureMaskableState.ColorChannels => Colors;
         IReadOnlyList<IPropertyChannel>? IGestureMaskableState.LengthChannels => Lengths;
 
@@ -127,6 +129,8 @@ namespace Velvet
         public SpringChannel? TranslateX;
         public SpringChannel? TranslateY;
         public SpringChannel? Scale;
+        // The y factor when the play's scale differs per axis; Scale is then the x factor.
+        public SpringChannel? ScaleY;
         public SpringChannel? Rotate;
         public List<SpringColorChannel>? Colors;
         public List<SpringLengthChannel>? Lengths;
@@ -189,6 +193,7 @@ namespace Velvet
             if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to) { Unit = plan.TranslateXUnit };
             if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to) { Unit = plan.TranslateYUnit };
             if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to);
+            if (plan.ScaleY is { } sy) state.ScaleY = new SpringChannel(sy.from, sy.to);
             if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to);
             if (plan.Colors != null)
             {
@@ -353,7 +358,7 @@ namespace Velvet
             if (state.Scale is { Masked: false })
             {
                 var v = state.Scale.Integrator.Value;
-                element.style.scale = new Scale(new Vector2(v, v));
+                element.style.scale = new Scale(new Vector2(v, state.ScaleY?.Integrator.Value ?? v));
             }
             if (state.Rotate is { Masked: false })
             {
@@ -403,6 +408,7 @@ namespace Velvet
             if (state.TranslateX != null) settled &= SampleRepeating(state, state.TranslateX, dtSec, seekScale);
             if (state.TranslateY != null) settled &= SampleRepeating(state, state.TranslateY, dtSec, seekScale);
             if (state.Scale != null) settled &= SampleRepeating(state, state.Scale, dtSec, seekScale);
+            if (state.ScaleY != null) settled &= SampleRepeating(state, state.ScaleY, dtSec, seekScale);
             if (state.Rotate != null) settled &= SampleRepeating(state, state.Rotate, dtSec, seekScale);
             if (state.Colors != null)
             {
@@ -515,6 +521,7 @@ namespace Velvet
                 c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)),
                 state.Lengths,
                 l => (l.Property, l.Unit, l.Value.Integrator.Value, l.Value.Integrator.Velocity));
+            drawn.ScaleY = Of(state.ScaleY);
             drawn.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
             drawn.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
             return drawn;
@@ -539,6 +546,7 @@ namespace Velvet
             Continue(next, next.TranslateY, interrupted.TranslateYUnit == next.TranslateY?.Unit ? interrupted.TranslateY : null,
                 fromDrawn);
             Continue(next, next.Scale, interrupted.Scale, fromDrawn);
+            Continue(next, next.ScaleY, interrupted.ScaleY ?? interrupted.Scale, fromDrawn);
             Continue(next, next.Rotate, interrupted.Rotate, fromDrawn);
             if (next.Lengths != null)
             {
@@ -668,6 +676,7 @@ namespace Velvet
             if (state.Scale != null && named.Contains(StyleLonghand.Scale))
             {
                 state.Scale = null;
+                state.ScaleY = null;
                 element.style.scale = StyleKeyword.Null;
             }
             if (state.Rotate != null && named.Contains(StyleLonghand.Rotate))
@@ -696,7 +705,8 @@ namespace Velvet
             var returned = Reorigin(state.Opacity, named, StyleLonghand.Opacity, ArbitraryProperty.Opacity, shown);
             returned |= Reorigin(state.TranslateX, named, StyleLonghand.Translate, ArbitraryProperty.TranslateX, shown)
                 | Reorigin(state.TranslateY, named, StyleLonghand.Translate, ArbitraryProperty.TranslateY, shown);
-            returned |= Reorigin(state.Scale, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown);
+            returned |= Reorigin(state.Scale, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown)
+                | Reorigin(state.ScaleY, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown);
             returned |= Reorigin(state.Rotate, named, StyleLonghand.Rotate, ArbitraryProperty.Rotate, shown);
             if (state.Colors != null)
             {
@@ -809,6 +819,7 @@ namespace Velvet
             HaltChannel(state.TranslateX);
             HaltChannel(state.TranslateY);
             HaltChannel(state.Scale);
+            HaltChannel(state.ScaleY);
             HaltChannel(state.Rotate);
             if (state.Colors != null)
             {
@@ -842,6 +853,7 @@ namespace Velvet
                     l.Value.RestingTarget, l.Value.RestingTarget, l.Unit));
             plan.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
             plan.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            if (state.ScaleY != null) plan.ScaleY = (state.ScaleY.RestingTarget, state.ScaleY.RestingTarget);
             return plan;
         }
 
@@ -859,6 +871,7 @@ namespace Velvet
             if (state.TranslateX != null) action(state.TranslateX);
             if (state.TranslateY != null) action(state.TranslateY);
             if (state.Scale != null) action(state.Scale);
+            if (state.ScaleY != null) action(state.ScaleY);
             if (state.Rotate != null) action(state.Rotate);
             if (state.Colors != null)
             {

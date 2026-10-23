@@ -94,6 +94,8 @@ namespace Velvet
         (IGestureMaskable? Opacity, IGestureMaskable? TranslateX, IGestureMaskable? TranslateY, IGestureMaskable? Scale,
             IGestureMaskable? Rotate) IGestureMaskableState.Scalars => (Opacity, TranslateX, TranslateY, Scale, Rotate);
 
+        IGestureMaskable? IGestureMaskableState.ScaleY => ScaleY;
+
         IReadOnlyList<IPropertyChannel>? IGestureMaskableState.ColorChannels => Colors;
         IReadOnlyList<IPropertyChannel>? IGestureMaskableState.LengthChannels => Lengths;
 
@@ -103,6 +105,8 @@ namespace Velvet
         public BezierTweenChannel? TranslateX;
         public BezierTweenChannel? TranslateY;
         public BezierTweenChannel? Scale;
+        // The y factor when the play's scale differs per axis; Scale is then the x factor.
+        public BezierTweenChannel? ScaleY;
         public BezierTweenChannel? Rotate;
         public List<BezierColorChannel>? Colors;
         public List<BezierLengthChannel>? Lengths;
@@ -198,6 +202,7 @@ namespace Velvet
             AssignTiming(state.TranslateX, translate);
             AssignTiming(state.TranslateY, translate);
             AssignTiming(state.Scale, timing.For(StyleLonghandSet.Of(StyleLonghand.Scale)));
+            AssignTiming(state.ScaleY, timing.For(StyleLonghandSet.Of(StyleLonghand.Scale)));
             AssignTiming(state.Rotate, timing.For(StyleLonghandSet.Of(StyleLonghand.Rotate)));
             foreach (var c in state.Colors ?? s_noColors)
             {
@@ -228,6 +233,7 @@ namespace Velvet
             if (plan.TranslateX is { } tx) state.TranslateX = new BezierTweenChannel(tx.from, tx.to) { Unit = plan.TranslateXUnit };
             if (plan.TranslateY is { } ty) state.TranslateY = new BezierTweenChannel(ty.from, ty.to) { Unit = plan.TranslateYUnit };
             if (plan.Scale is { } s) state.Scale = new BezierTweenChannel(s.from, s.to);
+            if (plan.ScaleY is { } sy) state.ScaleY = new BezierTweenChannel(sy.from, sy.to);
             if (plan.Rotate is { } r) state.Rotate = new BezierTweenChannel(r.from, r.to);
             if (plan.Colors != null)
             {
@@ -341,6 +347,7 @@ namespace Velvet
                     l.Value.From, l.Unit));
             plan.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
             plan.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            if (state.ScaleY != null) plan.ScaleY = (state.ScaleY.From, state.ScaleY.From);
             return plan;
         }
 
@@ -392,6 +399,7 @@ namespace Velvet
             if (state.Scale != null && named.Contains(StyleLonghand.Scale))
             {
                 state.Scale = null;
+                state.ScaleY = null;
                 element.style.scale = StyleKeyword.Null;
             }
             if (state.Rotate != null && named.Contains(StyleLonghand.Rotate))
@@ -420,7 +428,8 @@ namespace Velvet
             var returned = Restart(state, state.Opacity, named, (StyleLonghand.Opacity, ArbitraryProperty.Opacity), shown);
             returned |= Restart(state, state.TranslateX, named, (StyleLonghand.Translate, ArbitraryProperty.TranslateX), shown)
                 | Restart(state, state.TranslateY, named, (StyleLonghand.Translate, ArbitraryProperty.TranslateY), shown);
-            returned |= Restart(state, state.Scale, named, (StyleLonghand.Scale, ArbitraryProperty.Scale), shown);
+            returned |= Restart(state, state.Scale, named, (StyleLonghand.Scale, ArbitraryProperty.Scale), shown)
+                | Restart(state, state.ScaleY, named, (StyleLonghand.Scale, ArbitraryProperty.Scale), shown);
             returned |= Restart(state, state.Rotate, named, (StyleLonghand.Rotate, ArbitraryProperty.Rotate), shown);
             for (var i = 0; i < (state.Colors?.Count ?? 0); i++)
             {
@@ -526,6 +535,7 @@ namespace Velvet
                     var (value, velocity) = Of(l.Value, l.Property)!.Value;
                     return (l.Property, l.Unit, value, velocity);
                 });
+            drawn.ScaleY = Of(state.ScaleY);
             drawn.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
             drawn.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
             return drawn;
@@ -561,6 +571,7 @@ namespace Velvet
             Continue(next.TranslateX, interrupted.TranslateXUnit == next.TranslateX?.Unit ? interrupted.TranslateX : null);
             Continue(next.TranslateY, interrupted.TranslateYUnit == next.TranslateY?.Unit ? interrupted.TranslateY : null);
             Continue(next.Scale, interrupted.Scale);
+            Continue(next.ScaleY, interrupted.ScaleY ?? interrupted.Scale);
             Continue(next.Rotate, interrupted.Rotate);
             if (next.Lengths != null)
             {
@@ -608,6 +619,7 @@ namespace Velvet
             RetargetChannel(state, state.TranslateX, shared);
             RetargetChannel(state, state.TranslateY, shared);
             RetargetChannel(state, state.Scale, shared);
+            RetargetChannel(state, state.ScaleY, shared);
             RetargetChannel(state, state.Rotate, shared);
             if (state.Colors != null)
             {
@@ -752,7 +764,7 @@ namespace Velvet
             if (state.Scale is { Masked: false })
             {
                 var v = Value(state, state.Scale, shared);
-                element.style.scale = new Scale(new Vector2(v, v));
+                element.style.scale = new Scale(new Vector2(v, state.ScaleY != null ? Value(state, state.ScaleY, shared) : v));
             }
             if (state.Rotate is { Masked: false })
             {

@@ -212,18 +212,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APerAxisScaleClassPair_When_Resolved_Then_NoScaleChannelIsPlanned()
+        public void Given_APerAxisScaleClassPair_When_Resolved_Then_TheAxisRunsAndTheOtherStaysAtOne()
         {
-            // Arrange — same gate shape as the percent-translate case above.
-            var resolvesAsPerAxisScale =
-                StyleArbitraryValueResolver.TryParse("scale-x-50", out var half)
-                && half.Property == ArbitraryProperty.ScaleX;
-
             // Act
             var plan = MotionSpringClassParser.Resolve(new[] { "scale-x-50" }, new[] { "scale-x-110" });
 
             // Assert
-            Assert.That((resolvesAsPerAxisScale, plan.Scale.HasValue), Is.EqualTo((true, false)));
+            Assert.That($"{plan.Scale},{plan.ScaleY}", Is.EqualTo("(0.5, 1.1),(1, 1)"));
         }
 
         [Test]

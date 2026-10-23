@@ -286,6 +286,22 @@ namespace Velvet
             }
         }
 
+        // The scale the element draws on each axis: its inline scale where that is set and no native transition is
+        // moving it, else the resolved one.
+        public bool TryReadScaleAxes(out Vector2 value)
+        {
+            var owner = Owner(ArbitraryProperty.Scale);
+            var inline = owner.style.scale;
+            if (inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(ArbitraryProperty.Scale))
+            {
+                value = inline.value.value;
+                return true;
+            }
+            var resolved = owner.resolvedStyle.scale.value;
+            value = new Vector2(resolved.x, resolved.y);
+            return !float.IsNaN(value.x) && !float.IsNaN(value.y) && !float.IsInfinity(value.x) && !float.IsInfinity(value.y);
+        }
+
         public bool TryReadCurrent(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
         {
             if (slot == ArbitraryProperty.BorderColor)

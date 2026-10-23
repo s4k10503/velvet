@@ -210,6 +210,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APerAxisScalePair_When_SteppedToHalfTheDuration_Then_EachAxisHoldsItsOwnMidpoint()
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act
+            var state = CreateHalfway(element, new[] { "scale-x-50", "scale-y-100" }, new[] { "scale-x-150", "scale-y-50" });
+
+            // Assert
+            Assert.That(state != null ? (Vector2?)element.style.scale.value.value : null, Is.EqualTo(new Vector2(1f, 0.75f)));
+        }
+
+        [Test]
         public void Given_APaddingShorthandPair_When_SteppedToHalfTheDuration_Then_AllFourEdgesCarryTheInterpolatedLength()
         {
             // Arrange

@@ -410,10 +410,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   Inline values hold their slots over surviving stylesheet utilities; between two stylesheet utilities
   the one the stylesheet declares later holds it, wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
   other three toward `p-8`, and `opacity-50 opacity-20` animates toward `opacity-50`. A slot held by a
-  class no number is read from (`rounded-tl-full` beside `rounded-3xl`, `!scale-x-[.5]` beside
-  `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. A `scale-[…]` of the
-  per-axis utilities' importance or above holds the scale channel, as the element draws it alone, so
-  `scale-x-[.5] scale-[1.4]` animates toward 1.4. A resting class or value in force under a variant
+  class no number is read from (`w-auto`) lands with the swap, and the classes it
+  outranks do not drive it. A `scale-[…]` of the per-axis utilities' importance or above holds both scale
+  axes, as the element draws it alone, so `scale-x-[.5] scale-[1.4]` animates toward 1.4. A resting class or value in force under a variant
   (`hover:scale-x-[.5]`, `focus:scale-50`, `focus:translate-8`, `focus:opacity-50`, `focus:bg-red-500`,
   `focus:w-[60px]`) ranks above the swap's classes, so the slots it holds land with the swap, the element drawing
   the resting value. A resting `translate-x-*` or `translate-y-*`, important or not, keeps its
@@ -448,8 +447,10 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   other end. Two nonzero ends in different units (`translate-x-1/2` → `translate-x-[20px]`) share no space to
   move through, and that axis lands with the swap. A play that interrupts one running in another unit starts
   from its own start rather than from the value drawn.
-- **Per-axis `scale-x-` / `scale-y-` are not channels,** for all that the quartet above names `scale`. They
-  resolve as ordinary utilities and apply as plain classes, so the swap lands them instantly.
+- **Per-axis scale.** `scale-x-*` and `scale-y-*` (presets and brackets) are scale channels of their own, the
+  scale being read per axis as the element draws it: an axis layer takes its axis over the sheet's `scale-<n>`,
+  which the other axis falls back on (`scale-50 scale-x-75` is 0.75 by 0.5), and a `scale-[…]` at or above every
+  axis layer is drawn alone. A scale whose two axes agree at both ends stays one channel.
 - **A play suspends the element's own USS transitions when they cover what it drives.** A driver
   writes the exact value the curve or the physics calls for on that frame, so a transition utility
   naming that same property restarts a native transition on every one of those writes and leaves

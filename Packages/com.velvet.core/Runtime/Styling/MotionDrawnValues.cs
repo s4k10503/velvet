@@ -19,6 +19,8 @@ namespace Velvet
         public LengthUnit TranslateXUnit;
         public LengthUnit TranslateYUnit;
         public (float Value, float Velocity)? Scale;
+        // The y factor, where the play draws one of its own; null where Scale is drawn on both axes.
+        public (float Value, float Velocity)? ScaleY;
         public (float Value, float Velocity)? Rotate;
         public List<(ArbitraryProperty Property, Color Color)>? Colors;
         public List<(ArbitraryProperty Property, LengthUnit Unit, float Value, float Velocity)>? Lengths;

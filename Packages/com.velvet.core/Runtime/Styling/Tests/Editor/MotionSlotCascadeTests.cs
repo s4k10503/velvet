@@ -125,17 +125,16 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base ranks every per-axis scale over a uniform scale-[…]; the important
         // modifier keeps that holder now that a plain one yields to the uniform Tailwind emits after it.
         [Test]
-        public void Given_AnImportantPerAxisScaleBesideAUniformOne_When_Resolved_Then_NoScaleChannelIsPlanned()
+        public void Given_AnImportantPerAxisScaleBesideAUniformOne_When_Resolved_Then_TheAxisTakesItsValueAndTheOtherIsOne()
         {
-            // Arrange — the important per-axis layer writes the x axis over the uniform one, a pair no single scale
-            // magnitude describes.
+            // Arrange — the important per-axis layer writes the x axis over the uniform one, which supplies neither axis.
             var to = new[] { "scale-[1.4]", "!scale-x-[.5]" };
 
             // Act
             var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
 
             // Assert
-            Assert.That(plan.Scale, Is.Null);
+            Assert.That($"{plan.Scale},{plan.ScaleY}", Is.EqualTo("(2, 0.5),(2, 1)"));
         }
 
         [TestCase(false)]
@@ -242,20 +241,20 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base ranks every per-axis scale over a uniform scale-[…]; the important
         // modifier keeps that holder now that a plain one yields to the uniform Tailwind emits after it.
-        [TestCase("!scale-x-[.5]")]
-        [TestCase("!scale-y-[.5]")]
-        public void Given_APerAxisScaleOnTheLeavingSide_When_Resolved_Then_OnlyTheUniformControlHasAScaleChannel(string layer)
+        [TestCase("!scale-x-[.5]", "(0.5, 1),(1, 1)")]
+        [TestCase("!scale-y-[.5]", "(1, 1),(0.5, 1)")]
+        public void Given_APerAxisScaleOnTheLeavingSide_When_Resolved_Then_EachAxisStartsFromTheValueItHeld(string layer,
+            string expected)
         {
             // Arrange
             var from = new[] { "scale-[2]", layer };
             var to = new[] { "scale-[1]" };
 
             // Act
-            var control = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
             var plan = MotionSpringClassParser.Resolve(from, to);
 
             // Assert
-            Assert.That((control.Scale?.to, plan.Scale.HasValue), Is.EqualTo(((float?)1f, false)));
+            Assert.That($"{plan.Scale},{plan.ScaleY}", Is.EqualTo(expected));
         }
 
         // GREEN_ON_BASE(characterization): the old numeric reader ignores gated stylesheet classes;
