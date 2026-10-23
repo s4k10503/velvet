@@ -131,7 +131,7 @@ namespace Velvet.Tests
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     variants: s_hostVariants, animate: "visible", exit: "hidden",
-                    transition: s_hostTransition));
+                    transition: s_hostTransition, enterOnMount: false));
             }
             return V.Div(name: "host", children: new VNode[]
             {

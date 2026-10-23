@@ -79,7 +79,7 @@ namespace Velvet.Tests
             return V.Div(className: s_containerClasses, children: new VNode[]
             {
                 V.Motion(name: "card", layoutId: "card", transition: s_transition, variants: s_variants, animate: s_animate,
-                    className: $"absolute left-[40px] top-[40px] {size} rounded-[48px] {s_cardClasses}", children: s_children),
+                    className: $"absolute left-[40px] top-[40px] {size} rounded-[48px] {s_cardClasses}", children: s_children, enterOnMount: false),
                 s_sibling,
             });
         }

@@ -424,7 +424,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_OnEnterCompleteThrows_When_AVariantMotionDeclaresNoInitialState_Then_TheChildStillMounts()
         {
-            // Arrange — variants + animate with no initial rests at variants[animate] and plays no enter,
+            // Arrange — a Motion that does not enter on mount rests at variants[animate] and plays no enter,
             // which is the dispatch's own no-animation branch.
             var tree = new VNode[]
             {
@@ -433,7 +433,7 @@ namespace Velvet.Tests
                     V.Motion(key: "a", transition: NewConfig(),
                         variants: s_enterVariants, animate: "visible",
                         onEnterComplete: () => throw new InvalidOperationException(EnterFailureMessage),
-                        children: new VNode[] { V.Label(text: "A") }),
+                        children: new VNode[] { V.Label(text: "A") }, enterOnMount: false),
                 }),
             };
             LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {EnterFailureMessage}");
@@ -643,7 +643,7 @@ namespace Velvet.Tests
                 {
                     V.Motion(key: "a", name: "exit-leaf", variants: Fade, animate: "visible", exit: "hidden",
                         transition: new StyleTransitionConfig { DurationSec = DurationSec },
-                        children: new VNode[] { V.Label(text: "A") }),
+                        children: new VNode[] { V.Label(text: "A") }, enterOnMount: false),
                 }
                 : Array.Empty<VNode>());
         }

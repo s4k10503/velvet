@@ -334,7 +334,7 @@ namespace Velvet
 
         private static void ApplyCurrentFrame(VisualElement element, StyleAnimateBinding binding, MotionTransitionSlots driven)
         {
-            var free = GuardedSlots(binding.Spec.Mode);
+            var free = GuardedSlots(binding.Spec);
             var yielded = MotionTransitionSlots.None;
             if (s_yielded.TryGetValue(element, out var yields))
             {
@@ -350,6 +350,11 @@ namespace Velvet
                     free &= ~slots;
                 }
             }
+            // An important declaration of the element's own outranks an animation, so the loop leaves its slot alone.
+            if (StyleArbitraryValueResolver.HoldsImportant(element, MotionNativeTransitionGuard.LonghandsOf(free)))
+            {
+                free &= ~ImportantSlots(element, free);
+            }
             if (free == MotionTransitionSlots.None)
             {
                 return;
@@ -357,6 +362,27 @@ namespace Velvet
             var elapsed = binding.Clock.NowSec - binding.StartTime;
             WriteFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec), free, driven | yielded, yielded);
         }
+
+        // The slots of free the element's important declarations write.
+        private static MotionTransitionSlots ImportantSlots(VisualElement element, MotionTransitionSlots free)
+        {
+            var held = MotionTransitionSlots.None;
+            foreach (var slot in s_loopSlots)
+            {
+                if ((free & slot) != MotionTransitionSlots.None
+                    && StyleArbitraryValueResolver.HoldsImportant(element, MotionNativeTransitionGuard.LonghandsOf(slot)))
+                {
+                    held |= slot;
+                }
+            }
+            return held;
+        }
+
+        private static readonly MotionTransitionSlots[] s_loopSlots =
+        {
+            MotionTransitionSlots.Opacity, MotionTransitionSlots.Translate, MotionTransitionSlots.Scale,
+            MotionTransitionSlots.Rotate, MotionTransitionSlots.Filter, MotionTransitionSlots.BackgroundPosition,
+        };
 
         // Attaches a motion to an element whose gradient (the pan modes) is already applied. Sets the
         // once-per-attach background sizing for pan modes, takes the transition suspension, then schedules the
@@ -416,11 +442,14 @@ namespace Velvet
         /// binding outlives class-list changes: the transition utilities beside it can come and go while it runs.
         /// </summary>
         public static void SyncTransitionSuspension(VisualElement element, StyleAnimateBinding binding)
-            => MotionNativeTransitionGuard.SyncSuspension(element, binding, GuardedSlots(binding.Spec.Mode));
+            => MotionNativeTransitionGuard.SyncSuspension(element, binding, GuardedSlots(binding.Spec));
 
         // The slot each mode writes on a tick. The pan modes also write background-size and
         // background-repeat, but at attach and once -- and above this call, so a transition covering
         // either takes that write whatever this returns.
+        private static MotionTransitionSlots GuardedSlots(AnimateSpec spec)
+            => spec.Mode == AnimateMode.Custom ? spec.Keyframes!.Slots : GuardedSlots(spec.Mode);
+
 #pragma warning disable CS8524 // no discard arm: a new mode has to name the slots it guards
         private static MotionTransitionSlots GuardedSlots(AnimateMode mode) => mode switch
         {
@@ -430,7 +459,7 @@ namespace Velvet
             AnimateMode.Ping => MotionTransitionSlots.Opacity | MotionTransitionSlots.Scale,
             AnimateMode.Bounce => MotionTransitionSlots.Translate,
             AnimateMode.Gradient or AnimateMode.Shimmer => MotionTransitionSlots.BackgroundPosition,
-            AnimateMode.None => MotionTransitionSlots.None,
+            AnimateMode.None or AnimateMode.Custom => MotionTransitionSlots.None,
         };
 #pragma warning restore CS8524
 
@@ -506,6 +535,20 @@ namespace Velvet
                 // Same ownership rule as the Spin branch, over the translate slot.
                 SeatedTranslate.Write(element, StyleKeyword.Null);
             }
+            else if (binding.Spec.Mode == AnimateMode.Custom)
+            {
+                ReleaseCustom(element, binding.Spec.Keyframes!);
+            }
+        }
+
+        // Hands back each slot the keyframes wrote, on the terms of the built-in modes above.
+        private static void ReleaseCustom(VisualElement element, KeyframeSet keyframes)
+        {
+            var slots = keyframes.Slots;
+            if ((slots & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None) MotionOpacity.Write(element, StyleKeyword.Null);
+            if ((slots & MotionTransitionSlots.Rotate) != MotionTransitionSlots.None) element.style.rotate = StyleKeyword.Null;
+            if ((slots & MotionTransitionSlots.Scale) != MotionTransitionSlots.None) element.style.scale = StyleKeyword.Null;
+            if ((slots & MotionTransitionSlots.Translate) != MotionTransitionSlots.None) SeatedTranslate.Write(element, StyleKeyword.Null);
         }
 
         // Re-asserts a pan mode's background sizing. A steady-state patch (the animate spec is unchanged) may
@@ -606,7 +649,7 @@ namespace Velvet
         // laid-out element); Hue is geometry-independent. Public so tests drive specific phases without the
         // runtime scheduler (which the EditMode PlayerLoop does not tick).
         public static void ApplyFrame(VisualElement element, StyleAnimateBinding binding, float t)
-            => WriteFrame(element, binding, t, GuardedSlots(binding.Spec.Mode), MotionTransitionSlots.None, MotionTransitionSlots.None);
+            => WriteFrame(element, binding, t, GuardedSlots(binding.Spec), MotionTransitionSlots.None, MotionTransitionSlots.None);
 
         // free names the slots no Motion driver is holding against the loop (HoldAgainstLoop), driven the slots whose
         // inline value is somebody's frame rather than the element's own, and yielded the ones a layoutId projection
@@ -667,6 +710,9 @@ namespace Velvet
                     break;
                 case AnimateMode.Bounce:
                     ApplyBounce(element, binding, t, driven, yielded);
+                    break;
+                case AnimateMode.Custom:
+                    ApplyCustom(element, binding, t, free, driven, yielded);
                     break;
             }
         }
@@ -784,6 +830,53 @@ namespace Velvet
             var own = ReadTranslate(element, binding, translation);
             var x = LengthPx(own.x, width) + lift.x;
             var y = LengthPx(own.y, height) + lift.y;
+            SeatedTranslate.Write(element, new Translate(new Length(x), new Length(y), own.z));
+            binding.Translation.Wrote(SeatedTranslate.Read(element));
+        }
+
+        // One frame of a registered animation at loop position t. Each property composes with the element's own the
+        // way the built-in modes compose theirs: opacity replaces it, a translate adds to it, a scale multiplies it and a
+        // rotation adds to it.
+        private static void ApplyCustom(VisualElement element, StyleAnimateBinding binding, float t,
+            MotionTransitionSlots free, MotionTransitionSlots driven, MotionTransitionSlots yielded)
+        {
+            var keyframes = binding.Spec.Keyframes!;
+            var timing = binding.Spec.Timing;
+            if (keyframes.Opacity != null && (free & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None)
+            {
+                var own = OwnOpacity(element, binding, driven);
+                WriteOpacity(element, binding, keyframes.Opacity.Eval(t, own, own, timing));
+            }
+            if (keyframes.Rotate != null && (free & ~yielded & MotionTransitionSlots.Rotate) != MotionTransitionSlots.None)
+            {
+                var inline = binding.Rotation.Own(element.style.rotate, Adopts(driven, MotionTransitionSlots.Rotate));
+                var turn = ReadRotationDeg(element, binding, inline) + keyframes.Rotate.Eval(t, 0f, 0f, timing);
+                element.style.rotate = new Rotate(Angle.Degrees(turn));
+                binding.Rotation.Wrote(element.style.rotate);
+            }
+            if (keyframes.Scale != null && (free & ~yielded & MotionTransitionSlots.Scale) != MotionTransitionSlots.None)
+            {
+                var inline = binding.Scale.Own(element.style.scale, Adopts(driven, MotionTransitionSlots.Scale));
+                var own = ReadScale(element, binding, inline);
+                var factor = keyframes.Scale.Eval(t, 1f, 1f, timing);
+                element.style.scale = new Scale(new Vector3(own.x * factor, own.y * factor, own.z));
+                binding.Scale.Wrote(element.style.scale);
+            }
+            if ((keyframes.TranslateX != null || keyframes.TranslateY != null)
+                && (free & ~yielded & MotionTransitionSlots.Translate) != MotionTransitionSlots.None)
+            {
+                ApplyCustomTranslate(element, binding, keyframes, t, driven);
+            }
+        }
+
+        private static void ApplyCustomTranslate(VisualElement element, StyleAnimateBinding binding, KeyframeSet keyframes,
+            float t, MotionTransitionSlots driven)
+        {
+            var translation = binding.Translation.Own(SeatedTranslate.Read(element), Adopts(driven, MotionTransitionSlots.Translate));
+            var own = ReadTranslate(element, binding, translation);
+            var (width, height) = (element.resolvedStyle.width, element.resolvedStyle.height);
+            var x = LengthPx(own.x, float.IsNaN(width) ? 0f : width) + (keyframes.TranslateX?.Eval(t, 0f, 0f, binding.Spec.Timing) ?? 0f);
+            var y = LengthPx(own.y, float.IsNaN(height) ? 0f : height) + (keyframes.TranslateY?.Eval(t, 0f, 0f, binding.Spec.Timing) ?? 0f);
             SeatedTranslate.Write(element, new Translate(new Length(x), new Length(y), own.z));
             binding.Translation.Wrote(SeatedTranslate.Read(element));
         }

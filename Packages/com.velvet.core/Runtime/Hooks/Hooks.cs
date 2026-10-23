@@ -1390,6 +1390,23 @@ namespace Velvet
             return UseAnimationSequenceCore(steps, deps, autoplay, iterations, repeatDelaySec);
         }
 
+        /// <summary>
+        /// Framer Motion's <c>useAnimate</c>: a <c>scope</c> ref to give the root element (<c>refCallback: scope.SetElement</c>)
+        /// and an <see cref="Animator"/> whose <c>Animate</c> animates elements inside it by reference or by selector,
+        /// alone or as a sequence whose segments overlap through <see cref="AnimateAt"/>. Each call returns
+        /// <see cref="AnimateControls"/>. What it animates are inline values, so it reaches elements outside the
+        /// declarative Motion tree; the animations run on the mount's frames and are stopped when the component unmounts.
+        /// </summary>
+        public static (Ref<VisualElement> scope, Animator animate) UseAnimate()
+        {
+            Resolve("UseAnimate");
+            var holder = UseRef(static () => new Animator(new Ref<VisualElement>()));
+            var animator = holder.Current!;
+            UseFrame(animator.Tick);
+            UseEffect(() => animator.StopAll, Array.Empty<object?>());
+            return (animator.Scope, animator);
+        }
+
         // A null iterations plays without end.
         private static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequenceCore(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay, int? iterations,

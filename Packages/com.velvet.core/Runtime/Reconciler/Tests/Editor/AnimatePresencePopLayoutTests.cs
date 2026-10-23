@@ -64,7 +64,7 @@ namespace Velvet.Tests
                 var motion = V.Motion(name: "item-" + key, key: s_fragments ? null : key.ToString(),
                     className: "w-[60px] h-[24px]",
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f });
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false);
                 children.Add(s_fragments ? V.Fragment(new[] { motion }, key: key.ToString()) : motion);
             }
             return V.Div(name: "presence-host", children: new VNode[]
@@ -103,7 +103,7 @@ namespace Velvet.Tests
                     ? V.Motion(className: "w-[60px] h-[24px]", transition: StyleTransition.Fade)
                     : V.Motion(className: "w-[60px] h-[24px]",
                         variants: s_fade, animate: "visible", exit: "hidden",
-                        transition: new StyleTransitionConfig { DurationSec = 0.3f });
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false);
                 children.Add(V.Div(name: "item-" + key, key: key.ToString(), className: "absolute z-10",
                     children: new VNode[] { motion }));
             }
@@ -223,9 +223,8 @@ namespace Velvet.Tests
             store.Set("abc");
             scheduler.DrainImmediateForTest();
 
-            // Assert — the cancel clears item-b's own pin (position back to Null, rejoining the front layer
-            // container's normal flow) AND leaves its width untouched by the nested Motion's own w-[60px]
-            // class: RestorePopLayoutChildToFlow reapplies the ANCHOR's own declared classes (item-b's
+            // Assert — the cancel clears item-b's own pin (position back to Null, rejoining
+            // normal flow) AND leaves its width untouched by the nested Motion's own w-[60px] class: RestorePopLayoutChildToFlow reapplies the ANCHOR's own declared classes (item-b's
             // "absolute z-10", neither an arbitrary-value token), not the differently-classed Motion nested
             // inside it — a stray reapply from the wrong element's class list would otherwise leave a
             // concrete (non-Null) width behind. The pin itself is asserted first: an element that was never
@@ -259,7 +258,59 @@ namespace Velvet.Tests
                 Is.EqualTo(Position.Absolute));
         }
 
-        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
+        private static string[] ItemsInPaintOrder(VisualElement host)
+        {
+            var names = new List<string>();
+            foreach (var child in host.Children())
+            {
+                if (child.name != null && child.name.StartsWith("item-", StringComparison.Ordinal))
+                {
+                    names.Add(child.name);
+                }
+            }
+            return names.ToArray();
+        }
+
+        [Test]
+        public void Given_APopLayoutModeChild_When_ItStartsExiting_Then_ItPaintsAfterTheSiblingsDeclaredAfterIt()
+        {
+            // Arrange
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = MountLaidOut();
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+
+            // Act
+            store.Set("ac");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(ItemsInPaintOrder(_window.rootVisualElement.Q<VisualElement>("presence-host")),
+                Is.EqualTo(new[] { "item-a", "item-c", "item-b" }));
+        }
+
+        [Test]
+        public void Given_APopLayoutExitInFlight_When_TheKeyReturnsBeforeItFinishes_Then_ItPaintsInItsDeclaredPlaceAgain()
+        {
+            // Arrange
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = MountLaidOut();
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            store.Set("ac");
+            scheduler.DrainImmediateForTest();
+            var host = _window.rootVisualElement.Q<VisualElement>("presence-host");
+            var whileExiting = ItemsInPaintOrder(host);
+
+            // Act
+            store.Set("abc");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That((string.Join(",", whileExiting), string.Join(",", ItemsInPaintOrder(host))),
+                Is.EqualTo(("item-a,item-c,item-b", "item-a,item-b,item-c")));
+        }
+
         [Test]
         public void Given_APopLayoutModeChild_When_Pinned_Then_ItsInlineRectMatchesItsLastLaidOutBox()
         {
@@ -446,7 +497,7 @@ namespace Velvet.Tests
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     className: "h-[20px] w-[40px]" + extra,
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false));
             }
             return V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
             {
@@ -598,7 +649,7 @@ namespace Velvet.Tests
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(), className: "h-[20px] w-[40px]",
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false));
             }
             return V.Div(name: "row", className: "flex flex-row-reverse gap-x-2", children: new VNode[]
             {

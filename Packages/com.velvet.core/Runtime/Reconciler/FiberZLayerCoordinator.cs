@@ -33,6 +33,10 @@ namespace Velvet
     // Everything else this moves is invisible to the reconciler's slot arithmetic (LogicalChildSlots.IsInvisible).
     internal static class FiberZLayerCoordinator
     {
+        // The z a pinned PopLayout ghost stacks at: in front of every ordinary sibling, as a positioned element paints
+        // above the in-flow ones, and beneath any element given a positive z of its own.
+        internal const int PinnedGhostZ = 0;
+
         private enum Role
         {
             Slot,
@@ -492,6 +496,34 @@ namespace Velvet
             => facts is { } f && ctx.ZLayerHosts.TryGetValue(parent, out var record) && record.Lifted
                 && (f.Z == 0 || (f.Z == null && IsPositioned(ctx, real)));
 
+        // Marks ghost, a child a PopLayout presence has just pinned out of flow, to paint as a positioned element
+        // does while it exits (PinnedGhostZ). A pin is read when its parent is arranged, so it stands for as long as
+        // the entry does whatever the ghost's classes say.
+        internal static void PinGhost(ReconcilerContext ctx, VisualElement ghost)
+        {
+            ctx.PinnedGhosts.Remove(ghost);
+            ctx.PinnedGhosts.Add(ghost, s_candidate);
+            MarkGhostParent(ctx, ghost);
+        }
+
+        // A pinned ghost whose exit was cancelled goes back to painting by its own classes.
+        internal static void UnpinGhost(ReconcilerContext ctx, VisualElement ghost)
+        {
+            if (ctx.PinnedGhosts.Remove(ghost))
+            {
+                MarkGhostParent(ctx, ghost);
+            }
+        }
+
+        private static void MarkGhostParent(ReconcilerContext ctx, VisualElement ghost)
+        {
+            var parent = PlaceholderOf(ctx, ghost)?.parent ?? ghost.parent;
+            if (parent != null)
+            {
+                MarkPending(ctx, parent);
+            }
+        }
+
         // The placeholder standing at real's declared slot while it is relocated, placed or still queued; null while
         // real is in that slot itself.
         internal static VisualElement? PlaceholderOf(ReconcilerContext ctx, VisualElement real)
@@ -548,6 +580,7 @@ namespace Velvet
             {
                 return null;
             }
+            ctx.PinnedGhosts.Remove(real);
             s_held.Remove(placeholder);
             ctx.ZLayerMembers.Remove(real);
             var parent = real.parent;
@@ -822,10 +855,6 @@ namespace Velvet
 
         private static bool HoldsTrackedChild(ReconcilerContext ctx, VisualElement parent)
         {
-            if (ctx.StackingFacts.Count == 0)
-            {
-                return false;
-            }
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
                 var child = parent.hierarchy[i];
@@ -834,7 +863,7 @@ namespace Velvet
                     continue;
                 }
                 var real = ctx.ZLayerPlaceholders.TryGetValue(child, out var placed) ? placed : child;
-                if (ctx.StackingFacts.ContainsKey(real))
+                if (ctx.StackingFacts.ContainsKey(real) || ctx.PinnedGhosts.TryGetValue(real, out _))
                 {
                     return true;
                 }
@@ -872,6 +901,14 @@ namespace Velvet
                     entry.Absolute = IsAbsolute(ctx, real);
                     entry.Order = entry.Absolute || !IsFlexOrGrid(parent) ? 0 : facts.Order;
                     entry.Positioned = IsPositioned(ctx, real);
+                }
+                if (ctx.PinnedGhosts.TryGetValue(real, out _))
+                {
+                    entry.Tracked = true;
+                    entry.Z ??= PinnedGhostZ;
+                    entry.Absolute = true;
+                    entry.Positioned = true;
+                    entry.Order = 0;
                 }
             }
         }

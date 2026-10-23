@@ -96,8 +96,9 @@ namespace Velvet
         // border overlay (FaceBorderOverlay, hosted the same way), a SceneView's camera feed (SceneViewDriver's
         // child over the element's content box), a Particles element's blend layer (ParticlesDriver's children
         // that draw the runs the element does not), a backdrop layer (BackdropFilterLayer, hosted before its
-        // element), or one of FiberZLayerCoordinator's internal children (an anchor, or a retired placeholder
-        // awaiting removal).
+        // element), the container a class probe hosts for the length of one style pass (StyleUserClassProperties),
+        // or one of FiberZLayerCoordinator's internal children (an anchor, or a retired placeholder awaiting
+        // removal).
         internal static bool IsSpacer(VisualElement child)
             => child != null
                 && (child.ClassListContains(MarkerClass)
@@ -106,6 +107,7 @@ namespace Velvet
                     || child.ClassListContains(SceneViewDriver.FeedMarkerClass)
                     || child.ClassListContains(ParticlesDriver.LayerMarkerClass)
                     || child.ClassListContains(BackdropFilterLayer.MarkerClass)
+                    || child.ClassListContains(StyleUserClassProperties.MarkerClass)
                     || FiberZLayerCoordinator.IsInternal(child));
 
         // True when spacer is a child of caster and no RENDERED (non-spacer) child follows it — the placement

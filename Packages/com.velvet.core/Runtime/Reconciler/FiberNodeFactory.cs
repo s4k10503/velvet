@@ -321,36 +321,7 @@ namespace Velvet
             // Resolved before the children reconcile, because a mount enter orchestrates the enters of the
             // inheriting descendants created under it the way a label change orchestrates their swaps.
             var enter = ResolveMountEnter(motionNode, motionAmbient);
-            if (motionNode.Children != null)
-            {
-                var childContainer = FiberNodePatcher.GetChildContainer(element);
-                // Provide this Motion's active label to its descendants while their subtree reconciles
-                // (same ComponentContextStack the Router/Outlet ambient values ride on). Skip the
-                // stack round-trip entirely when there is no label to propagate (the common case).
-                if (childLabel != null)
-                {
-                    var childOrchestration = FiberNodePatcher.ResolveChildOrchestration(motionNode,
-                        enter.Transition, enter.Resolved, enter.Ambient, enter.DelaySec, enter.From, enter.To, element,
-                        _ctx.StyleAnimationScheduler);
-                    MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel, enter.InitialLabel,
-                        childOrchestration, MotionVariantResolver.PlaybackForChildren(motionNode,
-                            _ctx.ComponentContextStack.Get(MotionContext.Playback)));
-                    try
-                    {
-                        using var inside = new LayoutIdMotionScope(_ctx, motionNode.LayoutId != null);
-                        ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children, writtenClasses);
-                    }
-                    finally
-                    {
-                        MotionContext.PopForChildren(_ctx.ComponentContextStack);
-                    }
-                }
-                else
-                {
-                    using var inside = new LayoutIdMotionScope(_ctx, motionNode.LayoutId != null);
-                    ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children, writtenClasses);
-                }
-            }
+            var childOrchestration = ReconcileMotionChildren(element, motionNode, childLabel, writtenClasses, in enter);
             _ctx.SyncRefCallback(element, motionNode.RefCallback);
             _patcher.Appliers.ApplyGestureManipulator(element, motionNode.WhileHoverClass, motionNode.WhileTapClass, motionNode.WhileFocusClass);
             _patcher.Appliers.ExpectDragGates(element, motionNode.Props);
@@ -365,9 +336,7 @@ namespace Velvet
             _patcher.ApplyHasVariantManipulators(element);
             _patcher.ApplyTextEffects(element, writtenClasses);
             // The element path's sequence, from the same composed source. The shadow and the ring take their
-            // patch-time entries rather than ApplyShadowOnCreate / ApplyRingOnCreate, whose clip-path gates would
-            // suppress them for a clip-path this Motion ignores (WarnIgnoredMotionUtilities); a Motion's patch
-            // passes no active clip either.
+            // patch-time entries rather than ApplyShadowOnCreate / ApplyRingOnCreate.
             _ctx.ExpectPlayGates(element, motionNode);
             var motionPaintClasses = _patcher.ResolveVariantClassesOnCreate(element, writtenClasses);
             _patcher.Appliers.ApplySkewOnCreate(element, motionPaintClasses);
@@ -375,12 +344,16 @@ namespace Velvet
             _patcher.Appliers.ApplyAnimateOnCreate(element, motionPaintClasses);
             // transition-filter on a Motion host, as on a plain element above.
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, motionPaintClasses);
-            _patcher.Appliers.ApplyShadowOnPatch(element, motionPaintClasses, clipActive: false,
+            // A clip-path-* class wraps the element in the stencil container, as an element's does; the shadow and the
+            // ring then stand down for the clip.
+            var motionOuter = _patcher.Appliers.ApplyClipPathOnCreate(element, writtenClasses);
+            var clipActive = !ReferenceEquals(motionOuter, element);
+            _patcher.Appliers.ApplyShadowOnPatch(element, motionPaintClasses, clipActive,
                 StyleSkewClass.TryExtract(motionPaintClasses, out var motionSkew) ? motionSkew : default);
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, motionPaintClasses);
-            _patcher.Appliers.ApplyRingOnPatch(element, motionPaintClasses, clipActive: false);
+            _patcher.Appliers.ApplyRingOnPatch(element, motionPaintClasses, clipActive);
+            WarnInertMotionExit(motionNode);
             _patcher.Appliers.ApplyBackdropOnPatch(element, motionPaintClasses);
-            WarnIgnoredMotionUtilities(motionNode, appliedClasses);
             // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
             // mount animation, the same variant enter the presence expansion drives
             // (GeneralPathReconciler.ExpandAnimatePresenceInline). The element above was created carrying the
@@ -393,13 +366,19 @@ namespace Velvet
             // that Motion names its own animate; this plays every other one, and says so for the anchor through
             // PresenceAnchorEnterHandled so the expansion plays nothing over it.
             var isAnchor = ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion);
+            ReportEnterEnd(element, motionNode, in enter, childOrchestration);
+            if (isAnchor)
+            {
+                _ctx.PresenceAnchorEnterDelaySec = MotionOrchestrationWait.PlayStartSec(childOrchestration,
+                    enter.DelaySec);
+            }
             if (!isAnchor || motionNode.Animate == null)
             {
                 if (enter.Resolved)
                 {
                     _ctx.PresenceAnchorEnterHandled |= isAnchor;
                     // Contained on the same terms the presence expansion's own enters are: logged where it throws.
-                    if (EntersBlocked)
+                    if (EntersBlocked || !motionNode.EnterOnMount)
                     {
                         // The same completion a suppressed anchor enter reports, and deferred as that one is.
                         _ctx.CompleteEnterAfterThePass(motionNode, _ctx.FiberStack.Current);
@@ -410,7 +389,8 @@ namespace Velvet
                         var onSwap = _patcher.HoldInlineForEnter(element, motionNode.ClassNames,
                             enter.From!, enter.Transition!);
                         _ctx.StyleAnimationScheduler.PlayVariantEnter(element, enter.From, enter.To,
-                            enter.Transition!, enterComplete, enter.DelaySec, onSwap,
+                            enter.Transition!, enterComplete,
+                            MotionOrchestrationWait.PlayStartSec(childOrchestration, enter.DelaySec), onSwap,
                             playback: MotionVariantResolver.PlaybackForChildren(motionNode,
                                 _ctx.ComponentContextStack.Get(MotionContext.Playback)));
                     }
@@ -419,8 +399,7 @@ namespace Velvet
                 {
                     // Both labels declared and no enter between them: the initial label is missing from
                     // Variants, or neither the target variant nor this Motion carries a transition to play on.
-                    // Warn instead of silently mounting inert, matching the exit diagnostic in
-                    // WarnIgnoredMotionUtilities. An initial with no animate is a pose to rest at.
+                    // Warn instead of silently mounting inert. An initial with no animate is a pose to rest at.
                     FiberLogger.LogWarning("Motion",
                         "initial is set but has no resolvable enter: this Motion needs variants holding a "
                         + "pose for its initial label, and a transition, for a mount enter.");
@@ -429,9 +408,9 @@ namespace Velvet
             // A rotated layoutId Motion created inside another is drawn through a correction wrapper from its first
             // frame: inside one still being created, which is not registered yet, by the depth count, else by the
             // parent the reconcile places it under.
-            var outer = WantsLayoutIdCorrection(motionNode, appliedClasses)
+            var outer = WantsLayoutIdCorrection(motionNode, appliedClasses, clipActive)
                 ? _patcher.Appliers.WrapLayoutIdCorrection(element)
-                : element;
+                : motionOuter;
             // Shared-element layout animation (layoutId) on a freshly-created element, which never
             // routes through PatchMotion's own registration.
             if (motionNode.LayoutId != null)
@@ -444,9 +423,11 @@ namespace Velvet
                 motionNode.Props?.Anchored != null);
         }
 
-        private bool WantsLayoutIdCorrection(MotionNode motionNode, string[] appliedClasses)
+        // A clip wrapper is already the box the layoutId driver reads and writes, so a clipped Motion
+        // takes no correction wrapper on top of it.
+        private bool WantsLayoutIdCorrection(MotionNode motionNode, string[] appliedClasses, bool clipActive)
         {
-            if (motionNode.LayoutId == null || !MotionLayoutIdDriver.Corrects(appliedClasses)) return false;
+            if (clipActive || motionNode.LayoutId == null || !MotionLayoutIdDriver.Corrects(appliedClasses)) return false;
             return _ctx.LayoutIdMotionDepth > 0 || MotionLayoutIdDriver.HasLayoutIdAncestor(_ctx.ReconcileParent, _ctx);
         }
 
@@ -475,9 +456,43 @@ namespace Velvet
             };
         }
 
+        private MotionOrchestrationFrame? ReconcileMotionChildren(VisualElement element, MotionNode motionNode,
+            string? childLabel, string[] writtenClasses, in MountEnter enter)
+            => _patcher.ReconcileUnderMotion(
+                new FiberNodePatcher.MotionChildScope
+                {
+                    Node = motionNode, Element = element,
+                    ChildLabel = motionNode.Children != null ? childLabel : null,
+                    InitialLabel = enter.InitialLabel,
+                    Playback = MotionVariantResolver.PlaybackForChildren(motionNode,
+                        _ctx.ComponentContextStack.Get(MotionContext.Playback)),
+                    Transition = enter.Transition, Resolved = enter.Resolved, Ambient = enter.Ambient,
+                    DelaySec = enter.DelaySec, From = enter.From, To = enter.To,
+                },
+                (factory: this, element, children: motionNode.Children, holdsId: motionNode.LayoutId != null,
+                    classes: writtenClasses),
+                static s =>
+                {
+                    if (s.children != null)
+                    {
+                        using var inside = new LayoutIdMotionScope(s.factory._ctx, s.holdsId);
+                        s.factory.ReconcileChildrenOfNewElement(s.element, FiberNodePatcher.GetChildContainer(s.element),
+                            s.children, s.classes);
+                    }
+                });
+
+        // The end of the mount enter a variant child plays, reported to the frame it claimed its slot from: nothing
+        // plays where the enter is withheld or resolves to none.
+        private void ReportEnterEnd(VisualElement element, MotionNode motionNode, in MountEnter enter,
+            MotionOrchestrationFrame? ownFrame)
+            => _patcher.ReportPlayEnd(element, motionNode, enter.Ambient, ownFrame,
+                enter.Resolved && !EntersBlocked && motionNode.EnterOnMount ? enter.Transition : null,
+                MotionOrchestrationWait.PlayStartSec(ownFrame, enter.DelaySec), enter.From, enter.To);
+
         private bool EntersBlocked
-            => _ctx.ComponentContextStack.Get(MotionContext.EntersBlocked)
-                ?? _ctx.FiberStack.Current?.BlocksInitialEnters ?? false;
+            => _ctx.ComponentContextStack.Get(MotionContext.EntersWithheld)
+                || (_ctx.ComponentContextStack.Get(MotionContext.EntersBlocked)
+                    ?? _ctx.FiberStack.Current?.BlocksInitialEnters ?? false);
 
         private readonly struct MountEnter
         {
@@ -490,24 +505,12 @@ namespace Velvet
             internal float DelaySec { get; init; }
         }
 
-        // The utilities a Motion host silently cannot honour. Each is diagnosed rather than applied,
-        // because the class reaches this element through the ordinary utility pipeline and a silent drop
-        // reads as a broken utility.
-        private void WarnIgnoredMotionUtilities(MotionNode motionNode, string[] appliedClasses)
+        // Exit plays only when an AnimatePresence removal defers the unmount, so it is inert outside one.
+        // Warned only where this reconciler holds no presence at all: a Motion a component inside a
+        // presence child mounts on its own re-render, or a portal drains, is created with no presence
+        // expansion on the stack and still exits.
+        private void WarnInertMotionExit(MotionNode motionNode)
         {
-            // clip-path-* is a structural wrapper, which would become the AnimatePresence anchor while
-            // the enter/exit transition stays on the inner Motion: ignored on a Motion, never wrapped.
-            // Warned only for an ACTIVE clip: clip-path-none / an unparseable value activates nothing.
-            if (StyleClipPathClass.WantsClipPath(appliedClasses))
-            {
-                FiberLogger.LogWarning("Motion",
-                    "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit. "
-                    + "Wrap the Motion around a clipped Div instead.");
-            }
-            // Exit plays only when an AnimatePresence removal defers the unmount, so it is inert outside one.
-            // Warned only where this reconciler holds no presence at all: a Motion a component inside a
-            // presence child mounts on its own re-render, or a portal drains, is created with no presence
-            // expansion on the stack and still exits.
             if (_ctx.PresenceStates.Count == 0 && motionNode.Exit != null)
             {
                 FiberLogger.LogWarning("Motion",

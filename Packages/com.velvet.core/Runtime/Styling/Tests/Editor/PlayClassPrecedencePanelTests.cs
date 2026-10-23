@@ -263,7 +263,7 @@ namespace Velvet.Tests
             {
                 V.Div(className: "w-[20px] h-[20px]"),
                 V.Motion(name: "b", className: "w-[20px] h-[20px]", variants: poses, animate: lit ? "b" : "a",
-                    transition: Tween()),
+                    transition: Tween(), enterOnMount: false),
                 V.Div(className: "w-[20px] h-[20px]"),
             });
         }
@@ -353,7 +353,7 @@ namespace Velvet.Tests
             s_setLit = setLit;
             var poses = new Dictionary<string, MotionVariant> { ["a"] = "opacity-100", ["b"] = "opacity-0" };
             return V.Motion(name: "b", className: "w-[20px] h-[20px]", variants: poses, animate: lit ? "b" : "a",
-                transition: s_swapTransition, whileHoverClass: "opacity-50");
+                transition: s_swapTransition, whileHoverClass: "opacity-50", enterOnMount: false);
         }
 
         // A hovered HoveredSwap on transition one step into its variant swap.

@@ -189,17 +189,24 @@ namespace Velvet
             {
                 foreach (var cls in element.GetClasses())
                 {
-                    StyleUtilityProperties.TryGet(cls, out var rule);
-                    _entries.Add(new Entry(cls, StyleLayerPriority.Base, rule.Properties, (int)rule.Gate));
+                    var (properties, gate) = RuleOf(element, cls, request: false);
+                    _entries.Add(new Entry(cls, StyleLayerPriority.Base, properties, gate));
                 }
             }
 
             public void Add(VisualElement element, string cls, long priority)
             {
+                if (priority == StyleLayerPriority.Base)
+                {
+                    }
                 if (IndexOf(cls, priority) < 0)
                 {
-                    StyleUtilityProperties.TryGet(cls, out var rule);
-                    _entries.Add(new Entry(cls, priority, rule.Properties, (int)rule.Gate));
+                    var (properties, gate) = RuleOf(element, cls, request: priority != StyleLayerPriority.Base);
+                    _entries.Add(new Entry(cls, priority, properties, gate));
+                    if (priority != StyleLayerPriority.Base && !properties.IsEmpty && !StyleUtilityProperties.TryGet(cls, out _))
+                    {
+                        AskForTheRest(element);
+                    }
                 }
                 Recompute(element);
                 if (IsAlive(cls))
@@ -235,6 +242,67 @@ namespace Velvet
                 }
             }
 
+            // What a class writes and under which gate: the bundled table's answer, else the properties a probe read
+            // off the application's own rule (StyleUserClassProperties), empty until it has. Only a variant payload of
+            // a class of the application's own sends a probe out (request), and Learn and AskForTheRest send the rest.
+            private static (StyleLonghandSet Properties, int Gate) RuleOf(VisualElement element, string cls, bool request)
+            {
+                if (StyleUtilityProperties.TryGet(cls, out var rule))
+                {
+                    return (rule.Properties, (int)rule.Gate);
+                }
+                var learned = StyleLonghandSet.Empty;
+                if (request)
+                {
+                    StyleUserClassProperties.TryGet(element, cls, out learned);
+                }
+                else
+                {
+                    StyleUserClassProperties.TryGetKnown(element, cls, out learned);
+                }
+                return (learned, (int)StyleUtilityGate.None);
+            }
+
+            // Reads the other classes of the application's own on the element, which a payload of one that sets
+            // something is ranked against.
+            private void AskForTheRest(VisualElement element)
+            {
+                for (var i = 0; i < _entries.Count; i++)
+                {
+                    if (!_entries[i].Properties.IsEmpty)
+                    {
+                        continue;
+                    }
+                    var known = StyleUserClassProperties.TryGet(element, _entries[i].Class, out var found);
+                    if (known)
+                    {
+                        _entries[i] = _entries[i].WithProperties(found);
+                    }
+                }
+            }
+
+            // Gives the entries of cls the properties a probe has now read for it, and ranks again.
+            public void Learn(VisualElement element, string cls, StyleLonghandSet properties)
+            {
+                var learned = false;
+                for (var i = 0; i < _entries.Count; i++)
+                {
+                    if (_entries[i].Class == cls && _entries[i].Properties.IsEmpty)
+                    {
+                        _entries[i] = _entries[i].WithProperties(properties);
+                        learned = true;
+                    }
+                }
+                if (learned && !properties.IsEmpty)
+                {
+                    AskForTheRest(element);
+                }
+                if (learned)
+                {
+                    Recompute(element);
+                }
+            }
+
             // A ranking-only entry: its writer puts the class on the live list, and the entry keeps it there only
             // against a payload's removal (Holds skips it). It lives only while the class is on that list or
             // suppressed by this model: RawRemoved drops it, and so does the className's Remove once nothing else
@@ -251,8 +319,8 @@ namespace Velvet
                 // it.
                 if (IndexOfRaw(cls, priority) < 0)
                 {
-                    StyleUtilityProperties.TryGet(cls, out var rule);
-                    _entries.Add(new Entry(cls, priority, rule.Properties, (int)rule.Gate, rankOnly: true));
+                    var (properties, gate) = RuleOf(element, cls, request: false);
+                    _entries.Add(new Entry(cls, priority, properties, gate, rankOnly: true));
                 }
                 Recompute(element);
             }
@@ -770,6 +838,8 @@ namespace Velvet
             public bool RankOnly { get; }
 
             public Entry WithDead(bool dead) => new Entry(Class, Priority, Properties, Gate, dead, RankOnly);
+
+            public Entry WithProperties(StyleLonghandSet properties) => new Entry(Class, Priority, properties, Gate, Dead, RankOnly);
         }
 
         // One registered arbitrary-value layer, as the projection sees it.

@@ -188,36 +188,37 @@ namespace Velvet.Tests
             Assert.That(plan.Rotate, Is.EqualTo(((float, float)?)(45f, -45f)));
         }
 
-        [TestCase("translate-x-1/2", "translate-x-full")]
-        [TestCase("translate-1/2", "translate-full")]
-        public void Given_APercentTranslateClassPair_When_Resolved_Then_NoTranslateChannelIsPlanned(string from, string to)
+        [TestCase("translate-x-1/2", "translate-x-full", "(50, 100),(0, 0)")]
+        [TestCase("translate-1/2", "translate-full", "(50, 100),(50, 100)")]
+        [TestCase("-translate-x-full", "translate-x-0", "(-100, 0),(0, 0)")]
+        public void Given_APercentTranslateClassPair_When_Resolved_Then_TheTranslateChannelsRunBetweenTheirPercentages(string from,
+            string to, string expected)
         {
-            // Arrange — the gate carries the fact that the from-side spelling IS a real utility, resolving in
-            // percent. Without it the case would pass just as well on a class nothing recognizes, pinning the
-            // scope hole in name only.
-            var resolvesAsPercentTranslate =
-                StyleArbitraryValueResolver.TryParse(from, out var half) && half.Unit == LengthUnit.Percent;
-
             // Act
             var plan = MotionSpringClassParser.Resolve(new[] { from }, new[] { to });
 
             // Assert
-            Assert.That((resolvesAsPercentTranslate, plan.TranslateX.HasValue), Is.EqualTo((true, false)));
+            Assert.That($"{plan.TranslateX},{plan.TranslateY}", Is.EqualTo(expected));
         }
 
         [Test]
-        public void Given_APerAxisScaleClassPair_When_Resolved_Then_NoScaleChannelIsPlanned()
+        public void Given_APercentAndAPixelTranslateOfNonzeroSize_When_Resolved_Then_TheAxisLandsAtTheTargetInItsUnit()
         {
-            // Arrange — same gate shape as the percent-translate case above.
-            var resolvesAsPerAxisScale =
-                StyleArbitraryValueResolver.TryParse("scale-x-50", out var half)
-                && half.Property == ArbitraryProperty.ScaleX;
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-1/2" }, new[] { "translate-x-[20px]" });
 
+            // Assert
+            Assert.That($"{plan.TranslateX}", Is.EqualTo("(20, 20)"));
+        }
+
+        [Test]
+        public void Given_APerAxisScaleClassPair_When_Resolved_Then_TheAxisRunsAndTheOtherStaysAtOne()
+        {
             // Act
             var plan = MotionSpringClassParser.Resolve(new[] { "scale-x-50" }, new[] { "scale-x-110" });
 
             // Assert
-            Assert.That((resolvesAsPerAxisScale, plan.Scale.HasValue), Is.EqualTo((true, false)));
+            Assert.That($"{plan.Scale},{plan.ScaleY}", Is.EqualTo("(0.5, 1.1),(1, 1)"));
         }
 
         [Test]
@@ -618,6 +619,136 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((delta.Translate, delta.Scale), Is.EqualTo((new Vector2(0f, -50f), new Vector2(1f, 0.5f))));
+        }
+
+        [Test]
+        public void Given_APlayOnTheFramerDefaults_When_OpacityAndTranslateArePlanned_Then_OpacityRunsAThirtyHundredthsEaseAndTranslateASpring()
+        {
+            // Arrange
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0", "translate-x-0" },
+                new[] { "opacity-100", "translate-x-[100px]" });
+
+            // Act
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f, perValueDefaults: true);
+
+            // Assert
+            Assert.That((state.Opacity.PassSec, state.TranslateX.FixedPhysics),
+                Is.EqualTo((0.3f, ((float, float)?)(500f, 25f))));
+        }
+
+        [Test]
+        public void Given_AnEasedChannelOnTheFramerDefaults_When_SteppedAQuarterThroughItsEase_Then_ItIsAheadOfALinearEase()
+        {
+            // Arrange — the ease is cubic-bezier(0.25, 0.1, 0.35, 1), which leads a linear one, so a quarter of the way in the
+            // value is over a quarter along.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f, perValueDefaults: true);
+
+            // Act
+            MotionSpringDriver.Step(element, state, 0.075f);
+
+            // Assert
+            Assert.That(state.Opacity.Integrator.Value, Is.GreaterThan(0.25f));
+        }
+
+        [Test]
+        public void Given_ASpringEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose()
+        {
+            // Arrange
+            var ctx = new ReconcilerContext();
+            var element = new VisualElement();
+
+            // Act
+            ctx.StyleAnimationScheduler.PlayVariantEnter(element, fromClasses: new[] { "skew-x-12" },
+                toClasses: new[] { "opacity-100" }, durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f,
+                type: TransitionType.Spring, stiffness: 100f, damping: 20f, mass: 1f);
+
+            // Assert
+            Assert.That(ctx.SkewBindings.TryGetValue(element, out var binding) ? binding.Spec.XDeg : float.NaN,
+                Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose()
+        {
+            // Arrange
+            var ctx = new ReconcilerContext();
+            var element = new VisualElement();
+
+            // Act
+            ctx.StyleAnimationScheduler.PlayVariantEnter(element, fromClasses: new[] { "skew-x-12" },
+                toClasses: new[] { "opacity-100" }, durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f);
+
+            // Assert
+            Assert.That(ctx.SkewBindings.TryGetValue(element, out var binding) ? binding.Spec.XDeg : float.NaN,
+                Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_ASkewPlayOnAnUnskewedElement_When_ItIsCancelled_Then_TheSkewBindingIsGone()
+        {
+            // Arrange
+            var ctx = new ReconcilerContext();
+            var element = new VisualElement();
+            ctx.StyleAnimationScheduler.PlayVariantEnter(element, fromClasses: new[] { "skew-x-12" },
+                toClasses: new[] { "opacity-100" }, durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f,
+                type: TransitionType.Spring, stiffness: 100f, damping: 20f, mass: 1f);
+
+            // Act
+            ctx.StyleAnimationScheduler.CancelEnter(element);
+
+            // Assert
+            Assert.That(ctx.SkewBindings.ContainsKey(element), Is.False);
+        }
+
+        [Test]
+        public void Given_AnExitFromARestingSkewToAnotherAngle_When_Planned_Then_TheSkewRunsFromTheRestingAngleToTheExitOne()
+        {
+            // Arrange
+            var from = new[] { "skew-x-6" };
+            var to = new[] { "skew-x-12" };
+            var slots = MotionSlotContext.ReadImportant(new VisualElement(), from, to);
+            slots.ForExit = true;
+            slots.RestingSkew = (6f, 0f);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, slots);
+
+            // Assert
+            Assert.That((plan.SkewX, plan.SkewY), Is.EqualTo((((float, float)?)(6f, 12f), ((float, float)?)null)));
+        }
+
+        [Test]
+        public void Given_ASpringOnTheFramerDefaults_When_SkewIsPlanned_Then_ItRunsOnTheTransformSpring()
+        {
+            // Arrange
+            var plan = MotionSpringClassParser.Resolve(new[] { "skew-x-12" }, new[] { "skew-x-0" });
+
+            // Act
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f, perValueDefaults: true);
+
+            // Assert
+            Assert.That(state!.SkewX!.FixedPhysics, Is.EqualTo(((float, float)?)(500f, 25f)));
+        }
+
+        [Test]
+        public void Given_ATweenExitOnAPinnedPopLayoutGhost_When_Started_Then_TheDriverShowsItsFromValue()
+        {
+            // Arrange
+            var ctx = new ReconcilerContext();
+            var ghost = new VisualElement();
+            ctx.PinnedGhosts.Add(ghost, new object());
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 0.3f, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+            };
+
+            // Act
+            ctx.StyleAnimationScheduler.PlayExit(ghost, config, onComplete: null, restoreFromOnCancel: true);
+
+            // Assert
+            Assert.That((ghost.style.opacity.keyword, ghost.style.opacity.value), Is.EqualTo((StyleKeyword.Undefined, 1f)));
         }
     }
 }

@@ -57,7 +57,7 @@ namespace Velvet.Tests
         {
             var variants = new Dictionary<string, MotionVariant> { ["hidden"] = "opacity-0", ["visible"] = "opacity-100" };
             VNode Card(string label) => V.Motion(className: className, name: "card", variants: variants,
-                animate: label, transition: new StyleTransitionConfig { DurationSec = 0.35f });
+                animate: label, transition: new StyleTransitionConfig { DurationSec = 0.35f }, enterOnMount: false);
             _mounted = V.Mount(_window.rootVisualElement, Card("hidden"));
             ForcePanelUpdate(_window.rootVisualElement.panel);
             var element = _window.rootVisualElement.Q<VisualElement>("card");
@@ -212,6 +212,47 @@ namespace Velvet.Tests
 
             // Assert — the second frame is what a driver that froze after the first would hold back.
             Assert.That((quarter, element.style.rotate.value.angle.ToDegrees()), Is.EqualTo((90f, 180f)));
+        }
+
+        [Test]
+        public void Given_ASpinBesideAnImportantRotation_When_TheLoopTicks_Then_TheImportantRotationHoldsTheSlot()
+        {
+            // Arrange
+            var (element, binding) = Mount("w-[40px] h-[40px] bg-red-500 !rotate-45 animate-spin");
+            binding.StartTime -= 0.5;
+
+            // Act
+            StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.None);
+
+            // Assert
+            Assert.That(element.style.rotate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ARegisteredKeyframeAnimation_When_AFrameIsApplied_Then_TheRotationIsTheValueAtThatPhase()
+        {
+            // Arrange
+            VelvetKeyframes.Register("kf-panel", new[]
+            {
+                new KeyframeStop(0f) { RotateDeg = 0f }, new KeyframeStop(0.5f) { RotateDeg = 20f },
+                new KeyframeStop(1f) { RotateDeg = 0f },
+            }, durationSec: 2f, timing: new BezierCurve(0f, 0f, 1f, 1f));
+            float turned;
+            try
+            {
+                var (element, binding) = Mount("w-[40px] h-[40px] bg-red-500 animate-kf-panel");
+
+                // Act
+                StyleAnimateDriver.ApplyFrame(element, binding, 0.25f);
+                turned = element.style.rotate.value.angle.ToDegrees();
+            }
+            finally
+            {
+                VelvetKeyframes.Unregister("kf-panel");
+            }
+
+            // Assert
+            Assert.That(turned, Is.EqualTo(10f).Within(1e-3f));
         }
 
         [Test]

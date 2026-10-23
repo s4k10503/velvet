@@ -90,6 +90,10 @@ namespace Velvet
         }
 #endif
 
+        // The element's own ComputedStyle boxed, its inline values included, or null where it cannot be read. For an
+        // element with no inline style, which is what it reads on a probe.
+        public static object? Computed(VisualElement element) => s_style?.GetValue(element);
+
         // The cached ComputedStyle boxed, or null where it cannot be read. Members of it are read off the result
         // by their PropertyInfo.
         public static object? Of(VisualElement element)

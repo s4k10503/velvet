@@ -49,6 +49,10 @@ namespace Velvet
     /// A refit a size change causes suspends the element's transitions while it writes: a new size is not a
     /// declared change, and a <c>transition-all</c> element would otherwise animate from the unfitted radius
     /// when it is first laid out.
+    ///
+    /// An element none of that reaches is observed from its creation (<see cref="Observe"/>): the first size change
+    /// that finds a radius resolved on it attaches the fit, which then reads the rules' radius through
+    /// <see cref="StyleCascade.Radius"/> and a length its code writes as it does for any other element.
     /// </remarks>
     internal static class CornerRadiusFit
     {
@@ -87,9 +91,15 @@ namespace Velvet
             // Corners whose inline slot holds a keyword, which outranks every declaration and is left alone.
             public readonly bool[] Foreign = new bool[CornerCount];
 
+            // Whether the rules' radii are read from the cascade at each size change; set on a state a size change
+            // attached rather than a class.
+            public bool ReadsCascade;
         }
 
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, State> s_states = new();
+
+        // Watches element for a radius its rules or its code give it, which no class or arbitrary value declared.
+        public static void Observe(VisualElement element) => element.RegisterCallback(s_onGeometryChanged);
 
         public static void TrackClass(VisualElement element, string cls)
         {
@@ -137,6 +147,10 @@ namespace Velvet
         internal static Length? Fitted(VisualElement element, int corner)
         {
             if (!s_states.TryGetValue(element, out var state)) return null;
+            if (state.ReadsCascade)
+            {
+                ReadSheet(element, state, null);
+            }
             var declared = Declared(state, corner);
             return declared == null ? null : new Length(declared.Value.value * FactorFor(element, state), declared.Value.unit);
         }
@@ -212,17 +226,27 @@ namespace Velvet
             {
                 return;
             }
+            ReadSheet(element, state, evt.customStyle);
+            RefreshDeclared(element, state);
+        }
+
+        private static void ReadSheet(VisualElement element, State state, ICustomStyle? customStyle)
+        {
             for (var i = 0; i < CornerCount; i++)
             {
-                state.Sheet[i] = DeclaredBySheet(element, evt.customStyle, i);
+                // A cascade that cannot be read now leaves what was read before.
+                if (customStyle == null && StyleCascade.Radius(element, i) == null)
+                {
+                    continue;
+                }
+                state.Sheet[i] = DeclaredBySheet(element, customStyle, i);
             }
-            RefreshDeclared(element, state);
         }
 
         // What the rules give the corner once they have been through the cascade, so a rule of the application's own
         // that outranks a rounded-* class on one corner is the declaration there. A corner no rule gives a radius
         // reads as 0, which declares nothing unless a class's restatement says the corner is declared.
-        private static Length? DeclaredBySheet(VisualElement element, ICustomStyle customStyle, int corner)
+        private static Length? DeclaredBySheet(VisualElement element, ICustomStyle? customStyle, int corner)
         {
             var restated = DeclaredByRestatement(customStyle, corner);
             var cascaded = StyleCascade.Radius(element, corner);
@@ -230,8 +254,12 @@ namespace Velvet
             return declared ? cascaded : restated;
         }
 
-        private static Length? DeclaredByRestatement(ICustomStyle customStyle, int corner)
+        private static Length? DeclaredByRestatement(ICustomStyle? customStyle, int corner)
         {
+            if (customStyle == null)
+            {
+                return null;
+            }
             if (!customStyle.TryGetValue(s_declaredProperties[corner], out var text))
             {
                 return null;
@@ -241,15 +269,45 @@ namespace Velvet
 
         private static void OnGeometryChanged(GeometryChangedEvent evt)
         {
-            var element = (VisualElement)evt.currentTarget;
-            if (!s_states.TryGetValue(element, out var state))
+            if (evt.oldRect.size == evt.newRect.size)
             {
                 return;
             }
-            if (evt.oldRect.size != evt.newRect.size)
+            var element = (VisualElement)evt.currentTarget;
+            var state = s_states.TryGetValue(element, out var tracked) ? tracked : AttachWhereRadiusResolves(element);
+            if (state == null)
             {
-                Refresh(element, state, suspendTransitions: true);
+                return;
             }
+            if (state.ReadsCascade)
+            {
+                ReadSheet(element, state, null);
+            }
+            Refresh(element, state, suspendTransitions: true);
+        }
+
+        // The state of an element observed without a class or arbitrary value, once a radius resolves on it; null
+        // while none does.
+        private static State? AttachWhereRadiusResolves(VisualElement element)
+        {
+            // The inline slots and the rules' radii are read as well as the resolved ones, which a style pass that
+            // follows the layout this fires in has not yet brought up to date.
+            var style = element.resolvedStyle;
+            var resolves = false;
+            for (var i = 0; i < CornerCount; i++)
+            {
+                var inline = InlineCorner(element.style, i);
+                resolves |= ResolvedCorner(style, i) > 0f;
+                resolves |= inline.keyword == StyleKeyword.Undefined && inline.value.value > 0f;
+                resolves |= StyleCascade.Radius(element, i) is { value: > 0f };
+            }
+            if (!resolves)
+            {
+                return null;
+            }
+            var state = GetOrAttach(element);
+            state.ReadsCascade = true;
+            return state;
         }
 
         private static void RefreshDeclared(VisualElement element, State state)

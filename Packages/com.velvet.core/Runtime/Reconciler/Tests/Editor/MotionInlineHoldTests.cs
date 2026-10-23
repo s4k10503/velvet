@@ -58,7 +58,7 @@ namespace Velvet.Tests
 
         private static MotionNode Card(IReadOnlyDictionary<string, MotionVariant> variants, string label,
             string className)
-            => V.Motion(className: className, name: "card", variants: variants, animate: label, transition: s_tween);
+            => V.Motion(className: className, name: "card", variants: variants, animate: label, transition: s_tween, enterOnMount: false);
 
         // Mounts the card at the first label, then renders it at each later one in turn.
         private VisualElement Render(IReadOnlyDictionary<string, MotionVariant> variants, string className,

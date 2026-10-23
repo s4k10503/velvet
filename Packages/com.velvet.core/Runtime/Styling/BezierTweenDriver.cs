@@ -15,6 +15,8 @@ namespace Velvet
         // from wherever the forward tween had reached.
         public float From;
         public float To;
+        // The unit the channel's values are in; only a translate takes another than pixels.
+        public LengthUnit Unit;
         // Set while a gesture channel holds the property (GestureChannelMask.MaskChannels): the channel runs on and
         // writes nothing.
         public bool Masked { get; set; }
@@ -92,6 +94,8 @@ namespace Velvet
         (IGestureMaskable? Opacity, IGestureMaskable? TranslateX, IGestureMaskable? TranslateY, IGestureMaskable? Scale,
             IGestureMaskable? Rotate) IGestureMaskableState.Scalars => (Opacity, TranslateX, TranslateY, Scale, Rotate);
 
+        IGestureMaskable? IGestureMaskableState.ScaleY => ScaleY;
+
         IReadOnlyList<IPropertyChannel>? IGestureMaskableState.ColorChannels => Colors;
         IReadOnlyList<IPropertyChannel>? IGestureMaskableState.LengthChannels => Lengths;
 
@@ -101,9 +105,18 @@ namespace Velvet
         public BezierTweenChannel? TranslateX;
         public BezierTweenChannel? TranslateY;
         public BezierTweenChannel? Scale;
+        // The y factor when the play's scale differs per axis; Scale is then the x factor.
+        public BezierTweenChannel? ScaleY;
         public BezierTweenChannel? Rotate;
+        public BezierTweenChannel? SkewX;
+        public BezierTweenChannel? SkewY;
+        // As MotionSpringState.Skew.
+        public FiberSkewApplier? Skew;
         public List<BezierColorChannel>? Colors;
         public List<BezierLengthChannel>? Lengths;
+        // The progress the paint layers are drawn at, and the hold it draws them under.
+        public BezierTweenChannel? PaintProgress;
+        public IMotionPaintLease? Paint;
         public VisualElement? NativeLayoutOwner;
 
         // CSS-parameter order: cubic-bezier(X1,Y1,X2,Y2).
@@ -196,6 +209,7 @@ namespace Velvet
             AssignTiming(state.TranslateX, translate);
             AssignTiming(state.TranslateY, translate);
             AssignTiming(state.Scale, timing.For(StyleLonghandSet.Of(StyleLonghand.Scale)));
+            AssignTiming(state.ScaleY, timing.For(StyleLonghandSet.Of(StyleLonghand.Scale)));
             AssignTiming(state.Rotate, timing.For(StyleLonghandSet.Of(StyleLonghand.Rotate)));
             foreach (var c in state.Colors ?? s_noColors)
             {
@@ -206,6 +220,57 @@ namespace Velvet
                 AssignTiming(l.Value, timing.For(StyleArbitraryLonghands.Of(l.Property)));
             }
             return state;
+        }
+
+        /// <summary>
+        /// Gives each channel a <see cref="StylePropertyTransition"/> names the timing that entry carries, the last entry
+        /// naming it winning: its delay and duration (the play's, where it names none) and its easing, or the play's own
+        /// curve where it names none. Such a channel plays its entry once whatever the play repeats.
+        /// </summary>
+        public static BezierTweenState? WithOverrides(BezierTweenState? state, IReadOnlyList<StylePropertyTransition>? overrides)
+        {
+            if (state == null || overrides == null || overrides.Count == 0)
+            {
+                return state;
+            }
+            Override(state, state.Opacity, StyleLonghandSet.Of(StyleLonghand.Opacity), overrides);
+            Override(state, state.TranslateX, StyleLonghandSet.Of(StyleLonghand.Translate), overrides);
+            Override(state, state.TranslateY, StyleLonghandSet.Of(StyleLonghand.Translate), overrides);
+            Override(state, state.Scale, StyleLonghandSet.Of(StyleLonghand.Scale), overrides);
+            Override(state, state.ScaleY, StyleLonghandSet.Of(StyleLonghand.Scale), overrides);
+            Override(state, state.Rotate, StyleLonghandSet.Of(StyleLonghand.Rotate), overrides);
+            foreach (var c in state.Colors ?? s_noColors)
+            {
+                Override(state, c.Progress, StyleArbitraryLonghands.Of(c.Property), overrides);
+            }
+            foreach (var l in state.Lengths ?? s_noLengths)
+            {
+                Override(state, l.Value, StyleArbitraryLonghands.Of(l.Property), overrides);
+            }
+            return state;
+        }
+
+        private static void Override(BezierTweenState state, BezierTweenChannel? channel, StyleLonghandSet longhands,
+            IReadOnlyList<StylePropertyTransition> overrides)
+        {
+            if (channel == null)
+            {
+                return;
+            }
+            for (var i = overrides.Count - 1; i >= 0; i--)
+            {
+                var entry = overrides[i];
+                if (!DrivenTweenTiming.Named(entry.Property).Overlaps(longhands))
+                {
+                    continue;
+                }
+                var delaySec = entry.DelaySec ?? 0f;
+                var durationSec = Mathf.Max(0f, entry.DurationSec ?? state.DurationSec);
+                channel.Timing = new TweenChannelTiming(delaySec, durationSec, entry.Easing ?? EasingMode.Linear,
+                    curve: !entry.Easing.HasValue);
+                state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, delaySec + durationSec);
+                return;
+            }
         }
 
         private static readonly List<BezierColorChannel> s_noColors = new();
@@ -223,10 +288,18 @@ namespace Velvet
         {
             var state = new BezierTweenState();
             if (plan.Opacity is { } o) state.Opacity = new BezierTweenChannel(o.from, o.to);
-            if (plan.TranslateX is { } tx) state.TranslateX = new BezierTweenChannel(tx.from, tx.to);
-            if (plan.TranslateY is { } ty) state.TranslateY = new BezierTweenChannel(ty.from, ty.to);
+            if (plan.TranslateX is { } tx) state.TranslateX = new BezierTweenChannel(tx.from, tx.to) { Unit = plan.TranslateXUnit };
+            if (plan.TranslateY is { } ty) state.TranslateY = new BezierTweenChannel(ty.from, ty.to) { Unit = plan.TranslateYUnit };
             if (plan.Scale is { } s) state.Scale = new BezierTweenChannel(s.from, s.to);
+            if (plan.ScaleY is { } sy) state.ScaleY = new BezierTweenChannel(sy.from, sy.to);
             if (plan.Rotate is { } r) state.Rotate = new BezierTweenChannel(r.from, r.to);
+            if (plan.Paint != null)
+            {
+                state.Paint = plan.Paint;
+                state.PaintProgress = new BezierTweenChannel(0f, 1f);
+            }
+            if (plan.SkewX is { } kx) state.SkewX = new BezierTweenChannel(kx.from, kx.to);
+            if (plan.SkewY is { } ky) state.SkewY = new BezierTweenChannel(ky.from, ky.to);
             if (plan.Colors != null)
             {
                 var colors = new List<BezierColorChannel>(plan.Colors.Count);
@@ -258,14 +331,17 @@ namespace Velvet
         /// </summary>
         public static void ApplyCurrentValues(VisualElement element, BezierTweenState state)
         {
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
-                MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             if (state.Easing.HasValue)
             {
                 // A driven Tween's swap also changes what its channels do not write, which a transition the element's
                 // own classes declare would animate on the panel's time; the suspension lands it with the swap.
                 MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, MotionTransitionSlots.All,
                     StyleLonghandSet.Empty);
+            }
+            else
+            {
+                MotionNativeTransitionGuard.NarrowIfIntercepted(element, state, DrivenSlots(state),
+                    MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             }
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             ApplyEased(element, state);
@@ -283,7 +359,7 @@ namespace Velvet
                 return;
             }
             MotionNativeTransitionGuard.Release(element, state);
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, state, DrivenSlots(state),
                 MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
         }
 
@@ -315,6 +391,20 @@ namespace Velvet
         // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
         public static bool EndsAtFrom(BezierTweenState state) => state.Repeat.EndsAtFrom;
 
+        // A play that landed leaves each axis it moved at the value it ended on; one cut short leaves the lot to the
+        // element's classes.
+        private static void LandSkew(VisualElement element, BezierTweenState state, bool landed)
+        {
+            if (state.SkewX != null || state.SkewY != null)
+            {
+                state.Skew?.EndDrive(element, landed ? EndValue(state, state.SkewX) : null,
+                    landed ? EndValue(state, state.SkewY) : null);
+            }
+        }
+
+        private static float? EndValue(BezierTweenState state, BezierTweenChannel? channel)
+            => channel == null ? null : state.Repeat.EndsAtFrom ? channel.From : channel.To;
+
         /// <summary>
         /// Writes the tween at <paramref name="timeSec"/> into its run, earlier or later than where it stands, and
         /// reports whether that time has reached <see cref="BezierTweenState.EndSec"/>. A play on a <c>MotionPlayback</c> is driven by
@@ -330,12 +420,18 @@ namespace Velvet
 
         /// <summary>The bezier sibling of <see cref="MotionSpringDriver.StartValues"/>.</summary>
         public static MotionSpringClassParser.SpringPlan StartValues(BezierTweenState state)
-            => MotionSpringClassParser.Holding(
+        {
+            var plan = MotionSpringClassParser.Holding(
                 (state.Opacity?.From, state.TranslateX?.From, state.TranslateY?.From, state.Scale?.From,
                     state.Rotate?.From),
                 state.Colors, static c => new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From),
                 state.Lengths, static l => new MotionSpringClassParser.LengthChannelPlan(l.Property, l.Value.From,
                     l.Value.From, l.Unit));
+            plan.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
+            plan.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            if (state.ScaleY != null) plan.ScaleY = (state.ScaleY.From, state.ScaleY.From);
+            return plan;
+        }
 
         /// <summary>
         /// Releases every inline slot this state ever wrote — and the transition suspension
@@ -343,12 +439,14 @@ namespace Velvet
         /// See <see cref="MotionSpringDriver.ClearInlineOverrides"/> for why the surviving arbitrary-value
         /// layers and holds are re-asserted only after every slot has been nulled.
         /// </summary>
-        public static void ClearInlineOverrides(VisualElement element, BezierTweenState state)
+        public static void ClearInlineOverrides(VisualElement element, BezierTweenState state, bool landed = false)
         {
             if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
             if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
+            state.Paint?.Release();
+            LandSkew(element, state, landed);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
@@ -385,6 +483,7 @@ namespace Velvet
             if (state.Scale != null && named.Contains(StyleLonghand.Scale))
             {
                 state.Scale = null;
+                state.ScaleY = null;
                 element.style.scale = StyleKeyword.Null;
             }
             if (state.Rotate != null && named.Contains(StyleLonghand.Rotate))
@@ -398,6 +497,7 @@ namespace Velvet
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
             SyncLayoutOwner(element, state);
+            if (!state.Easing.HasValue) GestureChannelMask.ResyncNarrowing(element, state);
         }
 
         /// <summary>
@@ -413,7 +513,8 @@ namespace Velvet
             var returned = Restart(state, state.Opacity, named, (StyleLonghand.Opacity, ArbitraryProperty.Opacity), shown);
             returned |= Restart(state, state.TranslateX, named, (StyleLonghand.Translate, ArbitraryProperty.TranslateX), shown)
                 | Restart(state, state.TranslateY, named, (StyleLonghand.Translate, ArbitraryProperty.TranslateY), shown);
-            returned |= Restart(state, state.Scale, named, (StyleLonghand.Scale, ArbitraryProperty.Scale), shown);
+            returned |= Restart(state, state.Scale, named, (StyleLonghand.Scale, ArbitraryProperty.Scale), shown)
+                | Restart(state, state.ScaleY, named, (StyleLonghand.Scale, ArbitraryProperty.Scale), shown);
             returned |= Restart(state, state.Rotate, named, (StyleLonghand.Rotate, ArbitraryProperty.Rotate), shown);
             for (var i = 0; i < (state.Colors?.Count ?? 0); i++)
             {
@@ -437,6 +538,7 @@ namespace Velvet
             }
             if (returned)
             {
+                if (!state.Easing.HasValue) GestureChannelMask.ResyncNarrowing(element, state);
                 ApplyEased(element, state);
             }
         }
@@ -468,7 +570,7 @@ namespace Velvet
             {
                 return false;
             }
-            if (shown.TryReadShown(slot.Slot, LengthUnit.Pixel, out var value))
+            if (shown.TryReadShown(slot.Slot, channel!.Unit, out var value))
             {
                 channel!.From = value.Value;
             }
@@ -491,10 +593,10 @@ namespace Velvet
         }
 
         // The bezier sibling of MotionSpringDriver.HoldTranslate.
-        public static void HoldTranslate(BezierTweenState state, float x, float y)
+        public static void HoldTranslate(BezierTweenState state, Length x, Length y)
         {
-            state.TranslateX = new BezierTweenChannel(x, x);
-            state.TranslateY = new BezierTweenChannel(y, y);
+            state.TranslateX = new BezierTweenChannel(x.value, x.value) { Unit = x.unit };
+            state.TranslateY = new BezierTweenChannel(y.value, y.value) { Unit = y.unit };
         }
 
         /// <summary>
@@ -508,7 +610,7 @@ namespace Velvet
                 => channel == null ? null
                     : (ValueAt(state, channel, state.ElapsedSec, length), VelocityOf(state, channel, length) * timeScale);
 
-            return MotionDrawnValues.Of(
+            var drawn = MotionDrawnValues.Of(
                 new MotionDrawnValues.Channels(
                     Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate)),
                 state.Colors,
@@ -519,6 +621,12 @@ namespace Velvet
                     var (value, velocity) = Of(l.Value, l.Property)!.Value;
                     return (l.Property, l.Unit, value, velocity);
                 });
+            drawn.ScaleY = Of(state.ScaleY);
+            drawn.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
+            drawn.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            drawn.SkewX = Of(state.SkewX);
+            drawn.SkewY = Of(state.SkewY);
+            return drawn;
         }
 
         // The channel's value at timeSec, the play's elapsed time put back after: a length through its property's
@@ -548,10 +656,13 @@ namespace Velvet
         public static void ContinueFrom(BezierTweenState next, MotionDrawnValues interrupted)
         {
             Continue(next.Opacity, interrupted.Opacity);
-            Continue(next.TranslateX, interrupted.TranslateX);
-            Continue(next.TranslateY, interrupted.TranslateY);
+            Continue(next.TranslateX, interrupted.TranslateXUnit == next.TranslateX?.Unit ? interrupted.TranslateX : null);
+            Continue(next.TranslateY, interrupted.TranslateYUnit == next.TranslateY?.Unit ? interrupted.TranslateY : null);
             Continue(next.Scale, interrupted.Scale);
+            Continue(next.ScaleY, interrupted.ScaleY ?? interrupted.Scale);
             Continue(next.Rotate, interrupted.Rotate);
+            Continue(next.SkewX, interrupted.SkewX);
+            Continue(next.SkewY, interrupted.SkewY);
             if (next.Lengths != null)
             {
                 foreach (var length in next.Lengths)
@@ -598,7 +709,11 @@ namespace Velvet
             RetargetChannel(state, state.TranslateX, shared);
             RetargetChannel(state, state.TranslateY, shared);
             RetargetChannel(state, state.Scale, shared);
+            RetargetChannel(state, state.ScaleY, shared);
             RetargetChannel(state, state.Rotate, shared);
+            RetargetChannel(state, state.PaintProgress, shared);
+            RetargetChannel(state, state.SkewX, shared);
+            RetargetChannel(state, state.SkewY, shared);
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors) RetargetChannel(state, c.Progress, shared);
@@ -735,18 +850,32 @@ namespace Velvet
             {
                 var x = state.TranslateX != null ? Value(state, state.TranslateX, shared) : 0f;
                 var y = state.TranslateY != null ? Value(state, state.TranslateY, shared) : 0f;
-                SeatedTranslate.Write(element, new Translate(new Length(x), new Length(y)));
+                SeatedTranslate.Write(element, new Translate(
+                    new Length(x, state.TranslateX?.Unit ?? LengthUnit.Pixel),
+                    new Length(y, state.TranslateY?.Unit ?? LengthUnit.Pixel)));
             }
             if (state.Scale is { Masked: false })
             {
                 var v = Value(state, state.Scale, shared);
-                element.style.scale = new Scale(new Vector2(v, v));
+                element.style.scale = new Scale(new Vector2(v, state.ScaleY != null ? Value(state, state.ScaleY, shared) : v));
             }
             if (state.Rotate is { Masked: false })
             {
                 var v = Value(state, state.Rotate, shared);
                 element.style.rotate = new Rotate(Angle.Degrees(v));
             }
+            state.Paint?.Apply(Value(state, state.PaintProgress!, shared));
+            if (state.SkewX != null || state.SkewY != null)
+            {
+                state.Skew?.Drive(element, state.SkewX != null ? Value(state, state.SkewX, shared) : null,
+                    state.SkewY != null ? Value(state, state.SkewY, shared) : null);
+            }
+            ApplyEasedLists(element, state, shared);
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
+        }
+
+        private static void ApplyEasedLists(VisualElement element, BezierTweenState state, float shared)
+        {
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors)
@@ -772,7 +901,6 @@ namespace Velvet
                     }
                 }
             }
-            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
         }
     }
 }

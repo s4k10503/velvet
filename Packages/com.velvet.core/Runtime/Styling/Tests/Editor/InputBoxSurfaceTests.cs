@@ -846,7 +846,7 @@ namespace Velvet.Tests
             // Arrange
             using var scope = new ReconcilerScope();
             var variants = new Dictionary<string, MotionVariant> { ["on"] = new MotionVariant("bg-red-500", null) };
-            var tree = new VNode[] { V.Motion(elementType: typeof(TextField), variants: variants, animate: "on") };
+            var tree = new VNode[] { V.Motion(elementType: typeof(TextField), variants: variants, animate: "on", enterOnMount: false, transition: StyleTransition.Fade) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);

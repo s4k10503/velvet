@@ -15,6 +15,21 @@ namespace Velvet
                     ? 0.0
                     : config.DelaySec + Of(config, fromClasses, toClasses, context);
 
+        // A Bezier play's passes, or where its slowest PropertyOverrides entry ends where that is later.
+        internal static double BezierSpanSec(StyleTransitionConfig config)
+            => System.Math.Max(MotionRepeat.Of(config).TotalSec(config.DurationSec), OverridesEndSec(config));
+
+        // Where the slowest PropertyOverrides entry ends, from the end of the play's delay.
+        internal static double OverridesEndSec(StyleTransitionConfig config)
+        {
+            var end = 0.0;
+            foreach (var entry in config.PropertyOverrides ?? System.Array.Empty<StylePropertyTransition>())
+            {
+                end = System.Math.Max(end, (entry.DelaySec ?? 0f) + System.Math.Max(0f, entry.DurationSec ?? config.DurationSec));
+            }
+            return end;
+        }
+
         // context: what the play is planned against (StyleAnimationScheduler.SlotContext), so the span counts only
         // the channels the play has.
         public static double Of(StyleTransitionConfig config, string[]? fromClasses, string[]? toClasses,
@@ -27,15 +42,19 @@ namespace Velvet
                     // never runs.
                     return config.DurationSec > 0f
                         && !MotionSpringClassParser.Resolve(fromClasses, toClasses, context: context).IsEmpty
-                            ? MotionRepeat.Of(config).TotalSec(config.DurationSec)
+                            ? BezierSpanSec(config)
                             : 0.0;
                 case TransitionType.Spring:
                     // An instant spring ends where its delay does.
                     return !config.SpringIsInstant
                         && SpringIntegrator.AreValidParameters(config.Stiffness, config.Damping, config.Mass)
-                        ? MotionSpringDriver.SpanSec(MotionSpringClassParser.Resolve(fromClasses, toClasses, context: context),
-                            config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config),
-                            config.SpringSettleSec)
+                        ? MotionSpringDriver.SpanSec(
+                            MotionSpringDriver.WithOverrides(
+                                MotionSpringDriver.Create(MotionSpringClassParser.Resolve(fromClasses, toClasses, context: context),
+                                    config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config), config.SpringSettleSec,
+                                    perValueDefaults: config.PerValueDefaults),
+                                config.PropertyOverrides, config.Easing, config.DurationSec),
+                            MotionRepeat.Of(config))
                         : 0.0;
                 default:
                     return config.DurationSec;

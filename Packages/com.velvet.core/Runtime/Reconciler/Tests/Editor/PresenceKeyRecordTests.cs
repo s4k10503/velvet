@@ -390,7 +390,7 @@ namespace Velvet.Tests
             children: new VNode[]
             {
                 V.Motion(name: key + "-descendant", variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 1f }),
+                    transition: new StyleTransitionConfig { DurationSec = 1f }, enterOnMount: false),
             });
 
         // "x" and "k" leave with exits no frame here plays out, and "x" alone comes back.

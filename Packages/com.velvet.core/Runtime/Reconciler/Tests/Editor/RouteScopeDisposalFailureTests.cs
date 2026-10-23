@@ -463,7 +463,7 @@ namespace Velvet.Tests
         {
             V.Motion(name: "item-" + childKey, key: childKey,
                 variants: s_fade, animate: "visible", exit: "hidden",
-                transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
         });
 
         // Mounts a presence beside a routed Outlet on a reconciler of its own, removes both in one pass,

@@ -74,7 +74,7 @@ namespace Velvet.Tests
             return V.Div(name: "wrap", children: new VNode[]
             {
                 V.Motion(key: "m", name: "m", className: "absolute w-[50px] h-[50px]", variants: s_slide,
-                    animate: state.Label, transition: Linear(state.DurationSec)),
+                    animate: state.Label, transition: Linear(state.DurationSec), enterOnMount: false),
             });
         }
 
@@ -94,7 +94,7 @@ namespace Velvet.Tests
                         transition: Linear(0.2f)),
                     V.Motion(key: "c1", name: "c1", className: "absolute w-[50px] h-[50px]", variants: s_slide,
                         transition: Linear(0.2f)),
-                });
+                }, enterOnMount: false);
         }
 
         private VisualElement CreateRuntimePanel()

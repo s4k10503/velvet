@@ -113,7 +113,7 @@ namespace Velvet.Tests
             };
 
             // Act
-            var node = V.Motion("item", variants: variants, animate: "visible");
+            var node = V.Motion("item", variants: variants, animate: "visible", enterOnMount: false, transition: StyleTransition.Fade);
 
             // Assert — the active variant is resolved at reconcile time (effective label =
             // Animate ?? inherited-from-ancestor), so construction leaves ClassNames base-only. The applied class appears on the
@@ -128,7 +128,7 @@ namespace Velvet.Tests
             var variants = new Dictionary<string, MotionVariant> { { "visible", "opacity-100" } };
 
             // Act — no active label selected.
-            var node = V.Motion("item", variants: variants);
+            var node = V.Motion("item", variants: variants, transition: StyleTransition.Fade);
 
             // Assert
             CollectionAssert.AreEqual(new[] { "item" }, node.ClassNames);
@@ -141,12 +141,13 @@ namespace Velvet.Tests
             var variants = new Dictionary<string, MotionVariant> { { "visible", "opacity-100" } };
 
             // Act — the requested label is not a key of the variants map.
-            var node = V.Motion("item", variants: variants, animate: "ghost");
+            var node = V.Motion("item", variants: variants, animate: "ghost", enterOnMount: false, transition: StyleTransition.Fade);
 
             // Assert
             CollectionAssert.AreEqual(new[] { "item" }, node.ClassNames);
         }
 
+        // GREEN_ON_BASE(refactor): the base's cell is a Button as well; the check now takes the Button subclass Velvet builds.
         [Test]
         public void Given_MotionWithButtonElementType_When_Mounted_Then_TheAnimatedCellIsAButton()
         {
@@ -158,7 +159,7 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
 
             // Assert — AnimatePresence is DOM-less, so the Motion (a Button) sits directly in Root.
-            Assert.That(Root.ElementAt(0), Is.TypeOf<Button>());
+            Assert.That(Root.ElementAt(0), Is.InstanceOf<Button>());
         }
 
         [Test]
@@ -460,8 +461,8 @@ namespace Velvet.Tests
                 { "hidden", "opacity-0" },
                 { "visible", "opacity-100" },
             };
-            var old = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "hidden", transition: StyleTransitionConfig.None) };
-            var @new = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "visible", transition: StyleTransitionConfig.None) };
+            var old = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "hidden", transition: StyleTransitionConfig.None, enterOnMount: false) };
+            var @new = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "visible", transition: StyleTransitionConfig.None, enterOnMount: false) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), old);
             Assume.That(Root.ElementAt(0).ClassListContains("opacity-0"), Is.True,
                 "Precondition: starts in the hidden variant");

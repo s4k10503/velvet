@@ -108,7 +108,7 @@ namespace Velvet.Tests
             return V.Div(name: "wrap", children: new VNode[]
             {
                 V.Motion(key: "m", name: "m", variants: s_fade, animate: label,
-                    transition: new StyleTransitionConfig { DurationSec = 0.35f }),
+                    transition: new StyleTransitionConfig { DurationSec = 0.35f }, enterOnMount: false),
             });
         }
 
@@ -125,7 +125,7 @@ namespace Velvet.Tests
         {
             var label = Hooks.UseStore(s_labelStore, s => s.Label);
             return V.Motion(key: "m", name: "m", variants: s_fadeWithInstantHalf, animate: label,
-                transition: new StyleTransitionConfig { DurationSec = 0.35f });
+                transition: new StyleTransitionConfig { DurationSec = 0.35f }, enterOnMount: false);
         }
 
         private static readonly Dictionary<string, MotionVariant> s_taggedLit = new()
@@ -141,7 +141,7 @@ namespace Velvet.Tests
         {
             var label = Hooks.UseStore(s_labelStore, s => s.Label);
             return V.Motion(key: "m", name: "m", className: "tagged", variants: s_taggedLit, animate: label,
-                transition: new StyleTransitionConfig { DurationSec = 0.35f });
+                transition: new StyleTransitionConfig { DurationSec = 0.35f }, enterOnMount: false);
         }
 
         private static int s_enterCompletions;
@@ -211,7 +211,7 @@ namespace Velvet.Tests
                         Type = TransitionType.Spring,
                         Stiffness = 170f,
                         Damping = 26f,
-                    }),
+                    }, enterOnMount: false),
             });
         }
 
@@ -227,7 +227,7 @@ namespace Velvet.Tests
                         transition: new StyleTransitionConfig { DurationSec = 0.3f }),
                     V.Motion(key: "c1", name: "c1", variants: s_fade,
                         transition: new StyleTransitionConfig { DurationSec = 0.3f }),
-                });
+                }, enterOnMount: false);
         }
 
         [Test]
@@ -353,7 +353,7 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "p", name: "p", animate: label,
                     transition: new StyleTransitionConfig { DurationSec = 0.1f, StaggerChildrenSec = 0.3f },
-                    children: children),
+                    children: children, enterOnMount: false),
             };
         }
 
@@ -399,7 +399,7 @@ namespace Velvet.Tests
                 children: new VNode[]
                 {
                     V.AnimatePresence(key: "presence", initial: false, children: children.ToArray()),
-                });
+                }, enterOnMount: false);
         }
 
         [Test]

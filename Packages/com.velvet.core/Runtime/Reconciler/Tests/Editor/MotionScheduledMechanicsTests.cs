@@ -23,7 +23,7 @@ namespace Velvet.Tests
     /// a sequential slot ADDED on top of its own declared delay, riding the runtime-swap play's
     /// <c>additionalDelaySec</c> so the claim delays the SWAP itself rather than parking an inline
     /// <c>transition-delay</c>, while a descendant with its own explicit <c>animate</c> opts out entirely
-    /// (Framer parity); (3) a standalone <c>V.Motion(variants:, initial:, animate:)</c> mounted with
+    /// (Framer parity); (3) a standalone <c>V.Motion(variants:, initial:, animate:, transition: StyleTransition.Fade)</c> mounted with
     /// NO AnimatePresence — Framer parity dictates <c>initial</c>/<c>animate</c> drive the mount enter on
     /// any <c>motion.*</c> component regardless, with the scheduled swap to the resting
     /// <c>variants[animate]</c> firing on the next tick and a later unrelated re-render never replaying
@@ -1205,6 +1205,34 @@ namespace Velvet.Tests
                     UnityEngine.Mathf.Abs(replacement.style.translate.value.y.value - 200f) < 5f,
                     replacement.style.scale.keyword),
                 Is.EqualTo((true, true, StyleKeyword.Null)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never patches a Motion's clip, so its correction wrapper already survives a patch.
+        [Test]
+        public void Given_ARotatedLayoutIdMotionInsideAnotherDrawnThroughACorrectionWrapper_When_PatchedWithNoClip_Then_ItKeepsTheSameWrapper()
+        {
+            // Arrange
+            VNode[] Tree() => new VNode[]
+            {
+                V.Motion(name: "outer", layoutId: "outer-box", transition: s_layoutSpring, className: "w-[200px] h-[200px]",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
+                            className: "w-[50px] h-[50px] rotate-[10deg]"),
+                    }),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree());
+            var inner = Root.Q<VisualElement>("inner");
+            var wrapperBefore = inner.hierarchy.parent;
+
+            // Act
+            _reconciler.Reconcile(Root, Tree(), Tree());
+
+            // Assert — the wrapper is the one the Motion mounted in, and it is still a correction rather than a clip.
+            Assert.That(
+                (ReferenceEquals(wrapperBefore, inner.hierarchy.parent),
+                    _reconciler.Context.ClipPathBindings.TryGetValue(inner, out var binding) && binding.Correction),
+                Is.EqualTo((true, true)));
         }
 
         private static TabStore s_lists;
@@ -2903,13 +2931,13 @@ namespace Velvet.Tests
                     className: $"absolute left-[{s_aLeft}px] top-[0px] w-[{s_aSize}px] h-[{s_aSize}px] {s_sharedClasses} {s_aClasses}",
                     children: s_aField
                         ? new VNode[] { V.Div(key: "a-child", name: "a-child", className: "w-[20px] h-[20px]"), V.TextField(key: "field", name: "field") }
-                        : new VNode[] { V.Div(key: "a-child", name: "a-child", className: "w-[20px] h-[20px]") }));
+                        : new VNode[] { V.Div(key: "a-child", name: "a-child", className: "w-[20px] h-[20px]") }, enterOnMount: false));
             }
             if (s_bMounted)
             {
                 children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_bTransition,
                     variants: s_bPose != null ? s_bVariants ?? s_fade : null, animate: s_bPose,
-                    className: $"absolute left-[{s_bLeft}px] top-[0px] w-[{s_bSize}px] h-[{s_bSize}px] {s_sharedClasses} {s_bClasses}"));
+                    className: $"absolute left-[{s_bLeft}px] top-[0px] w-[{s_bSize}px] h-[{s_bSize}px] {s_sharedClasses} {s_bClasses}", enterOnMount: false));
             }
             if (s_cMounted)
             {
@@ -5987,16 +6015,16 @@ namespace Velvet.Tests
             Assert.That(CornerRadiusFit.InlineCorner(element.style, corner).value.value, Is.EqualTo(expected).Within(0.5f));
         }
 
-        [TestCase(0, 180f)]
-        [TestCase(1, 60f)]
-        public void Given_ALayoutIdMotionWhoseOwnStylesheetGivesItOverlappingRadii_When_ItsTweenStarts_Then_TheyAreLeftUnfittedAsAtRest(int corner, float expected)
+        [TestCase(0, 150f)]
+        [TestCase(1, 50f)]
+        public void Given_ALayoutIdMotionWhoseOwnStylesheetGivesItOverlappingRadii_When_ItsTweenStarts_Then_TheyAreScaledDownTogether(int corner, float expected)
         {
-            // Arrange / Act — the test's own sheet giving ninety and thirty, which Velvet leaves unfitted at rest; doubled in
-            // place.
+            // Arrange / Act — the test's own sheet giving ninety and thirty, doubled in place, so drawn at half and
+            // written at twice, 180 and 60 on a 200px side.
             Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
             var element = ResizeBoxWithOrigin("layout-id-test-uneven");
 
-            // Assert — written at twice each, drawn at half as at rest.
+            // Assert — both by the one factor that fits the side, 200 over 240, as a radius of an arbitrary class is.
             Assert.That(CornerRadiusFit.InlineCorner(element.style, corner).value.value, Is.EqualTo(expected).Within(0.5f));
         }
 
@@ -6366,7 +6394,7 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Motion(name: "shared", layoutId: "shared-box", transition: s_slowTween, variants: s_radiusPoses,
-                    animate: s_radiusPose, className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px] origin-[0%_0%]"),
+                    animate: s_radiusPose, className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px] origin-[0%_0%]", enterOnMount: false),
             });
         }
 
@@ -7162,7 +7190,7 @@ namespace Velvet.Tests
                     {
                         V.Motion(key: "modal", name: "modal", layoutId: "card", variants: s_fade, animate: "visible",
                             exit: "hidden", transition: s_modalTransition ?? s_slowTween,
-                            className: $"absolute left-[{s_modalLeft}px] top-[0px] w-[100px] h-[100px]"),
+                            className: $"absolute left-[{s_modalLeft}px] top-[0px] w-[100px] h-[100px]", enterOnMount: false),
                     }
                     : Array.Empty<VNode>()),
                 s_closeRead == null ? null : V.Component(CloseReaderRender, s_modalOpen, key: "reader"),
@@ -7411,7 +7439,7 @@ namespace Velvet.Tests
                     {
                         V.Motion(key: "modal", name: "modal", layoutId: "card", variants: s_fade, animate: "visible",
                             exit: "hidden", transition: s_slowTween,
-                            className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]", children: new[] { Title("modal") }),
+                            className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]", children: new[] { Title("modal") }, enterOnMount: false),
                     }
                     : Array.Empty<VNode>()),
             });
@@ -7486,7 +7514,7 @@ namespace Velvet.Tests
             s_setStep = setStep;
             VNode Modal(string key, int left) => V.Motion(key: key, name: key, layoutId: "card", variants: s_fade,
                 animate: "visible", exit: "hidden", transition: s_slowTween,
-                className: $"absolute left-[{left}px] top-[0px] w-[100px] h-[100px]");
+                className: $"absolute left-[{left}px] top-[0px] w-[100px] h-[100px]", enterOnMount: false);
             var modals = new List<VNode>();
             if (s_m1Open) modals.Add(Modal("m1", 300));
             if (s_m2Open) modals.Add(Modal("m2", 600));
@@ -7723,9 +7751,9 @@ namespace Velvet.Tests
                 V.Motion(key: "p", name: "p", animate: parentLabel, transition: parentTransition,
                     children: new VNode[]
                     {
-                        V.Motion(key: "c0", name: "c0", variants: s_fade, animate: child0Animate, transition: childTransition),
+                        V.Motion(key: "c0", name: "c0", variants: s_fade, animate: child0Animate, transition: childTransition, enterOnMount: false),
                         V.Motion(key: "c1", name: "c1", variants: s_fade, transition: childTransition),
-                    }),
+                    }, enterOnMount: false),
             };
         }
 
@@ -7889,7 +7917,7 @@ namespace Velvet.Tests
             VNode[] Tree(string label) => new VNode[]
             {
                 V.Motion(key: "box", name: "box", className: "hover:opacity-50", variants: s_fade, animate: label,
-                    transition: spring),
+                    transition: spring, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
             AdvancePast(0.5f);
@@ -7918,7 +7946,7 @@ namespace Velvet.Tests
             VNode[] Tree(string label) => new VNode[]
             {
                 V.Motion(key: "box", name: "box", className: "hover:opacity-50", variants: poses, animate: label,
-                    transition: spring),
+                    transition: spring, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
             AdvancePast(0.5f);
@@ -7959,7 +7987,7 @@ namespace Velvet.Tests
                                 V.Motion(key: "gc", name: "gc", variants: s_fade,
                                     transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                             }),
-                    }),
+                    }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
             Assume.That(Root.Q<VisualElement>("gc").ClassListContains("opacity-100"), Is.False,
@@ -7995,7 +8023,7 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "gp", name: "gp", animate: label,
                     transition: new StyleTransitionConfig { DurationSec = 0.1f, StaggerChildrenSec = 0.4f },
-                    children: new[] { Mid(0), Mid(1) }),
+                    children: new[] { Mid(0), Mid(1) }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
 
@@ -8027,7 +8055,7 @@ namespace Velvet.Tests
                             transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                         V.Motion(key: "c1", name: "c1", variants: s_fade,
                             transition: new StyleTransitionConfig { DurationSec = 0.05f }),
-                    }),
+                    }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
 
@@ -8059,7 +8087,7 @@ namespace Velvet.Tests
                             V.Motion(key: "c1", name: "c1", variants: s_fade,
                                 transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                         }),
-                    }),
+                    }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
 
@@ -8090,8 +8118,8 @@ namespace Velvet.Tests
                         {
                             V.Motion(key: "gc", name: "gc", variants: s_fade,
                                 transition: new StyleTransitionConfig { DurationSec = 0.05f }),
-                        }),
-                    }),
+                        }, enterOnMount: false),
+                    }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
 
@@ -8104,51 +8132,67 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASwapDeclaringAfterChildren_When_ItPropagatesALabelToItsChildren_Then_TheUnorchestratedWaitIsDiagnosed()
+        public void Given_AParentDeclaringAfterChildren_When_ItsLabelFlips_Then_ItSwapsOnceTheVariantChildrenBelowItHaveEnded()
         {
-            // Arrange — AfterChildren is accepted by the config but not yet orchestrated for label
-            // propagation, so the swap that would have to wait says so instead of quietly animating early.
-            // StaggerChildrenSec is set too, which opens the orchestration gate on its own: that leaves this
-            // case measuring which When value is diagnosed rather than whether the gate above it opened.
-            var diagnosed = 0;
-            void OnLog(string condition, string stackTrace, UnityEngine.LogType type)
-            {
-                if (type == UnityEngine.LogType.Warning && condition.Contains("When = AfterChildren"))
-                {
-                    diagnosed++;
-                }
-            }
-
+            // Arrange — the slowest play below the parent is the grandchild's 0.2s, behind a child whose own is short.
+            // A child naming its own animate is not one of the parent's variant children, so its 0.6s is not waited for.
             VNode[] Tree(string label) => new VNode[]
             {
-                V.Motion(key: "p", animate: label,
-                    transition: new StyleTransitionConfig
-                    {
-                        DurationSec = DurationSec,
-                        StaggerChildrenSec = 0.4f,
-                        When = TransitionWhen.AfterChildren,
-                    },
+                V.Motion(key: "p", name: "p", variants: s_fade, animate: label,
+                    transition: new StyleTransitionConfig { DurationSec = 0.05f, When = TransitionWhen.AfterChildren },
                     children: new VNode[]
                     {
-                        V.Motion(key: "c", variants: s_fade,
-                            transition: new StyleTransitionConfig { DurationSec = DurationSec }),
-                    }),
+                        V.Motion(key: "c", name: "c", variants: s_fade,
+                            transition: new StyleTransitionConfig { DurationSec = 0.05f },
+                            children: new VNode[]
+                            {
+                                V.Motion(key: "g", name: "g", variants: s_fade,
+                                    transition: new StyleTransitionConfig { DurationSec = 0.2f }),
+                            }),
+                        V.Motion(key: "own", name: "own", variants: s_fade, animate: label,
+                            transition: new StyleTransitionConfig { DurationSec = 0.6f }, enterOnMount: false),
+                    }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
 
-            // Act
-            UnityEngine.Application.logMessageReceived += OnLog;
-            try
-            {
-                _reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
-            }
-            finally
-            {
-                UnityEngine.Application.logMessageReceived -= OnLog;
-            }
+            // Act — flip the label, then sample inside the grandchild's play and again once it has ended.
+            _reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
+            for (var i = 0; i < 6; i++) Tick();
+            var swappedInsideTheGrandchildsPlay = Root.Q<VisualElement>("p").ClassListContains("opacity-100");
+            for (var i = 0; i < 13; i++) Tick();
+            var swappedAfterIt = Root.Q<VisualElement>("p").ClassListContains("opacity-100");
 
-            // Assert — said once, for the one parent whose propagated label changed.
-            Assert.That(diagnosed, Is.EqualTo(1));
+            // Assert
+            Assert.That((swappedInsideTheGrandchildsPlay, swappedAfterIt), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AParentStaggeringBackwards_When_ItsLabelFlips_Then_TheLastChildSwapsFirst()
+        {
+            // Arrange — three children over a 0.2s stagger: the last takes slot zero, and the first the 0.4s one.
+            VNode Child(int i) => V.Motion(key: "c" + i, name: "c" + i, variants: s_fade,
+                transition: new StyleTransitionConfig { DurationSec = 0.05f });
+            VNode[] Tree(string label) => new VNode[]
+            {
+                V.Motion(key: "p", name: "p", animate: label,
+                    transition: new StyleTransitionConfig
+                    {
+                        DurationSec = 0.1f, StaggerChildrenSec = 0.2f, StaggerDirection = -1,
+                    },
+                    children: new[] { Child(0), Child(1), Child(2) }, enterOnMount: false),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
+
+            // Act — flip the label and sample at 96ms, past the last child's slot and short of the middle one's 0.2s.
+            _reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert
+            Assert.That(
+                (Root.Q<VisualElement>("c0").ClassListContains("opacity-100"),
+                 Root.Q<VisualElement>("c1").ClassListContains("opacity-100"),
+                 Root.Q<VisualElement>("c2").ClassListContains("opacity-100")),
+                Is.EqualTo((false, false, true)));
         }
 
         [Test]
@@ -8216,17 +8260,33 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AStandaloneMotionWithoutInitial_When_Mounted_Then_ItStartsAtTheAnimateVariantWithNoTweenScheduled()
+        public void Given_AStandaloneMotionWithoutInitial_When_Mounted_Then_ItEntersFromItsOwnClassesToTheAnimateVariant()
         {
-            // Arrange / Act — no `initial` declared, so there is no starting pose to enter FROM.
+            // Arrange / Act — no `initial` declared, so the enter starts from the look the Motion has without its pose.
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
             {
                 V.Motion(name: "m", variants: s_fade, animate: "visible",
                     transition: new StyleTransitionConfig { DurationSec = DurationSec }),
             });
+            var element = Root.Q<VisualElement>("m");
+            var heldBack = element.ClassListContains("opacity-100");
+            AdvancePast(DurationSec);
 
-            // Assert — rests directly at variants[animate], and (unlike the `initial` case above) no transition
-            // was scheduled: no inline transition-duration was ever applied.
+            // Assert — the pose is held back while the enter waits, and rests on the element once it has played.
+            Assert.That((heldBack, element.ClassListContains("opacity-100")), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AStandaloneMotionNotEnteringOnMount_When_Mounted_Then_ItStartsAtTheAnimateVariantWithNoTweenScheduled()
+        {
+            // Arrange / Act
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(name: "m", variants: s_fade, animate: "visible",
+                    transition: new StyleTransitionConfig { DurationSec = DurationSec }, enterOnMount: false),
+            });
+
+            // Assert — rests directly at variants[animate], and no inline transition-duration was ever applied.
             var element = Root.Q<VisualElement>("m");
             Assert.That(
                 (element.ClassListContains("opacity-100"), element.style.transitionDuration.keyword),

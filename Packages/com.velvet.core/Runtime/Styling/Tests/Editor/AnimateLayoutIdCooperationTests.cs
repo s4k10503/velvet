@@ -44,7 +44,7 @@ namespace Velvet.Tests
             {
                 V.Div(className: $"w-[{spacerWidth}px] h-[40px]"),
                 V.Motion(className: className, name: "card", variants: s_variants, animate: "visible", layoutId: "card",
-                    transition: s_transition),
+                    transition: s_transition, enterOnMount: false),
             });
 
         private StyleAnimateBinding _attached;

@@ -18,6 +18,8 @@ namespace Velvet.Tests
     {
         private const string WideBox = "w-[330px] h-[34px]";
 
+        private const string OwnRadiusSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
+
         private static StateUpdater<string> s_setClass;
 
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
@@ -298,6 +300,55 @@ namespace Velvet.Tests
             // Assert
             var radii = Radii(Box);
             Assert.That(new[] { radii[0], radii[1] }, Is.EqualTo(new[] { 80f * 100f / 140f, 60f * 100f / 140f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ABoxWithNoRoundedClassWhoseCodeWritesARadiusBeyondItsHeight_When_LaidOut_Then_EveryCornerTakesHalfTheHeight()
+        {
+            // Arrange — no class on the element declares a radius, and 400 on each corner overlaps on every side.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "box", className: WideBox));
+            Box.style.borderTopLeftRadius = 400f;
+            Box.style.borderTopRightRadius = 400f;
+            Box.style.borderBottomRightRadius = 400f;
+            Box.style.borderBottomLeftRadius = 400f;
+
+            // Act
+            ForcePanelUpdate(Box.panel);
+
+            // Assert
+            Assert.That(Radii(Box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ABoxWhoseOwnStylesheetGivesItARadiusBeyondItsHeight_When_LaidOut_Then_ItsCornersAreScaledToFitIt()
+        {
+            // Arrange — the rule gives the top-left corner 90 and the top-right 30, the radius the application's own
+            // sheet declares and no Velvet class names.
+            _window.rootVisualElement.styleSheets.Add(
+                UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(OwnRadiusSheet));
+
+            // Act
+            var box = MountBox($"{WideBox} layout-id-test-uneven");
+
+            // Assert — 90 down a 34px side scales every corner by 34/90.
+            Assert.That(Radii(box), Is.EqualTo(new[] { 34f, 30f * 34f / 90f, 0f, 0f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ABoxFittedFromItsOwnStylesheetRadius_When_ItGrowsToFitIt_Then_TheSlotIsHandedBackToTheStylesheet()
+        {
+            // Arrange
+            _window.rootVisualElement.styleSheets.Add(
+                UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(OwnRadiusSheet));
+            var box = MountSwitchable($"{WideBox} layout-id-test-uneven");
+            var fittedWhileShort = IsNear(box.resolvedStyle.borderTopLeftRadius, 34f);
+
+            // Act — 90 down a 420px side fits unscaled.
+            SwitchClass("w-[420px] h-[420px] layout-id-test-uneven");
+
+            // Assert
+            Assert.That((fittedWhileShort, box.style.borderTopLeftRadius.keyword, box.resolvedStyle.borderTopLeftRadius),
+                Is.EqualTo((true, StyleKeyword.Null, 90f)));
         }
     }
 }

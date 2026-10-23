@@ -1347,6 +1347,10 @@ namespace Velvet
         // that won on each axis. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, (string? X, string? Y)> SkewTransformed { get; } = new();
 
+        // The holds Motion plays take on an element's paint layers (FiberPaintLeases). Set by the wrapper-element
+        // appliers, which own the layers' appliers.
+        public FiberPaintLeases? PaintLeases { get; set; }
+
         // Dashed / dotted border outline per element (border-dashed / border-dotted), keyed by the element
         // itself — like skew, the outline is painted by the element's own generateVisualContent with no
         // wrapper (only the border color is suppressed; the fill and width are untouched). Defers to skew /
@@ -1560,6 +1564,11 @@ namespace Velvet
         // The elements whose class list FiberZLayerCoordinator.TryClassify last classified, keyed by the element
         // carrying the classes, so a z a custom property supplies can stack one that its patch left unstacked.
         internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> ZLayerCandidates { get; } = new();
+
+        // The exiting children a PopLayout presence pinned out of flow, keyed by the ghost element, which paint as
+        // positioned children for as long as they exit (FiberZLayerCoordinator.PinnedGhostZ). An entry is taken when
+        // the exit is cancelled or the ghost is removed.
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> PinnedGhosts { get; } = new();
 
         // Real element -> its relocation bookkeeping. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, ZLayerMember> ZLayerMembers { get; } = new();
@@ -2779,7 +2788,9 @@ namespace Velvet
         // live key remounted under its own key from one it patched. Same set/restore discipline.
         internal bool PresenceAnchorCreated;
 
-        // The stagger slot the expansion plays PresenceAnchorMotion's enter in. Same set/restore discipline.
+        // The delay the expansion plays PresenceAnchorMotion's enter in: its stagger slot, which the create path raises
+        // to the end of its children's plays once they have been created where the Motion waits for them
+        // (TransitionWhen.AfterChildren). Same set/restore discipline.
         internal float PresenceAnchorEnterDelaySec;
 
         // The keyed child being emitted now and whether it is present: what a presence expanding inside that

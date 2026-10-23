@@ -13,6 +13,10 @@ namespace Velvet
     internal sealed class SkewBinding
     {
         public SkewSpec Spec;
+        // Set while a motion play draws Spec (FiberSkewApplier.Drive): Final is then the spec the element's classes
+        // resolve to, which a patch keeps current and the play lands on unless it ends on its own target.
+        public bool Driven;
+        public SkewSpec Final;
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;

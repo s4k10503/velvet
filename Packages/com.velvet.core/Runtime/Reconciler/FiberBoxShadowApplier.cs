@@ -53,7 +53,7 @@ namespace Velvet
         // skew / gradient paint layers' four cases: update the existing paint's spec, attach a newly-shadowed
         // element, detach one whose shadow was removed, or do nothing.
         // clipActive: whether the class list resolves to an active clip-path-* — resolved ONCE by the caller
-        // (PatchElement forwards ApplyClipPathOnPatch's result; PatchMotion passes false). An active clip
+        // (PatchElement and PatchMotion forward ApplyClipPathOnPatch's result). An active clip
         // suppresses the shadow (CSS clip-path clips the box-shadow too).
         // The shadow is a paint, not a wrapper, so a Motion can carry a shadow paint without becoming an
         // AnimatePresence anchor (nothing structural is added).

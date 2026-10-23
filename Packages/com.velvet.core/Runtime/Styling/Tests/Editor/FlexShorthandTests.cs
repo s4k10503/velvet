@@ -339,7 +339,7 @@ namespace Velvet.Tests
                 new VNode[]
                 {
                     V.Motion(className: "w-[200px] flex-[3]", variants: s_narrowPose, animate: "open",
-                        transition: StyleTransitionConfig.None),
+                        transition: StyleTransitionConfig.None, enterOnMount: false),
                 });
             return scope.Root[0];
         }

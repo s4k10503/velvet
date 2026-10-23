@@ -1734,6 +1734,49 @@ namespace Velvet
             return !swapped.Contains(property) || StyleLayerPriority.UnderVariant(key);
         }
 
+        // Whether the element's own important declaration, a layer or a class, writes one of longhands: what an animation
+        // does not override.
+        internal static bool HoldsImportant(VisualElement element, StyleLonghandSet longhands)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return false;
+            }
+            foreach (var pair in map)
+            {
+                if (StyleArbitraryLonghands.Of(pair.Key).Overlaps(longhands) && HoldsImportantKey(pair.Value.Keys))
+                {
+                    return true;
+                }
+            }
+            return HoldsImportantClaim(map.Projection, longhands);
+        }
+
+        private static bool HoldsImportantKey(IList<long> keys)
+        {
+            foreach (var key in keys)
+            {
+                if ((key & StyleLayerPriority.Important) != 0) return true;
+            }
+            return false;
+        }
+
+        private static bool HoldsImportantClaim(StyleClassProjection.Model? projection, StyleLonghandSet longhands)
+        {
+            if (projection == null)
+            {
+                return false;
+            }
+            foreach (var longhand in s_longhands)
+            {
+                if (longhands.Contains(longhand) && (projection.ClaimOf(longhand) & StyleLayerPriority.Important) != 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Whether a gesture channel's layer (StyleLayerPriority.Gesture) holds a motion slot on element.
         internal static bool HoldsGestureLayer(VisualElement element, ArbitraryProperty slot)
         {

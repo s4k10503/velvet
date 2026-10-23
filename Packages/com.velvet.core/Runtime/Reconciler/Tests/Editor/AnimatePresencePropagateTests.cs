@@ -257,7 +257,7 @@ namespace Velvet.Tests
                 // Exits more slowly than the inner Motion, so the inner presence finishes first.
                 "slow-outer" => V.Motion(name: "slow", key: key, variants: s_fade, animate: "visible", exit: "hidden",
                     transition: new StyleTransitionConfig { DurationSec = 0.6f },
-                    children: new[] { V.Component(StatefulInnerRender) }),
+                    children: new[] { V.Component(StatefulInnerRender) }, enterOnMount: false),
                 _ => throw new System.ArgumentOutOfRangeException(nameof(s_shape), s_shape, null),
             };
         }

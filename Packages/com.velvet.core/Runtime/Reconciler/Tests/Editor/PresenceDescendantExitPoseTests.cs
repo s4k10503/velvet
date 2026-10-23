@@ -59,7 +59,7 @@ namespace Velvet.Tests
                 children.Add(V.Div(key: key.ToString(), children: new VNode[]
                 {
                     V.Motion(name: "inner", variants: s_variants, animate: state.Label, exit: "gone",
-                        transition: s_tween),
+                        transition: s_tween, enterOnMount: false),
                 }));
             }
             return V.AnimatePresence(key: "presence", children: children.ToArray());

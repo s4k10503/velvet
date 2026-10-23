@@ -50,7 +50,7 @@ namespace Velvet.Tests
             return V.Motion(key: "p", animate: label, children: new VNode[]
             {
                 V.Component(MemoizedIntermediateRender, key: "mid"),
-            });
+            }, enterOnMount: false);
         }
 
         private static int s_memoRenderCount;
@@ -72,7 +72,7 @@ namespace Velvet.Tests
         {
             var (_, bump) = Hooks.UseState(0);
             s_consumerBump = bump;
-            return V.Motion(name: "animated-child", key: "c", variants: Fade);
+            return V.Motion(name: "animated-child", key: "c", variants: Fade, transition: StyleTransition.Fade);
         }
 
         [Component]
@@ -80,7 +80,7 @@ namespace Velvet.Tests
             => V.Motion(key: "p", animate: "visible", children: new VNode[]
             {
                 V.Component(MotionConsumerRender, key: "consumer"),
-            });
+            }, enterOnMount: false);
 
         // Same as MotionConsumerRender, but WRAPPER-mounted: it sits under a DOM-less AnimatePresence (which
         // inline-expands its keyed children into the parent's slot range). Its self-setState exercises the
@@ -90,7 +90,7 @@ namespace Velvet.Tests
         {
             var (_, bump) = Hooks.UseState(0);
             s_wrapperConsumerBump = bump;
-            return V.Motion(name: "wrapper-child", key: "c", variants: Fade);
+            return V.Motion(name: "wrapper-child", key: "c", variants: Fade, transition: StyleTransition.Fade);
         }
 
         [Component]
@@ -101,7 +101,7 @@ namespace Velvet.Tests
                 {
                     V.Component(WrapperMountedConsumerRender, key: "consumer"),
                 }),
-            });
+            }, enterOnMount: false);
 
         private static void Mount(ReconcilerScope scope, VNode[] tree)
             => scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
@@ -110,7 +110,7 @@ namespace Velvet.Tests
         // MotionContext is an ambient context, so it flows THROUGH intervening components — this is the consumer.
         [Component]
         private static VNode PassThroughChild(Dictionary<string, MotionVariant> childVariants)
-            => V.Motion(key: "c", variants: childVariants);
+            => V.Motion(key: "c", variants: childVariants, transition: StyleTransition.Fade);
 
         [Test]
         public void Given_AMemoizedComponentBetweenParentAndChildMotion_When_TheParentAnimateChanges_Then_TheChildStillFollows()
@@ -159,7 +159,7 @@ namespace Velvet.Tests
         public void Given_AMotionWithExit_When_ResolvingExitTransition_Then_ItAnimatesFromAnimateToExitVariant()
         {
             // Arrange — a Motion with an `exit` label.
-            MotionNode motion = V.Motion(variants: Fade, animate: "visible", exit: "hidden");
+            MotionNode motion = V.Motion(variants: Fade, animate: "visible", exit: "hidden", enterOnMount: false, transition: StyleTransition.Fade);
 
             // Act
             var cfg = GeneralPathReconciler.TryResolveVariantExit(motion);
@@ -200,7 +200,7 @@ namespace Velvet.Tests
                     ? new VNode[]
                     {
                         V.Motion(key: "a", variants: Fade, animate: "visible", exit: "hidden",
-                            transition: new StyleTransitionConfig { DurationSec = 0.1f }),
+                            transition: new StyleTransitionConfig { DurationSec = 0.1f }, enterOnMount: false),
                     }
                     : Array.Empty<VNode>()),
             };
@@ -231,7 +231,7 @@ namespace Velvet.Tests
             VNode[] Tree(bool present) => new VNode[]
             {
                 V.AnimatePresence(children: present
-                    ? new VNode[] { V.Motion(key: "a", variants: Fade, animate: "visible", exit: "hidden") }
+                    ? new VNode[] { V.Motion(key: "a", variants: Fade, animate: "visible", exit: "hidden", enterOnMount: false, transition: StyleTransition.Fade) }
                     : Array.Empty<VNode>()),
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), Tree(true));
@@ -333,7 +333,7 @@ namespace Velvet.Tests
         {
             // Arrange / Act — a standalone Motion resolving its own label.
             using var scope = new ReconcilerScope();
-            Mount(scope, new VNode[] { V.Motion("item", key: "m", variants: Fade, animate: "visible") });
+            Mount(scope, new VNode[] { V.Motion("item", key: "m", variants: Fade, animate: "visible", enterOnMount: false, transition: StyleTransition.Fade) });
 
             // Assert — the variant is resolved onto the element at reconcile time.
             Assert.That(scope.Root[0].ClassListContains("opacity-100"), Is.True);
@@ -350,8 +350,8 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "p", animate: "visible", children: new VNode[]
                 {
-                    V.Motion(key: "c", variants: Fade),
-                }),
+                    V.Motion(key: "c", variants: Fade, transition: StyleTransition.Fade),
+                }, enterOnMount: false),
             });
 
             // Assert
@@ -370,14 +370,14 @@ namespace Velvet.Tests
                 V.Motion(key: "p", animate: "hidden", children: new VNode[]
                 {
                     V.Motion(key: "c", variants: Fade, transition: StyleTransitionConfig.None),
-                }),
+                }, enterOnMount: false),
             };
             var visible = new VNode[]
             {
                 V.Motion(key: "p", animate: "visible", children: new VNode[]
                 {
                     V.Motion(key: "c", variants: Fade, transition: StyleTransitionConfig.None),
-                }),
+                }, enterOnMount: false),
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), hidden);
             Assume.That(scope.Root[0][0].ClassListContains("opacity-0"), Is.True);
@@ -402,8 +402,8 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "p", animate: "visible", children: new VNode[]
                 {
-                    V.Motion(key: "c", variants: Fade, animate: "hidden"),
-                }),
+                    V.Motion(key: "c", variants: Fade, animate: "hidden", enterOnMount: false, transition: StyleTransition.Fade),
+                }, enterOnMount: false),
             });
 
             // Assert — the self label overrides the inherited one.
@@ -424,7 +424,7 @@ namespace Velvet.Tests
                 V.Motion(key: "p", variants: Fade, animate: "visible", children: new VNode[]
                 {
                     V.Motion("p-4", key: "c"),
-                }),
+                }, enterOnMount: false, transition: StyleTransition.Fade),
             });
 
             // Assert — a variant-less child keeps only its base classes; nothing is propagated onto it.
@@ -445,9 +445,9 @@ namespace Velvet.Tests
                 {
                     V.Motion(key: "mid", variants: Fade, children: new VNode[]
                     {
-                        V.Motion(key: "leaf", variants: scale),
-                    }),
-                }),
+                        V.Motion(key: "leaf", variants: scale, transition: StyleTransition.Fade),
+                    }, transition: StyleTransition.Fade),
+                }, enterOnMount: false),
             });
 
             // Assert — the label flows through the middle level down to the grandchild.
@@ -466,7 +466,7 @@ namespace Velvet.Tests
                 V.Motion(key: "p", animate: "visible", children: new VNode[]
                 {
                     V.Component<Dictionary<string, MotionVariant>>(PassThroughChild, Fade, key: "mid"),
-                }),
+                }, enterOnMount: false),
             });
 
             // Assert — the component's child Motion still inherits the ancestor Motion's active label.
@@ -517,8 +517,8 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "p", animate: "visible", children: new VNode[]
                 {
-                    V.Motion(key: "c", variants: Fade, elementType: typeof(Button)),
-                }),
+                    V.Motion(key: "c", variants: Fade, elementType: typeof(Button), transition: StyleTransition.Fade),
+                }, enterOnMount: false),
             };
             var plain = new VNode[] { V.Button("plain", key: "b") };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), withButton);

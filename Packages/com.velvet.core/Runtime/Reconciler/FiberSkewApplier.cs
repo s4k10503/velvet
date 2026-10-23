@@ -37,6 +37,7 @@ namespace Velvet
             }
             var binding = SkewSilhouette.Attach(element, spec);
             _ctx.SkewBindings[element] = binding;
+            SetPick(element, spec);
             // A skewed element OWNS any bg-gradient-* on it: the silhouette paints the gradient on a
             // sheared mesh (the rectangular background-image the non-skew path would set cannot follow the
             // shear). ApplyGradientOnCreate runs next and defers to this binding.
@@ -69,6 +70,20 @@ namespace Velvet
         {
             var bound = _ctx.SkewBindings.TryGetValue(element, out var binding);
             var has = StyleSkewClass.TryGetWinningSkewClasses(newClassNames, out var winnerX, out var winnerY);
+            if (bound && binding!.Driven)
+            {
+                // A play is drawing the angles; the classes only say where it lands.
+                StyleSkewClass.TryExtract(newClassNames, out var resolved);
+                binding.Final = resolved;
+                SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged);
+                SkewSilhouette.SyncChildTranslate(binding);
+                if (classesChanged)
+                {
+                    SyncSkewGradient(element, binding, newClassNames);
+                    SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
+                }
+                return binding.Spec;
+            }
             var transformed = _ctx.SkewTransformed.ContainsKey(element);
             // Fast path: no skew anywhere near this element.
             if (!bound && !has && !transformed)
@@ -107,6 +122,7 @@ namespace Velvet
             if (want && bound)
             {
                 binding.Spec = spec;
+                SetPick(element, spec);
                 SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
                 // The manipulator reads Spec live, so the just-changed angle re-seats the children here.
                 SkewSilhouette.SyncChildTranslate(binding);
@@ -119,6 +135,7 @@ namespace Velvet
             {
                 var fresh = SkewSilhouette.Attach(element, spec);
                 _ctx.SkewBindings[element] = fresh;
+                SetPick(element, spec);
                 SkewSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true);
                 SyncSkewGradient(element, fresh, newClassNames);
                 SkewSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(_ctx, element, newClassNames), newClassNames);
@@ -128,9 +145,75 @@ namespace Velvet
             {
                 SkewSilhouette.Detach(element, binding);
                 _ctx.SkewBindings.Remove(element);
+                ClearPick(element);
             }
             return default;
         }
+
+        // Draws a motion play's frame: the angle on each axis, null for an axis the play does not move, which shows
+        // the angle the element's classes resolve to. An element that rests unskewed gets a binding for the length
+        // of the play, which EndDrive takes off again.
+        internal void Drive(VisualElement element, float? xDeg, float? yDeg)
+        {
+            if (_ctx.SkewTransformed.ContainsKey(element))
+            {
+                // The play draws through the silhouette; the next patch settles the element back onto its transform.
+                ClearTransform(element);
+            }
+            if (!_ctx.SkewBindings.TryGetValue(element, out var binding))
+            {
+                var classNames = AppliedClasses(element);
+                binding = SkewSilhouette.Attach(element, default);
+                _ctx.SkewBindings[element] = binding;
+                SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
+                SyncSkewGradient(element, binding, classNames);
+                SkewSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(_ctx, element, classNames), classNames);
+            }
+            if (!binding.Driven)
+            {
+                binding.Final = binding.Spec;
+                binding.Driven = true;
+            }
+            binding.Spec = new SkewSpec(xDeg ?? binding.Final.XDeg, yDeg ?? binding.Final.YDeg,
+                binding.Final.SourceX, binding.Final.SourceY);
+            SkewSilhouette.SyncChildTranslate(binding);
+            if (binding.HasGradient)
+            {
+                SkewSilhouette.SetGradient(element, binding, true, binding.Gradient);
+            }
+            element.MarkDirtyRepaint();
+        }
+
+        // Ends the play's hold on the angles. A play that landed on its own target passes it, null for an axis it
+        // does not move; one cut short passes none and the element shows what its classes resolve to.
+        internal void EndDrive(VisualElement element, float? landedXDeg, float? landedYDeg)
+        {
+            if (!_ctx.SkewBindings.TryGetValue(element, out var binding) || !binding.Driven)
+            {
+                return;
+            }
+            binding.Driven = false;
+            var spec = landedXDeg == null && landedYDeg == null
+                ? binding.Final
+                : new SkewSpec(landedXDeg ?? binding.Final.XDeg, landedYDeg ?? binding.Final.YDeg,
+                    binding.Final.SourceX, binding.Final.SourceY);
+            if (!spec.Active)
+            {
+                SkewSilhouette.Detach(element, binding);
+                _ctx.SkewBindings.Remove(element);
+                return;
+            }
+            binding.Spec = spec;
+            SkewSilhouette.SyncChildTranslate(binding);
+            if (binding.HasGradient)
+            {
+                SkewSilhouette.SetGradient(element, binding, true, binding.Gradient);
+            }
+            element.MarkDirtyRepaint();
+        }
+
+        private string[] AppliedClasses(VisualElement element)
+            => _ctx.MotionAppliedClasses.TryGetValue(element, out var applied) ? applied.Merged : Array.Empty<string>();
 
         // Whether the element takes the skew as its transform slots: nothing else writes them, so nothing is lost
         // to the skew's inline value, and nothing it writes is lost to theirs.
@@ -211,6 +294,29 @@ namespace Velvet
             rotation.ToAngleAxis(out var angle, out var axis);
             element.style.rotate = new Rotate(new Angle(angle, AngleUnit.Degree), axis);
             element.style.scale = new Scale(new Vector3(scale, scale, 1f));
+            SetPick(element, default);
+        }
+
+        // The shape the element is picked by (SkewPickRegion): its box sheared by the painted layer's tangents, which
+        // are zero where the shear is the element's transform. Only the element types Velvet creates as ISkewPickTarget
+        // have one; any other picks by its rectangle.
+        private static void SetPick(VisualElement element, SkewSpec spec)
+        {
+            if (element is not ISkewPickTarget target)
+            {
+                return;
+            }
+            var region = target.PickRegion ??= new SkewPickRegion();
+            region.TanX = Mathf.Tan(spec.XDeg * Mathf.Deg2Rad);
+            region.TanY = Mathf.Tan(spec.YDeg * Mathf.Deg2Rad);
+        }
+
+        private static void ClearPick(VisualElement element)
+        {
+            if (element is ISkewPickTarget target)
+            {
+                target.PickRegion = null;
+            }
         }
 
         private void ClearTransform(VisualElement element)
@@ -218,6 +324,7 @@ namespace Velvet
             _ctx.SkewTransformed.Remove(element);
             element.style.rotate = StyleKeyword.Null;
             element.style.scale = StyleKeyword.Null;
+            ClearPick(element);
         }
     }
 }

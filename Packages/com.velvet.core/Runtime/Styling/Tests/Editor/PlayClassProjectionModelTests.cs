@@ -33,6 +33,24 @@ namespace Velvet.Tests
             Assert.IsTrue(element.ClassListContains("bg-blue-500"));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes the class off once the payload turns off, so the seed a play's add makes holds nothing on.
+        // The model a play builds adopts the class the play has just put on, and this is what fails when that entry keeps it.
+        [Test]
+        public void Given_APlayThatShowedAClassBeforeAnyPayloadExisted_When_ThePlayEndsUnderAPayloadOfItAndThePayloadTurnsOff_Then_TheClassGoes()
+        {
+            // Arrange — the play's add builds the element's model, and the class is no class of the element's own.
+            var element = new VisualElement();
+            StyleAnimationClassUtils.AddClasses(element, new[] { "bg-blue-500" }, StyleLayerPriority.Animation);
+            StyleClassProjection.Add(element, "bg-blue-500", StyleLayerPriority.Hover);
+            StyleAnimationClassUtils.RemoveClasses(element, new[] { "bg-blue-500" });
+
+            // Act
+            StyleClassProjection.Remove(element, "bg-blue-500", StyleLayerPriority.Hover);
+
+            // Assert
+            Assert.IsFalse(element.ClassListContains("bg-blue-500"));
+        }
+
         [Test]
         public void Given_APlayShowingAClassTheClassNameDeclaresImportant_When_TheClassNameDropsIt_Then_TheClassGoes()
         {

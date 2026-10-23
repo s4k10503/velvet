@@ -37,7 +37,7 @@ namespace Velvet.Tests
         }
 
         private static MotionNode Card(IReadOnlyDictionary<string, MotionVariant> variants, string label)
-            => V.Motion(name: "card", variants: variants, animate: label, transition: s_tween);
+            => V.Motion(name: "card", variants: variants, animate: label, transition: s_tween, enterOnMount: false);
 
         // Renders the card from one label to the next, the first mounting it.
         private VisualElement Render(IReadOnlyDictionary<string, MotionVariant> variants, string from, string to)
@@ -141,7 +141,7 @@ namespace Velvet.Tests
             // whose zero-duration swap plays nothing that would cancel that reversal.
             using var store = new PresenceStore();
             using var mounted = MountPresence(store, (state, key) => V.Motion(key: key, name: "item",
-                variants: s_levels, animate: state.Label, transition: s_presetExit));
+                variants: s_levels, animate: state.Label, transition: s_presetExit, enterOnMount: false));
             var scheduler = mounted.GetSchedulerForTest();
             store.SetKeys(string.Empty);
             scheduler.DrainImmediateForTest();
