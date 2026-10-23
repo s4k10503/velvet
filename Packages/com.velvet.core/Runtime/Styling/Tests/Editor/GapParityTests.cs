@@ -1072,7 +1072,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AGapOnAnElementWithNoDirectionClass_When_ReconciledOffPanel_Then_ItSpacesTheColumnTheElementLaysOutIn()
         {
-            // Arrange — no flex / flex-row / flex-col, so the element is the engine's column, as on a panel.
+            // Arrange — no flex / flex-row / flex-col, so the element lays out in the engine's column.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { V.Div(className: "gap-4", children: Children(2)) };
 
