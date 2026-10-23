@@ -15,6 +15,8 @@ namespace Velvet
         // from wherever the forward tween had reached.
         public float From;
         public float To;
+        // The unit the channel's values are in; only a translate takes another than pixels.
+        public LengthUnit Unit;
         // Set while a gesture channel holds the property (GestureChannelMask.MaskChannels): the channel runs on and
         // writes nothing.
         public bool Masked { get; set; }
@@ -223,8 +225,8 @@ namespace Velvet
         {
             var state = new BezierTweenState();
             if (plan.Opacity is { } o) state.Opacity = new BezierTweenChannel(o.from, o.to);
-            if (plan.TranslateX is { } tx) state.TranslateX = new BezierTweenChannel(tx.from, tx.to);
-            if (plan.TranslateY is { } ty) state.TranslateY = new BezierTweenChannel(ty.from, ty.to);
+            if (plan.TranslateX is { } tx) state.TranslateX = new BezierTweenChannel(tx.from, tx.to) { Unit = plan.TranslateXUnit };
+            if (plan.TranslateY is { } ty) state.TranslateY = new BezierTweenChannel(ty.from, ty.to) { Unit = plan.TranslateYUnit };
             if (plan.Scale is { } s) state.Scale = new BezierTweenChannel(s.from, s.to);
             if (plan.Rotate is { } r) state.Rotate = new BezierTweenChannel(r.from, r.to);
             if (plan.Colors != null)
@@ -330,12 +332,17 @@ namespace Velvet
 
         /// <summary>The bezier sibling of <see cref="MotionSpringDriver.StartValues"/>.</summary>
         public static MotionSpringClassParser.SpringPlan StartValues(BezierTweenState state)
-            => MotionSpringClassParser.Holding(
+        {
+            var plan = MotionSpringClassParser.Holding(
                 (state.Opacity?.From, state.TranslateX?.From, state.TranslateY?.From, state.Scale?.From,
                     state.Rotate?.From),
                 state.Colors, static c => new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From),
                 state.Lengths, static l => new MotionSpringClassParser.LengthChannelPlan(l.Property, l.Value.From,
                     l.Value.From, l.Unit));
+            plan.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
+            plan.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            return plan;
+        }
 
         /// <summary>
         /// Releases every inline slot this state ever wrote — and the transition suspension
@@ -468,7 +475,7 @@ namespace Velvet
             {
                 return false;
             }
-            if (shown.TryReadShown(slot.Slot, LengthUnit.Pixel, out var value))
+            if (shown.TryReadShown(slot.Slot, channel!.Unit, out var value))
             {
                 channel!.From = value.Value;
             }
@@ -491,10 +498,10 @@ namespace Velvet
         }
 
         // The bezier sibling of MotionSpringDriver.HoldTranslate.
-        public static void HoldTranslate(BezierTweenState state, float x, float y)
+        public static void HoldTranslate(BezierTweenState state, Length x, Length y)
         {
-            state.TranslateX = new BezierTweenChannel(x, x);
-            state.TranslateY = new BezierTweenChannel(y, y);
+            state.TranslateX = new BezierTweenChannel(x.value, x.value) { Unit = x.unit };
+            state.TranslateY = new BezierTweenChannel(y.value, y.value) { Unit = y.unit };
         }
 
         /// <summary>
@@ -508,7 +515,7 @@ namespace Velvet
                 => channel == null ? null
                     : (ValueAt(state, channel, state.ElapsedSec, length), VelocityOf(state, channel, length) * timeScale);
 
-            return MotionDrawnValues.Of(
+            var drawn = MotionDrawnValues.Of(
                 new MotionDrawnValues.Channels(
                     Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate)),
                 state.Colors,
@@ -519,6 +526,9 @@ namespace Velvet
                     var (value, velocity) = Of(l.Value, l.Property)!.Value;
                     return (l.Property, l.Unit, value, velocity);
                 });
+            drawn.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
+            drawn.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            return drawn;
         }
 
         // The channel's value at timeSec, the play's elapsed time put back after: a length through its property's
@@ -548,8 +558,8 @@ namespace Velvet
         public static void ContinueFrom(BezierTweenState next, MotionDrawnValues interrupted)
         {
             Continue(next.Opacity, interrupted.Opacity);
-            Continue(next.TranslateX, interrupted.TranslateX);
-            Continue(next.TranslateY, interrupted.TranslateY);
+            Continue(next.TranslateX, interrupted.TranslateXUnit == next.TranslateX?.Unit ? interrupted.TranslateX : null);
+            Continue(next.TranslateY, interrupted.TranslateYUnit == next.TranslateY?.Unit ? interrupted.TranslateY : null);
             Continue(next.Scale, interrupted.Scale);
             Continue(next.Rotate, interrupted.Rotate);
             if (next.Lengths != null)
@@ -735,7 +745,9 @@ namespace Velvet
             {
                 var x = state.TranslateX != null ? Value(state, state.TranslateX, shared) : 0f;
                 var y = state.TranslateY != null ? Value(state, state.TranslateY, shared) : 0f;
-                SeatedTranslate.Write(element, new Translate(new Length(x), new Length(y)));
+                SeatedTranslate.Write(element, new Translate(
+                    new Length(x, state.TranslateX?.Unit ?? LengthUnit.Pixel),
+                    new Length(y, state.TranslateY?.Unit ?? LengthUnit.Pixel)));
             }
             if (state.Scale is { Masked: false })
             {

@@ -442,10 +442,14 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   parser, so a ratio change snaps.
 - A target-only uniform scale lands instantly when the sampled x and y scale values differ. The edge
   a `divide-dashed` or `divide-dotted` divider draws is sampled as the color its dash takes.
-- **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`, `translate-1/2`, `translate-full`) **and per-axis `scale-x-` /
-  `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.
-  Both families resolve as ordinary utilities; they just apply as plain classes, so the swap lands
-  them instantly.
+- **Percentage translate** (`translate-x-1/2`, `translate-x-full`, `translate-1/2`, `translate-full`, `translate-x-[50%]`)
+  is a translate channel in percent of the element's own box, so `-translate-x-full` → `translate-x-0` slides
+  an element in by its own width whether or not it has been laid out yet. A zero end takes the unit of the
+  other end. Two nonzero ends in different units (`translate-x-1/2` → `translate-x-[20px]`) share no space to
+  move through, and that axis lands with the swap. A play that interrupts one running in another unit starts
+  from its own start rather than from the value drawn.
+- **Per-axis `scale-x-` / `scale-y-` are not channels,** for all that the quartet above names `scale`. They
+  resolve as ordinary utilities and apply as plain classes, so the swap lands them instantly.
 - **A play suspends the element's own USS transitions when they cover what it drives.** A driver
   writes the exact value the curve or the physics calls for on that frame, so a transition utility
   naming that same property restarts a native transition on every one of those writes and leaves

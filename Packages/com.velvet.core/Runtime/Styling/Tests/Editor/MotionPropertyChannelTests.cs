@@ -196,6 +196,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APercentTranslatePair_When_SteppedToHalfTheDuration_Then_TheInlineTranslateIsTheMidpointPercent()
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act — -translate-x-full (-100%) -> translate-x-0.
+            var state = CreateHalfway(element, new[] { "-translate-x-full" }, new[] { "translate-x-0" });
+
+            // Assert
+            Assert.That(state != null ? (Length?)element.style.translate.value.x : null,
+                Is.EqualTo(new Length(-50f, LengthUnit.Percent)));
+        }
+
+        [Test]
         public void Given_APaddingShorthandPair_When_SteppedToHalfTheDuration_Then_AllFourEdgesCarryTheInterpolatedLength()
         {
             // Arrange

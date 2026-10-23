@@ -718,8 +718,7 @@ namespace Velvet
             var context = ReadSlotContext(element, fromClasses, toClasses);
             var slots = context ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses);
             slots.ForExit = isExit;
-            var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
-                restingTranslate.x.value, restingTranslate.y.value, slots);
+            var plan = MotionSpringClassParser.ResolveResting(fromClasses, toClasses, restingTranslate, slots);
             plan = StartFromHeld(element, plan, fromClasses, toClasses);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
@@ -904,8 +903,7 @@ namespace Velvet
             var context = ReadSlotContext(element, planFrom, planTo);
             var slots = context ?? MotionSlotContext.ReadImportant(element, planFrom, planTo);
             slots.ForExit = play.IsExit;
-            var plan = MotionSpringClassParser.Resolve(planFrom, planTo,
-                restingTranslate.x.value, restingTranslate.y.value, slots);
+            var plan = MotionSpringClassParser.ResolveResting(planFrom, planTo, restingTranslate, slots);
             plan = StartFromHeld(element, plan, planFrom, planTo);
             // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
@@ -1338,8 +1336,8 @@ namespace Velvet
             {
                 var (axis, to) = plan.LoneTranslate.Value;
                 var (x, y) = axis == SpringAxis.TranslateX
-                    ? (to, start.TranslateY!.Value.from)
-                    : (start.TranslateX.Value.from, to);
+                    ? (new Length(to, plan.TranslateXUnit), new Length(start.TranslateY!.Value.from, start.TranslateYUnit))
+                    : (new Length(start.TranslateX.Value.from, start.TranslateXUnit), new Length(to, plan.TranslateYUnit));
                 if (held.Spring != null)
                 {
                     MotionSpringDriver.HoldTranslate(held.Spring, x, y);

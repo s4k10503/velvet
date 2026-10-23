@@ -17,6 +17,8 @@ namespace Velvet
         // initial value.
         public SpringIntegrator Integrator;
         public float Target;
+        // The unit the channel's values are in; only a translate takes another than pixels.
+        public LengthUnit Unit;
         // Set while a gesture channel holds the property (GestureChannelMask.MaskChannels): the spring runs on and
         // writes nothing.
         public bool Masked { get; set; }
@@ -184,8 +186,8 @@ namespace Velvet
                 Description = description,
             };
             if (plan.Opacity is { } o) state.Opacity = new SpringChannel(o.from, o.to) { Acceleratable = true };
-            if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to);
-            if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to);
+            if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to) { Unit = plan.TranslateXUnit };
+            if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to) { Unit = plan.TranslateYUnit };
             if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to);
             if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to);
             if (plan.Colors != null)
@@ -345,8 +347,8 @@ namespace Velvet
             if ((state.TranslateX != null || state.TranslateY != null) && state.TranslateX?.Masked != true)
             {
                 SeatedTranslate.Write(element, new Translate(
-                    new Length(state.TranslateX?.Integrator.Value ?? 0f),
-                    new Length(state.TranslateY?.Integrator.Value ?? 0f)));
+                    new Length(state.TranslateX?.Integrator.Value ?? 0f, state.TranslateX?.Unit ?? LengthUnit.Pixel),
+                    new Length(state.TranslateY?.Integrator.Value ?? 0f, state.TranslateY?.Unit ?? LengthUnit.Pixel)));
             }
             if (state.Scale is { Masked: false })
             {
@@ -506,13 +508,16 @@ namespace Velvet
         public static MotionDrawnValues Drawn(MotionSpringState state)
         {
             static (float, float)? Of(SpringChannel? c) => c == null ? null : (c.Integrator.Value, c.Integrator.Velocity);
-            return MotionDrawnValues.Of(
+            var drawn = MotionDrawnValues.Of(
                 new MotionDrawnValues.Channels(
                     Of(state.Opacity), Of(state.TranslateX), Of(state.TranslateY), Of(state.Scale), Of(state.Rotate)),
                 state.Colors,
                 c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)),
                 state.Lengths,
                 l => (l.Property, l.Unit, l.Value.Integrator.Value, l.Value.Integrator.Velocity));
+            drawn.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
+            drawn.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            return drawn;
         }
 
         /// <summary>
@@ -529,8 +534,10 @@ namespace Velvet
         public static void ContinueFrom(MotionSpringState next, MotionDrawnValues interrupted, bool fromDrawn)
         {
             Continue(next, next.Opacity, interrupted.Opacity, fromDrawn);
-            Continue(next, next.TranslateX, interrupted.TranslateX, fromDrawn);
-            Continue(next, next.TranslateY, interrupted.TranslateY, fromDrawn);
+            Continue(next, next.TranslateX, interrupted.TranslateXUnit == next.TranslateX?.Unit ? interrupted.TranslateX : null,
+                fromDrawn);
+            Continue(next, next.TranslateY, interrupted.TranslateYUnit == next.TranslateY?.Unit ? interrupted.TranslateY : null,
+                fromDrawn);
             Continue(next, next.Scale, interrupted.Scale, fromDrawn);
             Continue(next, next.Rotate, interrupted.Rotate, fromDrawn);
             if (next.Lengths != null)
@@ -580,8 +587,10 @@ namespace Velvet
         public static void InheritVelocity(MotionSpringState next, System.Func<ArbitraryProperty, LengthUnit, float?> nativeVelocity)
         {
             InheritNative(next, next.Opacity, nativeVelocity, ArbitraryProperty.Opacity, LengthUnit.Pixel);
-            InheritNative(next, next.TranslateX, nativeVelocity, ArbitraryProperty.TranslateX, LengthUnit.Pixel);
-            InheritNative(next, next.TranslateY, nativeVelocity, ArbitraryProperty.TranslateY, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateX, nativeVelocity, ArbitraryProperty.TranslateX,
+                next.TranslateX?.Unit ?? LengthUnit.Pixel);
+            InheritNative(next, next.TranslateY, nativeVelocity, ArbitraryProperty.TranslateY,
+                next.TranslateY?.Unit ?? LengthUnit.Pixel);
             InheritNative(next, next.Scale, nativeVelocity, ArbitraryProperty.Scale, LengthUnit.Pixel);
             InheritNative(next, next.Rotate, nativeVelocity, ArbitraryProperty.Rotate, LengthUnit.Pixel);
             if (next.Lengths != null)
@@ -731,7 +740,7 @@ namespace Velvet
             {
                 return false;
             }
-            PutAtShown(channel!, slot, LengthUnit.Pixel, shown);
+            PutAtShown(channel!, slot, channel!.Unit, shown);
             return true;
         }
 
@@ -745,10 +754,10 @@ namespace Velvet
         }
 
         // Holds translate at (x, y) from its next write on, the start values of a play CancelPlay holds.
-        public static void HoldTranslate(MotionSpringState state, float x, float y)
+        public static void HoldTranslate(MotionSpringState state, Length x, Length y)
         {
-            state.TranslateX = new SpringChannel(x, x);
-            state.TranslateY = new SpringChannel(y, y);
+            state.TranslateX = new SpringChannel(x.value, x.value) { Unit = x.unit };
+            state.TranslateY = new SpringChannel(y.value, y.value) { Unit = y.unit };
         }
 
         internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)
@@ -824,12 +833,17 @@ namespace Velvet
         /// <c>StyleAnimationScheduler</c> starts the next play on a held element from.
         /// </summary>
         public static MotionSpringClassParser.SpringPlan StartValues(MotionSpringState state)
-            => MotionSpringClassParser.Holding(
+        {
+            var plan = MotionSpringClassParser.Holding(
                 (state.Opacity?.RestingTarget, state.TranslateX?.RestingTarget, state.TranslateY?.RestingTarget,
                     state.Scale?.RestingTarget, state.Rotate?.RestingTarget),
                 state.Colors, static c => new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From),
                 state.Lengths, static l => new MotionSpringClassParser.LengthChannelPlan(l.Property,
                     l.Value.RestingTarget, l.Value.RestingTarget, l.Unit));
+            plan.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
+            plan.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            return plan;
+        }
 
         /// <summary>
         /// Runs <paramref name="action"/> against every active <see cref="SpringChannel"/> on <paramref

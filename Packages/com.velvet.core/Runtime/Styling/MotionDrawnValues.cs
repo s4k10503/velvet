@@ -15,6 +15,9 @@ namespace Velvet
         public (float Value, float Velocity)? Opacity;
         public (float Value, float Velocity)? TranslateX;
         public (float Value, float Velocity)? TranslateY;
+        // The units the two translate values are drawn in.
+        public LengthUnit TranslateXUnit;
+        public LengthUnit TranslateYUnit;
         public (float Value, float Velocity)? Scale;
         public (float Value, float Velocity)? Rotate;
         public List<(ArbitraryProperty Property, Color Color)>? Colors;

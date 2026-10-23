@@ -326,7 +326,8 @@ namespace Velvet
             {
                 var owner = Owner(slot);
                 var own = SeatedTranslate.Unseated(owner, owner.resolvedStyle.translate);
-                return Pixels(slot, slot == ArbitraryProperty.TranslateX ? own.x : own.y, out value);
+                return Pixels(slot, slot == ArbitraryProperty.TranslateX ? own.x : own.y, out value)
+                    && (value.Unit == unit || TryConvert(slot, ref value, unit));
             }
             return TryReadResolved(slot, out value)
                 && (MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit));
@@ -528,6 +529,19 @@ namespace Velvet
 
         private bool TryConvert(ArbitraryProperty slot, ref ArbitraryStyle value, LengthUnit unit)
         {
+            if (slot is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY)
+            {
+                // A translate's percentage is of the element's own box.
+                var box = Owner(slot).layout;
+                var extent = slot == ArbitraryProperty.TranslateX ? box.width : box.height;
+                if (!(extent > 0f) || float.IsInfinity(extent))
+                {
+                    return false;
+                }
+                var shifted = value.Unit == LengthUnit.Percent ? value.Value / 100f * extent : value.Value;
+                value = new ArbitraryStyle(slot, unit == LengthUnit.Percent ? shifted / extent * 100f : shifted, unit);
+                return true;
+            }
             var parent = Owner(slot).hierarchy.parent;
             var horizontal = slot is ArbitraryProperty.Width or ArbitraryProperty.MinWidth or ArbitraryProperty.MaxWidth;
             var vertical = slot is ArbitraryProperty.Height or ArbitraryProperty.MinHeight or ArbitraryProperty.MaxHeight;
