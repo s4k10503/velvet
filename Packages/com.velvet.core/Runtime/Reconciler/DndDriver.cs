@@ -12,10 +12,13 @@ namespace Velvet
     internal sealed class DndScopeBinding
     {
         public DndContextSettings Settings;
+        // Where the session publishes: the one V.DndContext provides, else the binding's own.
+        public DndContextStore Store;
 
         public DndScopeBinding(DndContextSettings settings)
         {
             Settings = settings;
+            Store = settings.Store ?? new DndContextStore();
         }
     }
 
@@ -81,6 +84,10 @@ namespace Velvet
         public static void Update(DndScopeBinding binding, DndContextSettings settings)
         {
             binding.Settings = settings;
+            if (settings.Store != null)
+            {
+                binding.Store = settings.Store;
+            }
         }
 
         public static void Detach(VisualElement element, ReconcilerContext ctx)

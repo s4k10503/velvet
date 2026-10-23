@@ -2223,11 +2223,12 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Drag-and-drop scope. A real container element (the element is the stable scope identity and
-        /// cleanup anchor). Draggables and
-        /// droppables pair with their nearest ancestor scope at event time; one drag may be active per
-        /// mounted tree at a time. Any existing container can be a scope via props
-        /// (<see cref="FiberElementProps.DndContext"/>) — this factory is convenience.
+        /// Drag-and-drop scope, dnd-kit's <c>DndContext</c>: a component that renders a real container element (the
+        /// element is the stable scope identity and cleanup anchor) and provides the drag state to the
+        /// <c>Hooks.UseDraggable</c> / <c>UseDroppable</c> / <c>UseDndContext</c> / <c>UseDndMonitor</c> hooks below
+        /// it. Draggables and droppables pair with their nearest ancestor scope at event time; one drag may be
+        /// active per mounted tree at a time. Any existing container can be a scope via props
+        /// (<see cref="FiberElementProps.DndContext"/>), which the hooks do not see.
         /// </summary>
         /// <param name="onDragStart">Fired once when a press crosses its activation constraint.</param>
         /// <param name="onDragOver">Fired when the winning drop target CHANGES (including to null).</param>
@@ -2238,15 +2239,17 @@ namespace Velvet
         /// <param name="collisionDetection">Collision strategy; null means
         /// <see cref="DndCollisions.RectIntersection"/>.</param>
         /// <param name="activation">Scope-wide activation default; a per-draggable override wins.</param>
+        /// <param name="onDragMove">Fired on every move of an active drag.</param>
         /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
-        /// <returns>The created <see cref="ElementNode"/>.</returns>
-        public static ElementNode DndContext(
+        /// <returns>The created <see cref="ComponentNode"/>.</returns>
+        public static ComponentNode DndContext(
             Action<DragStartArgs>? onDragStart = null,
             Action<DragOverArgs>? onDragOver = null,
             Action<DragEndArgs>? onDragEnd = null,
             Action<DragCancelArgs>? onDragCancel = null,
             DndCollisionDetection? collisionDetection = null,
             DragActivation? activation = null,
+            Action<DragMoveArgs>? onDragMove = null,
             string? className = null,
             string? key = null,
             string? name = null,
@@ -2262,24 +2265,45 @@ namespace Velvet
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
-            mergedProps.DndContext = new DndContextSettings(
-                onDragStart, onDragOver, onDragEnd, onDragCancel, collisionDetection, activation);
-
-            return new ElementNode
+            var settings = new DndContextSettings(
+                onDragStart, onDragOver, onDragEnd, onDragCancel, collisionDetection, activation, onDragMove);
+            return Component(DndContextHost.Render, new DndContextHost.Props
             {
-                Key = key,
-                ElementType = typeof(VisualElement),
+                Settings = settings,
+                ClassName = className,
                 Name = name,
-                ClassNames = ParseClassNames(className),
-                Props = mergedProps,
+                ElementProps = props,
                 Styles = styles,
-                Children = children ?? EmptyChildren,
-                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
+                Children = children,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
                 WhileFocusClass = whileFocusClass,
+                Data = data,
+                Aria = aria,
+                Events = events,
+            }, key);
+        }
+
+        // DndContextHost's element, built in its render once the store the settings carry exists.
+        internal static ElementNode DndScopeElement(DndContextHost.Props scope, DndContextSettings settings)
+        {
+            var mergedProps = WithAttributes(scope.ElementProps, scope.Data, scope.Aria) ?? VNodePool.RentProps();
+            mergedProps.DndContext = settings;
+
+            return new ElementNode
+            {
+                ElementType = typeof(VisualElement),
+                Name = scope.Name,
+                ClassNames = ParseClassNames(scope.ClassName),
+                Props = mergedProps,
+                Styles = scope.Styles,
+                Children = scope.Children ?? EmptyChildren,
+                Events = scope.Events ?? EmptyEvents,
+                RefCallback = scope.RefCallback,
+                WhileHoverClass = scope.WhileHoverClass,
+                WhileTapClass = scope.WhileTapClass,
+                WhileFocusClass = scope.WhileFocusClass,
             };
         }
 

@@ -342,7 +342,48 @@ namespace Velvet
             RefreshOverlays();
 
             var args = new DragStartArgs(ActiveInfo(), _origin);
-            FireDiscrete(() => _scope.Settings.OnDragStart?.Invoke(args));
+            FireDiscrete(() =>
+            {
+                PublishState();
+                PublishTransform();
+                _scope.Settings.OnDragStart?.Invoke(args);
+                _scope.Store.Dispatch(args, static listener => listener.OnDragStart);
+            });
+        }
+
+        // Published only when it differs, so a hook reading the context re-renders when what it reads changed
+        // rather than on every move.
+        private void PublishState()
+        {
+            var store = _scope.Store.State;
+            var current = store.Current;
+            var active = ActiveInfo();
+            var over = CurrentOverInfo();
+            if (current.Active == active && current.Over == over && current.ActiveNodeRect == _originRect
+                && SameCollisions(current.Collisions, _collisions))
+            {
+                return;
+            }
+            store.Publish(new DndContextState(active, over, _collisions, _originRect));
+        }
+
+        private void PublishTransform()
+            => _scope.Store.Transform.Publish(new DndActiveTransform(_draggable.Settings.Id, _delta));
+
+        private static bool SameCollisions(IReadOnlyList<DndCollision> left, IReadOnlyList<DndCollision> right)
+        {
+            if (left.Count != right.Count)
+            {
+                return false;
+            }
+            for (var i = 0; i < left.Count; i++)
+            {
+                if (left[i].Id != right[i].Id || !left[i].Value.Equals(right[i].Value))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private void CaptureActiveSnapshot()
@@ -575,6 +616,7 @@ namespace Velvet
             }
             RefreshOverlays();
             UpdateCollision();
+            PublishTransform();
             evt.StopPropagation();
         }
 
@@ -600,7 +642,13 @@ namespace Velvet
             // A custom strategy may return null for no collision, as dnd-kit's getFirstCollision tolerates.
             DndCollision[]? collisions = strategy(in query);
             _collisions = collisions ?? System.Array.Empty<DndCollision>();
+            // dnd-kit runs its move effect ahead of its over effect, and the move event carries the target of
+            // the render before, which is the one the session still holds here.
+            var move = new DragMoveArgs(ActiveInfo(), CurrentOverInfo(), _delta, _collisions);
+            _scope.Settings.OnDragMove?.Invoke(move);
+            _scope.Store.Dispatch(move, static listener => listener.OnDragMove);
             SetOver(collisions is { Length: > 0 } ? collisions[0].Id : null);
+            PublishState();
         }
 
         private void SetOver(string? winnerId)
@@ -641,6 +689,7 @@ namespace Velvet
             var overInfo = CurrentOverInfo();
             var args = new DragOverArgs(ActiveInfo(), overInfo, _delta, _collisions);
             _scope.Settings.OnDragOver?.Invoke(args);
+            _scope.Store.Dispatch(args, static listener => listener.OnDragOver);
         }
 
         private void OnDragUp(PointerUpEvent evt)
@@ -664,7 +713,11 @@ namespace Velvet
             // source (a draggable V.Button) does not fire `clicked` after a REAL drag. A sub-threshold
             // press never reaches here (it discards in Pending) — clicks stay intact.
             evt.StopImmediatePropagation();
-            FireDiscrete(() => _scope.Settings.OnDragEnd?.Invoke(args));
+            FireDiscrete(() =>
+            {
+                _scope.Settings.OnDragEnd?.Invoke(args);
+                _scope.Store.Dispatch(args, static listener => listener.OnDragEnd);
+            });
         }
 
         // A fresh primary press under the SAME touch pointer id while this session is active means the
@@ -721,7 +774,13 @@ namespace Velvet
             var args = new DragCancelArgs(ActiveInfo());
             Close();
             DndPressVariantSettler.Settle(_pressChain, _ctx);
-            FireDiscrete(() => _scope.Settings.OnDragCancel?.Invoke(args));
+            FireDiscrete(() => InvokeCancel(_scope, args));
+        }
+
+        private static void InvokeCancel(DndScopeBinding scope, DragCancelArgs args)
+        {
+            scope.Settings.OnDragCancel?.Invoke(args);
+            scope.Store.Dispatch(args, static listener => listener.OnDragCancel);
         }
 
         // Teardown-flavored cancel, called by FiberElementCleaner / the drivers when the source, its
@@ -765,7 +824,7 @@ namespace Velvet
         {
             try
             {
-                FiberDiscreteEventScope.Run(() => scope.Settings.OnDragCancel?.Invoke(args), _ctx.BatchScheduler);
+                FiberDiscreteEventScope.Run(() => InvokeCancel(scope, args), _ctx.BatchScheduler);
             }
             catch (System.Exception exception)
             {
@@ -868,6 +927,11 @@ namespace Velvet
                 RestoreActiveTranslate();
                 RemoveActiveStyling();
                 EndOverlaySession();
+            }
+            if (_active)
+            {
+                _scope.Store.State.Publish(DndContextState.Idle);
+                _scope.Store.Transform.Publish(default);
             }
             if (ReferenceEquals(_ctx.ActiveDrag, this))
             {

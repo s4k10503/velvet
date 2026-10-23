@@ -58,6 +58,42 @@ namespace Velvet
     /// capture, or the source/scope unmounting mid-drag.</summary>
     public sealed record DragCancelArgs(DraggableInfo Active);
 
+    /// <summary>Fired on every move of an active drag, before an <c>onDragOver</c> the same move causes, as
+    /// dnd-kit's <c>onDragMove</c> is. <see cref="Over"/> is the target the drag was over before this move and
+    /// <see cref="Collisions"/> the strategy's ranking at this move.</summary>
+    public sealed record DragMoveArgs(
+        DraggableInfo Active, DroppableInfo? Over, Vector2 Delta, IReadOnlyList<DndCollision> Collisions);
+
+    /// <summary>
+    /// What <c>Hooks.UseDndContext</c> returns: the drag the nearest <c>V.DndContext</c> holds, dnd-kit's public
+    /// context. <see cref="Active"/> is null while no drag is active; <see cref="ActiveNodeRect"/> is the source's
+    /// rect at activation, panel space.
+    /// </summary>
+    public sealed record DndContextState(
+        DraggableInfo? Active, DroppableInfo? Over, IReadOnlyList<DndCollision> Collisions, Rect? ActiveNodeRect)
+    {
+        /// <summary>No drag active.</summary>
+        public static readonly DndContextState Idle =
+            new(null, null, System.Array.Empty<DndCollision>(), null);
+    }
+
+    /// <summary>What <c>Hooks.UseDraggable</c> returns: dnd-kit's <c>useDraggable</c> state. <see cref="Transform"/>
+    /// is the translate the drag applies to this draggable, null unless it is the one being dragged.</summary>
+    public readonly record struct DraggableState(
+        bool IsDragging, DraggableInfo? Active, DroppableInfo? Over, Vector2? Transform);
+
+    /// <summary>What <c>Hooks.UseDroppable</c> returns: dnd-kit's <c>useDroppable</c> state.</summary>
+    public readonly record struct DroppableState(bool IsOver, DraggableInfo? Active, DroppableInfo? Over);
+
+    /// <summary>The callbacks <c>Hooks.UseDndMonitor</c> registers with the nearest <c>V.DndContext</c>, each
+    /// called after the context's own callback of the same name, as dnd-kit's <c>useDndMonitor</c> is.</summary>
+    public sealed record DndMonitorListener(
+        System.Action<DragStartArgs>? OnDragStart = null,
+        System.Action<DragMoveArgs>? OnDragMove = null,
+        System.Action<DragOverArgs>? OnDragOver = null,
+        System.Action<DragEndArgs>? OnDragEnd = null,
+        System.Action<DragCancelArgs>? OnDragCancel = null);
+
     /// <summary>One drop candidate's live rect, as handed to a collision strategy.</summary>
     public readonly struct DndDroppableRect
     {
@@ -141,7 +177,13 @@ namespace Velvet
         System.Action<DragEndArgs>? OnDragEnd = null,
         System.Action<DragCancelArgs>? OnDragCancel = null,
         DndCollisionDetection? CollisionDetection = null,
-        DragActivation? Activation = null);
+        DragActivation? Activation = null,
+        System.Action<DragMoveArgs>? OnDragMove = null)
+    {
+        // The store V.DndContext provides to its subtree's hooks; null for a scope declared through the raw props
+        // slot, whose binding keeps one of its own.
+        internal DndContextStore? Store { get; init; }
+    }
 
     /// <summary>Drag-source configuration. The element carrying
     /// the setting is the drag node itself.</summary>
