@@ -242,8 +242,8 @@ namespace Velvet.Tests
             s_source.TrySetException(new InvalidOperationException("boom"));
             _mounted.FlushStateForTest();
 
-            // Assert — every label is read, since a Suspense still loading keeps its fallback beside what the error
-            // boundary showed
+            // Assert — every label is read rather than the first, since a Suspense still on its fallback holds a
+            // label of its own
             Assert.That(
                 $"{string.Join(", ", _calls)} | {string.Join("|", _root.Query<Label>().ToList().ConvertAll(label => label.text))}",
                 Is.EqualTo("boom | fallback"));

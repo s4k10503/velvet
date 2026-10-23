@@ -214,10 +214,10 @@ namespace Velvet
         // this fiber sits beside.
         internal ComponentFiber? OffscreenUnder { get; set; }
 
-        // The fiber rendering the Suspense whose fallback this fiber was in when a walk of that fiber last reached
-        // it, or null; written on every new-side reach (GeneralPathReconciler.ExpandComponentInline), so an isolated
-        // render of a fallback component clears its children's, and the component it reached them from keeps its
-        // own. ComponentBoundarySearch.FindSuspenseBoundaryAbove reads the chain of them.
+        // The fiber rendering the Suspense whose fallback this fiber was in when a walk last reached it, or null, as
+        // GeneralPathReconciler.ExpandComponentInline writes it. A walk reaches only fibers below the one it renders
+        // for, so the topmost fiber of a fallback is written only where a walk expands that Suspense, and keeps the
+        // mark. ComponentBoundarySearch.FindSuspenseBoundaryAbove reads the chain of them.
         internal ComponentFiber? SuspenseFallbackOf { get; set; }
 
         // Set while a Suspense keeps this fiber offscreen with its layout effects cleaned up — see
