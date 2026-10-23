@@ -291,7 +291,7 @@ Property names are UI Toolkit `transition-property` spellings (`"opacity"`, `"tr
 property no override names animates on the enclosing config's timing, as a value missing from Framer's
 per-value map takes the default transition.
 Completion is sized off the **slowest** of those, so a long override finishes instead
-of being snapped when the top-level duration elapses. A `Tween` and a `Bezier` read them on every variant swap:
+of being snapped when the top-level duration elapses. A `Tween`, a `Bezier` and a `Spring` read them on every variant swap:
 mount enters, label changes and exits.
 
 ## Springs
@@ -335,6 +335,9 @@ new StyleTransitionConfig
   duration Framer measures for it (see *Repeating a play*), so a frame that arrives late moves the
   spring as far as the time it covers.
 - Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
+- `ExitSpring` (`new SpringPhysics(stiffness, damping, mass)`) gives an exit physics of its own, and
+  `PropertyOverrides` gives the channels it names a tween of its own, each entry's delay, duration and easing (the
+  config's where it names none), which that channel plays once whatever the play repeats.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
 

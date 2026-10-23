@@ -25,3 +25,6 @@
   the loop, where the loop overwrote it on every tick.
 - A slot only the leaving pose names, or one the entering pose leaves `-auto`, is driven toward what the element
   shows there when it already carries the pose it plays into.
+- A Spring play reads `PropertyOverrides` (the channels an entry names run a tween of its delay, duration and
+  easing) and an exit can run its own physics through the new `StyleTransitionConfig.ExitSpring`; a Spring config
+  carrying overrides ignored them before.

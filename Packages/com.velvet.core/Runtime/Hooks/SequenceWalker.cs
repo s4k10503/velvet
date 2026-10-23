@@ -586,10 +586,11 @@ namespace Velvet
             var repeat = MotionRepeat.Of(transition);
             if (transition.Type == TransitionType.Spring)
             {
-                return transition.DelaySec
+                var springHold = transition.DelaySec
                     + (float)repeat.TotalSec(transition.SpringSettleSec is { } settleSec
                         ? MotionSpringDriver.SampledEndSec(settleSec)
                         : SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass));
+                return Math.Max(springHold, transition.DelaySec + (float)MotionPlaySpan.OverridesEndSec(transition));
             }
 
             var hold = transition.DurationSec + transition.DelaySec;

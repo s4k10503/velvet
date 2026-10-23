@@ -49,8 +49,11 @@ namespace Velvet
             internal MotionPlayback? Playback { get; init; }
             // How a bezier or spring play repeats; a tween does not read it.
             internal MotionRepeat Repeat { get; init; }
-            // The per-property timings a bezier play gives the channels they name.
+            // The per-property timings a bezier or spring play gives the channels they name, with the easing and duration an
+            // entry that names none takes.
             internal IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
+            internal EasingMode Easing { get; init; }
+            internal float DurationSec { get; init; }
         }
 
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
@@ -237,6 +240,8 @@ namespace Velvet
                 Playback = playback,
                 Repeat = repeat,
                 PropertyOverrides = propertyOverrides,
+                Easing = easing,
+                DurationSec = durationSec,
             };
 
             WarnRepeatNotPlayed(type, repeat);
@@ -488,6 +493,8 @@ namespace Velvet
                 IsExit = true,
                 Repeat = config.PlayedRepeat,
                 PropertyOverrides = VariantOverrides(config, restoreFromOnCancel),
+                Easing = ExitEasingOf(config),
+                DurationSec = config.DurationSec,
             };
 
             WarnRepeatNotPlayed(config.Type, play.Repeat);
@@ -497,8 +504,7 @@ namespace Velvet
                 // Deferred to attach when off-panel: a presence exit can start while its subtree is transiently
                 // detached by a keyed reorder (see the tween exit's own ScheduleOnHost below) and this exit must
                 // still eventually complete so the reconciler's ghost-removal re-render fires.
-                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass, config.SpringSettleSec,
-                    config.SpringDescription);
+                StartSpringExit(in play, config);
                 return;
             }
 
@@ -725,7 +731,9 @@ namespace Velvet
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
             var state = ValidateSpringParameters(stiffness, damping, mass)
-                ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description)
+                ? MotionSpringDriver.WithOverrides(
+                    MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description),
+                    play.PropertyOverrides, play.Easing, play.DurationSec)
                 : null;
             GestureChannelMask.MarkExit(state, isExit);
             // A spring or bezier play this one interrupts hands on its velocity, and a native transition its rate, both
@@ -884,6 +892,20 @@ namespace Velvet
             => pending?.Spring is { } spring ? MotionSpringDriver.Drawn(spring)
                 : pending?.Bezier is { } bezier ? BezierTweenDriver.Drawn(bezier, pending.Playback?.Scale(1f) ?? 1f)
                 : null;
+
+        // An exit runs on the physics of ExitSpring where the config gives it, and then no duration-described spring.
+        private void StartSpringExit(in VariantPlay play, StyleTransitionConfig config)
+        {
+            if (config.ExitSpring is { } physics)
+            {
+                StartSpringVariant(in play, physics.Stiffness, physics.Damping, physics.Mass, null, null);
+                return;
+            }
+            StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass, config.SpringSettleSec,
+                config.SpringDescription);
+        }
+
+        private static EasingMode ExitEasingOf(StyleTransitionConfig config) => config.ExitEasing ?? config.Easing;
 
         // Per-property overrides reach a variant exit alone.
         private static IReadOnlyList<StylePropertyTransition>? VariantOverrides(StyleTransitionConfig config, bool variant)

@@ -254,6 +254,41 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASpringPlayWithAnOpacityOverride_When_SteppedHalfTheOverridesDuration_Then_OpacityIsHalfwayOnTheOverridesEasing()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.WithOverrides(MotionSpringDriver.Create(plan, 100f, 10f, 1f),
+                new[] { new StylePropertyTransition("opacity", durationSec: 0.5f, easing: EasingMode.Linear) },
+                EasingMode.EaseOut, 0f);
+
+            // Act
+            if (state != null)
+            {
+                MotionSpringDriver.ApplyCurrentValues(element, state);
+                MotionSpringDriver.Step(element, state, 0.25f);
+            }
+
+            // Assert
+            Assert.That(state != null ? (float?)element.style.opacity.value : null, Is.EqualTo(0.5f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ASpringConfigWithExitPhysics_When_GivenItsExitClasses_Then_TheExitPhysicsAreKept()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, ExitSpring = new SpringPhysics(300f, 20f, 2f) };
+
+            // Act
+            var exit = config.WithExitClasses("opacity-100", "opacity-0");
+
+            // Assert
+            Assert.That(exit.ExitSpring is { } physics ? (physics.Stiffness, physics.Damping, physics.Mass) : default,
+                Is.EqualTo((300f, 20f, 2f)));
+        }
+
+        [Test]
         public void Given_ABezierConfigWithAnExitCurve_When_GivenItsExitClasses_Then_TheExitCurveIsKept()
         {
             // Arrange

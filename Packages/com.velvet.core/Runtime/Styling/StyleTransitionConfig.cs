@@ -169,6 +169,14 @@ namespace Velvet
         public BezierCurve? ExitBezier { get; init; }
 
         /// <summary>
+        /// The physics an exit of a <see cref="TransitionType.Spring"/> play runs on, as Framer Motion's exit transition
+        /// carries a spring of its own. When null, <see cref="Stiffness"/>, <see cref="Damping"/> and
+        /// <see cref="Mass"/> (or the spring <see cref="DurationSec"/> and <see cref="Bounce"/> describe) drive both
+        /// directions.
+        /// </summary>
+        public SpringPhysics? ExitSpring { get; init; }
+
+        /// <summary>
         /// Animation duration (seconds). Applied as the inline transition-duration style.
         /// For <see cref="TransitionType.Bezier"/> it IS the (fixed) duration, exactly as for a plain
         /// tween — only the easing sampling differs. For <see cref="TransitionType.Spring"/>, where none of
@@ -420,6 +428,7 @@ namespace Velvet
                 BezierX2 = BezierX2,
                 BezierY2 = BezierY2,
                 ExitBezier = ExitBezier,
+                ExitSpring = ExitSpring,
                 Repeat = repeat,
                 RepeatType = RepeatType,
                 RepeatDelaySec = RepeatDelaySec,
@@ -466,6 +475,7 @@ namespace Velvet
                 BezierX2 = BezierX2,
                 BezierY2 = BezierY2,
                 ExitBezier = ExitBezier,
+                ExitSpring = ExitSpring,
                 Repeat = Repeat,
                 RepeatType = RepeatType,
                 RepeatDelaySec = RepeatDelaySec,
@@ -473,6 +483,21 @@ namespace Velvet
         }
 
         private static string[] ParseClasses(string? classNames) => Velvet.V.ParseClassNames(classNames);
+    }
+
+    /// <summary>A spring's stiffness, damping and mass; see <see cref="StyleTransitionConfig.Stiffness"/>.</summary>
+    public readonly struct SpringPhysics
+    {
+        public float Stiffness { get; }
+        public float Damping { get; }
+        public float Mass { get; }
+
+        public SpringPhysics(float stiffness, float damping, float mass)
+        {
+            Stiffness = stiffness;
+            Damping = damping;
+            Mass = mass;
+        }
     }
 
     /// <summary>A CSS <c>cubic-bezier(x1, y1, x2, y2)</c> control-point pair; see <see cref="StyleTransitionConfig.BezierX1"/>.</summary>

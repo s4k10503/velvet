@@ -42,6 +42,10 @@ namespace Velvet
         // opposite one a mirrored pass is released with; null where the state's own apply.
         public (float Stiffness, float Damping)? Physics;
         public (float Stiffness, float Damping)? MirroredPhysics;
+        // Set on a channel a PropertyOverrides entry names (MotionSpringDriver.WithOverrides): it runs that entry's
+        // delay, duration and easing once, as Framer Motion runs a value given a transition of its own, and the
+        // state's spring does not move it.
+        public TweenChannelTiming? Timing;
 
         public SpringChannel(float initialValue, float target)
         {
@@ -226,6 +230,11 @@ namespace Velvet
         private static void Release(MotionSpringState state, SpringChannel c, float origin, float velocity)
         {
             c.Origin = origin;
+            if (c.Timing is { } own)
+            {
+                c.PassSec = own.DelaySec + own.DurationSec;
+                return;
+            }
             var travel = c.Target - origin;
             var accelerated = c.Acceleratable && state.Repeat.Type != TransitionRepeatType.Mirror
                 && state.Repeat.DelaySec == 0f;
@@ -289,14 +298,17 @@ namespace Velvet
         // animation of every value has finished.
         internal static double SpanSec(MotionSpringClassParser.SpringPlan plan, float stiffness, float damping,
             float mass, MotionRepeat repeat, double? settleSec = null)
+            => SpanSec(Create(plan, stiffness, damping, mass, repeat, settleSec), repeat);
+
+        // The span of a built state, a channel on a transition of its own counting its entry once.
+        internal static double SpanSec(MotionSpringState? state, MotionRepeat repeat)
         {
-            var state = Create(plan, stiffness, damping, mass, repeat, settleSec);
             if (state == null)
             {
                 return 0.0;
             }
             var span = 0.0;
-            ForEachActiveChannel(state, c => span = System.Math.Max(span, repeat.TotalSec(c.PassSec)));
+            ForEachActiveChannel(state, c => span = System.Math.Max(span, c.Timing != null ? c.PassSec : repeat.TotalSec(c.PassSec)));
             return span;
         }
 
@@ -468,6 +480,10 @@ namespace Velvet
 
         private static float ValueAt(MotionSpringState state, SpringChannel channel, double elapsedSec, out bool ended)
         {
+            if (channel.Timing is { } own)
+            {
+                return TweenValueAt(channel, own, elapsedSec, out ended);
+            }
             // An instant spring (SettleSec 0) has not ended at time 0, which a play on a playback is sampled at
             // through its delay: Framer leaves the value where it is until that delay ends.
             ended = elapsedSec >= state.Repeat.TotalSec(channel.PassSec) && !(state.SettleSec == 0.0 && elapsedSec <= 0.0);
@@ -482,6 +498,68 @@ namespace Velvet
                 : state.Repeat.PassTime(elapsedSec, channel.PassSec, out mirrored);
             return SamplePass(state, channel, passTime, mirrored);
         }
+
+        // A channel on a transition of its own: its target once the entry has run, its origin until the delay has.
+        private static float TweenValueAt(SpringChannel channel, TweenChannelTiming own, double elapsedSec, out bool ended)
+        {
+            ended = elapsedSec >= own.DelaySec + own.DurationSec;
+            if (ended)
+            {
+                return channel.Target;
+            }
+            var progress = own.DurationSec > 0f ? Mathf.Clamp01((float)((elapsedSec - own.DelaySec) / own.DurationSec)) : 0f;
+            return Mathf.LerpUnclamped(channel.Origin, channel.Target, UssEasing.Evaluate(own.Easing, progress));
+        }
+
+        /// <summary>
+        /// Gives each channel a <see cref="StylePropertyTransition"/> names that entry's delay, duration and easing (the
+        /// play's easing where it names none) in place of the state's spring, the last entry naming a channel winning.
+        /// </summary>
+        public static MotionSpringState? WithOverrides(MotionSpringState? state,
+            IReadOnlyList<StylePropertyTransition>? overrides, EasingMode easing, float durationSec)
+        {
+            if (state == null || overrides == null || overrides.Count == 0)
+            {
+                return state;
+            }
+            foreach (var (channel, longhands) in OverridableChannels(state))
+            {
+                for (var i = overrides.Count - 1; i >= 0; i--)
+                {
+                    var entry = overrides[i];
+                    if (!DrivenTweenTiming.Named(entry.Property).Overlaps(longhands))
+                    {
+                        continue;
+                    }
+                    channel.Timing = new TweenChannelTiming(entry.DelaySec ?? 0f, Mathf.Max(0f, entry.DurationSec ?? durationSec),
+                        entry.Easing ?? easing);
+                    Release(state, channel, channel.Origin, 0f);
+                    break;
+                }
+            }
+            return state;
+        }
+
+        private static IEnumerable<(SpringChannel Channel, StyleLonghandSet Longhands)> OverridableChannels(MotionSpringState state)
+        {
+            if (state.Opacity != null) yield return (state.Opacity, StyleLonghandSet.Of(StyleLonghand.Opacity));
+            if (state.TranslateX != null) yield return (state.TranslateX, StyleLonghandSet.Of(StyleLonghand.Translate));
+            if (state.TranslateY != null) yield return (state.TranslateY, StyleLonghandSet.Of(StyleLonghand.Translate));
+            if (state.Scale != null) yield return (state.Scale, StyleLonghandSet.Of(StyleLonghand.Scale));
+            if (state.ScaleY != null) yield return (state.ScaleY, StyleLonghandSet.Of(StyleLonghand.Scale));
+            if (state.Rotate != null) yield return (state.Rotate, StyleLonghandSet.Of(StyleLonghand.Rotate));
+            foreach (var c in state.Colors ?? s_noColors)
+            {
+                yield return (c.Progress, StyleArbitraryLonghands.Of(c.Property));
+            }
+            foreach (var l in state.Lengths ?? s_noLengths)
+            {
+                yield return (l.Value, StyleArbitraryLonghands.Of(l.Property));
+            }
+        }
+
+        private static readonly List<SpringColorChannel> s_noColors = new();
+        private static readonly List<SpringLengthChannel> s_noLengths = new();
 
         private static float SamplePass(MotionSpringState state, SpringChannel channel, double passTime, bool mirrored)
         {
