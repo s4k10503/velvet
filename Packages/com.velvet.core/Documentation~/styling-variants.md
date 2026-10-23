@@ -375,15 +375,12 @@ approximation described here rather than a true shear transform.
 **How a radius larger than its box fits.** A `rounded-*` class or an arbitrary radius that does not fit
 its box is scaled the way CSS scales it: once two adjacent radii overlap on a side, every radius on the
 element shrinks by one factor. So `rounded-full` on a 330 × 34 box is a pill with 17 px ends, and
-`rounded-r-[400px]` on a 75 px-tall tab ends in a half-disc. Velvet holds the fitted radii as inline style,
-and so:
-
-- A radius your own stylesheet sets is not fitted. On an element that also carries a `rounded-*` class, the
-  fit reads the class's radius even on a corner your rule outranks it on, and where that radius does not
-  fit, the fitted class radius replaces yours.
-- A radius your own code writes to `style` keeps its value, unless it equals the value the fit last wrote
-  there; CSS would scale it with the others. The other corners are still fitted, counting it at that value.
-- A change of class under `transition-all` animates between the fitted radii rather than the declared ones.
+`rounded-r-[400px]` on a 75 px-tall tab ends in a half-disc. Velvet holds the fitted radii as inline style.
+On an element that carries a `rounded-*` class or an arbitrary radius, the radius a corner is fitted from is the
+one that wins the cascade there: a rule of your own that outranks the class on a corner is that corner's
+declared radius, and a radius your code writes to `style` is scaled with the others and comes back when the box
+no longer needs the fit. A keyword written there (`initial`) is left alone. A change of class under
+`transition-all` animates between the fitted radii rather than the declared ones.
 
 **Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
 element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
