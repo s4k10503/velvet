@@ -91,6 +91,17 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<u>hi</u>"));
         }
 
+        [Test]
+        public void Given_UnderlineOnParent_When_ChildLabelIsNoUnderline_Then_ChildStillShowsTheLine()
+        {
+            // Act — CSS draws an ancestor's line through the text below it, whatever the descendant sets.
+            var label = MountAndFindLabel(
+                V.Div(className: "underline", V.Label(className: "no-underline", text: "hi")));
+
+            // Assert
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<u>hi</u>"));
+        }
+
         // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_NormalCaseUnderUppercase_When_Mounted_Then_InnerResetsToRawText()
@@ -410,9 +421,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_LeadingLooseOnParent_When_ChildLabelIsLeadingNormal_Then_ChildTextCarriesNoLineHeightTag()
         {
+            // Act
             var label = MountAndFindLabel(
                 V.Div(className: "leading-loose", V.Label(className: "leading-[normal]", text: "hi")));
 
+            // Assert
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("hi"));
         }
 

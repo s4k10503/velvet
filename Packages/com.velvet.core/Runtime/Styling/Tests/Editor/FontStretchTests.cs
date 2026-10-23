@@ -97,6 +97,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ACondensedClassOnAnElement_When_Applied_Then_TheCondensedAssetIsWrittenInline()
         {
+            // Arrange
             var normal = ScriptableObject.CreateInstance<FontAsset>();
             var condensed = ScriptableObject.CreateInstance<FontAsset>();
             try
@@ -106,8 +107,10 @@ namespace Velvet.Tests
                     new VelvetFontWeightEntry { upright = condensed, stretch = 75f }));
                 var element = new Label();
 
+                // Act
                 StyleFontResolver.Apply(element, new[] { "font-sans", "font-stretch-condensed" });
 
+                // Assert
                 Assert.That(element.style.unityFontDefinition.value.fontAsset, Is.SameAs(condensed));
             }
             finally
