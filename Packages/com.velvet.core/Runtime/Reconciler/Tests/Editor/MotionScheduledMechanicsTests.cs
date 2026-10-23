@@ -902,6 +902,7 @@ namespace Velvet.Tests
             Root.Add(host);
 
             // Act
+            MotionLayoutIdDriver.Log = new System.Text.StringBuilder();
             _reconciler.Reconcile(host, Array.Empty<VNode>(), new VNode[]
             {
                 V.Motion(name: "remount", layoutId: "row-0", transition: s_layoutSpring,
@@ -914,13 +915,15 @@ namespace Velvet.Tests
             var afterTick = $"{RegistryReading(ctx, "row-0")}; layout={remount?.layout.ToString() ?? "null"}; {ProjectionReading(ctx, remount)}";
             Tick();
             var afterSecondTick = $"{RegistryReading(ctx, "row-0")}; layout={remount?.layout.ToString() ?? "null"}; {ProjectionReading(ctx, remount)}";
+            var trace = MotionLayoutIdDriver.Log.ToString();
+            MotionLayoutIdDriver.Log = null;
 
             // Assert — the row stood 300px left of where the new Motion does.
             var diagnostic = $"before the scroll [{before}]; after it [{afterScroll}]; after the mount [{RegistryReading(ctx, "row-0")}]; "
                 + $"translate={remount?.style.translate.keyword}/{remount?.style.translate.value.x.value}, "
                 + $"projected={remount != null && ctx.LayoutIdProjections.ContainsKey(remount)}, "
                 + $"waiting={remount != null && ctx.LayoutIdPendingSettles.ContainsKey(remount)}, "
-                + $"hostWorld={host.worldBound}; right after the mount [{beforeTick}]; after one frame [{afterTick}]; after two [{afterSecondTick}]";
+                + $"hostWorld={host.worldBound}; right after the mount [{beforeTick}]; after one frame [{afterTick}]; after two [{afterSecondTick}]; trace:\n{trace}";
             Assert.That(translated, Is.LessThan(-200f), diagnostic);
         }
 
