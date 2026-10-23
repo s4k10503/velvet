@@ -1207,6 +1207,34 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, StyleKeyword.Null)));
         }
 
+        // GREEN_ON_BASE(characterization): the base never patches a Motion's clip, so its correction wrapper already survives a patch.
+        [Test]
+        public void Given_ARotatedLayoutIdMotionInsideAnotherDrawnThroughACorrectionWrapper_When_PatchedWithNoClip_Then_ItKeepsTheSameWrapper()
+        {
+            // Arrange
+            VNode[] Tree() => new VNode[]
+            {
+                V.Motion(name: "outer", layoutId: "outer-box", transition: s_layoutSpring, className: "w-[200px] h-[200px]",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
+                            className: "w-[50px] h-[50px] rotate-[10deg]"),
+                    }),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree());
+            var inner = Root.Q<VisualElement>("inner");
+            var wrapperBefore = inner.hierarchy.parent;
+
+            // Act
+            _reconciler.Reconcile(Root, Tree(), Tree());
+
+            // Assert — the wrapper is the one the Motion mounted in, and it is still a correction rather than a clip.
+            Assert.That(
+                (ReferenceEquals(wrapperBefore, inner.hierarchy.parent),
+                    _reconciler.Context.ClipPathBindings.TryGetValue(inner, out var binding) && binding.Correction),
+                Is.EqualTo((true, true)));
+        }
+
         private static TabStore s_lists;
 
         // Two list components 300px apart on one store; the selected one renders a Button holding the card.
@@ -8238,7 +8266,7 @@ namespace Velvet.Tests
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
             {
                 V.Motion(name: "m", variants: s_fade, animate: "visible",
-                    transition: new StyleTransitionConfig { DurationSec = DurationSec }, enterOnMount: false),
+                    transition: new StyleTransitionConfig { DurationSec = DurationSec }),
             });
             var element = Root.Q<VisualElement>("m");
             var heldBack = element.ClassListContains("opacity-100");

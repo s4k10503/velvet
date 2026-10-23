@@ -636,9 +636,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnEasedChannelOnTheFramerDefaults_When_SteppedHalfwayThroughItsEase_Then_ItIsShortOfHalfwayToItsTarget()
+        public void Given_AnEasedChannelOnTheFramerDefaults_When_SteppedAQuarterThroughItsEase_Then_ItIsAheadOfALinearEase()
         {
-            // Arrange — the ease starts slowly, so a quarter of the way in the value is under a quarter along.
+            // Arrange — the ease is cubic-bezier(0.25, 0.1, 0.35, 1), which leads a linear one, so a quarter of the way in the
+            // value is over a quarter along.
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f, perValueDefaults: true);
@@ -647,7 +648,7 @@ namespace Velvet.Tests
             MotionSpringDriver.Step(element, state, 0.075f);
 
             // Assert
-            Assert.That(state.Opacity.Integrator.Value, Is.InRange(0.01f, 0.25f));
+            Assert.That(state.Opacity.Integrator.Value, Is.GreaterThan(0.25f));
         }
 
         [Test]

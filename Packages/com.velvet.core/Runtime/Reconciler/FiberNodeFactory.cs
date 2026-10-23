@@ -358,6 +358,7 @@ namespace Velvet
                 StyleSkewClass.TryExtract(motionPaintClasses, out var motionSkew) ? motionSkew : default);
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyRingOnPatch(element, motionPaintClasses, clipActive);
+            WarnInertMotionExit(motionNode);
             _patcher.Appliers.ApplyBackdropOnPatch(element, motionPaintClasses);
             // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
             // mount animation, the same variant enter the presence expansion drives
@@ -511,6 +512,20 @@ namespace Velvet
             internal MotionOrchestrationFrame? Ambient { get; init; }
             internal bool Resolved { get; init; }
             internal float DelaySec { get; init; }
+        }
+
+        // Exit plays only when an AnimatePresence removal defers the unmount, so it is inert outside one.
+        // Warned only where this reconciler holds no presence at all: a Motion a component inside a
+        // presence child mounts on its own re-render, or a portal drains, is created with no presence
+        // expansion on the stack and still exits.
+        private void WarnInertMotionExit(MotionNode motionNode)
+        {
+            if (_ctx.PresenceStates.Count == 0 && motionNode.Exit != null)
+            {
+                FiberLogger.LogWarning("Motion",
+                    "exit on a Motion outside AnimatePresence is inert: exit tweens are driven by the "
+                    + "AnimatePresence expansion. Wrap the Motion in V.AnimatePresence (or drop exit).");
+            }
         }
 
         private VisualElement CreateForPortalNode(PortalNode portalNode)

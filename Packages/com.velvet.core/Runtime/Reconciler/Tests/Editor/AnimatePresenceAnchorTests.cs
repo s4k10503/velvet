@@ -541,6 +541,7 @@ namespace Velvet.Tests
         public void Given_AMotionWithVariantsThatNoLabelReaches_When_ItsKeyIsAdded_Then_ItsPresetEnterPlays()
         {
             // Arrange
+            s_hostEnters = true;
             s_hostLabel = null;
             using var keys = new KeySetStore(string.Empty);
             s_keyStore = keys;
@@ -560,6 +561,7 @@ namespace Velvet.Tests
         public void Given_AMotionWithNoVariantsUnderAnInheritedLabel_When_ItsKeyIsAdded_Then_ItsPresetEnterPlays()
         {
             // Arrange
+            s_hostEnters = true;
             s_inheritingVariants = null;
             using var keys = new KeySetStore(string.Empty);
             s_keyStore = keys;
