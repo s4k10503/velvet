@@ -367,11 +367,11 @@ namespace Velvet
         public UILayer? Layer { get; init; }
 
         /// <summary>
-        /// How the layer host panel participates in sequential (Tab) focus order relative to the declaring
-        /// panel — see <see cref="PanelFocusOrder"/>. Only meaningful for a layer portal (<see cref="Layer"/>
-        /// set); a registry-target portal mounts into the same panel and has no boundary to chain across.
+        /// Where the layer host panel's elements sit in sequential (Tab) focus order — see
+        /// <see cref="PanelFocusOrder"/>. Only read for a layer portal (<see cref="Layer"/> set); an
+        /// element-valued portal's children are in Tab order wherever they render.
         /// </summary>
-        public PanelFocusOrder FocusOrder { get; init; } = PanelFocusOrder.Isolated;
+        public PanelFocusOrder FocusOrder { get; init; } = PanelFocusOrder.Appended;
 
         /// <summary>Array of child nodes to render at the mount target.</summary>
         public VNode?[] Children { get; init; } = Array.Empty<VNode>();
@@ -394,10 +394,10 @@ namespace Velvet
         public UnityEngine.Vector2 PanelSize { get; init; } = new(1920f, 1080f);
 
         /// <summary>
-        /// How the world-space host panel participates in sequential (Tab) focus order relative to the
-        /// declaring panel — see <see cref="PanelFocusOrder"/>.
+        /// Where the world-space host panel's elements sit in sequential (Tab) focus order — see
+        /// <see cref="PanelFocusOrder"/>.
         /// </summary>
-        public PanelFocusOrder FocusOrder { get; init; } = PanelFocusOrder.Isolated;
+        public PanelFocusOrder FocusOrder { get; init; } = PanelFocusOrder.Appended;
 
         /// <summary>Array of child nodes to render inside the world-space panel.</summary>
         public VNode?[] Children { get; init; } = Array.Empty<VNode>();

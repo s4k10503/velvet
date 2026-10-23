@@ -6,19 +6,28 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     /// <summary>
-    /// How a host panel (<c>V.Portal(layer:)</c> / <c>V.WorldSpace</c>) participates in sequential
-    /// (Tab/Shift-Tab) focus order relative to the panel declaring it. <see cref="Isolated"/> (the default)
-    /// is the pre-existing behavior: the host panel's focus ring wraps internally and never crosses the
-    /// panel boundary — the explicit-opt-in stance of the cross-panel navigation decision.
-    /// <see cref="Chained"/> joins the declaring panel's Tab order at the portal's call site (iframe
-    /// semantics): Tab past the host ring's last element exits to the element after the portal's
-    /// placeholder; Tab reaching the placeholder's position enters the host at its ring-first (Shift-Tab
-    /// symmetric). Arrow/2D navigation never crosses panels.
+    /// Where the elements of a host panel (<c>V.Portal(layer:)</c> / <c>V.WorldSpace</c>) sit in sequential
+    /// (Tab/Shift-Tab) focus order. Arrow/2D navigation stays within each panel in every mode.
     /// </summary>
     public enum PanelFocusOrder
     {
+        /// <summary>Out of the order: Tab wraps within the host panel and never crosses its boundary.</summary>
         Isolated,
+
+        /// <summary>
+        /// At the portal's call site, as an iframe's elements sit: Tab reaching the portal's position enters the
+        /// host at its first element (Shift-Tab at its last), and Tab past the host's last element exits to the
+        /// element after the call site.
+        /// </summary>
         Chained,
+
+        /// <summary>
+        /// After every element of the panel the tree is mounted on, where a portal into a document's body puts its
+        /// content: Tab past that panel's last element enters the host at its first, Tab past the host's last
+        /// element moves on to the next appended host or back round to that panel's first, and Shift-Tab runs the
+        /// other way. Hosts follow each other in the order their first appended portal mounted.
+        /// </summary>
+        Appended,
     }
 
     // Reconciler-side bookkeeping for one focus-scope element, keyed in ReconcilerContext.FocusScopeBindings
@@ -79,7 +88,7 @@ namespace Velvet
         // per call-site element would stack duplicate listeners whose relative order inverts the branch
         // priority. An element with no panel yet defers via a tracked self-removing attach hook (one per
         // element — repeat calls while detached dedup). Called from V.Mount (main panel),
-        // ConfigureChainedPlaceholder (declaring + host panels), and the focus-scope attach hook
+        // ConfigurePortalFocusOrder (declaring + host panels), and the focus-scope attach hook
         // (whatever panel the scope lands in).
         internal static void EnsureAttached(VisualElement? element, ReconcilerContext ctx)
         {
@@ -203,17 +212,18 @@ namespace Velvet
             ctx.NavigatorPendingAttachHooks.Clear();
         }
 
-        // Configures a portal placeholder's participation in the declaring panel's Tab order
-        // (PanelFocusOrder). Chained: the hidden placeholder becomes a zero-size, out-of-flow proxy tab
-        // stop (ring membership requires the element to be displayed; absolute keeps it out of flex flow
-        // and the gap/divide index walks, which skip out-of-flow children) and both chained registries are
-        // wired. Isolated: everything is reset to the plain hidden placeholder — idempotent in both
-        // directions, so a patch flipping FocusOrder routes back through here.
-        internal static void ConfigureChainedPlaceholder(
-            VisualElement placeholder, PanelHostRecord record, bool chained, ReconcilerContext ctx)
+        // Configures a portal placeholder's participation in Tab order (PanelFocusOrder). Chained: the hidden
+        // placeholder becomes a zero-size, out-of-flow proxy tab stop (ring membership requires the element to be
+        // displayed; absolute keeps it out of flex flow and the gap/divide index walks, which skip out-of-flow
+        // children) and both chained registries are wired. Appended: the host joins the tree's appended hosts.
+        // Isolated: both are undone — idempotent in every direction, so a patch changing FocusOrder routes back
+        // through here.
+        internal static void ConfigurePortalFocusOrder(
+            VisualElement placeholder, PanelHostRecord record, PanelFocusOrder order, ReconcilerContext ctx)
         {
             var hostRoot = record.Document != null ? record.Document.rootVisualElement : null;
-            if (chained && hostRoot != null)
+            ReleaseAppended(placeholder, ctx);
+            if (order == PanelFocusOrder.Chained && hostRoot != null)
             {
                 placeholder.style.display = DisplayStyle.Flex;
                 placeholder.style.position = Position.Absolute;
@@ -241,6 +251,33 @@ namespace Velvet
                 ReleasePendingAttachHooks(placeholder, ctx);
                 ReleaseChainedOwnership(placeholder, hostRoot, ctx);
             }
+            if (order == PanelFocusOrder.Appended && hostRoot != null)
+            {
+                ctx.AppendedPlaceholders[placeholder] = record;
+                if (!ctx.AppendedHosts.Contains(record))
+                {
+                    ctx.AppendedHosts.Add(record);
+                }
+                EnsureAttached(hostRoot, ctx);
+            }
+        }
+
+        // Drops an appended portal's placeholder, and its host once no appended portal renders into it. Runs when
+        // the portal unmounts (FiberElementCleaner) and whenever its FocusOrder is configured again.
+        internal static void ReleaseAppended(VisualElement placeholder, ReconcilerContext ctx)
+        {
+            if (!ctx.AppendedPlaceholders.Remove(placeholder, out var record))
+            {
+                return;
+            }
+            foreach (var other in ctx.AppendedPlaceholders.Values)
+            {
+                if (ReferenceEquals(other, record))
+                {
+                    return;
+                }
+            }
+            ctx.AppendedHosts.Remove(record);
         }
 
         // Drops `placeholder`'s ring-edge-escape ownership of `hostRoot` and re-elects any surviving
@@ -364,7 +401,8 @@ namespace Velvet
                 // A wrap in an unconstrained chained host takes the boundary exit instead of landing
                 // back at the ring's start — the pinned iframe contract: Tab past the host ring's
                 // end exits to the declaring panel.
-                if (wrapped && containRoot == null && TryChainedEscape(in move, requireRingEdge: false))
+                if (wrapped && containRoot == null
+                    && (TryChainedEscape(in move, requireRingEdge: false) || TryAppendedHop(in move, requireRingEdge: false)))
                 {
                     return true;
                 }
@@ -375,7 +413,8 @@ namespace Velvet
             // exit crosses the panel boundary; under containment (or with nowhere to go) the move is
             // suppressed with focus held in place — the engine default would cycle the members,
             // breaking the one-stop contract, and a boundary escape would break the modal.
-            if (containRoot == null && TryChainedEscape(in move, requireRingEdge: false))
+            if (containRoot == null
+                && (TryChainedEscape(in move, requireRingEdge: false) || TryAppendedHop(in move, requireRingEdge: false)))
             {
                 return true;
             }
@@ -410,6 +449,13 @@ namespace Velvet
             // and this move would wrap around the host's own ring edge — cross the boundary instead, to the
             // declaring-panel element right after (forward) / before (backward) the portal's placeholder.
             if (TryChainedEscape(in move, requireRingEdge: true))
+            {
+                return true;
+            }
+
+            // Appended hosts follow the tree's own panel: a move wrapping round one of those panels' ring edge goes
+            // on to the next panel with an element to land on instead.
+            if (TryAppendedHop(in move, requireRingEdge: true))
             {
                 return true;
             }
@@ -529,6 +575,85 @@ namespace Velvet
             var ring = new VisualElementFocusRing(placeholderContain ?? declaringRoot);
             var target = ring.GetNextFocusable(placeholder, direction) as VisualElement;
             return target == null || ReferenceEquals(target, placeholder) || !target.canGrabFocus ? null : target;
+        }
+
+        // The hop between the panels of a tree's Tab order: its own panel, then each appended host in order. With
+        // requireRingEdge, hops only when the engine's own move would wrap round this panel's ring edge; without
+        // it, hops in the move's direction (a group covering every element of the panel). The source element is
+        // blurred first, for the reason TryChainedEscape gives.
+        private static bool TryAppendedHop(in NavigationMove move, bool requireRingEdge)
+        {
+            var ctx = move.Ctx;
+            if (ctx.AppendedHosts.Count == 0)
+            {
+                return false;
+            }
+            var panels = AppendedOrder(ctx);
+            var at = panels.IndexOf(move.PanelRoot);
+            if (at < 0 || panels.Count < 2)
+            {
+                return false;
+            }
+            var direction = ToRingDirection(move.Forward);
+            if (requireRingEdge)
+            {
+                var ring = new VisualElementFocusRing(move.PanelRoot);
+                var predicted = ring.GetNextFocusable(move.Focused, direction);
+                if (predicted == null || !ReferenceEquals(predicted, ring.GetNextFocusable(null, direction)))
+                {
+                    return false;
+                }
+            }
+            for (var step = 1; step < panels.Count; step++)
+            {
+                var index = ((at + (move.Forward ? step : -step)) % panels.Count + panels.Count) % panels.Count;
+                if (new VisualElementFocusRing(panels[index]).GetNextFocusable(null, direction) is not VisualElement edge
+                    || !edge.canGrabFocus)
+                {
+                    continue;
+                }
+                move.Panel.focusController.IgnoreEvent(move.Evt);
+                move.Evt.StopPropagation();
+                move.Focused.Blur();
+                ResolveScopeEntryTarget(EnterProxy(edge, move.Forward, ctx), ctx).Focus();
+                return true;
+            }
+            return false;
+        }
+
+        // The panel roots of a tree's Tab order. A host a chained portal also renders into is in that portal's
+        // place rather than here.
+        private static List<VisualElement> AppendedOrder(ReconcilerContext ctx)
+        {
+            var panels = new List<VisualElement>();
+            if (ctx.MainPanelRoot?.panel?.visualTree is not { } main)
+            {
+                return panels;
+            }
+            panels.Add(main);
+            foreach (var record in ctx.AppendedHosts)
+            {
+                var hostRoot = record.Document != null ? record.Document.rootVisualElement : null;
+                if (hostRoot?.panel?.visualTree is { } root && !ctx.ChainedHostRoots.ContainsKey(hostRoot)
+                    && !panels.Contains(root))
+                {
+                    panels.Add(root);
+                }
+            }
+            return panels;
+        }
+
+        // A landing on a chained portal's placeholder enters its host at the edge the move travels towards, as the
+        // placeholder's own forwarding does for a move that carries its direction; Focus() carries none.
+        private static VisualElement EnterProxy(VisualElement landing, bool forward, ReconcilerContext ctx)
+        {
+            if (!ctx.ChainedPlaceholders.TryGetValue(landing, out var record) || record.Document == null)
+            {
+                return landing;
+            }
+            var hostRoot = record.Document.rootVisualElement;
+            return new VisualElementFocusRing(hostRoot.panel?.visualTree ?? hostRoot)
+                .GetNextFocusable(null, ToRingDirection(forward)) as VisualElement ?? landing;
         }
 
         // Resolves the chained placeholder owning `panel`'s ring-edge escape. The registry is keyed by the

@@ -781,6 +781,8 @@ namespace Velvet
             _ctx.FocusScopeBindings.Clear();
             _ctx.ChainedPlaceholders.Clear();
             _ctx.ChainedHostRoots.Clear();
+            _ctx.AppendedPlaceholders.Clear();
+            _ctx.AppendedHosts.Clear();
             FiberFocusNavigator.DetachAll(_ctx);
         }
 

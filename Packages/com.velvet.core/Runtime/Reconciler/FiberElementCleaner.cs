@@ -469,6 +469,10 @@ namespace Velvet
                 var chainedHostRoot = chainedRecord.Document != null ? chainedRecord.Document.rootVisualElement : null;
                 FiberFocusNavigator.ReleaseChainedOwnership(element, chainedHostRoot, _ctx);
             }
+            if (_ctx.AppendedPlaceholders.Count > 0)
+            {
+                FiberFocusNavigator.ReleaseAppended(element, _ctx);
+            }
             // A deferred navigator attach hook still pending on this element unregisters with it — a
             // pooled element must not carry a live hook into its next role.
             if (_ctx.NavigatorPendingAttachHooks.Count > 0)

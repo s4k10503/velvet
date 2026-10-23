@@ -1177,6 +1177,13 @@ namespace Velvet
         public Dictionary<VisualElement, PanelHostRecord> ChainedPlaceholders { get; } = new();
         public Dictionary<VisualElement, VisualElement> ChainedHostRoots { get; } = new();
 
+        // Appended-portal focus bookkeeping (PanelFocusOrder.Appended): each appended portal's placeholder → its
+        // host record, and the hosts in the order their first appended portal mounted, which is the order they
+        // follow the tree's own panel in Tab order. Maintained by FiberFocusNavigator.ConfigurePortalFocusOrder and
+        // ReleaseAppended; Reconciler.Dispose sweeps the rest.
+        public Dictionary<VisualElement, PanelHostRecord> AppendedPlaceholders { get; } = new();
+        public List<PanelHostRecord> AppendedHosts { get; } = new();
+
         // The panel roots FiberFocusNavigator has attached its listeners to, with the registered
         // callbacks retained so Reconciler.Dispose can unregister them (panel roots belong to the user /
         // the host panels and can outlive this reconciler). Keyed by the panel's TRUE root

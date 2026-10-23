@@ -2017,18 +2017,20 @@ namespace Velvet
         /// <param name="layer">The framework-managed layer panel to attach the children to.</param>
         /// <param name="children">Descendant VNodes mounted into the layer panel.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="focusOrder">Where the children sit in Tab order; by default after every element of the
+        /// panel the tree is mounted on, as a portal into a document's body.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="layer"/> names no member of <see cref="UILayer"/>,
         /// or <paramref name="focusOrder"/> names no member of <see cref="PanelFocusOrder"/>.</exception>
         /// <returns>The created <see cref="PortalNode"/>.</returns>
         public static PortalNode Portal(UILayer layer, VNode?[]? children = null, string? key = null,
-            PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
+            PanelFocusOrder focusOrder = PanelFocusOrder.Appended)
         {
             if (layer is not (UILayer.Background or UILayer.Overlay or UILayer.Topmost))
             {
                 throw new ArgumentOutOfRangeException(nameof(layer), layer,
                     "V.Portal takes a member of UILayer as its layer.");
             }
-            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained))
+            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained or PanelFocusOrder.Appended))
             {
                 throw new ArgumentOutOfRangeException(nameof(focusOrder), focusOrder,
                     "V.Portal takes a member of PanelFocusOrder as its focusOrder.");
@@ -2062,6 +2064,8 @@ namespace Velvet
         /// <param name="panelSize">Virtual panel resolution in pixels (fixed world-space size mode).</param>
         /// <param name="children">Descendant VNodes rendered inside the world-space panel.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="focusOrder">Where the children sit in Tab order; by default after every element of the
+        /// panel the tree is mounted on, as a portal into a document's body.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="focusOrder"/> names no member of
         /// <see cref="PanelFocusOrder"/>.</exception>
         /// <returns>The created <see cref="WorldSpaceNode"/>.</returns>
@@ -2071,9 +2075,9 @@ namespace Velvet
             Vector2? panelSize = null,
             VNode?[]? children = null,
             string? key = null,
-            PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
+            PanelFocusOrder focusOrder = PanelFocusOrder.Appended)
         {
-            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained))
+            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained or PanelFocusOrder.Appended))
             {
                 throw new ArgumentOutOfRangeException(nameof(focusOrder), focusOrder,
                     "V.WorldSpace takes a member of PanelFocusOrder as its focusOrder.");

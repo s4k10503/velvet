@@ -14,10 +14,9 @@ namespace Velvet.Tests
     /// Specifies <c>PanelFocusOrder</c> on <c>V.Portal(layer:)</c> against real runtime panels:
     /// <c>Chained</c> joins the declaring panel's Tab order at the portal's call site (Tab past the host
     /// ring's last element exits to the declaring panel; Tab reaching the placeholder enters the host at its
-    /// ring-first), <c>Isolated</c> (the default) keeps the pre-existing internal wrap — the explicit-opt-in
-    /// ruling of the cross-panel navigation decision, pinned here as a regression guard — and only
-    /// <c>NavigationMoveEvent</c> is ever intercepted (a KeyDown reaching an element in a chained host is
-    /// untouched, the two-event gotcha).
+    /// ring-first), <c>Appended</c>, the default, follows the declaring panel's last element,
+    /// <c>Isolated</c> keeps the host's internal wrap, and only <c>NavigationMoveEvent</c> is ever intercepted
+    /// (a KeyDown reaching an element in a chained host is untouched, the two-event gotcha).
     /// </summary>
     internal sealed class FocusChainedPortalTests
     {
@@ -27,6 +26,18 @@ namespace Velvet.Tests
         private GameObject _panelGo;
         private PanelSettings _settings;
         private MountedTree _mounted;
+
+        // The portal names no focusOrder, so it takes the default.
+        [Component]
+        private static VNode DefaultOrderPortalHost() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "main1"),
+            V.Portal(UILayer.Overlay, key: "portal", children: new VNode[]
+            {
+                V.Button(name: "p1"),
+                V.Button(name: "p2"),
+            }),
+        });
 
         [Component]
         private static VNode PortalHost() => V.Div(children: new VNode[]
@@ -177,10 +188,83 @@ namespace Velvet.Tests
             Assert.That(p1.panel.focusController.focusedElement, Is.EqualTo(p1));
         }
 
+        private IEnumerator MountWithTheDefaultOrder()
+        {
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(DefaultOrderPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+        }
+
+        // Reads whether the start took focus, and what its panel holds after the move. The declaring panel holds
+        // nothing else to move to, so a move that stays in it lands back on the start.
+        private static IEnumerator MoveFrom(
+            VisualElement start, NavigationMoveEvent.Direction direction, System.Action<(bool, Focusable)> result)
+        {
+            start.Focus();
+            var held = start.panel.focusController.focusedElement == start;
+            SendMove(start, direction);
+            yield return null;
+            result((held, start.panel.focusController.focusedElement));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ALayerPortalOfTheDefaultOrder_When_TabDispatchesFromTheDeclaringPanelsLastFocusable_Then_FocusEntersTheHostAtItsFirst()
+        {
+            // Arrange
+            yield return MountWithTheDefaultOrder();
+            var main1 = Main("main1");
+            var p1 = HostElement("p1");
+            (bool, Focusable) outcome = default;
+
+            // Act
+            yield return MoveFrom(main1, NavigationMoveEvent.Direction.Next, r => outcome = r);
+
+            // Assert
+            Assert.That((outcome.Item1, outcome.Item2, p1.panel.focusController.focusedElement),
+                Is.EqualTo((true, (Focusable)null, (Focusable)p1)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ALayerPortalOfTheDefaultOrder_When_ShiftTabDispatchesFromTheDeclaringPanelsFirstFocusable_Then_FocusEntersTheHostAtItsLast()
+        {
+            // Arrange
+            yield return MountWithTheDefaultOrder();
+            var main1 = Main("main1");
+            var p2 = HostElement("p2");
+            (bool, Focusable) outcome = default;
+
+            // Act
+            yield return MoveFrom(main1, NavigationMoveEvent.Direction.Previous, r => outcome = r);
+
+            // Assert
+            Assert.That((outcome.Item1, outcome.Item2, p2.panel.focusController.focusedElement),
+                Is.EqualTo((true, (Focusable)null, (Focusable)p2)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ALayerPortalOfTheDefaultOrder_When_TabDispatchesFromTheHostsLastFocusable_Then_FocusReturnsToTheDeclaringPanelsFirst()
+        {
+            // Arrange
+            yield return MountWithTheDefaultOrder();
+            var p2 = HostElement("p2");
+            var main1 = Main("main1");
+            p2.Focus();
+            var held = p2.panel.focusController.focusedElement == p2;
+
+            // Act
+            SendMove(p2, NavigationMoveEvent.Direction.Next);
+            yield return null;
+
+            // Assert
+            Assert.That((held, p2.panel.focusController.focusedElement, main1.panel.focusController.focusedElement),
+                Is.EqualTo((true, (Focusable)null, (Focusable)main1)));
+        }
+
         [UnityTest]
         public IEnumerator Given_AnIsolatedLayerPortal_When_TabDispatchesFromTheHostRingsLastFocusable_Then_FocusWrapsWithinTheHostPanel()
         {
-            // Arrange — the default: no opt-in, the pre-chaining isolated-focus status quo stays byte-for-byte.
+            // Arrange
             s_focusOrder = PanelFocusOrder.Isolated;
             yield return Mount();
             var p2 = HostElement("p2");

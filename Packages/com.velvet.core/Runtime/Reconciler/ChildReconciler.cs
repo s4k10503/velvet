@@ -535,8 +535,8 @@ namespace Velvet
             var target = layerHost.Document.rootVisualElement;
             VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
             var children = layerPortal.Children ?? Array.Empty<VNode>();
-            FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
-                layerPortal.FocusOrder == PanelFocusOrder.Chained, _ctx);
+            FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost,
+                layerPortal.FocusOrder, _ctx);
             return (target, children);
         }
 
@@ -548,8 +548,8 @@ namespace Velvet
             var target = record.Document.rootVisualElement;
             VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
             var children = worldSpaceNode.Children ?? Array.Empty<VNode>();
-            FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
-                worldSpaceNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
+            FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, record,
+                worldSpaceNode.FocusOrder, _ctx);
             return (target, children);
         }
 
