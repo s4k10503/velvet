@@ -892,6 +892,17 @@ namespace Velvet.Tests
             Assert.That(CountWhere(new RectInt(60, 145, 40, 10), IsBlue), Is.GreaterThan(200));
         }
 
+        // A unit quad drawn in one flat colour from both sides, destroyed with the fixture.
+        private GameObject UnlitQuad(Color color)
+        {
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var material = Own(new Material(Shader.Find("Universal Render Pipeline/Unlit")));
+            material.SetColor("_BaseColor", color);
+            material.SetFloat("_Cull", (float)CullMode.Off);
+            quad.GetComponent<MeshRenderer>().sharedMaterial = material;
+            return Own(quad);
+        }
+
         // The 80px square inside the 100px billboard a unit-sized particle at the element's center draws.
         private static readonly RectInt Core = new(110, 110, 80, 80);
 
@@ -979,18 +990,139 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_AVisualEffectWithAQuadUnderIt_When_FramesAdvance_Then_TheQuadRendersWithTheElementShowingAroundIt()
+        public IEnumerator Given_AnEarlierSystemOnAHigherSortingLayer_When_Drawn_Then_ItDrawsOverALaterOneHigherInItsLayer()
+        {
+            // Arrange & Act — by order in layer alone, the blue system would cover the red one.
+            yield return MountRedOverBlue((red, blue) =>
+            {
+                red.sortingLayerName = "VelvetTestFront";
+                blue.sortingOrder = 5;
+            });
+
+            // Assert
+            Assert.That(CountRed(Core), Is.GreaterThan(5000));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnEarlierSystemWithTheLaterRenderQueue_When_Drawn_Then_ItDrawsOverTheLaterOne()
+        {
+            // Arrange & Act — both stand at the same distance in one sorting layer and order, so only the queue
+            // separates them.
+            yield return MountRedOverBlue((red, blue) => red.sharedMaterial.renderQueue = 3100);
+
+            // Assert
+            Assert.That(CountRed(Core), Is.GreaterThan(5000));
+        }
+
+        private static bool IsBlack(Color32 p) => p.r < 60 && p.g < 60 && p.b < 60;
+
+        [UnityTest]
+        public IEnumerator Given_ABlueParticleUnderAMultiplyMaterialOverAYellowElement_When_Drawn_Then_TheProductIsBlack()
+        {
+            // Arrange — the blend factors URP's Multiply mode sets; alpha-blended, the particle would show blue.
+            var material = ParticleMaterial(null, CullMode.Off);
+            material.SetFloat("_SrcBlend", (float)BlendMode.DstColor);
+            material.SetFloat("_DstBlend", (float)BlendMode.Zero);
+            var effect = CreateCenteredSystem("fx-multiply", material);
+            _effectGo = effect.gameObject;
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root, V.Particles(effect, className: "w-[300px] h-[300px] bg-[#ffff00]"));
+            EmitAt(MountedHost(), Vector3.zero, Vector3.zero, 1f, Color.blue);
+
+            // Act
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+
+            // Assert
+            Assert.That(CountWhere(Core, IsBlack), Is.GreaterThan(5000));
+        }
+
+        // GREEN_ON_BASE(characterization): the base draws an additive particle as its own content, beneath a later sibling, as this keeps doing through a layer.
+        [UnityTest]
+        public IEnumerator Given_AnAdditiveParticleFirstDrawnUnderAMovingAncestor_When_ALaterSiblingCoversIt_Then_TheSiblingStaysOnTop()
+        {
+            // Arrange — an additive red particle at the element's centre, a blue square after it covering the centre,
+            // and their container moved a pixel every frame from before the particle's first paint on.
+            var material = ParticleMaterial(null, CullMode.Off);
+            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)BlendMode.One);
+            var effect = CreateCenteredSystem("fx-additive-moving", material);
+            _effectGo = effect.gameObject;
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root, V.Div(name: "moving", className: "w-[300px] h-[300px]", children: new VNode[]
+            {
+                V.Particles(effect, className: "w-[300px] h-[300px]"),
+                V.Div(className: "w-[100px] h-[100px] ml-[100px] mt-[-200px] bg-[#0000ff]"),
+            }));
+            var moving = _host.Root.Q<VisualElement>("moving");
+            EmitAt(MountedHost(), Vector3.zero, Vector3.zero, 1f, Color.red);
+
+            // Act
+            for (var frame = 0; frame < 20; frame++)
+            {
+                moving.style.translate = new Translate(frame % 2, 0f);
+                yield return null;
+            }
+            moving.style.translate = new Translate(0f, 0f);
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
+
+            // Assert — red added over the blue square would read magenta rather than blue.
+            Assert.That(CountWhere(Core, IsBlue), Is.GreaterThan(5000));
+        }
+
+        // The Simple Loop template VFX Graph ships, copied beside this fixture so the package's own template is
+        // not what the case depends on.
+        private const string LoopEffectPath = "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/VelvetTestLoop.vfx";
+
+        private VisualEffect CreateLoopEffect()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("VFX Graph simulates in compute shaders, which this device does not run.");
+            }
+            _effectGo = new GameObject("fx-vfx-loop");
+            var effect = _effectGo.AddComponent<VisualEffect>();
+#if UNITY_EDITOR
+            effect.visualEffectAsset = UnityEditor.AssetDatabase.LoadAssetAtPath<VisualEffectAsset>(LoopEffectPath);
+#endif
+            return effect;
+        }
+
+        private int NotGreen() => CountWhere(new RectInt(0, 0, 300, 300), p => !IsGreen(p));
+
+        [UnityTest]
+        public IEnumerator Given_AManualVisualEffectGraph_When_PlayedThenStopped_Then_ItDrawsOnlyWhilePlaying()
+        {
+            // Arrange
+            var effect = CreateLoopEffect();
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root,
+                V.Particles(effect, className: "w-[300px] h-[300px] bg-[#00ff00]", playOn: PlayTrigger.Manual));
+            var element = _host.Root.Q<ParticlesElement>();
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+            var beforePlay = NotGreen();
+
+            // Act
+            element.Play();
+            yield return WaitRealtimeDraining(1.0, _host.TargetTexture);
+            var playing = NotGreen();
+            element.Stop();
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+
+            // Assert
+            Assert.That((beforePlay, playing > 50, NotGreen()), Is.EqualTo((0, true, 0)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRendersWithTheElementShowingAroundIt()
         {
             // Arrange — a VisualEffect with no graph, and a red unit quad under it standing in for what a graph draws;
-            // the element's green background is what the texture must leave showing around the quad.
+            // the element's green background is what the texture must leave showing around the quad. A blue scene
+            // quad on the Default layer stands between the effect and its camera, which renders the clone's layer
+            // alone.
             _effectGo = new GameObject("fx-vfx");
             var effect = _effectGo.AddComponent<VisualEffect>();
-            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            quad.transform.SetParent(_effectGo.transform, false);
-            var material = Own(new Material(Shader.Find("Universal Render Pipeline/Unlit")));
-            material.SetColor("_BaseColor", Color.red);
-            material.SetFloat("_Cull", (float)CullMode.Off);
-            quad.GetComponent<MeshRenderer>().sharedMaterial = material;
+            UnlitQuad(Color.red).transform.SetParent(_effectGo.transform, false);
+            UnlitQuad(Color.blue).transform.position = new Vector3(0f, 0f, -1f);
             _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
             _mounted = V.Mount(_host.Root, V.Particles(effect, className: "w-[300px] h-[300px] bg-[#00ff00]"));
 

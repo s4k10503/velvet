@@ -33,6 +33,7 @@ namespace Velvet.Tests
     {
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
+        private MountedTree _portalTree;
         private readonly List<Object> _spawned = new();
         private int _baselineSystems;
 
@@ -51,6 +52,8 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
+            _portalTree?.Dispose();
+            _portalTree = null;
             _mounted?.Dispose();
             _mounted = null;
             _host?.Dispose();
@@ -861,6 +864,166 @@ namespace Velvet.Tests
             Assert.That((binding.EffectTexture != null, binding.EffectRenderers.Any(), binding.EffectRenderers.All(r => r.forceRenderingOff)),
                 Is.EqualTo((true, true, true)));
         }
+
+        #region Materials, layers and VisualEffects
+
+        [Test]
+        public void Given_ALegacyAdditiveParticleMaterial_When_ItsBlendIsRead_Then_ItAdds()
+        {
+            // Arrange — the legacy shader declares no blend factors as properties, so only its name says it adds.
+            var material = new Material(Shader.Find("Legacy Shaders/Particles/Additive"));
+            _spawned.Add(material);
+
+            // Act
+            var blend = ParticleBlendMaterials.Of(material);
+
+            // Assert
+            Assert.That(blend, Is.EqualTo(ParticleBlend.Additive));
+        }
+
+        [Test]
+        public void Given_ALegacyParticleMaterialWithAQuarterTint_When_ItsTintIsRead_Then_ItIsDoubled()
+        {
+            // Arrange
+            var material = new Material(Shader.Find("Legacy Shaders/Particles/Alpha Blended"));
+            _spawned.Add(material);
+            material.SetColor("_TintColor", new Color(0.25f, 0.25f, 0.25f, 0.25f));
+
+            // Act
+            var tint = ParticleBlendMaterials.TintOf(material);
+
+            // Assert
+            Assert.That(tint.ToString(), Is.EqualTo(new Color(0.5f, 0.5f, 0.5f, 0.5f).ToString()));
+        }
+
+        [Test]
+        public void Given_AStandardParticleMaterialWithAColor_When_ItsTintIsRead_Then_ItIsThatColor()
+        {
+            // Arrange — the Built-in Standard Particle shader declares _Color and neither of the other two.
+            var material = new Material(Shader.Find("Particles/Standard Unlit"));
+            _spawned.Add(material);
+            material.SetColor("_Color", Color.cyan);
+
+            // Act
+            var tint = ParticleBlendMaterials.TintOf(material);
+
+            // Assert
+            Assert.That(tint.ToString(), Is.EqualTo(Color.cyan.ToString()));
+        }
+
+        [Test]
+        public void Given_AnAdditiveSystemInALiveParticlesElement_When_APortalRendersARowIntoIt_Then_ItsLayerStaysBeneathTheRow()
+        {
+            // Arrange — an additive first run is drawn by a layer, not by the element.
+            var effect = CreateEffectSource("fx-additive-layer");
+            var material = new Material(Shader.Find("Universal Render Pipeline/Particles/Unlit"));
+            _spawned.Add(material);
+            material.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);
+            effect.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
+            MountAndLayout(V.Particles(effect, name: "px-layer", className: "w-[128px] h-[128px]"));
+            var element = _host.Root.Q<VisualElement>("px-layer");
+
+            // Act
+            _portalTree = V.Mount(new VisualElement(), V.Portal(element, children: new VNode[] { V.Div(name: "row0") }));
+
+            // Assert — the row is read too, since a row that never rendered leaves the layer first as well.
+            Assert.That((element.IndexOf(element.Q(className: ParticlesDriver.LayerMarkerClass)), element.IndexOf(element.Q<VisualElement>("row0"))),
+                Is.EqualTo((0, 1)));
+        }
+
+        // A VisualEffect source with a quad under it, which gives the clone a renderer to draw.
+        private UnityEngine.VFX.VisualEffect CreateVisualEffectSource(string name)
+        {
+            var go = new GameObject(name);
+            _spawned.Add(go);
+            GameObject.CreatePrimitive(PrimitiveType.Quad).transform.SetParent(go.transform, false);
+            return go.AddComponent<UnityEngine.VFX.VisualEffect>();
+        }
+
+        private static UnityEngine.VFX.VisualEffect s_visualEffect;
+
+        [Component]
+        private static VNode ResizingVisualEffectHost()
+        {
+            var (narrow, setNarrow) = Hooks.UseState(false);
+            s_setFlag = setNarrow;
+            return V.Particles(s_visualEffect, name: "px-vfx-resize", className: narrow ? "w-[64px] h-[64px]" : "w-[128px] h-[64px]");
+        }
+
+        [Test]
+        public void Given_ARenderedVisualEffect_When_TheElementNarrows_Then_TheNextTickRendersIntoATextureOfTheNewWidth()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
+            s_visualEffect = CreateVisualEffectSource("fx-vfx-resize");
+            MountAndLayout(V.Component(ResizingVisualEffectHost, key: "root"));
+            var binding = _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-vfx-resize")];
+            _fakeMs += 20;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var wide = binding.EffectTexture != null ? binding.EffectTexture.width : 0;
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+            _fakeMs += 20;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That((wide, binding.EffectTexture != null ? binding.EffectTexture.width : 0), Is.EqualTo((128, 64)));
+        }
+
+        // Names every unnamed layer from 8 to 31 for the duration of the case, as a project with no layer to spare.
+        private static List<int> NameEveryFreeLayer(UnityEditor.SerializedObject tagManager)
+        {
+            var layers = tagManager.FindProperty("layers");
+            var named = new List<int>();
+            for (var i = 8; i < 32; i++)
+            {
+                var layer = layers.GetArrayElementAtIndex(i);
+                if (string.IsNullOrEmpty(layer.stringValue))
+                {
+                    layer.stringValue = "VelvetTestLayer" + i;
+                    named.Add(i);
+                }
+            }
+            tagManager.ApplyModifiedPropertiesWithoutUndo();
+            return named;
+        }
+
+        [Test]
+        public void Given_AProjectNamingEveryLayer_When_AVisualEffectMounts_Then_ItsCloneStaysOnTheSourcesLayer()
+        {
+            // Arrange — the source stands on Default, so a clone on any other layer was moved.
+            var effect = CreateVisualEffectSource("fx-vfx-named");
+            var tagManager = new UnityEditor.SerializedObject(
+                UnityEditor.AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            var named = NameEveryFreeLayer(tagManager);
+            int cloneLayer;
+            try
+            {
+                // Act
+                MountAndLayout(V.Particles(effect, name: "px-vfx-named", className: "w-[128px] h-[128px]"));
+                cloneLayer = _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-vfx-named")]
+                    .EffectHost.gameObject.layer;
+            }
+            finally
+            {
+                var layers = tagManager.FindProperty("layers");
+                foreach (var i in named)
+                {
+                    layers.GetArrayElementAtIndex(i).stringValue = string.Empty;
+                }
+                tagManager.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            // Assert
+            Assert.That(cloneLayer, Is.EqualTo(effect.gameObject.layer));
+        }
+
+        #endregion
 
         // The hosted clone of the source's single child system, reached through the element's binding.
         private ParticleSystem MountAndFindHostedChild(ParticleSystem child)

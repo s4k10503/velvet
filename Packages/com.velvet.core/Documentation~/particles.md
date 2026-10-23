@@ -103,7 +103,8 @@ draws into a mesh, so `V.Particles(VisualEffect visualEffect, …)` takes the ca
   clears it and sends none. `Play()` sends the play event, and `Stop()` clears the clone without
   replaying it.
 
-The ParticleSystem path draws through UI Toolkit alone; the VFX Graph path renders through the
+A `VisualEffect` plays a graph only in a project that has the Visual Effect Graph package; Velvet itself does
+not depend on it, and its own test project carries it. The ParticleSystem path draws through UI Toolkit alone; the VFX Graph path renders through the
 project's render pipeline, which must be one VFX Graph supports. Velvet's own suites run under URP,
 and no other pipeline is tested.
 
