@@ -1094,7 +1094,8 @@ namespace Velvet.Tests
         {
             // Arrange
             var effect = CreateLoopEffect();
-            yield return VfxGraphCapability.IgnoreIfCannotDraw(effect.visualEffectAsset);
+            var capability = "";
+            yield return VfxGraphCapability.IgnoreIfCannotDraw(effect, reading => capability = reading);
             _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
             _mounted = V.Mount(_host.Root,
                 V.Particles(effect, className: "w-[300px] h-[300px] bg-[#00ff00]", playOn: PlayTrigger.Manual));
@@ -1110,7 +1111,7 @@ namespace Velvet.Tests
             yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
 
             // Assert
-            Assert.That((beforePlay, playing > 50, NotGreen()), Is.EqualTo((0, true, 0)));
+            Assert.That((beforePlay, playing > 50, NotGreen()), Is.EqualTo((0, true, 0)), capability);
         }
 
         [UnityTest]

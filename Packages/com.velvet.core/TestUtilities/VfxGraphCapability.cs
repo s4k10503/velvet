@@ -17,27 +17,20 @@ namespace Velvet.TestUtilities
 
         /// <summary>
         /// Call as the first yield of a test that needs the graph drawn: <c>yield return
-        /// VfxGraphCapability.IgnoreIfCannotDraw(asset);</c>. A null asset is left to the test to fail on.
+        /// VfxGraphCapability.IgnoreIfCannotDraw(effect, measured => reading = measured);</c>. The effect is the
+        /// scene's own, so the control draws what the test then mounts. <paramref name="report"/> receives the
+        /// measurement whether or not the test is ignored.
         /// </summary>
-        public static IEnumerator IgnoreIfCannotDraw(VisualEffectAsset asset)
+        public static IEnumerator IgnoreIfCannotDraw(VisualEffect effect, System.Action<string> report)
         {
-            if (asset == null)
-            {
-                yield break;
-            }
             var go = new GameObject("velvet-vfx-capability");
             var texture = new RenderTexture(64, 64, 24);
             var alive = 0;
             var alpha = 0;
+            var start = Time.realtimeSinceStartup;
             try
             {
-                var effect = go.AddComponent<VisualEffect>();
-                effect.visualEffectAsset = asset;
-                effect.Play();
-                var cameraGo = new GameObject("velvet-vfx-capability-camera");
-                cameraGo.transform.SetParent(go.transform, false);
-                cameraGo.transform.localPosition = new Vector3(0f, 0f, -100f);
-                var camera = cameraGo.AddComponent<Camera>();
+                var camera = go.AddComponent<Camera>();
                 camera.enabled = false;
                 camera.orthographic = true;
                 camera.orthographicSize = 20f;
@@ -45,8 +38,9 @@ namespace Velvet.TestUtilities
                 camera.clearFlags = CameraClearFlags.SolidColor;
                 camera.backgroundColor = Color.clear;
                 camera.targetTexture = texture;
-                var deadline = Time.realtimeSinceStartup + WaitSeconds;
-                while (alpha == 0 && Time.realtimeSinceStartup < deadline)
+                go.transform.SetPositionAndRotation(
+                    effect.transform.position - effect.transform.forward * 100f, effect.transform.rotation);
+                while (alpha == 0 && Time.realtimeSinceStartup < start + WaitSeconds)
                 {
                     yield return null;
                     alive = effect.aliveParticleCount;
@@ -63,11 +57,12 @@ namespace Velvet.TestUtilities
                 Object.Destroy(texture);
                 Object.Destroy(go);
             }
+            var reading = $"capability alive={alive} alpha={alpha} waited={Time.realtimeSinceStartup - start:F1}s "
+                + $"device={SystemInfo.graphicsDeviceType} {SystemInfo.graphicsDeviceVersion}";
+            report(reading);
             if (alive > 0 && alpha == 0)
             {
-                Assert.Ignore(
-                    $"A plain camera draws nothing from the graph with {alive} particles alive on "
-                    + $"{SystemInfo.graphicsDeviceType} ({SystemInfo.graphicsDeviceVersion}): alpha texels {alpha}.");
+                Assert.Ignore($"A plain camera draws nothing from the graph: {reading}.");
             }
         }
 
