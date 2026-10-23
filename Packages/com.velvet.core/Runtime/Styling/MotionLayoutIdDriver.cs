@@ -907,9 +907,8 @@ namespace Velvet
 
         // Takes an element out of an id's members, at its teardown or as it joins another id. A lead that leaves
         // hands the lead to the member that joined last, as Framer's NodeStack.remove promotes the last remaining
-        // member. With none left, a lead that leaves inside a pass leaves its box for a replacement later in
-        // that render — a same-key type flip creates it after this teardown — and ExpireSnapshots drops what nobody
-        // claimed where the render ends.
+        // member. With none left, the lead leaves its box under the id for whichever Motion mounts under it next,
+        // in this render or a later one, as Framer's stack keeps the snapshot of its last lead.
         private static void RemoveMember(VisualElement element, string layoutId, ReconcilerContext ctx)
         {
             var members = ctx.LayoutIdMembers[layoutId];
@@ -923,10 +922,9 @@ namespace Velvet
             {
                 Resume(members[members.Count - 1], layoutId, box, ctx);
             }
-            else if (ctx.CurrentPass != null)
+            else if (box != null)
             {
                 ctx.LayoutIdRegistry[layoutId] = (null, box);
-                ctx.LayoutIdSnapshots.Add(layoutId);
             }
             else
             {
@@ -1044,18 +1042,8 @@ namespace Velvet
 
         // Called where a render ends: the end of a batch drain, whose passes are one render, and the
         // boundary of a top-level pass outside a drain.
-        internal static void ExpireSnapshots(ReconcilerContext ctx)
+        internal static void EndRender(ReconcilerContext ctx)
         {
-            foreach (var layoutId in ctx.LayoutIdSnapshots)
-            {
-                if (ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry) && entry.Element == null)
-                {
-                    ctx.LayoutIdRegistry.Remove(layoutId);
-                }
-            }
-            // MUTANT_SURVIVES(equivalent): CancelForTeardown lists every id it gives a null element, so an id
-            // left over here is removed at a later boundary exactly when it would have been listed again.
-            ctx.LayoutIdSnapshots.Clear();
             ctx.LayoutIdRestored.Clear();
             foreach (var projection in ctx.LayoutIdProjections.Values)
             {

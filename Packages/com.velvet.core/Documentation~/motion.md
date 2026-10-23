@@ -603,10 +603,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   transitions of what a layout animation does not animate, and take a change of those classes as it comes.
   A Motion that leaves its panel without being unmounted has its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
-  the id, not the physical element, is what's tracked. An element that leaves the tree hands its box on
-  within one batch — the updates one scheduler drain commits together, such as the ordinary updates
-  queued for a frame or the ones a discrete event flushes, however many components they re-render — and a
-  Motion that mounts under its id in a later batch appears in place.
+  the id, not the physical element, is what's tracked. An element that leaves the tree, the last of its id,
+  leaves its box under the id, and the next Motion to mount under it tweens from that box, in the same
+  batch or any later one, as Framer's stack keeps the snapshot of its last lead.
 - Several Motions may hold one `layoutId` at once. The one that took the id last — by mounting under it
   or by changing to it — leads, and the others are hidden by an inline `visibility: hidden`; a render
   that moves one of them does not make it the lead. While a lead moves from a box it took from another
