@@ -271,6 +271,7 @@ namespace Velvet
             // stacked dark:'s process-wide VelvetTheme.DarkModeChanged), which would otherwise outlive unmount.
             _ctx.DetachStackedVariants(element);
             DetachManipulator(element, _ctx.GapManipulators);
+            DetachManipulator(element, _ctx.CompositeFlowManipulators);
             DetachManipulator(element, _ctx.DivideManipulators);
             DetachManipulator(element, _ctx.GridManipulators);
             DetachManipulator(element, _ctx.TextBalanceManipulators);

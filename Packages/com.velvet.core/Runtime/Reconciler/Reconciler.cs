@@ -880,6 +880,12 @@ namespace Velvet
             }
 
             _ctx.GapManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.CompositeFlowManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.CompositeFlowManipulators.Clear();
             foreach (var (element, manipulator) in _ctx.DivideManipulators)
             {
                 element.RemoveManipulator(manipulator);
