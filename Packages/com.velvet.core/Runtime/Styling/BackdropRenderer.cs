@@ -251,7 +251,7 @@ namespace Velvet
                 Graphics.CopyTexture(_target, 0, 0, Region.x, Region.y, Region.width, Region.height, texture, 0, 0, 0, 0);
                 return texture;
             }
-            var flips = _target == null && SystemInfo.graphicsUVStartsAtTop;
+            var flips = _target == null;
             var commands = BackdropRenderer.Commands;
             commands.Clear();
             commands.DisableScissorRect();
