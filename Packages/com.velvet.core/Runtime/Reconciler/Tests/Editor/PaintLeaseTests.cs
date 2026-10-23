@@ -143,5 +143,20 @@ namespace Velvet.Tests
             // Assert
             Assert.That(leases.Holds(card, FiberPaintLeases.Layer.Shadow), Is.True);
         }
+
+        [Test]
+        public void Given_AnElementMountedOnTheEndPose_When_AnEnterOpensItsLease_Then_TheStartPoseShowsAtOnce()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[] { V.Div(className: "shadow-lg", name: "card") });
+            var card = scope.Root[0];
+
+            // Act
+            scope.Reconciler.Context.PaintLeases.Open(card, Small, Large, isExit: false);
+
+            // Assert
+            Assert.That(ShadowOf(scope, card).Layers[0].Blur, Is.EqualTo(BlurOf(Small)).Within(1e-3f));
+        }
     }
 }

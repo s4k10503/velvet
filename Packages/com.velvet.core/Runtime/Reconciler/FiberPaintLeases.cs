@@ -28,6 +28,10 @@ namespace Velvet
         private readonly FiberBoxShadowApplier _shadow;
         private readonly Dictionary<VisualElement, Hold> _holds = new();
 
+        // Whether the play being opened is followed by the class pass that names the pose it ends on. A play with
+        // no such pass behind it has its poses to hand when it opens, and draws its start pose then.
+        internal bool PassFollows { get; set; }
+
         public FiberPaintLeases(ReconcilerContext ctx, FiberSkewApplier skew, FiberGradientApplier gradient,
             FiberBoxShadowApplier shadow)
         {
@@ -143,6 +147,11 @@ namespace Velvet
                 _resolved = false;
                 _handles++;
                 _current = new Handle(this);
+                if (!_owner.PassFollows)
+                {
+                    _current.Started = true;
+                    Write(0f);
+                }
                 return _current;
             }
 
@@ -262,6 +271,11 @@ namespace Velvet
                     handle.Started = true;
                     return;
                 }
+                Write(progress);
+            }
+
+            private void Write(float progress)
+            {
                 if (!_resolved)
                 {
                     Resolve();
