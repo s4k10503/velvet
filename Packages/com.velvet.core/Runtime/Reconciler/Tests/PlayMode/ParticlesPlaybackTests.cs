@@ -1109,7 +1109,7 @@ namespace Velvet.Tests
 
         // Renders the clone through a plain camera of its own, to tell a graph the device cannot draw from one the
         // element's bake camera fails to show.
-        private static int ControlCameraAlphaTexels(VisualEffect clone)
+        private static int ControlCameraAlphaTexels(VisualEffect clone, float size)
         {
             var go = new GameObject("velvet-vfx-control-camera");
             var texture = new RenderTexture(128, 128, 24);
@@ -1121,7 +1121,7 @@ namespace Velvet.Tests
                 var camera = go.AddComponent<Camera>();
                 camera.enabled = false;
                 camera.orthographic = true;
-                camera.orthographicSize = 2f;
+                camera.orthographicSize = size;
                 camera.clearFlags = CameraClearFlags.SolidColor;
                 camera.backgroundColor = Color.clear;
                 camera.cullingMask = -1;
@@ -1192,8 +1192,9 @@ namespace Velvet.Tests
             var clone = binding.EffectHost;
             var state = $"drawn-per-second=[{string.Join(",", series)}] asset={clone.visualEffectAsset != null} "
                 + $"alive={clone.aliveParticleCount} awake={clone.HasAnySystemAwake()} culled={clone.culled} "
-                + $"bakedAlpha={AlphaTexels(binding.EffectTexture)} controlAlpha={ControlCameraAlphaTexels(clone)} "
+                + $"bakedAlpha={AlphaTexels(binding.EffectTexture)} "
                 + $"renderers=[{DescribeRenderers(binding.EffectRenderers)}] compiling={ShadersCompiling()} "
+                + $"controlAlpha(size2,size20)={ControlCameraAlphaTexels(clone, 2f)},{ControlCameraAlphaTexels(clone, 20f)} "
                 + $"device={SystemInfo.graphicsDeviceType} {SystemInfo.graphicsDeviceVersion} "
                 + $"computeBufferInputsVertex={SystemInfo.maxComputeBufferInputsVertex}";
             TestContext.Out.WriteLine(state);
