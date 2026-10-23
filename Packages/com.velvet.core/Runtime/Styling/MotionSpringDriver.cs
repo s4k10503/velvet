@@ -303,12 +303,7 @@ namespace Velvet
         }
 
         // The time from a play's start to the end of its slowest channel's last pass, which is when Framer Motion's
-        // animation of every value has finished.
-        internal static double SpanSec(MotionSpringClassParser.SpringPlan plan, float stiffness, float damping,
-            float mass, MotionRepeat repeat, double? settleSec = null)
-            => SpanSec(Create(plan, stiffness, damping, mass, repeat, settleSec), repeat);
-
-        // The span of a built state, a channel on a transition of its own counting its entry once.
+        // animation of every value has finished; a channel on a transition of its own counts its entry once.
         internal static double SpanSec(MotionSpringState? state, MotionRepeat repeat)
         {
             if (state == null)

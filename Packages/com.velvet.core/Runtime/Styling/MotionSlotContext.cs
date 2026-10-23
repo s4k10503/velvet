@@ -321,10 +321,54 @@ namespace Velvet
             }
         }
 
-        // The colour custom property variable holds on the element, which a panel resolves once the element has had
-        // its styles; false before that.
+        // The colour custom property variable holds for the element: its own declaration, else the nearest ancestor's,
+        // as inheritance settles it. False before the styles resolve.
         public bool TryReadThemeColor(string variable, out Color color)
-            => _element.customStyle.TryGetValue(new CustomStyleProperty<Color>(variable), out color);
+        {
+            var asColor = new CustomStyleProperty<Color>(variable);
+            var asText = new CustomStyleProperty<string>(variable);
+            color = default;
+            var found = false;
+            for (var holder = _element; holder != null && !found; holder = holder.hierarchy.parent)
+            {
+                found = holder.customStyle.TryGetValue(asColor, out color)
+                    || (holder.customStyle.TryGetValue(asText, out var text) && TryParseColorText(text, out color));
+            }
+            return found;
+        }
+
+        // The spellings the bundled tokens declare a colour in: rgb(r, g, b), rgba(r, g, b, a) and #hex.
+        private static bool TryParseColorText(string text, out Color color)
+        {
+            color = default;
+            text = text.Trim();
+            if (text.StartsWith("#", StringComparison.Ordinal))
+            {
+                return ColorUtility.TryParseHtmlString(text, out color);
+            }
+            var open = text.IndexOf('(');
+            if (open < 0 || !text.EndsWith(")", StringComparison.Ordinal)
+                || !(text.StartsWith("rgb", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+            var parts = text.Substring(open + 1, text.Length - open - 2).Split(',');
+            if (parts.Length is not (3 or 4))
+            {
+                return false;
+            }
+            var channels = new float[4] { 0f, 0f, 0f, 1f };
+            for (var i = 0; i < parts.Length; i++)
+            {
+                if (!float.TryParse(parts[i].Trim(), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out channels[i]))
+                {
+                    return false;
+                }
+            }
+            color = new Color(channels[0] / 255f, channels[1] / 255f, channels[2] / 255f, channels[3]);
+            return true;
+        }
 
         /// <summary>
         /// What the element shows on <paramref name="slot"/> now, in <paramref name="unit"/>, for a slot only one side of

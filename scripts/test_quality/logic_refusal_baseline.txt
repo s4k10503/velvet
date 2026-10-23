@@ -55,7 +55,7 @@ Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs	13
 Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs	7
 Packages/com.velvet.core/Runtime/Styling/MotionPlaySpan.cs	1
 Packages/com.velvet.core/Runtime/Styling/MotionPropertyClassParser.cs	1
-Packages/com.velvet.core/Runtime/Styling/MotionSlotContext.cs	11
+Packages/com.velvet.core/Runtime/Styling/MotionSlotContext.cs	12
 Packages/com.velvet.core/Runtime/Styling/MotionSpringClassParser.cs	10
 Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs	3
 Packages/com.velvet.core/Runtime/Styling/NativeTransitionVelocity.cs	2
