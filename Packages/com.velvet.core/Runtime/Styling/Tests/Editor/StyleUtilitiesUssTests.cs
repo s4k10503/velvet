@@ -557,6 +557,7 @@ namespace Velvet.Tests
             Assert.That(leaf.resolvedStyle.unityEditorTextRenderingMode, Is.EqualTo(EditorTextRenderingMode.Bitmap));
         }
 
+        // GREEN_ON_BASE(characterization): antialiased already resolved to SDF on the base; the case pins that the new bitmap mode of subpixel-antialiased does not reach a child that resets it.
         [Test]
         public void Given_AntialiasedUnderASubpixelAntialiasedParent_When_Resolved_Then_ItIsTheSdfRenderingMode()
         {

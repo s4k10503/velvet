@@ -20,6 +20,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, ArbitraryProperty.LetterSpacing, 0f, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the em presets were declined for a play on the base too; the case pins that the new zero-pixel tracking-normal does not pull them in.
         [TestCase("tracking-tighter")]
         [TestCase("tracking-tight")]
         [TestCase("tracking-wide")]
