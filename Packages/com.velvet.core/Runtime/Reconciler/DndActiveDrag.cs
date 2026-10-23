@@ -61,7 +61,7 @@ namespace Velvet
         private readonly VisualElement _panelRoot;
         private readonly DragActivation _activation;
         private readonly int _pointerId;
-        // True for the pointer sensor's session, the only one that listens to the pointer itself; every other
+        // True for the pointer sensor's session, whose pointer events the session registers for itself; another
         // sensor drives its session through DndSensorSession.
         private readonly bool _pointerDriven;
         // Where the activating pointer pressed; null for a session no pointer started, which collision
