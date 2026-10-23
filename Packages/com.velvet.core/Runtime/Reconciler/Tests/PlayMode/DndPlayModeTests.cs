@@ -803,6 +803,8 @@ namespace Velvet.Tests
                 V.Component(ParkedOverlayList, key: "list"),
             });
 
+        // GREEN_ON_BASE(characterization): the base already shows an overlay that mounts on a parked
+        // reconcile's resume; the case keeps that holding through the branch's change to the overlay path.
         [UnityTest]
         public IEnumerator Given_ADragOverlayMountedByAParkedReconcile_When_ItsTerminalSliceCompletes_Then_TheOverlayShowsAtThePointerWithoutAMove()
         {
@@ -952,6 +954,8 @@ namespace Velvet.Tests
             Assert.That(s_ended, Is.EqualTo(new[] { "world-slot" }));
         }
 
+        // GREEN_ON_BASE(characterization): the base finds no drop target for a point away from the
+        // world-space droppable; the branch's camera hit-test must keep declining there.
         [UnityTest]
         public IEnumerator Given_ADroppableInAWorldSpacePanel_When_ADragFromTheMainPanelEndsAwayFromIt_Then_NothingIsTheDropTarget()
         {
