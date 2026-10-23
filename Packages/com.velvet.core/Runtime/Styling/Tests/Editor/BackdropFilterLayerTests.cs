@@ -104,11 +104,14 @@ namespace Velvet.Tests
         [Test]
         public void Given_ANegativeBlurAfterASpace_When_Mounted_Then_TheElementGetsNoBackdropFilter()
         {
-            // Act — the `_` is a space the browser skips before the sign.
-            var glass = Mount("backdrop-grayscale backdrop-blur-[_-4px]");
+            // Arrange — the `_` is a space the browser skips; the same bracket unsigned is the control.
+            var accepted = SpecOf(Mount("backdrop-grayscale backdrop-blur-[_4px]"));
+
+            // Act
+            var rejected = SpecOf(Mount("backdrop-grayscale backdrop-blur-[_-4px]"));
 
             // Assert
-            Assert.That(SpecOf(glass), Is.EqualTo("none"));
+            Assert.That((accepted, rejected), Is.EqualTo(("blur(4px) grayscale(1)", "none")));
         }
 
         [Test]

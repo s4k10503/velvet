@@ -402,8 +402,11 @@ namespace Velvet
             }
             // CSS takes no negative blur radius. TryParseFilterValue reads one, the filter utilities rejecting it with
             // the same sign test in StyleCompositeRejection.Accepts.
-            if ((function == BackdropFunction.Blur && value[0] == '-')
-                || StyleFilterValueParser.TryParseFilterValue(StyleBackdropClass.NameOf(function) + "-", value, negate,
+            if (function == BackdropFunction.Blur && value[0] == '-')
+            {
+                return false;
+            }
+            if (StyleFilterValueParser.TryParseFilterValue(StyleBackdropClass.NameOf(function) + "-", value, negate,
                     out var style) != true)
             {
                 return false;
