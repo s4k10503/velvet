@@ -39,9 +39,10 @@ namespace Velvet
         // when the root leaves instead.
         public static IDisposable ForgetWhenLeaving(VisualElement root) => new LeaveScrub(root);
 
-        // An element focused in a panel is watched until another is: once it settles in another panel, or in
-        // none, that panel's focus memory of it is dropped, as an element leaving a document takes no focus
-        // with it. Velvet's own release scrubs at once (Forget); this covers an element user code moves.
+        // An element focused in a panel the navigator listens on is watched until another element there is: once
+        // it settles in another panel, or in none, that panel's focus memory of it is dropped, as an element
+        // leaving a document takes no focus with it. Velvet's own release scrubs at once (Forget); this covers an
+        // element user code moves.
         public static void Watch(VisualElement focused)
         {
             if (focused.panel is { } panel)
@@ -138,7 +139,7 @@ namespace Velvet
 
         // Repeats the scrub once the focus change has landed: when the target is attached again, or on the panel's
         // next tick if it still has no panel then, so a target never mounted again leaves nothing in the panel's
-        // focus chain and no callback on the pooled instance.
+        // focus chain and no re-scrub callback on the pooled instance.
         private sealed class ReturnScrub
         {
             private readonly IPanel _panel;
@@ -220,7 +221,8 @@ namespace Velvet
             }
 
             // A move between parents detaches before it attaches, so where the element settles is read on the
-            // attach, or on the next tick when nothing attaches it.
+            // attach, or on the next tick when nothing attaches it. PooledFocusMemoryTests' moved-Button case
+            // holds the first half.
             private void OnDetached(DetachFromPanelEvent evt)
             {
                 if (_element == null || evt.originPanel != _panel)

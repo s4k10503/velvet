@@ -18,7 +18,7 @@ namespace Velvet
     }
 
     // The hidden element closing a V.FocusScope's content. It is attached after the content, so its attach is
-    // where the scope's autoFocus finds the content in place.
+    // where the scope's autoFocus finds the content in place; FocusScopeRangeTests' autoFocus case holds this.
     internal sealed class FocusScopeEnd : VisualElement
     {
         public FocusScopeEnd()
@@ -36,11 +36,10 @@ namespace Velvet
     {
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ComponentFiber, StartHolder> s_starts = new();
 
-        // Bindings on mounted starts, across every tree. While there are none, a walk asks no parent for its
-        // ranges.
+        // Bindings on starts, across every tree. While there are none, a walk asks no parent for its ranges.
         internal static int Live { get; set; }
 
-        // Its props are a new record whenever the scope's parent renders, so the weaver's cache could not hit.
+        // Not woven: the output is two sentinels around the children, so a cache hit would save nothing worth it.
         [Component(Compiler = false)]
         public static VNode Render(FocusScopeRangeProps props)
         {

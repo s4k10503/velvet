@@ -904,9 +904,9 @@ namespace Velvet
         }
 
         // Arrow/d-pad moves never leave a SingleTabStop group, the composite-widget contract whose Tab half
-        // TryHandleSingleTabStopGroupExit owns. OnGroupArrow takes every arrow that bubbles back to the panel
-        // root; one a handler stopped before then without ignoring it reaches the engine's 2D move, whose landing
-        // outside the group returns to the member the move started from.
+        // TryHandleSingleTabStopGroupExit owns. OnGroupArrow moves focus for a group's arrow that bubbles back to
+        // the panel root; one a handler stopped before then without ignoring it reaches the engine's 2D move, whose
+        // landing outside the group returns to the member the move started from.
         private static bool TryHoldInSingleTabStopGroup(
             VisualElement target, VisualElement? relatedTarget, ReconcilerContext ctx)
         {
@@ -1308,8 +1308,8 @@ namespace Velvet
         // The scopes around an element, innermost first: a scope whose element holds it, and a range whose
         // sentinels bracket it or an element above it among their parent's children. A logical walk climbs
         // LogicalParentOf, so portal content reaches the scopes its portal is declared in; a physical one climbs
-        // parents, which is the membership every path but containment's own reads — robust at event time and
-        // across pool reuse. `only` reads one tree's scopes; null reads every attached tree's.
+        // parents, robust at event time and across pool reuse. `only` reads one tree's scopes; null reads every
+        // attached tree's.
         private struct ScopeWalk
         {
             private readonly ReconcilerContext? _only;

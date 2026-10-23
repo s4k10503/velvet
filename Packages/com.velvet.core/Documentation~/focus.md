@@ -143,8 +143,9 @@ its elements sit in the Tab order of the tree that declared it:
 - **`Isolated`** — out of that order: Tab wraps within the host panel and never crosses the boundary.
 
 A move between panels hands focus over inside the dispatch of the key that made it: the element the
-move leaves is blurred first and the landing focused straight after. Inside a `contain` scope Tab wraps
-within the scope and crosses no boundary. Arrow/2D navigation stays within each panel in every mode.
+move leaves is blurred first and the landing focused straight after. Tab from inside a `contain` scope
+wraps within the scope rather than moving on to the next panel. Arrow/2D navigation stays within each panel
+in every mode.
 
 A `focusOrder:` naming no `PanelFocusOrder` member is refused at construction: `V.Portal` and
 `V.WorldSpace` each throw `ArgumentOutOfRangeException` from the call itself, naming the parameter.
