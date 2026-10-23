@@ -1116,6 +1116,22 @@ namespace Velvet.Tests
                 "wrap container negative margin survives on every side");
         }
 
+        // WrapGapDefiniteSizePanelTests holds where the grown width lays a row out; this holds the column axis off a
+        // panel, through a bundled class rather than a bracket.
+        [Test]
+        public void Given_AWrappingContainerOfDeclaredHeight_When_ARowGapSpacesIt_Then_ItsHeightGrowsByTheGap()
+        {
+            // Arrange — h-16 is 64px.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "flex flex-row flex-wrap gap-y-4 h-16", children: Children(3)) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Container(scope.Root).style.height.value.value, Is.EqualTo(64f + Space4));
+        }
+
         // Bug 4: with no gap class and no existing manipulator, ApplyGapManipulator does no work and
         // registers nothing (the cheap early-out path). Proven by the absence of any inline gap margin
         // and no manipulator registration.

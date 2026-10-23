@@ -337,6 +337,13 @@ Velvet adds the two:
   content and its neighbours. A `V.Motion` animating the container's margin has them added to the driven
   value, as for a child.
   Non-wrap containers never touch the container's own margin.
+- **A size the container declares under wrap.** The negated halves do not grow a width, height, minimum or
+  maximum the container declares itself, which would leave its items a gap less room than CSS gives them, so
+  the wrap path adds the column gap to its `w-*`, `min-w-*` and `max-w-*` and the row gap to its `h-*`,
+  `min-h-*` and `max-h-*`: `w-[150px] flex flex-wrap gap-4` holds two 66px items on one line and takes 150px
+  among its siblings, as in CSS. A percentage is taken of the parent once the parent is laid out, and is not
+  grown before. A size a stylesheet of your own or code outside Velvet sets is not seen, and neither is a
+  keyword (`w-auto`) or a size class Velvet cannot read as a length.
 - **Wrap outer bleed.** The wrap path's container negative margin draws the container's box — its
   background, border and padding — half of each gap past each edge that gap spaces, overlapping its
   siblings or its parent's padding by that much. UI Toolkit's layout style has no gap property (`FlexEngineLayoutStyleTests` fails once it gains

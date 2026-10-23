@@ -101,6 +101,11 @@ namespace Velvet
         // Whether the child container carries the wrap path's negative margin.
         private bool _containerHeld;
 
+        // The size slots of the child container's layout box this manipulator holds (HoldSizes), by HeldSlot bit, and
+        // the parent it listens to for a percentage size.
+        private int _sizesHeld;
+        private VisualElement? _sizeParent;
+
         // One child's summed margins and which slots anything asked for, indexed by HeldSlot; reused per child.
         private readonly float[] _margins = new float[s_marginSlots.Length];
         private readonly bool[] _wanted = new bool[s_marginSlots.Length];
@@ -256,6 +261,8 @@ namespace Velvet
             }
 
             var wrap = (_spec.HasColumnGap || _spec.HasRowGap) && IsWrap(container);
+            // Ahead of the signature: a size declaration of the container's own changes with none of its inputs.
+            HoldSizes(ClipPathLayoutBox.Of(container), wrap);
             var gapSlot = ResolveGapSlot(container);
             var signature = ComputeSignature(container, wrap, gapSlot);
             if (_hasSignature && signature == _lastSignature)
@@ -428,6 +435,7 @@ namespace Velvet
                 {
                     HandBackMargins(ClipPathLayoutBox.Of(container));
                 }
+                HoldSizes(ClipPathLayoutBox.Of(container), false);
             }
             ResetAllMargined();
             WatchGeometry(null);
@@ -483,6 +491,53 @@ namespace Velvet
             StyleArbitraryValueResolver.HoldGap(box, start, new StyleLength(-gap / 2f), -gap / 2f);
             StyleArbitraryValueResolver.HoldGap(box, end, new StyleLength(-gap / 2f), -gap / 2f);
         }
+
+        private static readonly HeldSlot[] s_columnSizes = { HeldSlot.Width, HeldSlot.MinWidth, HeldSlot.MaxWidth };
+        private static readonly HeldSlot[] s_rowSizes = { HeldSlot.Height, HeldSlot.MinHeight, HeldSlot.MaxHeight };
+
+        // The wrap path's negative margin does not grow a size, minimum or maximum the container declares itself,
+        // which would leave its content box a gap short of the room CSS lays the items out in
+        // (WrapGapDefiniteSizePanelTests), so each is grown by its axis's gap.
+        private void HoldSizes(VisualElement box, bool wrap)
+        {
+            var held = 0;
+            HoldAxisSizes(box, s_columnSizes, wrap && _spec.HasColumnGap, _spec.ColumnGap, ref held);
+            HoldAxisSizes(box, s_rowSizes, wrap && _spec.HasRowGap, _spec.RowGap, ref held);
+            _sizesHeld = held;
+            WatchSizeParent(held != 0 ? box.hierarchy.parent : null);
+        }
+
+        private void HoldAxisSizes(VisualElement box, HeldSlot[] slots, bool has, float gap, ref int held)
+        {
+            foreach (var slot in slots)
+            {
+                var bit = StyleHeldSlots.Bit(slot);
+                var mine = (_sizesHeld & bit) != 0;
+                if (has && StyleArbitraryValueResolver.HoldSizeGap(box, slot, gap, mine))
+                {
+                    held |= bit;
+                }
+                else if (mine)
+                {
+                    StyleArbitraryValueResolver.HandBack(box, slot);
+                }
+            }
+        }
+
+        // A percentage size is measured off the parent, which can resize while the container's grown size keeps
+        // the container's own geometry where it was.
+        private void WatchSizeParent(VisualElement? parent)
+        {
+            if (ReferenceEquals(parent, _sizeParent))
+            {
+                return;
+            }
+            _sizeParent?.UnregisterCallback<GeometryChangedEvent>(OnSizeParentGeometryChanged);
+            _sizeParent = parent;
+            _sizeParent?.RegisterCallback<GeometryChangedEvent>(OnSizeParentGeometryChanged);
+        }
+
+        private void OnSizeParentGeometryChanged(GeometryChangedEvent evt) => Apply();
 
         private static void HandBackMargins(VisualElement element)
         {

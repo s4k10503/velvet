@@ -21,6 +21,11 @@ namespace Velvet
         BorderRightColor,
         BorderBottomColor,
         BorderLeftColor,
+        Height,
+        MinWidth,
+        MaxWidth,
+        MinHeight,
+        MaxHeight,
     }
 
     // The values held on one element. Each array is indexed by slot and only allocated once a slot of its
@@ -178,6 +183,21 @@ namespace Velvet
                 case HeldSlot.Width:
                     style.width = length;
                     break;
+                case HeldSlot.Height:
+                    style.height = length;
+                    break;
+                case HeldSlot.MinWidth:
+                    style.minWidth = length;
+                    break;
+                case HeldSlot.MaxWidth:
+                    style.maxWidth = length;
+                    break;
+                case HeldSlot.MinHeight:
+                    style.minHeight = length;
+                    break;
+                case HeldSlot.MaxHeight:
+                    style.maxHeight = length;
+                    break;
                 case HeldSlot.BorderTopWidth:
                     style.borderTopWidth = width;
                     break;
@@ -210,7 +230,7 @@ namespace Velvet
     // each property writes, pinned by StyleArbitraryLonghandTableTests) rather than listed here.
     internal static class HeldSlotGroups
     {
-        public const int SlotCount = (int)HeldSlot.BorderLeftColor + 1;
+        public const int SlotCount = (int)HeldSlot.MaxHeight + 1;
 
         public static readonly HeldSlot[] EverySlot = (HeldSlot[])Enum.GetValues(typeof(HeldSlot));
 
@@ -222,6 +242,8 @@ namespace Velvet
             StyleLonghand.BorderBottomWidth, StyleLonghand.BorderLeftWidth,
             StyleLonghand.BorderTopColor, StyleLonghand.BorderRightColor,
             StyleLonghand.BorderBottomColor, StyleLonghand.BorderLeftColor,
+            StyleLonghand.Height, StyleLonghand.MinWidth, StyleLonghand.MaxWidth,
+            StyleLonghand.MinHeight, StyleLonghand.MaxHeight,
         };
 
         private static readonly ArbitraryProperty[] s_properties =

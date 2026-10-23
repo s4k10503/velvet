@@ -2192,6 +2192,24 @@ namespace Velvet
             Reassert(element, map, slot);
         }
 
+        // HoldGap on a size slot of a wrapping gap container, which a definite size of the element's own grows by the
+        // gap its negative margin takes back. False, holding nothing, where the element declares no size there that
+        // can be measured now, or where another manipulator holds the slot (mine says this caller already does).
+        internal static bool HoldSizeGap(VisualElement element, HeldSlot slot, float gap, bool mine)
+        {
+            var map = MapOf(element);
+            if (!mine && map.Holds != null && map.Holds.IsHeld(slot))
+            {
+                return false;
+            }
+            if (!TryAddToOwn(element, map, slot, gap, out var length) || length.keyword != StyleKeyword.Undefined)
+            {
+                return false;
+            }
+            HoldGap(element, slot, length, gap);
+            return true;
+        }
+
         internal static void Hold(VisualElement element, HeldSlot slot, StyleFloat value)
         {
             var map = MapOf(element);
@@ -2455,15 +2473,15 @@ namespace Velvet
             var claim = projection?.ClaimOf(longhand) ?? long.MinValue;
             if (projection != null && write.Outranks(longhand, claim) && (!layered || claim > rank))
             {
-                return ClaimedPixels(element, projection, longhand);
+                return ClaimedPixels(element, projection, longhand, AxisOf(slot));
             }
-            return Pixels(element, layered ? winner : write.Style);
+            return Pixels(element, layered ? winner : write.Style, AxisOf(slot));
         }
 
         // The pixels the class claiming longhand writes, read as its inline form (TryReadStylesheetClass), so a
         // spacing step takes Velvet's scale as the other rewrites of a stylesheet class do.
         private static float ClaimedPixels(VisualElement element, StyleClassProjection.Model projection,
-            StyleLonghand longhand)
+            StyleLonghand longhand, RelativeLengthAxis axis)
         {
             var claimant = projection.ClaimantOf(longhand);
             if (claimant == null)
@@ -2474,7 +2492,7 @@ namespace Velvet
             {
                 return float.NaN;
             }
-            return TryParse(inlineForm, out var style) ? Pixels(element, style) : float.NaN;
+            return TryParse(inlineForm, out var style) ? Pixels(element, style, axis) : float.NaN;
         }
 
         // Whether an important declaration of the element's own outranking write wins slot.
@@ -2527,13 +2545,14 @@ namespace Velvet
 
         private static readonly HeldSlot[] s_rowMargins = { HeldSlot.MarginLeft, HeldSlot.MarginRight };
 
-        // A held width is a grid column's, which already gives up the part of the child's held margins a space
+        // A held width that does not compose is a grid column's, which already gives up the part of the child's held margins a space
         // rule writes (StyleHeldSlots.OwnPart): a driven margin replaces that part, so the width gives up what the
         // driven margin shows there instead and the child moves inside its column rather than wrapping out of it.
         private static void FitHeldWidth(VisualElement element, LayerMap map)
         {
             var holds = map.Holds;
-            if (holds == null || map.Driven == null || !holds.IsHeld(HeldSlot.Width) || holds.IsDriven(HeldSlot.Width))
+            if (holds == null || map.Driven == null || !holds.IsHeld(HeldSlot.Width) || holds.IsDriven(HeldSlot.Width)
+                || holds.Composing(StyleHeldSlots.Bit(HeldSlot.Width)) != 0)
             {
                 return;
             }
@@ -2568,9 +2587,10 @@ namespace Velvet
         }
 
         // A percentage is taken of the parent's content width, which CompositeWidgetSpacingDirectionPanelTests
-        // pins against the engine's own reading of a margin percentage. NaN until the parent is laid out, and for a
-        // keyword or an expression, which name no number here.
-        private static float Pixels(VisualElement element, in ArbitraryStyle length)
+        // pins against the engine's own reading of a margin percentage, and of its height for a vertical size slot
+        // (AxisOf). NaN until the parent is laid out, and for a keyword or an expression, which name no number here.
+        private static float Pixels(VisualElement element, in ArbitraryStyle length,
+            RelativeLengthAxis axis = RelativeLengthAxis.Width)
         {
             if (length.Auto || length.Expression != null)
             {
@@ -2581,7 +2601,12 @@ namespace Velvet
                 return length.Value;
             }
             var parent = element.hierarchy.parent;
-            return parent == null ? float.NaN : length.Value / 100f * parent.contentRect.width;
+            if (parent == null)
+            {
+                return float.NaN;
+            }
+            var basis = axis == RelativeLengthAxis.Height ? parent.contentRect.height : parent.contentRect.width;
+            return length.Value / 100f * basis;
         }
 
         // Makes the hold just taken on slot give way to a layer of the element's own: while one writes the slot,
@@ -2672,10 +2697,9 @@ namespace Velvet
             var pixels = float.NaN;
             if (own.Expression == null)
             {
-                pixels = Pixels(element, own);
+                pixels = Pixels(element, own, AxisOf(slot));
             }
-            else if (StyleRelativeLengths.TryResolve(element, own.Expression, RelativeLengthAxis.Width, null,
-                         out var resolved))
+            else if (StyleRelativeLengths.TryResolve(element, own.Expression, AxisOf(slot), null, out var resolved))
             {
                 pixels = resolved.value.value;
             }
@@ -2772,18 +2796,31 @@ namespace Velvet
             }
         }
 
-        // Every held length slot is a margin edge or the width, each of which takes a percentage of the parent's
-        // width and stands in for an indefinite one as PropertySetters' setter for it does. A length that cannot
-        // be measured yet leaves the slot as it is, as ApplyInline does.
+        // A held length slot takes a percentage of the parent's size on its axis (AxisOf) and stands in for an
+        // indefinite one as PropertySetters' setter for its longhand does. A length that cannot be measured yet
+        // leaves the slot as it is, as ApplyInline does.
         private static void WriteLayered(VisualElement element, HeldSlot slot, in ArbitraryStyle winner)
         {
             var length = winner.ToStyleLength();
             if (winner.Expression == null || StyleRelativeLengths.TryResolve(element, winner.Expression,
-                    RelativeLengthAxis.Width, slot == HeldSlot.Width ? StyleKeyword.Auto : null, out length))
+                    AxisOf(slot), IndefiniteOf(slot), out length))
             {
                 StyleHeldSlots.WriteLayered(element.style, slot, length, winner);
             }
         }
+
+        private static RelativeLengthAxis AxisOf(HeldSlot slot)
+            => slot is HeldSlot.Height or HeldSlot.MinHeight or HeldSlot.MaxHeight
+                ? RelativeLengthAxis.Height
+                : RelativeLengthAxis.Width;
+
+        // What PropertySetters writes for a percentage of an indefinite size on slot's longhand.
+        private static StyleKeyword? IndefiniteOf(HeldSlot slot) => slot switch
+        {
+            HeldSlot.Width or HeldSlot.Height => StyleKeyword.Auto,
+            HeldSlot.MaxWidth or HeldSlot.MaxHeight => StyleKeyword.None,
+            _ => null,
+        };
 
         internal static bool IsDriven(VisualElement element, HeldSlot slot)
             => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.IsDriven(slot);
