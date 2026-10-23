@@ -82,6 +82,29 @@ namespace Velvet
         }
     }
 
+    // The font-variant-numeric the text asks for. Tabular gives every digit the width of the widest, realised with
+    // the rich-text <mspace> tag over each run of digits; Proportional is the reset (normal-nums and
+    // proportional-nums), which takes an ancestor's Tabular away from the text.
+    internal enum NumericSpacing
+    {
+        Proportional,
+        Tabular,
+    }
+
+    // What shapes the displayed string beyond its transform and tags: the line breaks a leaf asks of its breaker
+    // and the width of a digit in em when the leaf is set in tabular figures (zero for none).
+    internal readonly struct TextShaping
+    {
+        public readonly TextBreakRequest? Breaks;
+        public readonly float DigitCellEm;
+
+        public TextShaping(TextBreakRequest? breaks, float digitCellEm)
+        {
+            Breaks = breaks;
+            DigitCellEm = digitCellEm;
+        }
+    }
+
     // Which unit a resolved Leading value carries, following CSS line-height's kinds of value. Em is a
     // number (every named leading-* preset and a unitless bracket value): CSS inherits the number itself,
     // so it multiplies whatever font-size is in effect where the rich-text tag is generated. EmLength is an
@@ -165,6 +188,9 @@ namespace Velvet
         // reset it. CSS inherits text-wrap-style as it does the wrap mode, so the nearest element that sets
         // it decides for the text under it.
         public readonly TextWrapStyle? WrapStyle;
+        // The digit spacing tabular-nums, proportional-nums and normal-nums set. It inherits as CSS's
+        // font-variant-numeric does.
+        public NumericSpacing? Numeric { get; init; }
 
         public TextEffect(TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading,
             WhiteSpace? whiteSpaceClass, TextWrapSetting wrap)
@@ -176,12 +202,13 @@ namespace Velvet
             WhiteSpaceClass = whiteSpaceClass;
             Wraps = wrap.Wraps;
             WrapStyle = wrap.Style;
+            Numeric = null;
         }
 
         // True when no axis carries a token (nothing to track for this element).
         // A white-space class always sets Whitespace too (Parse), so it needs no term of its own.
         public bool IsEmpty => Transform == null && Decoration == null && Whitespace == null && Leading == null
-            && Wraps == null;
+            && Wraps == null && Numeric == null;
     }
 
     // Parses the text-transform / text-decoration / white-space / leading-* utilities and text-balance /
@@ -280,7 +307,10 @@ namespace Velvet
             var leading = ResolveLeading(explicitPlain, explicitImportant, facets.ChosenSize, facets.ChosenSizeBeatsPlain);
             return new TextEffect(facets.Transform, facets.Decoration, whitespace,
                 leading?.Unit == LeadingUnit.Inherit ? null : leading,
-                whiteSpaceClass, new TextWrapSetting(facets.Wraps, facets.WrapStyle));
+                whiteSpaceClass, new TextWrapSetting(facets.Wraps, facets.WrapStyle))
+            {
+                Numeric = facets.Numeric,
+            };
         }
 
         // A bare text-<size> writes line-height: var(--tw-leading, <pair>) and every leading-* sets
@@ -317,6 +347,7 @@ namespace Velvet
             public int WhiteSpaceRank;
             public bool? Wraps;
             public TextWrapStyle? WrapStyle;
+            public NumericSpacing? Numeric;
         }
 
         // The utilities that write white-space, in the order the bundled sheets declare them, since among
@@ -346,6 +377,9 @@ namespace Velvet
                 case "line-through": facets.Decoration = TextDecorationKind.LineThrough; return true;
                 case "overline": facets.Decoration = TextDecorationKind.Overline; return true;
                 case "no-underline": facets.Decoration = TextDecorationKind.None; return true;
+                case "tabular-nums": facets.Numeric = NumericSpacing.Tabular; return true;
+                case "proportional-nums":
+                case "normal-nums": facets.Numeric = NumericSpacing.Proportional; return true;
             }
             var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
             switch (core)
@@ -555,8 +589,9 @@ namespace Velvet
             TextDecorationKind? decoration,
             WhitespaceCollapseKind? whitespace = null,
             LeadingValue? leading = null,
-            TextBreakRequest? breaks = null)
+            TextShaping shaping = default)
         {
+            var breaks = shaping.Breaks;
             if (string.IsNullOrEmpty(raw))
             {
                 return raw;
@@ -571,6 +606,7 @@ namespace Velvet
             {
                 text = breaks.Value.Breaker.Break(text);
             }
+            text = ApplyDigits(text, shaping.DigitCellEm);
             text = ApplyDecoration(text, decoration);
             return ApplyLeading(text, leading);
         }
@@ -606,6 +642,39 @@ namespace Velvet
                     pendingSpace = false;
                 }
                 sb.Append(ch);
+            }
+            return sb.ToString();
+        }
+
+        // Wraps each run of ASCII digits in <mspace> at the width of a digit, so every digit takes the same room.
+        // After the line breaks, which are measured over the plain text, and before the decoration and line
+        // height tags, whose own numbers a run of digits must not be read from.
+        private static string ApplyDigits(string text, float cellEm)
+        {
+            if (!(cellEm > 0f))
+            {
+                return text;
+            }
+            var open = "<mspace=" + cellEm.ToString("0.####", CultureInfo.InvariantCulture) + "em>";
+            var sb = new StringBuilder(text.Length + 24);
+            var inRun = false;
+            foreach (var ch in text)
+            {
+                var digit = ch >= '0' && ch <= '9';
+                if (digit && !inRun)
+                {
+                    sb.Append(open);
+                }
+                else if (!digit && inRun)
+                {
+                    sb.Append("</mspace>");
+                }
+                inRun = digit;
+                sb.Append(ch);
+            }
+            if (inRun)
+            {
+                sb.Append("</mspace>");
             }
             return sb.ToString();
         }

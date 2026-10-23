@@ -185,7 +185,7 @@ USS property** for them.
 `tracking-*` (`letter-spacing`) / `leading-*` (`line-height`) /
 `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
 `text-wrap` / `text-nowrap` / `text-balance` / `text-pretty` / `truncate` / `text-ellipsis` / `text-clip`
-(`text-overflow: ellipsis | clip`) / `antialiased` `subpixel-antialiased` / text color / `uppercase` `lowercase` `capitalize` `normal-case`
+(`text-overflow: ellipsis | clip`) / `antialiased` `subpixel-antialiased` / `tabular-nums` `proportional-nums` `normal-nums` / text color / `uppercase` `lowercase` `capitalize` `normal-case`
 (text-transform) / `underline` `line-through` `overline` `no-underline` (text-decoration).
 
 **Text-transform / text-decoration are realised in the string a leaf shows** (UI Toolkit has no
@@ -376,15 +376,19 @@ element or on one nearer the text keeps its own value. Velvet writes this per te
 the one Tailwind emits last wins, as they set the same CSS properties; that one decides which line
 breaking the text gets.
 
-**Not shipped (UI Toolkit's style has no property for them):**
+**`tabular-nums`, `proportional-nums` and `normal-nums` (font-variant-numeric)** are realised in the string a
+leaf shows, like the text effects above: under `tabular-nums` each run of digits is wrapped in the rich-text
+`<mspace>` tag at the width of the widest digit of the leaf's font, measured with `TextElement.MeasureTextSize`
+(less the letter spacing, in em of the font size), so every digit takes the same room. The other two reset it, and
+the axis inherits. A leaf with `enableRichText = false`, or whose font cannot be measured yet, is shown
+without the tag, and a change of its font builds the string again. The glyphs are not swapped for a tabular
+design the font may carry, as an OpenType `tnum` feature would: UI Toolkit's style has no font-feature property, and
+`ATGTextHandle` hands the text generator only a switch for the engine's own advanced features. The other
+variants have no counterpart and are not shipped: `lining-nums`, `oldstyle-nums`, `slashed-zero`, `ordinal`,
+`diagonal-fractions` and `stacked-fractions` each select other glyphs of the font.
 
-| Tailwind | Why omitted |
-|---|---|
-| `tabular-nums` etc. (font-variant-numeric) | `IStyle` has no font-variant or font-feature property |
-
-Where the *look* matters (tabular figures in a price list, …), register a purpose-built Font Asset
-for that face through the same `font-family` mechanism (`VelvetFonts.Register`) and select it with
-`font-<name>`.
+Where such a look matters, register a purpose-built Font Asset for that face through the same `font-family`
+mechanism (`VelvetFonts.Register`) and select it with `font-<name>`.
 
 UI Toolkit *does* expose `word-spacing`, `-unity-paragraph-spacing`, and `-unity-text-outline-*`,
 but none has a standard Tailwind utility, so Velvet leaves them to arbitrary inline styles via

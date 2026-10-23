@@ -168,14 +168,16 @@ namespace Velvet
                     ? new TextBreakRequest(breaker, effect.Preserves)
                     : null;
                 breaker?.BeginBreak();
-                var display = Compose(raw, effect, te.enableRichText, breaks);
+                var cell = effect.Numeric == NumericSpacing.Tabular && te.enableRichText ? DigitCell(te) : 0f;
+                var display = Compose(raw, effect, te.enableRichText, new TextShaping(breaks, cell));
                 if (breaks != null && !breaker!.Broke)
                 {
                     breaks = null;
-                    display = Compose(raw, effect, te.enableRichText, null);
+                    display = Compose(raw, effect, te.enableRichText, new TextShaping(null, cell));
                 }
                 ShowText(ctx, te, raw, display);
-                TextShownWatch.Sync(ctx, te, WritesTags(effect) || !string.Equals(display, raw, StringComparison.Ordinal));
+                TextShownWatch.Sync(ctx, te, WritesTags(effect) || !string.Equals(display, raw, StringComparison.Ordinal)
+                    || effect.Numeric == NumericSpacing.Tabular);
                 var decoration = effect.Decoration;
                 // The leaf is written pre-wrap over a string StyleTextEffectClass.Apply already collapsed.
                 var write = breaks != null ? WhiteSpace.PreWrap : effect.Write;
@@ -237,7 +239,7 @@ namespace Velvet
 
         // Decoration and line height are tags, so a leaf with rich text off is shown without them rather than
         // with the markup as literal text.
-        private static string Compose(string raw, in ResolvedEffect effect, bool richText, TextBreakRequest? breaks)
+        private static string Compose(string raw, in ResolvedEffect effect, bool richText, TextShaping shaping)
         {
             return StyleTextEffectClass.Apply(
                 raw,
@@ -245,7 +247,43 @@ namespace Velvet
                 richText ? effect.Decoration : null,
                 effect.Whitespace,
                 richText ? effect.Leading : null,
-                breaks);
+                shaping);
+        }
+
+        // The widest digit of the leaf's font in em, which a tabular figure is given; zero while the font cannot be
+        // measured, and then the text carries no tag. Kept per font and style, since the advance of a digit scales
+        // with the font size and the letter spacing is taken out of the measurement.
+        private static readonly Dictionary<(FontDefinition Font, UnityEngine.FontStyle Style), float> s_digitCells = new();
+
+        static StyleTextEffectResolver()
+        {
+            VelvetFonts.FontsChanged += s_digitCells.Clear;
+        }
+
+        private static float DigitCell(TextElement element)
+        {
+            var style = element.resolvedStyle;
+            var key = (style.unityFontDefinition, style.unityFontStyleAndWeight);
+            if (s_digitCells.TryGetValue(key, out var known))
+            {
+                return known;
+            }
+            var size = style.fontSize;
+            var widest = 0f;
+            for (var digit = '0'; digit <= '9'; digit++)
+            {
+                var width = element.MeasureTextSize(
+                    digit.ToString(), float.NaN, VisualElement.MeasureMode.Undefined,
+                    float.NaN, VisualElement.MeasureMode.Undefined).x;
+                widest = float.IsNaN(width) ? widest : Math.Max(widest, width);
+            }
+            var cell = (widest - style.letterSpacing) / size;
+            if (!(size > 0f) || !(cell > 0f) || !float.IsFinite(cell))
+            {
+                return 0f;
+            }
+            s_digitCells[key] = cell;
+            return cell;
         }
 
         // Whether the shown string carries a tag, which only a leaf with rich text on is given (Compose).
@@ -361,6 +399,7 @@ namespace Velvet
             WhiteSpace? collapseClass = null;
             WhiteSpace? deciderClass = null;
             TextWrapStyle? wrapStyle = null;
+            NumericSpacing? numeric = null;
             for (var e = element; e != null; e = e.hierarchy.parent)
             {
                 if (!ctx.TextEffects.TryGetValue(e, out var eff))
@@ -375,6 +414,7 @@ namespace Velvet
                 whitespace ??= eff.Whitespace;
                 collapseClass ??= eff.WhiteSpaceClass;
                 wrapStyle ??= eff.WrapStyle;
+                numeric ??= eff.Numeric;
                 if (leading == null)
                 {
                     leading = eff.Leading;
@@ -400,6 +440,7 @@ namespace Velvet
                 Decoration = decoration,
                 Whitespace = whitespace,
                 Leading = leading,
+                Numeric = numeric,
                 Write = write,
                 Preserves = preserves,
                 WrapStyle = ResolveBalance(write ?? deciderClass, wrapStyle),
@@ -490,6 +531,7 @@ namespace Velvet
             public TextDecorationKind? Decoration;
             public WhitespaceCollapseKind? Whitespace;
             public LeadingValue? Leading;
+            public NumericSpacing? Numeric;
             // The inline white-space the leaf gets, or null to leave its own cascade alone.
             public WhiteSpace? Write;
             // Whether the white-space the text inherits keeps its spaces and newlines.

@@ -4,7 +4,8 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Notices what the string a text leaf shows depends on changing without an event of the leaf's own: its
-    // enableRichText, which the tags are written under, and whether the engine elides its text from the start
+    // enableRichText, which the tags are written under, its font, which the width of a tabular digit is
+    // measured in, and whether the engine elides its text from the start
     // or the middle, which it does to the text rather than to the string shown (StyleTextEffectResolver.ShowText).
     // Both mark the leaf for repaint, so the generateVisualContent callback registered here runs; it only asks
     // for the string to be built again, on a scheduler tick, since a leaf is not rewritten from inside its own
@@ -22,6 +23,8 @@ namespace Velvet
 
         private bool _richText;
         private bool _elidesFromStart;
+        private FontDefinition _font;
+        private UnityEngine.FontStyle _fontStyle;
 
         private TextShownWatch(ReconcilerContext ctx, TextElement element)
         {
@@ -63,18 +66,27 @@ namespace Velvet
         {
             _richText = _element.enableRichText;
             _elidesFromStart = StyleTextEffectResolver.ElidesFromStart(_element);
+            _font = _element.resolvedStyle.unityFontDefinition;
+            _fontStyle = _element.resolvedStyle.unityFontStyleAndWeight;
         }
 
         private void OnGenerate()
         {
-            if (_pending
-                || (_element.enableRichText == _richText
-                    && StyleTextEffectResolver.ElidesFromStart(_element) == _elidesFromStart))
+            if (_pending || !Moved())
             {
                 return;
             }
             _pending = true;
             _element.schedule.Execute(Rebuild);
+        }
+
+        private bool Moved()
+        {
+            var style = _element.resolvedStyle;
+            return _element.enableRichText != _richText
+                || StyleTextEffectResolver.ElidesFromStart(_element) != _elidesFromStart
+                || !style.unityFontDefinition.Equals(_font)
+                || style.unityFontStyleAndWeight != _fontStyle;
         }
 
         private void Rebuild()

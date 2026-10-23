@@ -122,6 +122,32 @@ namespace Velvet.Tests
             Assert.That(label.text, Is.EqualTo("HELLO"));
         }
 
+        [Test]
+        public void Given_TabularNumsOnALabel_When_Mounted_Then_ItsDigitsAreOneMonospacedRun()
+        {
+            // Act
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(className: "tabular-nums", text: "11"));
+            var panel = _window.rootVisualElement.panel;
+            var label = _window.rootVisualElement.Q<Label>();
+            ForcePanelUpdate(panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+
+            // Assert
+            Assert.That(RenderedTextProbe.Of(label), Does.StartWith("<mspace=").And.EndWith(">11</mspace>"));
+        }
+
+        [Test]
+        public void Given_NormalNumsUnderTabularNums_When_Mounted_Then_TheDigitsAreLeftAlone()
+        {
+            // Act
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "tabular-nums", V.Label(className: "normal-nums", text: "11")));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("11"));
+        }
+
         [Component]
         private static VNode RenderCasedLabel()
         {
