@@ -96,8 +96,6 @@ namespace Velvet
             fiber.IsInlineMounted = true;
             fiber.MountSlotStart = slotStart;
             RenderAndReconcile(fiber, deferReconcile: true);
-            // A first render that threw mounted nothing, and its caller disposes the fiber.
-            if (fiber.RenderCount == 0) return;
             // Layout effects setup runs AFTER the DOM mutations are committed for
             // the entire subtree. Inline-mount
             // defers child CreateElement to the parent expansion, which happens AFTER MountInline
