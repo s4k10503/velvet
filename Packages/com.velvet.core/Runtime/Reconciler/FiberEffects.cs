@@ -619,14 +619,13 @@ namespace Velvet
         // the layout-effect drain's ordering, but deferred to the post-paint scheduler tick rather
         // than committed synchronously. Reconstructs post-order from fiber.Parent ancestry
         // the same way TakeBatch does for the layout commit.
-        // Returns whether the sync work it rendered ended at the nested-update cap.
-        private static bool DrainPassiveEffects(ReconcilerContext context)
+        private static void DrainPassiveEffects(ReconcilerContext context)
         {
             context.PassiveEffectDrainScheduled = false;
             // Snapshot and clear the staged set before running: an effect setup can synchronously
             // stage further passive effects (setState in a UseEffect), which must enqueue a NEW drain
             // rather than mutate the list we are iterating.
-            if (context.PendingPassiveEffectFibers.Count == 0 && context.PendingPassiveCompletions.Count == 0) return false;
+            if (context.PendingPassiveEffectFibers.Count == 0 && context.PendingPassiveCompletions.Count == 0) return;
             context.EffectCommitDepth++;
             context.PassiveDrainDepth++;
             try
@@ -642,7 +641,7 @@ namespace Velvet
             CommitStrandedLayoutWork(context);
             // React's passive flush ends by flushing sync work, so a store hook's forced re-render renders before
             // the drain returns rather than on a later tick. Inside an immediate drain, that drain's own passes do.
-            return context.EffectCommitDepth == 0 && context.BatchScheduler.FlushSyncWorkAfterPassiveEffects();
+            if (context.EffectCommitDepth == 0) context.BatchScheduler.FlushSyncWorkAfterPassiveEffects();
         }
 
         private static void RunPassivePhases(ReconcilerContext context)
@@ -869,9 +868,7 @@ namespace Velvet
                     throw new InvalidOperationException(
                         "FlushPendingPassiveEffects: passive effects kept re-staging without settling.");
                 }
-                // A runaway the cap stopped leaves its last commit's effects pending, and running them would only
-                // ask for the update the cap dropped, so they wait for the next flush.
-                if (DrainPassiveEffects(context)) return;
+                DrainPassiveEffects(context);
             }
         }
 

@@ -7,3 +7,7 @@
   before their parent, as React's commit walks the tree. Components whose updates a drain flushed one by one ran
   in the order the drain flushed them, and a component its own update rendered ran after a later sibling its
   parent's pass rendered.
+- Updates that keep coming from the commit phase — a callback ref or a layout effect writing a new value on every
+  commit, or a `UseSyncExternalStore` whose `getSnapshot` builds a new value on every read — stop after 50 nested
+  passes by throwing an `InvalidOperationException` reading "Maximum update depth exceeded" out of the drain, as
+  React throws its error. The runaway update is still dropped. The drain used to log that error and return.
