@@ -106,7 +106,7 @@ namespace Velvet
         public static void Detach(VisualElement child, DivideDashChildBinding binding)
         {
             binding.Detached = true;
-            FaceBorderOverlay.Remove(child);
+            FaceBorderOverlay.RemoveLater(child);
             child.generateVisualContent -= binding.OnGenerate;
             // MUTANT_SURVIVES(equivalent, line removed): a callback left registered only asks the element for a
             // repaint.
