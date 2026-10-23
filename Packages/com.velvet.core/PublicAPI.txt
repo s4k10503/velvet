@@ -807,6 +807,9 @@
 [Velvet] method Velvet.VelvetTask`1[T].SuppressThrowing(): Velvet.VelvetTask+SuppressThrowingAwaitable
 [Velvet] method Velvet.VirtualListHandle.ScrollToItem(System.Int32, Velvet.VirtualListAlign): System.Void
 [Velvet] method Velvet.VirtualListHandle.ScrollToItem(System.Int32, Velvet.VirtualListAlign, Velvet.VirtualListScrollBehavior): System.Void
+[Velvet] method protected Velvet.DndKeyboardSensor.TryActivate(UnityEngine.UIElements.EventBase, Velvet.DndSensorActivation): System.Boolean
+[Velvet] method protected Velvet.DndPointerSensor.TryActivate(UnityEngine.UIElements.EventBase, Velvet.DndSensorActivation): System.Boolean
+[Velvet] method protected Velvet.DndSensor.TryActivate(UnityEngine.UIElements.EventBase, Velvet.DndSensorActivation): System.Boolean
 [Velvet] method protected Velvet.Experimental.VBuilder.BuildChildren(): Velvet.VNode?[]
 [Velvet] method protected Velvet.Store`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
 [Velvet] method protected Velvet.Store`1[TState].OnDispose(): System.Void

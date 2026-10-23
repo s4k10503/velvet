@@ -17,8 +17,9 @@ namespace Velvet.Tests
     /// captures at its own pointer-down still drags — under a distance constraint and with none —
     /// without clicking the child, while a sub-threshold press on it stays its click, a real drag ending
     /// on a Clickable source does NOT fire its click, and every DragOverlay positioner mounted at
-    /// activation tracks the pointer on the Overlay layer panel with picking disabled, and one mounted
-    /// after activation joins the drag.
+    /// activation tracks the pointer on the Overlay layer panel with picking disabled, one mounted
+    /// after activation joins the drag, and a droppable on a layer panel is a drop target for a drag from the
+    /// main panel.
     /// </summary>
     internal sealed class DndPlayModeTests
     {
@@ -834,6 +835,43 @@ namespace Velvet.Tests
             var positioner = FindPositioner(
                 _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement);
             Assert.That(positioner.pickingMode, Is.EqualTo(PickingMode.Ignore));
+        }
+
+        // A draggable on the main panel and a droppable portalled into the Overlay layer's panel, at (150,0).
+        [Component]
+        private static VNode CrossPanelScene() => V.DndContext(
+            onDragEnd: e => s_ended.Add(e.Over?.Id),
+            activation: new DragActivation(Distance: 4f),
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.Draggable("item", name: "item", className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                V.Portal(UILayer.Overlay, key: "layer", children: new VNode[]
+                {
+                    V.Droppable("layer-slot", key: "layer-slot",
+                        className: "absolute left-[150px] top-[0px] w-[100px] h-[100px]"),
+                }),
+            });
+
+        [UnityTest]
+        public IEnumerator Given_ADroppableOnALayerPanel_When_ADragFromTheMainPanelEndsOverIt_Then_ItIsTheDropTarget()
+        {
+            // Arrange — a DOM page has one hit-testing surface, so a portalled droppable is reachable there.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(CrossPanelScene, key: "root"));
+            yield return null;
+            yield return null;
+            var item = Main("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            SendPointerMove(item, new Vector2(170, 20));
+
+            // Act
+            SendPointerUp(item, new Vector2(170, 20));
+            yield return null;
+
+            // Assert
+            Assert.That(s_ended, Is.EqualTo(new[] { "layer-slot" }));
         }
     }
 }

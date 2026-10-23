@@ -21,7 +21,9 @@ namespace Velvet
         /// <param name="evt">A <c>PointerDownEvent</c> or <c>KeyDownEvent</c>, in its trickle phase at the draggable.</param>
         /// <param name="activation">The draggable and the means to start its drag.</param>
         /// <returns>Whether this sensor claimed the event.</returns>
-        protected internal abstract bool TryActivate(EventBase evt, DndSensorActivation activation);
+        protected abstract bool TryActivate(EventBase evt, DndSensorActivation activation);
+
+        internal bool Offer(EventBase evt, DndSensorActivation activation) => TryActivate(evt, activation);
     }
 
     /// <summary>The sensors a scope uses when it names none.</summary>
@@ -122,7 +124,7 @@ namespace Velvet
 
         public DragActivation? Activation { get; }
 
-        protected internal override bool TryActivate(EventBase evt, DndSensorActivation activation)
+        protected override bool TryActivate(EventBase evt, DndSensorActivation activation)
             => evt is PointerDownEvent down && DndActiveDrag.ArmPointer(activation, down, Activation);
     }
 
@@ -200,7 +202,7 @@ namespace Velvet
             };
         }
 
-        protected internal override bool TryActivate(EventBase evt, DndSensorActivation activation)
+        protected override bool TryActivate(EventBase evt, DndSensorActivation activation)
         {
             if (evt is not KeyDownEvent key || !Contains(Codes.Start, key.keyCode))
             {

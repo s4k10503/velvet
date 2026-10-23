@@ -190,7 +190,7 @@ namespace Velvet
             var activation = new DndSensorActivation(source, draggable, ctx, scopeElement, scope, evt);
             for (var i = 0; i < sensors.Count; i++)
             {
-                if (sensors[i].TryActivate(evt, activation))
+                if (sensors[i].Offer(evt, activation))
                 {
                     return;
                 }
