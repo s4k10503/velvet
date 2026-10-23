@@ -546,7 +546,7 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs",
-          "anchor": "TextBreakRequest? breaks = null)",
+          "anchor": "TextShaping shaping = default)",
           "neuter": "return raw;"
         }
       ]

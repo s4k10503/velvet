@@ -48,6 +48,10 @@ namespace Velvet
 
         internal static readonly EngineMember FocusPseudoState = Field(UIElements, PseudoStatesType, "Focus", PseudoStatesShape);
 
+        // DndActiveDrag's claim on a move, which a reorderable collection view's dragger and a touch ScrollView read.
+        internal static readonly EngineMember PointerMoveHandledByDraggable = WrittenProperty(UIElements,
+            "UnityEngine.UIElements.PointerMoveEvent", "isHandledByDraggable", "System.Boolean");
+
         // FocusWalk's composite-field unit.
         internal static readonly EngineMember IsCompositeRoot =
             ReadProperty(UIElements, VisualElementType, "isCompositeRoot", "System.Boolean");

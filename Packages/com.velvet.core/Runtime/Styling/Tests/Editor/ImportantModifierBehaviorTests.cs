@@ -183,19 +183,20 @@ namespace Velvet.Tests
                 Is.EqualTo((UnityEngine.FontStyle.Bold, UnityEngine.FontStyle.Normal)));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AnImportantTransformAndAnImportantHoverTransform_When_Hovered_Then_TheHoverTransformWins()
         {
             // Arrange
             _mounted = V.Mount(_root, V.Label(name: "leaf", className: "!uppercase hover:!lowercase", text: "Ab"));
             var leaf = _root.Q<Label>("leaf");
-            var atRest = leaf.text;
+            var atRest = RenderedTextProbe.Of(leaf);
 
             // Act
             using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
 
             // Assert
-            Assert.That((atRest, leaf.text), Is.EqualTo(("AB", "ab")));
+            Assert.That((atRest, RenderedTextProbe.Of(leaf)), Is.EqualTo(("AB", "ab")));
         }
 
         [Test]

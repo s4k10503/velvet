@@ -382,6 +382,7 @@ namespace Velvet
             {
                 LeadingLengthProbe.Detach(_ctx, element, leadingProbe);
             }
+            TextShownWatch.Detach(_ctx, element);
             if (_ctx.GradientBackgrounds.TryGetValue(element, out var gradientBinding))
             {
                 // Clear the baked gradient background-image so a pooled element cannot ghost a prior
@@ -539,6 +540,7 @@ namespace Velvet
                 _ctx.DragOverlayBindings.Remove(element);
             }
             _ctx.NoDragElements.Remove(element);
+            _ctx.ActiveDrag?.ForgetPressChainElement(element);
         }
 
         // The controller-owned bindings: VirtualList, which disposes its own pooled buffer.

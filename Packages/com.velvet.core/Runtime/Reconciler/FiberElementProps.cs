@@ -249,14 +249,16 @@ namespace Velvet
 
     /// <summary>
     /// The particle effect a Particles element simulates and draws: the source effect (a prefab's
-    /// ParticleSystem — the framework instantiates a hidden simulation host from it and owns that
-    /// instance), the play trigger, and the world-unit → element-pixel mapping.
+    /// ParticleSystem, or a VFX Graph VisualEffect when no ParticleSystem is given — the framework
+    /// instantiates a hidden host from it and owns that instance), the play trigger, and the
+    /// world-unit → element-pixel mapping.
     /// The constructor fail-fasts on a non-positive or NaN mapping so every construction path shares
     /// one guard; a <c>with</c> expression bypasses it like any record init.
     /// </summary>
     public sealed record ParticlesSettings
     {
         public ParticleSystem? Effect { get; init; }
+        public UnityEngine.VFX.VisualEffect? VisualEffect { get; init; }
         public PlayTrigger PlayOn { get; init; } = PlayTrigger.Mount;
         public float PixelsPerUnit { get; init; } = 100f;
 

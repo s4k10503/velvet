@@ -151,6 +151,7 @@ namespace Velvet
                 else
                 {
                     _ctx.TextRawText.Remove(element);
+                    _ctx.TextRendered.Remove(element);
                     // The element stays MOUNTED across this transition (no pool cycle), so
                     // ReconcilerContext.ClearElementSideTables never runs for it, and with no raw text left
                     // to resolve from, StyleTextEffectResolver.ApplyToElement can never run for it again
@@ -171,6 +172,7 @@ namespace Velvet
                         TextOverlineSilhouette.Detach(element, overlineBinding);
                         _ctx.TextOverlineBindings.Remove(element);
                     }
+                    TextShownWatch.Detach(_ctx, element);
                     // Likewise the line-breaking manipulator, whose events would otherwise keep re-deriving
                     // a leaf the resolver can no longer resolve.
                     if (_ctx.TextBalanceManipulators.Remove(element, out var balanceBreaker))

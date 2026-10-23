@@ -397,6 +397,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_LeadingBracketNormal_When_Parsed_Then_LeadingIsTheFontsOwnLineAdvance()
+        {
+            // Arrange
+            var classNames = new[] { "leading-[normal]" };
+
+            // Act
+            var effect = StyleTextEffectClass.Parse(classNames);
+
+            // Assert
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Normal, 0f)));
+        }
+
+        [Test]
         public void Given_NoLeadingTokens_When_Parsed_Then_LeadingIsUnsetNull()
         {
             // Arrange
@@ -484,9 +497,67 @@ namespace Velvet.Tests
             Assert.That(effect.Leading, Is.Null);
         }
 
+        [TestCase("tabular-nums", NumericSpacing.Tabular)]
+        [TestCase("proportional-nums", NumericSpacing.Proportional)]
+        [TestCase("normal-nums", NumericSpacing.Proportional)]
+        public void Given_ANumericSpacingClass_When_Parsed_Then_ItSetsTheDigitSpacing(string cls, NumericSpacing expected)
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { cls });
+
+            // Assert
+            Assert.That(effect.Numeric, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ADigitCell_When_AppliedToTextWithTwoRunsOfDigits_Then_EachRunIsOneMonospacedSpan()
+        {
+            // Act
+            var result = StyleTextEffectClass.Apply("a1 22b", null, null, shaping: new TextShaping(null, 0.6f));
+
+            // Assert
+            Assert.That(result, Is.EqualTo("a<mspace=0.6em>1</mspace> <mspace=0.6em>22</mspace>b"));
+        }
+
+        [Test]
+        public void Given_ADigitCellAndAnUnderline_When_Applied_Then_TheUnderlineWrapsTheMonospacedRun()
+        {
+            // Act
+            var result = StyleTextEffectClass.Apply(
+                "7", null, TextDecorationKind.Underline, shaping: new TextShaping(null, 0.5f));
+
+            // Assert
+            Assert.That(result, Is.EqualTo("<u><mspace=0.5em>7</mspace></u>"));
+        }
+
+        [TestCase("leading-[2vw]")]
+        [TestCase("leading-[calc(1em+4px)]")]
+        [TestCase("leading-[calc(100%-2px)]")]
+        public void Given_ALeadingBracketReadingMoreThanTheFontSize_When_Parsed_Then_ItIsMeasuredOnTheElement(string cls)
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { cls });
+
+            // Assert
+            Assert.That(effect.Leading?.Unit, Is.EqualTo(LeadingUnit.Measured));
+        }
+
+        [Test]
+        public void Given_AMeasuredLeadingNothingHasMeasured_When_Applied_Then_TheTextCarriesNoTag()
+        {
+            // Arrange
+            var effect = StyleTextEffectClass.Parse(new[] { "leading-[2vw]" });
+
+            // Act
+            var result = StyleTextEffectClass.Apply("hi", null, null, null, effect.Leading);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("hi"));
+        }
+
         // GREEN_ON_BASE(characterization): the base rejects every non-px bracket value; these pin what the
         // widened grammar still rejects.
-        [TestCase("leading-[2vw]")]
+        [TestCase("leading-[2vwx]")]
         [TestCase("leading-[em]")]
         public void Given_AnUnparseableLeadingBracket_When_Parsed_Then_LeadingIsUnsetNull(string cls)
         {
@@ -591,7 +662,7 @@ namespace Velvet.Tests
         {
             // Arrange — the prefix-only check must exclude a malformed bracket value from the USS class
             // list too, exactly like a malformed font-[...] never leaks in either (see IsArbitraryLeadingClass).
-            const string cls = "leading-[2vw]";
+            const string cls = "leading-[2vwx]";
 
             // Act
             var isArbitrary = StyleTextEffectClass.IsArbitraryLeadingClass(cls);

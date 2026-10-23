@@ -727,6 +727,10 @@ namespace Velvet
             {
                 LeadingLengthProbe.Detach(_ctx, element, probe);
             }
+            foreach (var element in new List<VisualElement>(_ctx.TextShownWatches.Keys))
+            {
+                TextShownWatch.Detach(_ctx, element);
+            }
             // Gradient elements hold an inline background-image referencing a shared baked texture: clear
             // the inline image so a still-mounted element released at root disposal carries no residue
             // (the cached textures themselves are shared and outlive the reconciler).
@@ -813,8 +817,8 @@ namespace Velvet
             _ctx.DragOverlayBindings.Clear();
             _ctx.DndScopeBindings.Clear();
             _ctx.DroppableBindings.Clear();
-            // MUTANT_SURVIVES(equivalent, line removed): the set's one reader is DndActiveDrag.Arm, reached
-            // only from a draggable armer; the loop above detaches every armer still registered, and
+            // MUTANT_SURVIVES(equivalent, line removed): the set is read only by DndActiveDrag.Offer and the walk
+            // it calls, reached only from a draggable's sensor offers; the loop above detaches every offer still registered, and
             // Reconcile returns on the context marked disposed at the top of Dispose, so none attaches
             // again. The clear only drops references to elements the unmount cleaner did not reach.
             _ctx.NoDragElements.Clear();

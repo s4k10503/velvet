@@ -248,6 +248,7 @@ namespace Velvet.Tests
             Assert.That(child.ClassListContains("w-[var(--w)]"), Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ALineHeightReadingAParentsDeclaration_When_Mounted_Then_TheLabelTakesThatLineHeight()
         {
@@ -260,7 +261,7 @@ namespace Velvet.Tests
                 }));
 
             // Assert
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=12px>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=12px>hi</line-height>"));
         }
 
         [Test]
@@ -314,6 +315,7 @@ namespace Velvet.Tests
             Assert.That((loaded, child.resolvedStyle.color), Is.EqualTo((true, new UnityEngine.Color(1f, 0f, 0f, 1f))));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AnUnresolvableLineHeight_When_AnAncestorSetsOne_Then_TheLabelInheritsIt()
         {
@@ -325,7 +327,7 @@ namespace Velvet.Tests
                 }));
 
             // Assert
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=20px>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=20px>hi</line-height>"));
         }
 
         [TestCase("bg-[#ff0000]/(--a)")]

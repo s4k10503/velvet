@@ -166,7 +166,7 @@ namespace Velvet.Tests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-        // GREEN_ON_BASE(characterization): the gate strings below are literals fed to the family reader, which this branch leaves as it was; adding the backdrop family to the declared set touches neither.
+        // GREEN_ON_BASE(characterization): the gate strings below are literals fed to the family reader, which the shown-string change leaves as it was.
         [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
         [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
             "StyleGapClass.IsGapToken")]
@@ -193,6 +193,7 @@ namespace Velvet.Tests
         /// leaves the derived set, the matrix stops posing it, and the deletion — the exact defect this
         /// fixture exists for — passes. Dropping one now leaves a representative naming nothing.
         /// </remarks>
+        // GREEN_ON_BASE(refactor): the helper it runs through now reads the shown string, which the base keeps in the text.
         [Test]
         public void Given_ThePayloadDispatcher_When_ItsFamiliesAreDerived_Then_TheyAreExactlyTheDeclaredOnes()
         {
@@ -211,6 +212,7 @@ namespace Velvet.Tests
                 + "drifted apart, so the matrix below poses a different question than the code answers");
         }
 
+        // GREEN_ON_BASE(refactor): the helper it runs through now reads the shown string, which the base keeps in the text.
         [Test]
         public void Given_EveryPayloadFamily_When_WrittenBehindEachVariantCategory_Then_ItReachesWhatTheBareFormReaches()
         {
@@ -496,7 +498,7 @@ namespace Velvet.Tests
             reading[path + "/kids"] = element.childCount.ToString();
             // Spaces out, because the fingerprint is a space-joined list of terms and a wrapped sentence
             // would split into several of them.
-            reading[path + "/text"] = ((element as TextElement)?.text ?? string.Empty).Replace(' ', '_');
+            reading[path + "/text"] = (element is TextElement ? RenderedTextProbe.Of(element) : string.Empty).Replace(' ', '_');
             var style = element.style;
             foreach (var property in StyleProperties)
             {
