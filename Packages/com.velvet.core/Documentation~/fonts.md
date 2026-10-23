@@ -177,8 +177,7 @@ re-render. On re-render every element re-resolves its font intent against the ne
 ## Tailwind text-utility parity vs. UI Toolkit
 
 Verified against the Unity 6000.3 USS *common properties* reference. The text utilities
-Velvet ships are listed below; the ones in the table after them are omitted because UI Toolkit has **no
-USS property** for them.
+Velvet ships are listed below, with the ones it realises itself where UI Toolkit has no USS property.
 
 **Supported (shipped):** `font-<family>` / `font-thin`…`font-black` / `italic` / `not-italic` / `font-stretch-*` /
 `text-xs`…`text-9xl` (font-size and line-height) / `text-left|center|right|start|end` (`-unity-text-align`) /
