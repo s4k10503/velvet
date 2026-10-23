@@ -186,9 +186,9 @@ namespace Velvet.Tests
             Assume.That(_window.rootVisualElement.Q<VisualElement>("item-b"), Is.Null,
                 "Precondition: item-b has not mounted yet");
 
-            // Act — add "b"; its EnqueueMount and this render's enter dispatch both run inside this SAME
-            // synchronous pass, before the post-pass drain that (without eagerly registering the pair at
-            // enqueue time) would be the only place ZLayerPlaceholders learns about it.
+            // Act — add "b"; its creation and this render's enter dispatch both run inside this SAME
+            // synchronous pass, before the post-pass drain that (without registering the pair at creation,
+            // FiberZLayerCoordinator.OnCreated) would be the only place ZLayerPlaceholders learns about it.
             store.Set("abc");
             scheduler.DrainImmediateForTest();
 

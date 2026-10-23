@@ -458,6 +458,18 @@
       ]
     },
     {
+      "name": "order-parser",
+      "mechanism": "order",
+      "summary": "the order class parser recognises no order-* token and resolves no flex order",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleOrderClass.cs",
+          "anchor": "private static bool TryParse(string cls, out int order, out bool important)",
+          "neuter": "order = 0; important = false; return false;"
+        }
+      ]
+    },
+    {
       "name": "has-parser",
       "mechanism": "has-variant",
       "summary": "the has-* variant parser recognises no token and resolves no selector",
@@ -936,6 +948,14 @@
       "fixture": "Velvet.Tests.ZIndexStackingTests",
       "cuts": [
         "zindex-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.StyleOrderClassTests",
+      "cuts": [
+        "order-parser"
       ],
       "caseScopes": [],
       "platform": "EditMode"
