@@ -32,6 +32,8 @@ namespace Velvet
         Ping,
         // Lifts the element a quarter of its height and drops it back, each half on its own curve.
         Bounce,
+        // Loops the keyframes a name registered with VelvetKeyframes holds (animate-wiggle, animate-[wiggle_1s_linear_infinite]).
+        Custom,
     }
 
     // A resolved animate-* utility: the motion mode and its loop duration (seconds). Value-equal (duration
@@ -41,16 +43,29 @@ namespace Velvet
     {
         public readonly AnimateMode Mode;
         public readonly float DurationSec;
+        // The registered keyframes and the curve between stops that name none of their own, for Custom.
+        public readonly KeyframeSet? Keyframes;
+        public readonly BezierCurve Timing;
 
-        public AnimateSpec(AnimateMode mode, float durationSec)
+        public AnimateSpec(AnimateMode mode, float durationSec) : this(mode, durationSec, null, default)
+        {
+        }
+
+        public AnimateSpec(AnimateMode mode, float durationSec, KeyframeSet? keyframes, BezierCurve timing)
         {
             Mode = mode;
             DurationSec = durationSec;
+            Keyframes = keyframes;
+            Timing = timing;
         }
 
         private static int DurKey(float sec) => Mathf.RoundToInt(sec * 1000f);
 
-        public bool Equals(AnimateSpec other) => Mode == other.Mode && DurKey(DurationSec) == DurKey(other.DurationSec);
+        public bool Equals(AnimateSpec other)
+            => Mode == other.Mode && DurKey(DurationSec) == DurKey(other.DurationSec)
+                && ReferenceEquals(Keyframes, other.Keyframes)
+                && Timing.X1 == other.Timing.X1 && Timing.Y1 == other.Timing.Y1
+                && Timing.X2 == other.Timing.X2 && Timing.Y2 == other.Timing.Y2;
         public override bool Equals(object obj) => obj is AnimateSpec o && Equals(o);
         public override int GetHashCode() => unchecked(((int)Mode * 397) ^ DurKey(DurationSec));
     }
@@ -98,41 +113,32 @@ namespace Velvet
             }
 
             var found = false;
-            var mode = AnimateMode.None;
-            var dur = 0f;
             foreach (var cls in classNames)
             {
-                if (string.IsNullOrEmpty(cls))
+                if (!string.IsNullOrEmpty(cls) && TryParseToken(cls, out var parsed))
                 {
-                    continue;
-                }
-                if (TryParseToken(cls, out var m, out var d))
-                {
-                    mode = m;
-                    dur = d;
+                    spec = parsed;
                     found = true;
                 }
             }
 
-            if (!found || mode == AnimateMode.None)
-            {
-                return false;
-            }
-            spec = new AnimateSpec(mode, dur);
-            return true;
+            return found && spec.Mode != AnimateMode.None;
         }
 
         // Parses one token into (mode, durationSec). False when not a recognized animate-* token (incl. an
         // unparseable -[<time>] suffix).
-        private static bool TryParseToken(string cls, out AnimateMode mode, out float durationSec)
+        private static bool TryParseToken(string cls, out AnimateSpec spec)
         {
-            mode = AnimateMode.None;
-            durationSec = 0f;
+            spec = default;
             if (!cls.StartsWith(Prefix, StringComparison.Ordinal))
             {
                 return false;
             }
             var rest = cls.Substring(Prefix.Length);
+            if (rest.StartsWith("[", StringComparison.Ordinal))
+            {
+                return TryParseArbitrary(rest, out spec);
+            }
 
             // Split off an optional -[<time>] duration override (e.g. animate-gradient-[800ms]).
             float? overrideSec = null;
@@ -147,18 +153,93 @@ namespace Velvet
                 rest = rest.Substring(0, br);
             }
 
-            switch (rest)
+            if (TryParseBuiltIn(rest, overrideSec, out spec))
             {
-                case "none": mode = AnimateMode.None; durationSec = 0f; return true;
-                case "gradient": mode = AnimateMode.Gradient; durationSec = overrideSec ?? DefaultGradientSec; return true;
-                case "shimmer": mode = AnimateMode.Shimmer; durationSec = overrideSec ?? DefaultShimmerSec; return true;
-                case "hue": mode = AnimateMode.Hue; durationSec = overrideSec ?? DefaultHueSec; return true;
-                case "pulse": mode = AnimateMode.Pulse; durationSec = overrideSec ?? DefaultPulseSec; return true;
-                case "spin": mode = AnimateMode.Spin; durationSec = overrideSec ?? DefaultSpinSec; return true;
-                case "ping": mode = AnimateMode.Ping; durationSec = overrideSec ?? DefaultPingSec; return true;
-                case "bounce": mode = AnimateMode.Bounce; durationSec = overrideSec ?? DefaultBounceSec; return true;
-                default: return false;
+                return true;
             }
+            if (!VelvetKeyframes.TryGet(rest, out var keyframes))
+            {
+                return false;
+            }
+            spec = new AnimateSpec(AnimateMode.Custom, overrideSec ?? keyframes.DefaultDurationSec, keyframes, keyframes.DefaultTiming);
+            return true;
+        }
+
+        private static bool TryParseBuiltIn(string name, float? overrideSec, out AnimateSpec spec)
+        {
+            var (mode, defaultSec) = name switch
+            {
+                "none" => (AnimateMode.None, 0f),
+                "gradient" => (AnimateMode.Gradient, DefaultGradientSec),
+                "shimmer" => (AnimateMode.Shimmer, DefaultShimmerSec),
+                "hue" => (AnimateMode.Hue, DefaultHueSec),
+                "pulse" => (AnimateMode.Pulse, DefaultPulseSec),
+                "spin" => (AnimateMode.Spin, DefaultSpinSec),
+                "ping" => (AnimateMode.Ping, DefaultPingSec),
+                "bounce" => (AnimateMode.Bounce, DefaultBounceSec),
+                _ => (AnimateMode.Custom, 0f),
+            };
+            spec = mode == AnimateMode.Custom ? default : new AnimateSpec(mode, mode == AnimateMode.None ? 0f : overrideSec ?? defaultSec);
+            return mode != AnimateMode.Custom;
+        }
+
+        // animate-[name_1s_ease-in-out_infinite]: a registered name, a time, a timing function and `infinite`, in any
+        // order. A loop with another count or a delay is not claimed.
+        private static bool TryParseArbitrary(string bracketed, out AnimateSpec spec)
+        {
+            spec = default;
+            if (!bracketed.EndsWith("]", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            KeyframeSet? keyframes = null;
+            float? duration = null;
+            BezierCurve? timing = null;
+            var infinite = false;
+            foreach (var token in bracketed.Substring(1, bracketed.Length - 2).Split('_'))
+            {
+                if (token.Length == 0)
+                {
+                    continue;
+                }
+                if (token == "infinite")
+                {
+                    infinite = true;
+                }
+                else if (!TryTakeToken(token, ref keyframes, ref duration, ref timing))
+                {
+                    return false;
+                }
+            }
+            if (keyframes == null || !infinite)
+            {
+                return false;
+            }
+            spec = new AnimateSpec(AnimateMode.Custom, duration ?? 0f, keyframes, timing ?? KeyframeSet.Ease);
+            return duration.HasValue;
+        }
+
+        // Records what a token of animate-[...] names: the first time is the duration, a second would be a delay.
+        private static bool TryTakeToken(string token, ref KeyframeSet? keyframes, ref float? duration, ref BezierCurve? timing)
+        {
+            if (TryParseTime(token, out var seconds))
+            {
+                var first = duration == null;
+                duration ??= seconds;
+                return first;
+            }
+            if (KeyframeSet.TryParseTiming(token, out var curve))
+            {
+                var first = timing == null;
+                timing ??= curve;
+                return first;
+            }
+            if (keyframes == null && VelvetKeyframes.TryGet(token, out var found))
+            {
+                keyframes = found;
+                return true;
+            }
+            return false;
         }
 
         // "<n>s" or "<n>ms" → seconds (must be > 0). False otherwise.

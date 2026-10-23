@@ -721,6 +721,29 @@ interval is eased by the timing function its keyframe names, as a CSS animation 
 | `animate-ping` | scales to twice the element's own scale while fading to nothing by three quarters of the loop, on `cubic-bezier(0, 0, 0.2, 1)`, then holds | 1s |
 | `animate-bounce` | lifts the element a quarter of its height and drops it back, the lift easing in on `cubic-bezier(0.8, 0, 1, 1)` and out on `cubic-bezier(0, 0, 0.2, 1)` | 1s |
 
+### Keyframe animations of your own
+
+`VelvetKeyframes.Register` names a keyframe animation, as CSS `@keyframes` does, and `animate-<name>` loops it through
+the same driver as `animate-pulse`:
+
+```csharp
+VelvetKeyframes.Register("wiggle", new[]
+{
+    new KeyframeStop(0f) { RotateDeg = -3f },
+    new KeyframeStop(0.5f) { RotateDeg = 3f },
+    new KeyframeStop(1f) { RotateDeg = -3f },
+}, durationSec: 1f, timing: new BezierCurve(0.42f, 0f, 0.58f, 1f));
+// <div className="animate-wiggle"> loops it; animate-wiggle-[400ms] sets the time.
+// animate-[wiggle_400ms_linear_infinite] names the time and timing function as well.
+```
+
+A stop holds an opacity, a pixel translate, a scale factor or a rotation, each composing with the element's own value
+as the built-in loops do: opacity replaces it, a translate adds to it, a scale multiplies it and a rotation adds to it.
+A property between stops runs from one stop that names it to the next, on the curve of the stop it leaves
+(`KeyframeStop.Ease`, else the animation's), and starts and ends on the element's own value where no stop at 0 or 1
+names it. The bracket form is claimed only with `infinite` and a registered name; a count, a delay or an unknown token
+leaves the class unclaimed. Register before the first render that uses the name. The name cannot be a built-in's.
+
 `animate-none` cancels. Of two recognised `animate-*` classes the one Tailwind emits last wins, in either
 order, and Tailwind orders them by name: `animate-bounce`, `animate-gradient`, `animate-hue`, `animate-none`,
 `animate-ping`, `animate-pulse`, `animate-shimmer`, `animate-spin`. So `animate-none` cancels the three before it
