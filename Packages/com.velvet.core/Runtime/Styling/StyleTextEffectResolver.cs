@@ -251,20 +251,32 @@ namespace Velvet
         }
 
         // The widest digit of the leaf's font in em, which a tabular figure is given; zero while the font cannot be
-        // measured, and then the text carries no tag. Kept per font and style, since the advance of a digit scales
-        // with the font size and the letter spacing is taken out of the measurement.
-        private static readonly Dictionary<(FontDefinition Font, UnityEngine.FontStyle Style), float> s_digitCells = new();
+        // measured, and then the text carries no tag. Kept per font asset (or legacy font) instance and style, since
+        // the advance of a digit scales with the font size and the letter spacing is taken out of the measurement;
+        // a font the definition does not name, the panel's default, is measured each time rather than keyed by
+        // nothing. The instance id is not reused, so a replaced asset is a new key, and the registry changing
+        // drops the rest.
+        private static readonly Dictionary<(int Font, UnityEngine.FontStyle Style), float> s_digitCells = new();
 
         static StyleTextEffectResolver()
         {
             VelvetFonts.FontsChanged += s_digitCells.Clear;
         }
 
+        private static int FontIdentity(FontDefinition definition)
+        {
+            if (definition.fontAsset != null)
+            {
+                return definition.fontAsset.GetInstanceID();
+            }
+            return definition.font != null ? definition.font.GetInstanceID() : 0;
+        }
+
         private static float DigitCell(TextElement element)
         {
             var style = element.resolvedStyle;
-            var key = (style.unityFontDefinition, style.unityFontStyleAndWeight);
-            if (s_digitCells.TryGetValue(key, out var known))
+            var key = (FontIdentity(style.unityFontDefinition), style.unityFontStyleAndWeight);
+            if (key.Item1 != 0 && s_digitCells.TryGetValue(key, out var known))
             {
                 return known;
             }
@@ -282,7 +294,10 @@ namespace Velvet
             {
                 return 0f;
             }
-            s_digitCells[key] = cell;
+            if (key.Item1 != 0)
+            {
+                s_digitCells[key] = cell;
+            }
             return cell;
         }
 
