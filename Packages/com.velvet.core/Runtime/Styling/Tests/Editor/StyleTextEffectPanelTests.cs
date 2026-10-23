@@ -12,12 +12,10 @@ namespace Velvet.Tests
     /// its own), applies to an element's own Text prop, resets via normal-case (or, for pre-line, via a class
     /// list that no longer carries whitespace-pre-line — or via a descendant's own explicit whitespace-*
     /// class, which blocks the cascade rather than merely omitting it), and re-applies when the text changes.
-    /// Reading <c>Label.text</c> after mount/patch needs no layout pass (the effect mutates the string);
+    /// Reading the shown string (<see cref="RenderedTextProbe"/>) after mount/patch needs no layout pass;
     /// reading pre-line's inline <c>style.whiteSpace</c> needs no layout pass either (an inline C# write, not
     /// a resolved USS value) — except the one test below that deliberately reads <c>resolvedStyle</c>
-    /// instead, to prove the inline write actually wins UI Toolkit's real cascade over the Label's own
-    /// baked-in element-level <c>white-space</c> rule (an own USS rule otherwise beats an INHERITED value,
-    /// which is why the write has to land on the leaf itself and not just an ancestor). GWT, one assert.
+    /// instead, to prove the inline write reaches the style UI Toolkit resolves for the leaf. GWT, one assert.
     /// </summary>
     [TestFixture]
     internal sealed class StyleTextEffectPanelTests : PanelTestBase
@@ -71,7 +69,7 @@ namespace Velvet.Tests
             // The text leaf has no class; the transform cascades from the parent (CSS inheritance).
             var label = MountAndFindLabel(V.Div(className: "uppercase", V.Text("hello")));
 
-            Assert.That(label.text, Is.EqualTo("HELLO"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("HELLO"));
         }
 
         [Test]
@@ -79,7 +77,7 @@ namespace Velvet.Tests
         {
             var label = MountAndFindLabel(V.Label(className: "lowercase", text: "HELLO"));
 
-            Assert.That(label.text, Is.EqualTo("hello"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("hello"));
         }
 
         [Test]
@@ -87,7 +85,7 @@ namespace Velvet.Tests
         {
             var label = MountAndFindLabel(V.Div(className: "underline", V.Text("hi")));
 
-            Assert.That(label.text, Is.EqualTo("<u>hi</u>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<u>hi</u>"));
         }
 
         [Test]
@@ -97,7 +95,7 @@ namespace Velvet.Tests
             var label = MountAndFindLabel(
                 V.Div(className: "uppercase", V.Div(className: "normal-case", V.Text("hi"))));
 
-            Assert.That(label.text, Is.EqualTo("hi"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("hi"));
         }
 
         [Test]
@@ -105,12 +103,12 @@ namespace Velvet.Tests
         {
             // A text change must re-cascade the transform onto the leaf, from the new raw value.
             Mount(V.Component(RenderCard));
-            Assume.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("ONE"), "Precondition: initial transform");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("ONE"), "Precondition: initial transform");
 
             s_setText.Invoke("two");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("TWO"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("TWO"));
         }
 
         [Test]
@@ -120,12 +118,12 @@ namespace Velvet.Tests
             // re-render when the inner state changes. The leaf must still re-apply the inherited transform on its
             // isolated re-render (RED before PatchText resolves the cascade itself: would show "two").
             Mount(V.Div(className: "uppercase", V.Component(RenderInner)));
-            Assume.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("ONE"), "Precondition: initial cascade");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("ONE"), "Precondition: initial cascade");
 
             s_setInnerText.Invoke("two");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("TWO"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("TWO"));
         }
 
         [Test]
@@ -137,12 +135,12 @@ namespace Velvet.Tests
             // prop itself changes), so a gate that skips that walk whenever the ancestor's OWN effect is now
             // empty would leave the leaf stuck showing the removed transform forever.
             Mount(V.Component(RenderUppercaseAncestorToggle));
-            Assume.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("HI"), "Precondition: initial uppercase");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("HI"), "Precondition: initial uppercase");
 
             s_setUppercaseAncestorClass.Invoke("");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("hi"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("hi"));
         }
 
         [Test]
@@ -150,7 +148,7 @@ namespace Velvet.Tests
         {
             var label = MountAndFindLabel(V.Label(className: "whitespace-pre-line", text: "a   b"));
 
-            Assert.That(label.text, Is.EqualTo("a b"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("a b"));
         }
 
         [Test]
@@ -160,7 +158,7 @@ namespace Velvet.Tests
             // transform/decoration cascade from an ancestor onto a class-less V.Text leaf.
             var label = MountAndFindLabel(V.Div(className: "whitespace-pre-line", V.Text("a   b")));
 
-            Assert.That(label.text, Is.EqualTo("a b"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("a b"));
         }
 
         [Test]
@@ -176,7 +174,7 @@ namespace Velvet.Tests
                 V.Label(name: "inherited", text: "c   d")));
             var explicitLabel = _window.rootVisualElement.Q<Label>("explicit");
 
-            Assert.That((explicitLabel.text, explicitLabel.style.whiteSpace.keyword), Is.EqualTo(("a   b", StyleKeyword.Null)));
+            Assert.That((RenderedTextProbe.Of(explicitLabel), explicitLabel.style.whiteSpace.keyword), Is.EqualTo(("a   b", StyleKeyword.Null)));
         }
 
         [Test]
@@ -189,7 +187,7 @@ namespace Velvet.Tests
                 V.Label(name: "explicit", className: "whitespace-nowrap", text: "a   b"),
                 V.Label(name: "inherited", text: "c   d")));
 
-            Assert.That(_window.rootVisualElement.Q<Label>("inherited").text, Is.EqualTo("c d"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>("inherited")), Is.EqualTo("c d"));
         }
 
         [Test]
@@ -207,13 +205,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_WhitespacePreLineOnParent_When_Resolved_Then_ChildLeafGetsInlinePreWrap()
         {
-            // The text leaf (a Label, like every UI Toolkit TextElement) carries its own element-level
-            // white-space rule from the default theme/USS, which always beats an INHERITED value in the
-            // cascade — so a write on the ancestor Div alone would never reach it. The leaf gets its OWN
-            // inline write instead (ApplyToElement, driven by the resolved — cascade, not merely own — axis).
-            // Reading resolvedStyle here (rather than the inline style directly, as the sibling test above
-            // does) proves that write actually wins the real UI Toolkit cascade over the leaf's own default
-            // rule, not merely that a C# field was set.
+            // The leaf gets its OWN inline write (ApplyToElement, driven by the resolved — cascade, not merely
+            // own — axis). Reading resolvedStyle here (rather than the inline style directly, as the sibling
+            // test above does) proves the write reaches the style UI Toolkit resolves, not merely that a C#
+            // field was set.
             var label = MountAndFindLabel(V.Div(className: "whitespace-pre-line", V.Text("a   b")));
             ForcePanelUpdate(label.panel);
 
@@ -278,12 +273,12 @@ namespace Velvet.Tests
             // DESCENDANT walk (a separate concern — see ApplyToDescendants). The inline-clear sibling test
             // right below pins that SAME unconditional recompute, just for the whiteSpace half of it.
             Mount(V.Component(RenderPreLineToggle));
-            Assume.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("a b"), "Precondition: initial collapse");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a b"), "Precondition: initial collapse");
 
             s_setPreLineClass.Invoke("");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("a   b"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a   b"));
         }
 
         [Test]
@@ -329,12 +324,12 @@ namespace Velvet.Tests
             // else (PatchText only calls OnTextSet when the text prop itself changes), so without the walk
             // it would keep showing the stale collapsed string forever.
             Mount(V.Component(RenderPreLineAncestorToggle));
-            Assume.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("a b"), "Precondition: initial collapse");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a b"), "Precondition: initial collapse");
 
             s_setPreLineAncestorClass.Invoke("");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("a   b"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a   b"));
         }
 
         [Test]
@@ -347,7 +342,7 @@ namespace Velvet.Tests
             var label = MountAndFindLabel(V.Div(className: "whitespace-pre-line",
                 V.Div(className: "uppercase", V.Text("a   b c"))));
 
-            Assert.That(label.text, Is.EqualTo("A B C"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("A B C"));
         }
 
         [Test]
@@ -359,12 +354,12 @@ namespace Velvet.Tests
             // effect going non-empty -> empty) re-resolves it. Pins that the grandparent's surviving axis
             // and the parent's just-removed one resolve independently through a 3-level chain.
             Mount(V.Component(RenderThreeLevelCascade));
-            Assume.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("A B C"), "Precondition: initial collapse+uppercase");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("A B C"), "Precondition: initial collapse+uppercase");
 
             s_setCascadeParentClass.Invoke("");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("a b c"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a b c"));
         }
 
         [Test]
@@ -392,8 +387,17 @@ namespace Velvet.Tests
             // asserted alongside them: a label patched in place instead of pooled clears both anyway, so the
             // remaining terms alone would hold on a reconciler that never pooled it.
             var recycled = _window.rootVisualElement.Q<Label>("leaf");
-            Assert.That((pooledWhileHidden, recycled.style.whiteSpace.keyword, recycled.text),
+            Assert.That((pooledWhileHidden, recycled.style.whiteSpace.keyword, RenderedTextProbe.Of(recycled)),
                 Is.EqualTo((true, StyleKeyword.Null, "c   d")));
+        }
+
+        [Test]
+        public void Given_LeadingLooseOnParent_When_ChildLabelIsLeadingNormal_Then_ChildTextCarriesNoLineHeightTag()
+        {
+            var label = MountAndFindLabel(
+                V.Div(className: "leading-loose", V.Label(className: "leading-[normal]", text: "hi")));
+
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("hi"));
         }
 
         [Test]
@@ -404,7 +408,7 @@ namespace Velvet.Tests
             var label = MountAndFindLabel(V.Div(className: "leading-relaxed", V.Text("hi")));
 
             // Assert
-            Assert.That(label.text, Is.EqualTo("<line-height=1.625em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.625em>hi</line-height>"));
         }
 
         [Test]
@@ -416,7 +420,7 @@ namespace Velvet.Tests
                 V.Div(className: "leading-loose", V.Div(className: "leading-tight", V.Text("hi"))));
 
             // Assert
-            Assert.That(label.text, Is.EqualTo("<line-height=1.25em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.25em>hi</line-height>"));
         }
 
         [Test]
@@ -430,7 +434,7 @@ namespace Velvet.Tests
                 V.Div(className: "leading-loose", V.Label(className: "leading-none", text: "hi")));
 
             // Assert
-            Assert.That(label.text, Is.EqualTo("<line-height=1em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1em>hi</line-height>"));
         }
 
         [Test]
@@ -442,13 +446,13 @@ namespace Velvet.Tests
             // anything else (PatchText only calls OnTextSet when the text prop itself changes), so without
             // the walk it would keep showing the stale line-height tag forever.
             Mount(V.Component(RenderLeadingAncestorToggle));
-            Assume.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=1.625em>hi</line-height>"),
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.625em>hi</line-height>"),
                 "Precondition: initial leading");
 
             s_setLeadingAncestorClass.Invoke("");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("hi"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("hi"));
         }
 
         [Test]
@@ -457,13 +461,13 @@ namespace Velvet.Tests
             // A text change must re-cascade leading onto the leaf, from the new raw value, mirroring how
             // Transform re-wraps a changed leaf (Given_UppercaseParent_When_TextChanges_...).
             Mount(V.Component(RenderLeadingCard));
-            Assume.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=1.625em>hi</line-height>"),
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.625em>hi</line-height>"),
                 "Precondition: initial leading");
 
             s_setLeadingText.Invoke("there");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=1.625em>there</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.625em>there</line-height>"));
         }
 
         [Test]
@@ -476,7 +480,7 @@ namespace Velvet.Tests
             // PreLine pool-reuse mechanism.
             Mount(V.Component(RenderLeadingPoolReuseHost));
             var scheduler = _mounted.Root.Reconciler.Context.BatchScheduler;
-            Assume.That(_window.rootVisualElement.Q<Label>("leaf").text, Is.EqualTo("<line-height=2em>hi</line-height>"),
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>("leaf")), Is.EqualTo("<line-height=2em>hi</line-height>"),
                 "Precondition: the first label carries the line-height tag");
             s_setLeadingPoolReuseState.Invoke("hidden");
             scheduler.DrainImmediateForTest();
@@ -490,7 +494,7 @@ namespace Velvet.Tests
             // consumer's side-table entry (a ghosted TextEffects/TextRawText row would still show a
             // wrapped tag here, not the fixture's raw "there"). The pool round-trip is asserted alongside
             // it for the same reason as the PreLine sibling above.
-            Assert.That((pooledWhileHidden, _window.rootVisualElement.Q<Label>("leaf").text),
+            Assert.That((pooledWhileHidden, RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>("leaf"))),
                 Is.EqualTo((true, "there")));
         }
 

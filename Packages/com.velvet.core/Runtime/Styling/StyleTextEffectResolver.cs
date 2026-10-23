@@ -1,32 +1,35 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
     // Realises text-transform (uppercase / lowercase / capitalize / normal-case), text-decoration
-    // (underline / line-through / overline), whitespace-pre-line, and leading-* (line-height) by mutating
-    // the displayed text — Unity UI Toolkit has no property for any of the four axes, so the string is
+    // (underline / line-through / overline), whitespace-pre-line, and leading-* (line-height) in the string a
+    // text leaf shows — Unity UI Toolkit has no property for any of the four axes, so that string is
     // upper/lower/title-cased, wrapped in the <u>/<s>/<line-height=X> rich-text tags UITK renders, and/or has
-    // its space/tab runs collapsed. Overline is the one value with no tag to wrap with (UI Toolkit's rich
-    // text vocabulary is <u>/<s> only), so instead of a string rewrite it attaches a PAINTED rule via a
-    // generateVisualContent binding — see the fourth side-table below and TextOverlineBinding. CSS inherits
-    // all four axes; UITK does not (for text-transform / text-decoration / line-height there is no UITK
-    // property at all; white-space DOES natively inherit, but no enum value expresses pre-line's collapse,
-    // so the STRING rewrite still needs the same treatment — see the Whitespace remarks on TextEffect). So
-    // every axis cascades by walking ancestors (StyleTextEffectClass holds the pure parse + string ops; this
-    // owns the reconciler-side cascade and the per-element side-tables).
+    // its space/tab runs collapsed. The leaf's text stays what the app gave: the shown string goes in
+    // through the engine's rendered-text hook (ShowText). Overline is the one value with no tag to wrap
+    // with (UI Toolkit's rich text vocabulary is <u>/<s> only), so instead of a string rewrite it attaches a
+    // PAINTED rule via a generateVisualContent binding — see the fifth side-table below and
+    // TextOverlineBinding. CSS inherits all four axes; UITK does not (for text-transform / text-decoration /
+    // line-height there is no UITK property at all; white-space DOES natively inherit, but no enum value
+    // expresses pre-line's collapse, so the string still needs the same treatment — see the Whitespace
+    // remarks on TextEffect). So every axis cascades by walking ancestors (StyleTextEffectClass holds the
+    // pure parse + string ops; this owns the reconciler-side cascade and the per-element side-tables).
     //
     // Four per-element side-tables are pure (on ReconcilerContext): TextEffects = an element's OWN parsed
     // effect (each axis nullable so an explicit reset — normal-case / no-underline / an explicit
-    // whitespace-* class — is distinct from "inherit"; Leading has no reset form, see LeadingUnit, but is
-    // still nullable the same way for "inherit" vs. "this element sets a real value"); TextRawText = the
-    // untransformed text last seen for a text-bearing element, captured at the text-set seams so the effect
-    // can be re-applied idempotently (the element's live .text may already be transformed); TextWhitespaceOwned
-    // = a set (Dictionary with a trivial value) of elements whose CURRENT inline `style.whiteSpace` was
-    // written by THIS resolver — see the ownership discussion below ApplyToElement. All three ride element
-    // cleanup / pool reuse for free via ReconcilerContext.ClearElementSideTables. Leading needs no table of
-    // its own: unlike PreLine it drives no separate inline style, only the SAME string rewrite
-    // TextEffects/TextRawText already carry, so it rides their existing cleanup for free too. A FOURTH table,
+    // whitespace-* class — is distinct from "inherit"; Leading is nullable the same way, its reset being
+    // leading-[normal], see LeadingUnit); TextRawText = the
+    // text the app gave a text-bearing element, captured at the text-set seams so the effect can be
+    // re-applied idempotently; TextRendered = the shown string handed to the engine, when it differs from
+    // that text; TextWhitespaceOwned = a set (Dictionary with a trivial value) of elements whose CURRENT
+    // inline `style.whiteSpace` was written by THIS resolver — see the ownership discussion below
+    // ApplyToElement. All of them ride element cleanup / pool reuse for free via
+    // ReconcilerContext.ClearElementSideTables. Leading needs no table of its own: unlike PreLine it drives
+    // no separate inline style, only the SAME shown string TextEffects/TextRawText already carry, so it rides
+    // their existing cleanup for free too. A FIFTH table,
     // TextOverlineBindings, is NOT pure: it owns a live generateVisualContent subscription (one per leaf with
     // decoration == Overline), so FiberElementCleaner detaches it explicitly instead of riding the plain
     // side-table sweep — see the Overline remarks below ApplyToElement and the table's own comment on
@@ -47,9 +50,10 @@ namespace Velvet
     // whose EFFECTIVE (cascade-resolved) axis is PreLine — the same call, off the same resolved value, that
     // already drives the string collapse. Writing must happen per-leaf off the RESOLVED value rather than once
     // on the class-carrying ancestor: UI Toolkit gives an element's OWN matching USS rule priority over an
-    // INHERITED value regardless of specificity, so a single ancestor-level write would never reach a
-    // descendant Label carrying its own default `white-space` rule from the theme/USS — the primary use case
-    // (a class on a container Div, text in a descendant Label) depends on this. A leaf with its own explicit
+    // INHERITED value regardless of specificity, so an ancestor-level write reaches a descendant Label only
+    // where no theme or sheet rule sets the Label's own `white-space`, which the resolver cannot know — the
+    // primary use case (a class on a container Div, text in a descendant Label) depends on the leaf write.
+    // A leaf with its own explicit
     // whitespace-{normal,nowrap,pre,pre-wrap} class resolves its own axis first in ResolveEffective (the
     // walk starts at the leaf itself), so it never receives the write and its own USS class governs
     // untouched — no separate "does this leaf opt itself out" check is needed, ResolveEffective already IS
@@ -87,18 +91,11 @@ namespace Velvet
     // still-MOUNTED-Text-prop-patched-to-null transition above would otherwise leak its generateVisualContent
     // subscription forever (ClearElementSideTables never runs, and ApplyToElement can never run again to
     // detach it either), so FiberNodePatcher.PatchBaseElement detaches it at that exact site too.
-    //
-    // KNOWN LIMITATION: toggling a text-transform / text-decoration / whitespace-pre-line / leading-* class
-    // on an ANCESTOR re-cascades to descendants only when that ancestor is re-rendered (its post-children
-    // pass walks them). A descendant whose own text is unchanged and whose ancestor's class changed without
-    // the ancestor re-patching keeps its prior effect — string AND, for PreLine, the inline `white-space`
-    // write AND, for Overline, the painted binding alike — until its next text update; the common static
-    // case (effect set at mount) is fully correct.
     internal static class StyleTextEffectResolver
     {
-        // Captures the untransformed text for a text-bearing element at a text-set seam (TextNode create/patch,
-        // or an element's Text prop). Stored so a later re-apply (this element's or an ancestor's effect pass)
-        // transforms the RAW text, not an already-transformed value.
+        // Captures the text the app gave a text-bearing element at a text-set seam (TextNode create/patch, or
+        // an element's Text prop). Stored so a later re-apply (this element's or an ancestor's effect pass)
+        // rebuilds the shown string from that text, not from an already-transformed one.
         public static void CaptureRaw(ReconcilerContext ctx, VisualElement element, string raw)
         {
             ctx.TextRawText[element] = raw ?? string.Empty;
@@ -160,8 +157,7 @@ namespace Velvet
         }
 
         // Re-applies the cascade-resolved effect to a single element if it is text-bearing and a raw text is
-        // tracked for it. Idempotent: always transforms from the stored raw, never from the live (maybe already
-        // transformed) .text.
+        // tracked for it. Idempotent: always transforms from the stored raw.
         private static void ApplyToElement(ReconcilerContext ctx, VisualElement element)
         {
             if (element is TextElement te && ctx.TextRawText.TryGetValue(te, out var raw))
@@ -172,15 +168,13 @@ namespace Velvet
                     ? new TextBreakRequest(breaker, effect.Preserves)
                     : null;
                 breaker?.BeginBreak();
-                var display = StyleTextEffectClass.Apply(
-                    raw, effect.Transform, effect.Decoration, effect.Whitespace, effect.Leading, breaks);
+                var display = Compose(raw, effect, te.enableRichText, breaks);
                 if (breaks != null && !breaker!.Broke)
                 {
                     breaks = null;
-                    display = StyleTextEffectClass.Apply(
-                        raw, effect.Transform, effect.Decoration, effect.Whitespace, effect.Leading, null);
+                    display = Compose(raw, effect, te.enableRichText, null);
                 }
-                te.text = display;
+                ShowText(ctx, te, raw, display);
                 var decoration = effect.Decoration;
                 // The leaf is written pre-wrap over a string StyleTextEffectClass.Apply already collapsed.
                 var write = breaks != null ? WhiteSpace.PreWrap : effect.Write;
@@ -228,7 +222,7 @@ namespace Velvet
                     // gap (any OTHER later change on the element still repaints it) rather than gated.
                     if (!ctx.TextOverlineBindings.TryGetValue(te, out var overline))
                     {
-                        overline = TextOverlineSilhouette.Attach(te);
+                        overline = TextOverlineSilhouette.Attach(ctx, te);
                         ctx.TextOverlineBindings[te] = overline;
                     }
                 }
@@ -238,6 +232,60 @@ namespace Velvet
                     ctx.TextOverlineBindings.Remove(te);
                 }
             }
+        }
+
+        // The tags carry decoration and line height, and the engine reads tags only with rich text on, so a
+        // leaf with it off shows neither rather than the markup as literal text.
+        private static string Compose(string raw, in ResolvedEffect effect, bool richText, TextBreakRequest? breaks)
+        {
+            return StyleTextEffectClass.Apply(
+                raw,
+                effect.Transform,
+                richText ? effect.Decoration : null,
+                effect.Whitespace,
+                richText ? effect.Leading : null,
+                breaks);
+        }
+
+        // The leaf's text stays what the app gave; the string it shows goes in through the engine's
+        // rendered-text hook. Setting the text, from here or from a prop write, resets the shown string to the
+        // text, so a shown string made from another text is gone and the hook is called again
+        // (TextRenderedTests pins this).
+        private static void ShowText(ReconcilerContext ctx, TextElement element, string raw, string display)
+        {
+            var textChanged = !string.Equals(element.text, raw, StringComparison.Ordinal);
+            if (textChanged)
+            {
+                element.text = raw;
+            }
+            string? current = null;
+            if (!textChanged && ctx.TextRendered.TryGetValue(element, out var entry)
+                && string.Equals(entry.Raw, raw, StringComparison.Ordinal))
+            {
+                current = entry.Shown;
+            }
+            var wanted = string.Equals(display, raw, StringComparison.Ordinal) ? null : display;
+            if (wanted == null)
+            {
+                ctx.TextRendered.Remove(element);
+            }
+            else
+            {
+                ctx.TextRendered[element] = (raw, wanted);
+            }
+            if (string.Equals(current, wanted, StringComparison.Ordinal))
+            {
+                return;
+            }
+            element.experimental.SetRenderedText(wanted ?? raw);
+            element.MarkDirtyText();
+        }
+
+        // What the leaf shows: the string handed to the engine, or its text when none was.
+        internal static string DisplayedText(ReconcilerContext ctx, TextElement element)
+        {
+            var text = element.text ?? string.Empty;
+            return ctx.TextRendered.TryGetValue(element, out var entry) && entry.Raw == text ? entry.Shown : text;
         }
 
         private static void ApplyToDescendants(ReconcilerContext ctx, VisualElement root)
@@ -256,10 +304,12 @@ namespace Velvet
         // The cascade: the nearest ancestor-or-self that sets each axis wins (each axis resolved
         // independently), mirroring CSS inheritance of text-transform / text-decoration / white-space /
         // line-height. A null axis on every ancestor means no effect on that axis. An explicit None on
-        // Transform/Decoration/Whitespace (normal-case / no-underline / an explicit whitespace-* class) also
-        // wins and stops the walk for THAT axis — it is a real resolved value, not "no token" — so it blocks
-        // a farther ancestor's non-None value from reaching this element; Leading has no such explicit-reset
-        // value (see LeadingUnit), so its walk only ever stops on a real leading-* token or the tree's root.
+        // Transform/Whitespace (normal-case / an explicit whitespace-* class) also wins and stops the walk for
+        // THAT axis — it is a real resolved value, not "no token" — so it blocks a farther ancestor's non-None
+        // value from reaching this element. Decoration is the exception, as in CSS: a line an ancestor draws
+        // runs through every text below it and no-underline there cannot take it away, so the walk passes a
+        // None and takes the nearest line. Leading's walk stops on the nearest leading-* token, leading-[normal]
+        // included (see LeadingUnit), or the tree's root.
         // Feeds BOTH the string rewrite and the inline white-space write in ApplyToElement — one resolve,
         // N writes off the same values, so they can never disagree.
         //
@@ -287,7 +337,10 @@ namespace Velvet
                     continue;
                 }
                 transform ??= eff.Transform;
-                decoration ??= eff.Decoration;
+                if (eff.Decoration != TextDecorationKind.None)
+                {
+                    decoration ??= eff.Decoration;
+                }
                 whitespace ??= eff.Whitespace;
                 collapseClass ??= eff.WhiteSpaceClass;
                 wrapStyle ??= eff.WrapStyle;

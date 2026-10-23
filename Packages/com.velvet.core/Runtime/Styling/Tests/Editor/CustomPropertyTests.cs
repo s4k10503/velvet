@@ -262,7 +262,7 @@ namespace Velvet.Tests
                 }));
 
             // Assert
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=12px>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=12px>hi</line-height>"));
         }
 
         [Test]
@@ -327,7 +327,7 @@ namespace Velvet.Tests
                 }));
 
             // Assert
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=20px>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=20px>hi</line-height>"));
         }
 
         [TestCase("bg-[#ff0000]/(--a)")]

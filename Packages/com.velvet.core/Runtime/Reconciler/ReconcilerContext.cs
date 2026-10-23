@@ -493,17 +493,22 @@ namespace Velvet
 
         // text-transform / text-decoration / whitespace-pre-line / leading-* (uppercase / underline / … / the
         // pre-line collapse / line-height). UI Toolkit has no property for any of them, so they are realised
-        // by mutating the displayed text (StyleTextEffectResolver). TextEffects holds each element's OWN
+        // in the string the leaf shows (StyleTextEffectResolver). TextEffects holds each element's OWN
         // parsed effect (the cascade source, now four axes — Leading rides the same table, see LeadingUnit);
-        // TextRawText holds the untransformed text captured at the text-set seams so the effect re-applies
+        // TextRawText holds the text the app gave, captured at the text-set seams so the effect re-applies
         // idempotently. TextWhitespaceOwned is a THIRD table, set-shaped (a Dictionary with a trivial bool
         // value): presence means this element's CURRENT inline style.whiteSpace was written by the resolver
         // itself, so a later resolve that writes nothing clears only what the resolver owns — never a
         // value set directly by other means (e.g. a refCallback, a pattern the framework treats as legitimate
-        // — see RefCallbacks below). All three are pure (teardown = Remove(element)).
+        // — see RefCallbacks below). All of them are pure (teardown = Remove(element)).
         public Dictionary<VisualElement, TextEffect> TextEffects { get; } = new();
         public Dictionary<VisualElement, string> TextRawText { get; } = new();
         public Dictionary<VisualElement, bool> TextWhitespaceOwned { get; } = new();
+
+        // The string a text leaf shows when the resolver has handed the engine one other than the leaf's text
+        // (StyleTextEffectResolver.ShowText), with the text it was made from. Absent while the leaf shows its
+        // text. Pure like the three above.
+        public Dictionary<VisualElement, (string Raw, string Shown)> TextRendered { get; } = new();
 
         // A FOURTH pure table, set-shaped like TextWhitespaceOwned: presence means the reconciler made this
         // element for a TextNode, so its own reconcile applies no class of its own — ever, not merely not
@@ -3061,6 +3066,7 @@ namespace Velvet
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,
+                TextRendered,
                 TextNodeElements,
                 ChildVariantOwners,
                 ChildBoxOwners,

@@ -49,7 +49,8 @@ intent and asks `VelvetFonts.Resolve`:
    can't satisfy is synthesized through `-unity-font-style`: bold for a request of 600 or more on a
    face under 600, and italic when no italic face is available.
 2. **No family / no asset** → the same synthesis over the default face: weight `>= 600` renders
-   bold, below renders normal, combined with italic. This matches the USS fallback classes in
+   bold, below renders normal, combined with italic. That is what a browser does for a face that has no
+   bold or italic of its own (`font-synthesis`), and it matches the USS fallback classes in
    `_typography.uss`, so output is sensible before any font is registered.
 
 Inline style wins over the USS classes, so the resolver is the authoritative font layer.
@@ -144,9 +145,9 @@ re-render. On re-render every element re-resolves its font intent against the ne
 
 ## Tailwind text-utility parity vs. UI Toolkit
 
-Verified against the Unity 6000.3 USS *common properties* reference. Velvet ships every text
-utility UI Toolkit can express; the rest are omitted because UI Toolkit has **no USS property** for
-them.
+Verified against the Unity 6000.3 USS *common properties* reference. The text utilities
+Velvet ships are listed below; the ones in the table after them are omitted because UI Toolkit has **no
+USS property** for them.
 
 **Supported (shipped):** `font-<family>` / `font-thin`…`font-black` / `italic` / `not-italic` /
 `text-xs`…`text-9xl` (font-size and line-height) / `text-left|center|right|start|end` (`-unity-text-align`) /
@@ -156,14 +157,16 @@ them.
 (`text-overflow: ellipsis | clip`) / text color / `uppercase` `lowercase` `capitalize` `normal-case`
 (text-transform) / `underline` `line-through` `overline` `no-underline` (text-decoration).
 
-**Text-transform / text-decoration are realised by mutating the displayed text** (UI Toolkit has no
+**Text-transform / text-decoration are realised in the string a leaf shows** (UI Toolkit has no
 property for either): the string is upper/lower/title-cased, and underline / line-through wrap it in
-the `<u>` / `<s>` rich-text tags UITK renders (`enableRichText` is on by default). Both **inherit**
-like CSS — put the class on an ancestor and the descendant text leaves pick it up
-(`StyleTextEffectResolver` walks ancestors); see it for the one cascade-freshness caveat (an
-ancestor's class toggled without that ancestor re-rendering). If an element turns `enableRichText`
-off, the `<u>` / `<s>` markup shows up as literal text in the label instead (`leading-*`'s
-`<line-height=X>` tag, below, has the identical caveat).
+the `<u>` / `<s>` rich-text tags UITK renders (`enableRichText` is on by default). The leaf's `text` stays what
+the app gave, as the text content does in CSS: Velvet hands the engine the string to show through
+`TextElement.experimental.SetRenderedText`, so `label.text` reads `"hello"` under `uppercase`. Both **inherit** like CSS — put the class on an ancestor and
+the descendant text leaves pick it up (`StyleTextEffectResolver` walks ancestors; a change of the ancestor's
+classes re-resolves the text under it). The tags are read only with rich text on, so a leaf with
+`enableRichText = false` is shown without the decoration and the line height (`leading-*`, below),
+where it would otherwise show the markup as literal text; the text-transform, the white-space and the line
+breaks still apply. The change of `enableRichText` itself is read at the leaf's next resolve, not when it is set.
 
 **`overline` is the one decoration value that cannot be a string rewrite:** UI Toolkit's rich text
 has no overline tag (only `<u>` / `<s>`), so `overline` **paints** a solid rule above the text via
@@ -178,7 +181,9 @@ The stroke color tracks `resolvedStyle.color`, its thickness is
 `lower-*` anchor — then sits 15% of the font size below that line's top.
 
 `overline` joins the same decoration axis as `underline` / `line-through` / `no-underline`, so
-cascade, inheritance, and the `no-underline` reset all apply to it. The axis stays single-valued.
+cascade and inheritance apply to it. `no-underline` ends the lines the element's own classes ask for; as in
+CSS, a line an ancestor draws still runs through the element's text, so `underline` on a container shows
+under a child that is `no-underline`. The axis stays single-valued.
 `underline overline` and `overline underline` render the underline, and `line-through no-underline`
 and `no-underline line-through` clear the decoration: those candidates sort later in Tailwind's order.
 CSS lets `text-decoration-line` list several lines. `[text-decoration-line:underline_overline]`
@@ -199,18 +204,18 @@ spaces/tabs to one space, keep newlines, and drop whitespace that sits right at 
 inline `white-space: pre-wrap` write on every text leaf whose resolved whitespace axis is pre-line,
 so the preserved newlines still render as breaks.
 
-The write is per-leaf rather than once on the class-bearing element: `Label`/`TextElement` carries
-its own element-level `white-space` rule from the default theme/USS, and an element's own matching
-rule always beats an INHERITED value in the cascade, so a write on an ancestor alone would never
-reach a descendant Label. It inherits and cascades the same way text-transform / text-decoration
-do: an explicit `whitespace-*` or `truncate` class always wins on the SAME element, and — exactly like how
-`normal-case` / `no-underline` stop an inherited transform / decoration — it also blocks a farther
+The write is per-leaf rather than once on the class-bearing element: an element's own matching rule
+beats an INHERITED value in the cascade, so a write on an ancestor reaches a Label only where no theme or
+sheet rule sets that Label's own `white-space`, which Velvet cannot know. It inherits and cascades the same
+way text-transform does: an explicit `whitespace-*` or `truncate` class always wins on the SAME element, and —
+exactly like how `normal-case` stops an inherited transform — it also blocks a farther
 ancestor's `whitespace-pre-line` from reaching that subtree at all, rather than merely leaving the
 collapse unapplied on that one element.
 
-**`leading-*` (line-height)** has no USS property either — `-unity-paragraph-spacing` only affects
-explicit `\n` breaks, not the per-line advance a real line-height changes — so it is realised
-through UI Toolkit's rich-text `<line-height=X>` tag instead. Both text engines (the standard
+**`leading-*` (line-height)** has no USS property either — UI Toolkit's style has no `line-height`, and
+`-unity-paragraph-spacing` only affects explicit `\n` breaks, not the per-line advance a real line-height
+changes — so it is realised through UI Toolkit's rich-text `<line-height=X>` tag instead, which is read only
+with `enableRichText` on (a leaf with it off keeps its font's line advance). Both text engines (the standard
 generator and the Advanced Text Generator) implement the tag natively, feeding it into the
 line-advance math at every line-break site; a following `</line-height>` restores the natural
 metric.
@@ -221,7 +226,8 @@ as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-he
 unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percentage
 (`leading-[150%]`), and `px`, `rem` (1rem = 16px, as `w-[…]` takes it) or an absolute unit (`in`, `cm`,
 `mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. `leading-[inherit]` takes the parent's
-line height over the element's own. A math function is read where it
+line height over the element's own, and `leading-[normal]` is the font's own line advance: it writes no tag, and
+takes an ancestor's line height away from the text. A math function is read where it
 comes to one of those pixel lengths or one percentage
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A negative value, any other unit, or a
 malformed value is ignored. A bare spacing step (`leading-6`, `leading-13`, `leading-4.5`, `leading-px`) emits
@@ -245,15 +251,14 @@ not yet on a panel — the text carries the em tag. `tracking-*` is the contrast
 font** — `tracking-wide`'s 0.4px is only 0.025em at exactly 16px and drifts off-ratio at any other
 size. A bracketed `tracking-[0.025em]` is measured on the element's own font size instead
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). `leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
-ancestor's `leading-*` overrides a farther one's). It has no reset utility, unlike the other three
-axes: Tailwind defines no `leading-auto` below `leading-none`, and every preset — `leading-none`'s
-multiplier of 1 included — is already a real value, so there is nothing to reset back to.
+ancestor's `leading-*` overrides a farther one's). Its reset is `leading-[normal]`: no named utility is one,
+since every preset — `leading-none`'s multiplier of 1 included — is a real value.
 
 **`text-<size>` pairs a line height with its font size**, as Tailwind v4's `--text-<size>--line-height` does,
 and emits it as the same em tag a preset does: `text-xs` 1.3333 · `text-sm` 1.4286 · `text-base` 1.5 ·
 `text-lg` 1.5556 · `text-xl` 1.4 · `text-2xl` 1.3333 · `text-3xl` 1.2 · `text-4xl` 1.1111 · `text-5xl`…`text-9xl` 1.
 The pair is the size class's own line height, so it replaces one an ancestor's `leading-*` set, and it
-inherits like any other leading (it shares the cascade-freshness caveat above). A bare size writes
+inherits like any other leading. A bare size writes
 `line-height: var(--tw-leading, <pair>)` in Tailwind, so a `leading-*` on the same element beats it whichever
 class comes first and whether either carries `!`. When an element holds several sizes, the pair is the one of
 the size whose font size shows, which is the rule declared last in `_typography.uss` — the one Tailwind
@@ -268,8 +273,8 @@ no `leading-*` value leaves the class inert. A bracket size takes the slash too 
 line breaks into the text a leaf *displays*, the way text-transform rewrites it. A box the cascade
 sizes keeps the width its classes and its parent give it, so `w-full text-balance` balances, as do a
 `max-w-*`, padding and a border. Velvet keeps the text it was given and rebuilds the displayed string from it, so a state value, a
-prop or an `onChange` payload carries no newline Velvet added; the text read off the element itself is
-the displayed string, as it is under `uppercase`.
+prop or an `onChange` payload carries no newline Velvet added, and neither does the text read off the element
+itself.
 
 Both inherit, as CSS's `text-wrap-style` does. Put the class on a container and every text leaf under it
 breaks its lines; a nearer `text-wrap` or `text-nowrap` resets it, and the nearest of the four

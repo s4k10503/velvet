@@ -163,6 +163,7 @@ namespace Velvet
                 else
                 {
                     _ctx.TextRawText.Remove(element);
+                    _ctx.TextRendered.Remove(element);
                     // The element stays MOUNTED across this transition (no pool cycle), so
                     // ReconcilerContext.ClearElementSideTables never runs for it, and with no raw text left
                     // to resolve from, StyleTextEffectResolver.ApplyToElement can never run for it again

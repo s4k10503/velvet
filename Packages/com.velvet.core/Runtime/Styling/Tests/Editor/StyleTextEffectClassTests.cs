@@ -397,6 +397,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_LeadingBracketNormal_When_Parsed_Then_LeadingIsTheFontsOwnLineAdvance()
+        {
+            // Arrange
+            var classNames = new[] { "leading-[normal]" };
+
+            // Act
+            var effect = StyleTextEffectClass.Parse(classNames);
+
+            // Assert
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Normal, 0f)));
+        }
+
+        [Test]
         public void Given_NoLeadingTokens_When_Parsed_Then_LeadingIsUnsetNull()
         {
             // Arrange

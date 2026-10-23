@@ -122,7 +122,7 @@ namespace Velvet
                 return;
             }
 
-            var text = textElement.text ?? string.Empty;
+            var text = DisplayedText(textElement);
             if (text.Length == 0 || textElement.childCount > 0 || !IsInFlow(textElement))
             {
                 Release(textElement);

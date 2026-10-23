@@ -287,21 +287,21 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
                 new VNode[] { V.Label(className: className, text: "hi", name: "label") });
             var label = scope.Root.Q<Label>("label");
-            var before = label.text;
+            var before = RenderedTextProbe.Of(label);
 
             // Act
             using (var over = PointerOverEvent.GetPooled())
             {
                 label.SimulateEvent(over);
             }
-            var hovered = label.text;
+            var hovered = RenderedTextProbe.Of(label);
             using (var leave = PointerOutEvent.GetPooled())
             {
                 label.SimulateEvent(leave);
             }
 
             // Assert
-            Assert.That((before, hovered, label.text),
+            Assert.That((before, hovered, RenderedTextProbe.Of(label)),
                 Is.EqualTo(("hi", "<line-height=24px>hi</line-height>", "hi")));
         }
 
@@ -313,21 +313,21 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
                 new VNode[] { V.Label(className: "hover:text-base", text: "hi", name: "label") });
             var label = scope.Root.Q<Label>("label");
-            var before = label.text;
+            var before = RenderedTextProbe.Of(label);
 
             // Act
             using (var over = PointerOverEvent.GetPooled())
             {
                 label.SimulateEvent(over);
             }
-            var hovered = label.text;
+            var hovered = RenderedTextProbe.Of(label);
             using (var leave = PointerOutEvent.GetPooled())
             {
                 label.SimulateEvent(leave);
             }
 
             // Assert
-            Assert.That((before, hovered, label.text),
+            Assert.That((before, hovered, RenderedTextProbe.Of(label)),
                 Is.EqualTo(("hi", "<line-height=1.5em>hi</line-height>", "hi")));
         }
 
@@ -344,7 +344,7 @@ namespace Velvet.Tests
                 new VNode[] { V.Label(className: "text-5xl", text: "hi", name: "label") });
 
             // Assert
-            Assert.That(scope.Root.Q<Label>("label").text, Is.EqualTo("<line-height=1em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("<line-height=1em>hi</line-height>"));
         }
 
         // GREEN_ON_BASE(characterization): the base reads no size class, so the text is plain before and after.
@@ -361,7 +361,7 @@ namespace Velvet.Tests
                 new VNode[] { V.Label(className: "p-1", text: "hi", name: "label") });
 
             // Assert
-            Assert.That(scope.Root.Q<Label>("label").text, Is.EqualTo("hi"));
+            Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("hi"));
         }
 
         [Test]
@@ -377,7 +377,7 @@ namespace Velvet.Tests
             });
 
             // Assert
-            Assert.That(scope.Root.Q<Label>("label").text, Is.EqualTo("<line-height=1.5em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
         }
 
         [Test]
@@ -391,7 +391,7 @@ namespace Velvet.Tests
                 new VNode[] { V.Label(className: "text-base", text: "hi", name: "label") });
 
             // Assert
-            Assert.That(scope.Root.Q<Label>("label").text, Is.EqualTo("<line-height=1.5em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
         }
 
         [Test]
@@ -405,7 +405,7 @@ namespace Velvet.Tests
                 new VNode[] { V.Label(className: "text-sm/6", text: "hi", name: "label") });
 
             // Assert
-            Assert.That(scope.Root.Q<Label>("label").text, Is.EqualTo("<line-height=24px>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("<line-height=24px>hi</line-height>"));
         }
 
         [Test]
@@ -438,7 +438,7 @@ namespace Velvet.Tests
             });
 
             // Assert
-            Assert.That(scope.Root.Q<Label>("label").text, Is.EqualTo("<line-height=1.5em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
         }
     }
 }

@@ -359,6 +359,13 @@ namespace Velvet
                 return TryParseRelativeLength(property, valueSpan, negate, out result);
             }
 
+            // A font size or a letter spacing in percent is a multiple of a font size, which an inline write does
+            // not convert (RelativeLengthPanelTests pins both), so it is measured as an em is.
+            if (unit == LengthUnit.Percent && property is ArbitraryProperty.FontSize or ArbitraryProperty.LetterSpacing)
+            {
+                return TryParseRelativeLength(property, valueSpan, negate, out result);
+            }
+
             // FloatSetters write a StyleFloat, which carries no unit, and none of their longhands takes a
             // percentage in CSS.
             if (unit == LengthUnit.Percent && FloatSetters.ContainsKey(property))

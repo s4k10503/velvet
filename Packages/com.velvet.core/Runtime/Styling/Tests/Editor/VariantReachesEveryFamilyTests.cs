@@ -480,7 +480,7 @@ namespace Velvet.Tests
             reading[path + "/kids"] = element.childCount.ToString();
             // Spaces out, because the fingerprint is a space-joined list of terms and a wrapped sentence
             // would split into several of them.
-            reading[path + "/text"] = ((element as TextElement)?.text ?? string.Empty).Replace(' ', '_');
+            reading[path + "/text"] = (element is TextElement ? RenderedTextProbe.Of(element) : string.Empty).Replace(' ', '_');
             var style = element.style;
             foreach (var property in StyleProperties)
             {

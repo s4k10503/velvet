@@ -17,9 +17,10 @@ namespace Velvet
         Capitalize,  // capitalize (title-case: first letter of each word)
     }
 
-    // The text-decoration an element requests. None is the EXPLICIT reset (no-underline, which clears
-    // Overline too — mirroring CSS's text-decoration-line: none clearing every line); unset is a null
-    // TextDecorationKind? in TextEffect. UI Toolkit rich text has no overline tag (only <u>/<s>), so unlike
+    // The text-decoration an element requests. None is no-underline, which ends every line the element's own
+    // classes ask for, Overline included, as CSS's text-decoration-line: none does; it takes no line away
+    // from an ancestor, which CSS draws through the element's text whatever the element sets
+    // (StyleTextEffectResolver.ResolveEffective). Unset is a null TextDecorationKind? in TextEffect. UI Toolkit rich text has no overline tag (only <u>/<s>), so unlike
     // Underline/LineThrough, Overline is never realised as a string rewrite — StyleTextEffectClass.Apply
     // passes the string through unchanged for it, and the leaf paints a rule instead (see
     // StyleTextEffectResolver.ApplyToElement / TextOverlineBinding). It still shares this single axis with
@@ -37,7 +38,7 @@ namespace Velvet
     // The whitespace-collapse an element requests. None is the EXPLICIT reset: every direct, literal
     // whitespace-{normal,nowrap,pre,pre-wrap} class resolves here, not merely to "no collapse" but to a real
     // value that BLOCKS a farther ancestor's whitespace-pre-line from reaching this element — mirroring how
-    // normal-case / no-underline block Transform / Decoration. Unset is a null WhitespaceCollapseKind? in
+    // normal-case blocks Transform. Unset is a null WhitespaceCollapseKind? in
     // TextEffect (inherit an ancestor's collapse, if any).
     internal enum WhitespaceCollapseKind
     {
@@ -81,24 +82,21 @@ namespace Velvet
         }
     }
 
-    // Which unit a resolved Leading value carries, following CSS line-height's two kinds of value. Em is a
+    // Which unit a resolved Leading value carries, following CSS line-height's kinds of value. Em is a
     // number (every named leading-* preset and a unitless bracket value): CSS inherits the number itself,
     // so it multiplies whatever font-size is in effect where the rich-text tag is generated. EmLength is an
     // em or percentage bracket value: CSS computes it to a length on the element that declares it, and
     // StyleTextEffectResolver.ResolveEmLength turns it into Pixel where it can. Pixel is an absolute
-    // length (a bracket px or rem value, or a leading-<n> spacing step). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind,
-    // this axis has deliberately no explicit-reset member: the leading-* utility scale defines no reset value below
-    // leading-none, and every named preset — including leading-none's own multiplier of 1 — is already a
-    // real, meaningful value rather than a sentinel standing in for "reset to nothing" the way normal-case /
-    // no-underline / an explicit whitespace-* class are. A None member here would have no Parse case that
-    // ever produces it and no caller that would ever need it, so it is left out rather than added purely
-    // for symmetry with the other three axes. Inherit is not one: it is CSS's inherit keyword
+    // length (a bracket px or rem value, or a leading-<n> spacing step). Normal is CSS's line-height: normal
+    // (leading-[normal]), the font's own line advance: a real value that takes an ancestor's line height
+    // away from the text and writes no tag, so it is this axis's only reset. Inherit is CSS's inherit keyword
     // (leading-[inherit]), which ranks as any leading-* does and leaves the element taking its parent's line height.
     internal enum LeadingUnit
     {
         Em,
         EmLength,
         Pixel,
+        Normal,
         Inherit,
     }
 
@@ -128,8 +126,8 @@ namespace Velvet
     // value (incl. the explicit None reset the first three axes have) wins over an ancestor. CSS
     // text-transform / text-decoration / white-space / line-height all inherit; Unity UI Toolkit only
     // natively inherits white-space (it lives in inheritedData) — text-transform / text-decoration /
-    // line-height have no UITK property at all — so Velvet realises all four the same way regardless, by
-    // mutating the displayed text: uppercasing/title-casing the string, wrapping it in the rich-text
+    // line-height have no UITK property at all — so Velvet realises all four the same way regardless, in the
+    // string the leaf shows: uppercasing/title-casing it, wrapping it in the rich-text
     // <u>/<s>/<line-height=X> tags UI Toolkit renders (enableRichText is on by default), and/or collapsing
     // space/tab runs. Decoration's Overline value is the one exception to the string-mutation story: UI
     // Toolkit rich text has no overline tag to wrap with, so it cascades through this SAME struct/axis (it
@@ -201,8 +199,9 @@ namespace Velvet
         // Resolves an element's OWN effect from its class list (last token wins per axis, an important one over
         // every plain one, the tokens having been put in Tailwind's order by StyleFamilyOrder; within one importance, Whitespace is the exception —
         // see below). Returns an empty TextEffect (every axis null) when no recognised token is present.
-        // Leading follows the same last-token-wins rule as Transform/Decoration: it has no reset form (see
-        // LeadingUnit), so there is nothing analogous to Whitespace's cross-family override to special-case.
+        // Leading follows the same last-token-wins rule as Transform/Decoration; its reset, Normal (see LeadingUnit),
+        // is a leading-* value like any other, so there is nothing analogous to Whitespace's cross-family override
+        // to special-case.
         // Decoration is one TextDecorationKind. Parse does not reorder: StyleFamilyOrder does, on the
         // live path, before Parse runs, which is what makes underline hold over overline and
         // no-underline over line-through. fonts.md owns the combined-line deviation;
@@ -259,8 +258,7 @@ namespace Velvet
                 // whitespace-* class most likely wants its literal CSS-standard behavior, not a silently-collapsed
                 // one. Resolving to the explicit None reset (not back to unset) settles the conflict on THIS element
                 // AND stops a pre-line request from a FARTHER ancestor from still reaching this element through the
-                // normal cascade — the same explicit-reset semantics normal-case / no-underline already give
-                // Transform/Decoration.
+                // normal cascade — the same explicit-reset semantics normal-case already gives Transform.
                 if (facets.WhiteSpaceClass != null)
                 {
                     whitespace = WhitespaceCollapseKind.None;
@@ -499,6 +497,11 @@ namespace Velvet
             {
                 return true;
             }
+            if (value.SequenceEqual("normal".AsSpan()))
+            {
+                unit = LeadingUnit.Normal;
+                return true;
+            }
             unit = LeadingUnit.Em;
             if (StyleArbitraryValueResolver.TryParseFloat(value, out amount))
             {
@@ -636,6 +639,10 @@ namespace Velvet
                 return text;
             }
             var value = leading.Value;
+            if (value.Unit == LeadingUnit.Normal)
+            {
+                return text;
+            }
             if (!s_pairedOpenTags.TryGetValue(value, out var open))
             {
                 open = OpenLineHeightTag(value);

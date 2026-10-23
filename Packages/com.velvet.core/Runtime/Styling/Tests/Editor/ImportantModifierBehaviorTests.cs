@@ -189,13 +189,13 @@ namespace Velvet.Tests
             // Arrange
             _mounted = V.Mount(_root, V.Label(name: "leaf", className: "!uppercase hover:!lowercase", text: "Ab"));
             var leaf = _root.Q<Label>("leaf");
-            var atRest = leaf.text;
+            var atRest = RenderedTextProbe.Of(leaf);
 
             // Act
             using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
 
             // Assert
-            Assert.That((atRest, leaf.text), Is.EqualTo(("AB", "ab")));
+            Assert.That((atRest, RenderedTextProbe.Of(leaf)), Is.EqualTo(("AB", "ab")));
         }
 
         [Test]

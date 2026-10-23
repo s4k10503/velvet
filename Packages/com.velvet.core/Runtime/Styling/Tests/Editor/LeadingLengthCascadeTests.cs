@@ -41,14 +41,14 @@ namespace Velvet.Tests
         {
             _mounted = V.Mount(_window.rootVisualElement, tree);
             ForcePanelUpdate(_window.rootVisualElement.panel);
-            return _window.rootVisualElement.Q<Label>().text;
+            return RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>());
         }
 
         private string UpdateAndReadText()
         {
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
             ForcePanelUpdate(_window.rootVisualElement.panel);
-            return _window.rootVisualElement.Q<Label>().text;
+            return RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>());
         }
 
         [Test]
@@ -183,7 +183,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Assert
-            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=30px>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=30px>hi</line-height>"));
         }
     }
 }

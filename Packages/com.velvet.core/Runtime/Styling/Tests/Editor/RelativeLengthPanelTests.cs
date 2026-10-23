@@ -200,6 +200,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APercentFontSize_When_Settled_Then_ItIsTakenOfTheParentsFontSize()
+        {
+            // Act
+            Mount("text-[10px] w-[300px] h-[200px]", "text-[150%] w-[10px] h-[10px]");
+
+            // Assert
+            Assert.That(Child.resolvedStyle.fontSize, Is.EqualTo(15f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_APercentLetterSpacing_When_Settled_Then_ItIsTakenOfTheElementsOwnFontSize()
+        {
+            // Act
+            Mount("text-[10px] w-[300px] h-[200px]", "text-[20px] tracking-[50%] w-[10px] h-[10px]");
+
+            // Assert
+            Assert.That(Child.resolvedStyle.letterSpacing, Is.EqualTo(10f).Within(0.01f));
+        }
+
+        [Test]
         public void Given_AHalfViewportWidth_When_Settled_Then_ItIsHalfThePanelsWidth()
         {
             // Act

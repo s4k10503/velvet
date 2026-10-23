@@ -323,13 +323,13 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var label = MountAndFindLabel(scope,
                 V.Div(className: "whitespace-pre-line", V.Label(className: "dark:whitespace-pre", text: "a   b")));
-            var light = label.text;
+            var light = RenderedTextProbe.Of(label);
 
             // Act
             VelvetTheme.IsDark = true;
 
             // Assert
-            Assert.That((light, label.text), Is.EqualTo(("a b", "a   b")));
+            Assert.That((light, RenderedTextProbe.Of(label)), Is.EqualTo(("a b", "a   b")));
         }
 
         [TestCase("!whitespace-pre-line")]
@@ -343,7 +343,7 @@ namespace Velvet.Tests
             var label = MountAndFindLabel(scope, V.Label(className: cls, text: "a   b"));
 
             // Assert
-            Assert.That(label.text, Is.EqualTo("a b"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("a b"));
         }
 
         // GREEN_ON_BASE(characterization): the base's text-balance claims no USS longhand, so no payload can

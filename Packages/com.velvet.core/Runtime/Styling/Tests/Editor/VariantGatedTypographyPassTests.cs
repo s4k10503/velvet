@@ -143,13 +143,13 @@ namespace Velvet.Tests
             // only place the decoration can show up.
             using var scope = new ReconcilerScope();
             var card = (Label)Mount(scope, V.Label(className: "dark:underline", text: "Docs", name: "card"));
-            var textWhileLight = card.text;
+            var textWhileLight = RenderedTextProbe.Of(card);
 
             // Act
             VelvetTheme.IsDark = true;
 
             // Assert
-            Assert.That((textWhileLight, card.text), Is.EqualTo(("Docs", "<u>Docs</u>")));
+            Assert.That((textWhileLight, RenderedTextProbe.Of(card)), Is.EqualTo(("Docs", "<u>Docs</u>")));
         }
 
         [Test]
@@ -159,13 +159,13 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var card = (Label)Mount(scope, V.Label(className: "dark:underline", text: "Docs", name: "card"));
             VelvetTheme.IsDark = true;
-            var textWhileDark = card.text;
+            var textWhileDark = RenderedTextProbe.Of(card);
 
             // Act
             VelvetTheme.IsDark = false;
 
             // Assert — a label that never got the tag would satisfy the light half alone.
-            Assert.That((textWhileDark, card.text), Is.EqualTo(("<u>Docs</u>", "Docs")));
+            Assert.That((textWhileDark, RenderedTextProbe.Of(card)), Is.EqualTo(("<u>Docs</u>", "Docs")));
         }
 
         [Test]
@@ -178,14 +178,14 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
             var card = scope.Root.Q<Label>("card");
             VelvetTheme.IsDark = true;
-            var textBeforePatch = card.text;
+            var textBeforePatch = RenderedTextProbe.Of(card);
             var second = new VNode[] { V.Label(className: "dark:uppercase p-4", text: "Docs", name: "card") };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, first, second);
 
             // Assert
-            Assert.That((textBeforePatch, card.text), Is.EqualTo(("DOCS", "DOCS")));
+            Assert.That((textBeforePatch, RenderedTextProbe.Of(card)), Is.EqualTo(("DOCS", "DOCS")));
         }
 
         [Test]
@@ -205,7 +205,7 @@ namespace Velvet.Tests
                 });
 
             // Assert
-            Assert.That(scope.Root.Q<VisualElement>("card").Q<Label>().text, Is.EqualTo("DOCS"));
+            Assert.That(RenderedTextProbe.Of(scope.Root.Q<VisualElement>("card").Q<Label>()), Is.EqualTo("DOCS"));
         }
 
         [Test]
@@ -257,12 +257,12 @@ namespace Velvet.Tests
             // element child is not: a fix that only worked from the second render would otherwise pass.
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
             var text = scope.Root[0].Children().OfType<Label>().Last();
-            var textAtMount = text.text;
+            var textAtMount = RenderedTextProbe.Of(text);
             scope.Reconciler.Reconcile(scope.Root, first, Tree("label-child"));
 
             // Assert — the element child rides along, so a walk that reached neither fails here rather than
             // reading as a transform the resolver declined to write.
-            Assert.That((textAtMount, scope.Root.Q<Label>("elem").text, text.text),
+            Assert.That((textAtMount, RenderedTextProbe.Of(scope.Root.Q<Label>("elem")), RenderedTextProbe.Of(text)),
                 Is.EqualTo(("TEXT-CHILD", "LABEL-CHILD", "TEXT-CHILD")));
         }
 
@@ -320,7 +320,7 @@ namespace Velvet.Tests
 
             // Assert
             var card = scope.Root.Q<Label>("card");
-            Assert.That((card.ClassListContains("gap-2"), card.text),
+            Assert.That((card.ClassListContains("gap-2"), RenderedTextProbe.Of(card)),
                 Is.EqualTo((true, "<line-height=24px>Docs</line-height>")));
         }
 
@@ -336,7 +336,7 @@ namespace Velvet.Tests
                 card.SimulateEvent(over);
             }
             // Whether the transform comes on while hovered.
-            var shown = card.text == "DOCS";
+            var shown = RenderedTextProbe.Of(card) == "DOCS";
 
             // Act
             using (var leave = PointerOutEvent.GetPooled())
@@ -345,7 +345,7 @@ namespace Velvet.Tests
             }
 
             // Assert — read as null where the transform never came on, which the expected text is not.
-            Assert.That(shown ? card.text : null, Is.EqualTo("Docs"));
+            Assert.That(shown ? RenderedTextProbe.Of(card) : null, Is.EqualTo("Docs"));
         }
     }
 
@@ -381,7 +381,7 @@ namespace Velvet.Tests
             // Assert — the resolved width rides along, so a panel that never reached the breakpoint fails
             // here rather than reporting inconclusive.
             Assert.That(
-                (card.panel.visualTree.resolvedStyle.width >= MdBreakpoint, card.text),
+                (card.panel.visualTree.resolvedStyle.width >= MdBreakpoint, RenderedTextProbe.Of(card)),
                 Is.EqualTo((true, "<u>Docs</u>")));
         }
     }

@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -32,7 +33,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, tree);
 
             // Assert — the leaf shows the transformed string from the first frame.
-            Assert.That(_root.Q<Label>().text, Is.EqualTo("SHOUT"));
+            Assert.That(RenderedTextProbe.Of(_root.Q<Label>()), Is.EqualTo("SHOUT"));
         }
 
         [Test]
@@ -47,7 +48,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, tree);
 
             // Assert — the Motion's own text shows the transformed string.
-            Assert.That(_root.Q<Label>().text, Is.EqualTo("SHOUT"));
+            Assert.That(RenderedTextProbe.Of(_root.Q<Label>()), Is.EqualTo("SHOUT"));
         }
     }
 }
