@@ -567,8 +567,8 @@ namespace Velvet.Tests
             var pose = new[] { "w-40", "p-2" };
 
             // Act
-            var carries = (Convert.ToBoolean(MotionCarriesPose.Invoke(null, new object[] { added, pose, Array.Empty<string>() })),
-                Convert.ToBoolean(MotionCarriesPose.Invoke(null, new object[] { reversed, pose, Array.Empty<string>() })));
+            var carries = (Convert.ToBoolean(MotionCarriesPose?.Invoke(null, new object[] { added, pose, Array.Empty<string>() })),
+                Convert.ToBoolean(MotionCarriesPose?.Invoke(null, new object[] { reversed, pose, Array.Empty<string>() })));
 
             // Assert
             Assert.That(carries, Is.EqualTo((true, true)));

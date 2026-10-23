@@ -36,6 +36,8 @@ namespace Velvet.Tests
                 Is.EqualTo("PaddingBottom=32->0,PaddingLeft=32->0,PaddingRight=32->0,PaddingTop=32->0"));
         }
 
+        // GREEN_ON_BASE(characterization): the base planned no channel here either; the case pins that reading the
+        // padding the element shows does not start one while the leaving pose is still on it.
         [Test]
         public void Given_APaddingOnlyTheLeavingSideNames_When_TheElementStillCarriesTheLeavingPose_Then_NoChannelIsPlanned()
         {
