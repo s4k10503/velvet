@@ -305,7 +305,7 @@ Property names are UI Toolkit `transition-property` spellings (`"opacity"`, `"tr
 property no override names animates on the enclosing config's timing, as a value missing from Framer's
 per-value map takes the default transition.
 Completion is sized off the **slowest** of those, so a long override finishes instead
-of being snapped when the top-level duration elapses. A `Tween` reads them on every variant swap:
+of being snapped when the top-level duration elapses. A `Tween`, a `Bezier` and a `Spring` read them on every variant swap:
 mount enters, label changes and exits.
 
 ## Springs
@@ -349,6 +349,9 @@ new StyleTransitionConfig
   duration Framer measures for it (see *Repeating a play*), so a frame that arrives late moves the
   spring as far as the time it covers.
 - Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
+- `ExitSpring` (`new SpringPhysics(stiffness, damping, mass)`) gives an exit physics of its own, and
+  `PropertyOverrides` gives the channels it names a tween of its own, each entry's delay, duration and easing (the
+  config's where it names none), which that channel plays once whatever the play repeats.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
 
@@ -392,22 +395,31 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   and position fractions (`w-1/2`, `left-1/2`), and the bracket forms. These dirty Yoga layout on
   every tick — the whole subtree relayouts each frame for the length of the play — so reach for a
   transform channel first and animate a length only where the reflow is the point.
+- **`-full` lengths and `rounded-full`.** `w-full`, `min-h-full`, `size-full`, `left-full`, `inset-x-full` and
+  the rest of the sizing, position and `basis-` families read as 100%, in the unit the fractions use.
+  `rounded-full` reads as the stylesheet's `--radius-full`, 9999px, so a radius animates toward it and the
+  corner clamps at half the box as it does at rest.
 - **Border widths,** from the `border-*` width utilities (`border`, `border-2`, `border-t-4`) and
   the bracket forms. These read a **separate literal scale mirroring the stylesheet's own
   declarations**, not the spacing scale — `border-2` is 2px, not `--space-2`. Same per-tick layout
   cost as the lengths above.
-- **Font size and letter spacing, pixel brackets only:** `text-[20px]` and `tracking-[2px]` are driven.
-  The named presets are not: `text-lg` resolves through a `--text-*` token, which has no C# mirror to read
-  a magnitude from, and `tracking-wide` is an em length measured on the element, as `tracking-[0.025em]`
-  is, which a play does not carry. So a `text-sm` → `text-2xl` delta lands instantly while `text-[14px]`
-  → `text-[24px]` animates. Reach for the pixel bracket when you want the value to move.
+- **Font size and letter spacing:** `text-[20px]` and `tracking-[2px]`, and the named font sizes, which read the
+  bundled scale (`text-xs` … `text-9xl` from `_tokens.uss`), so a `text-sm` → `text-2xl` delta animates. A stylesheet
+  that redeclares `--text-*` moves the rendered size and not the size the play interpolates toward. `tracking-normal`
+  is a pixel length of zero. The other tracking presets are not driven: `tracking-wide` is an em length measured on
+  the element, as `tracking-[0.025em]` is, which a play does not carry, so a delta through one lands instantly.
+  Reach for the pixel bracket when you want the spacing to move.
 - **The to-side must name a color or length.** A swapped-out value in the target's unit supplies
   the start unless a running Spring or Bezier play, or a native transition, is moving the slot; otherwise a mounted
-  element supplies its current inline or displayed value. Width and height, including their min/max
-  forms, can convert between pixels and percentages through the parent's content box. Other mixed-unit
-  pairs, or an off-panel target with no matching-unit start, land instantly. A color or length with no
+  element supplies its current inline or displayed value. Width and height (min/max forms included), the
+  `top`/`right`/`bottom`/`left` offsets, padding and margin can convert between pixels and percentages through
+  the parent's content box. Other mixed-unit pairs, or an off-panel target with no matching-unit start, land
+  instantly. A color or length with no
   compatible effective to-side target lands instantly; classes left in place can provide that target when
   the swap removes a from-side class.
+  A slot only the from-side names, or one the to-side leaves to a `-auto` length, heads for what the element shows on
+  it when the play starts if the element already carries the pose it plays into (a mount enter, whose resting
+  classes are applied) and that differs from the from-side's value; otherwise it lands with the swap.
 - **Classes on one side that write the same slot resolve as the cascade resolves them.** A shorthand
   is read slot by slot — `p-8` as four edges, `size-*` as a width and a height, `rounded-*` as four
   corners, `border-*` as four widths — and each slot animates toward whichever class holds it at
@@ -425,10 +437,9 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   Inline values hold their slots over surviving stylesheet utilities; between two stylesheet utilities
   the one the stylesheet declares later holds it, wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
   other three toward `p-8`, and `opacity-50 opacity-20` animates toward `opacity-50`. A slot held by a
-  class no number is read from (`rounded-tl-full` beside `rounded-3xl`, `!scale-x-[.5]` beside
-  `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. A `scale-[…]` of the
-  per-axis utilities' importance or above holds the scale channel, as the element draws it alone, so
-  `scale-x-[.5] scale-[1.4]` animates toward 1.4. A resting class or value in force under a variant
+  class no number is read from (`w-auto`) lands with the swap, and the classes it
+  outranks do not drive it. A `scale-[…]` of the per-axis utilities' importance or above holds both scale
+  axes, as the element draws it alone, so `scale-x-[.5] scale-[1.4]` animates toward 1.4. A resting class or value in force under a variant
   (`hover:scale-x-[.5]`, `focus:scale-50`, `focus:translate-8`, `focus:opacity-50`, `focus:bg-red-500`,
   `focus:w-[60px]`) ranks above the swap's classes, so the slots it holds land with the swap, the element drawing
   the resting value. A resting `translate-x-*` or `translate-y-*`, important or not, keeps its
@@ -448,21 +459,39 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)). This holds for a play that is planned; a swap whose
   target a resting holder under a variant outranks plans none for that slot (*Classes on one side* above), as a
   class change that leaves the computed value alone starts no transition.
+- **Semantic colours** (`bg-primary`, `text-subtle`, `border-default`, the rest of the sheet's role tokens) are read
+  from the live element's `--color-*` custom property when the play starts, so a dark theme or a theme override
+  moves the colour the play runs between. An element off its panel has no resolved properties, and the swap lands
+  its semantic colour instantly.
+- **`aspect-[…]`, `aspect-square` and `aspect-video`** are length channels carrying the ratio.
+- **Paint layers** (`shadow-*`, `skew-*`, `bg-gradient-*`, `z-*`) are drawn by the play along one progress of its
+  own, under the Spring and Bezier drivers alike. The play holds the layers from its start: the class pass that
+  names the pose it ends on records that pose instead of applying it, and the last play to let go applies it, so a
+  layer stays attached afterwards only where the final class list names it. A layer a pose lacks is attached for
+  the play. A shadow interpolates layer by layer, a layer the other pose lacks being the same layer transparent at
+  zero offset, blur and spread; an inset layer against an outer one, or a colour read from the parent or the text
+  against a fixed one, steps at one half. A skew interpolates per axis. A gradient interpolates stop by stop when
+  both poses share shape, interpolation space and stop count, and steps at one half otherwise, a gradient against
+  none included. The gradient texture drawn along the way is the play's own and is destroyed when it ends. `z-*`
+  does not interpolate: the element stays at its start z for the play and takes the end z when the last play lets
+  go.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
-  subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
-  `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
-  (`tracking-wide`) names likewise, per the bullet above; keyword lengths (`w-auto`, `w-full`) are
-  modes, not magnitudes; `rounded-full` is a saturating radius sentinel; `shadow-*`, `skew-*` and
-  gradients are baked silhouette paints; `filter-*` transitions by its own path
-  ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
-  parser, so a ratio change snaps.
+  subsystem owns the slot: `-auto` lengths (`w-auto`, `top-auto`) are modes, not magnitudes (a `-auto` start
+  reads from the layout and animates, and a `-auto` target is read as above); `filter-*` transitions by its own
+  path ([styling-filters.md](styling-filters.md#transitions)).
 - A target-only uniform scale lands instantly when the sampled x and y scale values differ. The edge
   a `divide-dashed` or `divide-dotted` divider draws is sampled as the color its dash takes.
-- **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`, `translate-1/2`, `translate-full`) **and per-axis `scale-x-` /
-  `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.
-  Both families resolve as ordinary utilities; they just apply as plain classes, so the swap lands
-  them instantly.
-- **A play suspends the element's own USS transitions when they cover what it drives.** A driver
+- **Percentage translate** (`translate-x-1/2`, `translate-x-full`, `translate-1/2`, `translate-full`, `translate-x-[50%]`)
+  is a translate channel in percent of the element's own box, so `-translate-x-full` → `translate-x-0` slides
+  an element in by its own width whether or not it has been laid out yet. A zero end takes the unit of the
+  other end. Two nonzero ends in different units (`translate-x-1/2` → `translate-x-[20px]`) share no space to
+  move through, and that axis lands with the swap. A play that interrupts one running in another unit starts
+  from its own start rather than from the value drawn.
+- **Per-axis scale.** `scale-x-*` and `scale-y-*` (presets and brackets) are scale channels of their own, the
+  scale being read per axis as the element draws it: an axis layer takes its axis over the sheet's `scale-<n>`,
+  which the other axis falls back on (`scale-50 scale-x-75` is 0.75 by 0.5), and a `scale-[…]` at or above every
+  axis layer is drawn alone. A scale whose two axes agree at both ends stays one channel.
+- **A play takes what it drives out of the element's own USS transitions when they cover it.** A driver
   writes the exact value the curve or the physics calls for on that frame, so a transition utility
   naming that same property restarts a native transition on every one of those writes and leaves
   the painted value trailing for the whole play, easing in at the end instead of landing. Whether
@@ -481,30 +510,33 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   either, the element transitions nothing and nothing suspends. A play suspends only where its own
   channels intersect the resolved set — a `transition-colors` element running a fade/slide keeps
   its hover fade, while the same play on a `transition-transform` or `transition-all` element
-  suspends. One blind spot: the check runs once at play start, so a variant turning on
-  `transition-all` mid-play is not picked up until the next play. A play starting while a variant
+  suspends. The check is made again when the element's classes change under a running play, so a variant
+  turning on `transition-all` mid-play is picked up. A play starting while a variant
   tween holds the inline `transition-property` takes what it drives out of that list rather than
   writing over it. At play start, spring and bezier length channels remove only their own longhands
   from a held inline list on each style owner; a width-only play keeps that list's height entry,
   including on a clip wrapper.
-  When it does suspend, the suspension is **element-wide**: the element's *other* transitions
-  land instantly too, across the play's `DelaySec` and stagger slot as well as its motion — the
-  element is already parked at its from-pose over that window. This is **narrower than Framer
-  Motion**, which takes over only the values it animates and leaves the element's other CSS
-  transitions running. Two overlapping plays each hold
-  their own claim, so the first to finish cannot un-suspend the second, and the suspension lifts as
-  soon as the last one settles or is cancelled. Reach for `Tween` on the default clock when you want the
+  When it does, the play narrows the element's transitions: the longhands it writes come out of the list (an `all`
+  or a shorthand becoming the other longhands it covers, on its own timing) and the element's other
+  transitions keep running, as Framer Motion takes over only the values it animates. Off a panel the element's
+  transitions cannot be read, so none runs until the next tick reads them. A Tween on a clock other than the
+  panel's lands everything the swap changes, its other properties included, with the swap. Two overlapping plays
+  each hold their own claim, so the first to finish cannot release the second's, and the narrowing lifts as soon
+  as the last one settles or is cancelled. Reach for `Tween` on the default clock when you want the
   class's own transition to do the work instead; on any other, a `Tween` is driven too (*Clocks* below).
 
 ## Cubic-bezier easing
 
-`TransitionType.Bezier` is Spring's other non-CSS sibling: instead of `EasingMode`'s five keyword
-curves, it samples an exact numeric CSS `cubic-bezier(x1,y1,x2,y2)` curve every tick — the same
+`TransitionType.Bezier` is Spring's other non-CSS sibling: instead of `EasingMode`'s fixed set of
+curves (UI Toolkit's native transitions take one of its 22 modes, whose `ease-in-out` is a quadratic standing in
+for `cubic-bezier(0.42, 0, 0.58, 1)` rather than the Tailwind curve), it samples an exact numeric CSS `cubic-bezier(x1,y1,x2,y2)` curve every tick — the same
 algorithm every browser's `cubic-bezier()` runs — via `BezierX1` / `BezierY1` / `BezierX2` /
 `BezierY2`. Unlike a spring it keeps a fixed `DurationSec`, exactly like a plain tween; only the
 shape of the easing differs. It shares Spring's channel scope (*Driven channels* above) and its
-one-curve-drives-both-directions contract —
-there is no separate exit curve, and `PropertyOverrides` is not read. Defaults to Tailwind's own
+one-curve-per-direction contract: `ExitBezier` gives an exit its own curve (`new BezierCurve(x1, y1, x2, y2)`),
+and `PropertyOverrides` gives the channels it names a timing of their own, each entry's delay, duration and easing
+(its curve where it names no easing, and the play's where it names no duration), which that channel plays once
+whatever the play repeats. Defaults to Tailwind's own
 default curve, `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates
 with the `ease-in-out` keyword. `BezierX1` / `BezierX2` must stay in `[0,1]`, since a CSS timing
 function is a function of time and so must be monotone; a value outside that range is invalid and
@@ -717,6 +749,29 @@ interval is eased by the timing function its keyframe names, as a CSS animation 
 | `animate-ping` | scales to twice the element's own scale while fading to nothing by three quarters of the loop, on `cubic-bezier(0, 0, 0.2, 1)`, then holds | 1s |
 | `animate-bounce` | lifts the element a quarter of its height and drops it back, the lift easing in on `cubic-bezier(0.8, 0, 1, 1)` and out on `cubic-bezier(0, 0, 0.2, 1)` | 1s |
 
+### Keyframe animations of your own
+
+`VelvetKeyframes.Register` names a keyframe animation, as CSS `@keyframes` does, and `animate-<name>` loops it through
+the same driver as `animate-pulse`:
+
+```csharp
+VelvetKeyframes.Register("wiggle", new[]
+{
+    new KeyframeStop(0f) { RotateDeg = -3f },
+    new KeyframeStop(0.5f) { RotateDeg = 3f },
+    new KeyframeStop(1f) { RotateDeg = -3f },
+}, durationSec: 1f, timing: new BezierCurve(0.42f, 0f, 0.58f, 1f));
+// <div className="animate-wiggle"> loops it; animate-wiggle-[400ms] sets the time.
+// animate-[wiggle_400ms_linear_infinite] names the time and timing function as well.
+```
+
+A stop holds an opacity, a pixel translate, a scale factor or a rotation, each composing with the element's own value
+as the built-in loops do: opacity replaces it, a translate adds to it, a scale multiplies it and a rotation adds to it.
+A property between stops runs from one stop that names it to the next, on the curve of the stop it leaves
+(`KeyframeStop.Ease`, else the animation's), and starts and ends on the element's own value where no stop at 0 or 1
+names it. The bracket form is claimed only with `infinite` and a registered name; a count, a delay or an unknown token
+leaves the class unclaimed. Register before the first render that uses the name. The name cannot be a built-in's.
+
 `animate-none` cancels. Of two recognised `animate-*` classes the one Tailwind emits last wins, in either
 order, and Tailwind orders them by name: `animate-bounce`, `animate-gradient`, `animate-hue`, `animate-none`,
 `animate-ping`, `animate-pulse`, `animate-shimmer`, `animate-spin`. So `animate-none` cancels the three before it
@@ -740,6 +795,11 @@ a laid-out height. The keyframes' `transform` applies beneath the `scale` and `r
 scaled or turned element is scaled and turned with it. `animate-spin` on an element with an uneven `scale` does
 not carry it: CSS turns the content beneath the scale and leaves the squash axes where they are,
 while a single `rotate` and `scale` turn the squash axes with the element. An even scale is exact.
+
+An important utility of the element's own (`!opacity-50`, `!rotate-45`) outranks the loop, as `!important` outranks a
+CSS animation: the loop leaves its slot alone and the utility's value shows. A value written into a looped slot
+from outside any Velvet render, such as `element.style.opacity = …` in a callback, is corrected on the loop's next
+tick, up to one tick later.
 
 A layoutId move on an element with a running `animate-bounce`, `animate-ping` or `animate-spin` composes with it as
 CSS composes a layout animation with a keyframe one: the move writes the element's translate, scale or rotate, and
@@ -924,10 +984,53 @@ cannot yet sample the interpolated motion between two of them, and running it ba
 step has no settled answer to whether the callback fires again. To reverse a transition a label started,
 flip that Motion's `animate` label back: see "Springs" for what an interrupted spring keeps.
 
-Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
-outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`
-relative-offset DSL) -- steps are a strict FIFO queue; two independently-timed tracks need two separate
-`UseAnimationSequence` coordinators.
+### Animating outside the Motion tree (`UseAnimate`)
+
+`Hooks.UseAnimate()` is Framer Motion's `useAnimate`: it returns a `scope` ref and an `Animator`. Give the root element
+the ref (`refCallback: scope.SetElement`), then animate elements inside it by reference or by selector, with no
+`V.Motion` or variant label involved:
+
+```csharp
+var (scope, animate) = Hooks.UseAnimate();
+
+Hooks.UseEffect(() =>
+{
+    // Alone:
+    animate.Animate(".card", new AnimateValues { Opacity = new[] { 0f, 1f }, Y = new[] { 24f, 0f } },
+        new StyleTransitionConfig { DurationSec = 0.4f });
+
+    // As a sequence whose segments overlap:
+    var controls = animate.Animate(new[]
+    {
+        new AnimateSegment("#title", new AnimateValues { Opacity = new[] { 1f } }),
+        new AnimateSegment(".row", new AnimateValues { X = new[] { -40f, 0f } }, at: AnimateAt.WithPrevious),
+        new AnimateSegment("#footer", new AnimateValues { Scale = new[] { 0.9f, 1f } }, at: AnimateAt.Offset(-0.2f)),
+    });
+    return null;
+}, Array.Empty<object?>());
+
+return V.Div(refCallback: scope.SetElement, children: ...);
+```
+
+- **Targets.** An element, or a selector resolved among the scope's descendants: `.class`, `#name`, a type name (`Button`),
+  compounds of them (`Button.primary`), descendants joined by a space, and groups joined by a comma. A selector call
+  throws while the scope ref holds no element.
+- **Values.** `AnimateValues` takes keyframe arrays for `Opacity`, `X` and `Y` (pixels), `Scale` (uniform) and `RotateDeg`.
+  Two or more run through in turn, evenly spaced over the transition; one is a value to head for from what the element
+  shows when that segment starts. They are written as inline styles, over the element's classes, and stay at the last
+  keyframe when the animation ends.
+- **Transition.** A `StyleTransitionConfig` per call or segment, 0.3 s when null. `Tween` runs `DurationSec` on `Easing`,
+  `Bezier` on its control points, and `Spring` as the spring it describes when the values are one or two keyframes (more
+  play as a tween of `DurationSec`). `DelaySec` delays the segment; `Repeat` and `PropertyOverrides` are not read here.
+- **Placement.** `AnimateAt` is Framer's `at`: after the previous segment ends by default, `AnimateAt.Time(s)` on the
+  timeline, `AnimateAt.WithPrevious` (`"<"`) at the previous segment's start, `AnimateAt.Offset(s)` (`"+0.5"` /
+  `"-0.2"`) from the previous segment's end.
+- **Controls.** `AnimateControls` carries `Play`, `Pause`, `Speed`, `TimeSec`, `IsFinished`, `Then(callback)`, the
+  awaitable `Finished`, `Stop()` (leave the values where they are) and `Cancel()` (put each begun value back at its first
+  keyframe). `Finished` is cancelled by either. A negative or non-finite `Speed` throws.
+- **Lifetime.** The animations step on the mount's frames and stop, as `Stop()` does, when the component unmounts.
+
+Not offered: a stagger option, and values beyond the five above.
 
 **A fixed number of passes** is the overload taking `iterations` in place of `loop` -- the Web Animations
 API's `iterations` and CSS's `animation-iteration-count`, so the count includes the first pass and Framer

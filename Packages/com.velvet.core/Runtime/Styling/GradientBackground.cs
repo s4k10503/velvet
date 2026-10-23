@@ -19,6 +19,8 @@ namespace Velvet
         public bool UnderOverride;
         public Texture2D? Texture;
         public (GradientSpec, BoxKey)? Held;
+        // The texture of a spec a play draws (GradientBackground.RebindOwned), which no cache entry holds.
+        public Texture2D? Owned;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
     }
 
@@ -322,9 +324,11 @@ namespace Velvet
         // the entry it held before.
         private static Texture2D Hold(GradientBinding binding)
         {
-            var spec = binding.Spec;
-            var key = (spec, new BoxKey(
-                DependsOnAspect(spec) ? binding.Box.A : 0, NeedsAbsoluteSize(spec) ? binding.Box.B : 0, binding.Box.Resolution));
+            if (binding.Owned != null)
+            {
+                return BakeOwned(binding);
+            }
+            var key = KeyOf(binding);
             if (binding.Held is { } held && held.Equals(key) && s_cache.TryGetValue(key, out var kept) && kept.Texture != null)
             {
                 return kept.Texture;
@@ -332,10 +336,7 @@ namespace Velvet
             Release(binding);
             if (!s_cache.TryGetValue(key, out var entry) || entry.Texture == null)
             {
-                var box = key.Item2;
-                var absolute = NeedsAbsoluteSize(spec);
-                var aspect = absolute ? (box.A > 0 && box.B > 0 ? box.A / (float)box.B : 1f) : AspectOf(box.A);
-                entry = new CacheEntry { Texture = Bake(spec, aspect, absolute ? Mathf.Max(box.A, 1) : 0f, box.Resolution) };
+                entry = new CacheEntry { Texture = BakeAt(key) };
                 s_cache[key] = entry;
             }
             entry.Holders++;
@@ -346,6 +347,64 @@ namespace Velvet
             }
             binding.Held = key;
             return entry.Texture;
+        }
+
+        private static (GradientSpec, BoxKey) KeyOf(GradientBinding binding)
+        {
+            var spec = binding.Spec;
+            return (spec, new BoxKey(
+                DependsOnAspect(spec) ? binding.Box.A : 0, NeedsAbsoluteSize(spec) ? binding.Box.B : 0, binding.Box.Resolution));
+        }
+
+        private static Texture2D BakeAt((GradientSpec, BoxKey) key)
+        {
+            var spec = key.Item1;
+            var box = key.Item2;
+            var absolute = NeedsAbsoluteSize(spec);
+            var aspect = absolute ? (box.A > 0 && box.B > 0 ? box.A / (float)box.B : 1f) : AspectOf(box.A);
+            return Bake(spec, aspect, absolute ? Mathf.Max(box.A, 1) : 0f, box.Resolution);
+        }
+
+        // Applies a spec with a texture of the binding's own, outside the cache: a play draws a new spec every
+        // frame, and an entry kept for each would outlive the play. EndOwned gives the binding back to the cache.
+        public static void RebindOwned(VisualElement element, GradientBinding binding, GradientSpec spec)
+        {
+            binding.Spec = spec;
+            binding.Box = KeysFor(spec, SizeOf(element, binding), binding.BoxScale);
+            binding.Texture = BakeOwned(binding);
+            WriteImage(element, binding);
+            WriteSize(element, binding);
+            SyncGeometryWatch(element, binding);
+        }
+
+        private static Texture2D BakeOwned(GradientBinding binding)
+        {
+            Release(binding);
+            var texture = BakeAt(KeyOf(binding));
+            DestroyOwned(binding);
+            binding.Owned = texture;
+            return texture;
+        }
+
+        private static void DestroyOwned(GradientBinding binding)
+        {
+            if (binding.Owned != null)
+            {
+                Object.DestroyImmediate(binding.Owned);
+            }
+            binding.Owned = null;
+        }
+
+        // Ends RebindOwned: the binding shows its spec through the cache again.
+        public static void EndOwned(VisualElement element, GradientBinding binding)
+        {
+            if (binding.Owned == null)
+            {
+                return;
+            }
+            DestroyOwned(binding);
+            binding.Texture = Hold(binding);
+            WriteImage(element, binding);
         }
 
         // Lets go of the entry the binding holds. A boxed entry nobody holds waits in the LRU for reuse and is
@@ -402,6 +461,7 @@ namespace Velvet
         {
             Unwatch(element, binding);
             Release(binding);
+            DestroyOwned(binding);
         }
 
         private static void Unwatch(VisualElement element, GradientBinding binding)

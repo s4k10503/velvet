@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
+using Velvet.TestUtilities;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -14,7 +16,7 @@ namespace Velvet.Tests
     /// (<see cref="MotionPropertyClassParser"/> / <see cref="MotionSpringClassParser.Resolve"/>), the values the
     /// drivers write while ticking, the shorthand fan-out on both the write and the clear side, the suspension
     /// of the element's own native USS transition while a driver owns its inline styles, and the deliberate
-    /// holes (one-sided and mixed-unit pairs, the radius sentinel, semantic theme tokens) that keep falling back
+    /// holes (one-sided and mixed-unit pairs, semantic theme tokens) that keep falling back
     /// to the plain class swap.
     /// </summary>
     /// <remarks>
@@ -75,6 +77,13 @@ namespace Velvet.Tests
                 }
             }
             return false;
+        }
+
+        // The element's inline transition-property is a list, and names no style property.
+        private static bool NamesNoProperty(VisualElement element)
+        {
+            var slot = element.style.transitionProperty;
+            return slot.keyword != StyleKeyword.Null && (slot.value == null || slot.value.Count == 0);
         }
 
         // A width drive on element holding its from pose, w-[10px], as a play's first write does until a delay ends.
@@ -193,6 +202,107 @@ namespace Velvet.Tests
             // Assert
             Assert.That(state != null ? (Length?)element.style.width.value : null,
                 Is.EqualTo(new Length(128f, LengthUnit.Pixel)));
+        }
+
+        [Test]
+        public void Given_APercentTranslatePair_When_SteppedToHalfTheDuration_Then_TheInlineTranslateIsTheMidpointPercent()
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act — -translate-x-full (-100%) -> translate-x-0.
+            var state = CreateHalfway(element, new[] { "-translate-x-full" }, new[] { "translate-x-0" });
+
+            // Assert
+            Assert.That(state != null ? (Length?)element.style.translate.value.x : null,
+                Is.EqualTo(new Length(-50f, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_APerAxisScalePair_When_SteppedToHalfTheDuration_Then_EachAxisHoldsItsOwnMidpoint()
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act
+            var state = CreateHalfway(element, new[] { "scale-x-50", "scale-y-100" }, new[] { "scale-x-150", "scale-y-50" });
+
+            // Assert
+            Assert.That(state != null ? (Vector2?)element.style.scale.value.value : null, Is.EqualTo(new Vector2(1f, 0.75f)));
+        }
+
+        [Test]
+        public void Given_ABezierPlayWithAnOpacityOverride_When_SteppedToHalfTheDuration_Then_OnlyTheOverriddenChannelHasFinished()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0", "bg-black" }, new[] { "opacity-100", "bg-white" });
+            var state = BezierTweenDriver.WithOverrides(
+                BezierTweenDriver.Create(plan, LinearX1, LinearY1, LinearX2, LinearY2, durationSec: 1f),
+                new[] { new StylePropertyTransition("opacity", durationSec: 0.25f) });
+
+            // Act
+            if (state != null)
+            {
+                BezierTweenDriver.ApplyCurrentValues(element, state);
+                BezierTweenDriver.Step(element, state, 0.5f);
+            }
+
+            // Assert
+            Assert.That(state != null ? ((float, float)?)(element.style.opacity.value, element.style.backgroundColor.value.r) : null,
+                Is.EqualTo(((float, float)?)(1f, 0.5f)));
+        }
+
+        [Test]
+        public void Given_ASpringPlayWithAnOpacityOverride_When_SteppedHalfTheOverridesDuration_Then_OpacityIsHalfwayOnTheOverridesEasing()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.WithOverrides(MotionSpringDriver.Create(plan, 100f, 10f, 1f),
+                new[] { new StylePropertyTransition("opacity", durationSec: 0.5f, easing: EasingMode.Linear) },
+                EasingMode.EaseOut, 0f);
+
+            // Act
+            if (state != null)
+            {
+                MotionSpringDriver.ApplyCurrentValues(element, state);
+                MotionSpringDriver.Step(element, state, 0.25f);
+            }
+
+            // Assert
+            Assert.That(state != null ? (float?)element.style.opacity.value : null, Is.EqualTo(0.5f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ASpringConfigWithExitPhysics_When_GivenItsExitClasses_Then_TheExitPhysicsAreKept()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, ExitSpring = new SpringPhysics(300f, 20f, 2f) };
+
+            // Act
+            var exit = config.WithExitClasses("opacity-100", "opacity-0");
+
+            // Assert
+            Assert.That(exit.ExitSpring is { } physics ? (physics.Stiffness, physics.Damping, physics.Mass) : default,
+                Is.EqualTo((300f, 20f, 2f)));
+        }
+
+        [Test]
+        public void Given_ABezierConfigWithAnExitCurve_When_GivenItsExitClasses_Then_TheExitCurveIsKept()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, ExitBezier = new BezierCurve(0.1f, 0.2f, 0.3f, 0.4f),
+            };
+
+            // Act
+            var exit = config.WithExitClasses("opacity-100", "opacity-0");
+
+            // Assert
+            Assert.That(exit.ExitBezier is { } curve ? (curve.X1, curve.Y1, curve.X2, curve.Y2) : default,
+                Is.EqualTo((0.1f, 0.2f, 0.3f, 0.4f)));
         }
 
         [Test]
@@ -347,11 +457,9 @@ namespace Velvet.Tests
             // Act
             var state = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
 
-            // Assert — the inline transition-property resolves to no style property at all, so the element
-            // computes zero transitions and the driver's writes reach the paint unfiltered.
-            var declared = element.style.transitionProperty.value;
-            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
-                Is.True);
+            // Assert — off a panel the element's own transitions cannot be read, so none is left to run until it is
+            // attached, and the driver's writes reach the paint unfiltered.
+            Assert.That(state != null && NamesNoProperty(element), Is.True);
         }
 
         [Test]
@@ -399,21 +507,21 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARoundedFullSide_When_Resolved_Then_NoRadiusChannelIsPlanned()
+        public void Given_ARoundedFullTarget_When_Resolved_Then_EveryCornerChannelEndsAtTheFullRadius()
         {
-            // Arrange / Act — rounded-full is a saturating radius sentinel rather than a magnitude, so animating
-            // toward it would read as a wildly oversized radius rather than as a shape change.
+            // Arrange / Act
             var plan = MotionSpringClassParser.Resolve(new[] { "rounded-none" }, new[] { "rounded-full" });
 
             // Assert
-            Assert.That(plan.IsEmpty, Is.True);
+            Assert.That(string.Join(",", plan.Lengths?.Select(l => l.To) ?? Enumerable.Empty<float>()),
+                Is.EqualTo("9999,9999,9999,9999"));
         }
 
         [Test]
         public void Given_ASemanticThemeTokenPair_When_Resolved_Then_NoColorChannelIsPlanned()
         {
-            // Arrange / Act — bg-primary / bg-surface resolve through --color-* theme tokens that have no C#
-            // mirror, so no numeric endpoint exists to interpolate between.
+            // Arrange / Act — bg-primary / bg-surface resolve through --color-* custom properties that only a panel
+            // holds for an element, so off a panel no endpoint exists to interpolate between.
             var plan = MotionSpringClassParser.Resolve(new[] { "bg-surface" }, new[] { "bg-primary" });
 
             // Assert
@@ -549,6 +657,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnElementOnAPanelTransitioningEverything_When_APlayDrivesItsTranslate_Then_OnlyTheTranslateIsTakenOutOfItsTransitions()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            host.Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>("Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss"));
+            var element = new VisualElement();
+            element.AddToClassList("transition-all");
+            element.AddToClassList("duration-300");
+            host.Root.Add(element);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Act
+            var state = CreateHalfway(element, new[] { "-translate-x-8" }, new[] { "translate-x-0" });
+
+            // Assert
+            var list = element.style.transitionProperty.value;
+            Assert.That(state != null && list != null ? (list.Contains(new StylePropertyName("opacity")), list.Contains(new StylePropertyName("translate")))
+                : ((bool, bool)?)null, Is.EqualTo(((bool, bool)?)(true, false)));
+        }
+
+        [Test]
         public void Given_APlayWhoseSlotsTheElementsTransitionDoesNotName_When_Started_Then_ItsTransitionIsUntouched()
         {
             // Arrange — .transition-colors names background-color / border-color / color, none of which this
@@ -577,9 +706,7 @@ namespace Velvet.Tests
             var state = CreateHalfway(element, new[] { "-translate-x-8" }, new[] { "translate-x-0" });
 
             // Assert
-            var declared = element.style.transitionProperty.value;
-            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
-                Is.True);
+            Assert.That(state != null && NamesNoProperty(element), Is.True);
         }
 
         [Test]
@@ -593,9 +720,7 @@ namespace Velvet.Tests
             var state = CreateHalfway(element, new[] { "opacity-0" }, new[] { "opacity-100" });
 
             // Assert
-            var declared = element.style.transitionProperty.value;
-            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
-                Is.True);
+            Assert.That(state != null && NamesNoProperty(element), Is.True);
         }
 
         [Test]
@@ -626,9 +751,7 @@ namespace Velvet.Tests
             var state = CreateHalfway(element, new[] { "-translate-x-8" }, new[] { "translate-x-0" });
 
             // Assert
-            var declared = element.style.transitionProperty.value;
-            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
-                Is.True);
+            Assert.That(state != null && NamesNoProperty(element), Is.True);
         }
 
         [Test]

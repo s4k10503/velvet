@@ -49,6 +49,11 @@ namespace Velvet
             internal MotionPlayback? Playback { get; init; }
             // How a bezier or spring play repeats; a tween does not read it.
             internal MotionRepeat Repeat { get; init; }
+            // The per-property timings a bezier or spring play gives the channels they name, with the easing and duration an
+            // entry that names none takes.
+            internal IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
+            internal EasingMode Easing { get; init; }
+            internal float DurationSec { get; init; }
             // Whether a spring play runs each channel on the transition Framer picks for its type
             // (StyleTransitionConfig.PerValueDefaults).
             internal bool PerValueDefaults { get; init; }
@@ -237,6 +242,9 @@ namespace Velvet
                 IsExit = false,
                 Playback = playback,
                 Repeat = repeat,
+                PropertyOverrides = propertyOverrides,
+                Easing = easing,
+                DurationSec = durationSec,
                 PerValueDefaults = perValueDefaults,
             };
 
@@ -488,6 +496,9 @@ namespace Velvet
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = true,
                 Repeat = config.PlayedRepeat,
+                PropertyOverrides = VariantOverrides(config, restoreFromOnCancel),
+                Easing = ExitEasingOf(config),
+                DurationSec = config.DurationSec,
                 PerValueDefaults = config.PerValueDefaults,
             };
 
@@ -498,17 +509,13 @@ namespace Velvet
                 // Deferred to attach when off-panel: a presence exit can start while its subtree is transiently
                 // detached by a keyed reorder (see the tween exit's own ScheduleOnHost below) and this exit must
                 // still eventually complete so the reconciler's ghost-removal re-render fires.
-                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass, config.SpringSettleSec,
-                    config.SpringDescription);
+                StartSpringExit(in play, config);
                 return;
             }
 
             if (config.Type == TransitionType.Bezier)
             {
-                // One curve drives both directions (no ExitBezier* fields — mirrors the spring reusing its single
-                // stiffness/damping/mass for the exit). Deferred-to-attach when off-panel, same as the spring exit.
-                StartBezierVariant(in play, config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2,
-                    config.DurationSec);
+                StartBezierExit(in play, config);
                 return;
             }
 
@@ -724,15 +731,17 @@ namespace Velvet
             var slots = context ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses);
             slots.ForExit = isExit;
             slots.RestingSkew = RestingSkew(element);
-            var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
-                restingTranslate.x.value, restingTranslate.y.value, slots);
+            var plan = MotionSpringClassParser.ResolveResting(fromClasses, toClasses, restingTranslate, slots);
             plan = StartFromHeld(element, plan, fromClasses, toClasses);
+            plan.Paint = Context?.PaintLeases?.Open(element, fromClasses, toClasses, isExit);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
             var state = Skewing(ValidateSpringParameters(stiffness, damping, mass)
-                ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description,
-                    play.PerValueDefaults)
+                ? MotionSpringDriver.WithOverrides(
+                    MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description,
+                        play.PerValueDefaults),
+                    play.PropertyOverrides, play.Easing, play.DurationSec)
                 : null);
             GestureChannelMask.MarkExit(state, isExit);
             // A spring or bezier play this one interrupts hands on its velocity, and a native transition its rate, both
@@ -763,6 +772,7 @@ namespace Velvet
 
             if (state == null)
             {
+                plan.Paint?.Release();
                 onComplete?.Invoke();
                 return;
             }
@@ -861,9 +871,11 @@ namespace Velvet
         {
             // Copied out because a lambda cannot capture an `in` parameter.
             var repeat = play.Repeat;
+            var overrides = play.PropertyOverrides;
             StartDriven(in play, play.FromClasses, play.ToClasses,
                 plan => ValidateBezierParameters(x1, y1, x2, y2, durationSec)
-                    ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat)
+                    ? BezierTweenDriver.WithOverrides(
+                        BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat), overrides)
                     : null,
                 play.DelaySec + play.AdditionalDelaySec, removesToClasses: false);
         }
@@ -912,6 +924,31 @@ namespace Velvet
                 : pending?.Bezier is { } bezier ? BezierTweenDriver.Drawn(bezier, pending.Playback?.Scale(1f) ?? 1f)
                 : null;
 
+        // An exit runs on the physics of ExitSpring where the config gives it, and then no duration-described spring.
+        private void StartSpringExit(in VariantPlay play, StyleTransitionConfig config)
+        {
+            if (config.ExitSpring is { } physics)
+            {
+                StartSpringVariant(in play, physics.Stiffness, physics.Damping, physics.Mass, null, null);
+                return;
+            }
+            StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass, config.SpringSettleSec,
+                config.SpringDescription);
+        }
+
+        private static EasingMode ExitEasingOf(StyleTransitionConfig config) => config.ExitEasing ?? config.Easing;
+
+        // Per-property overrides reach a variant exit alone.
+        private static IReadOnlyList<StylePropertyTransition>? VariantOverrides(StyleTransitionConfig config, bool variant)
+            => variant ? config.PropertyOverrides : null;
+
+        // Deferred-to-attach when off-panel, same as the spring exit.
+        private void StartBezierExit(in VariantPlay play, StyleTransitionConfig config)
+        {
+            var curve = config.ExitBezier ?? new BezierCurve(config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2);
+            StartBezierVariant(in play, curve.X1, curve.Y1, curve.X2, curve.Y2, config.DurationSec);
+        }
+
         // The bezier driver's half of a play, shared by a Bezier (StartBezierVariant) and a driven Tween. planFrom /
         // planTo: the classes the plan is read from, where a preset's tokens stand in for its classes. create: the
         // state for the resolved plan, null to land the classes and complete at once. startDelaySec: how long the
@@ -934,9 +971,9 @@ namespace Velvet
             var slots = context ?? MotionSlotContext.ReadImportant(element, planFrom, planTo);
             slots.ForExit = play.IsExit;
             slots.RestingSkew = RestingSkew(element);
-            var plan = MotionSpringClassParser.Resolve(planFrom, planTo,
-                restingTranslate.x.value, restingTranslate.y.value, slots);
+            var plan = MotionSpringClassParser.ResolveResting(planFrom, planTo, restingTranslate, slots);
             plan = StartFromHeld(element, plan, planFrom, planTo);
+            plan.Paint = Context?.PaintLeases?.Open(element, planFrom, planTo, play.IsExit);
             // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
@@ -961,6 +998,7 @@ namespace Velvet
 
             if (state == null)
             {
+                plan.Paint?.Release();
                 onComplete?.Invoke();
                 return;
             }
@@ -1328,6 +1366,24 @@ namespace Velvet
             _held[element] = pending;
         }
 
+        // Decides again which of the element's own transitions its running plays take out, after a class patch that
+        // may have started or stopped declaring one over what they write.
+        internal void ResyncTransitions(VisualElement element)
+        {
+            ResyncTransitions(_pendingEnters, element);
+            ResyncTransitions(_pendingExits, element);
+            ResyncTransitions(_held, element);
+        }
+
+        private static void ResyncTransitions(Dictionary<VisualElement, PendingAnimation> map, VisualElement element)
+        {
+            if (map.TryGetValue(element, out var pending) && pending.Bezier is not { Easing: not null }
+                && ((IGestureMaskableState?)pending.Spring ?? pending.Bezier) is { } state)
+            {
+                GestureChannelMask.ResyncNarrowing(element, state);
+            }
+        }
+
         // A held play's values are the ones the element's next Spring or Bezier play on the channels both drive
         // starts from, as Framer Motion's next animation starts from where a cancelled one left its value.
         private MotionSpringClassParser.SpringPlan StartFromHeld(VisualElement element,
@@ -1368,8 +1424,8 @@ namespace Velvet
             {
                 var (axis, to) = plan.LoneTranslate.Value;
                 var (x, y) = axis == SpringAxis.TranslateX
-                    ? (to, start.TranslateY!.Value.from)
-                    : (start.TranslateX.Value.from, to);
+                    ? (new Length(to, plan.TranslateXUnit), new Length(start.TranslateY!.Value.from, start.TranslateYUnit))
+                    : (new Length(start.TranslateX.Value.from, start.TranslateXUnit), new Length(to, plan.TranslateYUnit));
                 if (held.Spring != null)
                 {
                     MotionSpringDriver.HoldTranslate(held.Spring, x, y);

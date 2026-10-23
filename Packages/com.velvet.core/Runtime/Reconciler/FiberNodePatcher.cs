@@ -306,6 +306,11 @@ namespace Velvet
             var classified = FiberZLayerCoordinator.TryClassify(newNode.ClassNames, newNode.Props, out var newResolvedZ);
             var isZ = FiberZLayerCoordinator.Stacks(_ctx, FiberZLayerCoordinator.ClassElementOf(_ctx, real), classified,
                 ref newResolvedZ);
+            if (_ctx.PaintLeases!.Holds(real, FiberPaintLeases.Layer.Z))
+            {
+                _ctx.PaintLeases.NoteZ(real, isZ, newResolvedZ);
+                return;
+            }
             var placeholder = FiberZLayerCoordinator.PlaceholderOf(_ctx, real);
             if (placeholder == null)
             {
@@ -334,6 +339,11 @@ namespace Velvet
                 RestingClassSet(motion, newNode.ClassNames).Merged, newNode.Props, out var resolvedZ);
             var isZ = FiberZLayerCoordinator.Stacks(_ctx, motion, classified, ref resolvedZ);
             // Read again after the patch, for the reason PatchZLayerElement gives.
+            if (_ctx.PaintLeases!.Holds(motion, FiberPaintLeases.Layer.Z))
+            {
+                _ctx.PaintLeases.NoteZ(motion, isZ, resolvedZ);
+                return;
+            }
             var placeholder = FiberZLayerCoordinator.PlaceholderOf(_ctx, motion);
             if (placeholder == null)
             {
@@ -436,7 +446,9 @@ namespace Velvet
             {
                 // A rule can match a descendant by this element's classes, so the loops beneath read theirs again.
                 StyleAnimateDriver.NotifySubtreeStyleChanged(element);
+                _ctx.StyleAnimationScheduler.ResyncTransitions(element);
             }
+            _ctx.PaintLeases!.Note(element, classNames);
             _appliers.ApplyGradientOnPatch(element, classNames);
             _appliers.ApplyAnimateOnPatch(element, classNames);
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);
@@ -689,20 +701,30 @@ namespace Velvet
             // (CancelExit's reversal, or no-op) — so the one real overlap is a GHOST re-patched on a LATER
             // render while still exiting (skipping the ghost dispatch's own CancelEnter, which only runs the
             // FIRST time state.Exiting.Add(key) succeeds): IsExiting catches exactly that window.
-            if (playedTransition != null)
+            // The play below starts ahead of the class pass that names the pose it ends on; the paint leases are told
+            // so, since a play started anywhere else has no such pass to wait for.
+            _ctx.PaintLeases!.PassFollows = true;
+            try
             {
-                _ctx.StyleAnimationScheduler.PlayVariantEnter(element, oldVariantClasses, newVariantClasses,
-                    playedTransition, onComplete: null, additionalDelaySec: playDelaySec, onSwap: onSwap,
-                    appliedClasses: appliedNew, playback: playback);
-            }
-            RemoveStaleInlineTokens(element, playedTransition, extraDelaySec, oldVariantClasses,
-                new MotionAppliedClassSet(appliedNew, newVariantClasses));
+                if (playedTransition != null)
+                {
+                    _ctx.StyleAnimationScheduler.PlayVariantEnter(element, oldVariantClasses, newVariantClasses,
+                        playedTransition, onComplete: null, additionalDelaySec: playDelaySec, onSwap: onSwap,
+                        appliedClasses: appliedNew, playback: playback);
+                }
+                RemoveStaleInlineTokens(element, playedTransition, extraDelaySec, oldVariantClasses,
+                    new MotionAppliedClassSet(appliedNew, newVariantClasses));
 
-            // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
-            // children) directly. A clip wrapper, where the classes call for one, suppresses the paints a clip clips.
-            var clipActive = _appliers.ApplyClipPathOnPatch(element, appliedNew);
-            _ctx.ExpectPlayGates(element, newNode);
-            ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, clipActive);
+                // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
+                // children) directly. A clip wrapper, where the classes call for one, suppresses the paints a clip clips.
+                var clipActive = _appliers.ApplyClipPathOnPatch(element, appliedNew);
+                _ctx.ExpectPlayGates(element, newNode);
+                ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, clipActive);
+            }
+            finally
+            {
+                _ctx.PaintLeases.PassFollows = false;
+            }
 
             // Shared-element layout animation (layoutId): independent of the variant swap
             // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so

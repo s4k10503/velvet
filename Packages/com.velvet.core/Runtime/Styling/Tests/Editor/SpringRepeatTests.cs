@@ -243,8 +243,8 @@ namespace Velvet.Tests
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-50" }, new[] { "opacity-100" });
 
             // Act — two mirrored 1.05 s passes.
-            var span = MotionSpringDriver.SpanSec(plan, Stiffness, Damping, Mass,
-                new MotionRepeat(1f, TransitionRepeatType.Mirror, 0f));
+            var repeat = new MotionRepeat(1f, TransitionRepeatType.Mirror, 0f);
+            var span = MotionSpringDriver.SpanSec(MotionSpringDriver.Create(plan, Stiffness, Damping, Mass, repeat), repeat);
 
             // Assert
             Assert.That(span, Is.EqualTo(2.1).Within(1e-5));

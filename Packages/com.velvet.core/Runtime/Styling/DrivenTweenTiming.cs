@@ -82,7 +82,7 @@ namespace Velvet
         private (float delaySec, float durationSec) Entry(StylePropertyTransition entry)
             => (entry.DelaySec ?? _topDelaySec, Math.Max(0f, entry.DurationSec ?? DurationSec));
 
-        private static StyleLonghandSet Named(string property)
+        internal static StyleLonghandSet Named(string property)
             => s_named.TryGetValue(property, out var named) ? named : StyleLonghandSet.Empty;
 
         // The shorthands naming a longhand a driven channel writes. DrivenTweenShorthandTests pins each against the

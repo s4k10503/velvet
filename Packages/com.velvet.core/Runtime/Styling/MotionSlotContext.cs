@@ -29,6 +29,38 @@ namespace Velvet
         // element's own, and reads no current value and no other resting holder.
         public bool Attached { get; }
 
+        // Whether the element already carries the pose a play heads for, so that what it shows is the target: every
+        // class of the pose is on it and none that only the pose it leaves has. A class the element holds as an inline
+        // value is on no class list and decides nothing.
+        public bool CarriesTarget { get; private init; }
+
+        private static bool CarriesPose(VisualElement element, string[]? pose, string[]? left)
+        {
+            var present = new HashSet<string>(element.GetClasses(), StringComparer.Ordinal);
+            var carried = false;
+            foreach (var core in ClassNames(pose))
+            {
+                if (!present.Contains(core)) return false;
+                carried = true;
+            }
+            var posed = new HashSet<string>(ClassNames(pose), StringComparer.Ordinal);
+            foreach (var core in ClassNames(left))
+            {
+                if (present.Contains(core) && !posed.Contains(core)) return false;
+            }
+            return carried;
+        }
+
+        // The classes that can be told by the class list.
+        private static IEnumerable<string> ClassNames(string[]? classes)
+        {
+            foreach (var cls in classes ?? Array.Empty<string>())
+            {
+                var core = StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out _);
+                if (core.Length > 0 && !StyleArbitraryValueResolver.IsInlineResolved(core)) yield return core;
+            }
+        }
+
         public static MotionSlotContext? Read(VisualElement element, string[]? fromClasses, string[]? toClasses,
             Func<ArbitraryProperty, bool> drivenByRunningPlay, Func<ArbitraryProperty, bool>? drivenByLivePlay = null)
         {
@@ -36,7 +68,10 @@ namespace Velvet
             {
                 return null;
             }
-            var context = new MotionSlotContext(element, drivenByRunningPlay, attached: true);
+            var context = new MotionSlotContext(element, drivenByRunningPlay, attached: true)
+            {
+                CarriesTarget = CarriesPose(element, toClasses, fromClasses),
+            };
             if (drivenByLivePlay != null) context._drivenByLivePlay = drivenByLivePlay;
             return Swapping(context, fromClasses, toClasses);
         }
@@ -289,6 +324,83 @@ namespace Velvet
             }
         }
 
+        // The colour custom property variable holds for the element: its own declaration, else the nearest ancestor's,
+        // as inheritance settles it. False before the styles resolve.
+        public bool TryReadThemeColor(string variable, out Color color)
+        {
+            var asColor = new CustomStyleProperty<Color>(variable);
+            var asText = new CustomStyleProperty<string>(variable);
+            color = default;
+            var found = false;
+            for (var holder = _element; holder != null && !found; holder = holder.hierarchy.parent)
+            {
+                found = holder.customStyle.TryGetValue(asColor, out color)
+                    || (holder.customStyle.TryGetValue(asText, out var text) && TryParseColorText(text, out color));
+            }
+            return found;
+        }
+
+        // The spellings the bundled tokens declare a colour in: rgb(r, g, b), rgba(r, g, b, a) and #hex.
+        private static bool TryParseColorText(string text, out Color color)
+        {
+            color = default;
+            text = text.Trim();
+            if (text.StartsWith("#", StringComparison.Ordinal))
+            {
+                return ColorUtility.TryParseHtmlString(text, out color);
+            }
+            var open = text.IndexOf('(');
+            if (open < 0 || !text.EndsWith(")", StringComparison.Ordinal)
+                || !(text.StartsWith("rgb", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+            var parts = text.Substring(open + 1, text.Length - open - 2).Split(',');
+            if (parts.Length is not (3 or 4))
+            {
+                return false;
+            }
+            var channels = new float[4] { 0f, 0f, 0f, 1f };
+            for (var i = 0; i < parts.Length; i++)
+            {
+                if (!float.TryParse(parts[i].Trim(), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out channels[i]))
+                {
+                    return false;
+                }
+            }
+            color = new Color(channels[0] / 255f, channels[1] / 255f, channels[2] / 255f, channels[3]);
+            return true;
+        }
+
+        /// <summary>
+        /// What the element shows on <paramref name="slot"/> now, in <paramref name="unit"/>, for a slot only one side of
+        /// a swap names: the value a play heads for when the element already carries the pose it plays into. False
+        /// where a play or a native transition is moving the slot, or the value cannot be put in the unit.
+        /// </summary>
+        public bool TryReadResting(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
+        {
+            value = default;
+            return !DrivenByLivePlay(slot) && !NativeTransitionRunning(slot) && TryReadResolved(slot, out value)
+                && (MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit));
+        }
+
+        // The scale the element draws on each axis: its inline scale where that is set and no native transition is
+        // moving it, else the resolved one.
+        public bool TryReadScaleAxes(out Vector2 value)
+        {
+            var owner = Owner(ArbitraryProperty.Scale);
+            var inline = owner.style.scale;
+            if (inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(ArbitraryProperty.Scale))
+            {
+                value = inline.value.value;
+                return true;
+            }
+            var resolved = owner.resolvedStyle.scale.value;
+            value = new Vector2(resolved.x, resolved.y);
+            return !float.IsNaN(value.x) && !float.IsNaN(value.y) && !float.IsInfinity(value.x) && !float.IsInfinity(value.y);
+        }
+
         public bool TryReadCurrent(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
         {
             if (slot == ArbitraryProperty.BorderColor)
@@ -329,7 +441,8 @@ namespace Velvet
             {
                 var owner = Owner(slot);
                 var own = SeatedTranslate.Unseated(owner, owner.resolvedStyle.translate);
-                return Pixels(slot, slot == ArbitraryProperty.TranslateX ? own.x : own.y, out value);
+                return Pixels(slot, slot == ArbitraryProperty.TranslateX ? own.x : own.y, out value)
+                    && (value.Unit == unit || TryConvert(slot, ref value, unit));
             }
             return TryReadResolved(slot, out value)
                 && (MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit));
@@ -545,15 +658,7 @@ namespace Velvet
 
         private bool TryConvert(ArbitraryProperty slot, ref ArbitraryStyle value, LengthUnit unit)
         {
-            var parent = Owner(slot).hierarchy.parent;
-            var horizontal = slot is ArbitraryProperty.Width or ArbitraryProperty.MinWidth or ArbitraryProperty.MaxWidth;
-            var vertical = slot is ArbitraryProperty.Height or ArbitraryProperty.MinHeight or ArbitraryProperty.MaxHeight;
-            if (parent == null || (!horizontal && !vertical))
-            {
-                return false;
-            }
-            var basis = horizontal ? parent.contentRect.width : parent.contentRect.height;
-            if (!(basis > 0f) || float.IsInfinity(basis))
+            if (!TryPercentBasis(slot, out var basis))
             {
                 return false;
             }
@@ -561,6 +666,37 @@ namespace Velvet
             value = new ArbitraryStyle(slot, unit == LengthUnit.Percent ? pixels / basis * 100f : pixels, unit);
             return true;
         }
+
+        // The pixels a slot's 100% stands for: the element's own box for a translate, else the parent's content box.
+        private bool TryPercentBasis(ArbitraryProperty slot, out float basis)
+        {
+            basis = 0f;
+            var owner = Owner(slot);
+            if (slot is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY)
+            {
+                basis = slot == ArbitraryProperty.TranslateX ? owner.layout.width : owner.layout.height;
+            }
+            else if (owner.hierarchy.parent is { } parent)
+            {
+                basis = IsHorizontalPercent(slot) ? parent.contentRect.width
+                    : IsVerticalPercent(slot) ? parent.contentRect.height : 0f;
+            }
+            return basis > 0f && !float.IsInfinity(basis);
+        }
+
+        // Padding and margin percentages are of the containing block's width on every edge.
+        private static bool IsHorizontalPercent(ArbitraryProperty slot)
+            => slot is ArbitraryProperty.Width or ArbitraryProperty.MinWidth or ArbitraryProperty.MaxWidth
+                or ArbitraryProperty.Left or ArbitraryProperty.Right || IsSpacingEdge(slot);
+
+        private static bool IsVerticalPercent(ArbitraryProperty slot)
+            => slot is ArbitraryProperty.Height or ArbitraryProperty.MinHeight or ArbitraryProperty.MaxHeight
+                or ArbitraryProperty.Top or ArbitraryProperty.Bottom;
+
+        private static bool IsSpacingEdge(ArbitraryProperty slot)
+            => slot is ArbitraryProperty.PaddingTop or ArbitraryProperty.PaddingRight or ArbitraryProperty.PaddingBottom
+                or ArbitraryProperty.PaddingLeft or ArbitraryProperty.MarginTop or ArbitraryProperty.MarginRight
+                or ArbitraryProperty.MarginBottom or ArbitraryProperty.MarginLeft;
 
         private static bool Float(ArbitraryProperty slot, StyleFloat style, out ArbitraryStyle value)
         {

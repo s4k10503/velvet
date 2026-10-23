@@ -188,36 +188,37 @@ namespace Velvet.Tests
             Assert.That(plan.Rotate, Is.EqualTo(((float, float)?)(45f, -45f)));
         }
 
-        [TestCase("translate-x-1/2", "translate-x-full")]
-        [TestCase("translate-1/2", "translate-full")]
-        public void Given_APercentTranslateClassPair_When_Resolved_Then_NoTranslateChannelIsPlanned(string from, string to)
+        [TestCase("translate-x-1/2", "translate-x-full", "(50, 100),(0, 0)")]
+        [TestCase("translate-1/2", "translate-full", "(50, 100),(50, 100)")]
+        [TestCase("-translate-x-full", "translate-x-0", "(-100, 0),(0, 0)")]
+        public void Given_APercentTranslateClassPair_When_Resolved_Then_TheTranslateChannelsRunBetweenTheirPercentages(string from,
+            string to, string expected)
         {
-            // Arrange — the gate carries the fact that the from-side spelling IS a real utility, resolving in
-            // percent. Without it the case would pass just as well on a class nothing recognizes, pinning the
-            // scope hole in name only.
-            var resolvesAsPercentTranslate =
-                StyleArbitraryValueResolver.TryParse(from, out var half) && half.Unit == LengthUnit.Percent;
-
             // Act
             var plan = MotionSpringClassParser.Resolve(new[] { from }, new[] { to });
 
             // Assert
-            Assert.That((resolvesAsPercentTranslate, plan.TranslateX.HasValue), Is.EqualTo((true, false)));
+            Assert.That($"{plan.TranslateX},{plan.TranslateY}", Is.EqualTo(expected));
         }
 
         [Test]
-        public void Given_APerAxisScaleClassPair_When_Resolved_Then_NoScaleChannelIsPlanned()
+        public void Given_APercentAndAPixelTranslateOfNonzeroSize_When_Resolved_Then_TheAxisLandsAtTheTargetInItsUnit()
         {
-            // Arrange — same gate shape as the percent-translate case above.
-            var resolvesAsPerAxisScale =
-                StyleArbitraryValueResolver.TryParse("scale-x-50", out var half)
-                && half.Property == ArbitraryProperty.ScaleX;
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-1/2" }, new[] { "translate-x-[20px]" });
 
+            // Assert
+            Assert.That($"{plan.TranslateX}", Is.EqualTo("(20, 20)"));
+        }
+
+        [Test]
+        public void Given_APerAxisScaleClassPair_When_Resolved_Then_TheAxisRunsAndTheOtherStaysAtOne()
+        {
             // Act
             var plan = MotionSpringClassParser.Resolve(new[] { "scale-x-50" }, new[] { "scale-x-110" });
 
             // Assert
-            Assert.That((resolvesAsPerAxisScale, plan.Scale.HasValue), Is.EqualTo((true, false)));
+            Assert.That($"{plan.Scale},{plan.ScaleY}", Is.EqualTo("(0.5, 1.1),(1, 1)"));
         }
 
         [Test]

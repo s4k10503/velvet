@@ -26,8 +26,7 @@ namespace Velvet
     /// define plus their arbitrary-value/spacing-scale equivalents in <see cref="StyleArbitraryValueResolver"/>.
     /// The color- and length-valued properties are recognized by <see cref="MotionPropertyClassParser"/> and
     /// carried in the same plan (see <see cref="SpringPlan.Colors"/> / <see cref="SpringPlan.Lengths"/>). A class
-    /// neither parser reads a magnitude from (a percentage-based translate like <c>translate-x-1/2</c>, a per-axis
-    /// <c>scale-x-</c>, <c>rounded-full</c>, or anything outside the property parser's own documented scope) is
+    /// neither parser reads a magnitude from (anything outside the property parser's own documented scope) is
     /// not animated, and where it is the token the cascade lets hold a slot, that slot is not animated from the
     /// other tokens on its side either — see <see cref="Claim"/>.
     /// </remarks>
@@ -79,6 +78,8 @@ namespace Velvet
             public (float from, float to)? TranslateX;
             public (float from, float to)? TranslateY;
             public (float from, float to)? Scale;
+            // The y factor of a scale that differs per axis, Scale being its x factor; null for a uniform scale.
+            public (float from, float to)? ScaleY;
             public (float from, float to)? Rotate;
             // Skew angles in degrees, which no style slot holds: a skew-* class is painted (SkewSilhouette), so these
             // channels write the element's skew binding instead (MotionSkewSink).
@@ -88,9 +89,16 @@ namespace Velvet
             public List<LengthChannelPlan>? Lengths;
             // The one translate axis the swap names, and where it lands, when it names one alone.
             public (SpringAxis Axis, float To)? LoneTranslate;
+            // The unit each translate channel's values are in. A channel's two ends share it.
+            public LengthUnit TranslateXUnit;
+            public LengthUnit TranslateYUnit;
+
+            // The play's hold on the paint layers, drawn along one progress of its own.
+            public IMotionPaintLease? Paint;
 
             public bool IsEmpty => Opacity == null && TranslateX == null && TranslateY == null
-                && Scale == null && Rotate == null && SkewX == null && SkewY == null && Colors == null && Lengths == null;
+                && Scale == null && Rotate == null && SkewX == null && SkewY == null && Colors == null && Lengths == null
+                && Paint == null;
         }
 
         // Mirrors _effects.uss's fixed opacity scale exactly (a class outside this exact set has no matching
@@ -113,14 +121,20 @@ namespace Velvet
         /// magnitude shared from <see cref="StyleArbitraryValueResolver"/>'s own preset tables (single-sourced
         /// rather than a second hand-copied dictionary) — then falls back to
         /// <see cref="StyleArbitraryValueResolver.TryParse"/> for the bracket/spacing-scale forms that have no
-        /// USS class at all (<c>translate-x-4</c>, <c>-rotate-6</c>, <c>opacity-[.5]</c>, …). Percentage-based
-        /// translate and per-axis scale-x-/scale-y- are recognized by that resolver but rejected here (out of
-        /// scope — see the type doc).
+        /// USS class at all (<c>translate-x-4</c>, <c>-rotate-6</c>, <c>opacity-[.5]</c>, …). A per-axis
+        /// scale-x-/scale-y- is read per axis by <c>PairScaleAxes</c> instead.
         /// </summary>
         internal static bool TryParseAxisValue(string className, out SpringAxis axis, out float value)
+            => TryParseAxisReading(className, out axis, out value, out var unit) && unit == LengthUnit.Pixel;
+
+        // TryParseAxisValue, with the unit a translate is written in: the fractions and the full keyword read as
+        // percentages of the element's own size.
+        private static bool TryParseAxisReading(string className, out SpringAxis axis, out float value,
+            out LengthUnit unit)
         {
             axis = default;
             value = 0f;
+            unit = LengthUnit.Pixel;
             if (string.IsNullOrEmpty(className))
             {
                 return false;
@@ -173,13 +187,15 @@ namespace Velvet
                         axis = SpringAxis.Rotate;
                         value = arbitrary.Value;
                         return true;
-                    case ArbitraryProperty.TranslateX when arbitrary.Unit == LengthUnit.Pixel:
+                    case ArbitraryProperty.TranslateX when ReadsAsTranslate(arbitrary):
                         axis = SpringAxis.TranslateX;
                         value = arbitrary.Value;
+                        unit = arbitrary.Unit;
                         return true;
-                    case ArbitraryProperty.TranslateY when arbitrary.Unit == LengthUnit.Pixel:
+                    case ArbitraryProperty.TranslateY when ReadsAsTranslate(arbitrary):
                         axis = SpringAxis.TranslateY;
                         value = arbitrary.Value;
+                        unit = arbitrary.Unit;
                         return true;
                 }
             }
@@ -187,12 +203,16 @@ namespace Velvet
             return false;
         }
 
-        private static bool TryParseBothTranslateAxes(string className, out float value)
+        private static bool ReadsAsTranslate(in ArbitraryStyle arbitrary)
+            => arbitrary.Unit == LengthUnit.Pixel || (arbitrary.Unit == LengthUnit.Percent && arbitrary.Expression == null);
+
+        private static bool TryParseBothTranslateAxes(string className, out float value, out LengthUnit unit)
         {
             var core = StyleArbitraryValueResolver.StripImportant(className, out _);
             var parsed = StyleArbitraryValueResolver.TryParse(core, out var arbitrary)
-                && arbitrary.Property == ArbitraryProperty.Translate && arbitrary.Unit == LengthUnit.Pixel;
+                && arbitrary.Property == ArbitraryProperty.Translate && ReadsAsTranslate(arbitrary);
             value = parsed ? arbitrary.Value : 0f;
+            unit = parsed ? arbitrary.Unit : LengthUnit.Pixel;
             return parsed;
         }
 
@@ -208,6 +228,12 @@ namespace Velvet
         /// </summary>
         internal static SpringPlan Resolve(string[]? fromClasses, string[]? toClasses,
             float restingTranslateX = 0f, float restingTranslateY = 0f, MotionSlotContext? context = null)
+            => ResolveResting(fromClasses, toClasses,
+                new Translate(new Length(restingTranslateX), new Length(restingTranslateY)), context);
+
+        /// <summary>Resolve with the resting translate in the units the element holds it in.</summary>
+        internal static SpringPlan ResolveResting(string[]? fromClasses, string[]? toClasses, Translate restingTranslate,
+            MotionSlotContext? context = null)
         {
             var written = WrittenBy(fromClasses).Union(WrittenBy(toClasses));
             var from = Scan(fromClasses, context, written);
@@ -216,10 +242,11 @@ namespace Velvet
             var reading = context is { Attached: true } ? context : null;
             var plan = new SpringPlan();
             PairProperties(in from, in to, reading, ref plan);
-            plan.Opacity = PairAxis(in from, in to, ArbitraryProperty.Opacity, 1f, reading);
-            PairTranslate(in from, in to, restingTranslateX, restingTranslateY, reading, ref plan);
-            plan.Scale = PairAxis(in from, in to, ArbitraryProperty.Scale, 1f, reading);
-            plan.Rotate = PairAxis(in from, in to, ArbitraryProperty.Rotate, 0f, reading);
+            plan.Opacity = PairAxis(in from, in to, ArbitraryProperty.Opacity, 1f, reading, out _);
+            PairTranslate(in from, in to, restingTranslate, reading, ref plan);
+            plan.Scale = PairAxis(in from, in to, ArbitraryProperty.Scale, 1f, reading, out _);
+            plan.Rotate = PairAxis(in from, in to, ArbitraryProperty.Rotate, 0f, reading, out _);
+            PairScaleAxes(fromClasses, toClasses, context, reading, ref plan);
             PairSkew(fromClasses, toClasses, context, ref plan);
             return plan;
         }
@@ -252,9 +279,10 @@ namespace Velvet
         internal static SpringPlan StartingFrom(SpringPlan plan, SpringPlan start)
         {
             plan.Opacity = StartingFrom(plan.Opacity, start.Opacity);
-            plan.TranslateX = StartingFrom(plan.TranslateX, start.TranslateX);
-            plan.TranslateY = StartingFrom(plan.TranslateY, start.TranslateY);
+            if (plan.TranslateXUnit == start.TranslateXUnit) plan.TranslateX = StartingFrom(plan.TranslateX, start.TranslateX);
+            if (plan.TranslateYUnit == start.TranslateYUnit) plan.TranslateY = StartingFrom(plan.TranslateY, start.TranslateY);
             plan.Scale = StartingFrom(plan.Scale, start.Scale);
+            plan.ScaleY = StartingFrom(plan.ScaleY, start.ScaleY ?? start.Scale);
             plan.Rotate = StartingFrom(plan.Rotate, start.Rotate);
             StartingFrom(plan.Colors, start.Colors, static (p, s) => p.Property == s.Property,
                 static (p, s) => new ColorChannelPlan(p.Property, s.From, p.To));
@@ -300,8 +328,9 @@ namespace Velvet
         private static (float from, float to)? Holding(float? value) => value is { } v ? (v, v) : null;
 
         private static (float from, float to)? PairAxis(in SideScan from, in SideScan to,
-            ArbitraryProperty axis, float identity, MotionSlotContext? context)
+            ArbitraryProperty axis, float identity, MotionSlotContext? context, out LengthUnit unit)
         {
+            unit = LengthUnit.Pixel;
             var fromValue = from.ValueOf(axis);
             var toValue = to.ValueOf(axis);
             if ((!fromValue.HasValue && !toValue.HasValue) || to.HeldUnread(axis))
@@ -310,15 +339,40 @@ namespace Velvet
             }
             if (fromValue.HasValue && HoldsExplicitStart(context, from.WasSwapped(axis), axis))
             {
+                if (!SharedUnit(fromValue, from.UnitOf(axis), toValue, to.UnitOf(axis), out unit))
+                {
+                    // A translate of 20px and one of 50% share no space to move through without the element's size,
+                    // so the axis lands with the swap.
+                    return (toValue!.Value, toValue.Value);
+                }
                 return (fromValue.Value, toValue ?? identity);
             }
+            unit = toValue.HasValue ? to.UnitOf(axis) : from.UnitOf(axis);
             if (context != null)
             {
-                return context.TryReadCurrent(axis, LengthUnit.Pixel, out var current)
+                return context.TryReadCurrent(axis, unit, out var current)
                     ? (current.Value, toValue ?? identity)
                     : null;
             }
             return from.HeldUnread(axis) ? null : (identity, toValue ?? identity);
+        }
+
+        // The unit two ends of a channel move in: the one they share, or the other side's where one end is zero,
+        // which is zero in any unit. False for two nonzero ends in different units, which leaves unit at the target's.
+        private static bool SharedUnit(float? fromValue, LengthUnit fromUnit, float? toValue, LengthUnit toUnit,
+            out LengthUnit unit)
+        {
+            unit = toValue.HasValue ? toUnit : fromValue.HasValue ? fromUnit : LengthUnit.Pixel;
+            if (!fromValue.HasValue || !toValue.HasValue || fromUnit == toUnit)
+            {
+                return true;
+            }
+            if (toValue.Value == 0f)
+            {
+                unit = fromUnit;
+                return true;
+            }
+            return fromValue.Value == 0f;
         }
 
         // A slot a running play or a native transition is moving starts from the value on screen; the swapped-out
@@ -334,7 +388,12 @@ namespace Velvet
             public float? TranslateY { get; init; }
             public float? Scale { get; init; }
             public float? Rotate { get; init; }
+            public LengthUnit TranslateXUnit { get; init; }
+            public LengthUnit TranslateYUnit { get; init; }
             public Dictionary<ArbitraryProperty, ArbitraryStyle>? Properties { get; init; }
+            // The longhands held by a token no magnitude is read from, and those held by a -auto length.
+            public StyleLonghandSet UnreadProperties { get; init; }
+            public StyleLonghandSet AutoProperties { get; init; }
             public int SwappedAxes { get; init; }
             public StyleLonghandSet SwappedProperties { get; init; }
 
@@ -353,6 +412,10 @@ namespace Velvet
                 _ => throw new ArgumentOutOfRangeException(nameof(axis), axis, null),
             };
 
+            public LengthUnit UnitOf(ArbitraryProperty axis)
+                => axis == ArbitraryProperty.TranslateX ? TranslateXUnit
+                    : axis == ArbitraryProperty.TranslateY ? TranslateYUnit : LengthUnit.Pixel;
+
             public bool HeldUnread(ArbitraryProperty axis) => (UnreadAxes & (1 << s_slotIndex[(int)axis])) != 0;
 
             // A rejected value holding either translate axis, which leaves the element no translation at all.
@@ -364,8 +427,8 @@ namespace Velvet
         // too. An axis with no channel of its own — forced into the plan only because its sibling needed one —
         // pins at the element's own resting value, so a base translate-y-* class the swap never touches does not
         // get stomped to 0 for the swap's duration.
-        private static void PairTranslate(in SideScan from, in SideScan to,
-            float restingTranslateX, float restingTranslateY, MotionSlotContext? context, ref SpringPlan plan)
+        private static void PairTranslate(in SideScan from, in SideScan to, Translate resting,
+            MotionSlotContext? context, ref SpringPlan plan)
         {
             // The resolver draws no translation where the to-side holds a rejected value on either axis, so neither
             // axis gets a channel and the swap lands at once. A rejected scale-x-/scale-y- needs no such rule: it
@@ -374,14 +437,16 @@ namespace Velvet
             {
                 return;
             }
-            var x = PairAxis(in from, in to, ArbitraryProperty.TranslateX, 0f, context);
-            var y = PairAxis(in from, in to, ArbitraryProperty.TranslateY, 0f, context);
+            var x = PairAxis(in from, in to, ArbitraryProperty.TranslateX, 0f, context, out var xUnit);
+            var y = PairAxis(in from, in to, ArbitraryProperty.TranslateY, 0f, context, out var yUnit);
             if (x == null && y == null)
             {
                 return;
             }
-            plan.TranslateX = x ?? (restingTranslateX, restingTranslateX);
-            plan.TranslateY = y ?? (restingTranslateY, restingTranslateY);
+            plan.TranslateX = x ?? (resting.x.value, resting.x.value);
+            plan.TranslateY = y ?? (resting.y.value, resting.y.value);
+            plan.TranslateXUnit = x != null ? xUnit : resting.x.unit;
+            plan.TranslateYUnit = y != null ? yUnit : resting.y.unit;
             // Read off the swap's classes rather than off x and y, which a resting translate class also fills.
             var swapped = new SideScan { SwappedAxes = from.SwappedAxes | to.SwappedAxes };
             var (swapsX, swapsY) = (swapped.WasSwapped(ArbitraryProperty.TranslateX),
@@ -403,6 +468,7 @@ namespace Velvet
         {
             var fromProperties = fromSide.Properties;
             var toProperties = toSide.Properties;
+            PairRestingTargets(in fromSide, in toSide, context, ref plan);
             if (toProperties == null)
             {
                 return;
@@ -428,6 +494,218 @@ namespace Velvet
                     .Add(new LengthChannelPlan(property, from.Value, to.Value, to.Unit));
             }
         }
+
+        // A slot only the from-side reads, or one the to-side leaves to a -auto length, heads for what the element shows
+        // on it now, where that differs from the from-side's value: an element that already carries the pose it plays
+        // into shows that pose's value, where one still showing the from-side would read its own back and
+        // stand still. Without a panel to read, or a unit to read it in, the slot lands with the swap.
+        private static void PairRestingTargets(in SideScan fromSide, in SideScan toSide, MotionSlotContext? context,
+            ref SpringPlan plan)
+        {
+            if (context is not { CarriesTarget: true } || fromSide.Properties == null)
+            {
+                return;
+            }
+            foreach (var (property, from) in fromSide.Properties)
+            {
+                var longhands = StyleArbitraryLonghands.Of(property);
+                var named = toSide.Properties != null && toSide.Properties.ContainsKey(property);
+                if (named || toSide.UnreadProperties.Overlaps(longhands)
+                    || !context.TryReadResting(property, from.Unit, out var resting) || SameValue(property, from, resting))
+                {
+                    continue;
+                }
+                if (MotionPropertyClassParser.IsColor(property))
+                {
+                    (plan.Colors ??= new List<ColorChannelPlan>()).Add(new ColorChannelPlan(property, from.Color, resting.Color));
+                    continue;
+                }
+                (plan.Lengths ??= new List<LengthChannelPlan>())
+                    .Add(new LengthChannelPlan(property, from.Value, resting.Value, from.Unit));
+            }
+        }
+
+        private static bool SameValue(ArbitraryProperty property, ArbitraryStyle a, ArbitraryStyle b)
+            => MotionPropertyClassParser.IsColor(property) ? a.Color == b.Color : Mathf.Abs(a.Value - b.Value) < 0.01f;
+
+        #region Per-axis scale
+
+        // What one side's scale tokens give each axis, as the resolver's ApplyCombinedScale draws them: an axis
+        // layer (scale-x-*, scale-y-*, a negated or unlisted scale-<n>) takes its axis over the sheet's scale-<n>
+        // class, which the other axis falls back on; a scale-[…] at or above every axis layer is drawn alone.
+        private struct ScaleReading
+        {
+            public float X;
+            public float Y;
+            public bool Swapped;
+            public bool PerAxis;
+            public bool Rejected;
+        }
+
+        private struct ScaleHolder
+        {
+            public long Key;
+            public float Value;
+            public bool Swapped;
+        }
+
+        // The holders of one side's scale layers, collected a token at a time. A holder of equal rank replaces the one
+        // before it, resting classes being collected first, as Claim does.
+        private sealed class ScaleHolders
+        {
+            private readonly StyleLonghandSet _importantClasses;
+            private ScaleHolder _x = Empty, _y = Empty, _both = Empty, _sheet = Empty, _bracket = Empty;
+            public bool PerAxis;
+            public bool Rejected;
+
+            public ScaleHolders(StyleLonghandSet importantClasses) => _importantClasses = importantClasses;
+
+            private static ScaleHolder Empty => new() { Key = -1 };
+
+            public void Add(string cls, int index, bool swapped)
+            {
+                if (string.IsNullOrEmpty(cls) || !TryRank(cls, index, out var token)
+                    || !token.Written.Contains(StyleLonghand.Scale)
+                    || (!token.Important && IsSubset(token.Written, _importantClasses)))
+                {
+                    return;
+                }
+                if (!token.Inline)
+                {
+                    AddSheet(cls, token.Precedence, swapped);
+                    return;
+                }
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                if (!StyleArbitraryValueResolver.TryParseLayer(core, out var layer))
+                {
+                    return;
+                }
+                if (layer.Rejected)
+                {
+                    Rejected = true;
+                    return;
+                }
+                AddLayer(layer.Property, new ScaleHolder
+                {
+                    Key = token.Precedence, Value = layer.Keyword == StyleKeyword.Undefined ? layer.Value : 1f,
+                    Swapped = swapped,
+                });
+            }
+
+            private void AddSheet(string cls, long key, bool swapped)
+            {
+                if (TryParseAxisValue(cls, out var axis, out var factor) && axis == SpringAxis.Scale
+                    && key >= _sheet.Key)
+                {
+                    _sheet = new ScaleHolder { Key = key, Value = factor, Swapped = swapped };
+                }
+            }
+
+            private void AddLayer(ArbitraryProperty property, ScaleHolder held)
+            {
+                PerAxis |= property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
+                switch (property)
+                {
+                    case ArbitraryProperty.ScaleX when held.Key >= _x.Key: _x = held; break;
+                    case ArbitraryProperty.ScaleY when held.Key >= _y.Key: _y = held; break;
+                    case ArbitraryProperty.ScaleBoth when held.Key >= _both.Key: _both = held; break;
+                    case ArbitraryProperty.Scale when held.Key >= _bracket.Key: _bracket = held; break;
+                }
+            }
+
+            public bool Any => _x.Key >= 0 || _y.Key >= 0 || _both.Key >= 0 || _sheet.Key >= 0 || _bracket.Key >= 0
+                || Rejected;
+
+            public ScaleReading Read()
+            {
+                var xLayer = _both.Key > _x.Key ? _both : _x;
+                var yLayer = _both.Key > _y.Key ? _both : _y;
+                var reading = new ScaleReading { PerAxis = PerAxis, Rejected = Rejected };
+                if (_bracket.Key >= 0 && (xLayer.Key < 0 || _bracket.Key >= xLayer.Key)
+                    && (yLayer.Key < 0 || _bracket.Key >= yLayer.Key))
+                {
+                    (reading.X, reading.Y, reading.Swapped) = (_bracket.Value, _bracket.Value, _bracket.Swapped);
+                    return reading;
+                }
+                var xHolder = xLayer.Key >= 0 ? xLayer : _sheet;
+                var yHolder = yLayer.Key >= 0 ? yLayer : _sheet;
+                reading.X = xHolder.Key >= 0 ? xHolder.Value : 1f;
+                reading.Y = yHolder.Key >= 0 ? yHolder.Value : 1f;
+                reading.Swapped = (xHolder.Key >= 0 && xHolder.Swapped) || (yHolder.Key >= 0 && yHolder.Swapped);
+                return reading;
+            }
+        }
+
+        private static bool TryReadScale(string[]? swapClasses, MotionSlotContext? context, out ScaleReading reading)
+        {
+            var holders = new ScaleHolders(CollectImportantClasses(swapClasses ?? Array.Empty<string>(), context));
+            if (context != null)
+            {
+                foreach (var cls in context.RestingClasses())
+                {
+                    if (context.Attached || cls.StartsWith("!", StringComparison.Ordinal))
+                    {
+                        holders.Add(cls, 0, swapped: false);
+                    }
+                }
+            }
+            if (swapClasses != null)
+            {
+                var places = StyleRuleOrder.OrdinalsOf(swapClasses);
+                for (var i = 0; i < swapClasses.Length; i++)
+                {
+                    holders.Add(swapClasses[i], places[i], swapped: true);
+                }
+            }
+            reading = holders.Any ? holders.Read() : default;
+            return holders.Any;
+        }
+
+        // Replaces the uniform scale channel with an x and a y one where a side names an axis of its own. The sides
+        // are read here rather than through the slot claims, which keep one winner per slot.
+        private static void PairScaleAxes(string[]? fromClasses, string[]? toClasses, MotionSlotContext? context,
+            MotionSlotContext? reading, ref SpringPlan plan)
+        {
+            var hasFrom = TryReadScale(fromClasses, context, out var from);
+            var hasTo = TryReadScale(toClasses, context, out var to);
+            if (!(from.PerAxis || to.PerAxis))
+            {
+                return;
+            }
+            plan.Scale = null;
+            plan.ScaleY = null;
+            if (from.Rejected || to.Rejected
+                || (context != null && (context.HoldsGesture(ArbitraryProperty.Scale)
+                    || context.HasImportantInlineOutsideSwap(ArbitraryProperty.Scale)
+                    || context.HoldsRestingVariant(ArbitraryProperty.Scale))))
+            {
+                return;
+            }
+            var target = hasTo ? new Vector2(to.X, to.Y) : Vector2.one;
+            Vector2 start;
+            if (hasFrom && HoldsExplicitStart(reading, from.Swapped, ArbitraryProperty.Scale))
+            {
+                start = new Vector2(from.X, from.Y);
+            }
+            else if (reading != null)
+            {
+                if (!reading.TryReadScaleAxes(out start))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                start = Vector2.one;
+            }
+            plan.Scale = (start.x, target.x);
+            if (start.x != start.y || target.x != target.y)
+            {
+                plan.ScaleY = (start.y, target.y);
+            }
+        }
+
+        #endregion
 
         #region Which token holds each slot
 
@@ -460,6 +738,8 @@ namespace Velvet
             public bool Readable;
             public bool Swapped;
             public bool Rejected;
+            // Held by a -auto length, which has no magnitude but is not a token the cascade cannot read.
+            public bool Auto;
             public ArbitraryStyle Value;
         }
 
@@ -544,7 +824,7 @@ namespace Velvet
                 var places = StyleRuleOrder.OrdinalsOf(classes);
                 for (var i = 0; i < classes.Length; i++)
                 {
-                    Claim(classes[i], places[i], claims, in importantClasses, swapped: true);
+                    Claim(classes[i], places[i], claims, in importantClasses, swapped: true, context);
                 }
             }
 
@@ -587,7 +867,11 @@ namespace Velvet
                 TranslateY = AxisValue(claims, ArbitraryProperty.TranslateY),
                 Scale = AxisValue(claims, ArbitraryProperty.Scale),
                 Rotate = AxisValue(claims, ArbitraryProperty.Rotate),
+                TranslateXUnit = AxisUnit(claims, ArbitraryProperty.TranslateX),
+                TranslateYUnit = AxisUnit(claims, ArbitraryProperty.TranslateY),
                 Properties = properties,
+                UnreadProperties = HeldLonghands(claims, auto: false),
+                AutoProperties = HeldLonghands(claims, auto: true),
                 SwappedAxes = swappedAxes,
                 SwappedProperties = swappedProperties,
                 UnreadAxes = unreadAxes,
@@ -602,7 +886,7 @@ namespace Velvet
             {
                 if (context.Attached || cls.StartsWith("!", StringComparison.Ordinal))
                 {
-                    Claim(cls, 0, claims, in importantClasses);
+                    Claim(cls, 0, claims, in importantClasses, context: context);
                 }
             }
             for (var i = 0; i < claims.Length; i++)
@@ -695,6 +979,26 @@ namespace Velvet
             return claim.Readable ? claim.Value.Value : null;
         }
 
+        // The longhands of the property slots a token holds that no magnitude is read from, the -auto lengths apart.
+        private static StyleLonghandSet HeldLonghands(SlotClaim[] claims, bool auto)
+        {
+            var held = StyleLonghandSet.Empty;
+            for (var i = AxisSlotCount; i < claims.Length; i++)
+            {
+                if (claims[i].Claimed && !claims[i].Readable && claims[i].Auto == auto)
+                {
+                    held = held.Union(StyleArbitraryLonghands.Of(s_slots[i]));
+                }
+            }
+            return held;
+        }
+
+        private static LengthUnit AxisUnit(SlotClaim[] claims, ArbitraryProperty axis)
+        {
+            var claim = claims[s_slotIndex[(int)axis]];
+            return claim.Readable ? claim.Value.Unit : LengthUnit.Pixel;
+        }
+
         private static StyleLonghandSet CollectImportantClasses(string[] classes, MotionSlotContext? context)
         {
             var written = StyleLonghandSet.Empty;
@@ -721,7 +1025,7 @@ namespace Velvet
         }
 
         private static void Claim(string className, int index, SlotClaim[] claims,
-            in StyleLonghandSet importantClasses, bool swapped = false)
+            in StyleLonghandSet importantClasses, bool swapped = false, MotionSlotContext? context = null)
         {
             if (string.IsNullOrEmpty(className)
                 || !TryRank(className, index, out var token))
@@ -732,11 +1036,7 @@ namespace Velvet
             {
                 return;
             }
-            var hasAxisValue = TryParseAxisValue(className, out var readAxis, out var axisValue);
-            // TryRank leaves a both-axis translate's TranslateAxis unset, so the token writes exactly the two translate slots.
-            var bothTranslateAxes = TryParseBothTranslateAxes(className, out var bothAxesValue);
-            var property = default(ArbitraryStyle);
-            var hasProperty = !hasAxisValue && MotionPropertyClassParser.TryParse(className, out property);
+            var read = ReadToken(className, context);
             for (var i = 0; i < claims.Length; i++)
             {
                 var slot = s_slots[i];
@@ -749,24 +1049,60 @@ namespace Velvet
                 claims[i] = new SlotClaim
                 {
                     Claimed = true, Precedence = token.Precedence, Swapped = swapped, Rejected = token.Rejected,
+                    Auto = i >= AxisSlotCount && IsSubset(slotLonghands, read.AutoLonghands),
                 };
                 // MUTANT_SURVIVES(equivalent, clause removed): deleting the slot comparison changes no admitted write.
                 // Axis-readable opacity/scale/rotate tokens write one axis; per-axis translates set TranslateAxis.
-                if ((hasAxisValue && slot == AxisSlot(readAxis)) || bothTranslateAxes)
+                if ((read.HasAxisValue && slot == AxisSlot(read.Axis)) || read.BothTranslateAxes)
                 {
                     claims[i].Readable = true;
-                    claims[i].Value = new ArbitraryStyle(slot, bothTranslateAxes ? bothAxesValue : axisValue, LengthUnit.Pixel);
+                    claims[i].Value = read.BothTranslateAxes
+                        ? new ArbitraryStyle(slot, read.BothValue, read.BothUnit)
+                        : new ArbitraryStyle(slot, read.AxisValue, read.AxisUnit);
                 }
-                else if (hasProperty && i >= AxisSlotCount
-                    && IsSubset(slotLonghands, StyleArbitraryLonghands.Of(property.Property)))
+                else if (read.HasProperty && i >= AxisSlotCount
+                    && IsSubset(slotLonghands, StyleArbitraryLonghands.Of(read.Property.Property)))
                 {
                     claims[i].Readable = true;
                     claims[i].Value = MotionPropertyClassParser.IsColor(slot)
-                        ? new ArbitraryStyle(slot, property.Color)
-                        : new ArbitraryStyle(slot, property.Value, property.Unit);
+                        ? new ArbitraryStyle(slot, read.Property.Color)
+                        : new ArbitraryStyle(slot, read.Property.Value, read.Property.Unit);
                 }
             }
         }
+
+        // What a class reads as: an axis value, both translate axes at once, a color or length, or a -auto length.
+        private struct TokenReading
+        {
+            public bool HasAxisValue;
+            public SpringAxis Axis;
+            public float AxisValue;
+            public LengthUnit AxisUnit;
+            // TryRank leaves a both-axis translate's TranslateAxis unset, so the token writes exactly the two translate slots.
+            public bool BothTranslateAxes;
+            public float BothValue;
+            public LengthUnit BothUnit;
+            public bool HasProperty;
+            public ArbitraryStyle Property;
+            public StyleLonghandSet AutoLonghands;
+        }
+
+        private static TokenReading ReadToken(string className, MotionSlotContext? context)
+        {
+            var read = new TokenReading();
+            read.HasAxisValue = TryParseAxisReading(className, out read.Axis, out read.AxisValue, out read.AxisUnit);
+            read.BothTranslateAxes = TryParseBothTranslateAxes(className, out read.BothValue, out read.BothUnit);
+            read.HasProperty = !read.HasAxisValue && (MotionPropertyClassParser.TryParse(className, out read.Property)
+                || (context != null && MotionPropertyClassParser.TryParseThemeColor(className, context, out read.Property)));
+            read.AutoLonghands = read.HasAxisValue || read.HasProperty ? StyleLonghandSet.Empty : AutoLonghands(className);
+            return read;
+        }
+
+        // The longhands a -auto length writes, none for any other class.
+        private static StyleLonghandSet AutoLonghands(string className)
+            => MotionPropertyClassParser.TryParseAuto(className, out var property)
+                ? StyleArbitraryLonghands.Of(property)
+                : StyleLonghandSet.Empty;
 
         private readonly struct RankedToken
         {

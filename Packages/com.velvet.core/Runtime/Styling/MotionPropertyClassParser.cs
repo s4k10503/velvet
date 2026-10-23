@@ -19,16 +19,15 @@ namespace Velvet
     /// <para>
     /// Scope. Colors: <c>bg-</c> / <c>text-</c> / <c>border-</c> against the palette (<see cref="VelvetPalette"/>),
     /// the <c>/alpha</c> modifier, and the bracket forms. Lengths: the spacing-scale families (sizing, position,
-    /// padding, margin, flex-basis), the <c>rounded-*</c> radius scale, the <c>border-*</c> width scale, and every
-    /// bracket form <see cref="StyleArbitraryValueResolver.TryParse"/> already resolves onto one of those
-    /// properties. Deliberately NOT recognized, each because the class alone cannot yield a number to
-    /// interpolate: semantic theme tokens (<c>bg-primary</c>, <c>text-current</c>) have no C# mirror of their
-    /// <c>--color-*</c> value; keyword lengths (<c>w-auto</c>, <c>w-full</c>, <c>basis-auto</c>, <c>top-auto</c>) are not
-    /// magnitudes; <c>rounded-full</c> is a saturating radius sentinel; preset font sizes (<c>text-lg</c>) resolve
-    /// through <c>--text-*</c> tokens with no C# mirror, so only the bracket form (<c>text-[20px]</c>) is
-    /// claimed; a bracketed length only an element can measure (<c>w-[2em]</c>, <c>w-[50vw]</c>,
-    /// <c>w-[calc(50%-1rem)]</c>) is a length of no fixed size. An unrecognized class is simply skipped — it
-    /// still applies as a plain class, it just is not interpolated.
+    /// padding, margin, flex-basis, with <c>-full</c> as 100%), the <c>rounded-*</c> radius scale
+    /// (<c>rounded-full</c> as 9999px), the <c>border-*</c> width scale, the <c>text-*</c> font-size scale and
+    /// <c>tracking-normal</c>, and every bracket form <see cref="StyleArbitraryValueResolver.TryParse"/> already
+    /// resolves onto one of those properties. Deliberately NOT recognized, each because the class alone cannot
+    /// yield a number to interpolate: semantic theme tokens (<c>bg-primary</c>, <c>text-current</c>) have no C#
+    /// mirror of their <c>--color-*</c> value; <c>-auto</c> lengths (<c>w-auto</c>, <c>basis-auto</c>,
+    /// <c>top-auto</c>) are not magnitudes; a bracketed length only an element can measure (<c>w-[2em]</c>,
+    /// <c>w-[50vw]</c>, <c>w-[calc(50%-1rem)]</c>) is a length of no fixed size. An unrecognized class is simply
+    /// skipped — it still applies as a plain class, it just is not interpolated.
     /// </para>
     /// </remarks>
     internal static class MotionPropertyClassParser
@@ -52,6 +51,30 @@ namespace Velvet
         private static readonly Dictionary<string, float> s_borderWidthScale = new(StringComparer.Ordinal)
         {
             [""] = 1f, ["0"] = 0f, ["2"] = 2f, ["4"] = 4f, ["8"] = 8f,
+        };
+
+        // The aspect-ratio rules in _state_variants.uss; MotionPresetScaleTests pins them.
+        private static readonly Dictionary<string, float> s_aspectPresets = new(StringComparer.Ordinal)
+        {
+            ["aspect-square"] = 1f, ["aspect-video"] = 1.7778f,
+        };
+
+        // The families whose `-full` is 100% of the containing block; padding and margin have no such utility.
+        private static readonly HashSet<string> s_fullFamilies = new(StringComparer.Ordinal)
+        {
+            "w-", "h-", "min-w-", "min-h-", "max-w-", "max-h-", "size-", "basis-",
+            "top-", "right-", "bottom-", "left-", "inset-", "inset-x-", "inset-y-",
+        };
+
+        // --radius-full in _tokens.uss; MotionPresetScaleTests pins it.
+        internal const float FullRadiusPx = 9999f;
+
+        // --text-* in _tokens.uss; MotionPresetScaleTests pins it.
+        private static readonly Dictionary<string, float> s_fontSizeScale = new(StringComparer.Ordinal)
+        {
+            ["xs"] = 12f, ["sm"] = 14f, ["base"] = 16f, ["lg"] = 18f, ["xl"] = 20f, ["2xl"] = 24f,
+            ["3xl"] = 30f, ["4xl"] = 36f, ["5xl"] = 48f, ["6xl"] = 60f, ["7xl"] = 72f, ["8xl"] = 96f,
+            ["9xl"] = 128f,
         };
 
         // The suffix-less utilities in the two non-spacing families, mapped to the prefix form
@@ -87,6 +110,12 @@ namespace Velvet
             {
                 var physical = PhysicalSide(arbitrary.Property);
                 style = physical == arbitrary.Property ? arbitrary : new ArbitraryStyle(physical, arbitrary.Color);
+                return true;
+            }
+
+            if (s_aspectPresets.TryGetValue(core, out var ratio))
+            {
+                style = new ArbitraryStyle(ArbitraryProperty.AspectRatio, ratio, LengthUnit.Pixel);
                 return true;
             }
 
@@ -134,8 +163,8 @@ namespace Velvet
         // The properties a per-frame driver may own. Opacity and the transform quartet are excluded because
         // MotionSpringClassParser's own axes already drive them (with their identity-value fallbacks and the
         // translate/scale composition their shared inline styles need); filter-* is excluded because
-        // StyleFilterTransitionDriver owns the composed inline filter list; aspect-ratio and
-        // transition-duration are excluded as configuration rather than visual magnitudes.
+        // StyleFilterTransitionDriver owns the composed inline filter list; transition-duration is excluded as
+        // configuration rather than a visual magnitude.
         private static readonly bool[] s_drivable = BuildDrivable();
 
         private static bool[] BuildDrivable()
@@ -170,7 +199,7 @@ namespace Velvet
                 ArbitraryProperty.BorderWidth, ArbitraryProperty.BorderTopWidth, ArbitraryProperty.BorderRightWidth,
                 ArbitraryProperty.BorderBottomWidth, ArbitraryProperty.BorderLeftWidth,
 
-                ArbitraryProperty.FontSize, ArbitraryProperty.LetterSpacing,
+                ArbitraryProperty.FontSize, ArbitraryProperty.LetterSpacing, ArbitraryProperty.AspectRatio,
             };
 
             var table = new bool[Enum.GetValues(typeof(ArbitraryProperty)).Length];
@@ -185,6 +214,70 @@ namespace Velvet
         {
             var index = (int)property;
             return index >= 0 && index < s_drivable.Length && s_drivable[index];
+        }
+
+        /// <summary>
+        /// Resolves <c>w-auto</c>, <c>top-auto</c> and the rest of the <c>-auto</c> lengths to the property they leave
+        /// unset: a mode with no magnitude, whose value a drive reads off the element once it has had its layout.
+        /// </summary>
+        internal static bool TryParseAuto(string className, out ArbitraryProperty property)
+        {
+            property = default;
+            var core = StyleArbitraryValueResolver.StripImportant(className, out _);
+            if (!core.EndsWith("-auto", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var prefix = core.Substring(0, core.Length - "auto".Length);
+            return s_fullFamilies.Contains(prefix) && !prefix.StartsWith("max-", StringComparison.Ordinal)
+                && StyleArbitraryValueResolver.TryGetProperty(prefix, out property);
+        }
+
+        // The semantic colour utilities, each with the custom property its sheet rule reads. Those properties change
+        // with the theme, so a drive reads them off the live element (MotionSlotContext.TryReadThemeColor) rather than
+        // mirroring a value; MotionPresetScaleTests pins this table against _palette.uss.
+        private static readonly Dictionary<string, string> s_themeColors = BuildThemeColors();
+
+        private static Dictionary<string, string> BuildThemeColors()
+        {
+            var table = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var name in new[]
+                {
+                    "background", "danger", "highlight", "neutral", "overlay", "primary", "primary-faint", "primary-soft",
+                    "success", "surface", "surface-strong", "white-soft",
+                })
+            {
+                table["bg-" + name] = "--color-" + name;
+            }
+            table["text-accent"] = "--color-accent-strong";
+            table["text-strong"] = "--color-text";
+            table["text-subtle"] = "--color-text-subtle";
+            table["border-accent"] = "--color-accent-strong";
+            table["border-default"] = "--color-border";
+            table["border-strong"] = "--color-border-strong";
+            return table;
+        }
+
+        internal static IReadOnlyDictionary<string, string> ThemeColors => s_themeColors;
+
+        /// <summary>
+        /// Resolves a semantic colour utility (<c>bg-primary</c>, <c>border-default</c>) to the colour its custom
+        /// property holds on the element <paramref name="context"/> reads, which a theme change moves; false off a
+        /// panel, where the element resolves none.
+        /// </summary>
+        internal static bool TryParseThemeColor(string className, MotionSlotContext context, out ArbitraryStyle style)
+        {
+            style = default;
+            var core = StyleArbitraryValueResolver.StripImportant(className, out _);
+            if (!s_themeColors.TryGetValue(core, out var variable) || !context.TryReadThemeColor(variable, out var color))
+            {
+                return false;
+            }
+            var property = core.StartsWith("bg-", StringComparison.Ordinal) ? ArbitraryProperty.BackgroundColor
+                : core.StartsWith("text-", StringComparison.Ordinal) ? ArbitraryProperty.TextColor
+                : ArbitraryProperty.BorderColor;
+            style = new ArbitraryStyle(property, color);
+            return true;
         }
 
         // bg-/text-/border- against a palette NAME (bg-red-500, text-white, border-black). The bracket and
@@ -254,19 +347,45 @@ namespace Velvet
             }
 
             float px;
+            var unit = LengthUnit.Pixel;
             if (s_spacingScaleFamilies.Contains(prefix))
             {
-                if (!StyleArbitraryValueResolver.TryGetSpacingPx(suffix, out px))
+                if (suffix == "full" && s_fullFamilies.Contains(prefix))
+                {
+                    px = 100f;
+                    unit = LengthUnit.Percent;
+                }
+                else if (!StyleArbitraryValueResolver.TryGetSpacingPx(suffix, out px))
                 {
                     return false;
                 }
             }
             else if (prefix.StartsWith("rounded", StringComparison.Ordinal))
             {
-                if (!StyleShadowClass.TryGetRadiusPx(suffix, out px))
+                if (suffix == "full")
+                {
+                    px = FullRadiusPx;
+                }
+                else if (!StyleShadowClass.TryGetRadiusPx(suffix, out px))
                 {
                     return false;
                 }
+            }
+            else if (prefix == "text-")
+            {
+                if (!s_fontSizeScale.TryGetValue(suffix, out px))
+                {
+                    return false;
+                }
+            }
+            else if (prefix == "tracking-")
+            {
+                // The other presets are em lengths measured on the element, which a play does not carry.
+                if (suffix != "normal")
+                {
+                    return false;
+                }
+                px = 0f;
             }
             else if (prefix.StartsWith("border", StringComparison.Ordinal))
             {
@@ -280,7 +399,7 @@ namespace Velvet
                 return false;
             }
 
-            style = new ArbitraryStyle(property, px, LengthUnit.Pixel);
+            style = new ArbitraryStyle(property, px, unit);
             return true;
         }
     }

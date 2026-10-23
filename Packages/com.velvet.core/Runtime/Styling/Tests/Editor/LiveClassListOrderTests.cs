@@ -43,6 +43,9 @@ namespace Velvet.Tests
             "System.Collections.Generic.IEnumerable`1<System.String> Velvet.MotionSlotContext.RestingClasses()";
         private const string MotionRestingVariantReader =
             "System.Boolean Velvet.MotionSlotContext.HoldsRestingVariant(Velvet.ArbitraryProperty)";
+        private const string MotionCarriesPoseReader =
+            "System.Boolean Velvet.MotionSlotContext.CarriesPose(UnityEngine.UIElements.VisualElement, "
+            + "System.String[], System.String[])";
         private const string LiveClassesReader =
             "System.String[] Velvet.FiberNodePatcher.LiveClasses(UnityEngine.UIElements.VisualElement)";
         private const string TransitionSlotsReader =
@@ -109,6 +112,9 @@ namespace Velvet.Tests
 
             public string Reader { get; }
         }
+
+        private static readonly MethodInfo MotionCarriesPose = typeof(MotionSlotContext)
+            .GetMethod("CarriesPose", BindingFlags.NonPublic | BindingFlags.Static)!;
 
         private static readonly MethodInfo ScanFlexMinSizeClasses = typeof(StyleFlexMinSizeManipulator)
             .GetMethod("Scan", BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -547,6 +553,25 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(holdsBothWays, Is.True);
+        }
+
+        // What shows the case can fail is CarriesPose reading only the first class on the list: neither arrangement
+        // then carries the whole pose. The verdict is that only the set decides.
+        [Test]
+        [ReaderVerdict(MotionCarriesPoseReader)]
+        public void Given_TheClassesOfAPoseAddedInEitherOrder_When_AskedWhetherTheElementCarriesIt_Then_BothAnswerYes()
+        {
+            // Arrange
+            var added = Carrying("w-40", "p-2");
+            var reversed = Carrying("p-2", "w-40");
+            var pose = new[] { "w-40", "p-2" };
+
+            // Act
+            var carries = (Convert.ToBoolean(MotionCarriesPose?.Invoke(null, new object[] { added, pose, Array.Empty<string>() })),
+                Convert.ToBoolean(MotionCarriesPose?.Invoke(null, new object[] { reversed, pose, Array.Empty<string>() })));
+
+            // Assert
+            Assert.That(carries, Is.EqualTo((true, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base already resolves the last clip token on the list.

@@ -394,12 +394,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABezierToStepWithAPropertyOverrideLongerThanTheTopLevelDuration_When_TheTopLevelDurationHasElapsed_Then_TheWalkerHasAdvancedPastIt()
+        public void Given_ABezierToStepWithAPropertyOverrideLongerThanTheTopLevelDuration_When_OnlyTheTopLevelDurationHasElapsed_Then_TheStepIsStillCurrent()
         {
-            // Arrange — a Bezier tween drives every channel with one fixed-duration curve and never reads
-            // PropertyOverrides (the same contract as a spring's single stiffness/damping/mass), so the
-            // auto-derived hold must be the fixed 50ms DurationSec, NOT the 300ms override a plain Tween would
-            // follow — otherwise the sequence stalls on the step long past when the tween it describes finished.
+            // Arrange — a Bezier play gives a property its own timing, so the auto-derived hold follows the
+            // slower override, as it does for a Tween.
             s_steps = new[]
             {
                 AnimationSequenceStep.To("a", new StyleTransitionConfig
@@ -411,13 +409,12 @@ namespace Velvet.Tests
                 AnimationSequenceStep.To("b", new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 0.5f }),
             };
             Mount();
-            Assume.That(s_state.CurrentLabel, Is.EqualTo("a"), "Precondition: step 0 is current right after mount");
 
             // Act — past the top-level 50ms but well short of the override's 300ms.
             AdvancePast(0.1f);
 
             // Assert
-            Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("a"));
         }
 
         private void AdvanceTicks(int ticks)

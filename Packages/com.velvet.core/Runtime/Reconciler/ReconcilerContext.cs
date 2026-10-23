@@ -1340,6 +1340,10 @@ namespace Velvet
         // that won on each axis. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, (string? X, string? Y)> SkewTransformed { get; } = new();
 
+        // The holds Motion plays take on an element's paint layers (FiberPaintLeases). Set by the wrapper-element
+        // appliers, which own the layers' appliers.
+        public FiberPaintLeases? PaintLeases { get; set; }
+
         // Dashed / dotted border outline per element (border-dashed / border-dotted), keyed by the element
         // itself — like skew, the outline is painted by the element's own generateVisualContent with no
         // wrapper (only the border color is suppressed; the fill and width are untouched). Defers to skew /

@@ -17,6 +17,8 @@ namespace Velvet
         // initial value.
         public SpringIntegrator Integrator;
         public float Target;
+        // The unit the channel's values are in; only a translate takes another than pixels.
+        public LengthUnit Unit;
         // Set while a gesture channel holds the property (GestureChannelMask.MaskChannels): the spring runs on and
         // writes nothing.
         public bool Masked { get; set; }
@@ -40,6 +42,10 @@ namespace Velvet
         // opposite one a mirrored pass is released with; null where the state's own apply.
         public (float Stiffness, float Damping)? Physics;
         public (float Stiffness, float Damping)? MirroredPhysics;
+        // Set on a channel a PropertyOverrides entry names (MotionSpringDriver.WithOverrides): it runs that entry's
+        // delay, duration and easing once, as Framer Motion runs a value given a transition of its own, and the
+        // state's spring does not move it.
+        public TweenChannelTiming? Timing;
         // Set by MotionSpringDriver.Create for a play on StyleTransitionConfig.PerValueDefaults: a channel Framer runs
         // on an ease has the length of that ease here, and one it runs on a spring its own physics and rest speed.
         public float EaseSec;
@@ -121,6 +127,8 @@ namespace Velvet
         (IGestureMaskable? Opacity, IGestureMaskable? TranslateX, IGestureMaskable? TranslateY, IGestureMaskable? Scale,
             IGestureMaskable? Rotate) IGestureMaskableState.Scalars => (Opacity, TranslateX, TranslateY, Scale, Rotate);
 
+        IGestureMaskable? IGestureMaskableState.ScaleY => ScaleY;
+
         IReadOnlyList<IPropertyChannel>? IGestureMaskableState.ColorChannels => Colors;
         IReadOnlyList<IPropertyChannel>? IGestureMaskableState.LengthChannels => Lengths;
 
@@ -130,6 +138,8 @@ namespace Velvet
         public SpringChannel? TranslateX;
         public SpringChannel? TranslateY;
         public SpringChannel? Scale;
+        // The y factor when the play's scale differs per axis; Scale is then the x factor.
+        public SpringChannel? ScaleY;
         public SpringChannel? Rotate;
         public SpringChannel? SkewX;
         public SpringChannel? SkewY;
@@ -137,6 +147,9 @@ namespace Velvet
         public FiberSkewApplier? Skew;
         public List<SpringColorChannel>? Colors;
         public List<SpringLengthChannel>? Lengths;
+        // The progress the paint layers are drawn at, and the hold it draws them under.
+        public SpringChannel? PaintProgress;
+        public IMotionPaintLease? Paint;
         public VisualElement? NativeLayoutOwner;
 
         public float Stiffness;
@@ -193,10 +206,16 @@ namespace Velvet
                 Description = description,
             };
             if (plan.Opacity is { } o) state.Opacity = new SpringChannel(o.from, o.to) { Acceleratable = true };
-            if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to);
-            if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to);
+            if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to) { Unit = plan.TranslateXUnit };
+            if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to) { Unit = plan.TranslateYUnit };
             if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to);
+            if (plan.ScaleY is { } sy) state.ScaleY = new SpringChannel(sy.from, sy.to);
             if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to);
+            if (plan.Paint != null)
+            {
+                state.Paint = plan.Paint;
+                state.PaintProgress = new SpringChannel(0f, 1f) { Normalized = true };
+            }
             if (plan.SkewX is { } kx) state.SkewX = new SpringChannel(kx.from, kx.to);
             if (plan.SkewY is { } ky) state.SkewY = new SpringChannel(ky.from, ky.to);
             if (plan.Colors != null)
@@ -237,6 +256,7 @@ namespace Velvet
         private static void AssignFramerDefaults(MotionSpringState state)
         {
             if (state.Opacity != null) state.Opacity.EaseSec = DefaultEaseSec;
+            if (state.PaintProgress != null) state.PaintProgress.EaseSec = DefaultEaseSec;
             Spring(state.TranslateX, 500f, 25f);
             Spring(state.TranslateY, 500f, 25f);
             Spring(state.Rotate, 500f, 25f);
@@ -274,6 +294,11 @@ namespace Velvet
         private static void Release(MotionSpringState state, SpringChannel c, float origin, float velocity)
         {
             c.Origin = origin;
+            if (c.Timing is { } own)
+            {
+                c.PassSec = own.DelaySec + own.DurationSec;
+                return;
+            }
             if (c.EaseSec > 0f)
             {
                 c.Scale = 1f;
@@ -345,17 +370,15 @@ namespace Velvet
         }
 
         // The time from a play's start to the end of its slowest channel's last pass, which is when Framer Motion's
-        // animation of every value has finished.
-        internal static double SpanSec(MotionSpringClassParser.SpringPlan plan, float stiffness, float damping,
-            float mass, MotionRepeat repeat, double? settleSec = null, bool perValueDefaults = false)
+        // animation of every value has finished; a channel on a transition of its own counts its entry once.
+        internal static double SpanSec(MotionSpringState? state, MotionRepeat repeat)
         {
-            var state = Create(plan, stiffness, damping, mass, repeat, settleSec, null, perValueDefaults);
             if (state == null)
             {
                 return 0.0;
             }
             var span = 0.0;
-            ForEachActiveChannel(state, c => span = System.Math.Max(span, repeat.TotalSec(c.PassSec)));
+            ForEachActiveChannel(state, c => span = System.Math.Max(span, c.Timing != null ? c.PassSec : repeat.TotalSec(c.PassSec)));
             return span;
         }
 
@@ -385,7 +408,7 @@ namespace Velvet
         /// </remarks>
         public static void ApplyCurrentValues(VisualElement element, MotionSpringState state)
         {
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, state, DrivenSlots(state),
                 MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             WriteChannelValues(element, state);
@@ -411,18 +434,19 @@ namespace Velvet
             if ((state.TranslateX != null || state.TranslateY != null) && state.TranslateX?.Masked != true)
             {
                 SeatedTranslate.Write(element, new Translate(
-                    new Length(state.TranslateX?.Integrator.Value ?? 0f),
-                    new Length(state.TranslateY?.Integrator.Value ?? 0f)));
+                    new Length(state.TranslateX?.Integrator.Value ?? 0f, state.TranslateX?.Unit ?? LengthUnit.Pixel),
+                    new Length(state.TranslateY?.Integrator.Value ?? 0f, state.TranslateY?.Unit ?? LengthUnit.Pixel)));
             }
             if (state.Scale is { Masked: false })
             {
                 var v = state.Scale.Integrator.Value;
-                element.style.scale = new Scale(new Vector2(v, v));
+                element.style.scale = new Scale(new Vector2(v, state.ScaleY?.Integrator.Value ?? v));
             }
             if (state.Rotate is { Masked: false })
             {
                 element.style.rotate = new Rotate(Angle.Degrees(state.Rotate.Integrator.Value));
             }
+            state.Paint?.Apply(state.PaintProgress!.Integrator.Value);
             if (state.SkewX != null || state.SkewY != null)
             {
                 state.Skew?.Drive(element, state.SkewX?.Integrator.Value, state.SkewY?.Integrator.Value);
@@ -471,7 +495,9 @@ namespace Velvet
             if (state.TranslateX != null) settled &= SampleRepeating(state, state.TranslateX, dtSec, seekScale);
             if (state.TranslateY != null) settled &= SampleRepeating(state, state.TranslateY, dtSec, seekScale);
             if (state.Scale != null) settled &= SampleRepeating(state, state.Scale, dtSec, seekScale);
+            if (state.ScaleY != null) settled &= SampleRepeating(state, state.ScaleY, dtSec, seekScale);
             if (state.Rotate != null) settled &= SampleRepeating(state, state.Rotate, dtSec, seekScale);
+            if (state.PaintProgress != null) settled &= SampleRepeating(state, state.PaintProgress, dtSec, seekScale);
             if (state.SkewX != null) settled &= SampleRepeating(state, state.SkewX, dtSec, seekScale);
             if (state.SkewY != null) settled &= SampleRepeating(state, state.SkewY, dtSec, seekScale);
             if (state.Colors != null)
@@ -532,6 +558,10 @@ namespace Velvet
 
         private static float ValueAt(MotionSpringState state, SpringChannel channel, double elapsedSec, out bool ended)
         {
+            if (channel.Timing is { } own)
+            {
+                return TweenValueAt(channel, own, elapsedSec, out ended);
+            }
             // An instant spring (SettleSec 0) has not ended at time 0, which a play on a playback is sampled at
             // through its delay: Framer leaves the value where it is until that delay ends.
             ended = elapsedSec >= state.Repeat.TotalSec(channel.PassSec) && !(state.SettleSec == 0.0 && elapsedSec <= 0.0);
@@ -546,6 +576,68 @@ namespace Velvet
                 : state.Repeat.PassTime(elapsedSec, channel.PassSec, out mirrored);
             return SamplePass(state, channel, passTime, mirrored);
         }
+
+        // A channel on a transition of its own: its target once the entry has run, its origin until the delay has.
+        private static float TweenValueAt(SpringChannel channel, TweenChannelTiming own, double elapsedSec, out bool ended)
+        {
+            ended = elapsedSec >= own.DelaySec + own.DurationSec;
+            if (ended)
+            {
+                return channel.Target;
+            }
+            var progress = own.DurationSec > 0f ? Mathf.Clamp01((float)((elapsedSec - own.DelaySec) / own.DurationSec)) : 0f;
+            return Mathf.LerpUnclamped(channel.Origin, channel.Target, UssEasing.Evaluate(own.Easing, progress));
+        }
+
+        /// <summary>
+        /// Gives each channel a <see cref="StylePropertyTransition"/> names that entry's delay, duration and easing (the
+        /// play's easing where it names none) in place of the state's spring, the last entry naming a channel winning.
+        /// </summary>
+        public static MotionSpringState? WithOverrides(MotionSpringState? state,
+            IReadOnlyList<StylePropertyTransition>? overrides, EasingMode easing, float durationSec)
+        {
+            if (state == null || overrides == null || overrides.Count == 0)
+            {
+                return state;
+            }
+            foreach (var (channel, longhands) in OverridableChannels(state))
+            {
+                for (var i = overrides.Count - 1; i >= 0; i--)
+                {
+                    var entry = overrides[i];
+                    if (!DrivenTweenTiming.Named(entry.Property).Overlaps(longhands))
+                    {
+                        continue;
+                    }
+                    channel.Timing = new TweenChannelTiming(entry.DelaySec ?? 0f, Mathf.Max(0f, entry.DurationSec ?? durationSec),
+                        entry.Easing ?? easing);
+                    Release(state, channel, channel.Origin, 0f);
+                    break;
+                }
+            }
+            return state;
+        }
+
+        private static IEnumerable<(SpringChannel Channel, StyleLonghandSet Longhands)> OverridableChannels(MotionSpringState state)
+        {
+            if (state.Opacity != null) yield return (state.Opacity, StyleLonghandSet.Of(StyleLonghand.Opacity));
+            if (state.TranslateX != null) yield return (state.TranslateX, StyleLonghandSet.Of(StyleLonghand.Translate));
+            if (state.TranslateY != null) yield return (state.TranslateY, StyleLonghandSet.Of(StyleLonghand.Translate));
+            if (state.Scale != null) yield return (state.Scale, StyleLonghandSet.Of(StyleLonghand.Scale));
+            if (state.ScaleY != null) yield return (state.ScaleY, StyleLonghandSet.Of(StyleLonghand.Scale));
+            if (state.Rotate != null) yield return (state.Rotate, StyleLonghandSet.Of(StyleLonghand.Rotate));
+            foreach (var c in state.Colors ?? s_noColors)
+            {
+                yield return (c.Progress, StyleArbitraryLonghands.Of(c.Property));
+            }
+            foreach (var l in state.Lengths ?? s_noLengths)
+            {
+                yield return (l.Value, StyleArbitraryLonghands.Of(l.Property));
+            }
+        }
+
+        private static readonly List<SpringColorChannel> s_noColors = new();
+        private static readonly List<SpringLengthChannel> s_noLengths = new();
 
         private static float SamplePass(MotionSpringState state, SpringChannel channel, double passTime, bool mirrored)
         {
@@ -593,6 +685,9 @@ namespace Velvet
                 c => (c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)),
                 state.Lengths,
                 l => (l.Property, l.Unit, l.Value.Integrator.Value, l.Value.Integrator.Velocity));
+            drawn.ScaleY = Of(state.ScaleY);
+            drawn.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
+            drawn.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
             drawn.SkewX = Of(state.SkewX);
             drawn.SkewY = Of(state.SkewY);
             return drawn;
@@ -612,9 +707,12 @@ namespace Velvet
         public static void ContinueFrom(MotionSpringState next, MotionDrawnValues interrupted, bool fromDrawn)
         {
             Continue(next, next.Opacity, interrupted.Opacity, fromDrawn);
-            Continue(next, next.TranslateX, interrupted.TranslateX, fromDrawn);
-            Continue(next, next.TranslateY, interrupted.TranslateY, fromDrawn);
+            Continue(next, next.TranslateX, interrupted.TranslateXUnit == next.TranslateX?.Unit ? interrupted.TranslateX : null,
+                fromDrawn);
+            Continue(next, next.TranslateY, interrupted.TranslateYUnit == next.TranslateY?.Unit ? interrupted.TranslateY : null,
+                fromDrawn);
             Continue(next, next.Scale, interrupted.Scale, fromDrawn);
+            Continue(next, next.ScaleY, interrupted.ScaleY ?? interrupted.Scale, fromDrawn);
             Continue(next, next.Rotate, interrupted.Rotate, fromDrawn);
             Continue(next, next.SkewX, interrupted.SkewX, fromDrawn);
             Continue(next, next.SkewY, interrupted.SkewY, fromDrawn);
@@ -665,8 +763,10 @@ namespace Velvet
         public static void InheritVelocity(MotionSpringState next, System.Func<ArbitraryProperty, LengthUnit, float?> nativeVelocity)
         {
             InheritNative(next, next.Opacity, nativeVelocity, ArbitraryProperty.Opacity, LengthUnit.Pixel);
-            InheritNative(next, next.TranslateX, nativeVelocity, ArbitraryProperty.TranslateX, LengthUnit.Pixel);
-            InheritNative(next, next.TranslateY, nativeVelocity, ArbitraryProperty.TranslateY, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateX, nativeVelocity, ArbitraryProperty.TranslateX,
+                next.TranslateX?.Unit ?? LengthUnit.Pixel);
+            InheritNative(next, next.TranslateY, nativeVelocity, ArbitraryProperty.TranslateY,
+                next.TranslateY?.Unit ?? LengthUnit.Pixel);
             InheritNative(next, next.Scale, nativeVelocity, ArbitraryProperty.Scale, LengthUnit.Pixel);
             InheritNative(next, next.Rotate, nativeVelocity, ArbitraryProperty.Rotate, LengthUnit.Pixel);
             if (next.Lengths != null)
@@ -723,6 +823,7 @@ namespace Velvet
             if (state.TranslateX != null || state.TranslateY != null) SeatedTranslate.Write(element, StyleKeyword.Null);
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
+            state.Paint?.Release();
             ReleaseSkew(element, state, landed);
             if (state.Colors != null)
             {
@@ -761,6 +862,7 @@ namespace Velvet
             if (state.Scale != null && named.Contains(StyleLonghand.Scale))
             {
                 state.Scale = null;
+                state.ScaleY = null;
                 element.style.scale = StyleKeyword.Null;
             }
             if (state.Rotate != null && named.Contains(StyleLonghand.Rotate))
@@ -774,6 +876,7 @@ namespace Velvet
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
             SyncLayoutOwner(element, state);
+            GestureChannelMask.ResyncNarrowing(element, state);
         }
 
         /// <summary>
@@ -789,7 +892,8 @@ namespace Velvet
             var returned = Reorigin(state.Opacity, named, StyleLonghand.Opacity, ArbitraryProperty.Opacity, shown);
             returned |= Reorigin(state.TranslateX, named, StyleLonghand.Translate, ArbitraryProperty.TranslateX, shown)
                 | Reorigin(state.TranslateY, named, StyleLonghand.Translate, ArbitraryProperty.TranslateY, shown);
-            returned |= Reorigin(state.Scale, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown);
+            returned |= Reorigin(state.Scale, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown)
+                | Reorigin(state.ScaleY, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown);
             returned |= Reorigin(state.Rotate, named, StyleLonghand.Rotate, ArbitraryProperty.Rotate, shown);
             if (state.Colors != null)
             {
@@ -823,6 +927,7 @@ namespace Velvet
             }
             state.ElapsedSec = 0.0;
             ForEachActiveChannel(state, c => Release(state, c, c.Integrator.Value, c.Integrator.Velocity));
+            GestureChannelMask.ResyncNarrowing(element, state);
             WriteChannelValues(element, state);
         }
 
@@ -833,7 +938,7 @@ namespace Velvet
             {
                 return false;
             }
-            PutAtShown(channel!, slot, LengthUnit.Pixel, shown);
+            PutAtShown(channel!, slot, channel!.Unit, shown);
             return true;
         }
 
@@ -847,10 +952,10 @@ namespace Velvet
         }
 
         // Holds translate at (x, y) from its next write on, the start values of a play CancelPlay holds.
-        public static void HoldTranslate(MotionSpringState state, float x, float y)
+        public static void HoldTranslate(MotionSpringState state, Length x, Length y)
         {
-            state.TranslateX = new SpringChannel(x, x);
-            state.TranslateY = new SpringChannel(y, y);
+            state.TranslateX = new SpringChannel(x.value, x.value) { Unit = x.unit };
+            state.TranslateY = new SpringChannel(y.value, y.value) { Unit = y.unit };
         }
 
         internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)
@@ -902,7 +1007,9 @@ namespace Velvet
             HaltChannel(state.TranslateX);
             HaltChannel(state.TranslateY);
             HaltChannel(state.Scale);
+            HaltChannel(state.ScaleY);
             HaltChannel(state.Rotate);
+            HaltChannel(state.PaintProgress);
             HaltChannel(state.SkewX);
             HaltChannel(state.SkewY);
             if (state.Colors != null)
@@ -928,12 +1035,18 @@ namespace Velvet
         /// <c>StyleAnimationScheduler</c> starts the next play on a held element from.
         /// </summary>
         public static MotionSpringClassParser.SpringPlan StartValues(MotionSpringState state)
-            => MotionSpringClassParser.Holding(
+        {
+            var plan = MotionSpringClassParser.Holding(
                 (state.Opacity?.RestingTarget, state.TranslateX?.RestingTarget, state.TranslateY?.RestingTarget,
                     state.Scale?.RestingTarget, state.Rotate?.RestingTarget),
                 state.Colors, static c => new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From),
                 state.Lengths, static l => new MotionSpringClassParser.LengthChannelPlan(l.Property,
                     l.Value.RestingTarget, l.Value.RestingTarget, l.Unit));
+            plan.TranslateXUnit = state.TranslateX?.Unit ?? LengthUnit.Pixel;
+            plan.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;
+            if (state.ScaleY != null) plan.ScaleY = (state.ScaleY.RestingTarget, state.ScaleY.RestingTarget);
+            return plan;
+        }
 
         /// <summary>
         /// Runs <paramref name="action"/> against every active <see cref="SpringChannel"/> on <paramref
@@ -949,7 +1062,9 @@ namespace Velvet
             if (state.TranslateX != null) action(state.TranslateX);
             if (state.TranslateY != null) action(state.TranslateY);
             if (state.Scale != null) action(state.Scale);
+            if (state.ScaleY != null) action(state.ScaleY);
             if (state.Rotate != null) action(state.Rotate);
+            if (state.PaintProgress != null) action(state.PaintProgress);
             if (state.SkewX != null) action(state.SkewX);
             if (state.SkewY != null) action(state.SkewY);
             if (state.Colors != null)
