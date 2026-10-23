@@ -98,9 +98,11 @@ namespace Velvet
                     ? ParticleBlend.Multiply
                     : ParticleBlend.Alpha;
             }
-            return material.shader != null && s_namedBlends.TryGetValue(material.shader.name, out var named)
-                ? named
-                : ParticleBlend.Alpha;
+            if (material.shader == null)
+            {
+                return ParticleBlend.Alpha;
+            }
+            return s_namedBlends.TryGetValue(material.shader.name, out var named) ? named : ParticleBlend.Alpha;
         }
 
         // The colour a particle shader multiplies its vertex colour by: URP's base colour, a legacy shader's tint, which

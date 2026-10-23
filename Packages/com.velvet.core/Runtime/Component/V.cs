@@ -1035,14 +1035,34 @@ namespace Velvet
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            RequirePlayTrigger(playOn);
+            if (playOn is not (PlayTrigger.Mount or PlayTrigger.Manual))
+            {
+                throw new ArgumentOutOfRangeException(nameof(playOn), playOn,
+                    "V.Particles takes a member of PlayTrigger as its playOn.");
+            }
             // Validated BEFORE renting pooled props so a throwing call leaks nothing (the settings
             // constructor fail-fasts on an invalid mapping for every construction path, this factory
             // included). Always carried (even with a null effect): the patcher needs the settings on
             // BOTH sides of a diff to see an effect arriving or leaving as a settings change.
             var particles = new ParticlesSettings(effect, playOn, pixelsPerUnit);
-            return ParticlesNode(particles, className, key, name, styles, refCallback, whileHoverClass, whileTapClass,
-                whileFocusClass, data, aria, events);
+            var props = VNodePool.RentProps();
+            props.Particles = particles;
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(ParticlesElement),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = WithAttributes(props, data, aria),
+                Styles = styles,
+                Children = EmptyChildren,
+                Events = events ?? EmptyEvents,
+                RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
         }
 
         /// <summary>
@@ -1085,54 +1105,11 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? aria = null,
             FiberEventBinding[]? events = null)
         {
-            VNode.RequireKey(key);
-            RequirePlayTrigger(playOn);
-            var particles = new ParticlesSettings(null, playOn, pixelsPerUnit) { VisualEffect = visualEffect };
-            return ParticlesNode(particles, className, key, name, styles, refCallback, whileHoverClass, whileTapClass,
-                whileFocusClass, data, aria, events);
-        }
-
-        private static void RequirePlayTrigger(PlayTrigger playOn)
-        {
-            if (playOn is not (PlayTrigger.Mount or PlayTrigger.Manual))
-            {
-                throw new ArgumentOutOfRangeException(nameof(playOn), playOn,
-                    "V.Particles takes a member of PlayTrigger as its playOn.");
-            }
-        }
-
-        private static ElementNode ParticlesNode(
-            ParticlesSettings particles,
-            string? className,
-            string? key,
-            string? name,
-            StyleOverrides? styles,
-            Func<VisualElement, Action>? refCallback,
-            string? whileHoverClass,
-            string? whileTapClass,
-            string? whileFocusClass,
-            IReadOnlyDictionary<string, string>? data,
-            IReadOnlyDictionary<string, string>? aria,
-            FiberEventBinding[]? events)
-        {
-            var props = VNodePool.RentProps();
-            props.Particles = particles;
-
-            return new ElementNode
-            {
-                Key = key,
-                ElementType = typeof(ParticlesElement),
-                Name = name,
-                ClassNames = ParseClassNames(className),
-                Props = WithAttributes(props, data, aria),
-                Styles = styles,
-                Children = EmptyChildren,
-                Events = events ?? EmptyEvents,
-                RefCallback = refCallback,
-                WhileHoverClass = whileHoverClass,
-                WhileTapClass = whileTapClass,
-                WhileFocusClass = whileFocusClass,
-            };
+            // The ParticleSystem factory validates and builds the node; the settings then name the VisualEffect.
+            var node = Particles((ParticleSystem?)null, className, key, name, playOn, pixelsPerUnit, styles, refCallback,
+                whileHoverClass, whileTapClass, whileFocusClass, data, aria, events);
+            node.Props!.Particles = node.Props.Particles! with { VisualEffect = visualEffect };
+            return node;
         }
 
         /// <summary>

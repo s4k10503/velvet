@@ -37,36 +37,29 @@ namespace Velvet
         // Null for a system that draws nothing: its renderer was off in the source, or it draws neither its
         // particles nor trails.
         public readonly ParticleSystemRenderer? Renderer;
-        public readonly bool DrawsParticles;
-        public readonly ParticleSurface Particles;
-        public readonly bool DrawsTrails;
-        public readonly ParticleSurface Trails;
+        public bool DrawsParticles { get; init; }
+        public ParticleSurface Particles { get; init; }
+        public bool DrawsTrails { get; init; }
+        public ParticleSurface Trails { get; init; }
         public readonly int SortingLayer;
         public readonly int SortingOrder;
         public readonly float SortingFudge;
         // A sub-emitter emits only when its parent's particles trigger it, and a disabled emission
         // module never does, so neither keeps the effect alive on its own clock.
-        public readonly bool EmitsOnItsOwn;
+        public bool EmitsOnItsOwn { get; init; }
         // Seconds after play at which the system's own emission ends: never, for a looping one.
-        public readonly float EmitsUntil;
+        public float EmitsUntil { get; init; }
 
-        public HostedParticleSystem(ParticleSystem system, ParticleSystemRenderer? renderer, bool drawsParticles,
-            ParticleSurface particles, bool drawsTrails, ParticleSurface trails, bool emitsOnItsOwn, float emitsUntil)
+        public HostedParticleSystem(ParticleSystem system, ParticleSystemRenderer? renderer)
         {
             System = system;
             Renderer = renderer;
-            DrawsParticles = drawsParticles;
-            Particles = particles;
-            DrawsTrails = drawsTrails;
-            Trails = trails;
             if (renderer != null)
             {
                 SortingLayer = UnityEngine.SortingLayer.GetLayerValueFromID(renderer.sortingLayerID);
                 SortingOrder = renderer.sortingOrder;
                 SortingFudge = renderer.sortingFudge;
             }
-            EmitsOnItsOwn = emitsOnItsOwn;
-            EmitsUntil = emitsUntil;
         }
     }
 
@@ -467,8 +460,15 @@ namespace Velvet
                 }
                 var emitsOnItsOwn = system.emission.enabled && !subEmitters.Contains(system);
                 var emitsUntil = main.loop ? float.PositiveInfinity : main.startDelay.constantMax + main.duration;
-                hosted[i] = new HostedParticleSystem(system, drawn, drawsParticles, particles, drawsTrails, trails,
-                    emitsOnItsOwn, emitsUntil);
+                hosted[i] = new HostedParticleSystem(system, drawn)
+                {
+                    DrawsParticles = drawsParticles,
+                    Particles = particles,
+                    DrawsTrails = drawsTrails,
+                    Trails = trails,
+                    EmitsOnItsOwn = emitsOnItsOwn,
+                    EmitsUntil = emitsUntil,
+                };
             }
             binding.Systems = hosted;
             var batches = new List<ParticleBatch>();
@@ -963,10 +963,11 @@ namespace Velvet
         private static bool Keeps(CullMode cull, Vector2 a, Vector2 b, Vector2 c)
         {
             var turn = ((b.x - a.x) * (c.y - a.y)) - ((b.y - a.y) * (c.x - a.x));
-            // MUTANT_SURVIVES(equivalent, boundary): a triangle whose corners turn neither way has no area, so keeping it draws no pixel.
             return cull switch
             {
+                // MUTANT_SURVIVES(equivalent, boundary): a triangle whose corners turn neither way has no area, so keeping it draws no pixel.
                 CullMode.Back => turn < 0f,
+                // MUTANT_SURVIVES(equivalent, boundary): a triangle whose corners turn neither way has no area, so keeping it draws no pixel.
                 CullMode.Front => turn > 0f,
                 _ => true,
             };
