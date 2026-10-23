@@ -91,7 +91,7 @@ namespace Velvet
         // play's class outranks the element's own, and a payload's removal leaves it on. The writer's removal
         // takes it off whatever else wants it, a variant payload in force aside (RawReleased). The base priority
         // takes the model-free path, as Add's does.
-        public static void RawAdded(VisualElement element, string cls, long priority, bool wasOnList = true)
+        public static void RawAdded(VisualElement element, string cls, long priority)
         {
             var model = StyleArbitraryValueResolver.TryGetProjection(element);
             if (model == null)
@@ -102,12 +102,6 @@ namespace Velvet
                 }
                 model = StyleArbitraryValueResolver.GetOrCreateProjection(element);
                 model.SeedBaseLayer(element);
-                // The seed adopts a class the writer has just put on as the element's own; a release of it must not
-                // leave that entry holding it (RawReleased).
-                if (!wasOnList)
-                {
-                    model.NoteAdopted(cls);
-                }
             }
             model.RawAdded(element, cls, priority);
         }
@@ -204,8 +198,7 @@ namespace Velvet
             {
                 if (priority == StyleLayerPriority.Base)
                 {
-                    _adopted?.Remove(cls);
-                }
+                    }
                 if (IndexOf(cls, priority) < 0)
                 {
                     var (properties, gate) = RuleOf(element, cls, request: priority != StyleLayerPriority.Base);
@@ -343,39 +336,14 @@ namespace Velvet
 
             public void RawReleased(VisualElement element, string cls)
             {
-                var dropped = DropRaisedRaw(cls);
-                var forgotten = ForgetAdopted(cls);
-                if (dropped || forgotten)
+                if (DropRaisedRaw(cls))
                 {
                     Recompute(element);
                 }
             }
 
-            // Classes a seed took for the element's own that only a writer had put on, by the model's own entry.
-            private HashSet<string>? _adopted;
-
-            public void NoteAdopted(string cls) => (_adopted ??= new HashSet<string>()).Add(cls);
-
-            // Drops the base entry a seed made of a class its writer had put on, once that writer lets it go.
-            private bool ForgetAdopted(string cls)
-            {
-                if (_adopted == null || !_adopted.Remove(cls))
-                {
-                    return false;
-                }
-                for (var i = _entries.Count - 1; i >= 0; i--)
-                {
-                    if (_entries[i].Class == cls && !_entries[i].RankOnly && _entries[i].Priority == StyleLayerPriority.Base)
-                    {
-                        _entries.RemoveAt(i);
-                    }
-                }
-                return true;
-            }
-
             public void RawRested(VisualElement element, string cls)
             {
-                _adopted?.Remove(cls);
                 if (DropRaisedRaw(cls))
                 {
                     RawAdded(element, cls, StyleLayerPriority.Base);
@@ -402,7 +370,6 @@ namespace Velvet
             // built while the class is on.
             private void DropRaw(string cls)
             {
-                _adopted?.Remove(cls);
                 for (var i = _entries.Count - 1; i >= 0; i--)
                 {
                     var entry = _entries[i];

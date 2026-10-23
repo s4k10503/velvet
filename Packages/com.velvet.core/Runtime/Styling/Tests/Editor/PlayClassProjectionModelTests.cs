@@ -33,6 +33,8 @@ namespace Velvet.Tests
             Assert.IsTrue(element.ClassListContains("bg-blue-500"));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes the class off once the payload turns off, so the seed a play's add makes holds nothing on.
+        // The model a play builds adopts the class the play has just put on, and this is what fails when that entry keeps it.
         [Test]
         public void Given_APlayThatShowedAClassBeforeAnyPayloadExisted_When_ThePlayEndsUnderAPayloadOfItAndThePayloadTurnsOff_Then_TheClassGoes()
         {
