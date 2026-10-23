@@ -14,7 +14,7 @@ Packages/com.velvet.core/Runtime/Hooks/QueryKey.cs	1
 Packages/com.velvet.core/Runtime/Hooks/QueryStructuralSharing.cs	5
 Packages/com.velvet.core/Runtime/Hooks/StateUpdater.cs	1
 Packages/com.velvet.core/Runtime/Hooks/TransitionStarter.cs	1
-Packages/com.velvet.core/Runtime/Reconciler/ChildElementPlacement.cs	1
+Packages/com.velvet.core/Runtime/Reconciler/ChildElementPlacement.cs	2
 Packages/com.velvet.core/Runtime/Reconciler/FiberAnimateMotionApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs	2
