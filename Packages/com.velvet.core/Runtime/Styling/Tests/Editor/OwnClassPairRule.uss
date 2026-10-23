@@ -1,9 +1,0 @@
-/* Two classes of an application's own that both set a background colour, the later one declared after the one a
-   payload of the earlier one should outrank. StyleUserClassPropertiesPanelTests lays them out. */
-.pair-dark {
-    background-color: rgb(10, 20, 30);
-}
-
-.pair-base {
-    background-color: rgb(200, 210, 220);
-}

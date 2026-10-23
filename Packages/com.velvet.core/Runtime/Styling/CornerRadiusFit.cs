@@ -234,6 +234,11 @@ namespace Velvet
         {
             for (var i = 0; i < CornerCount; i++)
             {
+                // A cascade that cannot be read now leaves what was read before.
+                if (customStyle == null && StyleCascade.Radius(element, i) == null)
+                {
+                    continue;
+                }
                 state.Sheet[i] = DeclaredBySheet(element, customStyle, i);
             }
         }
@@ -285,11 +290,16 @@ namespace Velvet
         // while none does.
         private static State? AttachWhereRadiusResolves(VisualElement element)
         {
+            // The inline slots and the rules' radii are read as well as the resolved ones, which a style pass that
+            // follows the layout this fires in has not yet brought up to date.
             var style = element.resolvedStyle;
             var resolves = false;
             for (var i = 0; i < CornerCount; i++)
             {
+                var inline = InlineCorner(element.style, i);
                 resolves |= ResolvedCorner(style, i) > 0f;
+                resolves |= inline.keyword == StyleKeyword.Undefined && inline.value.value > 0f;
+                resolves |= StyleCascade.Radius(element, i) is { value: > 0f };
             }
             if (!resolves)
             {

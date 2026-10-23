@@ -1,5 +1,4 @@
 using NUnit.Framework;
-using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -11,7 +10,7 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class StyleUserClassPropertiesPanelTests : PanelTestBase
     {
-        private const string PairSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/OwnClassPairRule.uss";
+        private const string PairSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
 
         protected override void LoadStyleSheets()
             => _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(PairSheet));
@@ -25,18 +24,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AClassOfOwnWhoseVariantClassSetsTheSameColour_When_TheVariantIsOn_Then_TheVariantClassColoursTheElement()
+        public void Given_AClassOfOwnWhoseVariantClassSetsTheSameRadius_When_TheVariantIsOn_Then_TheVariantClassRoundsTheElement()
         {
-            // Arrange — pair-dark is declared before pair-base, so on stylesheet order alone pair-base wins both.
-            var card = MountPair("pair-base w-[40px] h-[40px]");
+            // Arrange — layout-id-test-round is declared before layout-id-test-rounder, so on stylesheet order alone the
+            // rounder one wins both.
+            var card = MountPair("layout-id-test-rounder w-[400px] h-[400px]");
 
             // Act — the first panel pass reads the probes, and the second restyles the element.
-            StyleClassProjection.Add(card, "pair-dark", StyleLayerPriority.Hover);
+            StyleClassProjection.Add(card, "layout-id-test-round", StyleLayerPriority.Hover);
             ForcePanelUpdate(card.panel);
             ForcePanelUpdate(card.panel);
 
-            // Assert
-            Assert.That(ColorUtility.ToHtmlStringRGBA(card.resolvedStyle.backgroundColor), Is.EqualTo("0A141EFF"));
+            // Assert — the payload's 10px, not the base's 20px.
+            Assert.That(card.resolvedStyle.borderTopLeftRadius, Is.EqualTo(10f).Within(1e-3f));
         }
     }
 }

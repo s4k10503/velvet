@@ -13,9 +13,9 @@ namespace Velvet
     }
 
     // The shape a skewed element is picked by: its box sheared by the tangents it paints with, or the box alone where
-    // the shear is the element's transform. Each corner is taken to where the element is drawn (worldTransform) and
-    // back through WorldToLocal; SkewTransformPlaybackTests holds the outcome to a pointer over the drawn shape where the
-    // shear is the element's transform.
+    // the shear is the element's transform. In that case each corner is taken to where the element is drawn
+    // (worldTransform) and back through WorldToLocal; SkewTransformPlaybackTests holds the outcome to a pointer over the
+    // drawn shape.
     internal sealed class SkewPickRegion
     {
         public float TanX;
@@ -45,6 +45,11 @@ namespace Velvet
         private Vector2 Corner(VisualElement element, Vector2 corner, float width, float height)
         {
             var sheared = SilhouetteFace.Shear(corner, width, height, TanX, TanY);
+            // Painted, the shear is in the element's own space, which a point arrives in as it is.
+            if (TanX != 0f || TanY != 0f)
+            {
+                return sheared;
+            }
             var world = element.worldTransform.MultiplyPoint3x4(new Vector3(sheared.x, sheared.y, 0f));
             return element.WorldToLocal(new Vector2(world.x, world.y));
         }
