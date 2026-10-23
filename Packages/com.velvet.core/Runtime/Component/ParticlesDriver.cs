@@ -872,10 +872,11 @@ namespace Velvet
             var ppu = binding.Settings.PixelsPerUnit;
             var camera = binding.BakeCamera!;
             var mesh = binding.BakedMesh!;
-            // The bake camera's view is as tall as the element, so a renderer's limits on a particle's share
-            // of the view are taken against the element; ParticlesPlaybackTests'
+            // The bake camera's view is the element's box, as tall and as wide, so a renderer's limits on a
+            // particle's share of the view are taken against the element; ParticlesPlaybackTests'
             // Given_AParticleLargerThanItsRendererAllows_When_Drawn_Then_ItIsClampedAgainstTheElement pins that.
             camera.orthographicSize = h / (2f * ppu);
+            camera.aspect = w / h;
             // With nothing drawn the bounds stay inverted, a negative size UnionExtents treats as no extent.
             var offset = target == element ? Vector2.zero : -target.layout.position;
             var frame = new DrawFrame
@@ -962,7 +963,7 @@ namespace Velvet
         // Given_AMeshParticleUnderABackCullingMaterial_When_Drawn_Then_OnlyItsFrontFaceRenders pins that.
         private static bool Keeps(CullMode cull, Vector2 a, Vector2 b, Vector2 c)
         {
-            var turn = ((b.x - a.x) * (c.y - a.y)) - ((b.y - a.y) * (c.x - a.x));
+            var turn = Turn(a, b, c);
             return cull switch
             {
                 // MUTANT_SURVIVES(equivalent, boundary): a triangle whose corners turn neither way has no area, so keeping it draws no pixel.
@@ -972,6 +973,10 @@ namespace Velvet
                 _ => true,
             };
         }
+
+        // Negative where the corners turn clockwise in the host's local xy plane.
+        private static float Turn(Vector2 a, Vector2 b, Vector2 c)
+            => ((b.x - a.x) * (c.y - a.y)) - ((b.y - a.y) * (c.x - a.x));
 
         private static void DrawTriangles(MeshGenerationContext mgc, in ParticleSurface surface, int first, int triangles, ref DrawFrame frame)
         {
@@ -1000,8 +1005,15 @@ namespace Velvet
                     maxY = Mathf.Max(maxY, y);
                     var position = new Vector3(x + offset.x, y + offset.y, Vertex.nearZ);
                     mwd.SetNextVertex(new Vertex { position = position, tint = Tinted(s_colors[v], tint), uv = s_uvs[v] });
-                    mwd.SetNextIndex((ushort)((3 * k) + corner));
                 }
+                // UI Toolkit draws a triangle in one winding only, the one a front face has here, so a triangle its
+                // material keeps from the other side is indexed the other way round; ParticlesPlaybackTests'
+                // Given_AMeshParticleUnderAFrontCullingMaterial_When_Drawn_Then_OnlyItsBackFaceRenders pins that.
+                // MUTANT_SURVIVES(equivalent, boundary): a triangle whose corners turn neither way has no area, so either order draws no pixel.
+                var reversed = Turn(s_local[s_triangles[t]], s_local[s_triangles[t + 1]], s_local[s_triangles[t + 2]]) > 0f;
+                mwd.SetNextIndex((ushort)(3 * k));
+                mwd.SetNextIndex((ushort)((3 * k) + (reversed ? 2 : 1)));
+                mwd.SetNextIndex((ushort)((3 * k) + (reversed ? 1 : 2)));
             }
             frame.MinX = minX;
             frame.MinY = minY;

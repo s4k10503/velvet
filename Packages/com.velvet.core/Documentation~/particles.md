@@ -31,8 +31,8 @@ rest:
 
 Each repaint, every drawn system's renderer **bakes its geometry** — billboards, stretched
 billboards, meshes, texture-sheet frames and trails, with each particle's current size, rotation
-and color — for an orthographic camera looking down the root's forward axis, its view as tall as the
-element, so a renderer's maximum particle size is measured against the element. The
+and color — for an orthographic camera looking down the root's forward axis, its view the element's box, so
+a renderer's maximum particle size is measured against the element. The
 geometry is drawn at the element's center in the root system's **local space** (up = element up),
 whatever space each system simulates in. Particles draw with their renderer material's main
 texture, or a Sprites-mode texture sheet's first sprite's texture; trails draw with the trail

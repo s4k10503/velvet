@@ -83,6 +83,21 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
         }
 
+        // A case that lays the panel out again before it fires the tick runs on the fake clock and steps it past
+        // the tick's interval, so its own drive fires the tick once whether or not a layout pass already ran the
+        // scheduler.
+        private void UseFakeClock()
+        {
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
+        }
+
+        private void FireTick()
+        {
+            UseFrameFakeClockHost.Ms += 100;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+        }
+
         // Null where the element shows no camera output.
         private static VisualElement Feed(VisualElement element) => element.Q(className: "velvet-scene-view-feed");
 
@@ -260,6 +275,7 @@ namespace Velvet.Tests
         public void Given_APaddingShiftThatKeepsTheContentSize_When_TheTickFires_Then_TheFeedFollowsTheContentBox()
         {
             // Arrange — the content box moves 4px right at the same size, which re-derives no texture.
+            UseFakeClock();
             s_camera = CreateCamera("cam");
             MountAndLayout(V.Component(ShiftingPaddingHost, key: "root"));
             var el = _host.Root.Q<VisualElement>("sv");
@@ -267,7 +283,7 @@ namespace Velvet.Tests
             FlushAndLayout();
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
 
             // Assert
@@ -847,6 +863,7 @@ namespace Velvet.Tests
             // Arrange — the resize re-derives the texture and re-syncs the tick, which must leave one
             // tick running rather than a second beside the first.
             TestGraphics.IgnoreIfHeadless("a camera render");
+            UseFakeClock();
             s_camera = CreateRedCamera();
             MountAndLayout(V.Component(ResizingHost, key: "root"));
             s_setFlag.Invoke(true);
@@ -861,7 +878,7 @@ namespace Velvet.Tests
             // Act
             try
             {
-                EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+                FireTick();
             }
             finally
             {
@@ -878,6 +895,7 @@ namespace Velvet.Tests
         {
             // Arrange — an editor panel regenerates only what is marked dirty, and nothing but the tick
             // marks this element once its texture is in place.
+            UseFakeClock();
             var cam = CreateCamera("cam");
             MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]", name: "sv"));
             var element = _host.Root.Q<VisualElement>("sv");
@@ -887,7 +905,7 @@ namespace Velvet.Tests
             repaints = 0;
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
 
             // Assert
@@ -1135,6 +1153,7 @@ namespace Velvet.Tests
         // Mounts "a", then adds "b", whose explicit pass claims the shared camera last.
         private void MountSharedCamera()
         {
+            UseFakeClock();
             s_camera = CreateRedCamera();
             MountAndLayout(V.Component(SharedCameraHost, key: "root"));
             s_setFlag.Invoke(true);
@@ -1155,7 +1174,7 @@ namespace Velvet.Tests
             Fill(first, Color.blue);
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
             Assert.That(IsRed(first), Is.True);
@@ -1170,7 +1189,7 @@ namespace Velvet.Tests
             MountSharedCamera();
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
             Assert.That(s_camera.targetTexture, Is.SameAs(TextureOf("b")));
@@ -1187,7 +1206,7 @@ namespace Velvet.Tests
             FlushAndLayout();
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
             Assert.That(s_camera.targetTexture, Is.SameAs(first));

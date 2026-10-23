@@ -1105,11 +1105,15 @@ namespace Velvet.Tests
             element.Play();
             yield return WaitRealtimeDraining(1.0, _host.TargetTexture);
             var playing = NotGreen();
+            var clone = _mounted.Root.Reconciler.Context.ParticlesBindings[element].EffectHost;
+            var state = $"drawn={playing} asset={clone.visualEffectAsset != null} alive={clone.aliveParticleCount} "
+                + $"awake={clone.HasAnySystemAwake()} culled={clone.culled} device={SystemInfo.graphicsDeviceType}";
             element.Stop();
             yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
 
-            // Assert
-            Assert.That((beforePlay, playing > 50, NotGreen()), Is.EqualTo((0, true, 0)));
+            // Assert — the clone's state while playing rides in the message, to tell a graph that never simulated
+            // from one that simulated and drew nothing.
+            Assert.That((beforePlay, playing > 50, NotGreen()), Is.EqualTo((0, true, 0)), state);
         }
 
         [UnityTest]
