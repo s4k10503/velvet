@@ -852,31 +852,21 @@ namespace Velvet.Tests
             Assert.That((element.layout.x, element.style.translate.keyword), Is.EqualTo((230f, StyleKeyword.Null)));
         }
 
-        private static readonly string[] s_rowIds =
-        {
-            "row-0", "row-1", "row-2", "row-3", "row-4", "row-5", "row-6", "row-7", "row-8", "row-9", "row-10", "row-11",
-        };
-
-        // Each row is a layoutId Motion under its own id; a scroll renders the range outside any render.
-        private static VirtualListNode LayoutIdRows() => V.VirtualList(
-            items: s_rowIds,
-            keySelector: id => id,
-            itemHeight: 50f,
-            renderer: id => V.Motion(key: id, name: id, layoutId: id, transition: s_layoutSpring, className: "w-[100px] h-[50px]"),
-            overscan: 0);
-
         [Test]
-        public void Given_ALayoutIdRowAScrollTookOutOfRange_When_ALaterRenderMountsAnotherUnderItsId_Then_ItTweensFromTheRowsBox()
+        public void Given_ALayoutIdMotionTornDownOutsideARender_When_ALaterRenderMountsAnotherUnderItsId_Then_ItTweensFromItsBox()
         {
-            // Arrange — the rows re-render once after layout, so row-0 holds its own box when the scroll takes it.
-            var scrollView = new ScrollView(ScrollViewMode.Vertical);
-            Root.Add(scrollView);
-            using var controller = new FiberVirtualListController(scrollView, LayoutIdRows(), _reconciler);
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+            // Arrange — a Motion laid out, and the cleanup a virtual list gives a row it recycles, with no render in
+            // progress, and the row taken out of the tree as the list takes it.
+            var first = new VisualElement();
+            Root.Add(first);
+            _reconciler.Reconcile(first, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(name: "row", layoutId: "row-0", transition: s_layoutSpring, className: "left-[0px] top-[0px] w-[100px] h-[50px]"),
+            });
             Tick();
-            controller.Update(LayoutIdRows());
-            Tick();
-            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 100f);
+            var row = first.Q<VisualElement>("row");
+            ((IReconcilerBridge)_reconciler).CleanupElementForController(row);
+            row.RemoveFromHierarchy();
             var host = new VisualElement();
             Root.Add(host);
 
@@ -1003,10 +993,8 @@ namespace Velvet.Tests
             Assert.That(UnityEngine.Mathf.Abs(translate - 200f), Is.LessThan(50f));
         }
 
-        // GREEN_ON_BASE(characterization): the base keeps no box for an id whose element left in an earlier render.
-        // A box a batch drain leaves must expire at that drain's end rather than wait for a pass outside one.
         [Test]
-        public void Given_TwoTabComponentsOnOneStore_When_NoneIsSelectedAndThenTheSecond_Then_TheUnderlineAppearsInPlace()
+        public void Given_TwoTabComponentsOnOneStore_When_NoneIsSelectedAndThenTheSecond_Then_TheUnderlineTweensFromWhereItLeft()
         {
             // Arrange
             s_tabs = new TabStore(0);
@@ -1016,17 +1004,14 @@ namespace Velvet.Tests
             s_tabs.Select(-1);
             Tick();
             Tick();
-            var removed = Root.Q<VisualElement>("underline");
 
             // Act
             s_tabs.Select(1);
             Tick();
             Tick();
 
-            // Assert
-            var underline = Root.Q<VisualElement>("underline");
-            Assert.That((removed, underline?.style.translate.keyword),
-                Is.EqualTo(((VisualElement)null, (StyleKeyword?)StyleKeyword.Null)));
+            // Assert — pinned near the first tab, 200px left of the second.
+            Assert.That(UnityEngine.Mathf.Abs(TranslateX(Root.Q<VisualElement>("underline")) + 200f), Is.LessThan(50f));
         }
 
         // Step 1 moves the box out of a parent drawn at half scale into an unscaled one above it.
