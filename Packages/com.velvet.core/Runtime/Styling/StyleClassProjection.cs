@@ -15,14 +15,12 @@ namespace Velvet
     // removals to undo. Restoring a payload that turns off is then structural: it falls out of the model no
     // longer holding that layer, whatever else is active at the time.
     //
-    // Only a class whose property set is wholly CONTAINED in what higher priorities claim is suppressed,
-    // which leaves two shapes to declaration order. One is safe: a strict superset survives because it still
-    // owns properties nothing above it claims, and the bundled stylesheets declare every utility before the
-    // narrower ones its set contains, so `size-8 md:w-4` resolves the width correctly on source order alone.
-    // The other is not: two sets that merely OVERLAP (`rounded-l` and `rounded-t` share one corner and
-    // neither contains the other) have no invariant behind them, so `rounded-l md:rounded-t` can be a silent
-    // no-op — and the important modifier does not rescue it, since raising the payload's band still leaves
-    // the base uncontained and therefore alive.
+    // A class whose property set is wholly CONTAINED in what higher priorities claim is suppressed. One that
+    // merely OVERLAPS it survives while it still owns something nothing above claims, and the bundled
+    // stylesheets declare every utility before the narrower ones its set contains, so `size-8 md:w-4` resolves the
+    // width correctly on source order alone. A side radius overlapping another (`rounded-l` and `rounded-t` share
+    // one corner) is the one shape of overlap the bundled sheets have outside the anim-* presets, and it is
+    // replaced by the per-corner classes of the corners it still owns (StyleCornerRemainder).
     //
     // A class with no entry in StyleUtilityProperties — a user's own, or one of the families Velvet realises
     // in C# rather than in USS — has an empty property set. It neither claims a longhand nor loses one, so
@@ -169,6 +167,10 @@ namespace Velvet
             private List<InlineLayer>? _inline;
             private Dictionary<ArbitraryProperty, long>? _floors;
             private Dictionary<string, bool>? _verdict;
+            // The per-corner classes standing in for a side radius a higher layer took one corner of
+            // (StyleCornerRemainder), by the class they stand in for; and the ones this put on the element.
+            private Dictionary<string, string[]>? _remainderOf;
+            private HashSet<string>? _remainders;
             private int _deadCount;
             private TransformPart _claimedParts;
 
@@ -322,6 +324,7 @@ namespace Velvet
                     _claimed[i] = StyleLonghandSet.Empty;
                 }
                 _floors?.Clear();
+                _remainderOf?.Clear();
                 _deadCount = 0;
                 _claimedParts = TransformPart.None;
 
@@ -380,6 +383,13 @@ namespace Velvet
                     if (entry.Priority == priority && !entry.Properties.IsEmpty
                         && IsSubset(entry.Properties, _claimed[entry.Gate]))
                     {
+                        _entries[i] = entry.WithDead(true);
+                        _deadCount++;
+                    }
+                    else if (entry.Priority == priority && _claimed[entry.Gate].Overlaps(entry.Properties)
+                        && StyleCornerRemainder.TryOf(entry.Class, entry.Properties, _claimed[entry.Gate], out var corners))
+                    {
+                        (_remainderOf ??= new Dictionary<string, string[]>())[entry.Class] = corners;
                         _entries[i] = entry.WithDead(true);
                         _deadCount++;
                     }
@@ -442,7 +452,8 @@ namespace Velvet
             // proportional to the whole class list.
             private void ApplyClassVerdict(VisualElement element)
             {
-                if (_deadCount == 0 && (_suppressed == null || _suppressed.Count == 0))
+                if (_deadCount == 0 && (_suppressed == null || _suppressed.Count == 0)
+                    && (_remainders == null || _remainders.Count == 0))
                 {
                     return;
                 }
@@ -469,7 +480,54 @@ namespace Velvet
                         element.RemoveFromClassList(pair.Key);
                     }
                 }
+                SettleRemainders(element, verdict);
             }
+
+            // Puts the per-corner classes of every side radius the verdict took a corner of on the element, and takes
+            // off the ones no longer wanted.
+            private void SettleRemainders(VisualElement element, Dictionary<string, bool> verdict)
+            {
+                var wanted = s_scratchWanted;
+                wanted.Clear();
+                if (_remainderOf != null)
+                {
+                    foreach (var pair in _remainderOf)
+                    {
+                        if (verdict.TryGetValue(pair.Key, out var alive) && !alive)
+                        {
+                            wanted.UnionWith(pair.Value);
+                        }
+                    }
+                }
+                if (_remainders != null)
+                {
+                    foreach (var cls in _remainders)
+                    {
+                        if (!wanted.Contains(cls))
+                        {
+                            s_scratchDropped.Add(cls);
+                        }
+                    }
+                    foreach (var cls in s_scratchDropped)
+                    {
+                        _remainders.Remove(cls);
+                        element.RemoveFromClassList(cls);
+                    }
+                    s_scratchDropped.Clear();
+                }
+                foreach (var cls in wanted)
+                {
+                    // A per-corner class the element already carries is its own, and stays when no longer wanted.
+                    if (_remainders?.Contains(cls) != true && !element.ClassListContains(cls))
+                    {
+                        (_remainders ??= new HashSet<string>()).Add(cls);
+                        element.AddToClassList(cls);
+                    }
+                }
+            }
+
+            private static readonly HashSet<string> s_scratchWanted = new();
+            private static readonly List<string> s_scratchDropped = new();
 
             private static bool IsSubset(StyleLonghandSet a, StyleLonghandSet b) => b.Union(a) == b;
 

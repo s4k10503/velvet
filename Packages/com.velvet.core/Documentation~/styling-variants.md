@@ -131,14 +131,11 @@ Four consequences worth knowing:
   ([react-migration.md §4-1b](react-migration.md#4-1b-per-side-border-colors)); the families a C# resolver folds from
   the class list, the font facets (`font-light font-bold`, `not-italic italic`) among them, and the nine-slice
   utilities are put in Tailwind's order too ([the list](styling-arbitrary-lengths.md#utilities-a-c-resolver-folds-from-the-class-list)).
-- **A payload only displaces a class whose properties it wholly covers.** A base utility writing
-  something the payload does not keeps its place, and the two then settle their shared properties in
-  Tailwind's order. That is reliable where one set contains the other — `size-8 md:w-4` resolves the
-  width correctly, because Tailwind emits `size-8` ahead of `w-4` — and
-  unreliable where the sets merely overlap. `rounded-l` and `rounded-t` share one corner and neither
-  contains the other, so `rounded-l md:rounded-t` can be a silent no-op. The important modifier does
-  not rescue it: the base is still uncontained, so it still applies. Write one class, or use the
-  arbitrary-value form.
+- **A payload displaces the properties of a class it covers, and only those.** A base utility writing something
+  the payload does not keeps it: `size-8 md:w-4` resolves the width correctly, because Tailwind emits `size-8`
+  ahead of `w-4`. A side radius that a higher layer takes one corner of keeps its other corner, which Velvet
+  writes with the per-corner class of the same size: `rounded-l-lg md:rounded-t-lg` paints `rounded-t-lg` and
+  `rounded-bl-lg`, whichever is written first and whether or not either is marked important.
 - **A class Velvet does not ship is never ranked.** The property table is derived from the bundled
   stylesheets, so a class of your own carries no known properties and can neither displace another
   class nor be displaced by one. `my-card dark:my-card-dark` ties exactly as before, and marking
