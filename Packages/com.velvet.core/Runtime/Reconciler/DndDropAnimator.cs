@@ -5,9 +5,9 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // A drag overlay's return to its source after a drop or a cancel (DndDropAnimation). The target is measured
-    // on the first tick after the drag closes rather than at the close: the drop's own commit, a sortable
-    // reorder say, moves the source, and the layout that places it runs between the close and that tick. The
-    // source is found again by its id there, since the commit may have handed the id to another element.
+    // again on every tick rather than once at the close: the drop's own commit, a sortable reorder say, moves
+    // the source, and only a later layout places it. The source is found again by its id each time, since the
+    // commit may have handed the id to another element.
     internal static class DndDropAnimator
     {
         private const long TickIntervalMs = 16;
@@ -104,6 +104,10 @@ namespace Velvet
                 Measure(run, timer.now);
                 return;
             }
+            if (TargetOf(run) is { } target)
+            {
+                run.To = target;
+            }
             var progress = Mathf.Clamp01((timer.now - run.StartMs) / run.DurationMs);
             var eased = CubicBezierEvaluator.Evaluate(EaseX1, EaseY1, EaseX2, EaseY2, progress);
             var position = Vector2.LerpUnclamped(run.From, run.To, eased);
@@ -115,13 +119,21 @@ namespace Velvet
             }
         }
 
+        private static Vector2? TargetOf(Run run)
+        {
+            var source = FindSource(run);
+            return source?.panel != null
+                && DndOverlayDriver.TryLocalPosition(
+                    run.Positioner, source.panel, source.worldBound.position, run.Context, out var at)
+                ? at
+                : null;
+        }
+
         private static void Measure(Run run, long now)
         {
             var source = FindSource(run);
             var style = run.Positioner.style;
-            if (source == null || source.panel == null
-                || !DndOverlayDriver.TryLocalPosition(
-                    run.Positioner, source.panel, source.worldBound.position, run.Context, out var to))
+            if (source == null || TargetOf(run) is not { } to)
             {
                 Stop(run.Binding);
                 return;
