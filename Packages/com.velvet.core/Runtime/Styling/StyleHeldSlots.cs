@@ -21,6 +21,11 @@ namespace Velvet
         BorderRightColor,
         BorderBottomColor,
         BorderLeftColor,
+        Height,
+        MinWidth,
+        MaxWidth,
+        MinHeight,
+        MaxHeight,
     }
 
     // The values held on one element. Each array is indexed by slot and only allocated once a slot of its
@@ -40,6 +45,10 @@ namespace Velvet
         private int _driven;
         private int _masks;
 
+        // The held lengths a gap writes, which a declaration of the element's own adds to
+        // (StyleArbitraryValueResolver.HoldGap).
+        private int _composes;
+
         // An important hold is one yielding only to an important layer: an important divide's (Yield).
         private int Overridden => _driven & ~_masks & ~(_yieldMask & _importantOnlyMask);
         private StyleLength[]? _lengths;
@@ -56,6 +65,12 @@ namespace Velvet
             (_lengths ??= new StyleLength[HeldSlotGroups.SlotCount])[(int)slot] = value;
             (_gaps ??= new float[HeldSlotGroups.SlotCount])[(int)slot] = gap;
             Take(slot);
+        }
+
+        public void SetGap(HeldSlot slot, StyleLength value, float gap)
+        {
+            Set(slot, value, gap);
+            _composes |= Bit(slot);
         }
 
         public void Set(HeldSlot slot, StyleFloat value)
@@ -75,6 +90,7 @@ namespace Velvet
             _mask |= Bit(slot);
             _yieldMask &= ~Bit(slot);
             _masks &= ~Bit(slot);
+            _composes &= ~Bit(slot);
         }
 
         public void SetMask(HeldSlot slot) => _masks |= Bit(slot);
@@ -107,6 +123,11 @@ namespace Velvet
 
         public bool IsDriven(HeldSlot slot) => (_driven & Bit(slot)) != 0;
 
+        // The held slots among slots that a gap writes and nothing overrides.
+        public int Composing(int slots) => _mask & _composes & ~Overridden & slots;
+
+        public float GapOf(HeldSlot slot) => _gaps?[(int)slot] ?? 0f;
+
         // The pixels a held length carries, and the part of them a gap does not contribute: a space rule's.
         public float Length(HeldSlot slot) => _lengths?[(int)slot].value.value ?? 0f;
 
@@ -134,6 +155,9 @@ namespace Velvet
         public static void WriteNull(IStyle style, HeldSlot slot)
             => Write(style, slot, StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null);
 
+        public static void WriteLength(IStyle style, HeldSlot slot, StyleLength length)
+            => Write(style, slot, length, default, default);
+
         // Writes what the layer winner resolves to into slot alone, whatever else the winner's property fans
         // out to. length is the winner's length as measured on the element, for a length slot.
         public static void WriteLayered(IStyle style, HeldSlot slot, StyleLength length, in ArbitraryStyle winner)
@@ -158,6 +182,21 @@ namespace Velvet
                     break;
                 case HeldSlot.Width:
                     style.width = length;
+                    break;
+                case HeldSlot.Height:
+                    style.height = length;
+                    break;
+                case HeldSlot.MinWidth:
+                    style.minWidth = length;
+                    break;
+                case HeldSlot.MaxWidth:
+                    style.maxWidth = length;
+                    break;
+                case HeldSlot.MinHeight:
+                    style.minHeight = length;
+                    break;
+                case HeldSlot.MaxHeight:
+                    style.maxHeight = length;
                     break;
                 case HeldSlot.BorderTopWidth:
                     style.borderTopWidth = width;
@@ -191,7 +230,7 @@ namespace Velvet
     // each property writes, pinned by StyleArbitraryLonghandTableTests) rather than listed here.
     internal static class HeldSlotGroups
     {
-        public const int SlotCount = (int)HeldSlot.BorderLeftColor + 1;
+        public const int SlotCount = (int)HeldSlot.MaxHeight + 1;
 
         public static readonly HeldSlot[] EverySlot = (HeldSlot[])Enum.GetValues(typeof(HeldSlot));
 
@@ -203,6 +242,8 @@ namespace Velvet
             StyleLonghand.BorderBottomWidth, StyleLonghand.BorderLeftWidth,
             StyleLonghand.BorderTopColor, StyleLonghand.BorderRightColor,
             StyleLonghand.BorderBottomColor, StyleLonghand.BorderLeftColor,
+            StyleLonghand.Height, StyleLonghand.MinWidth, StyleLonghand.MaxWidth,
+            StyleLonghand.MinHeight, StyleLonghand.MaxHeight,
         };
 
         private static readonly ArbitraryProperty[] s_properties =

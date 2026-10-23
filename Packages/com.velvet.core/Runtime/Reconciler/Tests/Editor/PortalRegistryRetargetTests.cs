@@ -348,7 +348,7 @@ namespace Velvet.Tests
             target.Add(new Label { name = "backdrop" });
             var tree = Tree("modal-root", "modal");
             LogAssert.Expect(LogType.Warning,
-                "[Portal] Target \"modal-root\" is not registered. Children will not be rendered.");
+                "[Portal] Target \"modal-root\" is not registered. Its children mount once an element is registered under that id.");
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
             FiberPortalRegistry.Register("modal-root", target);
 
@@ -369,7 +369,7 @@ namespace Velvet.Tests
             target.Add(new Label { name = "backdrop" });
             var tree = Tree("modal-root", "modal");
             LogAssert.Expect(LogType.Warning,
-                "[Portal] Target \"modal-root\" is not registered. Children will not be rendered.");
+                "[Portal] Target \"modal-root\" is not registered. Its children mount once an element is registered under that id.");
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
             FiberPortalRegistry.Register("modal-root", target);
             var healed = Tree("modal-root", "modal");
@@ -403,7 +403,7 @@ namespace Velvet.Tests
             // Arrange — CreateElement reaches the portal before the sibling, so the mount warns and records
             // no target; the registration the sibling's ref then makes is the only thing that can reach it.
             LogAssert.Expect(LogType.Warning,
-                "[Portal] Target \"notify-target\" is not registered. Children will not be rendered.");
+                "[Portal] Target \"notify-target\" is not registered. Its children mount once an element is registered under that id.");
 
             // Act
             _mounted = V.Mount(new VisualElement(), V.Component(SiblingRegistersHost, key: "host"));

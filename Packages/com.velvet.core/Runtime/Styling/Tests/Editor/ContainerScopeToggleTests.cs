@@ -118,6 +118,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnAttachedMdLeaf_When_ItsParentGainsTheMarkerImperativelyAndReconciles_Then_TheLeafReadsTheParentWidth()
+        {
+            // Arrange — the 900px outer container answers until the parent carries the marker.
+            using var store = new ScopeStore(OuterScope, PlainNarrow, "@md:bg-wide");
+            var leaf = MountScope(store, "@container");
+            var before = leaf.ClassListContains("bg-wide");
+            leaf.parent.AddToClassList("@container");
+
+            // Act — a re-render that leaves the className's markers alone.
+            store.SetScope(PlainNarrow + " p-1");
+            Drain();
+
+            // Assert
+            Assert.That((before, leaf.ClassListContains("bg-wide")), Is.EqualTo((true, false)));
+        }
+
+        [Test]
         public void Given_AnAttachedStackedDarkMdLeaf_When_ItsParentGainsTheMarker_Then_TheLeafReadsTheParentWidth()
         {
             // Arrange — dark on, so the @md: inner of the stack is the only gate left to decide.

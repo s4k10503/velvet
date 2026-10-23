@@ -151,6 +151,10 @@ namespace Velvet
         internal static readonly EngineMember HasRunningStyleAnimation = Method(UIElements,
             VisualElementType, "HasRunningAnimation", "System.Boolean", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
+        // StyleFilterEngineWrite's filter write past a running transform-origin transition.
+        internal static readonly EngineMember CancelStyleAnimation = Method(UIElements,
+            VisualElementType, "CancelAnimation", "System.Void", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
+
         internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
             "UnityEngine.UIElements.StylePropertyName", "id", StylePropertyIdShape);
 
@@ -191,6 +195,36 @@ namespace Velvet
         // style included, since IResolvedStyle carries no overflow.
         internal static readonly EngineMember ComputedStyleOverflow =
             ReadProperty(UIElements, ComputedStyleType, "overflow", "enum:UnityEngine.UIElements.OverflowInternal");
+
+        // BackdropFilterLayer's mapping of an element onto the target UI Toolkit is drawing it into: the viewport and
+        // projection the renderer has set while it runs an immediate-mode element, and the rectangle it clips that
+        // element to.
+        private const string RendererUtilityType = "UnityEngine.UIElements.UIR.Utility";
+
+        internal static readonly EngineMember RendererActiveViewport =
+            Method(UIElements, RendererUtilityType, "GetActiveViewport", "UnityEngine.RectInt");
+
+        internal static readonly EngineMember RendererProjection =
+            Method(UIElements, RendererUtilityType, "GetUnityProjectionMatrix", "UnityEngine.Matrix4x4");
+
+        internal static readonly EngineMember ElementWorldClip =
+            ReadProperty(UIElements, VisualElementType, "worldClip", "UnityEngine.Rect");
+
+        // The stencil test the renderer draws an element's children under, which a masking ancestor (a rounded overflow
+        // clip, a clip-path wrapper) changes: an element's render data, the one its filter roots its children in where
+        // it has one, and that data's reference and mask depth.
+        private const string RenderDataType = "UnityEngine.UIElements.UIR.RenderData";
+
+        internal static readonly EngineMember ElementRenderData = Field(UIElements, VisualElementType, "renderData", RenderDataType);
+
+        internal static readonly EngineMember ElementNestedRenderData =
+            Field(UIElements, VisualElementType, "nestedRenderData", RenderDataType);
+
+        internal static readonly EngineMember RenderDataChildrenStencilRef =
+            Field(UIElements, RenderDataType, "childrenStencilRef", "System.Int32");
+
+        internal static readonly EngineMember RenderDataChildrenMaskDepth =
+            Field(UIElements, RenderDataType, "childrenMaskDepth", "System.Int32");
 
         internal static readonly EngineMember IsMatchingShorthand = Method(UIElements,
             "UnityEngine.UIElements.StyleSheets.StylePropertyUtil", "IsMatchingShorthand", "System.Boolean",

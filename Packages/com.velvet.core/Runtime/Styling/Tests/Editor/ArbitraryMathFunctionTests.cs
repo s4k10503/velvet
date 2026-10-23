@@ -319,15 +319,14 @@ namespace Velvet.Tests
             Assert.That((ok, s.Value, s.Unit), Is.EqualTo((true, 20f, LengthUnit.Pixel)));
         }
 
-        // GREEN_ON_BASE(characterization): a blur reads pixels alone, so an em was never read there and still is not.
         [Test]
-        public void Given_AnEmBlur_When_Parsed_Then_TheClassIsDeclined()
+        public void Given_AnEmBlur_When_Parsed_Then_ItIsClaimedAsALengthTheElementMeasures()
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("blur-[1em]", out _);
+            var ok = StyleArbitraryValueResolver.TryParse("blur-[1em]", out var s);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That((ok, s.Property, s.Expression != null), Is.EqualTo((true, ArbitraryProperty.FilterBlur, true)));
         }
 
         // GREEN_ON_BASE(characterization): a gap mixing a percentage with pixels was never read, nor is it now.

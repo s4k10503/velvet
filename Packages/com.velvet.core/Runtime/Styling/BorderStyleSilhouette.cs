@@ -27,6 +27,12 @@ namespace Velvet
         public Color BorderColor => Face.CurrentBorder;
         public bool HasStash => Face.HasStash;
         public bool SuppressionApplied => Face.SuppressionApplied;
+
+        // Whether a settling of the sibling overlay (FaceBorderOverlay) is waiting to run.
+        public bool OverlayPending;
+
+        // Set once the binding is torn down, so a settling queued before it does not put an overlay back.
+        public bool Detached;
     }
 
     /// <summary>
@@ -97,6 +103,8 @@ namespace Velvet
         // again (pool reset also nulls inline style, but a detach without pooling must restore too).
         public static void Detach(VisualElement element, BorderStyleBinding binding)
         {
+            binding.Detached = true;
+            FaceBorderOverlay.Remove(element);
             element.generateVisualContent -= binding.OnGenerate;
             if (binding.OnStyleResolved != null)
             {
@@ -120,6 +128,8 @@ namespace Velvet
         // releases instead, for when the border-style classes were genuinely removed with no higher layer taking over.
         public static void DetachPreservingSuppression(VisualElement element, BorderStyleBinding binding)
         {
+            binding.Detached = true;
+            FaceBorderOverlay.Remove(element);
             element.generateVisualContent -= binding.OnGenerate;
             if (binding.OnStyleResolved != null)
             {
@@ -168,6 +178,28 @@ namespace Velvet
         internal static bool PaintsSide(VisualElement ve, DivideEdge side) => side != DivideDashPainter.BoundEdge(ve);
 
         private static void Draw(MeshGenerationContext mgc, VisualElement ve, BorderStyleBinding binding)
+        {
+            // An element that clips its content cuts this outline at its padding box, which the outline lies
+            // outside (styling-variants.md's hidden-overflow table), and CSS clips neither, so such an element's
+            // outline is painted on a sibling over it (FaceBorderOverlay). Settled outside the paint, as it
+            // writes the hierarchy.
+            if (!FaceBorderOverlay.ClipsAndSettle(ve, ref binding.OverlayPending, binding, SettleOverlay))
+            {
+                PaintSides(mgc, ve, binding);
+            }
+        }
+
+        private static void SettleOverlay(VisualElement ve, BorderStyleBinding binding)
+        {
+            binding.OverlayPending = false;
+            if (binding.Detached || ve.panel == null)
+            {
+                return;
+            }
+            FaceBorderOverlay.Sync(ve, StyleCascade.ClipsOverflow(ve), (mgc, _, _) => PaintSides(mgc, ve, binding));
+        }
+
+        private static void PaintSides(MeshGenerationContext mgc, VisualElement ve, BorderStyleBinding binding)
         {
             if (BoxOf(ve) is not { } box)
             {

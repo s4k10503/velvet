@@ -152,7 +152,10 @@ These are read by the utilities that write a length-percentage inline:
 - position: `inset-`, `inset-x-`, `inset-y-`, `top-`, `right-`, `bottom-`, `left-`, `start-`, `end-`;
 - spacing: the `p*-` and `m*-` utilities, the logical `ps-` / `pe-` / `ms-` / `me-` among them, and their
   negated forms (`-mt-[1em]`);
-- type: `text-[…]` as a font size, and `tracking-[…]`.
+- type: `text-[…]` as a font size, and `tracking-[…]`;
+- filters: `blur-[…]` and the offsets and deviation of a `drop-shadow-[…]`, an em being the element's own font
+  size and a percentage declined, as `blur()` and `drop-shadow()` take none. A math function coming below zero gives a
+  blur or a deviation of zero.
 
 A percentage inside one of them is taken where CSS takes it for the longhand written: `w-`, `min-w-`,
 `max-w-`, `left-` and `right-` of the parent's width, and so is every padding and margin edge, `pt-` and
@@ -181,7 +184,7 @@ does not. An `absolute` element's percentages are always taken.
 ### When they change
 
 The length is written in pixels once the element is on a panel and has been laid out; until then the longhand
-keeps what the cascade gives it. It is measured again on a 16 ms tick of the panel's scheduler after any of
+keeps what the cascade gives it, and the filter leaves out the blur or shadow reading it. It is measured again on a 16 ms tick of the panel's scheduler after any of
 these moves:
 
 - whether the element has been laid out, its own font size, and its `position`;
@@ -190,14 +193,14 @@ these moves:
 - the panel's size.
 
 Unlike CSS, where the value is part of layout, the new value lands a tick after the change. A re-measure is
-written with the transitions of the element and of its clip wrapper held at zero duration and delay, so it
-lands at once rather than animating.
+written with the transitions of the element and of its clip wrapper held at zero duration and delay, and a
+filter's with no transition, so it lands at once rather than animating.
 
 ### Where they are not read
 
 - Font-relative units other than `em` (`ex`, `ch`, `lh`, `rlh`, `cap`, `ic`) are declined everywhere.
 - Elsewhere a length only an element can measure is declined and leaves the class inert: border widths,
-  `rounded-*`, `translate-*`, `origin-[…]`, `blur-*`, `shadow-*`, `gap-*` / `space-*` / `divide-*` /
+  `rounded-*`, `translate-*`, `origin-[…]`, `shadow-*`, `gap-*` / `space-*` / `divide-*` /
   `ring-*`, `clip-path-[…]` and gradient positions among them. A math function those read has to come to
   pixels or to a percentage. `leading-[…]` reads `em` and percentages itself ([fonts.md](fonts.md)), but no
   viewport unit, and no math function reading `em` or mixing a percentage with a length.

@@ -296,34 +296,13 @@ namespace Velvet.Tests
             Assert.That(content.Children().All(c => c.ClassListContains("text-red-500")), Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base already routes this walk through the control itself.
-        // No production code changes here. The case stands in for a header sentence that said the payload
-        // never lands on a widget's internal hierarchy, which held for ScrollView and not for this control.
         [Test]
-        public void Given_TextFieldChildVariant_When_Reconciled_Then_TheControlsOwnInputTakesPayload()
+        public void Given_TextFieldChildVariantAndALabel_When_Reconciled_Then_NeitherPartTakesThePayload()
         {
-            // Arrange — a TextField redirects nothing, so the walk root is the control itself. It is handed
-            // no reconciled children at all: every child the walk finds is a part the control built, and
-            // #unity-text-input, the box a theme paints the field's background on, is one of them.
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[] { V.TextField(className: "[&>*]:text-red-500") };
-
-            // Act
-            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
-            var input = scope.Root[0].Q<VisualElement>(TextField.textInputUssName);
-
-            // Assert
-            Assert.That(input.ClassListContains("text-red-500"), Is.True);
-        }
-
-        // GREEN_ON_BASE(characterization): the base seats a declared label ahead of the input already.
-        // This pins the half of that reach a caller does not ask for, which the styling guide now states.
-        [Test]
-        public void Given_TextFieldChildVariantAndALabel_When_Reconciled_Then_TheLabelTakesThePayloadAsWell()
-        {
-            // Arrange — a declared label is a SECOND part of the same control, seated ahead of the input, so
-            // the token a caller aimed at the input reaches the label as well. Both parts are read in one
-            // comparison: a walk that found only one of them satisfies either half alone.
+            // Arrange — a TextField redirects nothing, so every child the walk finds is a part the control built
+            // (the label and #unity-text-input), and `& > *` selects the children a tree placed, of which a
+            // field has none. Both parts are read in one comparison: a walk that reached only one of them
+            // satisfies either half alone.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { V.TextField(className: "[&>*]:text-red-500", label: "Name") };
 
@@ -335,7 +314,7 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 (field.labelElement.ClassListContains("text-red-500"), input.ClassListContains("text-red-500")),
-                Is.EqualTo((true, true)));
+                Is.EqualTo((false, false)));
         }
 
         [Test]
@@ -378,18 +357,17 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_GapAndChildVariantSameEdge_When_Reconciled_Then_GapWins()
+        public void Given_GapAndChildVariantSameEdge_When_Reconciled_Then_TheGapAddsToThePayload()
         {
-            // Arrange — [&>*]:ml-[2px] and gap-x-4 both target margin-left; the child-variant pass runs BEFORE
-            // gap, so gap owns the shared edge (its existing precedence over any per-child margin source).
+            // Arrange — [&>*]:ml-[2px] and gap-x-4 both target margin-left, where CSS adds a gap to the margin.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row gap-x-4 [&>*]:ml-[2px]", 3) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
 
-            // Assert — the 2nd child's leading margin is the gap value, not the child-variant's 2px.
-            Assert.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(Space4));
+            // Assert
+            Assert.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(Space4 + 2f));
         }
 
         #endregion

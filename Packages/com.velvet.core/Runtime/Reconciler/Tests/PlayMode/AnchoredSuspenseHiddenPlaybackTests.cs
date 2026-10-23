@@ -89,7 +89,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(root, V.Component(HiddenAnchoredHost, key: "host"));
             yield return null;
             yield return null;
-            var element = root.Q<VisualElement>("anchored");
+            var element = root.Q<VisualElement>("anchored").parent;
 
             // Act
             s_setOwn.Invoke(1);

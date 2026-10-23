@@ -231,7 +231,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnInlineCornerWrittenOverAClassRadius_When_TheBoxShrinksAndGrowsBack_Then_ThatCornerKeepsItsValue()
+        public void Given_AnInlineCornerWrittenOverAClassRadius_When_TheBoxShrinksAndGrowsBack_Then_ThatCornerIsScaledWithTheOthersAndComesBack()
         {
             // Arrange — the inline 4px outranks rounded-3xl on its corner, as inline style outranks a class.
             var box = MountSwitchable("w-[200px] h-[60px] rounded-3xl");
@@ -242,10 +242,9 @@ namespace Velvet.Tests
             // Act
             SwitchClass("w-[200px] h-[60px] rounded-3xl");
 
-            // Assert — while short, the other corners are fitted around the inline one: 24 + 24 down a 34px side
-            // scales them by 34/48.
+            // Assert — while short, 24 + 24 down a 34px side scales every corner by 34/48, the inline one included.
             Assert.That(new[] { shortRadii[0], shortRadii[1], box.resolvedStyle.borderTopLeftRadius },
-                Is.EqualTo(new[] { 4f, 17f, 4f }).Within(1e-3f));
+                Is.EqualTo(new[] { 4f * 34f / 48f, 17f, 4f }).Within(1e-3f));
         }
 
         [Test]
@@ -286,10 +285,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnInlineCornerVelvetDidNotWrite_When_ItsNeighbourOverlapsIt_Then_OnlyTheNeighbourIsScaled()
+        public void Given_AnInlineCornerVelvetDidNotWrite_When_ItsNeighbourOverlaps_Then_BothAreScaled()
         {
-            // Arrange — 80 + 60 across a 100px top edge scales both by 100/140, but only the arbitrary corner is
-            // one the fit declares; the other is written straight onto the element and left to UI Toolkit.
+            // Arrange — 80 + 60 across a 100px top edge scales both by 100/140; one corner is the arbitrary class's
+            // and the other is written straight onto the element.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "box", className: "w-[100px] h-[200px] rounded-tr-[60px]"));
             Box.style.borderTopLeftRadius = 80f;
 
@@ -298,7 +297,7 @@ namespace Velvet.Tests
 
             // Assert
             var radii = Radii(Box);
-            Assert.That(new[] { radii[0], radii[1] }, Is.EqualTo(new[] { 80f, 60f * 100f / 140f }).Within(1e-3f));
+            Assert.That(new[] { radii[0], radii[1] }, Is.EqualTo(new[] { 80f * 100f / 140f, 60f * 100f / 140f }).Within(1e-3f));
         }
     }
 }

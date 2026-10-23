@@ -1,11 +1,16 @@
+using System;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The wrapper-less PAINT layer for the skew-* utilities: a sheared silhouette drawn via the
-    // element's own generateVisualContent, no structural element added. Also owns any bg-gradient-* on
-    // the same element (SyncSkewGradient), since a skewed face must paint the gradient on its sheared
-    // mesh rather than as an un-sheared background-image rectangle.
+    // The skew-* utilities. An element that carries no other rotate or scale source takes the skew as the
+    // inline rotate and scale slots (SkewTransformFactor), which UI Toolkit draws, picks and lays its descendants
+    // out under as the shear it stands for. One that does carry another (a rotate-* or scale-* class, a Motion)
+    // keeps the older layer: a sheared silhouette drawn via the element's own generateVisualContent, no
+    // structural element added, which also owns any bg-gradient-* on the element (SyncSkewGradient) since a
+    // skewed face must paint the gradient on its sheared mesh rather than as an un-sheared background-image
+    // rectangle.
     internal sealed class FiberSkewApplier
     {
         private readonly ReconcilerContext _ctx;
@@ -23,6 +28,11 @@ namespace Velvet
         {
             if (!StyleSkewClass.TryExtract(classNames, out var spec))
             {
+                return;
+            }
+            if (CanUseTransform(element, classNames))
+            {
+                WriteTransform(element, spec);
                 return;
             }
             var binding = SkewSilhouette.Attach(element, spec);
@@ -59,11 +69,17 @@ namespace Velvet
         {
             var bound = _ctx.SkewBindings.TryGetValue(element, out var binding);
             var has = StyleSkewClass.TryGetWinningSkewClasses(newClassNames, out var winnerX, out var winnerY);
+            var transformed = _ctx.SkewTransformed.ContainsKey(element);
             // Fast path: no skew anywhere near this element.
-            if (!bound && !has)
+            if (!bound && !has && !transformed)
             {
                 return default;
             }
+            if (SettleTransform(element, newClassNames, has, transformed, bound))
+            {
+                return default;
+            }
+            bound = _ctx.SkewBindings.TryGetValue(element, out binding);
 
             // Steady state: the winning tokens are exactly what the live binding was built from —
             // skip the parse, but keep the color stash in sync with this patch's styling.
@@ -114,6 +130,94 @@ namespace Velvet
                 _ctx.SkewBindings.Remove(element);
             }
             return default;
+        }
+
+        // Whether the element takes the skew as its transform slots: nothing else writes them, so nothing is lost
+        // to the skew's inline value, and nothing it writes is lost to theirs.
+        private bool CanUseTransform(VisualElement element, string[] classNames)
+            => !_ctx.MotionNodes.ContainsKey(element) && !_ctx.ElementToLayoutId.ContainsKey(element)
+                && !CarriesTransformSource(classNames);
+
+        // A class that writes rotate or scale, whatever variant or modifier it sits behind, or a preset that animates
+        // them.
+        private static bool CarriesTransformSource(string[] classNames) => Array.Exists(classNames, IsTransformSource);
+
+        private static bool IsTransformSource(string cls)
+        {
+            if (string.IsNullOrEmpty(cls))
+            {
+                return false;
+            }
+            var start = 0;
+            var depth = 0;
+            for (var i = 0; i < cls.Length; i++)
+            {
+                if (cls[i] == '[')
+                {
+                    depth++;
+                }
+                else if (cls[i] == ']')
+                {
+                    depth--;
+                }
+                else if (cls[i] == ':' && depth == 0)
+                {
+                    start = i + 1;
+                }
+            }
+            var core = cls.AsSpan(start);
+            while (core.Length > 0 && (core[0] == '!' || core[0] == '-'))
+            {
+                core = core.Slice(1);
+            }
+            return core.StartsWith("rotate".AsSpan(), StringComparison.Ordinal)
+                || core.StartsWith("scale".AsSpan(), StringComparison.Ordinal)
+                || core.StartsWith("animate".AsSpan(), StringComparison.Ordinal)
+                || core.StartsWith("anim-".AsSpan(), StringComparison.Ordinal);
+        }
+
+        // Moves the element between the transform and the painted layer as its classes now call for. True where the
+        // element takes the skew as a transform, so the painted layer has nothing to do.
+        private bool SettleTransform(VisualElement element, string[] classNames, bool has, bool transformed, bool bound)
+        {
+            SkewSpec spec = default;
+            var want = has && StyleSkewClass.TryExtract(classNames, out spec);
+            var useTransform = want && CanUseTransform(element, classNames);
+            if (useTransform)
+            {
+                if (bound)
+                {
+                    SkewSilhouette.Detach(element, _ctx.SkewBindings[element]);
+                    _ctx.SkewBindings.Remove(element);
+                }
+                var owned = transformed && _ctx.SkewTransformed[element] == (spec.SourceX, spec.SourceY);
+                if (!owned)
+                {
+                    WriteTransform(element, spec);
+                }
+                return true;
+            }
+            if (transformed)
+            {
+                ClearTransform(element);
+            }
+            return false;
+        }
+
+        private void WriteTransform(VisualElement element, SkewSpec spec)
+        {
+            _ctx.SkewTransformed[element] = (spec.SourceX, spec.SourceY);
+            SkewTransformFactor.TryFactor(spec.XDeg, spec.YDeg, out var rotation, out var scale);
+            rotation.ToAngleAxis(out var angle, out var axis);
+            element.style.rotate = new Rotate(new Angle(angle, AngleUnit.Degree), axis);
+            element.style.scale = new Scale(new Vector3(scale, scale, 1f));
+        }
+
+        private void ClearTransform(VisualElement element)
+        {
+            _ctx.SkewTransformed.Remove(element);
+            element.style.rotate = StyleKeyword.Null;
+            element.style.scale = StyleKeyword.Null;
         }
     }
 }

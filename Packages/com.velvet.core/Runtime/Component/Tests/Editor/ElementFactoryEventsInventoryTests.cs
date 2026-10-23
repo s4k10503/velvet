@@ -69,9 +69,18 @@ namespace Velvet.Tests
         private static void Retire(object? node)
         {
             if (node is not BaseElementNode element) return;
+            var inner = ElementCarryingEvents(element);
+            if (!ReferenceEquals(inner, element)) Retire(inner);
             VNodePool.ReturnProps(element.Props);
             VNodePool.ReturnEventArray(element.Events);
         }
+
+        // V.Anchored renders a wrapper that positions the element and puts the element carrying the bindings
+        // inside it, as drei's Html does.
+        private static BaseElementNode ElementCarryingEvents(BaseElementNode node)
+            => node.Props?.Anchored != null && node.Children.Length == 1 && node.Children[0] is BaseElementNode inner
+                ? inner
+                : node;
 
         private static string? Describe(MethodInfo factory, bool withOwnCallback)
         {
@@ -101,7 +110,7 @@ namespace Velvet.Tests
 
             try
             {
-                var events = ((BaseElementNode)node!).Events;
+                var events = ElementCarryingEvents((BaseElementNode)node!).Events;
                 if (!withOwnCallback)
                 {
                     return events.Contains(Sentinel) ? null : factory.Name + ": dropped the events array";
@@ -116,6 +125,7 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
         [Test]
         public void Given_EveryElementFactory_When_CalledWithAnEventsArray_Then_TheNodeCarriesItsBindings()
         {
@@ -131,6 +141,7 @@ namespace Velvet.Tests
             Assert.That((factories.Length > 1, string.Join("\n", failures)), Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
         [Test]
         public void Given_EveryElementFactoryWithItsOwnCallback_When_CalledWithItAndAnEventsArray_Then_ItsOwnBindingLeadsTheCallersBindings()
         {
@@ -148,6 +159,7 @@ namespace Velvet.Tests
             Assert.That((factories.Length >= 8, string.Join("\n", failures)), Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
         [Test]
         public void Given_EveryInitializerBuilder_When_ItsEventsAreSet_Then_TheBuiltNodeCarriesThem()
         {
@@ -181,6 +193,7 @@ namespace Velvet.Tests
             Assert.That((builders.Length > 1, string.Join("\n", failures)), Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads a node's events changed. It looks through the wrapper V.Anchored renders, which the base's factory has none of.
         [Test]
         public void Given_EveryShorthandElementFactory_When_CalledWithAnEventsArray_Then_ItHasAnEventsFormThatCarriesThem()
         {
