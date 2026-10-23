@@ -67,6 +67,7 @@ namespace Velvet.Tests
             container.panel.visualTree.SimulateEvent(evt);
         }
 
+        // GREEN_ON_BASE(refactor): the fixture now attaches the bundled sheet so flex-row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_AGappedContainerWithAResponsiveGrid_When_TheRootIsWiderThanMd_Then_TheGapManipulatorIsSuppressed()
         {
@@ -81,6 +82,7 @@ namespace Velvet.Tests
             Assert.That(Context.GapManipulators.ContainsKey(container), Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the fixture now attaches the bundled sheet so flex-row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_AGappedContainerWithAResponsiveGrid_When_TheRootIsWiderThanMd_Then_AGridManipulatorIsCreated()
         {
@@ -93,6 +95,7 @@ namespace Velvet.Tests
             Assert.That(Context.GridManipulators.ContainsKey(container), Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the fixture now attaches the bundled sheet so flex-row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_AGappedContainerWithAResponsiveGrid_When_TheRootIsNarrowerThanMd_Then_TheGapManipulatorStillOwnsTheMargins()
         {
@@ -105,6 +108,7 @@ namespace Velvet.Tests
             Assert.That(Context.GapManipulators.ContainsKey(container), Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the fixture now attaches the bundled sheet so flex-row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_AResponsiveGridActiveWide_When_ThePanelShrinksBelowMd_Then_TheGapManipulatorIsRestored()
         {
@@ -120,6 +124,7 @@ namespace Velvet.Tests
             Assert.That(Context.GapManipulators.ContainsKey(container), Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the fixture now attaches the bundled sheet so flex-row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_AResponsiveGridActiveWide_When_ThePanelShrinksBelowMd_Then_TheGridManipulatorIsRemoved()
         {
@@ -135,6 +140,7 @@ namespace Velvet.Tests
             Assert.That(Context.GridManipulators.ContainsKey(container), Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the fixture now attaches the bundled sheet so flex-row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_AGappedContainerWithAResponsiveGrid_When_TheRootIsWiderThanMd_Then_TheChildrenAreLaidOutInRows()
         {
@@ -150,6 +156,7 @@ namespace Velvet.Tests
             Assert.That(container[3].style.marginLeft.value.value, Is.EqualTo(0f));
         }
 
+        // GREEN_ON_BASE(refactor): the fixture now attaches the bundled sheet so flex-row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_AResponsiveGridActiveWide_When_ThePanelShrinksBelowMd_Then_TheGapMarginsSurviveTheGridTeardown()
         {
@@ -167,6 +174,7 @@ namespace Velvet.Tests
             Assert.That(container[3].style.marginLeft.value.value, Is.EqualTo(Space4));
         }
 
+        // GREEN_ON_BASE(refactor): the fixture now attaches the bundled sheet so flex-row stays a row under a laid-out gap; this case asks what it asked before.
         [Test]
         public void Given_AContainerWhoseOnlyGapIsResponsive_When_TheRootIsWiderThanMd_Then_TheGapManipulatorIsCreated()
         {
@@ -202,6 +210,7 @@ namespace Velvet.Tests
                 V.Div(className: "child"),
             });
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the responsive-grid fixture, which now attaches the bundled sheet.
         [Test]
         public void Given_ADarkGatedDivide_When_TheThemeTurnsDark_Then_TheDivideManipulatorIsCreated()
         {
@@ -219,6 +228,7 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.DivideManipulators.Count, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the responsive-grid fixture, which now attaches the bundled sheet.
         [Test]
         public void Given_ADarkGatedTextBalance_When_TheThemeTurnsDark_Then_TheTextBalanceManipulatorIsCreated()
         {
@@ -236,6 +246,7 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the responsive-grid fixture, which now attaches the bundled sheet.
         [Test]
         public void Given_ADarkGatedTextBalanceApplied_When_TheThemeTurnsLight_Then_TheTextBalanceManipulatorIsRemoved()
         {
