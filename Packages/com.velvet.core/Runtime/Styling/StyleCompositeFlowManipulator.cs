@@ -10,7 +10,7 @@ namespace Velvet
     //
     // It watches the widget's own class list (StyleArbitraryValueResolver.Watch), so a variant toggling a class
     // there moves the inner box without a reconcile. A gap on the widget reads the inner box's inline value
-    // first (StyleGapManipulator.DirectionOf), so a forwarded change re-applies it.
+    // before a class (StyleGapManipulator.DirectionOf), so Reapply re-applies that gap once a forwarded value moves.
     //
     // Lifecycle mirrors StyleGapManipulator: the reconciler attaches one per widget whose child container is not
     // the widget itself, keeps it in ReconcilerContext.CompositeFlowManipulators, and removes it on cleanup /
