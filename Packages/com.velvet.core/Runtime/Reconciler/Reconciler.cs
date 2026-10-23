@@ -853,6 +853,7 @@ namespace Velvet
             }
 
             _ctx.RelationalVariantManipulators.Clear();
+            _ctx.RelationalTreeWatch.UnwatchAll();
             foreach (var (element, manipulator) in _ctx.HasVariantManipulators)
             {
                 element.RemoveManipulator(manipulator);

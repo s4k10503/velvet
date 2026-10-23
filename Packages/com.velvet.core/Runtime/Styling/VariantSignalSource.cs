@@ -452,6 +452,20 @@ namespace Velvet
                     _emit(RelationalVariantSignal.Checked, true);
                 }
             }
+
+            // A source hooked while the pointer already rests on it, or while focus is already inside it, receives
+            // no further PointerOver or FocusIn for that state, so the state is read here as `.group:hover x` reads
+            // it at once. Active is left to the next press.
+            if (source.hasHoverPseudoState)
+            {
+                _emit(RelationalVariantSignal.Hover, true);
+            }
+            if (source.panel?.focusController?.focusedElement is VisualElement focused
+                && (ReferenceEquals(focused, source) || source.Contains(focused)))
+            {
+                _emit(RelationalVariantSignal.Focus, true);
+                _emit(RelationalVariantSignal.FocusWithin, true);
+            }
         }
 
         public void Unhook()

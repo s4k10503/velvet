@@ -111,7 +111,9 @@ and a panel's version, layout-phase flag, style updater and that updater's trave
 node, last layout and version increment, and the node's layout computation, dirty flag and new-layout flag, which
 a commit uses to lay the panel out before its layout effects and callback refs read it
 ([react-migration.md](react-migration.md)), and the custom properties a stylesheet declares on an element, with
-the stylesheet reads that spell their values ([styling-custom-properties.md](styling-custom-properties.md)).
+the stylesheet reads that spell their values ([styling-custom-properties.md](styling-custom-properties.md)), and a
+panel's hierarchy-change event with the kinds of change it announces, on which a `group-*:` or `peer-*:` consumer
+hears a source that code outside a render adds ([styling-variants.md](styling-variants.md)).
 `EngineMember` declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
 and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
 creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole

@@ -284,6 +284,29 @@ namespace Velvet.Tests
             Assert.IsTrue(child.ClassListContains("bg-red"));
         }
 
+        // GREEN_ON_BASE(characterization): each named binding's layer is keyed by its own rule place on the base.
+        // The case pins that a named source's exit clears only its own value, where the two shared one layer once.
+        [Test]
+        public void Given_TwoNamedGroupHoverWidths_When_TheLaterNamedSourceStopsHovering_Then_TheEarlierWidthHolds()
+        {
+            // Arrange — both named sources hovered, so the later-ordered name's width wins.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(
+                "group/a",
+                V.Div("group/b", V.Label(name: "child", className: "group-hover/a:w-[10px] group-hover/b:w-[20px]"))));
+            var a = _window.rootVisualElement.Q<VisualElement>(className: "group/a");
+            var b = _window.rootVisualElement.Q<VisualElement>(className: "group/b");
+            var child = _window.rootVisualElement.Q<Label>("child");
+            Fire<PointerOverEvent>(a);
+            Fire<PointerOverEvent>(b);
+            var whileBoth = child.style.width.value.value;
+
+            // Act
+            FirePointerOutOutside(b);
+
+            // Assert
+            Assert.That((whileBoth, child.style.width.value.value), Is.EqualTo((20f, 10f)));
+        }
+
         [Test]
         public void Given_AnActiveGroup_When_ThePointerLeavesTheSourceWithoutAPointerUp_Then_TheActivePayloadIsCleared()
         {

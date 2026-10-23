@@ -438,6 +438,8 @@ namespace Velvet
         public Dictionary<VisualElement, StyleConditionalVariantManipulator> ConditionalVariantManipulators { get; } = new();
         public Dictionary<VisualElement, StyleContainerVariantManipulator> ContainerVariantManipulators { get; } = new();
         public Dictionary<VisualElement, StyleRelationalVariantManipulator> RelationalVariantManipulators { get; } = new();
+        // The panels this context's relational consumers live on, heard for a source that joins outside a pass.
+        public RelationalTreeWatch RelationalTreeWatch { get; }
 
         // The RelationalSourceSets hooking each relational source element (see RelationalSourceSet).
         public Dictionary<VisualElement, List<RelationalSourceSet>> RelationalVariantSources { get; } = new();
@@ -2991,6 +2993,7 @@ namespace Velvet
             EventManager = new FiberEventBindingManager(BatchScheduler);
             FiberElementFactory = new FiberElementFactory(EventManager);
             ComponentRegistry = new ComponentRegistry(this);
+            RelationalTreeWatch = new RelationalTreeWatch(this);
             FiberMemoCache = new FiberMemoCache();
             StyleAnimationScheduler = new StyleAnimationScheduler { Context = this };
             ComponentContextStack = new ComponentContextStack();

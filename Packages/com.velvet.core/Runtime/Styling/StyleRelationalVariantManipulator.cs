@@ -237,6 +237,7 @@ namespace Velvet
             List<VisualElement> into)
         {
             into.Clear();
+            ctx.RelationalTreeWatch.Watch(element.panel);
             element = StyleInputBoxSurface.RelationalAnchorOf(element);
             if (isPeer)
             {
@@ -430,13 +431,8 @@ namespace Velvet
 
             // Each sub-state gets its OWN priority so two active on the same property layer independently and
             // clearing one falls back to the other. Group and peer have distinct priority sets; the priority is
-            // shared across names. Consequence (a documented limitation, not a layering case the variant spec defines):
-            // two named bindings of the SAME state writing the SAME arbitrary-value property — group-hover/a:w-[10px]
-            // group-hover/b:w-[20px] — share one (property, priority) layer, so the last to apply wins and the
-            // first to clear drops it while the other source may still be active. Two bindings writing the SAME
-            // plain USS class collide likewise (USS class toggling is not ref-counted) — the same pre-existing
-            // behavior any two variants sharing a class already have (hover:bg-on focus:bg-on). Give distinct
-            // names distinct payloads to avoid it. The stacked-inner case is kept independent via per-binding owners.
+            // shared across names, and the rule place each payload's key carries (StyleLayerPriority.WithRule) is
+            // what keeps two names' layers apart.
             private long PriorityFor(StyleVariantClass.RelationalState state) => state switch
             {
                 StyleVariantClass.RelationalState.Hover
