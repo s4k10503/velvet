@@ -52,6 +52,8 @@ namespace Velvet.Tests
             yield return null;
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [UnityTest]
         public IEnumerator Given_AFocusedElementOnARuntimePanel_When_ANavigationMoveEventDispatches_Then_TheDefaultFocusRingMovesFocus()
         {
@@ -73,6 +75,8 @@ namespace Velvet.Tests
             Assert.That(panel.focusController.focusedElement, Is.EqualTo(_second));
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [UnityTest]
         public IEnumerator Given_ATrickleDownRootListenerCallingIgnoreEvent_When_ANavigationMoveEventDispatches_Then_TheDefaultFocusMoveIsSuppressed()
         {
@@ -109,6 +113,8 @@ namespace Velvet.Tests
             Assert.That(panel.focusController.focusedElement, Is.EqualTo(_first));
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [UnityTest]
         public IEnumerator Given_AFocusInHandlerFocusingAnotherElement_When_TheHandlersElementGainsFocus_Then_TheNestedFocusWins()
         {
@@ -127,6 +133,8 @@ namespace Velvet.Tests
             Assert.That(_first.panel.focusController.focusedElement, Is.EqualTo(third));
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [UnityTest]
         public IEnumerator Given_AVelvetConstructedFocusRing_When_TheEngineExecutesASequentialMove_Then_BothAgreeOnTheTarget()
         {
@@ -151,6 +159,8 @@ namespace Velvet.Tests
             Assert.That(panel.focusController.focusedElement, Is.EqualTo(predicted));
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [UnityTest]
         public IEnumerator Given_ATrickleDownRootListenerCallingOnlyStopPropagation_When_ANavigationMoveEventDispatches_Then_TheDefaultFocusMoveStillRuns()
         {
@@ -231,6 +241,8 @@ namespace Velvet.Tests
             yield return null;
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AContainedFocusScope_When_ASpatialMoveWouldExitTheScope_Then_FocusIsBackInsideTheScopeAfterTheFlush()
         {

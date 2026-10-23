@@ -58,6 +58,8 @@ namespace Velvet.Tests
         private VisualElement Element(string name)
             => _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>(name);
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_FocusInAGroupNestedInAnother_When_AnArrowMovesToTheOuterGroupsNextMember_Then_FocusMovesThere()
         {

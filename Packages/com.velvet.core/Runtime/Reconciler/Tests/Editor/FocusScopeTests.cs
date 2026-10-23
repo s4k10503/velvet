@@ -81,6 +81,8 @@ namespace Velvet.Tests
             V.Button(name: "outside"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AContainedFocusScope_When_TabDispatchesFromItsLastFocusable_Then_FocusWrapsToTheScopesFirstFocusable()
         {
@@ -115,7 +117,9 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): on the base the opener is also where focus first entered from.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: on the base the opener is also where focus first entered from.
         [Test]
         public void Given_AFocusScopeWithRestoreFocus_When_TheScopeUnmountsWhileHoldingFocus_Then_TheElementFocusCameFromRegainsFocus()
         {
@@ -156,6 +160,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_ARestoringScopeFirstEnteredThroughAScopeNestedInIt_When_ItUnmountsWhileHoldingFocus_Then_TheElementFocusCameFromRegainsFocus()
         {
@@ -194,6 +200,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_ARestoringScopeFirstEnteredFromAnElementFocusedAfterItMounted_When_ItUnmountsWhileHoldingFocus_Then_TheElementFocusedAtMountRegainsFocus()
         {
@@ -232,7 +240,9 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): on the base the opener is also where focus first entered from.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: on the base the opener is also where focus first entered from.
         [Test]
         public void Given_AFocusScopeWithRestoreFocus_When_TheScopeRootItselfHoldsFocusAndUnmounts_Then_TheElementFocusCameFromRegainsFocus()
         {
@@ -264,6 +274,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AFocusScopeWithAutoFocus_When_ItAttachesToAPanel_Then_ItsFirstFocusableDescendantHoldsFocus()
         {
@@ -287,6 +299,8 @@ namespace Velvet.Tests
             V.Button(name: "after"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_ASingleTabStopScopeWithAFocusedMember_When_TabDispatches_Then_FocusSkipsPastTheRemainingMembers()
         {
@@ -320,7 +334,9 @@ namespace Velvet.Tests
             V.Button(name: "after"),
         });
 
-        // GREEN_ON_BASE(characterization): the base has no single tab stop, so a scope there always lets Tab
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base has no single tab stop, so a scope there always lets Tab
         // walk its members.
         [Test]
         public void Given_AScopeDeclaredWithoutNamingSingleTabStop_When_TabDispatchesFromItsFirstMember_Then_FocusMovesToTheNextMember()
@@ -337,6 +353,8 @@ namespace Velvet.Tests
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("s2")));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_ASingleTabStopScopeLastLeftFromItsSecondMember_When_TabEntersFromOutside_Then_TheSecondMemberRegainsFocus()
         {
@@ -370,6 +388,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AContainedScopeHoldingFocus_When_FocusEscapesToAnElementInsideAnotherScope_Then_FocusSnapsBackToTheContainedScope()
         {
@@ -389,6 +409,8 @@ namespace Velvet.Tests
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(m1));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AContainedScopeHoldingFocus_When_FocusIsClearedToNothing_Then_TheScopeRegainsFocusOnTheNextTick()
         {
@@ -421,7 +443,9 @@ namespace Velvet.Tests
             V.Button(name: "outside", className: "focus-visible:bg-blue-400"),
         });
 
-        // GREEN_ON_BASE(characterization): the base lights the ring whatever the panel's last input was.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base lights the ring whatever the panel's last input was.
         [Test]
         public void Given_ALandingSnappedBackIntoAContainedScope_When_TheRevertedElementKeepsAFocusVisibleResidue_Then_TheNextTickSettlesIt()
         {
@@ -470,6 +494,8 @@ namespace Velvet.Tests
             return V.Div(children: rotated ? new VNode[] { b1, b2, scope } : new VNode[] { scope, b1, b2 });
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AnAutoFocusScopeInAKeyedList_When_AReorderReattachesTheScope_Then_FocusStaysWhereTheUserMovedIt()
         {
@@ -504,6 +530,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_TwoAdjacentSingleTabStopGroups_When_TabExitsTheFirstIntoTheSecond_Then_FocusLandsOnTheSecondGroupsRememberedMember()
         {
@@ -523,6 +551,8 @@ namespace Velvet.Tests
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("b2")));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AFreshSingleTabStopGroup_When_ShiftTabEntersFromAfterIt_Then_FocusLandsOnTheGroupsFirstMember()
         {
@@ -561,6 +591,8 @@ namespace Velvet.Tests
             V.Button(name: "after"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_APlainScopeNestedInASingleTabStopGroup_When_TabDispatchesFromAMemberInsideIt_Then_FocusSkipsPastTheWholeGroup()
         {
@@ -576,6 +608,8 @@ namespace Velvet.Tests
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("after")));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AFreshGroupWhoseLastMemberSitsInANestedScope_When_ShiftTabEntersFromAfterIt_Then_FocusLandsOnTheGroupsFirstMember()
         {
@@ -609,6 +643,8 @@ namespace Velvet.Tests
             V.Button(name: "after"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_FocusInAGroupNestedInAnother_When_TabDispatches_Then_FocusLeavesBothGroups()
         {
@@ -624,6 +660,8 @@ namespace Velvet.Tests
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("after")));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_FocusInAGroupNestedInAnother_When_ShiftTabDispatches_Then_FocusLeavesBothGroups()
         {
@@ -639,6 +677,8 @@ namespace Velvet.Tests
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("before")));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AGroupLastLeftFromAMemberOfAGroupNestedInIt_When_TabEntersFromBefore_Then_ThatMemberRegainsFocus()
         {
@@ -666,7 +706,9 @@ namespace Velvet.Tests
             V.Button(name: "outside"),
         });
 
-        // GREEN_ON_BASE(characterization): the base already lets contain decide a scope that is both.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base already lets contain decide a scope that is both.
         [Test]
         public void Given_AScopeThatIsBothContainedAndASingleTabStopGroup_When_TabDispatches_Then_FocusMovesToTheNextMember()
         {
@@ -697,6 +739,8 @@ namespace Velvet.Tests
             V.Button(name: "outside"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_ASingleTabStopGroupInsideAContainedScope_When_TabExitsTheGroup_Then_FocusWrapsWithinTheContainedScope()
         {
@@ -729,7 +773,9 @@ namespace Velvet.Tests
             V.Button(name: "outside"),
         });
 
-        // GREEN_ON_BASE(characterization): the base decides by the innermost scope, which is the modal here.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base decides by the innermost scope, which is the modal here.
         [Test]
         public void Given_AContainedScopeInsideASingleTabStopGroup_When_TabDispatchesInsideIt_Then_TheContainedScopesRingDecides()
         {
@@ -759,6 +805,8 @@ namespace Velvet.Tests
             V.Button(name: "outside"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AContainedScopeLastHeldInsideAScopeNestedInIt_When_FocusEscapes_Then_TheMemberLastHeldRegainsFocus()
         {
@@ -801,6 +849,8 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_FocusInASamePanelPortalDeclaredInsideAContainedScope_When_ShiftTabLandsOutsideTheScope_Then_FocusReturnsToTheScope()
         {
@@ -818,7 +868,9 @@ namespace Velvet.Tests
             Assert.That((p1Held, _host.Panel.focusController.focusedElement), Is.EqualTo((true, (Focusable)Q("m1"))));
         }
 
-        // GREEN_ON_BASE(characterization): the base pulls nothing back from portal content. This case pins that
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base pulls nothing back from portal content. This case pins that
         // a blur to nothing from it stays, as React Aria listens for a blur only on the scope's own elements.
         [Test]
         public void Given_FocusInASamePanelPortalDeclaredInsideAContainedScope_When_FocusIsClearedToNothing_Then_NothingRegainsFocus()
@@ -857,7 +909,9 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): on the base the opener is also where focus first entered from.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: on the base the opener is also where focus first entered from.
         [Test]
         public void Given_AScopeWhoseRestoreTargetUnmounts_When_TheTargetsElementIsReleased_Then_TheScopeDropsItsRestoreReference()
         {
@@ -888,6 +942,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AMountIntoADetachedRoot_When_TheRootAttachesToAPanel_Then_TheNavigatorListensOnTheTruePanelRootExactlyOnce()
         {
@@ -925,6 +981,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AContainedScopeHoldingFocus_When_ANewContainedScopeMountsWithAutoFocus_Then_TheNewScopeTakesFocus()
         {
@@ -958,6 +1016,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_TwoContainedScopes_When_APointerStyleMoveCrossesBetweenThem_Then_TheReceivingScopeKeepsFocus()
         {
@@ -998,7 +1058,9 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): on the base the opener is also where focus first entered from.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: on the base the opener is also where focus first entered from.
         [Test]
         public void Given_AContainedRestoringScope_When_ItUnmountsWhileHoldingFocus_Then_FocusReturnsToTheOpener()
         {
@@ -1035,6 +1097,8 @@ namespace Velvet.Tests
             return V.Div(children: rotated ? new VNode[] { b1, b2, scope } : new VNode[] { scope, b1, b2 });
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AScopeWhoseAutoFocusTurnedOnAfterMount_When_AReorderReattachesIt_Then_FocusIsStillNotStolen()
         {
@@ -1056,6 +1120,8 @@ namespace Velvet.Tests
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(b1));
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [Test]
         public void Given_APooledPropsBagThatCarriedFocusProps_When_ReturnedAndRentedAgain_Then_TheFocusPropsAreScrubbed()
         {
@@ -1074,6 +1140,8 @@ namespace Velvet.Tests
                 Is.EqualTo(((int?)null, (bool?)null, (FocusScopeSettings)null)));
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [Test]
         public void Given_APooledElementThatCarriedATabIndex_When_ResetForThePool_Then_ItsTabIndexIsZero()
         {
@@ -1087,6 +1155,8 @@ namespace Velvet.Tests
             Assert.That((element.tabIndex, element.delegatesFocus), Is.EqualTo((0, false)));
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [Test]
         public void Given_AButtonRecycledThroughThePool_When_RentedAgain_Then_ItIsFocusableLikeAFreshOne()
         {
@@ -1176,6 +1246,8 @@ namespace Velvet.Tests
             return btn;
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [Test]
         public void Given_AFocusedSelfRemovingButton_When_ItIsClicked_Then_ItIsRemovedWithoutThrowing()
         {
@@ -1190,6 +1262,8 @@ namespace Velvet.Tests
             Assert.IsNull(_window.rootVisualElement.Q<Button>("focusable"));
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [Test]
         public void Given_AFocusedSelfRemovingButton_When_ItIsClicked_Then_FocusIsNotStrandedOnTheDetachedButton()
         {
@@ -1206,6 +1280,8 @@ namespace Velvet.Tests
             Assert.That(controller.focusedElement, Is.Not.SameAs(btn));
         }
 
+        // GREEN_ON_BASE(refactor): this case reaches no focus scope, and its own code is the base's.
+        // The lines changed around it are where the cases beside it build their scopes.
         [Test]
         public void Given_AFocusedSelfRemovingButton_When_ItIsClicked_Then_TheSurvivingSiblingRemains()
         {

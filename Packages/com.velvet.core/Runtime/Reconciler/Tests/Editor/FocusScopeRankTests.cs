@@ -63,6 +63,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_TwoContainedScopes_When_FocusMovesFromTheNewerIntoTheOlder_Then_TheNewerScopeTakesItBack()
         {
@@ -90,7 +92,9 @@ namespace Velvet.Tests
             }),
         });
 
-        // GREEN_ON_BASE(characterization): the base snaps a landing in a plain scope back into the modal.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base snaps a landing in a plain scope back into the modal.
         // This case pins that a plain scope created after the modal does not rank as a newer contain scope.
         [Test]
         public void Given_AContainedScope_When_FocusMovesIntoAPlainScopeCreatedAfterIt_Then_TheScopeTakesItBack()
@@ -117,6 +121,8 @@ namespace Velvet.Tests
                 }),
             });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [Test]
         public void Given_AContainedScope_When_FocusMovesToAPortalItDeclaredIntoTheSamePanel_Then_FocusStaysInThePortal()
         {

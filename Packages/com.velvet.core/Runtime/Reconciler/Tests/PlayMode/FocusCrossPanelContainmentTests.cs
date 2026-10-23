@@ -148,7 +148,9 @@ namespace Velvet.Tests
             }),
         });
 
-        // GREEN_ON_BASE(characterization): the base never pulls focus back from a panel it manages.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base never pulls focus back from a panel it manages.
         // This case pins that the pull-back spares a portal declared inside the modal.
         [UnityTest]
         public IEnumerator Given_AContainedScope_When_FocusMovesToAPortalDeclaredInsideIt_Then_FocusStaysInThePortal()
@@ -172,6 +174,8 @@ namespace Velvet.Tests
                 Is.EqualTo(((Focusable)m1, (Focusable)inner, (Focusable)inner, 0)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AContainedScope_When_FocusMovesToAPortalDeclaredOutsideItOnTheSameLayer_Then_FocusReturnsToTheScope()
         {
@@ -207,7 +211,9 @@ namespace Velvet.Tests
             }),
         });
 
-        // GREEN_ON_BASE(characterization): the base never pulls focus back from a panel it manages.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base never pulls focus back from a panel it manages.
         // This case pins that a pull-back with nothing to focus leaves the landing where it is.
         [UnityTest]
         public IEnumerator Given_AContainedScopeLeftWithNothingToFocus_When_FocusMovesToAnotherPanel_Then_TheLandingKeepsIt()
@@ -248,7 +254,9 @@ namespace Velvet.Tests
             }),
         });
 
-        // GREEN_ON_BASE(characterization): the base never pulls focus back from a panel it manages.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base never pulls focus back from a panel it manages.
         // This case pins that the pull-back spares a newer contained dialog on another layer.
         [UnityTest]
         public IEnumerator Given_AContainedScope_When_FocusMovesToANewerContainedScopeOnAnotherPanel_Then_TheNewerScopeKeepsIt()
@@ -272,6 +280,8 @@ namespace Velvet.Tests
                 Is.EqualTo(((Focusable)m1, (Focusable)d1, (Focusable)d1, 0)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_ANewerContainedScopeOnAnotherPanel_When_FocusMovesIntoTheOlderScope_Then_TheNewerScopeTakesItBack()
         {
@@ -307,6 +317,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AContainedScopeInALayerHost_When_FocusMovesToTheMainPanel_Then_FocusReturnsToTheScope()
         {
@@ -342,7 +354,9 @@ namespace Velvet.Tests
             }),
         });
 
-        // GREEN_ON_BASE(characterization): the base never pulls focus back from a panel it manages.
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
+        // Before that, as characterization: the base never pulls focus back from a panel it manages.
         // This case pins that a z-indexed portal child, which leaves its slot for a layer container, still
         // counts as the portal's content.
         [UnityTest]
@@ -380,6 +394,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AContainedScope_When_FocusMovesToAnElementPortalItDeclaredIntoAPanelNoTreeMounts_Then_FocusStaysInThePortal()
         {
@@ -410,6 +426,8 @@ namespace Velvet.Tests
             V.Button(name: "a1"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_AContainedScope_When_FocusMovesToAPanelNoTreeManages_Then_FocusReturnsWithoutTheLandingRepeating()
         {
@@ -453,6 +471,8 @@ namespace Velvet.Tests
             return null;
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_FocusInALayerPortalDeclaredInsideAContainedScope_When_TabLandsOnAnotherPortalInTheSameHost_Then_FocusReturnsToTheScope()
         {
@@ -503,6 +523,8 @@ namespace Velvet.Tests
             }),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_FocusInALayerPortalDeclaredInsideAContainedScope_When_TabLandsInAGroupOutsideIt_Then_TheGroupDoesNotRecordTheRevertedLanding()
         {
@@ -540,6 +562,8 @@ namespace Velvet.Tests
             V.Button(name: "outside"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_FocusInALayerPortalDeclaredInsideAContainedScope_When_FocusMovesToTheMainPanelOutsideIt_Then_FocusReturnsToTheScope()
         {
@@ -567,6 +591,8 @@ namespace Velvet.Tests
                 Is.EqualTo((true, (Focusable)m1, (Focusable)m1, (Focusable)m1, 1)));
         }
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_FocusInAnElementPortalDeclaredInsideAContainedScope_When_TabLandsOnAnotherElementOfThatPanel_Then_FocusReturnsToTheScope()
         {
@@ -611,6 +637,8 @@ namespace Velvet.Tests
             V.Button(name: "outside"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_FocusInAWorldSpacePanelDeclaredInsideAContainedScope_When_FocusMovesToTheMainPanelOutsideIt_Then_FocusReturnsToTheScope()
         {
@@ -644,6 +672,8 @@ namespace Velvet.Tests
             V.Button(name: "b1"),
         });
 
+        // GREEN_ON_BASE(refactor): its fixture now builds the scopes it reaches through FocusScopeElement.Div.
+        // That renders the element scope V.FocusScope rendered on the base.
         [UnityTest]
         public IEnumerator Given_ContainedScopesInTwoMountedTrees_When_FocusMovesFromTheNewerIntoTheOlder_Then_TheNewerKeepsItWithoutAlternating()
         {
