@@ -870,6 +870,12 @@ namespace Velvet
                 state.Skew?.Drive(element, state.SkewX != null ? Value(state, state.SkewX, shared) : null,
                     state.SkewY != null ? Value(state, state.SkewY, shared) : null);
             }
+            ApplyEasedLists(element, state, shared);
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
+        }
+
+        private static void ApplyEasedLists(VisualElement element, BezierTweenState state, float shared)
+        {
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors)
@@ -895,7 +901,6 @@ namespace Velvet
                     }
                 }
             }
-            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
         }
     }
 }
