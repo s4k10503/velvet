@@ -377,11 +377,12 @@ namespace Velvet
                 case "line-through": facets.Decoration = TextDecorationKind.LineThrough; return true;
                 case "overline": facets.Decoration = TextDecorationKind.Overline; return true;
                 case "no-underline": facets.Decoration = TextDecorationKind.None; return true;
-                case "tabular-nums": facets.Numeric = NumericSpacing.Tabular; return true;
-                case "proportional-nums":
-                case "normal-nums": facets.Numeric = NumericSpacing.Proportional; return true;
             }
             var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            if (TryFoldNumeric(core, ref facets))
+            {
+                return true;
+            }
             switch (core)
             {
                 case "whitespace-pre-line": facets.Whitespace = WhitespaceCollapseKind.PreLine; return true;
@@ -422,6 +423,17 @@ namespace Velvet
                 return true;
             }
             return FoldTextSize(core, ref facets);
+        }
+
+        private static bool TryFoldNumeric(string core, ref TextEffectFacets facets)
+        {
+            switch (core)
+            {
+                case "tabular-nums": facets.Numeric = NumericSpacing.Tabular; return true;
+                case "proportional-nums":
+                case "normal-nums": facets.Numeric = NumericSpacing.Proportional; return true;
+                default: return false;
+            }
         }
 
         // Of the text-<size> tokens of one importance, the one that ranks highest keeps its pair, and at an equal
@@ -559,7 +571,11 @@ namespace Velvet
             if (!StyleArbitraryValueResolver.TryParseValue(value, out amount, out var lengthUnit))
             {
                 unit = LeadingUnit.Measured;
-                return StyleLengthExpression.TryParse(value, out expression) && expression!.IsFinite();
+                if (!StyleLengthExpression.TryParse(value, out expression))
+                {
+                    return false;
+                }
+                return expression!.IsFinite();
             }
             if (lengthUnit == LengthUnit.Percent)
             {

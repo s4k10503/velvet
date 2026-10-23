@@ -8,7 +8,7 @@
 
 - `tabular-nums`, `proportional-nums` and `normal-nums`: under `tabular-nums` each run of digits is wrapped in an
   `<mspace>` tag at the width of the widest digit of the leaf's font, so every digit takes the same room.
-- A font-family list, `font-[Inter,Noto_Sans_JP,sans-serif]`: the first registered family is assigned and the
+- A font-family list, `font-[Inter,jp,sans-serif]`: the first registered family is assigned and the
   Font Assets of the families after it are appended to its fallback table in list order, so a glyph it lacks
   is taken from the next. See `Documentation~/fonts.md`.
 

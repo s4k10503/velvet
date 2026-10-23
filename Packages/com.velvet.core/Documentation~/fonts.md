@@ -20,7 +20,7 @@ registry that maps family names to Font Assets.
 |---|---|
 | `font-sans`, `font-serif`, `font-mono`, `font-<name>` | Selects the family named `<name>` from the registry |
 | `font-[Inter]` / `font-[family-name:Inter]` / `font-[generic-name:serif]` | Arbitrary family by registered name; `_` is a space and `\_` an underscore, as Tailwind reads a bracket |
-| `font-[Inter,Noto_Sans_JP,sans-serif]` | A family list: the first registered family is assigned and the ones after it become its fallbacks ([Family lists](#family-lists)) |
+| `font-[Inter,jp,sans-serif]` | A family list: the first registered family is assigned and the ones after it become its fallbacks ([Family lists](#family-lists)) |
 | `font-[addr:<key>]` | Arbitrary family loaded from Addressables (mirrors `bg-[addr:<key>]`), the key read as written, `\_` an underscore as `_` is |
 | `font-thin` … `font-black` | Weight scale (100…900) |
 | `font-[550]` / `font-[weight:550]` / `font-[number:550]` | Arbitrary weight |
@@ -154,7 +154,7 @@ being selected by `font-sans`. A font-family list writes the local fallback tabl
 
 ### Family lists
 
-`font-[Inter,Noto_Sans_JP,sans-serif]` (or `font-['Noto_Sans_JP',Inter]`, `font-[family-name:Inter,Noto_Sans_JP]`)
+`font-[Inter,jp,sans-serif]` (or `font-['jp',Inter]`, `font-[family-name:Inter,jp]`)
 names several families, as CSS's `font-family` does. Names are read as the arbitrary family form reads
 them, `_` a space, and quoted names are unquoted. Velvet resolves each name against the registry
 for the element's weight, italic and width, takes the first that has a Font Asset as the one it assigns
@@ -383,7 +383,8 @@ leaf shows, like the text effects above: under `tabular-nums` each run of digits
 the axis inherits. A leaf with `enableRichText = false`, or whose font cannot be measured yet, is shown
 without the tag, and a change of its font builds the string again. The glyphs are not swapped for a tabular
 design the font may carry, as an OpenType `tnum` feature would: UI Toolkit's style has no font-feature property, and
-`ATGTextHandle` hands the text generator only a switch for the engine's own advanced features. The other
+the settings UI Toolkit hands the advanced text generator hold a font-feature switch for the engine's own
+features alone, `disableAdvancedFontFeatures`. The other
 variants have no counterpart and are not shipped: `lining-nums`, `oldstyle-nums`, `slashed-zero`, `ordinal`,
 `diagonal-fractions` and `stacked-fractions` each select other glyphs of the font.
 

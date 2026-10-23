@@ -38,7 +38,18 @@ namespace Velvet
         public bool TryMeasure(out float px)
         {
             px = 0f;
-            return _expression != null && StyleRelativeLengths.TryMeasureLineHeight(_element, _expression, out px);
+            if (_expression == null)
+            {
+                return false;
+            }
+            return StyleRelativeLengths.TryMeasureLineHeight(_element, _expression, out px);
+        }
+
+        // NaN where TryMeasure is false, so that a reading compares with the one before it.
+        private float Measured()
+        {
+            var measurable = TryMeasure(out var px);
+            return measurable ? px : float.NaN;
         }
 
         private LeadingLengthProbe(ReconcilerContext ctx, VisualElement element)
@@ -77,7 +88,7 @@ namespace Velvet
         private void Declare(StyleLengthExpression? expression)
         {
             _expression = expression;
-            _measured = TryMeasure(out var px) ? px : float.NaN;
+            _measured = Measured();
             var polled = expression != null && expression.ReadsViewport;
             if (polled && _tick == null)
             {
@@ -106,7 +117,7 @@ namespace Velvet
         private void Refresh()
         {
             var size = _element.resolvedStyle.fontSize;
-            var measured = TryMeasure(out var px) ? px : float.NaN;
+            var measured = Measured();
             if (size == FontSize && (measured == _measured || (float.IsNaN(measured) && float.IsNaN(_measured))))
             {
                 return;

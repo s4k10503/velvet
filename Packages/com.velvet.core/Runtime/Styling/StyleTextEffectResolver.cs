@@ -478,7 +478,8 @@ namespace Velvet
             }
             if (leading.Unit == LeadingUnit.Measured)
             {
-                return probe.TryMeasure(out var px) ? new LeadingValue(LeadingUnit.Pixel, Math.Max(0f, px)) : leading;
+                var measurable = probe.TryMeasure(out var px);
+                return measurable ? new LeadingValue(LeadingUnit.Pixel, Math.Max(0f, px)) : leading;
             }
             if (float.IsNaN(probe.FontSize))
             {

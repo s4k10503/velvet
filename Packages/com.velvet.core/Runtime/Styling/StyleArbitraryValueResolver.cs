@@ -167,15 +167,7 @@ namespace Velvet
             // Named filter presets (blur-sm, contrast-125, hue-rotate-90, ...) are non-bracket too, parsed first.
             if (className.IndexOf('[') < 0)
             {
-                if (StyleFilterValueParser.TryParseFilterPreset(className, out result))
-                {
-                    return true;
-                }
-                if (TryParseTrackingPreset(className, out result))
-                {
-                    return true;
-                }
-                return TryParseStaticScale(className, out result);
+                return TryParsePreset(className, out result);
             }
 
             var bracketStart = className.IndexOf('[', offset);
@@ -899,6 +891,12 @@ namespace Velvet
             ["tracking-wider"] = "0.05em",
             ["tracking-widest"] = "0.1em",
         };
+
+        // The non-bracket names: a filter preset, a tracking preset, or one of the static scales.
+        private static bool TryParsePreset(string className, out ArbitraryStyle result)
+            => StyleFilterValueParser.TryParseFilterPreset(className, out result)
+               || TryParseTrackingPreset(className, out result)
+               || TryParseStaticScale(className, out result);
 
         private static bool TryParseTrackingPreset(string className, out ArbitraryStyle result)
         {
