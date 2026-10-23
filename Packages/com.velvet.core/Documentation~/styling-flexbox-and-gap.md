@@ -5,12 +5,18 @@ Velvet's utility classes are Tailwind-inspired, but they run on Unity UI Toolkit
 
 ## 1. Without `.flex`, children stack vertically, as they do in a CSS block
 
-UI Toolkit has no block layout, and its flex containers default to `flex-direction: column`, so an
-element carrying no display utility stacks its children vertically, the way CSS stacks the children
-of a `display: block` element. Velvet's `.flex` utility sets `flex-direction: row` in addition to
-`display: flex`, so `V.Div(className: "flex", ...)` alone lays out children horizontally, matching
-Tailwind. Code that styles an element through the engine's own API — a `refCallback` or a custom
-manipulator — gets the engine's column default unless it sets `flex-direction` itself.
+UI Toolkit has no block layout — an element's display is a flex box or none
+(`FlexEngineLayoutStyleTests` fails once that changes) — and its flex containers default to
+`flex-direction: column`, so an element carrying no display utility stacks its children vertically, the
+way CSS stacks the children of a `display: block` element. Velvet's `.flex` utility sets
+`flex-direction: row` in addition to `display: flex`, so `V.Div(className: "flex", ...)` alone lays out
+children horizontally, matching Tailwind.
+
+Code that styles an element through the engine's own API — a `refCallback`, a custom manipulator or a
+stylesheet of your own — gets the engine's column default unless it sets `flex-direction` itself, and that
+stays: `DisplayStyle.Flex` is the only value that displays an element, so code writing it may only be
+showing a hidden element, and a stylesheet rule writing it resolves to `Flex`, the value every element
+already has. Neither is read as CSS's `display: flex`.
 
 ```csharp
 // Horizontal row — the `.flex` default, matching Tailwind (`flex-row` is redundant but harmless).
@@ -161,7 +167,7 @@ Both can change outside the manipulator's own events, so it is re-applied from t
 2. **`GeometryChangedEvent`.** Catches child mutations driven by an *unrelated* reconcile pass at
    runtime (e.g. a nested component re-render that adds a child under this container), and a direction
    or wrap set outside the class list. Registered on the attached element, on the inner box the verdict is
-   read from (below) when it differs, and on every child the gap spaces, since `GeometryChangedEvent`
+   read from (below) when it differs, and on the last child the gap spaces, since `GeometryChangedEvent`
    neither bubbles nor trickles and a direction written onto a container that keeps its size moves only
    its children.
 3. **`AttachToPanelEvent`.** Re-resolves plain `gap-*`'s axis, and every axis's reversed-edge flip,
@@ -210,13 +216,14 @@ The rule is keyed on the redirect itself, not on a list of widgets — `V.Custom
 
 With no such class on the widget, the inner box keeps the direction the widget's own stylesheet gives it,
 read from `resolvedStyle` on a panel. Off-panel that is a row for a horizontally scrolling `ScrollView` and
-a horizontal `TwoPaneSplitView`, and the engine's column for the others; a widget whose stylesheet makes
-its inner box a row or a wrap that this list does not name is read as a column and no-wrap until its first
-geometry event.
+a horizontal `TwoPaneSplitView`, and the engine's column for the others. A widget whose stylesheet makes
+its inner box a row or a wrap that this list does not name is spaced as a column and no-wrap until the
+inner box's first geometry event, which the panel's first update delivers (`GapReverseRuntimeFlipTests`
+holds a composite whose row only its stylesheet gives it).
 
-**The collection views are not spaced.** `ListView`, `TreeView` and `MultiColumnListView` parent nothing
-Velvet reconciles: they build their rows and place them themselves, and a margin between two rows is not
-part of the place they give each row. Put the spacing in the row template, as padding inside each row.
+**The collection views are not spaced.** `ListView`, `TreeView` and `MultiColumnListView` take no
+children from Velvet — their rows come from the item callbacks you give them — so a `gap-*`, `space-*` or
+`divide-*` on one has no child to space. Put the spacing in the row template, as padding inside each row.
 
 **Direction source: on a panel, after each layout pass, `resolvedStyle` — the cascade's own answer.
 Between layout passes, an inline `flex-direction`, else a single resolved verdict from the class list by
@@ -333,7 +340,7 @@ Velvet adds the two:
 - **Wrap outer bleed.** The wrap path's container negative margin draws the container's box — its
   background, border and padding — half of each gap past each edge that gap spaces, overlapping its
   siblings or its parent's padding by that much, while its content and its siblings sit where CSS puts
-  them. UI Toolkit's layout style has no gap property (`GapEngineLayoutStyleTests` fails once it gains
+  them. UI Toolkit's layout style has no gap property (`FlexEngineLayoutStyleTests` fails once it gains
   one), so the gap has to be a margin on every item, and the container's negative margin is what takes the
   outer halves back. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of
   padding on the parent, or wrap the container, if the overlap matters.

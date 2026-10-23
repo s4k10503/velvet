@@ -2334,6 +2334,43 @@ namespace Velvet.Tests
 
         private void Tick() => _sim.FrameUpdateMs(16);
 
+        // A composite of the test's own, whose inner box only a stylesheet rule lays out as a row.
+        private sealed class RuleRowComposite : VisualElement
+        {
+            private readonly VisualElement _inner = new();
+
+            public RuleRowComposite()
+            {
+                _inner.AddToClassList("test-inner-row");
+                hierarchy.Add(_inner);
+            }
+
+            public override VisualElement contentContainer => _inner;
+        }
+
+        // GREEN_ON_BASE(characterization): the base also moves the gap once the inner box's geometry event reads
+        // the row. What this pins is that the panel's first update delivers that event, so the column the gap is
+        // first written for does not outlive it.
+        [Test]
+        public void Given_ACompositeWhoseStylesheetLaysItsInnerBoxOutAsARow_When_ThePanelUpdatesOnce_Then_TheGapSpacesARow()
+        {
+            // Arrange — no class reaches the inner box, so before the panel resolves its rule it reads as a column.
+            File.WriteAllText(UserSheetPath, ".test-inner-row { flex-direction: row; }\n");
+            AssetDatabase.ImportAsset(UserSheetPath, ImportAssetOptions.ForceSynchronousImport);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(UserSheetPath));
+            using var mounted = V.Mount(Root, V.Custom<RuleRowComposite>("gap-4",
+                V.Label(name: "a", text: "a"), V.Label(name: "b", text: "b")));
+            var b = Root.Q<Label>("b");
+            var columnFirst = b.style.marginTop.value.value;
+
+            // Act
+            Tick();
+
+            // Assert — the column margin it was first written with rides along, which a widget that read the row
+            // before the panel resolved it would not have.
+            Assert.That((columnFirst, b.style.marginLeft.value.value), Is.EqualTo((16f, 16f)));
+        }
+
         [Component]
         private static VNode ColumnGapRow()
         {
@@ -2782,12 +2819,24 @@ namespace Velvet.Tests
     }
 
     /// <summary>
-    /// Pins the engine fact <c>Documentation~/styling-flexbox-and-gap.md</c> gives for realising <c>gap-*</c> with
-    /// margins: the style UI Toolkit hands its layout engine has no field for a gap.
+    /// Pins the two engine facts <c>Documentation~/styling-flexbox-and-gap.md</c> builds on: the style UI Toolkit
+    /// hands its layout engine has no field for a gap, and an element's display is a flex box or none.
     /// </summary>
     [TestFixture]
-    internal sealed class GapEngineLayoutStyleTests
+    internal sealed class FlexEngineLayoutStyleTests
     {
+        // GREEN_ON_BASE(characterization): the engine has no block display on the base either; this fails once one
+        // arrives, which is when an element without .flex can stop standing in for a CSS block.
+        [Test]
+        public void Given_TheEngineDisplayStyle_When_ItsValuesAreListed_Then_FlexIsTheOnlyOneThatDisplaysABox()
+        {
+            // Arrange / Act
+            var values = string.Join(",", System.Enum.GetNames(typeof(DisplayStyle)));
+
+            // Assert
+            Assert.That(values, Is.EqualTo("Flex,None"));
+        }
+
         // GREEN_ON_BASE(characterization): the engine has no gap field on the base either; this fails once one
         // arrives, which is when the margin polyfill can give way to it.
         [Test]
@@ -2803,7 +2852,7 @@ namespace Velvet.Tests
                     field => field.Name),
                 name => name.IndexOf("gap", System.StringComparison.OrdinalIgnoreCase) >= 0));
 
-            // Assert — a type that moved reads as "no type", since it would list no gap either.
+            // Assert — a type that moved reads as "no type" rather than as the empty list that passes.
             Assert.That(gaps, Is.EqualTo(string.Empty));
         }
     }

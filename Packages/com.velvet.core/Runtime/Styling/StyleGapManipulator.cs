@@ -44,7 +44,7 @@ namespace Velvet
     // which change outside this manipulator's own events. It is re-applied from three sources: (1) the
     // reconciler calls Apply right after it reconciles the container's children (the panel-independent path
     // that also covers EditMode, where layout never ticks); (2) GeometryChangedEvent, on the container and on
-    // each spaced child, catches a child set or a direction changed by anything else, and reads the direction
+    // the last child it spaces, catches a child set or a direction changed by anything else, and reads the direction
     // and the wrap from resolvedStyle, which the layout pass that raised it has just brought up to date;
     // (3) AttachToPanelEvent re-resolves once resolvedStyle is valid.
     // A signature (_lastSignature) makes repeated Apply calls with no relevant change — notably the
@@ -119,8 +119,8 @@ namespace Velvet
         // Null unless the child container is a separate element — see ObserveChildContainer.
         private VisualElement? _observed;
 
-        // The children whose geometry this listens to — see WatchGeometry.
-        private readonly HashSet<VisualElement> _watched = new();
+        // The child whose geometry this listens to — see WatchGeometry.
+        private VisualElement? _watchedChild;
 
         // Set while a GeometryChangedEvent applies: a layout pass has just run, so resolvedStyle holds the
         // cascade's answer for the direction and the wrap — see DirectionOf.
@@ -226,26 +226,17 @@ namespace Velvet
         }
 
         // A direction or wrap written outside the class list on a container that keeps its size raises no event
-        // on the container, but it moves the children, so their geometry is listened to as well.
-        private void WatchGeometry(VisualElement child)
+        // on the container, but it moves the last child the gap spaces, so that child's geometry is listened to as
+        // well. One child rather than each: every child's event would re-read the whole child set.
+        private void WatchGeometry(VisualElement? child)
         {
-            if (_watched.Add(child))
+            if (ReferenceEquals(child, _watchedChild))
             {
-                child.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+                return;
             }
-        }
-
-        // Stops listening to every watched element that is not a child of container, or to all of them for none.
-        private void UnwatchLeft(VisualElement? container)
-        {
-            foreach (var child in new List<VisualElement>(_watched))
-            {
-                if (container == null || child.parent != container)
-                {
-                    _watched.Remove(child);
-                    child.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
-                }
-            }
+            _watchedChild?.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            _watchedChild = child;
+            _watchedChild?.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
         }
 
         // The container children are reconciled into (a composite widget's inner box; else self).
@@ -274,7 +265,6 @@ namespace Velvet
 
             // Must run before _margined.Clear(): it reads the pre-clear list to find children that left.
             ResetStaleMargined(container);
-            UnwatchLeft(container);
             _margined.Clear();
 
             // Tailwind's `:last-child` counts an absolutely positioned child, so the space rule reads the raw index;
@@ -282,6 +272,7 @@ namespace Velvet
             var lastIndex = StyleOutOfFlowChild.LastSpacedIndex(container);
             var count = container.childCount;
             var gapIndex = 0;
+            VisualElement? lastSpaced = null;
             for (var i = 0; i < count; i++)
             {
                 var child = container[i];
@@ -303,6 +294,7 @@ namespace Velvet
                 {
                     SumGap(gapIndex, wrap, gapSlot);
                     gapIndex++;
+                    lastSpaced = child;
                 }
                 if (i != lastIndex)
                 {
@@ -311,8 +303,8 @@ namespace Velvet
                 WriteMargins(child);
                 StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _margined.Add(child);
-                WatchGeometry(child);
             }
+            WatchGeometry(lastSpaced);
 
             var box = ClipPathLayoutBox.Of(container);
             if (wrap)
@@ -438,7 +430,7 @@ namespace Velvet
                 }
             }
             ResetAllMargined();
-            UnwatchLeft(null);
+            WatchGeometry(null);
         }
 
         // Offers every tracked element that is no longer a current child of container (reparented or

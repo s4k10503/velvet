@@ -408,6 +408,8 @@ namespace Velvet.Tests
             PanelSimulator.ResetCurrentTime();
             _sim = new EditorPanelSimulator { panelSize = new Vector2(800, 600) };
             _sim.ResetTimePerSimulatedFrameToDefault();
+            // The row's flex-row is a stylesheet rule, and a laid-out gap spaces the direction the panel resolves.
+            VelvetStyleUtilities.AttachTo(_sim.rootVisualElement);
             s_store = null;
             s_itemClasses = null;
         }

@@ -38,6 +38,9 @@ namespace Velvet.Tests
 
         private ReconcilerContext Context => _mounted.Root.Reconciler.Context;
 
+        // flex-row is a stylesheet rule, and a laid-out gap spaces the direction the panel resolves.
+        protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
+
         // Mounts a container at the given panel width and resolves the breakpoint against it.
         private VisualElement MountAndResolveAt(float width, string className, int childCount = 3)
         {
