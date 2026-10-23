@@ -198,6 +198,10 @@ classes re-resolves the text under it). The decoration and the line height (`lea
 rich-text tags, so a leaf with `enableRichText = false` is shown without them, where it would otherwise show
 the markup as literal text; the text-transform, the white-space and the line breaks still apply. A change of
 `enableRichText` builds the shown string again the next time the leaf repaints.
+One leaf is the exception to `label.text` reading the original text: the engine elides a leaf's text, not
+the string it was handed, when `text-overflow: ellipsis` has `-unity-text-overflow-position` at `start` or
+`middle`, so under such a position the leaf holds the string it shows as its text (and the engine elides that),
+where the default `end` position elides the shown string in the engine's text generator.
 
 **`overline` is the one decoration value that cannot be a string rewrite:** UI Toolkit's rich text
 has no overline tag (only `<u>` / `<s>`), so `overline` **paints** a solid rule above the text via

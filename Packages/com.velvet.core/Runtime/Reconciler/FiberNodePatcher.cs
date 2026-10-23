@@ -184,7 +184,7 @@ namespace Velvet
                         TextOverlineSilhouette.Detach(element, overlineBinding);
                         _ctx.TextOverlineBindings.Remove(element);
                     }
-                    TextRichTextWatch.Detach(_ctx, element);
+                    TextShownWatch.Detach(_ctx, element);
                     // Likewise the line-breaking manipulator, whose events would otherwise keep re-deriving
                     // a leaf the resolver can no longer resolve.
                     if (_ctx.TextBalanceManipulators.Remove(element, out var balanceBreaker))

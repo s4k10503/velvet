@@ -175,7 +175,7 @@ namespace Velvet
                     display = Compose(raw, effect, te.enableRichText, null);
                 }
                 ShowText(ctx, te, raw, display);
-                TextRichTextWatch.Sync(ctx, te, WritesTags(effect));
+                TextShownWatch.Sync(ctx, te, WritesTags(effect) || !string.Equals(display, raw, StringComparison.Ordinal));
                 var decoration = effect.Decoration;
                 // The leaf is written pre-wrap over a string StyleTextEffectClass.Apply already collapsed.
                 var write = breaks != null ? WhiteSpace.PreWrap : effect.Write;
@@ -256,19 +256,25 @@ namespace Velvet
             return decorated || spaced;
         }
 
-        // The leaf's text stays what the app gave; the string it shows goes in through the engine's
+        // The leaf's text stays what the app gave, and the string it shows goes in through the engine's
         // rendered-text hook. Setting the text, from here or from a prop write, resets the shown string to the
         // text, so a shown string made from another text is gone and the hook is called again
         // (TextRenderedTests pins this).
+        //
+        // The exception is a leaf the engine elides from the start or the middle: it elides the text, whatever
+        // the hook was given, so such a leaf holds the shown string as its text and the engine elides that
+        // (TextRenderedTests).
         private static void ShowText(ReconcilerContext ctx, TextElement element, string raw, string display)
         {
-            var textChanged = !string.Equals(element.text, raw, StringComparison.Ordinal);
+            var carried = !string.Equals(display, raw, StringComparison.Ordinal) && ElidesFromStart(element);
+            var held = carried ? display : raw;
+            var textChanged = !string.Equals(element.text, held, StringComparison.Ordinal);
             if (textChanged)
             {
-                element.text = raw;
+                element.text = held;
             }
             var current = textChanged ? null : ShownFor(ctx, element, raw);
-            var wanted = string.Equals(display, raw, StringComparison.Ordinal) ? null : display;
+            var wanted = carried || string.Equals(display, raw, StringComparison.Ordinal) ? null : display;
             if (wanted == null)
             {
                 ctx.TextRendered.Remove(element);
@@ -287,6 +293,14 @@ namespace Velvet
             {
                 minSize.Rederive();
             }
+        }
+
+        // Whether the engine elides this leaf's text from the start or the middle, as it does for a computed
+        // text-overflow of ellipsis once the overflow is hidden.
+        internal static bool ElidesFromStart(TextElement element)
+        {
+            var style = element.resolvedStyle;
+            return style.textOverflow == TextOverflow.Ellipsis && style.unityTextOverflowPosition != TextOverflowPosition.End;
         }
 
         // What the leaf shows: the string handed to the engine, or its text when none was.

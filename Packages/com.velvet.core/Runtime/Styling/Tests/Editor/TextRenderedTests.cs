@@ -99,6 +99,29 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("one"));
         }
 
+        [Test]
+        public void Given_AnUppercaseLabelElidedFromTheStart_When_ItHasRepainted_Then_TheEngineElidesTheUppercasedString()
+        {
+            // Arrange — the engine elides a leaf's text, not the string it was handed, from the start or the
+            // middle, so the leaf holds the string it shows as its text.
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(
+                className: "uppercase text-ellipsis", text: "hello",
+                refCallback: element =>
+                {
+                    element.style.unityTextOverflowPosition = TextOverflowPosition.Start;
+                    return null;
+                }));
+            var label = _window.rootVisualElement.Q<Label>();
+            var panel = _window.rootVisualElement.panel;
+
+            // Act
+            ForcePanelUpdate(panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+
+            // Assert
+            Assert.That(label.text, Is.EqualTo("HELLO"));
+        }
+
         [Component]
         private static VNode RenderCasedLabel()
         {

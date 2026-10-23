@@ -14,3 +14,6 @@
 
 - Turning `enableRichText` on or off on a text leaf builds the string it shows again at its next repaint,
   where the change was read only at the next time the leaf's text effects resolved.
+- A text leaf with a text effect (`uppercase`, `underline`, `leading-*`, …) and an ellipsis from the start or
+  the middle (`-unity-text-overflow-position: start | middle`) elides the string it shows, where the engine
+  elided the original text and dropped the effect. Such a leaf holds the shown string as its `text`.
