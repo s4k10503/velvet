@@ -107,8 +107,8 @@ namespace Velvet.Tests
             Assert.That((backdrop > 0, shadow > 0), Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already shears a shadow on a caster skewed on y alone with its face.
         // Have FiberBoxShadowApplier pass `default` for the caster's skew and the upright shadow's level edge reddens it.
+        // GREEN_ON_BASE(characterization): the base already shears a shadow on a caster skewed on y alone with its face.
         [UnityTest]
         public IEnumerator Given_ABoxShadowCasterSkewedOnY_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes()
         {

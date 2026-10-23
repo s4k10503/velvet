@@ -330,8 +330,8 @@ namespace Velvet.Tests
                 $"openOverhang={openOverhang} clippedOverhang={clippedOverhang} clippedFace={clippedFace}");
         }
 
-        // GREEN_ON_BASE(characterization): the nesting styling-variants.md gives for skew-* plus a clip.
         // Move `overflow-hidden` from the inner child onto the caster and the overhang term reddens.
+        // GREEN_ON_BASE(characterization): the nesting styling-variants.md gives for skew-* plus a clip.
         [UnityTest]
         public IEnumerator Given_ASkewedElementWithAFullSizeClippingChild_When_ItRenders_Then_TheFaceKeepsItsOverhangAndTheContentIsClipped()
         {

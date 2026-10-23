@@ -21,9 +21,9 @@ namespace Velvet.Tests
     {
         private const float SkewDegrees = 12f;
 
-        // GREEN_ON_BASE(characterization): the base picks by the unsheared box and seats children already.
-        // Velvet's skew writes no transform on the caster and this branch changes neither half; the case is
-        // what the styling guide's new skew paragraph rests on.
+        // Velvet's skew layer writes no transform on the caster; the case is what the styling guide's paragraph on
+        // the painted layer rests on, and a rotate class keeps the caster on it.
+        // GREEN_ON_BASE(characterization): the base picks by the unsheared box and seats children already; a rotate class keeps this case on that layer.
         [Test]
         public void Given_ASkewedCaster_When_PickedAtASeatedChildAndBeyondItsLayoutBox_Then_ChildIsPickedAndOutsidePointIsNot()
         {
