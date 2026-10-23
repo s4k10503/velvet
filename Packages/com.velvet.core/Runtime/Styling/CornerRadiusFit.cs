@@ -225,11 +225,9 @@ namespace Velvet
         private static Length? DeclaredBySheet(VisualElement element, ICustomStyle customStyle, int corner)
         {
             var restated = DeclaredByRestatement(customStyle, corner);
-            if (StyleCascade.Radius(element, corner) is { } cascaded && (cascaded.value != 0f || restated != null))
-            {
-                return cascaded;
-            }
-            return restated;
+            var cascaded = StyleCascade.Radius(element, corner);
+            var declared = cascaded != null && (cascaded.Value.value != 0f || restated != null);
+            return declared ? cascaded : restated;
         }
 
         private static Length? DeclaredByRestatement(ICustomStyle customStyle, int corner)

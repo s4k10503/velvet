@@ -386,12 +386,16 @@ namespace Velvet
                         _entries[i] = entry.WithDead(true);
                         _deadCount++;
                     }
-                    else if (entry.Priority == priority && _claimed[entry.Gate].Overlaps(entry.Properties)
-                        && StyleCornerRemainder.TryOf(entry.Class, entry.Properties, _claimed[entry.Gate], out var corners))
+                    else if (entry.Priority == priority && _claimed[entry.Gate].Overlaps(entry.Properties))
                     {
-                        (_remainderOf ??= new Dictionary<string, string[]>())[entry.Class] = corners;
-                        _entries[i] = entry.WithDead(true);
-                        _deadCount++;
+                        var taken = StyleCornerRemainder.TryOf(entry.Class, entry.Properties, _claimed[entry.Gate],
+                            out var corners);
+                        if (taken)
+                        {
+                            (_remainderOf ??= new Dictionary<string, string[]>())[entry.Class] = corners;
+                            _entries[i] = entry.WithDead(true);
+                            _deadCount++;
+                        }
                     }
                 }
                 var inline = Inline;
@@ -493,9 +497,13 @@ namespace Velvet
                 {
                     foreach (var pair in _remainderOf)
                     {
-                        if (verdict.TryGetValue(pair.Key, out var alive) && !alive)
+                        var known = verdict.TryGetValue(pair.Key, out var alive);
+                        if (known)
                         {
-                            wanted.UnionWith(pair.Value);
+                            if (!alive)
+                            {
+                                wanted.UnionWith(pair.Value);
+                            }
                         }
                     }
                 }

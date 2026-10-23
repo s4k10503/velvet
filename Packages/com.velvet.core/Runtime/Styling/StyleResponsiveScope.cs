@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
@@ -119,7 +118,7 @@ namespace Velvet
         }
 
         private static readonly ConditionalWeakTable<VisualElement, string> s_seenMarkers = new();
-        private static readonly List<string> s_scratchMarkers = new();
+        private static readonly System.Collections.Generic.List<string> s_scratchMarkers = new();
 
         // Compares the markers on element's live class list with the ones the last observation saw, which is how a
         // marker written straight to the class list (AddToClassList("@container")) re-points descendants: no event
@@ -145,14 +144,7 @@ namespace Velvet
             {
                 return;
             }
-            if (signature.Length == 0)
-            {
-                s_seenMarkers.Remove(element);
-            }
-            else
-            {
-                s_seenMarkers.AddOrUpdate(element, signature);
-            }
+            s_seenMarkers.AddOrUpdate(element, signature);
             ScopesChanged?.Invoke();
         }
 

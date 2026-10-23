@@ -986,6 +986,34 @@ namespace Velvet
         // direct children, which costs a record per descendant and nothing else.
         internal int ChildVariantHostDepth;
 
+        // Raises ChildVariantHostDepth for the span of a using, when hosts says the children being reconciled
+        // belong to a container carrying a [&>*]: token.
+        internal ChildVariantHostScope OpenChildVariantHost(bool hosts) => new(this, hosts);
+
+        internal readonly struct ChildVariantHostScope : System.IDisposable
+        {
+            private readonly ReconcilerContext _ctx;
+            private readonly bool _hosts;
+
+            public ChildVariantHostScope(ReconcilerContext ctx, bool hosts)
+            {
+                _ctx = ctx;
+                _hosts = hosts;
+                if (hosts)
+                {
+                    ctx.ChildVariantHostDepth++;
+                }
+            }
+
+            public void Dispose()
+            {
+                if (_hosts)
+                {
+                    _ctx.ChildVariantHostDepth--;
+                }
+            }
+        }
+
         // Whether parent, as a reconcile target, is the child container of an element that carries a manipulator.
         internal bool HostsChildVariant(VisualElement? parent)
         {

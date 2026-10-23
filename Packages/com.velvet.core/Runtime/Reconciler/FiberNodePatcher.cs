@@ -493,11 +493,7 @@ namespace Velvet
             // would put an element between this container and each Component's output.
             FiberCommitWork.OpenOwnRows(_ctx, childContainer);
             int? rowsBehindRanges;
-            var hostsChildVariant = StyleChildVariantClass.HasChildVariantClass(newNode.ClassNames);
-            if (hostsChildVariant)
-            {
-                _ctx.ChildVariantHostDepth++;
-            }
+            using var host = _ctx.OpenChildVariantHost(StyleChildVariantClass.HasChildVariantClass(newNode.ClassNames));
             try
             {
                 _host.ReconcileChildren(childContainer,
@@ -506,10 +502,6 @@ namespace Velvet
             }
             finally
             {
-                if (hostsChildVariant)
-                {
-                    _ctx.ChildVariantHostDepth--;
-                }
                 rowsBehindRanges = FiberCommitWork.PopOwnRows(_ctx, childContainer);
             }
             if (rowsBehindRanges != null)

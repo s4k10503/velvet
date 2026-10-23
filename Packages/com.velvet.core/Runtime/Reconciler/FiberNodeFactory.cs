@@ -87,11 +87,8 @@ namespace Velvet
         private void ReconcileChildrenOfNewElement(VisualElement element, VisualElement childContainer, VNode?[] children,
             string[]? classNames = null)
         {
-            var hosts = classNames != null && StyleChildVariantClass.HasChildVariantClass(classNames);
-            if (hosts)
-            {
-                _ctx.ChildVariantHostDepth++;
-            }
+            using var host = _ctx.OpenChildVariantHost(
+                classNames != null && StyleChildVariantClass.HasChildVariantClass(classNames));
             try
             {
                 _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), children);
@@ -100,13 +97,6 @@ namespace Velvet
             {
                 _cleaner.CleanupElement(element);
                 throw;
-            }
-            finally
-            {
-                if (hosts)
-                {
-                    _ctx.ChildVariantHostDepth--;
-                }
             }
         }
 
