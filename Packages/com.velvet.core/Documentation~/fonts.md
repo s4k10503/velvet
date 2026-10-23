@@ -380,12 +380,27 @@ leaf shows, like the text effects above: under `tabular-nums` each run of digits
 `<mspace>` tag at the width of the widest digit of the leaf's font, measured with `TextElement.MeasureTextSize`
 (less the letter spacing, in em of the font size), so every digit takes the same room. The other two reset it, and
 the axis inherits. A leaf with `enableRichText = false`, or whose font cannot be measured yet, is shown
-without the tag, and a change of its font builds the string again. The glyphs are not swapped for a tabular
-design the font may carry, as an OpenType `tnum` feature would: UI Toolkit's style has no font-feature property, and
-the settings UI Toolkit hands the advanced text generator hold a font-feature switch for the engine's own
-features alone, `disableAdvancedFontFeatures`. The other
-variants have no counterpart and are not shipped: `lining-nums`, `oldstyle-nums`, `slashed-zero`, `ordinal`,
-`diagonal-fractions` and `stacked-fractions` each select other glyphs of the font.
+without the tag, and a change of its font builds the string again. The `<mspace>` tag is read by both text generators UI Toolkit selects between, in `em` as written
+(UnityCsReference 6000.3, Modules/TextCoreTextEngine/Managed: the advanced generator in
+TextGenerator/RichTextTagParser.cs, TagsInfo and the Mspace case; the standard one in
+TextGenerator/TextGeneratorHtmlTagValidation.cs, MarkupTag.MONOSPACE, where a font-unit value is multiplied
+by the current font size).
+
+The glyphs are not swapped for a tabular design the font carries, as an OpenType `tnum` feature would, and the
+other variants cannot be written at all: `lining-nums` (`lnum`), `oldstyle-nums` (`onum`), `slashed-zero`
+(`zero`), `ordinal` (`ordn`), `diagonal-fractions` (`frac`) and `stacked-fractions` (`afrc`) each need a GSUB
+feature selected for one element's text, and the same source shows no way to select one:
+
+- the standard generator reads a single static, internal list of features, TextGenerationSettings.fontFeatures
+  (TextGenerator/TextGenerationSettings.cs), which holds `kern`, and TextGeneratorParsing.cs asks it only for
+  `kern`, `mark` and `mkmk`;
+- the advanced generator's settings carry one feature field, the boolean disableAdvancedFontFeatures
+  (TextGenerator/NativeTextGenerationSettings.bindings.cs);
+- the rich-text tags either generator reads (RichTextTagParser.TagsInfo) include none for a font feature;
+- a FontAsset's FontFeatureTable (FontFeatureTable.cs) holds pair, mark, multiple-substitution and ligature records, and
+  FontEngine's GSUB readers (TextCoreFontEngine/Managed/FontEngine.bindings.cs) are internal.
+
+The Modules/UIElements style has no font-feature property either (StylePropertyCache.cs lists none).
 
 Where such a look matters, register a purpose-built Font Asset for that face through the same `font-family`
 mechanism (`VelvetFonts.Register`) and select it with `font-<name>`.
