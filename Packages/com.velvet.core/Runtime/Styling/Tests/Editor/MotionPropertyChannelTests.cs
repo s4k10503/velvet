@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
+using Velvet.TestUtilities;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -75,6 +77,13 @@ namespace Velvet.Tests
                 }
             }
             return false;
+        }
+
+        // The element's inline transition-property is a list, and names no style property.
+        private static bool NamesNoProperty(VisualElement element)
+        {
+            var slot = element.style.transitionProperty;
+            return slot.keyword != StyleKeyword.Null && (slot.value == null || slot.value.Count == 0);
         }
 
         // A width drive on element holding its from pose, w-[10px], as a play's first write does until a delay ends.
@@ -374,11 +383,9 @@ namespace Velvet.Tests
             // Act
             var state = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
 
-            // Assert — the inline transition-property resolves to no style property at all, so the element
-            // computes zero transitions and the driver's writes reach the paint unfiltered.
-            var declared = element.style.transitionProperty.value;
-            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
-                Is.True);
+            // Assert — off a panel the element's own transitions cannot be read, so none is left to run until it is
+            // attached, and the driver's writes reach the paint unfiltered.
+            Assert.That(state != null && NamesNoProperty(element), Is.True);
         }
 
         [Test]
@@ -576,6 +583,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnElementOnAPanelTransitioningEverything_When_APlayDrivesItsTranslate_Then_OnlyTheTranslateIsTakenOutOfItsTransitions()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            host.Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>("Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss"));
+            var element = new VisualElement();
+            element.AddToClassList("transition-all");
+            element.AddToClassList("duration-300");
+            host.Root.Add(element);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Act
+            var state = CreateHalfway(element, new[] { "-translate-x-8" }, new[] { "translate-x-0" });
+
+            // Assert
+            var list = element.style.transitionProperty.value;
+            Assert.That(state != null && list != null ? (list.Contains(new StylePropertyName("opacity")), list.Contains(new StylePropertyName("translate")))
+                : ((bool, bool)?)null, Is.EqualTo(((bool, bool)?)(true, false)));
+        }
+
+        [Test]
         public void Given_APlayWhoseSlotsTheElementsTransitionDoesNotName_When_Started_Then_ItsTransitionIsUntouched()
         {
             // Arrange — .transition-colors names background-color / border-color / color, none of which this
@@ -604,9 +632,7 @@ namespace Velvet.Tests
             var state = CreateHalfway(element, new[] { "-translate-x-8" }, new[] { "translate-x-0" });
 
             // Assert
-            var declared = element.style.transitionProperty.value;
-            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
-                Is.True);
+            Assert.That(state != null && NamesNoProperty(element), Is.True);
         }
 
         [Test]
@@ -620,9 +646,7 @@ namespace Velvet.Tests
             var state = CreateHalfway(element, new[] { "opacity-0" }, new[] { "opacity-100" });
 
             // Assert
-            var declared = element.style.transitionProperty.value;
-            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
-                Is.True);
+            Assert.That(state != null && NamesNoProperty(element), Is.True);
         }
 
         [Test]
@@ -653,9 +677,7 @@ namespace Velvet.Tests
             var state = CreateHalfway(element, new[] { "-translate-x-8" }, new[] { "translate-x-0" });
 
             // Assert
-            var declared = element.style.transitionProperty.value;
-            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
-                Is.True);
+            Assert.That(state != null && NamesNoProperty(element), Is.True);
         }
 
         [Test]

@@ -482,74 +482,103 @@ namespace Velvet
             public bool Swapped;
         }
 
-        private static bool TryReadScale(string[]? swapClasses, MotionSlotContext? context, out ScaleReading reading)
+        // The holders of one side's scale layers, collected a token at a time. A holder of equal rank replaces the one
+        // before it, resting classes being collected first, as Claim does.
+        private sealed class ScaleHolders
         {
-            reading = default;
-            ScaleHolder x = new() { Key = -1 }, y = new() { Key = -1 }, both = new() { Key = -1 },
-                sheet = new() { Key = -1 }, bracket = new() { Key = -1 };
-            var perAxis = false;
-            var rejected = false;
-            var importantClasses = CollectImportantClasses(swapClasses ?? Array.Empty<string>(), context);
+            private readonly StyleLonghandSet _importantClasses;
+            private ScaleHolder _x = Empty, _y = Empty, _both = Empty, _sheet = Empty, _bracket = Empty;
+            public bool PerAxis;
+            public bool Rejected;
 
-            // A holder of equal rank replaces the one before it, resting classes being collected first, as Claim does.
-            void Collect(string cls, int index, bool swapped)
+            public ScaleHolders(StyleLonghandSet importantClasses) => _importantClasses = importantClasses;
+
+            private static ScaleHolder Empty => new() { Key = -1 };
+
+            public void Add(string cls, int index, bool swapped)
             {
                 if (string.IsNullOrEmpty(cls) || !TryRank(cls, index, out var token)
                     || !token.Written.Contains(StyleLonghand.Scale)
-                    || (!token.Important && IsSubset(token.Written, importantClasses)))
+                    || (!token.Important && IsSubset(token.Written, _importantClasses)))
                 {
+                    return;
+                }
+                if (!token.Inline)
+                {
+                    AddSheet(cls, token.Precedence, swapped);
                     return;
                 }
                 var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-                if (!token.Inline)
-                {
-                    if (TryParseAxisReading(cls, out var axis, out var factor, out _) && axis == SpringAxis.Scale
-                        && token.Precedence >= sheet.Key)
-                    {
-                        sheet = new ScaleHolder { Key = token.Precedence, Value = factor, Swapped = swapped };
-                    }
-                    return;
-                }
                 if (!StyleArbitraryValueResolver.TryParseLayer(core, out var layer))
                 {
                     return;
                 }
                 if (layer.Rejected)
                 {
-                    rejected = true;
+                    Rejected = true;
                     return;
                 }
-                var held = new ScaleHolder
+                AddLayer(layer.Property, new ScaleHolder
                 {
                     Key = token.Precedence, Value = layer.Keyword == StyleKeyword.Undefined ? layer.Value : 1f,
                     Swapped = swapped,
-                };
-                switch (layer.Property)
+                });
+            }
+
+            private void AddSheet(string cls, long key, bool swapped)
+            {
+                if (TryParseAxisReading(cls, out var axis, out var factor, out _) && axis == SpringAxis.Scale
+                    && key >= _sheet.Key)
                 {
-                    case ArbitraryProperty.ScaleX:
-                        perAxis = true;
-                        if (held.Key >= x.Key) x = held;
-                        break;
-                    case ArbitraryProperty.ScaleY:
-                        perAxis = true;
-                        if (held.Key >= y.Key) y = held;
-                        break;
-                    case ArbitraryProperty.ScaleBoth:
-                        if (held.Key >= both.Key) both = held;
-                        break;
-                    case ArbitraryProperty.Scale:
-                        if (held.Key >= bracket.Key) bracket = held;
-                        break;
+                    _sheet = new ScaleHolder { Key = key, Value = factor, Swapped = swapped };
                 }
             }
 
+            private void AddLayer(ArbitraryProperty property, ScaleHolder held)
+            {
+                PerAxis |= property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
+                switch (property)
+                {
+                    case ArbitraryProperty.ScaleX when held.Key >= _x.Key: _x = held; break;
+                    case ArbitraryProperty.ScaleY when held.Key >= _y.Key: _y = held; break;
+                    case ArbitraryProperty.ScaleBoth when held.Key >= _both.Key: _both = held; break;
+                    case ArbitraryProperty.Scale when held.Key >= _bracket.Key: _bracket = held; break;
+                }
+            }
+
+            public bool Any => _x.Key >= 0 || _y.Key >= 0 || _both.Key >= 0 || _sheet.Key >= 0 || _bracket.Key >= 0
+                || Rejected;
+
+            public ScaleReading Read()
+            {
+                var xLayer = _both.Key > _x.Key ? _both : _x;
+                var yLayer = _both.Key > _y.Key ? _both : _y;
+                var reading = new ScaleReading { PerAxis = PerAxis, Rejected = Rejected };
+                if (_bracket.Key >= 0 && (xLayer.Key < 0 || _bracket.Key >= xLayer.Key)
+                    && (yLayer.Key < 0 || _bracket.Key >= yLayer.Key))
+                {
+                    (reading.X, reading.Y, reading.Swapped) = (_bracket.Value, _bracket.Value, _bracket.Swapped);
+                    return reading;
+                }
+                var xHolder = xLayer.Key >= 0 ? xLayer : _sheet;
+                var yHolder = yLayer.Key >= 0 ? yLayer : _sheet;
+                reading.X = xHolder.Key >= 0 ? xHolder.Value : 1f;
+                reading.Y = yHolder.Key >= 0 ? yHolder.Value : 1f;
+                reading.Swapped = (xHolder.Key >= 0 && xHolder.Swapped) || (yHolder.Key >= 0 && yHolder.Swapped);
+                return reading;
+            }
+        }
+
+        private static bool TryReadScale(string[]? swapClasses, MotionSlotContext? context, out ScaleReading reading)
+        {
+            var holders = new ScaleHolders(CollectImportantClasses(swapClasses ?? Array.Empty<string>(), context));
             if (context != null)
             {
                 foreach (var cls in context.RestingClasses())
                 {
                     if (context.Attached || cls.StartsWith("!", StringComparison.Ordinal))
                     {
-                        Collect(cls, 0, swapped: false);
+                        holders.Add(cls, 0, swapped: false);
                     }
                 }
             }
@@ -558,30 +587,11 @@ namespace Velvet
                 var places = StyleRuleOrder.OrdinalsOf(swapClasses);
                 for (var i = 0; i < swapClasses.Length; i++)
                 {
-                    Collect(swapClasses[i], places[i], swapped: true);
+                    holders.Add(swapClasses[i], places[i], swapped: true);
                 }
             }
-            if (x.Key < 0 && y.Key < 0 && both.Key < 0 && sheet.Key < 0 && bracket.Key < 0 && !rejected)
-            {
-                return false;
-            }
-
-            ScaleHolder AxisHolder(ScaleHolder axis) => both.Key > axis.Key ? both : axis;
-            var xLayer = AxisHolder(x);
-            var yLayer = AxisHolder(y);
-            reading = new ScaleReading { PerAxis = perAxis, Rejected = rejected };
-            if (bracket.Key >= 0 && (xLayer.Key < 0 || bracket.Key >= xLayer.Key)
-                && (yLayer.Key < 0 || bracket.Key >= yLayer.Key))
-            {
-                (reading.X, reading.Y, reading.Swapped) = (bracket.Value, bracket.Value, bracket.Swapped);
-                return true;
-            }
-            var xHolder = xLayer.Key >= 0 ? xLayer : sheet;
-            var yHolder = yLayer.Key >= 0 ? yLayer : sheet;
-            reading.X = xHolder.Key >= 0 ? xHolder.Value : 1f;
-            reading.Y = yHolder.Key >= 0 ? yHolder.Value : 1f;
-            reading.Swapped = (xHolder.Key >= 0 && xHolder.Swapped) || (yHolder.Key >= 0 && yHolder.Swapped);
-            return true;
+            reading = holders.Any ? holders.Read() : default;
+            return holders.Any;
         }
 
         // Replaces the uniform scale channel with an x and a y one where a side names an axis of its own. The sides

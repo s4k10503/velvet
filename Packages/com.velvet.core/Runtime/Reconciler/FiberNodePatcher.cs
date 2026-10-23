@@ -428,6 +428,7 @@ namespace Velvet
             {
                 // A rule can match a descendant by this element's classes, so the loops beneath read theirs again.
                 StyleAnimateDriver.NotifySubtreeStyleChanged(element);
+                _ctx.StyleAnimationScheduler.ResyncTransitions(element);
             }
             _appliers.ApplyGradientOnPatch(element, classNames);
             _appliers.ApplyAnimateOnPatch(element, classNames);

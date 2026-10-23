@@ -550,35 +550,7 @@ namespace Velvet
 
         private bool TryConvert(ArbitraryProperty slot, ref ArbitraryStyle value, LengthUnit unit)
         {
-            if (slot is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY)
-            {
-                // A translate's percentage is of the element's own box.
-                var box = Owner(slot).layout;
-                var extent = slot == ArbitraryProperty.TranslateX ? box.width : box.height;
-                if (!(extent > 0f) || float.IsInfinity(extent))
-                {
-                    return false;
-                }
-                var shifted = value.Unit == LengthUnit.Percent ? value.Value / 100f * extent : value.Value;
-                value = new ArbitraryStyle(slot, unit == LengthUnit.Percent ? shifted / extent * 100f : shifted, unit);
-                return true;
-            }
-            var parent = Owner(slot).hierarchy.parent;
-            // Padding and margin percentages are of the containing block's width on every edge.
-            var horizontal = slot is ArbitraryProperty.Width or ArbitraryProperty.MinWidth or ArbitraryProperty.MaxWidth
-                or ArbitraryProperty.Left or ArbitraryProperty.Right
-                or ArbitraryProperty.PaddingTop or ArbitraryProperty.PaddingRight or ArbitraryProperty.PaddingBottom
-                or ArbitraryProperty.PaddingLeft
-                or ArbitraryProperty.MarginTop or ArbitraryProperty.MarginRight or ArbitraryProperty.MarginBottom
-                or ArbitraryProperty.MarginLeft;
-            var vertical = slot is ArbitraryProperty.Height or ArbitraryProperty.MinHeight or ArbitraryProperty.MaxHeight
-                or ArbitraryProperty.Top or ArbitraryProperty.Bottom;
-            if (parent == null || (!horizontal && !vertical))
-            {
-                return false;
-            }
-            var basis = horizontal ? parent.contentRect.width : parent.contentRect.height;
-            if (!(basis > 0f) || float.IsInfinity(basis))
+            if (!TryPercentBasis(slot, out var basis))
             {
                 return false;
             }
@@ -586,6 +558,37 @@ namespace Velvet
             value = new ArbitraryStyle(slot, unit == LengthUnit.Percent ? pixels / basis * 100f : pixels, unit);
             return true;
         }
+
+        // The pixels a slot's 100% stands for: the element's own box for a translate, else the parent's content box.
+        private bool TryPercentBasis(ArbitraryProperty slot, out float basis)
+        {
+            basis = 0f;
+            var owner = Owner(slot);
+            if (slot is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY)
+            {
+                basis = slot == ArbitraryProperty.TranslateX ? owner.layout.width : owner.layout.height;
+            }
+            else if (owner.hierarchy.parent is { } parent)
+            {
+                basis = IsHorizontalPercent(slot) ? parent.contentRect.width
+                    : IsVerticalPercent(slot) ? parent.contentRect.height : 0f;
+            }
+            return basis > 0f && !float.IsInfinity(basis);
+        }
+
+        // Padding and margin percentages are of the containing block's width on every edge.
+        private static bool IsHorizontalPercent(ArbitraryProperty slot)
+            => slot is ArbitraryProperty.Width or ArbitraryProperty.MinWidth or ArbitraryProperty.MaxWidth
+                or ArbitraryProperty.Left or ArbitraryProperty.Right || IsSpacingEdge(slot);
+
+        private static bool IsVerticalPercent(ArbitraryProperty slot)
+            => slot is ArbitraryProperty.Height or ArbitraryProperty.MinHeight or ArbitraryProperty.MaxHeight
+                or ArbitraryProperty.Top or ArbitraryProperty.Bottom;
+
+        private static bool IsSpacingEdge(ArbitraryProperty slot)
+            => slot is ArbitraryProperty.PaddingTop or ArbitraryProperty.PaddingRight or ArbitraryProperty.PaddingBottom
+                or ArbitraryProperty.PaddingLeft or ArbitraryProperty.MarginTop or ArbitraryProperty.MarginRight
+                or ArbitraryProperty.MarginBottom or ArbitraryProperty.MarginLeft;
 
         private static bool Float(ArbitraryProperty slot, StyleFloat style, out ArbitraryStyle value)
         {

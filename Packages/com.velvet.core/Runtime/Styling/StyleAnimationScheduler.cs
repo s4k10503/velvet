@@ -1296,6 +1296,24 @@ namespace Velvet
             _held[element] = pending;
         }
 
+        // Decides again which of the element's own transitions its running plays take out, after a class patch that
+        // may have started or stopped declaring one over what they write.
+        internal void ResyncTransitions(VisualElement element)
+        {
+            ResyncTransitions(_pendingEnters, element);
+            ResyncTransitions(_pendingExits, element);
+            ResyncTransitions(_held, element);
+        }
+
+        private static void ResyncTransitions(Dictionary<VisualElement, PendingAnimation> map, VisualElement element)
+        {
+            if (map.TryGetValue(element, out var pending) && pending.Bezier is not { Easing: not null }
+                && ((IGestureMaskableState?)pending.Spring ?? pending.Bezier) is { } state)
+            {
+                GestureChannelMask.ResyncNarrowing(element, state);
+            }
+        }
+
         // A held play's values are the ones the element's next Spring or Bezier play on the channels both drive
         // starts from, as Framer Motion's next animation starts from where a cancelled one left its value.
         private MotionSpringClassParser.SpringPlan StartFromHeld(VisualElement element,

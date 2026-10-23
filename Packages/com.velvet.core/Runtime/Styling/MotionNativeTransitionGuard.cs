@@ -197,12 +197,32 @@ namespace Velvet
         /// <see cref="Release"/>).
         /// </remarks>
         public static void NarrowIfIntercepted(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+            => NarrowIntercepted(element, owner, drivenSlots, LonghandsOf(drivenSlots));
+
+        /// <summary>
+        /// <see cref="NarrowIfIntercepted(VisualElement, object, MotionTransitionSlots)"/> for a driver that writes
+        /// <paramref name="driven"/> of <paramref name="drivenSlots"/>, the length longhands its channels name rather
+        /// than every length. It records the slots as driven, as <see cref="SuspendIfIntercepted(VisualElement, object, MotionTransitionSlots)"/>
+        /// does.
+        /// </summary>
+        internal static void NarrowIfIntercepted(VisualElement element, object owner, MotionTransitionSlots drivenSlots,
+            StyleLonghandSet drivenLengths)
         {
-            var driven = LonghandsOf(drivenSlots);
+            if (drivenSlots == MotionTransitionSlots.None)
+            {
+                return;
+            }
+            NarrowIntercepted(element, owner, drivenSlots, LonghandsOf(drivenSlots & ~MotionTransitionSlots.Length).Union(drivenLengths));
+            s_suspensions.GetValue(element, static _ => new Suspension()).Driven[owner] = drivenSlots;
+        }
+
+        private static void NarrowIntercepted(VisualElement element, object owner, MotionTransitionSlots drivenSlots,
+            StyleLonghandSet driven)
+        {
             ExcludeFromHeldList(element, driven);
             if (Intercepts(element, driven) ?? Contends(DeclaredSlots(element), drivenSlots))
             {
-                Narrow(element, owner, drivenSlots);
+                Narrow(element, owner, driven);
                 return;
             }
             // Decided again on a pass that finds the element's rules changed
@@ -219,14 +239,42 @@ namespace Velvet
         /// <paramref name="drivenSlots"/>, and asks again on each pass, so that a change of the element's rules is taken.
         /// </summary>
         public static void Narrow(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+            => Narrow(element, owner, LonghandsOf(drivenSlots));
+
+        private static void Narrow(VisualElement element, object owner, StyleLonghandSet driven)
         {
-            var driven = LonghandsOf(drivenSlots);
             ExcludeFromHeldList(element, driven);
             var suspension = s_suspensions.GetValue(element, static _ => new Suspension());
             var narrowed = suspension.Narrowers.GetValueOrDefault(owner, StyleLonghandSet.Empty).Union(driven);
             suspension.Stale |= !suspension.Narrowers.TryGetValue(owner, out var held) || !held.Equals(narrowed);
             suspension.Narrowers[owner] = narrowed;
             WriteNarrowed(element, suspension);
+        }
+
+        /// <summary>
+        /// Decides again, against the element's CURRENT classes, whether <paramref name="owner"/>, which writes
+        /// <paramref name="drivenSlots"/> and <paramref name="drivenLengths"/> frame by frame, narrows the element's
+        /// transitions: a class patch under a running play can start or stop declaring a transition over what it writes.
+        /// </summary>
+        internal static void SyncNarrowing(VisualElement element, object owner, MotionTransitionSlots drivenSlots,
+            StyleLonghandSet drivenLengths)
+        {
+            if (drivenSlots == MotionTransitionSlots.None)
+            {
+                Release(element, owner);
+                return;
+            }
+            var driven = LonghandsOf(drivenSlots & ~MotionTransitionSlots.Length).Union(drivenLengths);
+            ExcludeFromHeldList(element, driven);
+            if (Contends(DeclaredSlots(element, readInlineDuration: false), drivenSlots))
+            {
+                Narrow(element, owner, driven);
+            }
+            else
+            {
+                Release(element, owner);
+            }
+            s_suspensions.GetValue(element, static _ => new Suspension()).Driven[owner] = drivenSlots;
         }
 
         /// <summary>
@@ -448,9 +496,7 @@ namespace Velvet
         /// An inline transition-property is not read here: the only one this package originates besides this class
         /// is a variant tween's, and both entry points deal with that before asking (see
         /// <see cref="HoldsAForeignValue"/>).
-        /// One residual blind spot is accepted rather than fixed: a play asks once at its start, so a variant
-        /// that turns on <c>transition-all</c> midway through one is not picked up until the next.
-        /// <see cref="SyncSuspension"/> is what a driver outliving a patch asks instead.
+        /// <see cref="SyncSuspension"/> and <see cref="SyncNarrowing"/> are what a driver outliving a patch asks instead.
         /// </para>
         /// </remarks>
         internal static MotionTransitionSlots DeclaredSlots(VisualElement element)
@@ -777,9 +823,9 @@ namespace Velvet
             var next = LayoutOwner(element, lengths, property);
             if (ReferenceEquals(previous, next)) return previous;
             if (previous != null) Release(previous, owner);
-            if (next != null) SuspendIfIntercepted(next, owner, MotionTransitionSlots.Length,
+            if (next != null) NarrowIfIntercepted(next, owner, MotionTransitionSlots.Length,
                 LengthLonghands(element, next, lengths, property));
-            else if (previous != null) SuspendIfIntercepted(element, owner, drivenSlots,
+            else if (previous != null) NarrowIfIntercepted(element, owner, drivenSlots,
                 LengthLonghands(element, element, lengths, property));
             return next;
         }

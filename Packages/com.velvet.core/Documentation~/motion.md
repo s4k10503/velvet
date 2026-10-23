@@ -455,7 +455,7 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   scale being read per axis as the element draws it: an axis layer takes its axis over the sheet's `scale-<n>`,
   which the other axis falls back on (`scale-50 scale-x-75` is 0.75 by 0.5), and a `scale-[…]` at or above every
   axis layer is drawn alone. A scale whose two axes agree at both ends stays one channel.
-- **A play suspends the element's own USS transitions when they cover what it drives.** A driver
+- **A play takes what it drives out of the element's own USS transitions when they cover it.** A driver
   writes the exact value the curve or the physics calls for on that frame, so a transition utility
   naming that same property restarts a native transition on every one of those writes and leaves
   the painted value trailing for the whole play, easing in at the end instead of landing. Whether
@@ -474,25 +474,26 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   either, the element transitions nothing and nothing suspends. A play suspends only where its own
   channels intersect the resolved set — a `transition-colors` element running a fade/slide keeps
   its hover fade, while the same play on a `transition-transform` or `transition-all` element
-  suspends. One blind spot: the check runs once at play start, so a variant turning on
-  `transition-all` mid-play is not picked up until the next play. A play starting while a variant
+  suspends. The check is made again when the element's classes change under a running play, so a variant
+  turning on `transition-all` mid-play is picked up. A play starting while a variant
   tween holds the inline `transition-property` takes what it drives out of that list rather than
   writing over it. At play start, spring and bezier length channels remove only their own longhands
   from a held inline list on each style owner; a width-only play keeps that list's height entry,
   including on a clip wrapper.
-  When it does suspend, the suspension is **element-wide**: the element's *other* transitions
-  land instantly too, across the play's `DelaySec` and stagger slot as well as its motion — the
-  element is already parked at its from-pose over that window. This is **narrower than Framer
-  Motion**, which takes over only the values it animates and leaves the element's other CSS
-  transitions running. Two overlapping plays each hold
-  their own claim, so the first to finish cannot un-suspend the second, and the suspension lifts as
-  soon as the last one settles or is cancelled. Reach for `Tween` on the default clock when you want the
+  When it does, the play narrows the element's transitions: the longhands it writes come out of the list (an `all`
+  or a shorthand becoming the other longhands it covers, on its own timing) and the element's other
+  transitions keep running, as Framer Motion takes over only the values it animates. Off a panel the element's
+  transitions cannot be read, so none runs until the next tick reads them. A Tween on a clock other than the
+  panel's lands everything the swap changes, its other properties included, with the swap. Two overlapping plays
+  each hold their own claim, so the first to finish cannot release the second's, and the narrowing lifts as soon
+  as the last one settles or is cancelled. Reach for `Tween` on the default clock when you want the
   class's own transition to do the work instead; on any other, a `Tween` is driven too (*Clocks* below).
 
 ## Cubic-bezier easing
 
-`TransitionType.Bezier` is Spring's other non-CSS sibling: instead of `EasingMode`'s five keyword
-curves, it samples an exact numeric CSS `cubic-bezier(x1,y1,x2,y2)` curve every tick — the same
+`TransitionType.Bezier` is Spring's other non-CSS sibling: instead of `EasingMode`'s fixed set of
+curves (UI Toolkit's native transitions take one of its 22 modes, whose `ease-in-out` is a quadratic standing in
+for `cubic-bezier(0.42, 0, 0.58, 1)` rather than the Tailwind curve), it samples an exact numeric CSS `cubic-bezier(x1,y1,x2,y2)` curve every tick — the same
 algorithm every browser's `cubic-bezier()` runs — via `BezierX1` / `BezierY1` / `BezierX2` /
 `BezierY2`. Unlike a spring it keeps a fixed `DurationSec`, exactly like a plain tween; only the
 shape of the easing differs. It shares Spring's channel scope (*Driven channels* above) and its

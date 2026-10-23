@@ -326,7 +326,7 @@ namespace Velvet
         /// </remarks>
         public static void ApplyCurrentValues(VisualElement element, MotionSpringState state)
         {
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, state, DrivenSlots(state),
                 MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             WriteChannelValues(element, state);
@@ -690,6 +690,7 @@ namespace Velvet
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
             SyncLayoutOwner(element, state);
+            GestureChannelMask.ResyncNarrowing(element, state);
         }
 
         /// <summary>
@@ -740,6 +741,7 @@ namespace Velvet
             }
             state.ElapsedSec = 0.0;
             ForEachActiveChannel(state, c => Release(state, c, c.Integrator.Value, c.Integrator.Velocity));
+            GestureChannelMask.ResyncNarrowing(element, state);
             WriteChannelValues(element, state);
         }
 

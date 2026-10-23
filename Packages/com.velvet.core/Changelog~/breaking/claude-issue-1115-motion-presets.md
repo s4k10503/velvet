@@ -14,3 +14,7 @@
 - Semantic colours (`bg-primary`, `text-subtle`, `border-default`), `aspect-[…]`, `aspect-square` and
   `aspect-video`, and pixel-to-percentage pairs of offsets, padding and margin are driven where they used to land
   instantly.
+- A Spring or Bezier play takes only the longhands it writes out of the element's own USS transitions, where it
+  suspended every transition on the element until it settled; the element's other transitions keep running, and
+  a variant turning on a transition class mid-play is picked up. A Tween on a clock other than the panel's still
+  lands everything its swap changes.

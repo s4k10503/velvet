@@ -266,14 +266,17 @@ namespace Velvet
         /// </summary>
         public static void ApplyCurrentValues(VisualElement element, BezierTweenState state)
         {
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
-                MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             if (state.Easing.HasValue)
             {
                 // A driven Tween's swap also changes what its channels do not write, which a transition the element's
                 // own classes declare would animate on the panel's time; the suspension lands it with the swap.
                 MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, MotionTransitionSlots.All,
                     StyleLonghandSet.Empty);
+            }
+            else
+            {
+                MotionNativeTransitionGuard.NarrowIfIntercepted(element, state, DrivenSlots(state),
+                    MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             }
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             ApplyEased(element, state);
@@ -291,7 +294,7 @@ namespace Velvet
                 return;
             }
             MotionNativeTransitionGuard.Release(element, state);
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, state, DrivenSlots(state),
                 MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
         }
 
@@ -413,6 +416,7 @@ namespace Velvet
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
             SyncLayoutOwner(element, state);
+            if (!state.Easing.HasValue) GestureChannelMask.ResyncNarrowing(element, state);
         }
 
         /// <summary>
@@ -453,6 +457,7 @@ namespace Velvet
             }
             if (returned)
             {
+                if (!state.Easing.HasValue) GestureChannelMask.ResyncNarrowing(element, state);
                 ApplyEased(element, state);
             }
         }
