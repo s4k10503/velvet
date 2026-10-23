@@ -296,7 +296,7 @@ namespace Velvet
             {
                 return 0f;
             }
-            if (key.Item1 != 0)
+            if (key.Item1 != null)
             {
                 s_digitCells[key] = cell;
             }
