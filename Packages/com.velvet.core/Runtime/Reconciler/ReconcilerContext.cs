@@ -1169,6 +1169,10 @@ namespace Velvet
         // the element itself — skew paints via the element's own generateVisualContent, no wrapper.
         public Dictionary<VisualElement, SkewBinding> SkewBindings { get; } = new();
 
+        // The elements whose inline rotate and scale slots carry their skew (FiberSkewApplier), by the skew classes
+        // that won on each axis. A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, (string? X, string? Y)> SkewTransformed { get; } = new();
+
         // Dashed / dotted border outline per element (border-dashed / border-dotted), keyed by the element
         // itself — like skew, the outline is painted by the element's own generateVisualContent with no
         // wrapper (only the border color is suppressed; the fill and width are untouched). Defers to skew /
@@ -3109,6 +3113,7 @@ namespace Velvet
                 LayoutIdFollows,
                 LayoutIdExiting,
                 LayoutIdRestored,
+                SkewTransformed,
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,
