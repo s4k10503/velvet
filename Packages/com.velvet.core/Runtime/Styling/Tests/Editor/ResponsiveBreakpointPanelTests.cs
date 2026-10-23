@@ -161,6 +161,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 20f)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_AnMdVariantLeaf_When_TheRootIsNarrowerThanTheMdBreakpoint_Then_ThePayloadIsNotApplied()
         {
@@ -173,6 +174,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_AnMdPayloadActiveWide_When_ThePanelShrinksBelowTheBreakpoint_Then_ThePayloadIsRemoved()
         {
@@ -237,6 +239,7 @@ namespace Velvet.Tests
         }
 
         // A narrow scope around a leaf in a wide panel: the scope's width (< md), not the panel's (≥ md), decides.
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_ANarrowScope_When_PanelIsWide_Then_TheScopeWidthKeepsTheBreakpointOff()
         {
@@ -253,6 +256,7 @@ namespace Velvet.Tests
         }
 
         // Widening the scope across the breakpoint flips the descendant's variant on.
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_ANarrowScope_When_TheScopeWidensPastMd_Then_TheDescendantBreakpointTurnsOn()
         {
@@ -273,6 +277,7 @@ namespace Velvet.Tests
         }
 
         // Nested scopes: the NEAREST viewport-scope ancestor wins (the inner narrow scope, not the outer wide one).
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_NestedScopes_When_TheInnerIsNarrow_Then_TheNearestScopeWins()
         {
@@ -291,6 +296,7 @@ namespace Velvet.Tests
         }
 
         // Stacked variant (dark:md:): the responsive inner of a stack also respects the scope width.
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_AStackedDarkMdLeaf_When_DarkAndTheScopeIsNarrow_Then_TheScopeKeepsItOff()
         {
@@ -349,6 +355,7 @@ namespace Velvet.Tests
             return leaf;
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_AMobileViewportScope_When_ThePanelIsWide_Then_TheDescendantMdStaysOff()
         {
@@ -360,6 +367,7 @@ namespace Velvet.Tests
                 leaf.ClassListContains("bg-wide")), Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already ran this parse; only the precondition moved into the assertion.
         [Test]
         public void Given_ADesktopViewportScope_When_Mounted_Then_TheDescendantMdTurnsOn()
         {
