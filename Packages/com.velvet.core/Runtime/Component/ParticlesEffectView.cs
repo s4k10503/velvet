@@ -6,11 +6,12 @@ using UnityEngine.VFX;
 namespace Velvet
 {
     // The VisualEffect half of ParticlesDriver. A VisualEffect simulates and draws on the GPU and leaves no
-    // geometry to bake, so a camera under its hidden clone renders the clone into a texture on every tick and a
-    // layer over the element draws that texture.
+    // geometry to bake, so a camera under its hidden clone renders the clone into a texture on the element's tick
+    // and a layer over the element draws that texture.
     //
-    // The clone and every object under it sit on a layer of their own that the camera alone renders, and their
-    // renderers are forced off except while that camera renders, so no other camera draws the clone.
+    // The clone and every object under it are moved onto a layer the project has not named, the one layer the
+    // camera renders, and their renderers are forced off except while that camera renders, so no other camera
+    // draws the clone.
     internal static class ParticlesEffectView
     {
         // The camera looks down the clone's forward axis from this far behind it, as ParticlesDriver's bake camera
@@ -91,8 +92,8 @@ namespace Velvet
             return camera;
         }
 
-        // Mount replays the clone from the start with the source's initial event; Manual clears it and sends none,
-        // so the clone holds nothing until Play.
+        // Mount replays the clone from the start with the source's initial event; Manual clears it with no initial
+        // event named, so nothing plays it until Play.
         internal static void ApplyPlayTrigger(ParticlesBinding binding)
         {
             var host = binding.EffectHost!;
@@ -177,7 +178,7 @@ namespace Velvet
                     }
                 }
             }
-            binding.EffectLayer?.MarkDirtyRepaint();
+            binding.EffectLayer!.MarkDirtyRepaint();
         }
 
         // The texture over the element's laid-out box, drawn with ParticleBlend.Premultiplied rather than UI Toolkit's

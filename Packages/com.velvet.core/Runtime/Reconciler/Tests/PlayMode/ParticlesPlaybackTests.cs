@@ -979,7 +979,7 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_AVisualEffectWithAQuadUnderIt_When_FramesAdvance_Then_TheQuadRendersOverTheElementAndNothingElseDoes()
+        public IEnumerator Given_AVisualEffectWithAQuadUnderIt_When_FramesAdvance_Then_TheQuadRendersWithTheElementShowingAroundIt()
         {
             // Arrange — a VisualEffect with no graph, and a red unit quad under it standing in for what a graph draws;
             // the element's green background is what the texture must leave showing around the quad.

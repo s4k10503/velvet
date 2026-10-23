@@ -94,7 +94,7 @@ A VFX Graph effect simulates and draws on the GPU and leaves no geometry to bake
   no other camera draws the clone. A project that names every one of those layers leaves the clone
   on its source's layer, with a warning, and the camera then also draws whatever else stands on that
   layer in its view.
-- On each repaint tick the camera renders the clone into a RenderTexture of the element's laid-out
+- On each repaint tick of a laid-out element the camera renders the clone into a RenderTexture of its
   size in device pixels (capped at 4096 per axis, one shared shrink), cleared to transparent black,
   and a layer over the element draws that texture across the element's box, composited as a
   premultiplied picture through `Velvet/ParticleBlend`. What the effect draws outside the box is not

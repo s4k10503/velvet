@@ -294,6 +294,21 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 10f)));
         }
 
+        [Test]
+        public void Given_ALiveSceneViewWithNoOtherChild_When_APortalRendersARowIntoIt_Then_TheFeedStaysBeneathTheRow()
+        {
+            // Arrange
+            var cam = CreateCamera("cam");
+            MountAndLayout(V.SceneView(cam, name: "sv", className: "w-[128px] h-[64px]"));
+            var el = _host.Root.Q<VisualElement>("sv");
+
+            // Act
+            _portalTree = V.Mount(new VisualElement(), V.Portal(el, children: new VNode[] { V.Div(name: "row0") }));
+
+            // Assert — the row is read too, since a row that never rendered leaves the feed first as well.
+            Assert.That((el.IndexOf(Feed(el)), el.IndexOf(el.Q<VisualElement>("row0"))), Is.EqualTo((0, 1)));
+        }
+
         [Component]
         private static VNode CameraToggleHost()
         {
@@ -318,7 +333,7 @@ namespace Velvet.Tests
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
-            // Assert — the row is read too, since a feed that never came back leaves the row first as well.
+            // Assert — the row is read too, since a row that never rendered leaves the feed first as well.
             Assert.That((el.IndexOf(Feed(el)), el.IndexOf(el.Q<VisualElement>("row0"))), Is.EqualTo((0, 1)));
         }
 

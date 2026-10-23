@@ -78,7 +78,8 @@ namespace Velvet
         }
 
         // A material that adds is one whose destination factor is One, and one that multiplies scales the destination
-        // by the source colour; every other material, Premultiply among them, draws alpha-blended.
+        // by the source colour; a shader that declares no factors is read by name, and every other material,
+        // Premultiply among them, draws alpha-blended.
         internal static ParticleBlend Of(Material? material)
         {
             if (material == null)
