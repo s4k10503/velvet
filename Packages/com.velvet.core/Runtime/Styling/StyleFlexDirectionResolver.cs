@@ -53,7 +53,7 @@ namespace Velvet
     // (StyleGapManipulator.DirectionOf), which settles a rule that outranks a direction class as well.
     //
     // .grid also sets flex-direction: row in _layout.uss, and is deliberately NOT part of the scan: a grid class
-    // suppresses StyleGapManipulator (FiberNodePatcher.ApplyResolvedLayoutManipulators), so no gap reads it.
+    // hands the gap to the grid manipulator instead (FiberNodePatcher.ApplyResolvedLayoutManipulators).
     internal static class StyleFlexDirectionResolver
     {
         // The class a horizontal TwoPaneSplitView puts on its content container.
@@ -111,10 +111,9 @@ namespace Velvet
             {
                 return childContainer.resolvedStyle.flexDirection;
             }
-            // Off a panel no stylesheet has resolved, so the element is the engine's column, but for the row a
-            // widget's stylesheet gives an inner box the engine marks with a class of the box's own: a
-            // horizontally scrolling ScrollView's and a horizontal TwoPaneSplitView's, which
-            // CompositeWidgetSpacingDirectionPanelTests holds against a panel.
+            // Off a panel, the engine's column, but for an inner box the engine marks with a class of its own as
+            // the row its widget's stylesheet lays it out in: a horizontally scrolling ScrollView's and a
+            // horizontal TwoPaneSplitView's, which CompositeWidgetSpacingDirectionPanelTests holds against a panel.
             return childContainer.ClassListContains(ScrollView.horizontalVariantContentUssClassName)
                 || childContainer.ClassListContains(HorizontalSplitContentClass)
                 ? FlexDirection.Row

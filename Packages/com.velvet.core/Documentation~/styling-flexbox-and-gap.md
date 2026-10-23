@@ -255,9 +255,9 @@ from code outside the class list.
 Once every direction/display class leaves the element, the verdict until the next `GeometryChangedEvent`
 is the inline `flex-direction`, or the engine's column when none is set, rather than a `resolvedStyle`
 that can still hold the removed class — the same rule the wrap verdict below follows. With no direction
-class AND no panel to resolve against (EditMode, pre-attach), the verdict is the column the element lays
-out in (see "Without `.flex`, children stack vertically" above), as it is on a panel, so `gap-4` alone
-spaces `margin-top` before the element attaches as well as after.
+class AND no panel to resolve against (EditMode, pre-attach), the verdict is the engine's column (see
+"Without `.flex`, children stack vertically" above), which is what the element lays out in once attached
+unless a stylesheet of your own sets its direction, so `gap-4` alone spaces `margin-top` from the start.
 
 ## `flex-wrap` and `grid`: both axes are spaced (half-margin hybrid)
 
