@@ -27,6 +27,7 @@ namespace Velvet
         private readonly FiberBoxShadowApplier _boxShadow;
         private readonly FiberBorderStyleApplier _borderStyle;
         private readonly FiberRingApplier _ring;
+        private readonly FiberBackdropApplier _backdrop;
         private readonly FiberClipPathApplier _clipPath;
         private readonly FiberGestureApplier _gesture;
 
@@ -40,6 +41,7 @@ namespace Velvet
             _boxShadow = new FiberBoxShadowApplier(ctx);
             _borderStyle = new FiberBorderStyleApplier(ctx);
             _ring = new FiberRingApplier(ctx);
+            _backdrop = new FiberBackdropApplier(ctx);
             _clipPath = new FiberClipPathApplier(ctx, wrappers);
             _gesture = new FiberGestureApplier(ctx);
             ctx.PaintLeases = new FiberPaintLeases(ctx, _skew, _gradient, _boxShadow);
@@ -100,6 +102,12 @@ namespace Velvet
         internal void ApplyRingOnPatch(VisualElement element, string[] classNames, bool clipActive)
             => _ring.ApplyRingOnPatch(element, classNames, clipActive);
 
+        internal void ApplyBackdropOnCreate(VisualElement element, string[] classNames)
+            => _backdrop.ApplyBackdropOnCreate(element, classNames);
+
+        internal void ApplyBackdropOnPatch(VisualElement element, string[] classNames)
+            => _backdrop.ApplyBackdropOnPatch(element, classNames);
+
         // USS class on the structural wrapper Velvet emits to host a clip-path-* element. UI Toolkit
         // (6000.3) has no USS clip-path; the supported arbitrary-shape mask is an overflow-hidden
         // element whose background-image is a VECTOR image (UIR stencil-clips the subtree to the
@@ -118,6 +126,14 @@ namespace Velvet
 
         internal void ReResolveClipPathLive(VisualElement element)
             => _clipPath.ReResolveClipPathLive(element);
+
+        internal VisualElement WrapLayoutIdCorrection(VisualElement element) => _clipPath.WrapLayoutIdCorrection(element);
+
+        internal void WrapLayoutIdCorrectionInPlace(VisualElement element) => _clipPath.WrapLayoutIdCorrectionInPlace(element);
+
+        internal void UnwrapLayoutIdCorrectionInPlace(VisualElement element) => _clipPath.UnwrapLayoutIdCorrectionInPlace(element);
+
+        internal bool HasLayoutIdCorrection(VisualElement element) => _clipPath.HasLayoutIdCorrection(element);
 
         internal void ApplyGestureManipulator(VisualElement element, string? whileHoverClass, string? whileTapClass, string? whileFocusClass)
             => _gesture.ApplyGestureManipulator(element, whileHoverClass, whileTapClass, whileFocusClass);

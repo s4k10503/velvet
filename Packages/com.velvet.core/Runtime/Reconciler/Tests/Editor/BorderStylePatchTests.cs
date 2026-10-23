@@ -92,6 +92,7 @@ namespace Velvet.Tests
                 Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedBorderDashedElement_When_Reconciled_Then_NoBorderStyleBindingIsTracked()
         {
@@ -100,7 +101,7 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
 
             // Act
-            Mount(scope, new VNode[] { V.Div(className: "-skew-x-6 border-dashed", name: "card") });
+            Mount(scope, new VNode[] { V.Div(className: "-skew-x-6 border-dashed rotate-0", name: "card") });
 
             // Assert
             Assert.That(scope.Reconciler.Context.BorderStyleBindings.Count, Is.EqualTo(0));
@@ -141,6 +142,7 @@ namespace Velvet.Tests
                 Is.EqualTo(blue));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ABorderDashedColoredElement_When_SkewIsAddedInOnePatch_Then_TheSkewFaceAdoptsTheBorderColor()
         {
@@ -153,12 +155,13 @@ namespace Velvet.Tests
 
             // Act — add skew to the same element in a single reconcile; the skew silhouette takes the face.
             scope.Reconciler.Reconcile(scope.Root, oldTree,
-                new VNode[] { V.Div(className: "-skew-x-6 border-dashed border-[#FF0000]", name: "card") });
+                new VNode[] { V.Div(className: "-skew-x-6 border-dashed border-[#FF0000] rotate-0", name: "card") });
 
             // Assert — the sheared face repaints the handed-off border color (its own capture read only the mask).
             Assert.That(scope.Reconciler.Context.SkewBindings[scope.Root[0]].BorderColor, Is.EqualTo(red));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ABorderDashedColoredElement_When_SkewIsAddedInOnePatch_Then_TheBorderColorStaysSuppressed()
         {
@@ -171,7 +174,7 @@ namespace Velvet.Tests
 
             // Act — hand the face to skew in one patch.
             scope.Reconciler.Reconcile(scope.Root, oldTree,
-                new VNode[] { V.Div(className: "-skew-x-6 border-dashed border-[#FF0000]", name: "card") });
+                new VNode[] { V.Div(className: "-skew-x-6 border-dashed border-[#FF0000] rotate-0", name: "card") });
 
             // Assert — the suppression survives the handoff (releasing it would re-expose the native rectangle).
             Assert.That(SilhouetteFace.IsSentinel(scope.Root[0].style.borderLeftColor.value), Is.True);

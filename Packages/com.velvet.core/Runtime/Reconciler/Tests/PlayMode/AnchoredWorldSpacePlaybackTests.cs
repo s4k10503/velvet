@@ -131,7 +131,7 @@ namespace Velvet.Tests
             yield return Frames();
 
             // Assert
-            Assert.That(loose.Q<VisualElement>("anchored").style.display.value, Is.EqualTo(DisplayStyle.None));
+            Assert.That(loose.Q<VisualElement>("anchored").parent.style.display.value, Is.EqualTo(DisplayStyle.None));
         }
 
         private static VisualElement FindElement(string name)
@@ -141,7 +141,8 @@ namespace Velvet.Tests
                 var found = document.rootVisualElement?.Q<VisualElement>(name);
                 if (found != null)
                 {
-                    return found;
+                    // The wrapper V.Anchored renders around the named element is the one the driver positions.
+                    return found.parent;
                 }
             }
             throw new System.InvalidOperationException($"No document holds \"{name}\".");

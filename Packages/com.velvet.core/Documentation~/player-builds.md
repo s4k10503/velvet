@@ -4,23 +4,23 @@ What the package adds to a build, and what it costs you.
 
 ## Shaders
 
-Three of Velvet's paints are drawn by first-party shaders rather than by UI Toolkit: the shadow behind
-`shadow-*`, the sheared silhouette a `bg-gradient-*` gets on a `skew-*` element, and the `brightness-*` /
-`saturate-*` / `drop-shadow-*` filters ([styling-filters.md](styling-filters.md) owns what those do).
-The five shader files live in `Runtime/Styles/Shaders/` and are looked up by name from C# alone.
+Four of Velvet's paints are drawn by first-party shaders rather than by UI Toolkit: the shadow behind
+`shadow-*`, the sheared silhouette a `bg-gradient-*` gets on a `skew-*` element, the `brightness-*` /
+`saturate-*` / `drop-shadow-*` filters and the `backdrop-*` filters ([styling-filters.md](styling-filters.md) owns
+what those do). The six shader files live in `Runtime/Styles/Shaders/` and are looked up by name from C# alone.
 
 Unity's manual states that a build strips shader variants the scenes in it do not use, and none of these is
 in a scene. So the package adds them to **Graphics Settings ▸ Always Included Shaders** in an
 `IPreprocessBuildWithReport` step and removes them again in the matching post-process step. There is nothing
 to install, no list to maintain and no build step to run.
 
-That the five names are in Always Included Shaders while the build runs is pinned by
+That the six names are in Always Included Shaders while the build runs is pinned by
 `BundledShaderInclusionTests`. If a shader-backed paint draws nothing in your build, the player log carries a
 `Shader not found` warning naming it, and that is a bug report worth filing.
 
 **What that costs.**
 
-- All five shaders are compiled into every player build unless the project opts out. **Project Settings ▸
+- All six shaders are compiled into every player build unless the project opts out. **Project Settings ▸
   Velvet** lists each one; untick a shader and the build leaves it out of Always Included Shaders. The choice
   is saved in the project's ProjectSettings folder, so it travels with the project. A paint whose
   shader reaches the player by no other route draws nothing there and logs the warning described at the
@@ -105,13 +105,17 @@ is running and which longhands a shorthand covers, used by
 [layoutId moves](motion.md#shared-element-layout-animation-layoutid), native transition activity, and the timing and
 values of a running one, used by [current-value starts](motion.md#driven-channels-spring-and-bezier), a spring's
 inherited velocity and the opacity, rotate, translate and scale a layoutId move carries on
-(`RunningStyleTransition.TakeOverRotate` reads the running rotate), the border colors an element's matching style
+(`RunningStyleTransition.TakeOverRotate` reads the running rotate), the cancel of an element's filter transition, used
+to write a filter change past a running transform-origin transition ([styling-filters.md](styling-filters.md#transitions)),
+the border colors an element's matching style
 rules give it, which a [dashed divider](styling-flexbox-and-gap.md) paints in,
 and a panel's version, layout-phase flag, style updater and that updater's traversal flag, an element's layout
 node, last layout and version increment, and the node's layout computation, dirty flag and new-layout flag, which
 a commit uses to lay the panel out before its layout effects and callback refs read it
-([react-migration.md](react-migration.md)), and the custom properties a stylesheet declares on an element, with
-the stylesheet reads that spell their values ([styling-custom-properties.md](styling-custom-properties.md)).
+([react-migration.md](react-migration.md)), the custom properties a stylesheet declares on an element, with
+the stylesheet reads that spell their values ([styling-custom-properties.md](styling-custom-properties.md)), and the
+viewport, projection, clip rectangle, stencil reference and mask depth the renderer draws an immediate-mode element under, which place a
+[backdrop filter](styling-filters.md#backdrop-filters) on the pixels beneath its element.
 `EngineMember` declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
 and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
 creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole

@@ -66,6 +66,20 @@ namespace Velvet
             return float.IsFinite(px);
         }
 
+        // What an expression reading no percentage comes to on element, an em being its own font size, as blur() and
+        // drop-shadow() take one; false where TryResolve would be.
+        public static bool TryMeasure(VisualElement element, StyleLengthExpression expression, out float px)
+        {
+            px = 0f;
+            if (element.panel == null || float.IsNaN(element.layout.width))
+            {
+                return false;
+            }
+            var viewport = ViewportOf(element);
+            px = expression.Evaluate(new RelativeLengthBasis(element.resolvedStyle.fontSize, 0f, viewport.width, viewport.height));
+            return float.IsFinite(px);
+        }
+
         private static UnityEngine.Vector2 PercentBox(VisualElement parent, bool absolute)
         {
             var content = parent.contentRect.size;

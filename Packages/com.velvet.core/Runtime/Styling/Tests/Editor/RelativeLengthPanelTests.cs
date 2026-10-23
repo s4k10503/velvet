@@ -1,3 +1,6 @@
+using System;
+using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor.UIElements.TestFramework;
@@ -786,6 +789,85 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Child.layout.width, Is.EqualTo(50f).Within(0.01f));
+        }
+
+        // The leading length parameters of the element's inline filter functions, the one of a blur and the three of a
+        // drop shadow, or "none" where it holds no filter.
+        private static string FilterLengths(VisualElement element)
+        {
+            var filter = element.style.filter;
+            if (filter.keyword != StyleKeyword.Undefined || filter.value == null || filter.value.Count == 0)
+            {
+                return "none";
+            }
+            return string.Join(" ", filter.value.Select(function => string.Join(",",
+                Enumerable.Range(0, Math.Min(3, function.parameterCount))
+                    .Select(i => function.GetParameter(i).floatValue.ToString("0.##", CultureInfo.InvariantCulture)))));
+        }
+
+        [Test]
+        public void Given_AnEmBlurUnderATwelvePixelFont_When_Settled_Then_ItBlursByTwentyFourPixels()
+        {
+            // Act
+            Mount("text-[12px] w-[300px] h-[200px]", "w-[10px] h-[10px] blur-[2em]");
+
+            // Assert
+            Assert.That(FilterLengths(Child), Is.EqualTo("24"));
+        }
+
+        [Test]
+        public void Given_AnEmBlur_When_TheInheritedFontGrows_Then_ItIsRemeasured()
+        {
+            // Arrange
+            Mount("text-[12px] w-[300px] h-[200px]", "w-[10px] h-[10px] blur-[2em]");
+
+            // Act
+            s_parentClass.Set("text-[20px] w-[300px] h-[200px]");
+            Settle();
+
+            // Assert
+            Assert.That(FilterLengths(Child), Is.EqualTo("40"));
+        }
+
+        [Test]
+        public void Given_AViewportBlur_When_Settled_Then_ItIsATenthOfThePanelsWidth()
+        {
+            // Act
+            Mount("w-[500px] h-[200px]", "w-[10px] h-[10px] blur-[10vw]");
+
+            // Assert — "unmeasured" unless the panel has a width to take a tenth of.
+            var expected = ViewportWidth > 0f ? (ViewportWidth / 10f).ToString("0.##", CultureInfo.InvariantCulture) : "unmeasured";
+            Assert.That(FilterLengths(Child), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABlurWhoseMathComesBelowZero_When_Settled_Then_ItIsZero()
+        {
+            // Act — 12px less 20px.
+            Mount("text-[12px] w-[300px] h-[200px]", "w-[10px] h-[10px] blur-[calc(1em-20px)]");
+
+            // Assert
+            Assert.That(FilterLengths(Child), Is.EqualTo("0"));
+        }
+
+        [Test]
+        public void Given_AnEmDropShadowUnderATwelvePixelFont_When_Settled_Then_ItsLengthsAreTakenOfTheFont()
+        {
+            // Act
+            Mount("text-[12px] w-[300px] h-[200px]", "w-[10px] h-[10px] drop-shadow-[0_1em_2em_black]");
+
+            // Assert — x, y and the deviation.
+            Assert.That(FilterLengths(Child), Is.EqualTo("0,12,24"));
+        }
+
+        [Test]
+        public void Given_ADropShadowDeviationWhoseMathComesBelowZero_When_Settled_Then_ItIsZero()
+        {
+            // Act — a deviation of 12px less 20px.
+            Mount("text-[12px] w-[300px] h-[200px]", "w-[10px] h-[10px] drop-shadow-[0_1em_calc(1em-20px)_black]");
+
+            // Assert
+            Assert.That(FilterLengths(Child), Is.EqualTo("0,12,0"));
         }
     }
 }

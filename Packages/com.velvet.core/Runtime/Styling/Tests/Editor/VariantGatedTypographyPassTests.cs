@@ -235,13 +235,12 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the control label carries no size class, so it reads as it did on the base.
         [Test]
         public void Given_AChildCombinatorTextEffectOverATextChild_When_Mounted_Then_TheTransformReachesIt()
         {
             // Arrange — a V.Text child gets the payload on its class list like any other child, and its own
             // reconcile applies no class at any render, so a re-sync that waits for a recorded array waits
-            // forever. An element child in the same markup is the control: it resolves from its first patch.
+            // forever. An element child in the same markup is the control.
             using var scope = new ReconcilerScope();
             VNode[] Tree(string label) => new VNode[]
             {
@@ -253,8 +252,8 @@ namespace Velvet.Tests
             };
             var first = Tree("label-child");
 
-            // Act — read the text child after ONE render as well, because it is reached at mount and the
-            // element child is not: a fix that only worked from the second render would otherwise pass.
+            // Act — read the text child after ONE render as well, so a fix that only worked from the second render
+            // would not pass.
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
             var text = scope.Root[0].Children().OfType<Label>().Last();
             var textAtMount = text.text;
@@ -269,10 +268,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_AChildCombinatorFontOverAChildDeclaringNoPayload_When_ItRerenders_Then_TheFamilyResolves()
         {
-            // Arrange — the child declares no gate payload, so it has no recorded array and the re-sync the
-            // landing payload raises stands the font layer down. Its class content never changes afterwards
-            // either, which is the other half: a font layer re-derived only from a class-array diff has
-            // nothing left to run it, and the family the container asked for is lost for the child's life.
+            // Arrange — the child declares no gate payload and its class content never changes afterwards, so a
+            // font layer re-derived only from a class-array diff has nothing to run it, and the family the
+            // container asked for would be lost for the child's life.
             using var scope = new ReconcilerScope();
             var first = new VNode[]
             {

@@ -34,6 +34,34 @@ namespace Velvet
     //
     internal static class MotionLayoutIdDriver
     {
+        // The element the parent lays out for a Motion, and whose translate and scale carry its projection: the
+        // Motion itself, or the correction wrapper around a rotated one inside a stretching Motion, whose rotate
+        // the counter-scale has to sit outside of (FiberClipPathApplier.WrapLayoutIdCorrection).
+        internal static VisualElement Box(VisualElement element) => ClipPathLayoutBox.Of(element);
+
+        private static Rect Layout(VisualElement element) => Box(element).layout;
+
+        private static VisualElement? ParentOf(VisualElement element) => Box(element).hierarchy.parent;
+
+        // Whether a Motion with these classes is drawn through a correction wrapper while a layoutId Motion holds an
+        // ancestor's place: one that rotates by a class of its own, which a counter-scale composed with it by the
+        // engine's fixed translate, rotate, scale order would leave stretched.
+        internal static bool Corrects(string[] classNames) => System.Array.Exists(classNames, Rotates);
+
+        private static bool Rotates(string cls) => StyleVariantClass.TryParse(cls, out _, out var payload)
+            ? Rotates(payload)
+            : cls.StartsWith("rotate-", System.StringComparison.Ordinal) || cls.StartsWith("-rotate-", System.StringComparison.Ordinal);
+
+        // Whether a layoutId Motion is registered at the element or above it.
+        internal static bool HasLayoutIdAncestor(VisualElement? from, ReconcilerContext ctx)
+        {
+            for (var e = from; e != null; e = e.hierarchy.parent)
+            {
+                if (ctx.ElementToLayoutId.ContainsKey(e)) return true;
+            }
+            return false;
+        }
+
         private static int s_pass;
         // How long the frame running the current pass stepped the tweens by, 0 for a pass outside one.
         private static float s_passDt;
@@ -75,7 +103,7 @@ namespace Velvet
             // a real box at the parent's origin. The box an entry carries is the fallback for an element not
             // laid out yet, and the whole entry once teardown has taken its element.
             LayoutIdBox live = default;
-            var readLive = previous.Element != null && TryReadBox(previous.Element, previous.Element.layout, ctx, out live);
+            var readLive = previous.Element != null && TryReadBox(previous.Element, Layout(previous.Element), ctx, out live);
             var oldBox = readLive ? live : previous.Box;
 
             if (joins)
@@ -89,31 +117,35 @@ namespace Velvet
                 members.Add(element);
             }
             ctx.ElementToLayoutId[element] = layoutId;
-            ctx.LayoutIdRegistry[layoutId] = (element, oldBox);
+            SetEntry(ctx, layoutId, element, oldBox);
             // The lead this one took over from is hidden until this one's tween draws it again.
             if (joins) SyncFollows(layoutId, ctx);
 
-            // A second patch before a layout settles the first replaces its wait rather than adding one.
+            // A second patch before a layout settles the first replaces its wait rather than adding one, and carries on
+            // from the box the first took from another holder, which this element has not been drawn at.
+            var taken = ctx.LayoutIdPendingSettles.TryGetValue(element, out var earlier) && earlier.From != null && !earlier.ReadOffItself;
             CancelPendingSettle(element, ctx);
+            var startBox = taken ? earlier!.From : oldBox;
             // One with no box to start from and not laid out yet waits for its first layout all the same, so that
             // a scaling Motion it mounted inside corrects it before that frame draws it.
-            if (oldBox is { } fromBox)
+            if (startBox is { } fromBox)
             {
-                Wait(element, new LayoutIdPendingSettle(fromBox, element.layout, timing)
+                Wait(element, new LayoutIdPendingSettle(fromBox, Layout(element), timing)
                 {
-                    ReadOffItself = readLive && ReferenceEquals(previous.Element, element),
+                    ReadOffItself = !taken && readLive && ReferenceEquals(previous.Element, element),
                 }, ctx);
             }
-            else if (!IsFiniteRect(element.layout))
+            else if (!IsFiniteRect(Layout(element)))
             {
-                Wait(element, new LayoutIdPendingSettle(null, element.layout, timing), ctx);
+                Wait(element, new LayoutIdPendingSettle(null, Layout(element), timing), ctx);
             }
         }
 
         private static void Wait(VisualElement element, LayoutIdPendingSettle pending, ReconcilerContext ctx)
         {
             pending.Callback = _ => Settle(element, ctx);
-            element.RegisterCallback(pending.Callback);
+            pending.Target = Box(element);
+            pending.Target.RegisterCallback(pending.Callback);
             ctx.LayoutIdPendingSettles[element] = pending;
         }
 
@@ -133,15 +165,27 @@ namespace Velvet
             // panel without a teardown carries one to a panel without a frame, and Velvet moves none between panels: a
             // portal given another target remounts its children (portals.md). A first-layout wait settles on an element in a panel.
             else if (host != null && ctx.LayoutIdFrames.ContainsKey(host)) Project(host, ctx);
+            if (pending.From == null) RecordResting(element, ctx);
+        }
+
+        // Keeps the box a lead is laid out at as its id's snapshot when it holds none, so a teardown that can no longer read the
+        // element (a recycled virtual-list row is taken out of its parent first) leaves the box it last stood at.
+        private static void RecordResting(VisualElement element, ReconcilerContext ctx)
+        {
+            if (!ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)) return;
+            if (!ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry)) return;
+            if (!ReferenceEquals(entry.Element, element) || entry.Box != null) return;
+            var box = ReadBox(element, ctx);
+            if (box != null) SetEntry(ctx, layoutId, element, box.Value.Detached());
         }
 
         private static void SettleMovedAncestors(VisualElement element, ReconcilerContext ctx)
         {
             List<VisualElement>? moved = null;
-            for (var ancestor = element.hierarchy.parent; ancestor != null; ancestor = ancestor.hierarchy.parent)
+            for (var ancestor = ParentOf(element); ancestor != null; ancestor = ancestor.hierarchy.parent)
             {
                 if (ctx.LayoutIdPendingSettles.TryGetValue(ancestor, out var pending)
-                    && IsFiniteRect(ancestor.layout) && ancestor.layout != pending.PatchedLayout)
+                    && IsFiniteRect(Layout(ancestor)) && Layout(ancestor) != pending.PatchedLayout)
                 {
                     (moved ??= new List<VisualElement>()).Add(ancestor);
                 }
@@ -162,15 +206,15 @@ namespace Velvet
                 && ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry)
                 && ReferenceEquals(entry.Element, element) && entry.Box is { } box)
             {
-                ctx.LayoutIdRegistry[layoutId] = (element, box.Detached());
+                SetEntry(ctx, layoutId, element, box.Detached());
             }
         }
 
         private static void Start(VisualElement element, LayoutIdPendingSettle pending, ReconcilerContext ctx)
         {
             var host = element.panel?.visualTree;
-            var parent = element.hierarchy.parent;
-            var layout = element.layout;
+            var parent = ParentOf(element);
+            var layout = Layout(element);
             // Promote starts only a member laid out in a panel.
             // MUTANT_SURVIVES(unreachable): a settling element is in a panel, under a parent, and laid out.
             // A settle runs from the element's own GeometryChangedEvent or from a descendant's, which settles
@@ -218,7 +262,7 @@ namespace Velvet
         // The old box in the frame of the element's current parent.
         private static Rect FromRect(VisualElement element, LayoutIdBox fromBox, ReconcilerContext ctx)
         {
-            var parent = element.hierarchy.parent!;
+            var parent = ParentOf(element)!;
             if (ReferenceEquals(fromBox.Parent, parent)) return fromBox.Local;
             var world = parent.worldTransform;
             Vector2 centre = world.inverse.MultiplyPoint3x4(fromBox.PanelCentre);
@@ -228,32 +272,44 @@ namespace Velvet
 
         private static LayoutIdProjection CreateProjection(VisualElement element, VisualElement host, ReconcilerContext ctx)
         {
-            var translate = SeatedTranslate.Read(element);
-            var scale = element.style.scale;
+            var slot = Box(element);
+            var translate = SeatedTranslate.Read(slot);
+            var scale = slot.style.scale;
             // Where the element is drawn, which an inline value it was just given is not until a style pass has run: what a
             // projection that ended earlier in this render handed back, else the resolved style
             // (Given_AFollowerDrawnOverALead_When_TheLeadLeaves_Then_ItMovesFromItsOwnTransform), less a skewed
             // parent's seat, which the projection's own writes compose again (SeatedTranslate).
             ctx.LayoutIdRestored.Remove(element, out var restored);
-            var startTranslate = restored.Translate ?? SeatedTranslate.Unseated(element, element.resolvedStyle.translate);
-            var startScale = restored.Scale ?? element.resolvedStyle.scale.value;
+            var startTranslate = restored.Translate ?? SeatedTranslate.Unseated(slot, slot.resolvedStyle.translate);
+            var startScale = restored.Scale ?? slot.resolvedStyle.scale.value;
             // A running bounce or ping has its frame in the slot, and the frame is the loop's rather than the element's.
-            if (StyleAnimateDriver.TryReadBounceOwn(element, translate, out var bounceInline, out var bounceOwn))
+            // A correction wrapper's slots are the projection's alone, so the loops stay on the Motion inside it.
+            if (ReferenceEquals(slot, element))
             {
-                (translate, startTranslate) = (bounceInline, Pixels(bounceOwn, element.layout));
-            }
-            if (StyleAnimateDriver.TryReadPingOwn(element, scale, out var pingInline, out var pingOwn))
-            {
-                (scale, startScale) = (pingInline, pingOwn);
+                (translate, startTranslate) = ReadBounce(element, translate, startTranslate);
+                (scale, startScale) = ReadPing(element, scale, startScale);
             }
             var projection = new LayoutIdProjection(host, translate, scale, startTranslate, startScale)
             {
-                From = element.layout,
+                From = slot.layout,
                 RestoredRotate = restored.Rotate ?? float.NaN,
+                Boxed = !ReferenceEquals(slot, element),
             };
             LayoutIdLook.Settle(element, projection);
             ctx.LayoutIdProjections[element] = projection;
             return projection;
+        }
+
+        private static (StyleTranslate, Vector3) ReadBounce(VisualElement element, StyleTranslate translate, Vector3 start)
+        {
+            if (!StyleAnimateDriver.TryReadBounceOwn(element, translate, out var inline, out var own)) return (translate, start);
+            return (inline, Pixels(own, element.layout));
+        }
+
+        private static (StyleScale, Vector3) ReadPing(VisualElement element, StyleScale scale, Vector3 start)
+        {
+            if (!StyleAnimateDriver.TryReadPingOwn(element, scale, out var inline, out var own)) return (scale, start);
+            return (inline, own);
         }
 
         // Computes and writes every projection on the panel, first giving one to each registered layoutId
@@ -266,8 +322,8 @@ namespace Velvet
             foreach (var element in ctx.ElementToLayoutId.Keys)
             {
                 if (!ctx.LayoutIdProjections.ContainsKey(element) && element.panel?.visualTree == host
-                    && IsFiniteRect(element.layout)
-                    && element.hierarchy.parent is { } parent && !IsUnit(ProjectedScale(parent, pass, ctx)))
+                    && IsFiniteRect(Layout(element))
+                    && ParentOf(element) is { } parent && !IsUnit(ProjectedScale(parent, pass, ctx)))
                 {
                     CreateProjection(element, host, ctx);
                 }
@@ -306,10 +362,11 @@ namespace Velvet
             // ancestor scales as the first, and writes back the values the first wrote.
             if (projection.Pass == pass) return projection.Scale;
             projection.Pass = pass;
-            var layout = element.layout;
-            if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return projection.Scale;
+            var layout = Layout(element);
+            if (ParentOf(element) is not { } parent || !IsFiniteRect(layout)) return projection.Scale;
 
             MotionNativeTransitionGuard.Refresh(element);
+            if (projection.Boxed) MotionNativeTransitionGuard.Refresh(Box(element));
             projection.ParentScale = ProjectedScale(parent, pass, ctx);
             var drawn = projection.Leader != null ? Followed(element, projection.Leader, ctx) : Drawn(projection, layout, projection.ParentScale);
             var delta = ComputeDelta(drawn, layout, TransformOrigin(element));
@@ -326,7 +383,7 @@ namespace Velvet
         // Where the lead is drawn, in the frame of this member's parent: Framer projects a member behind the lead
         // onto the lead's box. Read as the lead was last computed, in this pass or the one before.
         private static Rect Followed(VisualElement element, VisualElement leader, ReconcilerContext ctx) =>
-            TryReadBox(leader, leader.layout, ctx, readLook: false, out var box) ? FromRect(element, box, ctx) : element.layout;
+            TryReadBox(leader, Layout(leader), ctx, readLook: false, out var box) ? FromRect(element, box, ctx) : Layout(element);
 
         // Framer's crossfade and its only-member mix (mix-values.ts): the lead fades in over the first half of its move,
         // on circOut, and the members behind it are drawn at the previous lead's opacity fading out between halfway
@@ -468,6 +525,7 @@ namespace Velvet
         // A slot is left alone until the projection first needs a value there other than the element's own.
         private static void Write(VisualElement element, LayoutIdProjection projection, Vector2 translate)
         {
+            var slot = Box(element);
             AdoptForeignWrites(element, projection);
             if (projection.WritesTranslate || translate != Vector2.zero)
             {
@@ -475,7 +533,7 @@ namespace Velvet
                 {
                     projection.WritesTranslate = true;
                     LandTranslate(element, projection);
-                    MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Translate);
+                    MotionNativeTransitionGuard.NarrowIfIntercepted(slot, projection, MotionTransitionSlots.Translate);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
                 WriteTranslate(element, projection, translate, projection.Scale.y, s_passDt);
@@ -486,8 +544,8 @@ namespace Velvet
                 {
                     projection.WritesScale = true;
                     for (var axis = 0; axis < 2; axis++) projection.ScaleCarries[axis].Land(projection.StartScale[axis]);
-                    RunningStyleTransition.TakeOverScale(element, projection.ScaleCarries);
-                    MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Scale);
+                    RunningStyleTransition.TakeOverScale(slot, projection.ScaleCarries);
+                    MotionNativeTransitionGuard.NarrowIfIntercepted(slot, projection, MotionTransitionSlots.Scale);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
                 WriteScale(element, projection, projection.Scale, s_passDt);
@@ -497,21 +555,24 @@ namespace Velvet
         private static void WriteTranslate(VisualElement element, LayoutIdProjection projection, Vector2 translate, float scaleY,
             float dtSec)
         {
+            var slot = Box(element);
             var own = CarriedTranslate(element, projection, dtSec);
-            // A running bounce's lift is in the element's own frame, so the projection's scale carries it too.
-            var lift = StyleAnimateDriver.CurrentLiftPx(element) * scaleY;
-            SeatedTranslate.Write(element, new Translate(
+            // A running bounce's lift is in the element's own frame, so the projection's scale carries it too. On a
+            // correction wrapper the loop stays on the Motion inside it, inside the wrapper's scale already.
+            var lift = projection.Boxed ? Vector2.zero : StyleAnimateDriver.CurrentLiftPx(element) * scaleY;
+            SeatedTranslate.Write(slot, new Translate(
                 new Length(own.x + translate.x + lift.x), new Length(own.y + translate.y + lift.y), own.z));
-            projection.WrittenTranslate = SeatedTranslate.Read(element);
+            projection.WrittenTranslate = SeatedTranslate.Read(slot);
         }
 
         private static void WriteScale(VisualElement element, LayoutIdProjection projection, Vector2 scale, float dtSec)
         {
+            var slot = Box(element);
             var target = OwnScale(element, projection);
             var own = Carried(element, projection.ScaleCarries, target, Vector2Int.zero, dtSec, "scale");
-            var ping = StyleAnimateDriver.CurrentPingFactor(element);
-            element.style.scale = new Scale(new Vector3(own.x * scale.x * ping, own.y * scale.y * ping, target.z));
-            projection.WrittenScale = element.style.scale;
+            var ping = projection.Boxed ? 1f : StyleAnimateDriver.CurrentPingFactor(element);
+            slot.style.scale = new Scale(new Vector3(own.x * scale.x * ping, own.y * scale.y * ping, target.z));
+            projection.WrittenScale = slot.style.scale;
         }
 
         // Called by LayoutIdLook's tail on each step after the projection has ended, over dtSec more: draws the translate
@@ -526,8 +587,8 @@ namespace Velvet
 
         // The slots a running animate-* loop leaves to the projection, which adds the loop's share to its own frame.
         internal static MotionTransitionSlots WrittenSlots(LayoutIdProjection projection)
-            => (projection.WritesTranslate ? MotionTransitionSlots.Translate : MotionTransitionSlots.None)
-                | (projection.WritesScale ? MotionTransitionSlots.Scale : MotionTransitionSlots.None)
+            => (projection.WritesTranslate && !projection.Boxed ? MotionTransitionSlots.Translate : MotionTransitionSlots.None)
+                | (projection.WritesScale && !projection.Boxed ? MotionTransitionSlots.Scale : MotionTransitionSlots.None)
                 | (projection.WritesRotate ? MotionTransitionSlots.Rotate : MotionTransitionSlots.None);
 
         // A slot that no longer holds the last value written here was written by someone else — the element's
@@ -535,9 +596,10 @@ namespace Velvet
         // element's own from then on: composed with, and handed back when the projection ends.
         private static void AdoptForeignWrites(VisualElement element, LayoutIdProjection projection)
         {
-            var translate = SeatedTranslate.Read(element);
+            var slot = Box(element);
+            var translate = SeatedTranslate.Read(slot);
             if (projection.WritesTranslate && translate != projection.WrittenTranslate) projection.OwnInlineTranslate = translate;
-            var scale = element.style.scale;
+            var scale = slot.style.scale;
             if (projection.WritesScale && scale != projection.WrittenScale) projection.OwnInlineScale = scale;
         }
 
@@ -552,7 +614,7 @@ namespace Velvet
                 projection.TranslateCarries[axis].Land(projection.StartTranslate[axis], Tag(target, axis));
                 TakeUnit(element, projection, axis, axis == 0 ? target.x : target.y);
             }
-            RunningStyleTransition.TakeOverTranslate(element, projection.TranslateCarries, projection.TranslateUnits);
+            RunningStyleTransition.TakeOverTranslate(Box(element), projection.TranslateCarries, projection.TranslateUnits);
         }
 
         // The element's own translate carried towards what gives it now, in pixels of the box as it is. Each axis is
@@ -566,7 +628,7 @@ namespace Velvet
             TakeUnit(element, projection, 1, target.y);
             var carried = Carried(element, projection.TranslateCarries, new Vector2(target.x.value, target.y.value),
                 new Vector2Int(Tag(target, 0), Tag(target, 1)), dtSec, "translate");
-            var size = element.layout.size;
+            var size = Layout(element).size;
             return new Vector3(target.x.unit == LengthUnit.Percent ? carried.x / 100f * size.x : carried.x,
                 target.y.unit == LengthUnit.Percent ? carried.y / 100f * size.y : carried.y, target.z);
         }
@@ -577,7 +639,7 @@ namespace Velvet
             float Axis(int axis)
             {
                 var value = projection.TranslateCarries[axis].Value;
-                return projection.TranslateUnits[axis] == LengthUnit.Percent ? value / 100f * element.layout.size[axis] : value;
+                return projection.TranslateUnits[axis] == LengthUnit.Percent ? value / 100f * Layout(element).size[axis] : value;
             }
             return new Vector3(Axis(0), Axis(1), OwnTranslate(element, projection).z);
         }
@@ -592,7 +654,7 @@ namespace Velvet
         {
             if (given.unit == projection.TranslateUnits[axis]) return;
             projection.TranslateUnits[axis] = given.unit;
-            var size = element.layout.size[axis];
+            var size = Layout(element).size[axis];
             var carry = projection.TranslateCarries[axis];
             // A pixel value of a box with no extent has no percent, and UI Toolkit runs no transition from it
             // (Given_AMotionTranslatedByAFractionOfNoHeight_When_ItMoves_Then_ItIsTranslatedByNone).
@@ -611,8 +673,8 @@ namespace Velvet
             if (target.x != axes[0].Target || target.y != axes[1].Target || tags.x != axes[0].TargetTag || tags.y != axes[1].TargetTag)
             {
                 var reverses = axes[0].Reverses(target.x, tags.x) && axes[1].Reverses(target.y, tags.y);
-                axes[0].Retarget(target.x, tags.x, reverses, element, property, null);
-                axes[1].Retarget(target.y, tags.y, reverses, element, property, null);
+                axes[0].Retarget(target.x, tags.x, reverses, Box(element), property, null);
+                axes[1].Retarget(target.y, tags.y, reverses, Box(element), property, null);
             }
             return new Vector2(axes[0].Advance(dtSec), axes[1].Advance(dtSec));
         }
@@ -628,7 +690,7 @@ namespace Velvet
             if (inline.keyword == StyleKeyword.Undefined) return inline.value;
             if (inline.keyword != StyleKeyword.Null) return Translate.None();
             var start = projection.StartTranslate;
-            return StyleCascade.Translate(element) ?? new Translate(new Length(start.x), new Length(start.y), start.z);
+            return StyleCascade.Translate(Box(element)) ?? new Translate(new Length(start.x), new Length(start.y), start.z);
         }
 
         // As OwnTranslate, for the scale, with what a class change the style pass has yet to take gives it ahead of the rules
@@ -639,7 +701,7 @@ namespace Velvet
             if (inline.keyword == StyleKeyword.Undefined) return inline.value.value;
             if (inline.keyword != StyleKeyword.Null) return Vector3.one;
             return BundledClassTransform.DeclaredScale(element)
-                ?? (StyleCascade.Scale(element) is { } declared ? declared.value : projection.StartScale);
+                ?? (StyleCascade.Scale(Box(element)) is { } declared ? declared.value : projection.StartScale);
         }
 
         private static void EnsureFrame(VisualElement host, ReconcilerContext ctx)
@@ -735,13 +797,13 @@ namespace Velvet
             if (projection.WritesTranslate && LayoutIdLook.Landed(projection.TranslateCarries))
             {
                 restored.Translate = OwnCarriedTranslate(element, projection);
-                SeatedTranslate.Write(element, projection.OwnInlineTranslate);
+                SeatedTranslate.Write(Box(element), projection.OwnInlineTranslate);
                 projection.WritesTranslate = false;
             }
             if (projection.WritesScale && LayoutIdLook.Landed(projection.ScaleCarries))
             {
                 restored.Scale = new Vector3(projection.ScaleCarries[0].Value, projection.ScaleCarries[1].Value, OwnScale(element, projection).z);
-                element.style.scale = projection.OwnInlineScale;
+                Box(element).style.scale = projection.OwnInlineScale;
                 projection.WritesScale = false;
             }
             // A slot that runs on past the move keeps it from a loop until it lands (LayoutIdLook.Hand).
@@ -776,11 +838,14 @@ namespace Velvet
             new(world.MultiplyVector(Vector3.right).magnitude, world.MultiplyVector(Vector3.up).magnitude);
 
         // An inline origin outranks the classes.
-        private static Vector2 TransformOrigin(VisualElement element) =>
-            element.style.transformOrigin.keyword == StyleKeyword.Null
-            && BundledClassTransform.DeclaredOrigin(element) is { } fraction
-                ? Vector2.Scale(fraction, element.layout.size)
-                : (Vector2)element.resolvedStyle.transformOrigin;
+        private static Vector2 TransformOrigin(VisualElement motion)
+        {
+            var element = Box(motion);
+            return element.style.transformOrigin.keyword == StyleKeyword.Null
+                && BundledClassTransform.DeclaredOrigin(element) is { } fraction
+                    ? Vector2.Scale(fraction, element.layout.size)
+                    : (Vector2)element.resolvedStyle.transformOrigin;
+        }
 
         private static bool IsMoving(VisualElement element, ReconcilerContext ctx) =>
             ctx.LayoutIdProjections.TryGetValue(element, out var projection) && projection.Moving;
@@ -794,7 +859,7 @@ namespace Velvet
         private static bool TryReadBox(VisualElement element, Rect layout, ReconcilerContext ctx, bool readLook, out LayoutIdBox box)
         {
             box = default;
-            if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return false;
+            if (ParentOf(element) is not { } parent || !IsFiniteRect(layout)) return false;
             var parentScale = AncestorScale(parent, ctx);
             var drawn = ctx.LayoutIdProjections.TryGetValue(element, out var projection) ? Drawn(projection, layout, parentScale) : layout;
             var world = parent.worldTransform;
@@ -810,9 +875,10 @@ namespace Velvet
         {
             if (ctx.LayoutIdPendingSettles.Remove(element, out var pending))
             {
+                var target = pending.Target ?? element;
                 // MUTANT_SURVIVES(equivalent): a callback left registered finds its element's wait gone, or finds
                 // the wait that replaced it, which that wait's own callback settles on the same event.
-                element.UnregisterCallback(pending.Callback);
+                target.UnregisterCallback(pending.Callback);
             }
         }
 
@@ -829,6 +895,21 @@ namespace Velvet
             ProjectedCornerFace.Forget(element);
             BundledClassTransform.Forget(element);
             CancelPendingSettle(element, ctx);
+        }
+
+        // Called before the box the parent lays out for a Motion is swapped for its wrapper or back: the projection
+        // hands its slots back where they are written now, and the box the Motion is drawn at is kept for the render's
+        // registration to start from, since the new box has no layout until the next pass.
+        internal static void BeforeReseat(VisualElement element, ReconcilerContext ctx)
+        {
+            if (!ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)) return;
+            // Read before the projection ends, so a tween running now hands on the box it is drawn at.
+            var box = ReadBox(element, ctx);
+            CancelPendingSettle(element, ctx);
+            End(element, ctx);
+            if (!ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry)) return;
+            if (!ReferenceEquals(entry.Element, element)) return;
+            if (box != null) SetEntry(ctx, layoutId, element, box);
         }
 
         // Called from FiberNodePatcher.PatchMotion for a Motion patched with no layoutId: one that held an id stops
@@ -903,13 +984,12 @@ namespace Velvet
         }
 
         private static LayoutIdBox? ReadBox(VisualElement element, ReconcilerContext ctx) =>
-            TryReadBox(element, element.layout, ctx, out var box) ? box : null;
+            TryReadBox(element, Layout(element), ctx, out var box) ? box : null;
 
         // Takes an element out of an id's members, at its teardown or as it joins another id. A lead that leaves
         // hands the lead to the member that joined last, as Framer's NodeStack.remove promotes the last remaining
-        // member. With none left, a lead that leaves inside a pass leaves its box for a replacement later in
-        // that render — a same-key type flip creates it after this teardown — and ExpireSnapshots drops what nobody
-        // claimed where the render ends.
+        // member. With none left, the lead leaves its box under the id for whichever Motion mounts under it next,
+        // in this render or a later one, as Framer's stack keeps the snapshot of its last lead.
         private static void RemoveMember(VisualElement element, string layoutId, ReconcilerContext ctx)
         {
             var members = ctx.LayoutIdMembers[layoutId];
@@ -923,14 +1003,13 @@ namespace Velvet
             {
                 Resume(members[members.Count - 1], layoutId, box, ctx);
             }
-            else if (ctx.CurrentPass != null)
+            else if (box != null)
             {
-                ctx.LayoutIdRegistry[layoutId] = (null, box);
-                ctx.LayoutIdSnapshots.Add(layoutId);
+                SetEntry(ctx, layoutId, null, box);
             }
             else
             {
-                ctx.LayoutIdRegistry.Remove(layoutId);
+                RemoveEntry(ctx, layoutId);
             }
         }
 
@@ -942,19 +1021,19 @@ namespace Velvet
         private static void Resume(VisualElement element, string layoutId, LayoutIdBox? from, ReconcilerContext ctx)
         {
             Unfollow(element, ctx);
-            ctx.LayoutIdRegistry[layoutId] = (element, null);
+            SetEntry(ctx, layoutId, element, null);
             if (from is { } box)
             {
                 // MUTANT_SURVIVES(equivalent): Start's own guard ends a member not laid out in a panel, as this does.
-                if (element.panel != null && IsFiniteRect(element.layout))
+                if (element.panel != null && IsFiniteRect(Layout(element)))
                 {
-                    Start(element, new LayoutIdPendingSettle(box, element.layout, ctx.LayoutIdTimings[element]), ctx);
+                    Start(element, new LayoutIdPendingSettle(box, Layout(element), ctx.LayoutIdTimings[element]), ctx);
                     // Its patch earlier in this render may have moved it, and the layout that shows the move comes after
                     // the next frame's pass
                     // (Given_TwoLiveLayoutIdMotionsAtOneBox_When_TheLeadLeavesAndTheOtherMovesInOneRender_Then_TheOtherTweens).
                     if (!ctx.LayoutIdPendingSettles.ContainsKey(element))
                     {
-                        Wait(element, new LayoutIdPendingSettle(null, element.layout, ctx.LayoutIdTimings[element]), ctx);
+                        Wait(element, new LayoutIdPendingSettle(null, Layout(element), ctx.LayoutIdTimings[element]), ctx);
                     }
                 }
             }
@@ -1026,36 +1105,58 @@ namespace Velvet
         // Called from FiberElementCleaner as it returns an element to the pool.
         internal static void ForgetParent(VisualElement parent, ReconcilerContext ctx)
         {
-            List<string>? forgotten = null;
-            foreach (var entry in ctx.LayoutIdRegistry)
-            {
-                if (entry.Value.Box is { } box && ReferenceEquals(box.Parent, parent))
-                {
-                    (forgotten ??= new List<string>()).Add(entry.Key);
-                }
-            }
-            if (forgotten == null) return;
-            foreach (var layoutId in forgotten)
+            if (!ctx.LayoutIdBoxParents.Remove(parent, out var ids)) return;
+            foreach (var layoutId in ids)
             {
                 var entry = ctx.LayoutIdRegistry[layoutId];
                 ctx.LayoutIdRegistry[layoutId] = (entry.Element, entry.Box!.Value.Detached());
             }
         }
 
+        // The most boxes kept for ids no Motion holds; the oldest go first.
+        private const int MaxSnapshots = 256;
+
+        // Writes an id's entry, keeping the per-parent index ForgetParent reads and the bound on the boxes kept
+        // without a holder.
+        private static void SetEntry(ReconcilerContext ctx, string layoutId, VisualElement? element, LayoutIdBox? box)
+        {
+            DropIndex(ctx, layoutId);
+            ctx.LayoutIdRegistry[layoutId] = (element, box);
+            if (box?.Parent is { } parent)
+            {
+                if (!ctx.LayoutIdBoxParents.TryGetValue(parent, out var ids))
+                {
+                    ctx.LayoutIdBoxParents[parent] = ids = new HashSet<string>();
+                }
+                ids.Add(layoutId);
+            }
+            if (element != null) return;
+            ctx.LayoutIdSnapshotOrder.Enqueue(layoutId);
+            while (ctx.LayoutIdSnapshotOrder.Count > MaxSnapshots)
+            {
+                var oldest = ctx.LayoutIdSnapshotOrder.Dequeue();
+                if (ctx.LayoutIdRegistry.TryGetValue(oldest, out var held) && held.Element == null) RemoveEntry(ctx, oldest);
+            }
+        }
+
+        private static void RemoveEntry(ReconcilerContext ctx, string layoutId)
+        {
+            DropIndex(ctx, layoutId);
+            ctx.LayoutIdRegistry.Remove(layoutId);
+        }
+
+        private static void DropIndex(ReconcilerContext ctx, string layoutId)
+        {
+            if (!ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry) || entry.Box?.Parent is not { } parent) return;
+            if (!ctx.LayoutIdBoxParents.TryGetValue(parent, out var ids)) return;
+            ids.Remove(layoutId);
+            if (ids.Count == 0) ctx.LayoutIdBoxParents.Remove(parent);
+        }
+
         // Called where a render ends: the end of a batch drain, whose passes are one render, and the
         // boundary of a top-level pass outside a drain.
-        internal static void ExpireSnapshots(ReconcilerContext ctx)
+        internal static void EndRender(ReconcilerContext ctx)
         {
-            foreach (var layoutId in ctx.LayoutIdSnapshots)
-            {
-                if (ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry) && entry.Element == null)
-                {
-                    ctx.LayoutIdRegistry.Remove(layoutId);
-                }
-            }
-            // MUTANT_SURVIVES(equivalent): CancelForTeardown lists every id it gives a null element, so an id
-            // left over here is removed at a later boundary exactly when it would have been listed again.
-            ctx.LayoutIdSnapshots.Clear();
             ctx.LayoutIdRestored.Clear();
             foreach (var projection in ctx.LayoutIdProjections.Values)
             {
@@ -1110,6 +1211,25 @@ namespace Velvet
         public Vector2 Translate { get; }
         public Vector2 Scale { get; }
         public bool IsEmpty => Translate == Vector2.zero && Scale == Vector2.one;
+    }
+
+    // Counts the children reconciled inside it as inside a layoutId Motion, which a Motion created among them reads as
+    // an ancestor before it has a parent (MotionLayoutIdDriver.Corrects).
+    internal readonly struct LayoutIdMotionScope : System.IDisposable
+    {
+        private readonly ReconcilerContext _ctx;
+        private readonly bool _holdsId;
+
+        public LayoutIdMotionScope(ReconcilerContext ctx, bool holdsId)
+        {
+            (_ctx, _holdsId) = (ctx, holdsId);
+            if (holdsId) ctx.LayoutIdMotionDepth++;
+        }
+
+        public void Dispose()
+        {
+            if (_holdsId) _ctx.LayoutIdMotionDepth--;
+        }
     }
 
     internal readonly struct LayoutIdBox
@@ -1174,6 +1294,8 @@ namespace Velvet
         public Rect PatchedLayout { get; }
         public LayoutIdTiming Timing { get; }
         public EventCallback<GeometryChangedEvent> Callback { get; set; } = null!;
+        // The element the callback is registered on: the box the parent lays out.
+        public VisualElement? Target { get; set; }
     }
 
     internal sealed class LayoutIdProjection
@@ -1190,6 +1312,9 @@ namespace Velvet
 
         // The panel whose frame steps and ends this projection.
         public readonly VisualElement Host;
+
+        // The translate and scale are written on the correction wrapper around the element rather than on it.
+        public bool Boxed;
 
         // The natural box where the progress starts, relative to the parent's drawn corner in undistorted units.
         public Rect From;

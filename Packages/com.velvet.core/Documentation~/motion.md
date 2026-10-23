@@ -603,12 +603,11 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   compared, so a Motion nested in a moving one tweens only its own move inside it. A layoutId Motion
   inside one that grows or shrinks keeps its own size and its offset from its parent's drawn corner on
   every frame of the outer tween, whether or not it moved itself — Framer's scale correction. One rotated
-  by its own class inside an outer one stretching by different factors on its two axes is not kept
-  exactly: no scale and translate undo a stretch at an angle to the element's axes. A rotate about an axis
-  in the panel's plane would draw it as Framer does, but would pick wrongly while it held: a Motion is a plain
-  `VisualElement`, whose picking cannot be replaced for one element, and UI Toolkit maps the pointer into an
-  element through its world matrix at depth zero rather than along the view, so parts of the drawn face would
-  take no pointer. A move that
+  by its own class (a `rotate-*` class among its applied classes) is drawn the same way, through a wrapper
+  element its parent holds in its place, which carries the counter-scale and the move outside the Motion's own
+  rotate, as Framer applies the correction ahead of the rotate. The wrapper takes the Motion's place in layout, its
+  `name` and refs stay on the Motion, and it leaves the tree with the Motion, an `AnimatePresence` exit included.
+  A move that
   lands while a tween is still running starts from where the element is drawn, not from its last layout.
   A box in a rotated or sheared frame (a rotated element inside a non-uniformly scaled one) starts
   unrotated over the same centre, at the drawn lengths of its sides.
@@ -632,10 +631,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   transitions of what a layout animation does not animate, and take a change of those classes as it comes.
   A Motion that leaves its panel without being unmounted has its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
-  the id, not the physical element, is what's tracked. An element that leaves the tree hands its box on
-  within one batch — the updates one scheduler drain commits together, such as the ordinary updates
-  queued for a frame or the ones a discrete event flushes, however many components they re-render — and a
-  Motion that mounts under its id in a later batch appears in place.
+  the id, not the physical element, is what's tracked. An element that leaves the tree, the last of its id,
+  leaves its box under the id, and the next Motion to mount under it tweens from that box, in the same
+  batch or any later one, as Framer's stack keeps the snapshot of its last lead.
 - Several Motions may hold one `layoutId` at once. The one that took the id last — by mounting under it
   or by changing to it — leads, and the others are hidden by an inline `visibility: hidden`; a render
   that moves one of them does not make it the lead. While a lead moves from a box it took from another

@@ -215,6 +215,11 @@ namespace Velvet
         // one included (see StyleLayerPriority.Stack), and no payload the child declares does.
         private void ApplyPayloads(VisualElement child, bool on)
         {
+            if (HoldsOnlyParts)
+            {
+                ApplyToPart(child, on);
+                return;
+            }
             if (_inputBoxOnly.Length == 0 || child.ClassListContains(StyleChildVariantClass.InputBoxClass))
             {
                 StyleVariantPayload.Apply(child, _payloads, on, StyleLayerPriority.ChildVariant, _ctx, this,
@@ -236,6 +241,36 @@ namespace Velvet
             }
             StyleVariantPayload.Apply(child, kept.ToArray(), on, StyleLayerPriority.ChildVariant, _ctx, this,
                 keptDeclarations.ToArray());
+        }
+
+        // Whether the container is a composite control that redirects nothing, so that what it holds are the parts
+        // the control built for itself. `& > *` selects the children a tree placed, so a literal [&>*]: token
+        // leaves those parts alone; the input-box scope still names the one part a field's surface utilities paint.
+        private bool HoldsOnlyParts
+            => target != null && ReferenceEquals(ChildContainer, target)
+                && (target is BindableElement || target is TextElement);
+
+        private void ApplyToPart(VisualElement part, bool on)
+        {
+            if (!part.ClassListContains(StyleChildVariantClass.InputBoxClass))
+            {
+                return;
+            }
+            var scoped = new List<string>();
+            var scopedDeclarations = new List<int>();
+            for (var i = 0; i < _payloads.Length; i++)
+            {
+                if (i < _inputBoxOnly.Length && _inputBoxOnly[i])
+                {
+                    scoped.Add(_payloads[i]);
+                    scopedDeclarations.Add(i < _declarations.Length ? _declarations[i] : StyleVariantPayload.NoDeclaration);
+                }
+            }
+            if (scoped.Count != 0)
+            {
+                StyleVariantPayload.Apply(part, scoped.ToArray(), on, StyleLayerPriority.ChildVariant, _ctx, this,
+                    scopedDeclarations.ToArray());
+            }
         }
 
         private bool SameScopes(bool[] inputBoxOnly)

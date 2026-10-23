@@ -25,13 +25,13 @@ namespace Velvet.Tests
     /// <c>gap/2</c> on all four sides of every child and <c>-gap/2</c> on all four sides of the container. This
     /// also covers a handful of hardening regressions (gap on a contentContainer-redirecting element like
     /// ScrollView must land on the reconciled content, not the element itself; the Auto-axis default with no
-    /// direction class is row, not column; the wrap container's own negative margin must survive a later
+    /// direction class is the engine's column, which the element lays out in; the wrap container's own negative margin must survive a later
     /// <c>DiffStyles</c> pass since gap is applied AFTER style diffing; a child moved out of a gap container
     /// must carry no residual gap margin; <see cref="StyleGapManipulator.Apply"/> must no-op when nothing
     /// relevant changed so the GeometryChanged feedback its own writes provoke does not re-churn), and the
     /// RUNTIME axis flip: an Auto-axis gap resolves its edge from the direction class marker — the class list
-    /// is consulted before <c>resolvedStyle</c> even on a panel, see <see cref="StyleFlexDirectionResolver"/>
-    /// — so a re-render that swaps <c>flex-row</c> ↔ <c>flex-col</c> must move the inter-child margin to the new
+    /// is consulted before <c>resolvedStyle</c> outside a geometry event, see
+    /// <see cref="StyleFlexDirectionResolver"/> — so a re-render that swaps <c>flex-row</c> ↔ <c>flex-col</c> must move the inter-child margin to the new
     /// edge AND clear the edge it abandoned. Also specifies <c>space-x-*</c> / <c>space-y-*</c> on the same
     /// manipulator — Tailwind v4's <c>:where(&amp; &gt; :not(:last-child))</c> margin, which UITK has no
     /// selector for — on <see cref="GapAxis"/> and the <c>--space-*</c> scale like <c>gap-x-*</c> /
@@ -43,11 +43,9 @@ namespace Velvet.Tests
     /// the produced spacing is observable via <c>element.style.margin*</c> without attaching to a panel or
     /// ticking layout — off-panel, both direction and wrap fall back from the class markers (the only source
     /// besides an inline value) to the same defaults their on-panel <c>resolvedStyle</c> fallback would produce. That
-    /// agreement extends to a composite widget's inner box, whose off-panel direction default is the
-    /// engine's column rather than <c>.flex</c>'s row so that the two answers match. It does NOT extend to a
-    /// widget whose built-in USS lays that box out as a row — a horizontally scrolling <c>ScrollView</c>, a
-    /// <c>TwoPaneSplitView</c>, a <c>ToggleButtonGroup</c> — which only a live panel reports; that case is
-    /// covered in <see cref="CompositeWidgetSpacingDirectionPanelTests"/>. A USS
+    /// agreement extends to a composite widget's inner box, whose off-panel direction default is the row of a
+    /// horizontally scrolling <c>ScrollView</c> or a horizontal <c>TwoPaneSplitView</c> and otherwise the engine's
+    /// column; <see cref="CompositeWidgetSpacingDirectionPanelTests"/> holds the two rows against a panel. A USS
     /// child-selector approach to gap would resolve only under a live panel and produce no inline margins at
     /// all, so these off-panel assertions are a meaningful discriminator against that class of implementation.
     /// </remarks>
@@ -831,8 +829,6 @@ namespace Velvet.Tests
         // landing there would shift the whole scroller instead of just the content. We assert both: content
         // is spaced, and the container margin is on the contentContainer with the ScrollView's own margin
         // left untouched.
-        // The wrap class sits on the contentContainer because that is where the wrap verdict is read from —
-        // a flex-wrap in the ScrollView's own class string wraps only the ScrollView's box.
         [Test]
         public void Given_ScrollViewWrapGap4_When_Reconciled_Then_ContainerMarginOnContentNotScrollView()
         {
@@ -892,12 +888,10 @@ namespace Velvet.Tests
             Assert.That(content[2].style.marginTop.value.value, Is.EqualTo(Space2), "gap before 3rd content child");
         }
 
-        // No class marker can reach the content container, so off-panel the axis comes from the inner-box
-        // default, the engine's column. The on-panel twin in CompositeWidgetSpacingDirectionPanelTests
-        // resolves the same container and must land on the same edge — a default disagreeing with the
-        // resolved answer would let one of the two pin what the other refutes.
+        // A CSS flex utility lays out the element's own children, which a ScrollView keeps in its content
+        // container. The on-panel twin in CompositeWidgetSpacingDirectionPanelTests must land on the same edge.
         [Test]
-        public void Given_ScrollViewRowGap4_When_ReconciledOffPanel_Then_TheAxisFollowsTheContentContainer()
+        public void Given_ScrollViewRowGap4_When_ReconciledOffPanel_Then_TheContentIsSpacedAsARow()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -910,8 +904,131 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
             var content = ((ScrollView)Container(scope.Root)).contentContainer;
 
-            // Assert: vertical spacing, matching the column the content container resolves to on a panel.
-            Assert.That(content[1].style.marginTop.value.value, Is.EqualTo(Space4));
+            // Assert
+            Assert.That(content[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_ScrollViewWithAWrapClass_When_ReconciledOffPanel_Then_ItsContentTakesTheWrapPath()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.ScrollView("flex flex-row flex-wrap gap-4", Children(3)) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert — only the wrap path writes the container's own negative margin.
+            var content = ((ScrollView)Container(scope.Root)).contentContainer;
+            Assert.That(content.style.marginTop.value.value, Is.EqualTo(-Half4));
+        }
+
+        [Test]
+        public void Given_ScrollViewWithADirectionClass_When_TheClassIsRemoved_Then_ItsContentLosesTheDirection()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { V.ScrollView("flex-row-reverse", Children(2)) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var content = ((ScrollView)Container(scope.Root)).contentContainer;
+            var forwarded = content.style.flexDirection.value;
+
+            // Act
+            var tree2 = new VNode[] { V.ScrollView("p-1", Children(2)) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the direction it had rides along, since a class that never reached the content reads Null too.
+            Assert.That((forwarded, content.style.flexDirection.keyword),
+                Is.EqualTo((FlexDirection.RowReverse, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ScrollViewWithAHoverDirection_When_ItIsHovered_Then_ItsContentIsSpacedAsARow()
+        {
+            // Arrange — a variant puts the class on the ScrollView without a reconcile.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.ScrollView("gap-4 hover:flex-row", Children(2)) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var scrollView = (ScrollView)Container(scope.Root);
+
+            // Act
+            using (var evt = PointerOverEvent.GetPooled())
+            {
+                scrollView.SimulateEvent(evt);
+            }
+
+            // Assert
+            Assert.That(scrollView.contentContainer[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        // CompositeWidgetSpacingDirectionPanelTests holds the row this default stands in for against a panel.
+        [Test]
+        public void Given_AHorizontallyScrollingScrollView_When_ReconciledOffPanel_Then_ItsContentIsSpacedAsARow()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.ScrollView(className: "gap-4", onCreated: el => ((ScrollView)el).mode = ScrollViewMode.Horizontal,
+                    children: Children(2)),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            var content = ((ScrollView)Container(scope.Root)).contentContainer;
+            Assert.That(content[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        // As above, against CompositeWidgetSpacingDirectionPanelTests' horizontal TwoPaneSplitView.
+        [Test]
+        public void Given_AHorizontalTwoPaneSplitView_When_ReconciledOffPanel_Then_ItsPanesAreSpacedAsARow()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Custom<TwoPaneSplitView>("gap-4", Children(2)) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            var content = Container(scope.Root).contentContainer;
+            Assert.That(content[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_AGapRow_When_AChildDeclaresAMarginClassOnTheGapEdge_Then_TheGapAddsToIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row gap-x-4", children: new VNode[] { V.Div(), V.Div(className: "ml-2") }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Container(scope.Root)[1].style.marginLeft.value.value, Is.EqualTo(Space4 + Space2));
+        }
+
+        [Test]
+        public void Given_AGapRow_When_AChildDeclaresAnAutoMarginOnTheGapEdge_Then_TheMarginStaysAuto()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row gap-x-4", children: new VNode[] { V.Div(), V.Div(className: "ml-auto") }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Container(scope.Root)[1].style.marginLeft.keyword, Is.EqualTo(StyleKeyword.Auto));
         }
 
         // Bug 2: off-panel, bare `flex gap-4` (Auto axis, no flex-row/flex-col) must resolve the ROW edge
@@ -952,6 +1069,20 @@ namespace Velvet.Tests
             Assert.That(container[1].style.marginLeft.keyword, Is.EqualTo(StyleKeyword.Null), "no horizontal margin on a column gap");
         }
 
+        [Test]
+        public void Given_AGapOnAnElementWithNoDirectionClass_When_ReconciledOffPanel_Then_ItSpacesTheColumnTheElementLaysOutIn()
+        {
+            // Arrange — no flex / flex-row / flex-col, so the element lays out in the engine's column.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "gap-4", children: Children(2)) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Container(scope.Root)[1].style.marginTop.value.value, Is.EqualTo(Space4));
+        }
+
         // Bug 3: the wrap container's own negative margin must survive a Color (DiffStyles) change on the
         // same element. Gap runs AFTER DiffStyles, so the manipulator's container margin write is last.
         [Test]
@@ -983,6 +1114,22 @@ namespace Velvet.Tests
                 "wrap container negative margin survives DiffStyles");
             Assert.That(container.style.marginTop.value.value, Is.EqualTo(-Space4 / 2f),
                 "wrap container negative margin survives on every side");
+        }
+
+        // WrapGapDefiniteSizePanelTests holds where the grown width lays a row out; this holds the column axis off a
+        // panel, through a bundled class rather than a bracket.
+        [Test]
+        public void Given_AWrappingContainerOfDeclaredHeight_When_ARowGapSpacesIt_Then_ItsHeightGrowsByTheGap()
+        {
+            // Arrange — h-16 is 64px.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "flex flex-row flex-wrap gap-y-4 h-16", children: Children(3)) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Container(scope.Root).style.height.value.value, Is.EqualTo(64f + Space4));
         }
 
         // Bug 4: with no gap class and no existing manipulator, ApplyGapManipulator does no work and
@@ -1365,9 +1512,7 @@ namespace Velvet.Tests
             Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
         }
 
-        // GREEN_ON_BASE(characterization): the base answers Column once every direction class has left too. What
-        // this pins is the branch's half: the call that finds the classes gone sets the window itself, so a
-        // manipulator that read them present only once still does not take the off-panel fallback, which is Row.
+        // GREEN_ON_BASE(characterization): the base answers Column once every direction class has left too.
         [Test]
         public void Given_AGapRowReadOnceWithItsDirectionClass_When_EveryDirectionClassIsRemoved_Then_TheGapMovesToTheColumnEdge()
         {
@@ -1898,10 +2043,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASpaceMarginYieldingToAChildsOwnValue_When_AGapJoinsItOnThatEdge_Then_TheSumIsHeld()
+        public void Given_ASpaceMarginYieldingToAChildsOwnValue_When_AGapJoinsItOnThatEdge_Then_TheGapAddsToTheChildsValue()
         {
-            // Arrange — a reversed row puts a gap-x on margin-right too, where CSS adds it to the margin; a gap
-            // does not give way to the child's own value the way a space margin does.
+            // Arrange — a reversed row puts a gap-x on margin-right too, where CSS adds it to the margin the
+            // child's own value wins from the space margin.
             using var scope = new ReconcilerScope();
             VNode RowOf(string className) => V.Div(className: className, children: new VNode[]
             {
@@ -1919,7 +2064,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
             // Assert — the yielded value before the gap joined rides along.
-            Assert.That((yielded, container[1].style.marginRight.value.value), Is.EqualTo((5f, Space4 + Space2)));
+            Assert.That((yielded, container[1].style.marginRight.value.value), Is.EqualTo((5f, Space4 + 5f)));
         }
 
         [Test]
@@ -2216,6 +2361,43 @@ namespace Velvet.Tests
         private VisualElement Root => _sim.rootVisualElement;
 
         private void Tick() => _sim.FrameUpdateMs(16);
+
+        // A composite of the test's own, whose inner box only a stylesheet rule lays out as a row.
+        private sealed class RuleRowComposite : VisualElement
+        {
+            private readonly VisualElement _inner = new();
+
+            public RuleRowComposite()
+            {
+                _inner.AddToClassList("test-inner-row");
+                hierarchy.Add(_inner);
+            }
+
+            public override VisualElement contentContainer => _inner;
+        }
+
+        // GREEN_ON_BASE(characterization): the base also moves the gap once the inner box's geometry event reads
+        // the row. What this pins is that the panel's first update delivers that event, so the column the gap is
+        // first written for does not outlive it.
+        [Test]
+        public void Given_ACompositeWhoseStylesheetLaysItsInnerBoxOutAsARow_When_ThePanelUpdatesOnce_Then_TheGapSpacesARow()
+        {
+            // Arrange — no class reaches the inner box, so before the panel resolves its rule it reads as a column.
+            File.WriteAllText(UserSheetPath, ".test-inner-row { flex-direction: row; }\n");
+            AssetDatabase.ImportAsset(UserSheetPath, ImportAssetOptions.ForceSynchronousImport);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(UserSheetPath));
+            using var mounted = V.Mount(Root, V.Custom<RuleRowComposite>("gap-4",
+                V.Label(name: "a", text: "a"), V.Label(name: "b", text: "b")));
+            var b = Root.Q<Label>("b");
+            var columnFirst = b.style.marginTop.value.value;
+
+            // Act
+            Tick();
+
+            // Assert — the column margin it was first written with rides along, which a widget that read the row
+            // before the panel resolved it would not have.
+            Assert.That((columnFirst, b.style.marginLeft.value.value), Is.EqualTo((16f, 16f)));
+        }
 
         [Component]
         private static VNode ColumnGapRow()
@@ -2623,6 +2805,83 @@ namespace Velvet.Tests
             // resolvedStyle fallback (not a class) correctly detected wrapping and self-corrected.
             var row = Root.Q<VisualElement>("row");
             Assert.That(row.style.marginRight.value.value, Is.EqualTo(-8f));
+        }
+
+        private static VNode SizedLabelRow(string className) => V.Div(name: "row", className: className,
+            children: new VNode[] { V.Label(name: "a", text: "a"), V.Label(name: "b", text: "b") });
+
+        [Test]
+        public void Given_ASettledGapRowOfFixedSize_When_CodeOutsideVelvetMakesItAColumn_Then_TheGapMovesToTheTopEdge()
+        {
+            // Arrange — the row keeps its size, so only its children move.
+            using var mounted = V.Mount(Root, SizedLabelRow("flex flex-row gap-4 w-[150px] h-[60px]"));
+            Tick();
+            Tick();
+
+            // Act
+            Root.Q<VisualElement>("row").style.flexDirection = FlexDirection.Column;
+            Tick();
+            Tick();
+
+            // Assert
+            Assert.That(Root.Q<Label>("b").style.marginTop.value.value, Is.EqualTo(16f));
+        }
+
+        [Test]
+        public void Given_AGapRowWhoseStylesheetRuleOutranksItsDirectionClass_When_ThePanelSettles_Then_TheGapFollowsTheRule()
+        {
+            // Arrange — two classes outrank flex-col's one, so the rule lays the element out as a row.
+            File.WriteAllText(UserSheetPath, ".test-row-by-rule.flex-col { flex-direction: row; }\n");
+            AssetDatabase.ImportAsset(UserSheetPath, ImportAssetOptions.ForceSynchronousImport);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(UserSheetPath));
+
+            // Act
+            using var mounted = V.Mount(Root, SizedLabelRow("flex flex-col test-row-by-rule gap-4 w-[150px] h-[60px]"));
+            Tick();
+            Tick();
+            Tick();
+
+            // Assert
+            Assert.That(Root.Q<Label>("b").style.marginLeft.value.value, Is.EqualTo(16f));
+        }
+    }
+
+    /// <summary>
+    /// Pins the two engine facts <c>Documentation~/styling-flexbox-and-gap.md</c> builds on: the style UI Toolkit
+    /// hands its layout engine has no field for a gap, and an element's display is a flex box or none.
+    /// </summary>
+    [TestFixture]
+    internal sealed class FlexEngineLayoutStyleTests
+    {
+        // GREEN_ON_BASE(characterization): the engine has no block display on the base either; this fails once one
+        // arrives, which is when an element without .flex can stop standing in for a CSS block.
+        [Test]
+        public void Given_TheEngineDisplayStyle_When_ItsValuesAreListed_Then_FlexIsTheOnlyOneThatDisplaysABox()
+        {
+            // Arrange / Act
+            var values = string.Join(",", System.Enum.GetNames(typeof(DisplayStyle)));
+
+            // Assert
+            Assert.That(values, Is.EqualTo("Flex,None"));
+        }
+
+        // GREEN_ON_BASE(characterization): the engine has no gap field on the base either; this fails once one
+        // arrives, which is when the margin polyfill can give way to it.
+        [Test]
+        public void Given_TheEngineLayoutStyle_When_ItsFieldsAreListed_Then_NoneOfThemIsAGap()
+        {
+            // Arrange
+            var type = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.Layout.LayoutStyleData");
+
+            // Act
+            var gaps = type == null ? "no type" : string.Join(",", System.Linq.Enumerable.Where(
+                System.Linq.Enumerable.Select(
+                    type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
+                    field => field.Name),
+                name => name.IndexOf("gap", System.StringComparison.OrdinalIgnoreCase) >= 0));
+
+            // Assert — a type that moved reads as "no type" rather than as the empty list that passes.
+            Assert.That(gaps, Is.EqualTo(string.Empty));
         }
     }
 }

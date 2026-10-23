@@ -2264,5 +2264,194 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region Group G — beside a running transform-origin transition
+
+        // The leaf under inline transition lists naming the given properties, each run over 0.3 s, linearly.
+        private VisualElement MountUnderTransitions(params string[] properties)
+        {
+            var element = MountResolved("w-[100px] h-[40px]");
+            SetInlineTransition(element, properties, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+            return element;
+        }
+
+        // Starts the element's transform origin from its centre to its top-left corner and runs it half way, which
+        // puts it at 25% of the 100px width.
+        private void RunTransformOriginHalfWay(VisualElement element)
+        {
+            element.style.transformOrigin = new TransformOrigin(new Length(0f, LengthUnit.Percent), new Length(0f, LengthUnit.Percent), 0f);
+            AdvanceAndPaint(element.panel, 0.15);
+        }
+
+        // The number of transitionrun events the element dispatches for the property from here on.
+        private static Func<int> CountRuns(VisualElement element, string property)
+        {
+            var count = 0;
+            element.RegisterCallback<TransitionRunEvent>(evt =>
+            {
+                if (evt.stylePropertyNames.Contains(new StylePropertyName(property)))
+                {
+                    count++;
+                }
+            });
+            return () => count;
+        }
+
+        // GREEN_ON_BASE(characterization): written past the resolver, a filter list cancels transform-origin's transition.
+        // StyleFilterEngineWrite.TryWritePastTransformOrigin exists for this and names this group.
+        [Test]
+        public void Given_ATransformOriginTransitionRunning_When_AFilterListIsWrittenStraightToTheInlineFilter_Then_TheOriginLandsOnItsEnd()
+        {
+            // Arrange
+            var element = MountUnderTransitions("transform-origin");
+            RunTransformOriginHalfWay(element);
+
+            // Act
+            element.style.filter = BlurList(12f);
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert — at the corner, where the transition was half way to it.
+            Assert.That(element.resolvedStyle.transformOrigin.x, Is.EqualTo(0f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATransformOriginTransitionRunning_When_AFilterIsAddedAtOnce_Then_TheOriginRunsOn()
+        {
+            // Arrange — no entry runs for filter, so the blur lands at once.
+            var element = MountUnderTransitions("transform-origin");
+            RunTransformOriginHalfWay(element);
+
+            // Act
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert — still half way.
+            Assert.That(element.resolvedStyle.transformOrigin.x, Is.EqualTo(25f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): clearing the filter left a running transform-origin transition alone on the base.
+        [Test]
+        public void Given_ATransformOriginTransitionRunning_When_TheFilterIsClearedAtOnce_Then_TheOriginRunsOn()
+        {
+            // Arrange — a blur written before the transform origin started.
+            var element = MountUnderTransitions("transform-origin");
+            ApplyBlur(element, 12f);
+            RunTransformOriginHalfWay(element);
+
+            // Act
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert — still half way.
+            Assert.That(element.resolvedStyle.transformOrigin.x, Is.EqualTo(25f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): a change landing at once over a running filter transition was painted on the base.
+        [Test]
+        public void Given_ATransformOriginAndAFilterTransitionRunning_When_AFilterChangeLandsAtOnce_Then_ThePaintIsTheChange()
+        {
+            // Arrange — background-size's entry animates the straight write of a blur of 4 a sixth of the way, and the
+            // filter change below is suspended past it.
+            var element = MountUnderTransitions("transform-origin", "background-size");
+            RunTransformOriginHalfWay(element);
+            element.style.filter = BlurList(4f);
+            AdvanceAndPaint(element.panel, 0.05);
+
+            // Act
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert — the change, not the 4 the filter transition was running to.
+            Assert.That(PaintedFloat(element), Is.EqualTo(12f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): a filter change landing at once started no filter transition on the base.
+        [Test]
+        public void Given_ATransformOriginTransitionRunningOverAFilter_When_TheFilterChangesAtOnce_Then_NoFilterTransitionRuns()
+        {
+            // Arrange — a blur written before the transform origin started.
+            var element = MountUnderTransitions("transform-origin");
+            ApplyBlur(element, 4f);
+            RunTransformOriginHalfWay(element);
+            var runs = CountRuns(element, "filter");
+
+            // Act
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert
+            Assert.That(runs(), Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): a filter added at once onto no filter started no filter transition on the base.
+        [Test]
+        public void Given_ATransformOriginTransitionRunningAndNoFilter_When_AFilterIsAddedAtOnce_Then_NoFilterTransitionRuns()
+        {
+            // Arrange
+            var element = MountUnderTransitions("transform-origin");
+            RunTransformOriginHalfWay(element);
+            var runs = CountRuns(element, "filter");
+
+            // Act
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert
+            Assert.That(runs(), Is.Zero);
+        }
+
+        private static StyleBackgroundSize HalfSize
+            => new BackgroundSize(new Length(50f, LengthUnit.Percent), new Length(50f, LengthUnit.Percent));
+
+        // GREEN_ON_BASE(characterization): written past Velvet, a background size cancels transform-origin's transition.
+        // TransformOriginSparing exists for this and names this group.
+        [Test]
+        public void Given_ATransformOriginTransitionRunning_When_ABackgroundSizeIsWrittenStraightToTheInlineStyle_Then_TheOriginLandsOnItsEnd()
+        {
+            // Arrange
+            var element = MountUnderTransitions("transform-origin");
+            RunTransformOriginHalfWay(element);
+
+            // Act
+            element.style.backgroundSize = HalfSize;
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert — at the corner, where the transition was half way to it.
+            Assert.That(element.resolvedStyle.transformOrigin.x, Is.EqualTo(0f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATransformOriginTransitionRunning_When_AGradientSizesTheBackground_Then_TheOriginRunsOn()
+        {
+            // Arrange
+            var element = MountUnderTransitions("transform-origin");
+            RunTransformOriginHalfWay(element);
+
+            // Act — the gradient's bake is sized to the element's box.
+            Reconcile("w-[100px] h-[40px]", "w-[100px] h-[40px] bg-linear-to-r from-[#ff0000] to-[#0000ff]");
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert — still half way.
+            Assert.That(element.resolvedStyle.transformOrigin.x, Is.EqualTo(25f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): a gradient's size written with no entry running for it started no transition on the base.
+        [Test]
+        public void Given_ATransformOriginTransitionRunning_When_AGradientSizesTheBackground_Then_NoBackgroundSizeTransitionRuns()
+        {
+            // Arrange
+            var element = MountUnderTransitions("transform-origin");
+            RunTransformOriginHalfWay(element);
+            var runs = CountRuns(element, "background-size");
+
+            // Act
+            Reconcile("w-[100px] h-[40px]", "w-[100px] h-[40px] bg-linear-to-r from-[#ff0000] to-[#0000ff]");
+            AdvanceAndPaint(element.panel, 0.0);
+
+            // Assert
+            Assert.That(runs(), Is.Zero);
+        }
+
+        #endregion
     }
 }
