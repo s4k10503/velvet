@@ -48,7 +48,7 @@ namespace Velvet
 
         internal static readonly EngineMember FocusPseudoState = Field(UIElements, PseudoStatesType, "Focus", PseudoStatesShape);
 
-        // FocusManager's composite-field scope.
+        // FocusWalk's composite-field unit.
         internal static readonly EngineMember IsCompositeRoot =
             ReadProperty(UIElements, VisualElementType, "isCompositeRoot", "System.Boolean");
 

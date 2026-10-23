@@ -88,11 +88,11 @@ namespace Velvet
         // lives in a layer container. Carries focusable/tabIndex so it can act as a same-panel Tab proxy
         // (FiberFocusNavigator) — set unconditionally (not opt-in): keeping Tab order following the
         // logical position has no downside, unlike PanelFocusOrder's genuine cross-panel behavior change.
-        // display:None is NOT used here, unlike an Isolated portal placeholder (ConfigureChainedPlaceholder's
+        // display:None is NOT used here, unlike an Isolated portal placeholder (ConfigurePortalFocusOrder's
         // reset branch) — display:None excludes an element from VisualElementFocusRing's ring entirely, which
         // would make every focus redirect below silently unreachable (Tab could never land on this
         // placeholder, and a ring query anchored on it would not resolve). Mirrors
-        // ConfigureChainedPlaceholder's own chained-branch styling instead: absolute (zero-size, out of flex
+        // ConfigurePortalFocusOrder's own chained-branch styling instead: absolute (zero-size, out of flex
         // flow and the gap/grid/divide/child-variant index walks, which already skip out-of-flow children)
         // while staying displayed, so the engine's own ring keeps a ring position for it.
         internal static VisualElement CreatePlaceholder()

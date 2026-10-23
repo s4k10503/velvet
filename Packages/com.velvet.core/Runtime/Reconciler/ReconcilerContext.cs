@@ -1162,11 +1162,11 @@ namespace Velvet
         public Dictionary<VisualElement, AnchoredBinding> AnchoredBindings { get; } = new();
 
         // Per-focus-scope bookkeeping (FiberElementProps.FocusScope / V.FocusScope), keyed by the scope
-        // root element. The binding owns a registered AttachToPanelEvent callback (AutoFocus / lazy
+        // root element, or by a V.FocusScope's start sentinel. The binding owns a registered AttachToPanelEvent callback (AutoFocus / lazy
         // navigator attach), so it is NOT a pure side-table: FiberElementCleaner fires RestoreFocus and
         // detaches it on teardown, and Reconciler.Dispose sweeps any binding still live at root disposal.
-        // FiberFocusNavigator consults this registry at event time (innermost-scope resolution walks an
-        // element's parent chain against these keys).
+        // FiberFocusNavigator consults this registry at event time (its ScopeWalk resolves an element's scopes
+        // against these keys).
         public Dictionary<VisualElement, FocusScopeBinding> FocusScopeBindings { get; } = new();
 
         // Chained-portal focus bookkeeping (PanelFocusOrder.Chained): the DECLARING-panel placeholder that
@@ -1177,11 +1177,18 @@ namespace Velvet
         public Dictionary<VisualElement, PanelHostRecord> ChainedPlaceholders { get; } = new();
         public Dictionary<VisualElement, VisualElement> ChainedHostRoots { get; } = new();
 
-        // The panel roots FiberFocusNavigator has attached its listener trio to, with the registered
+        // Appended-portal focus bookkeeping (PanelFocusOrder.Appended): each appended portal's placeholder → its
+        // host record, and the hosts in the order their first appended portal mounted, which is the order they
+        // follow the tree's own panel in Tab order. Maintained by FiberFocusNavigator.ConfigurePortalFocusOrder and
+        // ReleaseAppended; Reconciler.Dispose sweeps the rest.
+        public Dictionary<VisualElement, PanelHostRecord> AppendedPlaceholders { get; } = new();
+        public List<PanelHostRecord> AppendedHosts { get; } = new();
+
+        // The panel roots FiberFocusNavigator has attached its listeners to, with the registered
         // callbacks retained so Reconciler.Dispose can unregister them (panel roots belong to the user /
         // the host panels and can outlive this reconciler). Keyed by the panel's TRUE root
         // (panel.visualTree), so two attach requests from different elements of one panel dedup.
-        public Dictionary<VisualElement, (EventCallback<NavigationMoveEvent> OnMove, EventCallback<FocusInEvent> OnFocusIn, EventCallback<FocusOutEvent> OnFocusOut)> NavigatorAttachments { get; } = new();
+        public Dictionary<VisualElement, (EventCallback<NavigationMoveEvent> OnMove, EventCallback<NavigationMoveEvent> OnArrow, EventCallback<FocusInEvent> OnFocusIn, EventCallback<FocusOutEvent> OnFocusOut)> NavigatorAttachments { get; } = new();
 
         // Deferred navigator attachments: elements whose panel was unresolved when EnsureAttached ran (a
         // detached mount root, a placeholder configured before its declaring tree attaches), each holding

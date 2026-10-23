@@ -2017,18 +2017,20 @@ namespace Velvet
         /// <param name="layer">The framework-managed layer panel to attach the children to.</param>
         /// <param name="children">Descendant VNodes mounted into the layer panel.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="focusOrder">Where the children sit in Tab order; by default after every element of the
+        /// panel the tree is mounted on, as a portal into a document's body.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="layer"/> names no member of <see cref="UILayer"/>,
         /// or <paramref name="focusOrder"/> names no member of <see cref="PanelFocusOrder"/>.</exception>
         /// <returns>The created <see cref="PortalNode"/>.</returns>
         public static PortalNode Portal(UILayer layer, VNode?[]? children = null, string? key = null,
-            PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
+            PanelFocusOrder focusOrder = PanelFocusOrder.Appended)
         {
             if (layer is not (UILayer.Background or UILayer.Overlay or UILayer.Topmost))
             {
                 throw new ArgumentOutOfRangeException(nameof(layer), layer,
                     "V.Portal takes a member of UILayer as its layer.");
             }
-            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained))
+            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained or PanelFocusOrder.Appended))
             {
                 throw new ArgumentOutOfRangeException(nameof(focusOrder), focusOrder,
                     "V.Portal takes a member of PanelFocusOrder as its focusOrder.");
@@ -2062,6 +2064,8 @@ namespace Velvet
         /// <param name="panelSize">Virtual panel resolution in pixels (fixed world-space size mode).</param>
         /// <param name="children">Descendant VNodes rendered inside the world-space panel.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="focusOrder">Where the children sit in Tab order; by default after every element of the
+        /// panel the tree is mounted on, as a portal into a document's body.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="focusOrder"/> names no member of
         /// <see cref="PanelFocusOrder"/>.</exception>
         /// <returns>The created <see cref="WorldSpaceNode"/>.</returns>
@@ -2071,9 +2075,9 @@ namespace Velvet
             Vector2? panelSize = null,
             VNode?[]? children = null,
             string? key = null,
-            PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
+            PanelFocusOrder focusOrder = PanelFocusOrder.Appended)
         {
-            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained))
+            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained or PanelFocusOrder.Appended))
             {
                 throw new ArgumentOutOfRangeException(nameof(focusOrder), focusOrder,
                     "V.WorldSpace takes a member of PanelFocusOrder as its focusOrder.");
@@ -2175,14 +2179,14 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Container element whose subtree is a focus scope. Deviation
-        /// (documented): a renderless, sentinel-span scope is common elsewhere; Velvet's is a real VisualElement,
-        /// because UI Toolkit containment needs a subtree root for the scoped focus ring and the
-        /// membership test. Any existing container can be a scope via props
-        /// (<see cref="FiberElementProps.FocusScope"/>) — this factory is convenience for when no
-        /// container exists yet. Style it like any Div.
+        /// A focus scope over <paramref name="children"/>, React Aria's <c>FocusScope</c>. It renders no element
+        /// around them: they lay out as the parent's own children, between two hidden elements that mark where
+        /// the scope starts and ends, as React Aria's renders two hidden spans. To make an existing container
+        /// the scope instead, set its <see cref="FiberElementProps.FocusScope"/>.
         /// </summary>
-        /// <param name="contain">Tab/Shift-Tab wrap within the subtree; a 2D/pointer move that exits is
+        /// <param name="children">The scope's content.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="contain">Tab/Shift-Tab wrap within the scope; a 2D/pointer move that exits is
         /// snapped back within the same event flush unless it lands in a contained scope created after this
         /// one (a press on empty space that clears focus to nothing re-focuses on the panel's next tick, and
         /// so does focus that moves to another panel unless it lands in a portal declared inside the scope or
@@ -2190,60 +2194,37 @@ namespace Velvet
         /// <param name="restoreFocus">On unmount while holding focus, refocus the element that held focus
         /// when the scope mounted.</param>
         /// <param name="autoFocus">On mount (first attach only — never a keyed reorder's re-attach), focus
-        /// the scope's first focusable descendant.</param>
-        /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
-        /// arrow/dpad navigation moves between members and never leaves the subtree.</param>
+        /// the scope's first focusable element.</param>
+        /// <param name="singleTabStop">The scope behaves as one Tab stop (roving); arrow/dpad moves step
+        /// between members in hierarchy order and never leave the scope.</param>
         /// <param name="orientation">With <paramref name="singleTabStop"/>, the axis arrow/dpad moves travel;
         /// a move on the other axis is ignored. Not read without <paramref name="singleTabStop"/>.</param>
-        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
-        /// <returns>The created <see cref="ElementNode"/>.</returns>
-        public static ElementNode FocusScope(
-            string? className = null,
+        /// <param name="wrap">With <paramref name="singleTabStop"/>, an arrow/dpad move past one end lands on
+        /// the other. Not read without <paramref name="singleTabStop"/>.</param>
+        /// <returns>The created <see cref="ComponentNode"/>.</returns>
+        public static ComponentNode FocusScope(
+            VNode?[]? children = null,
             string? key = null,
-            string? name = null,
             bool contain = false,
             bool restoreFocus = false,
             bool autoFocus = false,
             bool singleTabStop = false,
-            FiberElementProps? props = null,
-            StyleOverrides? styles = null,
-            Func<VisualElement, Action>? refCallback = null,
-            VNode?[]? children = null,
-            string? whileHoverClass = null,
-            string? whileTapClass = null,
-            string? whileFocusClass = null,
-            IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null,
             FocusScopeOrientation orientation = FocusScopeOrientation.Both,
-            FiberEventBinding[]? events = null)
+            bool wrap = false)
         {
             VNode.RequireKey(key);
-            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
-            mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop)
+            var settings = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop)
             {
                 Orientation = orientation,
+                Wrap = wrap,
             };
-
-            return new ElementNode
-            {
-                Key = key,
-                ElementType = typeof(VisualElement),
-                Name = name,
-                ClassNames = ParseClassNames(className),
-                Props = mergedProps,
-                Styles = styles,
-                Children = children ?? EmptyChildren,
-                Events = events ?? EmptyEvents,
-                RefCallback = refCallback,
-                WhileHoverClass = whileHoverClass,
-                WhileTapClass = whileTapClass,
-                WhileFocusClass = whileFocusClass,
-            };
+            return Component(global::Velvet.FocusScopeRange.Render,
+                new FocusScopeRangeProps(settings, children ?? EmptyChildren), key);
         }
 
         /// <summary>
-        /// Drag-and-drop scope. A real container element (the FocusScope
-        /// precedent: the element is the stable scope identity and cleanup anchor). Draggables and
+        /// Drag-and-drop scope. A real container element (the element is the stable scope identity and
+        /// cleanup anchor). Draggables and
         /// droppables pair with their nearest ancestor scope at event time; one drag may be active per
         /// mounted tree at a time. Any existing container can be a scope via props
         /// (<see cref="FiberElementProps.DndContext"/>) — this factory is convenience.
@@ -2439,7 +2420,8 @@ namespace Velvet
             VNode.RequireKey(key);
             var positionerProps = VNodePool.RentProps();
             positionerProps.DragOverlay = new DragOverlaySettings();
-            return Portal(UILayer.Overlay, key: key, children: new VNode?[]
+            // A drag preview is not a place Tab goes.
+            return Portal(UILayer.Overlay, key: key, focusOrder: PanelFocusOrder.Isolated, children: new VNode?[]
             {
                 new ElementNode
                 {
