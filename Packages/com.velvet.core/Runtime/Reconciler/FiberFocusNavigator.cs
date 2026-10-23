@@ -55,10 +55,9 @@ namespace Velvet
     /// Sequential (Next/Previous) <see cref="NavigationMoveEvent"/>s are intercepted on the verified engine
     /// contract pinned by <c>FocusNavigationInterceptionTests</c>: the default focus move runs post-dispatch,
     /// after every listener, and its only suppression is <see cref="FocusController.IgnoreEvent"/> — so a
-    /// TrickleDown listener deterministically preempts it. Spatial moves (Left/Right/Up/Down) are not
-    /// intercepted, except an arrow on an axis a <c>singleTabStop</c> group's orientation excludes, which is
-    /// ignored before the engine moves focus: 2D arrow/dpad/stick navigation is the engine's own <c>GetNextFocusable2D</c>, which this
-    /// layer composes with rather than reimplements. Sequential prediction and redirection use the public
+    /// TrickleDown listener deterministically preempts it. Spatial moves (Left/Right/Up/Down) are left to the
+    /// engine's own 2D navigation, except inside a <c>singleTabStop</c> group, whose arrows step through its
+    /// members (<c>OnGroupArrow</c>). Sequential prediction and redirection use the public
     /// <see cref="VisualElementFocusRing"/> — the exact class the runtime ring delegates Next/Previous to
     /// (<c>NavigateFocusRing.m_Ring</c>), so predictions cannot drift from what the engine would have done.
     /// Containment always resolves through the NEAREST enclosing contain scope — an element inside a plain
@@ -74,7 +73,7 @@ namespace Velvet
         // two mounted trees' scopes rank against each other.
         private static readonly List<ReconcilerContext> s_attachedContexts = new();
 
-        // Attaches the navigator's listener trio to `element`'s panel root exactly once per panel. The
+        // Attaches the navigator's listeners to `element`'s panel root exactly once per panel. The
         // anchor is always the panel's TRUE root (panel.visualTree): registering on anything narrower
         // would compute subtree rings that drift from the engine's own panel-wide ring, and registering
         // per call-site element would stack duplicate listeners whose relative order inverts the branch
@@ -169,12 +168,14 @@ namespace Velvet
             // From the first render into a panel, so a press that opens the first focus-visible user counts.
             InputModality.Track(root.panel);
             EventCallback<NavigationMoveEvent> onMove = evt => OnNavigationMove(evt, root, ctx);
+            EventCallback<NavigationMoveEvent> onArrow = evt => OnGroupArrow(evt, root, ctx);
             EventCallback<FocusInEvent> onFocusIn = evt => OnFocusIn(evt, ctx);
             EventCallback<FocusOutEvent> onFocusOut = evt => OnFocusOut(evt, ctx);
             root.RegisterCallback(onMove, TrickleDown.TrickleDown);
+            root.RegisterCallback(onArrow);
             root.RegisterCallback(onFocusIn);
             root.RegisterCallback(onFocusOut);
-            ctx.NavigatorAttachments[root] = (onMove, onFocusIn, onFocusOut);
+            ctx.NavigatorAttachments[root] = (onMove, onArrow, onFocusIn, onFocusOut);
             if (!s_attachedContexts.Contains(ctx))
             {
                 s_attachedContexts.Add(ctx);
@@ -186,6 +187,7 @@ namespace Velvet
             foreach (var (root, callbacks) in ctx.NavigatorAttachments)
             {
                 root.UnregisterCallback(callbacks.OnMove, TrickleDown.TrickleDown);
+                root.UnregisterCallback(callbacks.OnArrow);
                 root.UnregisterCallback(callbacks.OnFocusIn);
                 root.UnregisterCallback(callbacks.OnFocusOut);
             }
@@ -799,9 +801,9 @@ namespace Velvet
         }
 
         // Arrow/d-pad moves never leave a SingleTabStop group, the composite-widget contract whose Tab half
-        // TryHandleSingleTabStopGroupExit owns. The engine's 2D search is not public, so the move is corrected
-        // after it lands rather than predicted: a landing outside the group returns to the member the
-        // move started from.
+        // TryHandleSingleTabStopGroupExit owns. OnGroupArrow takes every arrow that bubbles back to the panel
+        // root; one a handler stopped before then without ignoring it reaches the engine's 2D move, whose landing
+        // outside the group returns to the member the move started from.
         private static bool TryHoldInSingleTabStopGroup(
             VisualElement target, VisualElement? relatedTarget, ReconcilerContext ctx)
         {
@@ -831,6 +833,46 @@ namespace Velvet
                 controller.IgnoreEvent(evt);
             }
         }
+
+        // An arrow inside a SingleTabStop group steps through the group's elements in hierarchy order, as React
+        // Aria's toolbar and radio group step with their focus manager: right and down to the next, left and up
+        // to the previous. Past either end focus stays, as on a toolbar, unless the group wraps, as a radio
+        // group does. Taken once the move has bubbled back to the panel root, so a control that keeps the arrow
+        // for itself and stops it there (a slider, a text field) still does.
+        private static void OnGroupArrow(NavigationMoveEvent evt, VisualElement panelRoot, ReconcilerContext ctx)
+        {
+            bool forward;
+            switch (evt.direction)
+            {
+                case NavigationMoveEvent.Direction.Right:
+                case NavigationMoveEvent.Direction.Down:
+                    forward = true;
+                    break;
+                case NavigationMoveEvent.Direction.Left:
+                case NavigationMoveEvent.Direction.Up:
+                    forward = false;
+                    break;
+                default:
+                    return;
+            }
+            var controller = panelRoot.panel?.focusController;
+            if (controller?.focusedElement is not VisualElement focused)
+            {
+                return;
+            }
+            var groupRoot = FindOutermostSingleTabStopRoot(focused, ctx, out var binding);
+            // The excluded axis was ignored on the way down.
+            if (groupRoot == null || ExcludesAxis(binding!.Settings.Orientation, evt.direction))
+            {
+                return;
+            }
+            controller.IgnoreEvent(evt);
+            var order = new List<VisualElement>();
+            FocusWalk.Collect(groupRoot, order);
+            FocusWalk.Step(order, focused, forward, binding.Settings.Wrap ? s_wrap : null)?.Focus();
+        }
+
+        private static readonly FocusManagerOptions s_wrap = new(Wrap: true);
 
         private static bool ExcludesAxis(FocusScopeOrientation orientation, NavigationMoveEvent.Direction direction)
             => direction switch

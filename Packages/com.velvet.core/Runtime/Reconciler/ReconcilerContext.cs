@@ -1177,11 +1177,11 @@ namespace Velvet
         public Dictionary<VisualElement, PanelHostRecord> ChainedPlaceholders { get; } = new();
         public Dictionary<VisualElement, VisualElement> ChainedHostRoots { get; } = new();
 
-        // The panel roots FiberFocusNavigator has attached its listener trio to, with the registered
+        // The panel roots FiberFocusNavigator has attached its listeners to, with the registered
         // callbacks retained so Reconciler.Dispose can unregister them (panel roots belong to the user /
         // the host panels and can outlive this reconciler). Keyed by the panel's TRUE root
         // (panel.visualTree), so two attach requests from different elements of one panel dedup.
-        public Dictionary<VisualElement, (EventCallback<NavigationMoveEvent> OnMove, EventCallback<FocusInEvent> OnFocusIn, EventCallback<FocusOutEvent> OnFocusOut)> NavigatorAttachments { get; } = new();
+        public Dictionary<VisualElement, (EventCallback<NavigationMoveEvent> OnMove, EventCallback<NavigationMoveEvent> OnArrow, EventCallback<FocusInEvent> OnFocusIn, EventCallback<FocusOutEvent> OnFocusOut)> NavigatorAttachments { get; } = new();
 
         // Deferred navigator attachments: elements whose panel was unresolved when EnsureAttached ran (a
         // detached mount root, a placeholder configured before its declaring tree attaches), each holding

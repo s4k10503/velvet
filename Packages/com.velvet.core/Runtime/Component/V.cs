@@ -2191,10 +2191,12 @@ namespace Velvet
         /// when the scope mounted.</param>
         /// <param name="autoFocus">On mount (first attach only — never a keyed reorder's re-attach), focus
         /// the scope's first focusable descendant.</param>
-        /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
-        /// arrow/dpad navigation moves between members and never leaves the subtree.</param>
+        /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); arrow/dpad moves step
+        /// between members in hierarchy order and never leave the subtree.</param>
         /// <param name="orientation">With <paramref name="singleTabStop"/>, the axis arrow/dpad moves travel;
         /// a move on the other axis is ignored. Not read without <paramref name="singleTabStop"/>.</param>
+        /// <param name="wrap">With <paramref name="singleTabStop"/>, an arrow/dpad move past one end lands on
+        /// the other. Not read without <paramref name="singleTabStop"/>.</param>
         /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode FocusScope(
@@ -2215,13 +2217,15 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null,
             FocusScopeOrientation orientation = FocusScopeOrientation.Both,
-            FiberEventBinding[]? events = null)
+            FiberEventBinding[]? events = null,
+            bool wrap = false)
         {
             VNode.RequireKey(key);
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
             mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop)
             {
                 Orientation = orientation,
+                Wrap = wrap,
             };
 
             return new ElementNode

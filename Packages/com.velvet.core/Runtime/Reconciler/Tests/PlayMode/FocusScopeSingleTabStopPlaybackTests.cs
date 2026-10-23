@@ -10,7 +10,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Arrow/d-pad moves stay inside a <c>singleTabStop</c> group on a real runtime panel with real layout,
-    /// and only they do: Tab, a pointer press and a programmatic <c>Focus()</c> still take focus out.
+    /// a move the engine's 2D search makes included, and only they do: Tab, a pointer press and a
+    /// programmatic <c>Focus()</c> still take focus out. FocusGroupArrowPlaybackTests owns the group's own step.
     /// </summary>
     internal sealed class FocusScopeSingleTabStopPlaybackTests
     {
@@ -83,6 +84,19 @@ namespace Velvet.Tests
             target.SendEvent(move);
         }
 
+        // A handler on the member stops the move without ignoring it, as a control that stops an arrow it does
+        // not use would. The move then never bubbles to the group's own step, and the engine's 2D search moves
+        // focus instead.
+        private static void SendMoveStoppedAtTheMember(VisualElement target, NavigationMoveEvent.Direction direction)
+        {
+            EventCallback<NavigationMoveEvent> stop = evt => evt.StopPropagation();
+            target.RegisterCallback(stop);
+            SendMove(target, direction);
+            target.UnregisterCallback(stop);
+        }
+
+        // GREEN_ON_BASE(characterization): the base returns an engine landing outside the group as well.
+        // This case pins that the return still covers a move the group's own step never took.
         [UnityTest]
         public IEnumerator Given_ASingleTabStopGroup_When_ASpatialMoveWouldLeaveItAtItsEdge_Then_FocusStaysOnTheMember()
         {
@@ -90,15 +104,15 @@ namespace Velvet.Tests
             var last = FocusedAfterFocusing(Element("last"));
 
             // Act — the engine's own 2D move lands on "rowLast", outside the group.
-            SendMove(last, NavigationMoveEvent.Direction.Down);
+            SendMoveStoppedAtTheMember(last, NavigationMoveEvent.Direction.Down);
             yield return null;
 
             // Assert
             Assert.That(last.panel.focusController.focusedElement, Is.EqualTo(last));
         }
 
-        // GREEN_ON_BASE(characterization): the base lets a spatial move between two group members through.
-        // This case pins that the hold spares a move between two members of the group.
+        // GREEN_ON_BASE(characterization): the base lets an engine move between two group members stand.
+        // This case pins that the return spares a landing on another member of the group.
         [UnityTest]
         public IEnumerator Given_ASingleTabStopGroup_When_ASpatialMoveStaysInsideIt_Then_FocusMovesToTheOtherMember()
         {
@@ -106,7 +120,7 @@ namespace Velvet.Tests
             var first = FocusedAfterFocusing(Element("first"));
 
             // Act
-            SendMove(first, NavigationMoveEvent.Direction.Down);
+            SendMoveStoppedAtTheMember(first, NavigationMoveEvent.Direction.Down);
             yield return null;
 
             // Assert
@@ -166,12 +180,14 @@ namespace Velvet.Tests
             Assert.That(rowFirst.panel.focusController.focusedElement, Is.EqualTo(rowFirst));
         }
 
+        // GREEN_ON_BASE(characterization): the base records no reverted landing as a group's roving stop.
+        // This case pins that for a landing the engine's own move makes once the group's step is skipped.
         [UnityTest]
         public IEnumerator Given_ASpatialMoveHeldAtAGroupEdge_When_TabThenEntersTheGroupItHadLandedIn_Then_FocusTakesThatGroupsFirstMember()
         {
             // Arrange — the held move's landing, "rowLast", is a member of the row the user never reached.
             var last = FocusedAfterFocusing(Element("last"));
-            SendMove(last, NavigationMoveEvent.Direction.Down);
+            SendMoveStoppedAtTheMember(last, NavigationMoveEvent.Direction.Down);
             yield return null;
 
             // Act
@@ -183,13 +199,15 @@ namespace Velvet.Tests
             Assert.That(rowFirst.panel.focusController.focusedElement, Is.EqualTo(rowFirst));
         }
 
+        // GREEN_ON_BASE(characterization): the base settles a reverted landing on the next tick as well.
+        // This case pins that for a landing the engine's own move makes once the group's step is skipped.
         [UnityTest]
         public IEnumerator Given_ASpatialMoveHeldAtAGroupEdge_When_TheLandingKeepsAFocusVisibleResidue_Then_TheNextTickSettlesIt()
         {
             // Arrange
             var last = FocusedAfterFocusing(Element("last"));
             var rowLast = Element("rowLast");
-            SendMove(last, NavigationMoveEvent.Direction.Down);
+            SendMoveStoppedAtTheMember(last, NavigationMoveEvent.Direction.Down);
 
             // The residue a reverted landing can keep is staged through the signal channel, for the reason
             // FocusScopeTests' contained-scope settle case gives.
