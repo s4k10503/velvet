@@ -502,6 +502,26 @@ namespace Velvet.Tests
             // Assert
             Assert.That(NamedChildren(container), Is.EqualTo("a|q1"));
         }
+        [Test]
+        public void Given_APortalAfterTheContainerRowsItTargets_When_ThoseRowsShrinkAndAreReplacedAheadOfItAndItChangesInOneRender_Then_ItsPatchInThatRenderLandsOnItsChildren()
+        {
+            // Arrange — the portal is the last row, and the rows ahead of it change under it in the reconcile
+            // that patches it: two are replaced by one.
+            s_portalLast = true;
+            _mounted = V.Mount(_root, V.Component(SelfTargetRender, key: "host"));
+            Flush();
+            var container = _root.Q<VisualElement>("container");
+            s_setRows!.Invoke((new[] { "a", "b" }, new[] { "p1", "p2" }));
+            Flush();
+
+            // Act
+            s_setRows!.Invoke((new[] { "c" }, new[] { "q1", "q2" }));
+            Flush();
+
+            // Assert
+            Assert.That(NamedChildren(container), Is.EqualTo("c|q1|q2"));
+        }
+
         private static bool s_selfPortalUnkeyed;
         private static bool s_ownInFragment;
 

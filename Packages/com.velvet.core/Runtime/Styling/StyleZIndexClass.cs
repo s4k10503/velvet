@@ -34,17 +34,9 @@ namespace Velvet
         // Whether cls is one HasZIndexClass counts as a z-* utility.
         public static bool IsZIndexClass(string cls)
         {
-            if (string.IsNullOrEmpty(cls))
-            {
-                return false;
-            }
-            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-            if (string.IsNullOrEmpty(core))
-            {
-                return false;
-            }
-            var offset = core[0] == '-' ? 1 : 0;
-            return core.Length >= offset + 2 && core[offset] == 'z' && core[offset + 1] == '-';
+            var core = string.IsNullOrEmpty(cls) ? null : StyleArbitraryValueResolver.StripImportant(cls, out _);
+            var offset = core != null && core.Length > 0 && core[0] == '-' ? 1 : 0;
+            return core != null && core.Length >= offset + 2 && core[offset] == 'z' && core[offset + 1] == '-';
         }
 
         // Resolves the z-* value the cascade would: an important token (!z-10 / z-10!) beats every plain one

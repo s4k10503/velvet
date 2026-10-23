@@ -622,7 +622,7 @@ namespace Velvet
 
             // Surviving Portals on the same target whose slot starts after the removed range
             // collapse left by SlotLength so their next patch addresses the right DOM positions.
-            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, element, portalInfo, -portalInfo.SlotLength);
+            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, element, portalInfo, -portalInfo.SlotLength);
             FiberCommitWork.ShiftTenantsAfterPortalRange(
                 _ctx.ComponentRegistry, target, element, portalInfo, -portalInfo.SlotLength);
         }
@@ -639,7 +639,7 @@ namespace Velvet
                 return;
             }
             CleanupPortal(placeholder);
-            _ctx.PortalState[placeholder] = info with { Target = null, SlotStart = 0, SlotLength = 0 };
+            _ctx.PortalState[placeholder] = info with { Target = null, SlotStart = 0, SlotLength = 0, First = null, Last = null };
         }
 
         // The synthetic-bubbling bridge is attached once per resolved TARGET while the Portals sharing that

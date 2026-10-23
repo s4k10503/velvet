@@ -21,9 +21,155 @@ namespace Velvet
     // for the layer, world-space and caller-held-element flavors, which no registration addresses.
     // DeclaringFiber is the component that rendered the node — the one whose re-render carries the
     // registered element into a patch — and is null for a Portal rendered outside any component body.
+    // First and Last are the first and last rows of the range, held once the Portal has mounted or patched:
+    // PortalRangeTable reads the range from where those rows are, so a row that other code, another tree or
+    // a sibling's render put ahead of the range does not leave SlotStart pointing at somebody else's row.
+    // SlotStart and SlotLength remain what a range with no rows to read — an empty one, or one whose rows
+    // have left the target — is addressed by, which the shifts in PortalSlotTracker keep.
     internal readonly record struct PortalSlotInfo(
         VisualElement? Target, int SlotStart, int SlotLength,
-        string? TargetId = null, ComponentFiber? DeclaringFiber = null);
+        string? TargetId = null, ComponentFiber? DeclaringFiber = null,
+        VisualElement? First = null, VisualElement? Last = null);
+
+    // ReconcilerContext.PortalState: the ranges as Portals recorded them, read back as their rows place them.
+    // Every read answers from the rows, the way a range with no rows to read answers from what was recorded;
+    // Stored is the recording itself, which the shifts in PortalSlotTracker and FiberCommitWork move and
+    // measure, since a read there would count a row once as moved and once as shifted.
+    internal sealed class PortalRangeTable : IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>
+    {
+        private readonly Dictionary<VisualElement, PortalSlotInfo> _stored = new();
+
+        internal Dictionary<VisualElement, PortalSlotInfo> Stored => _stored;
+
+        public int Count => _stored.Count;
+
+        public Dictionary<VisualElement, PortalSlotInfo>.KeyCollection Keys => _stored.Keys;
+
+        public ValueView Values => new(this);
+
+        public bool ContainsKey(VisualElement placeholder) => _stored.ContainsKey(placeholder);
+
+        public bool Remove(VisualElement placeholder) => _stored.Remove(placeholder);
+
+        public void Clear() => _stored.Clear();
+
+        public PortalSlotInfo this[VisualElement placeholder]
+        {
+            get => Resolve(_stored[placeholder]);
+            set => _stored[placeholder] = value;
+        }
+
+        public bool TryGetValue(VisualElement placeholder, out PortalSlotInfo info)
+        {
+            var found = _stored.TryGetValue(placeholder, out info);
+            info = found ? Resolve(info) : default;
+            return found;
+        }
+
+        // Records which rows the range holds now, so later reads follow them. Called where a Portal's range
+        // is final: the end of its mount and of each patch.
+        internal void Anchor(VisualElement placeholder)
+        {
+            if (!_stored.TryGetValue(placeholder, out var info))
+            {
+                return;
+            }
+            VisualElement? first = null;
+            VisualElement? last = null;
+            if (info.Target != null && info.SlotLength > 0)
+            {
+                first = RowAt(info.Target, info.SlotStart);
+                last = RowAt(info.Target, info.SlotStart + info.SlotLength - 1);
+            }
+            _stored[placeholder] = info with { First = first, Last = last };
+        }
+
+        // The range as it stands for a patch that is about to change its rows, which nothing reads as anchored
+        // until the patch records them again.
+        internal void Unanchor(VisualElement placeholder)
+        {
+            if (_stored.TryGetValue(placeholder, out var info))
+            {
+                _stored[placeholder] = Resolve(info) with { First = null, Last = null };
+            }
+        }
+
+        private static VisualElement? RowAt(VisualElement target, int slot)
+            => LogicalChildSlots.TryGetPhysical(target, slot, out var physical) ? target[physical] : null;
+
+        private static PortalSlotInfo Resolve(PortalSlotInfo info)
+        {
+            var target = info.Target;
+            if (target == null || info.First == null || info.Last == null)
+            {
+                return info;
+            }
+            var firstIndex = target.IndexOf(info.First);
+            var lastIndex = target.IndexOf(info.Last);
+            if (firstIndex < 0 || lastIndex < firstIndex)
+            {
+                return info;
+            }
+            var start = LogicalChildSlots.ToLogical(target, firstIndex);
+            var end = LogicalChildSlots.ToLogical(target, lastIndex);
+            return info with { SlotStart = start, SlotLength = end - start + 1 };
+        }
+
+        public Enumerator GetEnumerator() => new(this);
+
+        IEnumerator<KeyValuePair<VisualElement, PortalSlotInfo>> IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>.GetEnumerator()
+            => GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        internal struct Enumerator : IEnumerator<KeyValuePair<VisualElement, PortalSlotInfo>>
+        {
+            private Dictionary<VisualElement, PortalSlotInfo>.Enumerator _inner;
+
+            internal Enumerator(PortalRangeTable table) => _inner = table._stored.GetEnumerator();
+
+            public KeyValuePair<VisualElement, PortalSlotInfo> Current
+                => new(_inner.Current.Key, Resolve(_inner.Current.Value));
+
+            object System.Collections.IEnumerator.Current => Current;
+
+            public bool MoveNext() => _inner.MoveNext();
+
+            public void Reset() => throw new System.NotSupportedException();
+
+            public void Dispose() => _inner.Dispose();
+        }
+
+        internal readonly struct ValueView : IEnumerable<PortalSlotInfo>
+        {
+            private readonly PortalRangeTable _table;
+
+            internal ValueView(PortalRangeTable table) => _table = table;
+
+            public ValueEnumerator GetEnumerator() => new(_table);
+
+            IEnumerator<PortalSlotInfo> IEnumerable<PortalSlotInfo>.GetEnumerator() => GetEnumerator();
+
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        internal struct ValueEnumerator : IEnumerator<PortalSlotInfo>
+        {
+            private Enumerator _pairs;
+
+            internal ValueEnumerator(PortalRangeTable table) => _pairs = new Enumerator(table);
+
+            public PortalSlotInfo Current => _pairs.Current.Value;
+
+            object System.Collections.IEnumerator.Current => Current;
+
+            public bool MoveNext() => _pairs.MoveNext();
+
+            public void Reset() => throw new System.NotSupportedException();
+
+            public void Dispose() => _pairs.Dispose();
+        }
+    }
 
     // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
     // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries
@@ -1224,7 +1370,10 @@ namespace Velvet
         // other on patch (each Portal reconciles only its own slot range) and on cleanup (only the
         // range is removed, not the entire target). When a Portal's range grows or shrinks, the
         // SlotStart of Portals later in target.children is shifted by the delta.
-        public Dictionary<VisualElement, PortalSlotInfo> PortalState { get; } = new();
+        // A read answers from the rows the range holds (PortalSlotInfo.First and Last), so a row put ahead of
+        // it by something that did not shift the recorded start does not move it; the shifts keep the
+        // recording that a range with no rows to read is addressed by.
+        public PortalRangeTable PortalState { get; } = new();
 
         // The reconciles of a Portal target's own children in progress, by target: FiberCommitWork.OpenOwnRows owns
         // what each frame holds. An element's own children never reconcile inside themselves, so one frame each.

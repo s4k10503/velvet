@@ -62,8 +62,10 @@ is; a portal's boundary is one, and it holds even where the two sides share a co
 portal's children follow the container's own, and when a render of the tree that declares the portal
 changes how many of those there are — the element's own children, or a component among them rendering
 again — the portal's range moves with them, so the next patch still lands on the portal's children. A
-child other code appends behind the portal's children stays behind them. A portal declared among the
-children of the container it targets is supported too. A portal nested inside another portal on the
+child other code appends behind the portal's children stays behind them, and a row put ahead of them, by other
+code or by another mounted tree rendering the container, does not move the portal's next patch onto it, since
+the portal finds its range by the rows it holds. A portal declared among the children of the container it
+targets is supported too. A portal nested inside another portal on the
 same target is supported: a portal's own patch shifts the ranges that follow it.
 
 ## The shared boundary semantics

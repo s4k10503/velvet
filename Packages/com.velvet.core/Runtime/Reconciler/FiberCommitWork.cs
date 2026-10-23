@@ -232,7 +232,7 @@ namespace Velvet
         // too, and its rows are not the range's, which is what the target comparison separates.
         private static void ShiftPortalRangesAround(ComponentFiber fiber, VisualElement? mountPoint, int delta)
         {
-            var portalState = fiber.Reconciler?.Context.PortalState;
+            var portalState = fiber.Reconciler?.Context.PortalState.Stored;
             if (portalState == null)
             {
                 return;
@@ -262,9 +262,9 @@ namespace Velvet
         internal static void FollowOwnRows(ReconcilerContext ctx, VisualElement target, int rowsBehindBefore)
         {
             // No range left on target (the reconcile unmounted the last Portal on it) moves nothing.
-            var rowsBehindAfter = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
+            var rowsBehindAfter = PortalSlotTracker.RowsBehindRanges(ctx.PortalState.Stored, target);
             var delta = rowsBehindAfter.GetValueOrDefault(rowsBehindBefore) - rowsBehindBefore;
-            PortalSlotTracker.ShiftRangesOn(ctx.PortalState, target, delta);
+            PortalSlotTracker.ShiftRangesOn(ctx.PortalState.Stored, target, delta);
             var tenancy = ctx.ComponentRegistry.TenancyOf(target);
             if (tenancy == null)
             {
@@ -294,7 +294,7 @@ namespace Velvet
             // over and removes.
             if (ctx.PortalState.Count > 0)
             {
-                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
+                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState.Stored, target);
             }
         }
 
@@ -306,7 +306,7 @@ namespace Velvet
         {
             if (ctx.OwnRowFrames.ContainsKey(target))
             {
-                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
+                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState.Stored, target);
             }
         }
 

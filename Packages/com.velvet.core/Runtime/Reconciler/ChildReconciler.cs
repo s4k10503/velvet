@@ -465,6 +465,7 @@ namespace Velvet
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
                     resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
+                _ctx.PortalState.Anchor(placeholder);
                 // A Portal a render created inside children its Suspense hides was hidden with them before this
                 // drain mounted its own, so they are hidden here; the reveal finds them through PortalState. The
                 // boundary's hide pass has already run, so the ref setups it takes back from ordinary elements are

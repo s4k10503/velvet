@@ -1078,6 +1078,13 @@ namespace Velvet
             if (newNode.Layer is { } layer)
             {
                 describe = layer.ToString();
+                // A layer whose host was never created is one whose mount failed, which repeats here: only a
+                // record whose GameObject died is replaced.
+                if (!_ctx.LayerHosts.ContainsKey(layer))
+                {
+                    FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
+                    return null;
+                }
                 return ResolveLayerTarget(placeholder, oldNode, newNode, layer);
             }
 
@@ -1185,6 +1192,8 @@ namespace Velvet
                 {
                     SlotStart = LogicalChildSlots.Count(resolvedTarget),
                     SlotLength = 0,
+                    First = null,
+                    Last = null,
                 };
             }
         }
@@ -1308,6 +1317,9 @@ namespace Velvet
                 return;
             }
 
+            // The rows this patch is about to add, remove and replace are not read as the range until it records
+            // them again, since a row put ahead of the first one would otherwise move the start under the patch.
+            _ctx.PortalState.Unanchor(placeholder);
             var oldChildren = oldChildrenRaw ?? Array.Empty<VNode>();
             var newChildren = newChildrenRaw ?? Array.Empty<VNode>();
             // LOGICAL counts on both sides of the reconcile, matching the basis SlotStart and SlotLength are
@@ -1362,9 +1374,10 @@ namespace Velvet
             // the children actually live. For an already-recorded portal this rewrites the same
             // reference.
             _ctx.PortalState[placeholder] = prevState with { Target = target, SlotLength = newSlotLength };
+            _ctx.PortalState.Anchor(placeholder);
 
             var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
-            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, placeholder, prevState, unshifted);
+            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, placeholder, prevState, unshifted);
             FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, prevState, unshifted);
             FiberCommitWork.RebaseOwnRows(_ctx, target);
         }
