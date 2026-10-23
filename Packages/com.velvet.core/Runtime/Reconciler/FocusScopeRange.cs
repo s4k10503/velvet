@@ -166,7 +166,8 @@ namespace Velvet
             into.RemoveRange(floor, into.Count - floor);
         }
 
-        // The elements between the start and its end, in order.
+        // The elements between the start and its end, in order. A relocated element stands where its placeholder does,
+        // and is left out where it paints.
         internal static void AppendContent(FocusScopeStart start, List<VisualElement> into)
         {
             var parent = start.hierarchy.parent;
@@ -190,7 +191,10 @@ namespace Velvet
                 {
                     depth--;
                 }
-                into.Add(sibling);
+                if (FiberFocusNavigator.PlaceholderOf(sibling) == null)
+                {
+                    into.Add(FiberFocusNavigator.RelocatedRealOf(sibling) ?? sibling);
+                }
             }
         }
 

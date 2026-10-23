@@ -121,6 +121,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AZIndexedChildOfAFocusScope_When_TheContentIsAppended_Then_ItHoldsTheRealElementAtItsDeclaredPlace()
+        {
+            // Arrange
+            Mount(ScopeDeclaringAZIndexedChild);
+            var content = new List<VisualElement>();
+
+            // Act
+            FocusScopeRange.AppendContent(StartInRow(), content);
+
+            // Assert
+            Assert.That(
+                (_mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(Q("zp")),
+                    string.Join(",", content.ConvertAll(element => element.name))),
+                Is.EqualTo((true, "s1,zp")));
+        }
+
+        [Test]
         public void Given_AFocusScope_When_Mounted_Then_ItsChildrenStandAmongItsParentsChildrenBetweenTwoUndisplayedElements()
         {
             // Arrange & Act

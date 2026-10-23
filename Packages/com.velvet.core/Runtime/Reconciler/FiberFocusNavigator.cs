@@ -1145,6 +1145,19 @@ namespace Velvet
             return null;
         }
 
+        // The z-managed element a placeholder stands in for, null for any other element.
+        internal static VisualElement? RelocatedRealOf(VisualElement placeholder)
+        {
+            foreach (var ctx in s_attachedContexts)
+            {
+                if (ctx.ZLayerPlaceholders.TryGetValue(placeholder, out var real))
+                {
+                    return real;
+                }
+            }
+            return null;
+        }
+
         // The physical parent, except that content an element was relocated out of its declared slot stands
         // at that slot: a z-managed element at its placeholder, and a portal target's child at the placeholder
         // whose slot range holds it.

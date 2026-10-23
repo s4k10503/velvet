@@ -12,70 +12,30 @@ namespace Velvet
         private const string Prefix = "order-";
 
         // Whether core, with its important bang stripped, is an order-* utility of any spelling, parsed or not.
-        internal static bool IsOrderToken(string core)
-            => core.StartsWith(Prefix, StringComparison.Ordinal) || core.StartsWith("-" + Prefix, StringComparison.Ordinal);
+        internal static bool IsOrderToken(string core) => StyleIntegerUtility.IsToken(core, Prefix);
 
-        // Cheap early-out gate ahead of TryExtract, routed through StripImportant for the reason
-        // StyleZIndexClass.HasZIndexClass gives.
-        public static bool HasOrderClass(string[] classNames)
-        {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (!string.IsNullOrEmpty(cls) && IsOrderToken(StyleArbitraryValueResolver.StripImportant(cls, out _)))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+        // Cheap early-out gate ahead of TryExtract.
+        public static bool HasOrderClass(string[] classNames) => StyleIntegerUtility.HasToken(classNames, Prefix);
 
         // The order the cascade would give: an important token beats every plain one wherever it sits, and within
         // either group the later class wins. False when no order utility parses. winnerClass is the class the
         // value came from.
         public static bool TryExtract(string[] classNames, out int order, out string? winnerClass)
+            => StyleIntegerUtility.TryExtract(classNames, s_parse, out order, out winnerClass);
+
+        private static readonly StyleIntegerUtility.Parse s_parse = Parse;
+
+        private static bool Parse(string cls, out int? order, out bool important)
         {
-            order = 0;
-            winnerClass = null;
-            if (classNames == null)
-            {
-                return false;
-            }
-            int? plain = null;
-            int? important = null;
-            string? plainClass = null;
-            string? importantClass = null;
-            foreach (var cls in classNames)
-            {
-                if (!TryParse(cls, out var parsed, out var bang))
-                {
-                    continue;
-                }
-                if (bang)
-                {
-                    (important, importantClass) = (parsed, cls);
-                }
-                else
-                {
-                    (plain, plainClass) = (parsed, cls);
-                }
-            }
-            var winner = importantClass != null ? important : plain;
-            winnerClass = importantClass ?? plainClass;
-            order = winner.GetValueOrDefault();
-            return winner.HasValue;
+            var parsed = TryParse(cls, out var value, out important);
+            order = parsed ? value : null;
+            return parsed;
         }
 
-        // The utility an order-* class reading a custom property is read as (StyleCustomPropertyClass.Consumer), for
-        // a class with its important bang stripped; null for any other class.
+        // The utility an order-* class reading a custom property is read as, for a class with its important bang
+        // stripped; null for any other class.
         public static string? VariableUtility(string core)
-            => StyleCustomPropertyClass.Consumer(core) is { } utility
-                && utility.StartsWith(utility[0] == '-' ? "-order-[" : "order-[", StringComparison.Ordinal)
-                ? utility
-                : null;
+            => StyleIntegerUtility.VariableUtility(core, "order-[", "-order-[");
 
         public static bool TryParse(string cls, out int order) => TryParse(cls, out order, out _);
 
@@ -105,26 +65,7 @@ namespace Velvet
                 case "order-none":
                     return true;
             }
-            var negate = cls.Length > 0 && cls[0] == '-';
-            var offset = negate ? 1 : 0;
-            if (cls.Length <= offset + Prefix.Length || string.CompareOrdinal(cls, offset, Prefix, 0, Prefix.Length) != 0)
-            {
-                return false;
-            }
-            long value;
-            if (StyleArbitraryValueResolver.TryStripBrackets(cls, offset + Prefix.Length, out var inner))
-            {
-                if (!StyleZIndexClass.TryParseSignedDigits(inner, out value))
-                {
-                    return false;
-                }
-            }
-            else if (!StyleZIndexClass.TryParseBare(cls.AsSpan(offset + Prefix.Length), out value))
-            {
-                return false;
-            }
-            order = (int)Math.Clamp(negate ? -value : value, int.MinValue, int.MaxValue);
-            return true;
+            return StyleIntegerUtility.TryParse(cls, Prefix, out order);
         }
     }
 }
