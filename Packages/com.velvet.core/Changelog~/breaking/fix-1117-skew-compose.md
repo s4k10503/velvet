@@ -9,6 +9,6 @@
 
 ### Removed
 
-- The painted skew layer: the sheared silhouette, the descendant `translate` seats and the `Velvet/GradientSilhouette`
+- The painted skew layer: the sheared silhouette, the descendant `translate` seats and the gradient silhouette
   shader, which no element reaches now. A `shadow-*`, a gradient and a `border-dashed` on a skewed element are drawn under the element's
   transform with the rest of its face. Project Settings ▸ Velvet lists one shader fewer.

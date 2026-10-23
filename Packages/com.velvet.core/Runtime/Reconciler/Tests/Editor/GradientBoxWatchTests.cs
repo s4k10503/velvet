@@ -194,7 +194,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADiagonalGradient_When_SkewTakesItOver_Then_ItsBoxIsNoLongerWatched()
+        public void Given_ADiagonalGradient_When_SkewIsAdded_Then_ItsBoxIsStillWatched()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -207,7 +207,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, oldTree, new VNode[] { V.Div(className: "-skew-x-6 " + Diagonal) });
 
             // Assert
-            Assert.That((watchedBefore, binding.OnGeometryChanged != null), Is.EqualTo((true, false)));
+            Assert.That((watchedBefore, binding.OnGeometryChanged != null), Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -288,7 +288,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADiagonalGradient_When_SkewTakesItOver_Then_ALaterLayoutLeavesItsBackground()
+        public void Given_ADiagonalGradient_When_SkewIsAdded_Then_ALaterLayoutBakesItForTheNewBox()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -302,7 +302,7 @@ namespace Velvet.Tests
             var after = LaidOutAfter(element);
 
             // Assert
-            Assert.That(after, Is.SameAs(before));
+            Assert.That(after, Is.Not.SameAs(before));
         }
 
         [Test]

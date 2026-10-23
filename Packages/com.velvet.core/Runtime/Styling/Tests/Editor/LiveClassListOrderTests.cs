@@ -97,7 +97,8 @@ namespace Velvet.Tests
         private const string ClassTransformSignatureReader =
             "System.Int32 Velvet.BundledClassTransform.Signature(UnityEngine.UIElements.VisualElement)";
         private const string ClassTransformReader =
-            "Velvet.BundledClassTransform/Declared Velvet.BundledClassTransform.Read(UnityEngine.UIElements.VisualElement)";
+            "Velvet.BundledClassTransform/Declared Velvet.BundledClassTransform.ReadClasses("
+            + "UnityEngine.UIElements.VisualElement, System.Int32&)";
         private const string RelationalSourceReader =
             "System.Boolean Velvet.RelationalTreeWatch.IsSource(UnityEngine.UIElements.VisualElement)";
         private const string DeclaredKindReader =
@@ -142,7 +143,7 @@ namespace Velvet.Tests
             .GetMethod("Signature", BindingFlags.NonPublic | BindingFlags.Static)!;
 
         private static readonly MethodInfo ReadClassTransforms = typeof(BundledClassTransform)
-            .GetMethod("Read", BindingFlags.NonPublic | BindingFlags.Static)!;
+            .GetMethod("ReadClasses", BindingFlags.NonPublic | BindingFlags.Static)!;
 
         private static readonly MethodInfo KeyOfClasses = typeof(CascadeSnapshot)
             .GetMethod("ClassKey", BindingFlags.NonPublic | BindingFlags.Static)!;
@@ -1123,10 +1124,10 @@ namespace Velvet.Tests
             Assert.That((fromAdded, fromReversed), Is.EqualTo((1.5f, 1.5f)));
         }
 
-        // The x of the scale BundledClassTransform.Read gives the element.
+        // The x of the scale BundledClassTransform.ReadClasses gives the element.
         private static float ReadScale(VisualElement element)
         {
-            var declared = ReadClassTransforms.Invoke(null, new object[] { element })!;
+            var declared = ReadClassTransforms.Invoke(null, new object[] { element, 0 })!;
             return ((Vector3)declared.GetType().GetField("Scale")!.GetValue(declared)).x;
         }
 

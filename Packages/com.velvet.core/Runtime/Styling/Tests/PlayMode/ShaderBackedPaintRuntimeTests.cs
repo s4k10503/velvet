@@ -136,7 +136,7 @@ namespace Velvet.Tests
             // bottom edge from 11px to 51px, and an upright one ends at 40px, short of the second column.
             yield return MountOverBackdrop("BothAxesSkewedBoxShadowPanel", V.Div(name: "caster",
                 className: "w-[40px] h-[30px] bg-[#00ff00] skew-[20deg] shadow-[0px_14px_10px_0px_#ff0000]"));
-            var box = CasterBox();
+            var box = CasterLayoutBox();
             var pixels = RenderTexturePixelReader.ReadPixels(
                 _host.TargetTexture, new RectInt(0, 0, PanelSize, PanelSize));
 
@@ -146,6 +146,11 @@ namespace Velvet.Tests
             // Assert
             Assert.That(ratio, Is.EqualTo(1f).Within(0.5f));
         }
+
+        // The caster's box before its transform, which the columns probed are measured from: worldBound is the bounds of
+        // the transformed box and moves with the shear.
+        private Rect CasterLayoutBox()
+            => UnityEngine.UIElements.UQueryExtensions.Q<UnityEngine.UIElements.VisualElement>(_host.Root, "caster").layout;
 
         private Rect CasterBox()
             => UnityEngine.UIElements.UQueryExtensions.Q<UnityEngine.UIElements.VisualElement>(_host.Root, "caster").worldBound;
