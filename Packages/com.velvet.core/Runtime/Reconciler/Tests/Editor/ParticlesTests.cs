@@ -16,6 +16,9 @@ namespace Velvet.Tests
     /// through a pixelsPerUnit change on the same effect.</item>
     /// <item>A null effect mounts an inert element with no host. Every system under the effect is
     /// hosted: each child's renderer is disabled and each always simulates.</item>
+    /// <item>The host stands at the source's world position and rotation, and a sub-emitter cloned from
+    /// outside the effect keeps its offset from it. A ParticleSystem's host holds no camera that renders; a
+    /// VisualEffect's clone keeps every renderer under it forced off but while its own camera renders it.</item>
     /// <item>An invalid pixelsPerUnit fails fast at the factory.</item>
     /// <item>The filter bounds-spacer (<see cref="SilhouetteBoundsSpacer"/>) also applies at the
     /// Particles reconcile boundary: a filter would clip the particle quads that draw beyond the host
@@ -30,6 +33,7 @@ namespace Velvet.Tests
     {
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
+        private MountedTree _portalTree;
         private readonly List<Object> _spawned = new();
         private int _baselineSystems;
 
@@ -48,6 +52,8 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
+            _portalTree?.Dispose();
+            _portalTree = null;
             _mounted?.Dispose();
             _mounted = null;
             _host?.Dispose();
@@ -130,11 +136,12 @@ namespace Velvet.Tests
             Assert.That((hostRenderer.enabled, sourceRenderer.enabled), Is.EqualTo((false, true)));
         }
 
+        // GREEN_ON_BASE(refactor): the cast only picks the ParticleSystem overload out of the two V.Particles now has; an inert mount is the base's behaviour.
         [Test]
         public void Given_ANullEffect_When_Mounted_Then_TheElementMountsInertWithNoHost()
         {
             // Arrange & Act
-            MountAndLayout(V.Particles(null, className: "w-[128px] h-[128px]", name: "px"));
+            MountAndLayout(V.Particles((ParticleSystem)null, className: "w-[128px] h-[128px]", name: "px"));
 
             // Assert
             Assert.That((CountSystems(), _host.Root.Q<VisualElement>("px") != null),
@@ -638,6 +645,90 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEffectAwayFromTheOrigin_When_Mounted_Then_TheHostStandsWhereTheSourceDoes()
+        {
+            // Arrange
+            var effect = CreateEffectSource("fx-posed-root");
+            effect.transform.SetPositionAndRotation(new Vector3(4f, -2f, 1f), Quaternion.Euler(0f, 0f, 30f));
+
+            // Act
+            var host = MountEffect(effect, "px-posed").Host;
+
+            // Assert
+            Assert.That(
+                (Vector3.Distance(host.transform.position, effect.transform.position) < 1e-4f,
+                    Quaternion.Angle(host.transform.rotation, effect.transform.rotation) < 0.01f),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AnExternalSubEmitterAwayFromTheEffect_When_Mounted_Then_TheCloneKeepsItsOffsetFromTheHost()
+        {
+            // Arrange
+            var external = CreateExternalSystem("fx-offset-sub");
+            external.transform.position = new Vector3(3f, 0.5f, 0f);
+            var effect = CreateEffectSource("fx-offset-root");
+            effect.transform.position = new Vector3(1f, 0f, 0f);
+            AddBirthSubEmitter(effect, external);
+
+            // Act
+            var host = MountEffect(effect, "px-offset").Host;
+
+            // Assert
+            var offset = host.transform.InverseTransformPoint(host.subEmitters.GetSubEmitterSystem(0).transform.position);
+            Assert.That(Vector3.Distance(offset, new Vector3(2f, 0.5f, 0f)), Is.LessThan(1e-4f));
+        }
+
+        // GREEN_ON_BASE(characterization): the hidden host holds no camera that renders on its own, as before.
+        [Test]
+        public void Given_AMountedEffect_When_Attached_Then_TheHostHoldsNoEnabledCamera()
+        {
+            // Arrange
+            var effect = CreateEffectSource("fx-cameraless");
+
+            // Act
+            var host = MountEffect(effect, "px-cameraless").Host;
+
+            // Assert
+            Assert.That(host.GetComponentsInChildren<Camera>(true).Count(camera => camera.enabled), Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): every object under the hidden host stays out of the hierarchy and scene saves, as before.
+        [Test]
+        public void Given_AMountedEffect_When_Attached_Then_EveryObjectUnderTheHostIsHidden()
+        {
+            // Arrange
+            var effect = CreateEffectSource("fx-all-hidden");
+
+            // Act
+            var host = MountEffect(effect, "px-all-hidden").Host;
+
+            // Assert
+            Assert.That(host.GetComponentsInChildren<Transform>(true)
+                    .All(t => t.gameObject.hideFlags == (HideFlags.HideInHierarchy | HideFlags.DontSaveInEditor)),
+                Is.True);
+        }
+
+        [Test]
+        public void Given_AMountedEffect_When_TheTreeDisposes_Then_ItsBakedMeshGoesWithIt()
+        {
+            // Arrange
+            static int BakedMeshes() =>
+                Resources.FindObjectsOfTypeAll<Mesh>().Count(mesh => mesh.name == "velvet-particles-baked-mesh");
+            var before = BakedMeshes();
+            var effect = CreateEffectSource("fx-baked-mesh");
+            MountEffect(effect, "px-baked-mesh");
+            var mounted = BakedMeshes() - before;
+
+            // Act
+            _mounted.Dispose();
+            _mounted = null;
+
+            // Assert — counted while mounted too, since a base that bakes nothing has none to leave.
+            Assert.That((mounted, BakedMeshes() - before), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
         public void Given_AnExternalSubEmitter_When_Mounted_Then_TheCloneIsAmongTheDrawnSystems()
         {
             // Arrange
@@ -749,6 +840,190 @@ namespace Velvet.Tests
             // Assert
             Assert.That(binding.RepaintTick, Is.Null);
         }
+
+        [Test]
+        public void Given_AMountedVisualEffect_When_TheTickRendersIt_Then_EveryRendererUnderTheCloneIsForcedOffAfter()
+        {
+            // Arrange — a quad under the effect stands in for what a graph draws; no other camera may draw its clone.
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
+            var go = new GameObject("fx-vfx");
+            _spawned.Add(go);
+            var effect = go.AddComponent<UnityEngine.VFX.VisualEffect>();
+            GameObject.CreatePrimitive(PrimitiveType.Quad).transform.SetParent(go.transform, false);
+            MountAndLayout(V.Particles(effect, name: "px-vfx", className: "w-[128px] h-[128px]"));
+            var binding = _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-vfx")];
+
+            // Act
+            _fakeMs += 20;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert — the texture is read too, since it exists only once the tick has rendered, and the renderers
+            // are counted, since none at all would satisfy the rest.
+            Assert.That((binding.EffectTexture != null, binding.EffectRenderers.Any(), binding.EffectRenderers.All(r => r.forceRenderingOff)),
+                Is.EqualTo((true, true, true)));
+        }
+
+        #region Materials, layers and VisualEffects
+
+        [Test]
+        public void Given_ALegacyAdditiveParticleMaterial_When_ItsBlendIsRead_Then_ItAdds()
+        {
+            // Arrange — the legacy shader declares no blend factors as properties, so only its name says it adds.
+            var material = new Material(Shader.Find("Legacy Shaders/Particles/Additive"));
+            _spawned.Add(material);
+
+            // Act
+            var blend = ParticleBlendMaterials.Of(material);
+
+            // Assert
+            Assert.That(blend, Is.EqualTo(ParticleBlend.Additive));
+        }
+
+        [Test]
+        public void Given_ALegacyParticleMaterialWithAQuarterTint_When_ItsTintIsRead_Then_ItIsDoubled()
+        {
+            // Arrange
+            var material = new Material(Shader.Find("Legacy Shaders/Particles/Alpha Blended"));
+            _spawned.Add(material);
+            material.SetColor("_TintColor", new Color(0.25f, 0.25f, 0.25f, 0.25f));
+
+            // Act
+            var tint = ParticleBlendMaterials.TintOf(material);
+
+            // Assert
+            Assert.That(tint.ToString(), Is.EqualTo(new Color(0.5f, 0.5f, 0.5f, 0.5f).ToString()));
+        }
+
+        [Test]
+        public void Given_AStandardParticleMaterialWithAColor_When_ItsTintIsRead_Then_ItIsThatColor()
+        {
+            // Arrange — the Built-in Standard Particle shader declares _Color and neither of the other two.
+            var material = new Material(Shader.Find("Particles/Standard Unlit"));
+            _spawned.Add(material);
+            material.SetColor("_Color", Color.cyan);
+
+            // Act
+            var tint = ParticleBlendMaterials.TintOf(material);
+
+            // Assert
+            Assert.That(tint.ToString(), Is.EqualTo(Color.cyan.ToString()));
+        }
+
+        [Test]
+        public void Given_AnAdditiveSystemInALiveParticlesElement_When_APortalRendersARowIntoIt_Then_ItsLayerStaysBeneathTheRow()
+        {
+            // Arrange — an additive first run is drawn by a layer, not by the element.
+            var effect = CreateEffectSource("fx-additive-layer");
+            var material = new Material(Shader.Find("Universal Render Pipeline/Particles/Unlit"));
+            _spawned.Add(material);
+            material.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);
+            effect.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
+            MountAndLayout(V.Particles(effect, name: "px-layer", className: "w-[128px] h-[128px]"));
+            var element = _host.Root.Q<VisualElement>("px-layer");
+
+            // Act
+            _portalTree = V.Mount(new VisualElement(), V.Portal(element, children: new VNode[] { V.Div(name: "row0") }));
+
+            // Assert — the row is read too, since a row that never rendered leaves the layer first as well.
+            Assert.That((element.IndexOf(element.Q(className: ParticlesDriver.LayerMarkerClass)), element.IndexOf(element.Q<VisualElement>("row0"))),
+                Is.EqualTo((0, 1)));
+        }
+
+        // A VisualEffect source with a quad under it, which gives the clone a renderer to draw.
+        private UnityEngine.VFX.VisualEffect CreateVisualEffectSource(string name)
+        {
+            var go = new GameObject(name);
+            _spawned.Add(go);
+            GameObject.CreatePrimitive(PrimitiveType.Quad).transform.SetParent(go.transform, false);
+            return go.AddComponent<UnityEngine.VFX.VisualEffect>();
+        }
+
+        private static UnityEngine.VFX.VisualEffect s_visualEffect;
+
+        [Component]
+        private static VNode ResizingVisualEffectHost()
+        {
+            var (narrow, setNarrow) = Hooks.UseState(false);
+            s_setFlag = setNarrow;
+            return V.Particles(s_visualEffect, name: "px-vfx-resize", className: narrow ? "w-[64px] h-[64px]" : "w-[128px] h-[64px]");
+        }
+
+        [Test]
+        public void Given_ARenderedVisualEffect_When_TheElementNarrows_Then_TheNextTickRendersIntoATextureOfTheNewWidth()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
+            s_visualEffect = CreateVisualEffectSource("fx-vfx-resize");
+            MountAndLayout(V.Component(ResizingVisualEffectHost, key: "root"));
+            var binding = _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-vfx-resize")];
+            _fakeMs += 20;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var wide = binding.EffectTexture != null ? binding.EffectTexture.width : 0;
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+            _fakeMs += 20;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That((wide, binding.EffectTexture != null ? binding.EffectTexture.width : 0), Is.EqualTo((128, 64)));
+        }
+
+        // Names every unnamed layer from 8 to 31 for the duration of the case, as a project with no layer to spare.
+        private static List<int> NameEveryFreeLayer(UnityEditor.SerializedObject tagManager)
+        {
+            var layers = tagManager.FindProperty("layers");
+            var named = new List<int>();
+            for (var i = 8; i < 32; i++)
+            {
+                var layer = layers.GetArrayElementAtIndex(i);
+                if (string.IsNullOrEmpty(layer.stringValue))
+                {
+                    layer.stringValue = "VelvetTestLayer" + i;
+                    named.Add(i);
+                }
+            }
+            tagManager.ApplyModifiedPropertiesWithoutUndo();
+            return named;
+        }
+
+        [Test]
+        public void Given_AProjectNamingEveryLayer_When_AVisualEffectMounts_Then_ItsCloneStaysOnTheSourcesLayer()
+        {
+            // Arrange — the source stands on Default, so a clone on any other layer was moved.
+            var effect = CreateVisualEffectSource("fx-vfx-named");
+            var tagManager = new UnityEditor.SerializedObject(
+                UnityEditor.AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            var named = NameEveryFreeLayer(tagManager);
+            int cloneLayer;
+            try
+            {
+                // Act
+                MountAndLayout(V.Particles(effect, name: "px-vfx-named", className: "w-[128px] h-[128px]"));
+                cloneLayer = _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-vfx-named")]
+                    .EffectHost.gameObject.layer;
+            }
+            finally
+            {
+                var layers = tagManager.FindProperty("layers");
+                foreach (var i in named)
+                {
+                    layers.GetArrayElementAtIndex(i).stringValue = string.Empty;
+                }
+                tagManager.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            // Assert
+            Assert.That(cloneLayer, Is.EqualTo(effect.gameObject.layer));
+        }
+
+        #endregion
 
         // The hosted clone of the source's single child system, reached through the element's binding.
         private ParticleSystem MountAndFindHostedChild(ParticleSystem child)

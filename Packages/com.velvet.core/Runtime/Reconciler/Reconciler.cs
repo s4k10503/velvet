@@ -726,6 +726,10 @@ namespace Velvet
             {
                 LeadingLengthProbe.Detach(_ctx, element, probe);
             }
+            foreach (var element in new List<VisualElement>(_ctx.TextShownWatches.Keys))
+            {
+                TextShownWatch.Detach(_ctx, element);
+            }
             // Gradient elements hold an inline background-image referencing a shared baked texture: clear
             // the inline image so a still-mounted element released at root disposal carries no residue
             // (the cached textures themselves are shared and outlive the reconciler).

@@ -103,6 +103,13 @@ namespace Velvet
             Apply();
         }
 
+        // Re-measures after the string the leaf shows changed, which no event of the target announces.
+        internal void Rederive()
+        {
+            _hasSignature = false;
+            Apply();
+        }
+
         protected override void Derive(TextElement textElement, VisualElement parent)
         {
             if (_scanStale)
@@ -122,7 +129,7 @@ namespace Velvet
                 return;
             }
 
-            var text = textElement.text ?? string.Empty;
+            var text = DisplayedText(textElement);
             if (text.Length == 0 || textElement.childCount > 0 || !IsInFlow(textElement))
             {
                 Release(textElement);

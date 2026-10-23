@@ -61,7 +61,7 @@ namespace Velvet.Tests
         private static readonly HashSet<string> IdentifierAllowlist = new()
         {
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "Npx", "ResolveDirection", "Inter", "CS",
-            "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration", "Collision",
+            "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration",
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup",
             "GetAllocatedBytesForCurrentThread", "FocusController", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "PointerDown", "Leave", "Wheel",

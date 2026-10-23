@@ -68,8 +68,7 @@ namespace Velvet
 
         /// <summary>
         /// Sets the element's inline <c>backgroundImage</c> from the given Texture2D, ranked below a
-        /// <see cref="StyleOverrides.BackgroundImage"/> and through the SceneView ownership gate (a live camera
-        /// feed keeps the slot and defers this value).
+        /// <see cref="StyleOverrides.BackgroundImage"/>.
         /// </summary>
         public static void Apply(VisualElement element, Texture2D? texture)
             => Apply(element, texture, important: false);
