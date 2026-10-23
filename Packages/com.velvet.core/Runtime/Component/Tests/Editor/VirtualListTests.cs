@@ -381,6 +381,7 @@ namespace Velvet.Tests
             Assert.That(Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(visibleContainer.childCount));
         }
 
+        // GREEN_ON_BASE(refactor): the base's replacement is no Label either; the check no longer names the exact type Velvet builds.
         [Test]
         public void Given_MountedVirtualListItem_When_SameKeyRendersADifferentNodeType_Then_TheNewTypeIsCreatedInstead()
         {

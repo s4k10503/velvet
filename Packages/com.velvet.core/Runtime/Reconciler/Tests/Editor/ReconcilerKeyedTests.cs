@@ -923,6 +923,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base stops the trim at a tail it cannot patch.
         // The trim's key and patch tests were split apart, and this is what fails when the patch test goes.
+        // GREEN_ON_BASE(refactor): the base's tail element is a Button as well; the check now takes the Button subclass Velvet builds.
         [Test]
         public void Given_AKeyedTailWhoseElementTypeChanges_When_ItTakesAPrepend_Then_TheTailIsReplaced()
         {

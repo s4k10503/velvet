@@ -147,6 +147,7 @@ namespace Velvet.Tests
             CollectionAssert.AreEqual(new[] { "item" }, node.ClassNames);
         }
 
+        // GREEN_ON_BASE(refactor): the base's cell is a Button as well; the check now takes the Button subclass Velvet builds.
         [Test]
         public void Given_MotionWithButtonElementType_When_Mounted_Then_TheAnimatedCellIsAButton()
         {
