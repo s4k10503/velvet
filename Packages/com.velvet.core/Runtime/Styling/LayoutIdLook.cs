@@ -472,6 +472,7 @@ namespace Velvet
         {
             Restore(element, projection);
             MotionNativeTransitionGuard.Release(element, projection);
+            if (projection.Boxed) MotionNativeTransitionGuard.Release(MotionLayoutIdDriver.Box(element), projection);
             // A running spin takes the slot back from the element's own rotate, written back above.
             StyleAnimateDriver.YieldSlots(element, projection, MotionTransitionSlots.None);
             StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.None);
@@ -482,8 +483,9 @@ namespace Velvet
         private static void Restore(VisualElement element, LayoutIdProjection projection)
         {
             if (projection.WritesRotate) element.style.rotate = projection.OwnInlineRotate;
-            if (projection.WritesTranslate) SeatedTranslate.Write(element, projection.OwnInlineTranslate);
-            if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
+            var slot = MotionLayoutIdDriver.Box(element);
+            if (projection.WritesTranslate) SeatedTranslate.Write(slot, projection.OwnInlineTranslate);
+            if (projection.WritesScale) slot.style.scale = projection.OwnInlineScale;
             if (!projection.WritesRadii) return;
             ProjectedCornerFace.End(element);
             for (var corner = 0; corner < 4; corner++)

@@ -1,5 +1,6 @@
 using System;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -87,6 +88,109 @@ namespace Velvet.Tests
         }
 
         // A holder torn down outside a render, as a recycled virtual-list row is, leaves its box and no entry naming it.
+        private static readonly StyleTransitionConfig s_slow = new() { DurationSec = 1f, Easing = EasingMode.Linear };
+
+        private static readonly System.Collections.Generic.Dictionary<string, MotionVariant> s_hide = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = "opacity-100",
+        };
+
+        private static bool s_cardOpen;
+
+        // A frame that widens threefold at step 1, holding a layoutId Motion rotated 45 degrees.
+        [Component]
+        private static VNode RotatedInStretchedRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "frame", layoutId: "frame", transition: s_slow,
+                    className: $"absolute left-[0px] top-[0px] w-[{(step == 0 ? 100 : 300)}px] h-[100px]",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner", transition: s_slow,
+                            className: "absolute left-[10px] top-[10px] w-[40px] h-[40px] rotate-[45deg]"),
+                    }),
+            });
+        }
+
+        // The image of a vector under the scale and the rotate each element from this one up to the root writes.
+        private Vector2 DrawnVector(VisualElement element, Vector2 vector)
+        {
+            for (var e = element; e != Root; e = e.hierarchy.parent)
+            {
+                var scale = e.style.scale.keyword == StyleKeyword.Undefined ? (Vector2)e.style.scale.value.value : Vector2.one;
+                var degrees = e.style.rotate.keyword == StyleKeyword.Undefined ? e.style.rotate.value.angle.ToDegrees() : 0f;
+                vector = Quaternion.Euler(0f, 0f, degrees) * Vector2.Scale(scale, vector);
+            }
+            return vector;
+        }
+
+        [Test]
+        public void Given_ARotatedLayoutIdMotionInAMotionStretchingOnOneAxis_When_TheStretchPlays_Then_ItsAxesAreDrawnAtTheirOwnLengths()
+        {
+            // Arrange
+            _mounted = V.Mount(Root, V.Component(RotatedInStretchedRender, key: "root"));
+            Tick();
+            var inner = Root.Q<VisualElement>("inner");
+
+            // Act
+            s_setStep.Invoke(1);
+            _mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — the frame is drawn narrower than its layout, and the card's axes are not stretched with it.
+            var stretched = Root.Q<VisualElement>("frame").style.scale.value.value.x < 0.9f;
+            var undistorted = Mathf.Abs(DrawnVector(inner, Vector2.right).magnitude - 1f) < 0.02f
+                && Mathf.Abs(DrawnVector(inner, Vector2.up).magnitude - 1f) < 0.02f;
+            Assert.That((stretched, undistorted), Is.EqualTo((true, true)));
+        }
+
+        // A frame holding a presence whose card, rotated and holding a layoutId, leaves with a fade.
+        [Component]
+        private static VNode RotatedCardInPresenceRender()
+        {
+            var (_, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "frame", layoutId: "frame", transition: s_slow,
+                    className: "absolute left-[0px] top-[0px] w-[400px] h-[200px]",
+                    children: new VNode[]
+                    {
+                        V.AnimatePresence(key: "presence", children: s_cardOpen
+                            ? new VNode[]
+                            {
+                                V.Motion(key: "card", name: "card", layoutId: "card", variants: s_hide, animate: "visible",
+                                    exit: "hidden", transition: s_slow,
+                                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px] rotate-[30deg]"),
+                            }
+                            : Array.Empty<VNode>()),
+                    }),
+            });
+        }
+
+        [Test]
+        public void Given_ARotatedLayoutIdCardInAPresenceInsideAnother_When_ItsExitCompletes_Then_ItsWrapperLeavesWithIt()
+        {
+            // Arrange
+            s_cardOpen = true;
+            _mounted = V.Mount(Root, V.Component(RotatedCardInPresenceRender, key: "root"));
+            Tick();
+            var wrappedWhileOpen = Root.Q<VisualElement>("card").parent.ClassListContains("velvet-clip-path-wrapper");
+
+            // Act
+            s_cardOpen = false;
+            s_setStep.Invoke(1);
+            _mounted.FlushStateForTest();
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That((wrappedWhileOpen, Root.Q<VisualElement>("frame").childCount), Is.EqualTo((true, 0)));
+        }
+
         private static int s_rows;
 
         // s_rows boxes, each under an id of its own.
