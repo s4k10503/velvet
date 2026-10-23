@@ -42,6 +42,7 @@ namespace Velvet.Tests
         private static ToggleStore<bool> s_zToNoneStore;
         private static ToggleStore<bool> s_noneToZStore;
         private static ToggleStore<bool> s_resortStore;
+        private static ToggleStore<bool> s_faceResortStore;
         private static ToggleStore<bool> s_typeFlipStore;
         private static ToggleStore<bool> s_signFlipStore;
         private static ToggleStore<bool> s_moveStore;
@@ -73,6 +74,7 @@ namespace Velvet.Tests
             s_zToNoneStore = null;
             s_noneToZStore = null;
             s_resortStore = null;
+            s_faceResortStore = null;
             s_typeFlipStore = null;
             s_signFlipStore = null;
             s_moveStore = null;
@@ -494,6 +496,52 @@ namespace Velvet.Tests
             var sortedBThenA = front is { childCount: 2 }
                 && ReferenceEquals(front.ElementAt(0), b) && ReferenceEquals(front.ElementAt(1), a);
             Assert.That((sortedAThenB, sortedBThenA), Is.EqualTo((true, true)));
+        }
+
+        [Component]
+        private static VNode FaceResortHost()
+        {
+            var raised = Hooks.UseStore(s_faceResortStore, x => x);
+            return V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "a", className: "absolute " + (raised ? "z-10" : "z-30")),
+                V.Div(name: "b", className: "absolute z-15"),
+                V.Div(name: "c", className: "absolute z-20"),
+            });
+        }
+
+        [Test]
+        public void Given_AFaceBorderOverlayBesideAZMember_When_TheMemberResortsAheadOfOthers_Then_TheOverlayStaysDirectlyAfterIt()
+        {
+            // Arrange — a (z-30) sorts after b and c, its overlay directly after it.
+            using var store = new ToggleStore<bool>(false);
+            s_faceResortStore = store;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(FaceResortHost, key: "root"));
+            var a = root.Q<VisualElement>("a");
+            FaceBorderOverlay.Ensure(a, (_, _, _) => { });
+            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
+            var placedBefore = front != null && front.IndexOf(OverlayIn(front)) == front.IndexOf(a) + 1;
+
+            // Act — a becomes z-10, which sorts it ahead of b and c.
+            store.Set(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            var placedAfter = front != null && front.IndexOf(a) == 0 && front.IndexOf(OverlayIn(front)) == 1;
+            Assert.That((placedBefore, placedAfter), Is.EqualTo((true, true)));
+        }
+
+        private static VisualElement OverlayIn(VisualElement container)
+        {
+            foreach (var child in container.Children())
+            {
+                if (child.ClassListContains(FaceBorderOverlay.MarkerClass))
+                {
+                    return child;
+                }
+            }
+            return null;
         }
 
         [Component]

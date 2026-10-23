@@ -1,35 +1,187 @@
 Shader "Velvet/BackdropFilter"
 {
-    // Paints a backdrop-filter: _Backdrop holds what the target held beneath the element's box when the element's
-    // turn to paint came (BackdropFilterLayer), and this filters it and paints it back over the same pixels, inside
-    // the element's rounded border box and the renderer's clip rectangle.
+    // Paints a backdrop-filter (BackdropRenderer). Pass 0 runs one stage of the layer's functions from a texture the
+    // size of the captured region into another; pass 1 runs the last stage and paints it over the target, inside the
+    // element's rounded border box, the renderer's clip rectangle and its stencil mask.
     //
-    // Drawn with GL inside UI Toolkit's own renderer, so it follows the Built-in-style contract the filter shaders
-    // beside it follow (CGPROGRAM + UnityCG.cginc), whatever the render pipeline.
+    // A stage applies the colour functions before it to every tap, a Gaussian along one axis, and the colour
+    // functions after it. Each colour function is an affine map on (r, g, b, a) with its result clamped to 0..1.
     //
-    // The blur and every colour function run on the encoded (gamma) value, and the Linear-output conversion comes
-    // last, as in Velvet/FilterSaturate. The colour functions are the Filter Effects matrices and transfer
-    // functions, each result clamped to 0..1, applied in Tailwind's composition order.
+    // Drawn inside UI Toolkit's own renderer, so it follows the Built-in-style contract the filter shaders beside it
+    // follow (CGPROGRAM + UnityCG.cginc), whatever the render pipeline. The arithmetic runs on the encoded (gamma)
+    // value, and the Linear-output conversion comes last, as in Velvet/FilterSaturate.
     Properties
     {
-        _Backdrop ("Backdrop", 2D) = "black" {}
+        _MainTex ("Source", 2D) = "black" {}
+        _Shadow ("Shadow", 2D) = "black" {}
+        _StencilRef ("Stencil reference", Float) = 0
     }
+
+    CGINCLUDE
+    #include "UnityCG.cginc"
+
+    #define MAX_STEPS 16
+    #define MAX_REACH 1024.0
+
+    sampler2D _MainTex;
+    sampler2D _Shadow;
+    float _Decode;
+    float _Mode;
+    float2 _Dir;
+    float _Sigma;
+    float2 _Offset;
+    float4 _ShadowColor;
+    float4x4 _BeforeM[MAX_STEPS];
+    float4 _BeforeB[MAX_STEPS];
+    float _BeforeCount;
+    float4x4 _AfterM[MAX_STEPS];
+    float4 _AfterB[MAX_STEPS];
+    float _AfterCount;
+
+    float4 Fetch(float2 uv)
+    {
+        float4 c = tex2Dlod(_MainTex, float4(uv, 0, 0));
+        if (_Decode > 0.5)
+        {
+            c.rgb = LinearToGammaSpace(c.rgb);
+        }
+        return c;
+    }
+
+    float4 Before(float4 c)
+    {
+        [loop]
+        for (int i = 0; i < MAX_STEPS; i++)
+        {
+            if (i >= (int)_BeforeCount) break;
+            c = saturate(mul(_BeforeM[i], c) + _BeforeB[i]);
+        }
+        return c;
+    }
+
+    float4 After(float4 c)
+    {
+        [loop]
+        for (int i = 0; i < MAX_STEPS; i++)
+        {
+            if (i >= (int)_AfterCount) break;
+            c = saturate(mul(_AfterM[i], c) + _AfterB[i]);
+        }
+        return c;
+    }
+
+    float4 Tap(float2 uv)
+    {
+        return Before(Fetch(uv));
+    }
+
+    float Weight(float x)
+    {
+        return exp(-(x * x) / (2.0 * _Sigma * _Sigma));
+    }
+
+    // Three deviations either side, the reach held to MAX_REACH texels. Over premultiplied colour, so a transparent
+    // texel does not darken its neighbours.
+    float4 BlurredColour(float2 uv)
+    {
+        float4 c = Tap(uv);
+        if (_Sigma <= 0.0)
+        {
+            return c;
+        }
+        float reach = min(ceil(3.0 * _Sigma), MAX_REACH);
+        float4 sum = float4(c.rgb * c.a, c.a);
+        float total = 1.0;
+        [loop]
+        for (float i = 1.0; i <= reach; i += 1.0)
+        {
+            float w = Weight(i);
+            float4 a = Tap(uv + i * _Dir);
+            float4 b = Tap(uv - i * _Dir);
+            sum += (float4(a.rgb * a.a, a.a) + float4(b.rgb * b.a, b.a)) * w;
+            total += 2.0 * w;
+        }
+        sum /= total;
+        return sum.a > 0.0 ? float4(sum.rgb / sum.a, sum.a) : float4(0, 0, 0, 0);
+    }
+
+    // The alpha of the source at uv - _Offset (mode 1), or of _Shadow at uv (mode 2), blurred along _Dir.
+    float BlurredAlpha(float2 uv)
+    {
+        bool own = _Mode < 1.5;
+        float2 at = own ? uv - _Offset : uv;
+        float sum = own ? Tap(at).a : tex2Dlod(_Shadow, float4(at, 0, 0)).a;
+        float total = 1.0;
+        float reach = _Sigma <= 0.0 ? 0.0 : min(ceil(3.0 * _Sigma), MAX_REACH);
+        [loop]
+        for (float i = 1.0; i <= reach; i += 1.0)
+        {
+            float w = Weight(i);
+            float a = own ? Tap(at + i * _Dir).a : tex2Dlod(_Shadow, float4(at + i * _Dir, 0, 0)).a;
+            float b = own ? Tap(at - i * _Dir).a : tex2Dlod(_Shadow, float4(at - i * _Dir, 0, 0)).a;
+            sum += (a + b) * w;
+            total += 2.0 * w;
+        }
+        return sum / total;
+    }
+
+    // The source over its shadow, both straight colour.
+    float4 OverShadow(float2 uv)
+    {
+        float4 src = Tap(uv);
+        float shadowAlpha = _ShadowColor.a * BlurredAlpha(uv);
+        float alpha = src.a + shadowAlpha * (1.0 - src.a);
+        float3 rgb = src.rgb * src.a + _ShadowColor.rgb * shadowAlpha * (1.0 - src.a);
+        return alpha > 0.0 ? float4(rgb / alpha, alpha) : float4(0, 0, 0, 0);
+    }
+
+    float4 Stage(float2 uv)
+    {
+        float4 c = _Mode < 0.5 ? BlurredColour(uv)
+            : _Mode < 1.5 ? float4(0, 0, 0, BlurredAlpha(uv))
+            : OverShadow(uv);
+        return After(c);
+    }
+    ENDCG
+
     SubShader
     {
         Tags { "RenderType"="Transparent" "Queue"="Transparent" }
-        Blend SrcAlpha OneMinusSrcAlpha, One OneMinusSrcAlpha
         ZWrite Off
         ZTest Always
         Cull Off
 
+        // 0: one stage, into a texture the size of the captured region.
         Pass
         {
+            Blend One Zero
+
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag
+            #pragma target 3.0
+
+            float4 frag (v2f_img i) : SV_Target
+            {
+                return Stage(i.uv);
+            }
+            ENDCG
+        }
+
+        // 1: the last stage, painted over the target.
+        Pass
+        {
+            Blend SrcAlpha OneMinusSrcAlpha, One OneMinusSrcAlpha
+            Stencil
+            {
+                Ref [_StencilRef]
+                Comp Equal
+            }
+
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 3.0
-
-            #include "UnityCG.cginc"
 
             struct appdata
             {
@@ -47,14 +199,6 @@ Shader "Velvet/BackdropFilter"
                 float2 tree : TEXCOORD2;
             };
 
-            sampler2D _Backdrop;
-            // The mip level the blur reads, its standard deviation in that level's texels, and one texel in uv.
-            float _Lod;
-            float _Sigma;
-            float2 _Texel;
-            // brightness, contrast, grayscale, hue-rotate (radians); invert, opacity, saturate, sepia.
-            float4 _AmountsA;
-            float4 _AmountsB;
             // The element's border box in its own points, and its corner radii: top-left, top-right, bottom-right,
             // bottom-left.
             float2 _Size;
@@ -62,7 +206,7 @@ Shader "Velvet/BackdropFilter"
             // The renderer's clip rectangle in the render tree's points: xMin, yMin, xMax, yMax.
             float4 _Clip;
             float _Opacity;
-            float _Linear;
+            float _Encode;
 
             v2f vert (appdata v)
             {
@@ -72,84 +216,6 @@ Shader "Velvet/BackdropFilter"
                 o.local = v.local;
                 o.tree = v.tree;
                 return o;
-            }
-
-            float4 Encoded(float2 uv)
-            {
-                float4 c = tex2Dlod(_Backdrop, float4(uv, 0, _Lod));
-                if (_Linear > 0.5)
-                {
-                    c.rgb = LinearToGammaSpace(c.rgb);
-                }
-                return c;
-            }
-
-            // A Gaussian of _Sigma texels at _Lod, cut at three deviations and at six texels, over premultiplied
-            // colour so a transparent texel does not darken its neighbours.
-            float4 Blurred(float2 uv)
-            {
-                if (_Sigma <= 0.0)
-                {
-                    return Encoded(uv);
-                }
-                float reach = min(6.0, ceil(3.0 * _Sigma));
-                float4 sum = 0;
-                float weights = 0;
-                [loop]
-                for (float y = -reach; y <= reach; y += 1.0)
-                {
-                    [loop]
-                    for (float x = -reach; x <= reach; x += 1.0)
-                    {
-                        float w = exp(-(x * x + y * y) / (2.0 * _Sigma * _Sigma));
-                        float4 c = Encoded(uv + float2(x, y) * _Texel);
-                        sum += float4(c.rgb * c.a, c.a) * w;
-                        weights += w;
-                    }
-                }
-                sum /= weights;
-                return sum.a > 0.0 ? float4(sum.rgb / sum.a, sum.a) : 0;
-            }
-
-            float3 ColourMatrix(float3 c, float3 r0, float3 r1, float3 r2)
-            {
-                return saturate(float3(dot(r0, c), dot(r1, c), dot(r2, c)));
-            }
-
-            float4 Filtered(float4 c)
-            {
-                float brightness = _AmountsA.x;
-                float contrast = _AmountsA.y;
-                float grayscale = 1.0 - _AmountsA.z;
-                float hue = _AmountsA.w;
-                float invert = _AmountsB.x;
-                float opacity = _AmountsB.y;
-                float saturation = _AmountsB.z;
-                float sepia = 1.0 - _AmountsB.w;
-
-                c.rgb = saturate(c.rgb * brightness);
-                c.rgb = saturate((c.rgb - 0.5) * contrast + 0.5);
-                c.rgb = ColourMatrix(c.rgb,
-                    float3(0.2126 + 0.7874 * grayscale, 0.7152 - 0.7152 * grayscale, 0.0722 - 0.0722 * grayscale),
-                    float3(0.2126 - 0.2126 * grayscale, 0.7152 + 0.2848 * grayscale, 0.0722 - 0.0722 * grayscale),
-                    float3(0.2126 - 0.2126 * grayscale, 0.7152 - 0.7152 * grayscale, 0.0722 + 0.9278 * grayscale));
-                float cosH = cos(hue);
-                float sinH = sin(hue);
-                c.rgb = ColourMatrix(c.rgb,
-                    float3(0.213 + cosH * 0.787 - sinH * 0.213, 0.715 - cosH * 0.715 - sinH * 0.715, 0.072 - cosH * 0.072 + sinH * 0.928),
-                    float3(0.213 - cosH * 0.213 + sinH * 0.143, 0.715 + cosH * 0.285 + sinH * 0.140, 0.072 - cosH * 0.072 - sinH * 0.283),
-                    float3(0.213 - cosH * 0.213 - sinH * 0.787, 0.715 - cosH * 0.715 + sinH * 0.715, 0.072 + cosH * 0.928 + sinH * 0.072));
-                c.rgb = saturate(c.rgb * (1.0 - 2.0 * invert) + invert);
-                c.a = saturate(c.a * opacity);
-                c.rgb = ColourMatrix(c.rgb,
-                    float3(0.213 + 0.787 * saturation, 0.715 - 0.715 * saturation, 0.072 - 0.072 * saturation),
-                    float3(0.213 - 0.213 * saturation, 0.715 + 0.285 * saturation, 0.072 - 0.072 * saturation),
-                    float3(0.213 - 0.213 * saturation, 0.715 - 0.715 * saturation, 0.072 + 0.928 * saturation));
-                c.rgb = ColourMatrix(c.rgb,
-                    float3(0.393 + 0.607 * sepia, 0.769 - 0.769 * sepia, 0.189 - 0.189 * sepia),
-                    float3(0.349 - 0.349 * sepia, 0.686 + 0.314 * sepia, 0.168 - 0.168 * sepia),
-                    float3(0.272 - 0.272 * sepia, 0.534 - 0.534 * sepia, 0.131 + 0.869 * sepia));
-                return c;
             }
 
             // How much of the pixel the rounded border box covers, anti-aliased over one pixel.
@@ -170,8 +236,8 @@ Shader "Velvet/BackdropFilter"
                 {
                     discard;
                 }
-                float4 c = Filtered(Blurred(i.uv));
-                if (_Linear > 0.5)
+                float4 c = Stage(i.uv);
+                if (_Encode > 0.5)
                 {
                     c.rgb = GammaToLinearSpace(c.rgb);
                 }

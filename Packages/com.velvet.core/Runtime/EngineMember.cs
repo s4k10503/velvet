@@ -206,6 +206,19 @@ namespace Velvet
         internal static readonly EngineMember ElementWorldClip =
             ReadProperty(UIElements, VisualElementType, "worldClip", "UnityEngine.Rect");
 
+        // The stencil reference the renderer tests an element's children against, which a masking ancestor (a rounded
+        // overflow clip, a clip-path wrapper) raises: an element's render data, the one its filter roots its children
+        // in where it has one, and that data's reference.
+        private const string RenderDataType = "UnityEngine.UIElements.UIR.RenderData";
+
+        internal static readonly EngineMember ElementRenderData = Field(UIElements, VisualElementType, "renderData", RenderDataType);
+
+        internal static readonly EngineMember ElementNestedRenderData =
+            Field(UIElements, VisualElementType, "nestedRenderData", RenderDataType);
+
+        internal static readonly EngineMember RenderDataChildrenStencilRef =
+            Field(UIElements, RenderDataType, "childrenStencilRef", "System.Int32");
+
         internal static readonly EngineMember IsMatchingShorthand = Method(UIElements,
             "UnityEngine.UIElements.StyleSheets.StylePropertyUtil", "IsMatchingShorthand", "System.Boolean",
             StylePropertyIdShape, StylePropertyIdShape);

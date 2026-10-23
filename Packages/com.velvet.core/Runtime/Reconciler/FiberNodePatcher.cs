@@ -437,7 +437,7 @@ namespace Velvet
             _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skew);
             _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
-            _appliers.ApplyBackdropOnPatch(element, classNames, clipActive);
+            _appliers.ApplyBackdropOnPatch(element, classNames);
         }
 
         private void PatchText(Label label, TextNode oldNode, TextNode newNode)

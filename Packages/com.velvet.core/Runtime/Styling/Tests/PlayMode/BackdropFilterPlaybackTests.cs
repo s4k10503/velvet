@@ -163,6 +163,70 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_ABackdropBlurInsideARoundedOverflowClip_When_Rendered_Then_TheCornerOutsideTheClipStaysSharp()
+        {
+            // Arrange — the element fills an ancestor that clips to a 30px radius; the element itself is square.
+            var clipped = V.Div(name: "glass-inner", className: "w-[60px] h-[60px] backdrop-blur-xl");
+            yield return Render(string.Empty, 45f, 30f, 60f, clipped, () =>
+            {
+                var style = Glass().style;
+                style.overflow = Overflow.Hidden;
+                style.borderTopLeftRadius = style.borderTopRightRadius = 30f;
+                style.borderBottomLeftRadius = style.borderBottomRightRadius = 30f;
+            });
+
+            // Act
+            var corner = At(47, 32);
+            var inside = At(Edge - 2, 60);
+
+            // Assert
+            Assert.That((Placed(Glass(), 45f, 30f, 60f), Mixed(inside), PureRed(corner)),
+                Is.EqualTo((true, true, true)), $"corner={corner} inside={inside}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ABackdropBlurUnderAClipPath_When_Rendered_Then_ThePixelsOutsideThePathStaySharp()
+        {
+            // Arrange — the clip wrapper stands in for the element in its parent, so the placement goes on it.
+            yield return Render("clip-path-[circle(50%)] backdrop-blur-xl", 45f, 30f, 60f, arrange: () =>
+            {
+                var inner = Glass().style;
+                inner.position = Position.Relative;
+                inner.left = 0f;
+                inner.top = 0f;
+                var wrapper = Glass().parent.style;
+                wrapper.position = Position.Absolute;
+                wrapper.left = 45f;
+                wrapper.top = 30f;
+            });
+
+            // Act
+            var corner = At(47, 32);
+            var inside = At(Edge - 2, 60);
+
+            // Assert
+            var box = Glass().worldBound;
+            Assert.That((Near(box.x, 45f) && Near(box.y, 30f) && Near(box.width, 60f), Mixed(inside), PureRed(corner)),
+                Is.EqualTo((true, true, true)), $"corner={corner} inside={inside} box={box}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ABackdropFilterListInvertThenBrightness_When_Rendered_Then_ItRunsInTheOrderWritten()
+        {
+            // Arrange — over the red half only. Invert first gives (0, 0.5, 0.5); the utilities' order would give
+            // (0.5, 1, 1).
+            yield return Render("backdrop-filter-[invert(1)_brightness(0.5)]", 5f, 30f, 40f);
+
+            // Act
+            var inside = At(25, 50);
+
+            // Assert
+            Assert.That((Placed(Glass(), 5f, 30f, 40f), inside.r < 20 && inside.g > 100 && inside.g < 160
+                    && inside.b > 100 && inside.b < 160),
+                Is.EqualTo((true, true)), $"inside={inside}");
+        }
+
+        [UnityTest]
         public IEnumerator Given_BrightnessAndInvertWrittenInEitherOrder_When_Rendered_Then_BrightnessAppliesFirst()
         {
             // Arrange — over the red half only. Brightness first gives (0.5, 1, 1); invert first would give (0, 0.5, 0.5).

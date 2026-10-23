@@ -92,8 +92,8 @@ namespace Velvet
         internal void ApplyBackdropOnCreate(VisualElement element, string[] classNames)
             => _backdrop.ApplyBackdropOnCreate(element, classNames);
 
-        internal void ApplyBackdropOnPatch(VisualElement element, string[] classNames, bool clipActive)
-            => _backdrop.ApplyBackdropOnPatch(element, classNames, clipActive);
+        internal void ApplyBackdropOnPatch(VisualElement element, string[] classNames)
+            => _backdrop.ApplyBackdropOnPatch(element, classNames);
 
         // USS class on the structural wrapper Velvet emits to host a clip-path-* element. UI Toolkit
         // (6000.3) has no USS clip-path; the supported arbitrary-shape mask is an overflow-hidden

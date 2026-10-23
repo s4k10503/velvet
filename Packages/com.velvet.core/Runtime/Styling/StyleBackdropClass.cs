@@ -1,12 +1,14 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using UnityEngine;
 
 namespace Velvet
 {
-    // The functions of a backdrop-filter, in the order Tailwind composes them into one declaration.
+    // The functions a backdrop-filter holds. The first nine are in the order Tailwind composes its backdrop-*
+    // utilities into one declaration.
     internal enum BackdropFunction
     {
         Blur,
@@ -18,65 +20,97 @@ namespace Velvet
         Opacity,
         Saturate,
         Sepia,
+        DropShadow,
     }
 
-    // The backdrop-filter an element's backdrop-* utilities compose. A function no class sets is absent, which
-    // the shader runs as its identity.
-    internal sealed class BackdropSpec
+    // One function of a backdrop-filter: blur's standard deviation in px, hue-rotate's angle in degrees, the other
+    // amounts a factor, or a drop shadow.
+    internal readonly struct BackdropOp
     {
-        internal const int FunctionCount = 9;
+        public readonly BackdropFunction Function;
+        public readonly float Amount;
+        // A blur the element measures (an em, a viewport unit), which Amount leaves at 0.
+        public readonly StyleLengthExpression? Measured;
+        public readonly DropShadowLayer Shadow;
 
-        // Each function's amount: blur's standard deviation in px, hue-rotate's angle in degrees, the rest a factor.
-        private readonly float?[] _amounts;
-
-        // A blur the element measures (an em, a viewport unit), which _amounts leaves unset.
-        internal readonly StyleLengthExpression? MeasuredBlur;
-
-        internal BackdropSpec(float?[] amounts, StyleLengthExpression? measuredBlur)
+        public BackdropOp(BackdropFunction function, float amount, StyleLengthExpression? measured = null)
         {
-            _amounts = amounts;
-            MeasuredBlur = measuredBlur;
+            Function = function;
+            Amount = amount;
+            Measured = measured;
+            Shadow = default;
         }
 
-        internal float AmountOr(BackdropFunction function, float identity) => _amounts[(int)function] ?? identity;
+        public BackdropOp(DropShadowLayer shadow)
+        {
+            Function = BackdropFunction.DropShadow;
+            Amount = 0f;
+            Measured = null;
+            Shadow = shadow;
+        }
+    }
 
-        // The declaration in CSS's spelling, the measured blur as "blur(measured)".
+    // The backdrop-filter an element's backdrop-* utilities declare. No function is `none`.
+    internal sealed class BackdropSpec
+    {
+        internal static readonly BackdropSpec None = new(Array.Empty<BackdropOp>());
+
+        internal readonly BackdropOp[] Ops;
+
+        internal BackdropSpec(BackdropOp[] ops) => Ops = ops;
+
+        // The declaration in CSS's spelling, a measured length as "measured".
         public override string ToString()
         {
-            var text = new StringBuilder();
-            for (var i = 0; i < FunctionCount; i++)
+            if (Ops.Length == 0)
             {
-                var function = (BackdropFunction)i;
-                string? argument = function == BackdropFunction.Blur && MeasuredBlur != null
-                    ? "measured"
-                    : _amounts[i] is { } amount
-                        ? amount.ToString("0.###", CultureInfo.InvariantCulture)
-                          + (function == BackdropFunction.Blur ? "px" : function == BackdropFunction.HueRotate ? "deg" : "")
-                        : null;
-                if (argument == null)
-                {
-                    continue;
-                }
-                if (text.Length > 0)
-                {
-                    text.Append(' ');
-                }
-                text.Append(StyleBackdropClass.NameOf(function)).Append('(').Append(argument).Append(')');
+                return "none";
+            }
+            var text = new StringBuilder();
+            foreach (var op in Ops)
+            {
+                text.Append(text.Length > 0 ? " " : string.Empty).Append(StyleBackdropClass.NameOf(op.Function)).Append('(')
+                    .Append(Argument(op)).Append(')');
             }
             return text.ToString();
         }
+
+        private static string Argument(in BackdropOp op)
+        {
+            if (op.Function == BackdropFunction.DropShadow)
+            {
+                var shadow = op.Shadow;
+                var color = float.IsNaN(shadow.Color.r) ? "currentcolor" : "#" + ColorUtility.ToHtmlStringRGBA(shadow.Color);
+                return shadow.Measured != null ? "measured " + color
+                    : $"{Number(shadow.X)}px {Number(shadow.Y)}px {Number(shadow.Deviation)}px {color}";
+            }
+            if (op.Measured != null)
+            {
+                return "measured";
+            }
+            var unit = op.Function == BackdropFunction.Blur ? "px" : op.Function == BackdropFunction.HueRotate ? "deg" : "";
+            return Number(op.Amount) + unit;
+        }
+
+        private static string Number(float value) => value.ToString("0.###", CultureInfo.InvariantCulture);
     }
 
-    // Parses Tailwind v4's backdrop-* utilities into a BackdropSpec. Each function is a slot of its own, as Tailwind
-    // writes each into a custom property of its own: the class holding a slot is the last important one, or else the
-    // last one, the composed class source having put a family's tokens in Tailwind's order (StyleFamilyOrder).
+    // Parses Tailwind v4's backdrop-* utilities into the backdrop-filter they declare. Every one of them writes the
+    // backdrop-filter declaration, and the class holding it is the last important one, or else the last one, the
+    // composed class source having put the family's tokens in Tailwind's order (StyleFamilyOrder). A function
+    // utility also sets its function's own slot, as Tailwind writes each into a custom property of its own, and the
+    // declaration it writes composes every slot set; backdrop-filter-none and backdrop-filter-[…] write theirs
+    // literally.
     internal static class StyleBackdropClass
     {
         private const string Prefix = "backdrop-";
+        private const string DeclarationPrefix = "backdrop-filter-";
+        private const int SlotCount = 9;
 
         private static readonly string[] s_names =
         {
             "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "opacity", "saturate", "sepia",
+            "drop-shadow",
         };
 
         internal static string NameOf(BackdropFunction function) => s_names[(int)function];
@@ -95,161 +129,281 @@ namespace Velvet
             public bool Set;
             public bool Important;
             public bool Rejected;
-            public float Amount;
-            public StyleLengthExpression? Measured;
+            public BackdropOp Op;
         }
 
-        // False where no class sets a function, and where the class holding one carries a bracket the browser
-        // rejects: that makes the one declaration Tailwind composes invalid, so the element draws no backdrop.
+        private struct Declarer
+        {
+            public bool Set;
+            public bool Important;
+            // Null where the class composing the slots holds the declaration.
+            public BackdropOp[]? Literal;
+        }
+
+        // False where no class declares a backdrop-filter. A composed declaration over a slot whose bracket the
+        // browser rejects is invalid when its value is computed, which leaves backdrop-filter at none.
         public static bool TryExtract(string[]? classNames, out BackdropSpec? spec)
         {
             spec = null;
-            var slots = new Slot[BackdropSpec.FunctionCount];
-            var any = false;
+            var slots = new Slot[SlotCount];
+            var declarer = default(Declarer);
             foreach (var cls in classNames ?? Array.Empty<string>())
             {
                 var core = StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out var important);
-                if (!IsBackdropClass(core) || !TryRead(core, out var function, out var amount, out var measured, out var rejected))
+                if (!IsBackdropClass(core) || StyleCustomPropertyClass.IsCustomPropertyToken(core))
                 {
                     continue;
                 }
-                ref var slot = ref slots[(int)function];
-                if (slot.Set && slot.Important && !important)
-                {
-                    continue;
-                }
-                slot = new Slot { Set = true, Important = important, Rejected = rejected, Amount = amount, Measured = measured };
-                any = true;
+                Offer(core, important, slots, ref declarer);
             }
-            if (!any)
+            if (!declarer.Set)
             {
                 return false;
             }
-            var amounts = new float?[BackdropSpec.FunctionCount];
-            StyleLengthExpression? measuredBlur = null;
-            for (var i = 0; i < slots.Length; i++)
-            {
-                if (!slots[i].Set)
-                {
-                    continue;
-                }
-                if (slots[i].Rejected)
-                {
-                    return false;
-                }
-                if (slots[i].Measured != null)
-                {
-                    measuredBlur = slots[i].Measured;
-                }
-                else
-                {
-                    amounts[i] = slots[i].Amount;
-                }
-            }
-            spec = new BackdropSpec(amounts, measuredBlur);
+            spec = declarer.Literal != null ? new BackdropSpec(declarer.Literal) : Composed(slots);
             return true;
         }
 
-        // Whether core, a utility without its important modifier, is a backdrop-* utility, and what it sets. A bracket
-        // the browser rejects is still one (rejected), since it holds its function's slot.
-        private static bool TryRead(string core, out BackdropFunction function, out float amount,
-            out StyleLengthExpression? measured, out bool rejected)
+        private static void Offer(string core, bool important, Slot[] slots, ref Declarer declarer)
         {
-            function = default;
-            amount = 0f;
-            measured = null;
+            BackdropOp[]? literal = null;
+            if (TryReadSlot(core, out var op, out var rejected))
+            {
+                ref var slot = ref slots[(int)op.Function];
+                if (!slot.Set || !slot.Important || important)
+                {
+                    slot = new Slot { Set = true, Important = important, Rejected = rejected, Op = op };
+                }
+            }
+            else if (!TryReadDeclaration(core, out literal))
+            {
+                return;
+            }
+            if (!declarer.Set || !declarer.Important || important)
+            {
+                declarer = new Declarer { Set = true, Important = important, Literal = literal };
+            }
+        }
+
+        private static BackdropSpec Composed(Slot[] slots)
+        {
+            var ops = new List<BackdropOp>(SlotCount);
+            foreach (var slot in slots)
+            {
+                if (slot.Rejected)
+                {
+                    return BackdropSpec.None;
+                }
+                if (slot.Set)
+                {
+                    ops.Add(slot.Op);
+                }
+            }
+            return new BackdropSpec(ops.ToArray());
+        }
+
+        // backdrop-filter-none, or backdrop-filter-[…] holding a value the browser takes. One it rejects is dropped
+        // when the stylesheet is parsed, so it declares nothing.
+        private static bool TryReadDeclaration(string core, out BackdropOp[]? literal)
+        {
+            literal = null;
+            if (core == DeclarationPrefix + "none")
+            {
+                literal = Array.Empty<BackdropOp>();
+                return true;
+            }
+            var body = core.AsSpan();
+            if (!body.StartsWith(DeclarationPrefix.AsSpan(), StringComparison.Ordinal)
+                || !StyleArbitraryValueResolver.TryStripBrackets(body, DeclarationPrefix.Length, out var inner)
+                || !StyleArbitraryValueResolver.TrySplitTypeHint(inner, out _, out var value))
+            {
+                return false;
+            }
+            return BackdropFilterList.TryParse(value, out literal);
+        }
+
+        // A function utility: the op it sets its slot to, and whether its bracket is one the browser rejects, which
+        // still sets the slot.
+        private static bool TryReadSlot(string core, out BackdropOp op, out bool rejected)
+        {
+            op = default;
             rejected = false;
-            var negate = core.Length > 0 && core[0] == '-';
+            var negate = core[0] == '-';
             var body = core.AsSpan((negate ? 1 : 0) + Prefix.Length);
-            for (var i = 0; i < s_names.Length; i++)
+            for (var i = 0; i < SlotCount; i++)
             {
                 if (!body.StartsWith(s_names[i].AsSpan(), StringComparison.Ordinal))
                 {
                     continue;
                 }
-                function = (BackdropFunction)i;
-                var rest = body.Slice(s_names[i].Length);
+                var function = (BackdropFunction)i;
                 if (negate && function != BackdropFunction.HueRotate)
                 {
                     return false;
                 }
-                // The bare grayscale, invert and sepia are 100%.
-                if (rest.Length == 0)
-                {
-                    amount = 1f;
-                    return !negate && function is BackdropFunction.Grayscale or BackdropFunction.Invert
-                        or BackdropFunction.Sepia;
-                }
-                if (rest.Length < 2 || rest[0] != '-')
-                {
-                    return false;
-                }
-                var suffix = rest.Slice(1);
-                if (suffix[0] == '[')
-                {
-                    if (suffix.Length < 3 || suffix[suffix.Length - 1] != ']'
-                        || !StyleArbitraryValueResolver.TrySplitTypeHint(suffix.Slice(1, suffix.Length - 2), out _,
-                            out var value))
-                    {
-                        return false;
-                    }
-                    rejected = !TryReadBracket(function, value, negate, out amount, out measured);
-                    return true;
-                }
-                return TryReadNamed(function, suffix, negate, out amount);
+                return TryReadSuffix(function, body.Slice(s_names[i].Length), negate, out op, out rejected);
             }
             return false;
         }
 
-        // The bracket grammar of the filter utility of the same name (StyleFilterValueParser), and opacity()'s, a
-        // number or percentage clamped to 1.
-        private static bool TryReadBracket(BackdropFunction function, ReadOnlySpan<char> value, bool negate,
-            out float amount, out StyleLengthExpression? measured)
+        private static bool TryReadSuffix(BackdropFunction function, ReadOnlySpan<char> rest, bool negate,
+            out BackdropOp op, out bool rejected)
         {
-            amount = 0f;
-            measured = null;
-            if (function == BackdropFunction.Opacity)
+            op = default;
+            rejected = false;
+            // The bare grayscale, invert and sepia are 100%.
+            if (rest.Length == 0)
             {
-                if (!StyleFilterValueParser.TryParseAmount(value, out amount) || amount < 0f)
+                op = new BackdropOp(function, 1f);
+                return !negate && function is BackdropFunction.Grayscale or BackdropFunction.Invert or BackdropFunction.Sepia;
+            }
+            if (rest.Length < 2 || rest[0] != '-')
+            {
+                return false;
+            }
+            var suffix = rest.Slice(1);
+            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
+            {
+                if (!StyleArbitraryValueResolver.TrySplitTypeHint(inner, out _, out var value))
                 {
                     return false;
                 }
-                amount = Mathf.Min(amount, 1f);
+                rejected = !BackdropFilterList.TryReadArgument(function, value, negate, out op);
+                op = rejected ? new BackdropOp(function, 0f) : op;
                 return true;
             }
-            if (StyleFilterValueParser.TryParseFilterValue(NameOf(function) + "-", value, negate, out var style) != true)
-            {
-                return false;
-            }
-            amount = style.Value;
-            measured = style.Expression;
-            return true;
+            return TryReadNamed(function, suffix, negate, out op);
         }
 
-        // A theme blur, or Tailwind v4's bare integer: a percentage for the factors, clamped to 1 where CSS clamps the
-        // function, and degrees for hue-rotate.
-        private static bool TryReadNamed(BackdropFunction function, ReadOnlySpan<char> suffix, bool negate, out float amount)
+        // A theme blur, or Tailwind v4's bare whole number: a percentage for the amounts, clamped to 1 where CSS
+        // clamps the function, and degrees for hue-rotate.
+        private static bool TryReadNamed(BackdropFunction function, ReadOnlySpan<char> suffix, bool negate, out BackdropOp op)
         {
-            amount = 0f;
+            op = default;
             if (function == BackdropFunction.Blur)
             {
-                return StyleFilterValueParser.TryGetBlurPreset(suffix.ToString(), out amount);
+                var found = StyleFilterValueParser.TryGetBlurPreset(suffix.ToString(), out var px);
+                op = new BackdropOp(function, px);
+                return found;
             }
-            if (suffix.Length > 6 || !int.TryParse(suffix, NumberStyles.None, CultureInfo.InvariantCulture, out var whole))
+            if (!StyleFilterValueParser.TryParseWholeNumber(suffix, out var whole))
             {
                 return false;
             }
-            if (function == BackdropFunction.HueRotate)
+            op = new BackdropOp(function, function == BackdropFunction.HueRotate ? (negate ? -whole : whole)
+                : Mathf.Min(whole / 100f, BackdropFilterList.CeilingOf(function)));
+            return true;
+        }
+    }
+
+    // CSS's <filter-value-list> as backdrop-filter-[…] writes it, with `_` for a space, and the argument of one
+    // function, which the backdrop-* brackets share.
+    internal static class BackdropFilterList
+    {
+        // grayscale(), invert(), sepia() and opacity() clamp their amount to 1.
+        internal static float CeilingOf(BackdropFunction function)
+            => function is BackdropFunction.Grayscale or BackdropFunction.Invert or BackdropFunction.Sepia
+                or BackdropFunction.Opacity ? 1f : float.PositiveInfinity;
+
+        // False for a list the browser rejects. A url() names no filter Velvet can run, and CSS ignores the whole
+        // chain where one does not resolve, so a list holding one composes no function.
+        public static bool TryParse(ReadOnlySpan<char> value, out BackdropOp[]? ops)
+        {
+            ops = null;
+            value = value.Trim("_ ".AsSpan());
+            if (value.SequenceEqual("none".AsSpan()))
             {
-                amount = negate ? -whole : whole;
+                ops = Array.Empty<BackdropOp>();
                 return true;
             }
-            amount = whole / 100f;
-            if (function is BackdropFunction.Grayscale or BackdropFunction.Invert or BackdropFunction.Opacity
-                or BackdropFunction.Sepia)
+            var list = new List<BackdropOp>();
+            var references = false;
+            while (value.Length > 0)
             {
-                amount = Mathf.Min(amount, 1f);
+                if (!TryNextFunction(ref value, out var name, out var argument))
+                {
+                    return false;
+                }
+                if (name.SequenceEqual("url".AsSpan()))
+                {
+                    references = true;
+                    continue;
+                }
+                if (!TryFunction(name, out var function) || !TryReadArgument(function, argument, false, out var op))
+                {
+                    return false;
+                }
+                list.Add(op);
             }
+            ops = references ? Array.Empty<BackdropOp>() : list.ToArray();
+            return list.Count > 0 || references;
+        }
+
+        // `name(argument)` at the head of value, which is left after it and the separators following it.
+        private static bool TryNextFunction(ref ReadOnlySpan<char> value, out ReadOnlySpan<char> name,
+            out ReadOnlySpan<char> argument)
+        {
+            name = argument = default;
+            var open = value.IndexOf('(');
+            if (open <= 0)
+            {
+                return false;
+            }
+            var close = StyleCustomProperties.MatchingClose(value.ToString(), open, value.Length);
+            if (close < 0)
+            {
+                return false;
+            }
+            name = value.Slice(0, open);
+            argument = value.Slice(open + 1, close - open - 1).Trim("_ ".AsSpan());
+            var after = value.Slice(close + 1);
+            var trimmed = after.TrimStart("_ ".AsSpan());
+            value = trimmed;
+            return after.Length == 0 || trimmed.Length < after.Length;
+        }
+
+        private static bool TryFunction(ReadOnlySpan<char> name, out BackdropFunction function)
+        {
+            for (var i = 0; i <= (int)BackdropFunction.DropShadow; i++)
+            {
+                if (name.SequenceEqual(StyleBackdropClass.NameOf((BackdropFunction)i).AsSpan()))
+                {
+                    function = (BackdropFunction)i;
+                    return true;
+                }
+            }
+            function = default;
+            return false;
+        }
+
+        // The argument of one function, in the grammar of the filter utility of the same name
+        // (StyleFilterValueParser); an empty one is the function's default: blur and hue-rotate 0, the amounts 1.
+        internal static bool TryReadArgument(BackdropFunction function, ReadOnlySpan<char> value, bool negate, out BackdropOp op)
+        {
+            op = default;
+            if (function == BackdropFunction.DropShadow)
+            {
+                var parsed = StyleFilterValueParser.TryParseShadow(value, out var shadow);
+                op = new BackdropOp(shadow);
+                return parsed;
+            }
+            if (value.Length == 0)
+            {
+                op = new BackdropOp(function, function is BackdropFunction.Blur or BackdropFunction.HueRotate ? 0f : 1f);
+                return true;
+            }
+            if (function == BackdropFunction.Opacity)
+            {
+                var parsed = StyleFilterValueParser.TryParseAmount(value, out var amount) && amount >= 0f;
+                op = new BackdropOp(function, Mathf.Min(amount, 1f));
+                return parsed;
+            }
+            if (StyleFilterValueParser.TryParseFilterValue(StyleBackdropClass.NameOf(function) + "-", value, negate,
+                    out var style) != true)
+            {
+                return false;
+            }
+            op = new BackdropOp(function, style.Value, style.Expression);
             return true;
         }
     }

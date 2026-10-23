@@ -1109,12 +1109,9 @@ namespace Velvet
         // for the caller to insert, so element.parent is still null while the binding is being built.
         public List<VisualElement> PendingRingPlacements { get; } = new();
 
-        // Per-element backdrop-* bookkeeping (BackdropFilterLayer), and the elements whose layer still needs a host,
-        // drained where PendingRingPlacements is, for the same reason. The layer lives in the element's parent, so
-        // cleanup has to remove it.
+        // Per-element backdrop-* bookkeeping (BackdropFilterLayer), every entry placed again where
+        // PendingRingPlacements drains. The layer lives in the element's parent, so cleanup has to remove it.
         public Dictionary<VisualElement, BackdropBinding> BackdropBindings { get; } = new();
-
-        public List<VisualElement> PendingBackdropPlacements { get; } = new();
 
         // Sheared-silhouette bookkeeping for skew-x-*/skew-y-* elements (SkewSilhouette). Keyed by
         // the element itself — skew paints via the element's own generateVisualContent, no wrapper.

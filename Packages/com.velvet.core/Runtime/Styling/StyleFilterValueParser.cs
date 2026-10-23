@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -22,10 +23,8 @@ namespace Velvet
             "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia", "drop-shadow",
         };
 
-        // The named filter presets (the suffix after the filter prefix). These have no USS class — they
-        // route to the same compose-and-apply filter path as the bracket forms (blur-[6px]). blur is px; the
-        // bare grayscale/invert/sepia mean 100% and are handled inline (no key). hue-rotate is degrees and is
-        // the only filter with a negative preset (-hue-rotate-90).
+        // Tailwind's --blur-* theme, in px. No filter utility has a USS class: each routes to the same
+        // compose-and-apply filter path as the bracket forms (blur-[6px]).
         private static readonly Dictionary<string, float> s_blurPreset = new()
         {
             ["none"] = 0f, ["xs"] = 4f, ["sm"] = 8f, ["md"] = 12f, ["lg"] = 16f, ["xl"] = 24f, ["2xl"] = 40f, ["3xl"] = 64f,
@@ -33,36 +32,18 @@ namespace Velvet
 
         internal static bool TryGetBlurPreset(string suffix, out float px) => s_blurPreset.TryGetValue(suffix, out px);
 
-        private static readonly Dictionary<string, float> s_contrastPreset = new()
+        // Tailwind v4's bare value for the amount filters: any whole number, read as a percentage (degrees for
+        // hue-rotate). Six digits is far past any amount a filter tells apart, and keeps the parse in range.
+        internal static bool TryParseWholeNumber(ReadOnlySpan<char> suffix, out int whole)
         {
-            ["0"] = 0f, ["50"] = 0.5f, ["75"] = 0.75f, ["100"] = 1f, ["125"] = 1.25f, ["150"] = 1.5f, ["200"] = 2f,
-        };
-
-        private static readonly Dictionary<string, float> s_hueRotatePreset = new()
-        {
-            ["0"] = 0f, ["15"] = 15f, ["30"] = 30f, ["60"] = 60f, ["90"] = 90f, ["180"] = 180f,
-        };
-
-        // brightness multiplier presets. brightness renders through a first-party custom-filter shader that
-        // multiplies unclamped, so the over-bright values (105/110/125/150/200) genuinely brighten — required
-        // because CSS brightness() has no upper clamp at N=1.
-        private static readonly Dictionary<string, float> s_brightnessPreset = new()
-        {
-            ["0"] = 0f, ["50"] = 0.5f, ["75"] = 0.75f, ["90"] = 0.9f, ["95"] = 0.95f, ["100"] = 1f,
-            ["105"] = 1.05f, ["110"] = 1.1f, ["125"] = 1.25f, ["150"] = 1.5f, ["200"] = 2f,
-        };
-
-        // saturate presets as a saturation fraction. saturate renders through a first-party custom-filter
-        // shader that lerps toward luminance unclamped, so the over-saturate values (150 / 200) push past
-        // the original colour, matching CSS saturate()'s unbounded N>1 range.
-        private static readonly Dictionary<string, float> s_saturatePreset = new()
-        {
-            ["0"] = 0f, ["50"] = 0.5f, ["100"] = 1f, ["150"] = 1.5f, ["200"] = 2f,
-        };
+            whole = 0;
+            return suffix.Length <= 6
+                && int.TryParse(suffix, NumberStyles.None, CultureInfo.InvariantCulture, out whole);
+        }
 
         // The bracket prefixes whose value is a bare amount. A negative one is rejected. CSS leaves contrast(),
         // brightness() and saturate() unclamped above 1, and the first-party shaders standing in for the last two
-        // multiply/lerp unclamped to match (s_brightnessPreset); it clamps grayscale(), invert() and sepia() to 1.
+        // multiply/lerp unclamped to match; it clamps grayscale(), invert() and sepia() to 1.
         private static readonly Dictionary<string, ArbitraryProperty> s_amountFilterPrefixes = new()
         {
             ["contrast-"] = ArbitraryProperty.FilterContrast,
@@ -260,7 +241,7 @@ namespace Velvet
             return true;
         }
 
-        private static bool TryParseShadow(ReadOnlySpan<char> shadow, out DropShadowLayer layer)
+        internal static bool TryParseShadow(ReadOnlySpan<char> shadow, out DropShadowLayer layer)
         {
             layer = default;
             Span<float> lengths = stackalloc float[3];
@@ -563,7 +544,7 @@ namespace Velvet
             // hue-rotate first: it is the one filter that accepts the negated form.
             if (body.StartsWith("hue-rotate-", StringComparison.Ordinal))
             {
-                if (!s_hueRotatePreset.TryGetValue(body.Substring("hue-rotate-".Length), out var deg))
+                if (!TryParseWholeNumber(body.AsSpan("hue-rotate-".Length), out var deg))
                 {
                     return false;
                 }
@@ -587,13 +568,11 @@ namespace Velvet
                 case "grayscale": result = new ArbitraryStyle(ArbitraryProperty.FilterGrayscale, 1f, LengthUnit.Pixel); return true;
                 case "invert": result = new ArbitraryStyle(ArbitraryProperty.FilterInvert, 1f, LengthUnit.Pixel); return true;
                 case "sepia": result = new ArbitraryStyle(ArbitraryProperty.FilterSepia, 1f, LengthUnit.Pixel); return true;
-                case "grayscale-0": result = new ArbitraryStyle(ArbitraryProperty.FilterGrayscale, 0f, LengthUnit.Pixel); return true;
-                case "invert-0": result = new ArbitraryStyle(ArbitraryProperty.FilterInvert, 0f, LengthUnit.Pixel); return true;
-                case "sepia-0": result = new ArbitraryStyle(ArbitraryProperty.FilterSepia, 0f, LengthUnit.Pixel); return true;
             }
             return false;
         }
 
+        // blur-<theme>, and <family>-<n> for the amount filters, n% clamped to 1 where CSS clamps the function.
         private static bool TryParseFamilyPreset(string body, out ArbitraryStyle result)
         {
             result = default;
@@ -606,34 +585,20 @@ namespace Velvet
                 result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, px, LengthUnit.Pixel);
                 return true;
             }
-            if (body.StartsWith("contrast-", StringComparison.Ordinal))
+            var dash = body.IndexOf('-');
+            if (dash < 0)
             {
-                if (!s_contrastPreset.TryGetValue(body.Substring("contrast-".Length), out var amount))
-                {
-                    return false;
-                }
-                result = new ArbitraryStyle(ArbitraryProperty.FilterContrast, amount, LengthUnit.Pixel);
-                return true;
+                return false;
             }
-            if (body.StartsWith("brightness-", StringComparison.Ordinal))
+            var prefix = body.Substring(0, dash + 1);
+            var ceiling = s_unitAmountFilterPrefixes.TryGetValue(prefix, out var property) ? 1f : float.PositiveInfinity;
+            if ((ceiling > 1f && !s_amountFilterPrefixes.TryGetValue(prefix, out property))
+                || !TryParseWholeNumber(body.AsSpan(dash + 1), out var whole))
             {
-                if (!s_brightnessPreset.TryGetValue(body.Substring("brightness-".Length), out var b))
-                {
-                    return false;
-                }
-                result = new ArbitraryStyle(ArbitraryProperty.FilterBrightness, b, LengthUnit.Pixel);
-                return true;
+                return false;
             }
-            if (body.StartsWith("saturate-", StringComparison.Ordinal))
-            {
-                if (!s_saturatePreset.TryGetValue(body.Substring("saturate-".Length), out var s))
-                {
-                    return false;
-                }
-                result = new ArbitraryStyle(ArbitraryProperty.FilterSaturate, s, LengthUnit.Pixel);
-                return true;
-            }
-            return false;
+            result = new ArbitraryStyle(property, Mathf.Min(whole / 100f, ceiling), LengthUnit.Pixel);
+            return true;
         }
     }
 }

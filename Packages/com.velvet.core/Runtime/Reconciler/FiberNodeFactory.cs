@@ -380,7 +380,7 @@ namespace Velvet
                 StyleSkewClass.TryExtract(motionPaintClasses, out var motionSkew) ? motionSkew : default);
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyRingOnPatch(element, motionPaintClasses, clipActive: false);
-            _patcher.Appliers.ApplyBackdropOnPatch(element, motionPaintClasses, clipActive: false);
+            _patcher.Appliers.ApplyBackdropOnPatch(element, motionPaintClasses);
             WarnIgnoredMotionUtilities(motionNode, appliedClasses);
             // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
             // mount animation, the same variant enter the presence expansion drives

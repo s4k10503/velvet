@@ -1,3 +1,4 @@
+using System;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -15,6 +16,38 @@ namespace Velvet.Tests
         // The layer and its spec are read by name, so this fixture reads "none" rather than failing to build where
         // they do not exist.
         private const string LayerClass = "velvet-backdrop-layer";
+
+        // transition-all, duration-* and ease-* are the sheet's.
+        protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
+
+        private sealed class Flag : Store<bool>
+        {
+            public Flag() : base(false) { }
+
+            public void Set(bool value) => SetState(_ => value);
+
+            protected override void ResetCore() => SetState(_ => false);
+        }
+
+        private static Flag s_dim;
+
+        [Component]
+        private static VNode Dimming()
+        {
+            var dim = Hooks.UseStore(s_dim, x => x);
+            return V.Div(name: "glass", className: "w-[40px] h-[40px] transition-all duration-1000 ease-linear "
+                + (dim ? "backdrop-brightness-50" : "backdrop-brightness-100"));
+        }
+
+        // The first function's amount the layer paints now, NaN where there is no layer.
+        private static float ShownAmount(VisualElement element)
+        {
+            var layer = LayerBefore(element);
+            var shown = layer?.GetType().GetMethod("Shown", BindingFlags.NonPublic | BindingFlags.Instance)
+                ?.Invoke(layer, null) as Array;
+            var step = shown is { Length: > 0 } ? shown.GetValue(0) : null;
+            return step?.GetType().GetField("A")?.GetValue(step) is float amount ? amount : float.NaN;
+        }
 
         private static VisualElement LayerBefore(VisualElement element)
         {
@@ -83,6 +116,60 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(SpecOf(glass), Is.EqualTo("blur(16px)"));
+        }
+
+        [Test]
+        public void Given_BackdropFilterNoneBesideFunctionUtilities_When_Mounted_Then_TheClassTailwindEmitsLastHoldsTheDeclaration()
+        {
+            // Arrange — Tailwind emits backdrop-filter-none after backdrop-blur-sm and before backdrop-sepia.
+            var afterBlur = SpecOf(Mount("backdrop-filter-none backdrop-blur-sm"));
+
+            // Act
+            var beforeSepia = SpecOf(Mount("backdrop-sepia backdrop-filter-none backdrop-blur-sm"));
+
+            // Assert
+            Assert.That((afterBlur, beforeSepia), Is.EqualTo(("none", "blur(8px) sepia(1)")));
+        }
+
+        [Test]
+        public void Given_ABackdropFilterList_When_Mounted_Then_ItsFunctionsRunInTheOrderWritten()
+        {
+            // Act
+            var glass = Mount("backdrop-filter-[invert(1)_brightness(50%)_drop-shadow(0_4px_8px_#ff0000)_blur(2px)]");
+
+            // Assert
+            Assert.That(SpecOf(glass),
+                Is.EqualTo("invert(1) brightness(0.5) drop-shadow(0px 4px 8px #FF0000FF) blur(2px)"));
+        }
+
+        [Test]
+        public void Given_ABlurReadingACustomProperty_When_Mounted_Then_ItBlursByThePropertysValue()
+        {
+            // Act
+            var glass = Mount("[--b:4px] backdrop-blur-(--b)");
+
+            // Assert
+            Assert.That(SpecOf(glass), Is.EqualTo("blur(4px)"));
+        }
+
+        [Test]
+        public void Given_TransitionAll_When_TheBackdropBrightnessChanges_Then_HalfTheDurationInItIsHalfWay()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            s_dim = new Flag();
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(Dimming, key: "root"),
+                new MountOptions { MotionClock = clock });
+            var glass = _window.rootVisualElement.Q<VisualElement>("glass");
+            ForcePanelUpdate(glass.panel);
+
+            // Act
+            s_dim.Set(true);
+            _mounted.FlushStateForTest();
+            clock.Now += 0.5;
+
+            // Assert — brightness 1 to 0.5, linear.
+            Assert.That(ShownAmount(glass), Is.EqualTo(0.75f).Within(1e-3f));
         }
 
         [Test]

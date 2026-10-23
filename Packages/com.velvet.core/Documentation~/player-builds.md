@@ -114,7 +114,7 @@ node, last layout and version increment, and the node's layout computation, dirt
 a commit uses to lay the panel out before its layout effects and callback refs read it
 ([react-migration.md](react-migration.md)), the custom properties a stylesheet declares on an element, with
 the stylesheet reads that spell their values ([styling-custom-properties.md](styling-custom-properties.md)), and the
-viewport, projection and clip rectangle the renderer draws an immediate-mode element under, which place a
+viewport, projection, clip rectangle and stencil reference the renderer draws an immediate-mode element under, which place a
 [backdrop filter](styling-filters.md#backdrop-filters) on the pixels beneath its element.
 `EngineMember` declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
 and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate

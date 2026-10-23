@@ -18,13 +18,13 @@ Every filter utility on an element — built-in or custom — composes into the 
 | Utility | Values | Notes |
 |---|---|---|
 | `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`xs`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/8/12/16/24/40/64px | bracket: `px`, `rem` (at 16px), an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`), a bare `0`, `em`, a viewport unit, or a math function over them; no `%`, as CSS `blur()` takes none. `em` and the viewport units are measured on the element ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#lengths-only-an-element-can-measure)) |
-| `contrast-<n>` / `contrast-[N]` | presets 0–200 (× 0.01); bracket ≥ 0, or a percentage | |
-| `grayscale` / `grayscale-0` / `grayscale-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
-| `invert` / `invert-0` / `invert-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
-| `sepia` / `sepia-0` / `sepia-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
-| `hue-rotate-<deg>` / `hue-rotate-[Ndeg]` | presets 0/15/30/60/90/180 (degrees); the only filter with a negative form (`-hue-rotate-90`) | bracket: a CSS angle in `deg`, `rad`, `grad` or `turn`; a bare number only as `0`, as CSS takes it |
-| `brightness-<n>` / `brightness-[N]` | presets 0/50/75/90/95/100/105/110/125/150/200 (× 0.01); bracket ≥ 0, or a percentage | full CSS range, see below |
-| `saturate-<n>` / `saturate-[N]` | presets 0/50/100/150/200 (× 0.01); bracket ≥ 0, or a percentage | full CSS range, see below |
+| `contrast-<n>` / `contrast-[N]` | any whole `n` as `n`%; bracket ≥ 0, or a percentage | |
+| `grayscale` / `grayscale-<n>` / `grayscale-[N]` | bare = 100%; any whole `n` as `n`% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
+| `invert` / `invert-<n>` / `invert-[N]` | bare = 100%; any whole `n` as `n`% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
+| `sepia` / `sepia-<n>` / `sepia-[N]` | bare = 100%; any whole `n` as `n`% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
+| `hue-rotate-<deg>` / `hue-rotate-[Ndeg]` | any whole number of degrees; the only filter with a negative form (`-hue-rotate-90`) | bracket: a CSS angle in `deg`, `rad`, `grad` or `turn`; a bare number only as `0`, as CSS takes it |
+| `brightness-<n>` / `brightness-[N]` | any whole `n` as `n`%; bracket ≥ 0, or a percentage | full CSS range, see below |
+| `saturate-<n>` / `saturate-[N]` | any whole `n` as `n`%; bracket ≥ 0, or a percentage | full CSS range, see below |
 
 `brightness` and `saturate` are the only two utilities UI Toolkit has no native filter type
 for. Rather than approximate them through a built-in (which clamps to the darken/desaturate
@@ -215,9 +215,9 @@ pipeline.
 
 ## Backdrop filters
 
-Tailwind v4's `backdrop-*` utilities compose one CSS `backdrop-filter`: what lies behind the element is filtered,
-inside the element's border box and its rounded corners, and the element's own background, border and children
-paint over the result unfiltered. A translucent background over a blur is the frosted-glass pattern:
+Tailwind v4's `backdrop-*` utilities set CSS `backdrop-filter`: what lies behind the element is filtered, inside the
+element's border box and its rounded corners, and the element's own background, border and children paint over the
+result unfiltered. A translucent background over a blur is the frosted-glass pattern:
 
 ```csharp
 V.Div(className: "rounded-xl bg-white/30 backdrop-blur-md backdrop-saturate-150");
@@ -234,34 +234,47 @@ V.Div(className: "rounded-xl bg-white/30 backdrop-blur-md backdrop-saturate-150"
 | `backdrop-sepia` / `backdrop-sepia-<n>` / `backdrop-sepia-[N]` | as `backdrop-grayscale-*` |
 | `backdrop-opacity-<n>` / `backdrop-opacity-[N]` | `n`%, or a number or percentage in the bracket; above 1 clamped to 1 |
 | `backdrop-hue-rotate-<n>` / `backdrop-hue-rotate-[angle]` | `n` degrees; the negative form `-backdrop-hue-rotate-<n>`; the bracket takes what `hue-rotate-[…]` takes |
+| `backdrop-filter-none` | `backdrop-filter: none` |
+| `backdrop-filter-[<list>]` | a CSS filter list with `_` for spaces, its functions run in the order written: `blur()`, `brightness()`, `contrast()`, `drop-shadow()`, `grayscale()`, `hue-rotate()`, `invert()`, `opacity()`, `saturate()`, `sepia()`, each taking what its filter utility's bracket takes and an empty argument as the function's default |
 
-Each function is held by one class, an important one before any other and otherwise the one Tailwind emits last,
-and they compose in Tailwind's order whatever the class order: blur, brightness, contrast, grayscale, hue-rotate,
-invert, opacity, saturate, sepia. A bracket the browser rejects (`backdrop-blur-[-4px]`) leaves the element with no
-backdrop filter at all, as it invalidates the one declaration Tailwind composes; a name with no value
-(`backdrop-blur-huge`) adds nothing. The utilities work under variants (`hover:backdrop-blur-sm`,
-`dark:backdrop-brightness-50`) and with the important modifier.
+Every utility of the family writes the one `backdrop-filter` declaration, and the class holding it is an important
+one before any other and otherwise the one Tailwind emits last, as for any other property:
+`backdrop-filter-none backdrop-blur-sm` resolves to none, `backdrop-filter-none backdrop-sepia` to `sepia(1)`.
+The function utilities compose into that declaration in Tailwind's order whatever the class order: blur,
+brightness, contrast, grayscale, hue-rotate, invert, opacity, saturate, sepia, each taking its value from the class
+holding its own slot. A function bracket the browser rejects (`backdrop-blur-[-4px]`) leaves the composed
+declaration invalid, so the element draws no backdrop filter; a list the browser rejects declares nothing, so the
+class under it holds the declaration; a name with no value (`backdrop-blur-huge`) adds nothing. A `url()` in a list
+names no filter Velvet can run, and CSS ignores the whole list where a reference does not resolve, so it draws none.
+The utilities work under variants (`hover:backdrop-blur-sm`), with the important modifier, and in the
+custom-property forms (`backdrop-blur-(--glass)`, [styling-custom-properties.md](styling-custom-properties.md)).
 
 What is filtered is what the target the panel draws into holds beneath the element's box at the moment the element
 is painted: what the target held when the panel began drawing, under everything the panel paints before the element
-in that frame, and nothing it paints after. Velvet places an
-immediate-mode layer directly before the element among its parent's children, which copies those pixels and paints
-them back filtered; it carries the element's transform, opacity, visibility and display, so the backdrop follows a
-rotated or scaled element and fades with it, and it is clipped to the rectangle its ancestors' `overflow-hidden`
-clips to. A screen-space overlay panel, a panel rendering into a `RenderTexture` and an editor window's panel all
-take the same layer.
+in that frame, and nothing it paints after. Velvet places an immediate-mode layer directly before the element among
+its parent's children, which copies those pixels and paints them back filtered. It carries the element's transform,
+opacity, visibility and display, so the backdrop follows a rotated or scaled element and fades with it, and it sits
+inside every clip the element sits in: an ancestor's `overflow-hidden`, its rounded corners included, and the
+element's own `clip-path-*`. A screen-space overlay panel, a panel rendering into a `RenderTexture` and an editor
+window's panel all take the same layer.
 
-Where the result differs from a browser's:
+Each `blur()` and `drop-shadow()` is a Gaussian of the deviation given, cut at three deviations, in the element's
+own coordinates; past the box's edges it reads the box's own pixels mirrored. A colour function runs on the
+encoded value, clamped to 0..1 after each one.
 
-- A blur whose deviation exceeds 2 pixels reads a reduced copy of the backdrop, one mip level for each doubling,
-  through a Gaussian kernel cut at three deviations, so a wide blur is smooth but not a browser's exact Gaussian. The blur
-  reads only the target's pixels within the box's bounds, mirrored at their edges.
-- An ancestor's rounded `overflow-hidden` clips the backdrop to its rectangle, not to its rounded corners.
-- A change to a `backdrop-*` utility applies at once; no transition animates it.
-- Once the reconciler inserts a sibling directly before the element, the element shows no backdrop filter until
-  Velvet places the layer before it again, which it checks every 16 ms.
-- A world-space panel, and an element carrying a `clip-path-*`, draw no backdrop filter.
-- `backdrop-filter-none`, `backdrop-filter-[…]` and the custom-property forms (`backdrop-blur-(--x)`) are inert.
+A change transitions where the resolved `transition-property` runs an entry for `all` (`transition-all`, a bare
+`duration-*`), by CSS's rules for a filter list: functions pair by position, a list shorter than the other fades
+in or out at its end from the functions' initial values, `none` counts as an empty list, and any other change
+applies at once. A change back to where a running transition started runs for the part it had covered. UI Toolkit
+reads back no transition-property entry naming `backdrop-filter`, so only `all` reaches it.
+
+What remains different from a browser:
+
+- A blur or shadow deviation reaching past 341 pixels on the target is cut at 1024 pixels rather than at three
+  deviations.
+- A world-space panel draws no backdrop filter: UI Toolkit refuses an immediate-mode element in a panel cameras
+  draw (`WorldSpaceImmediateModeTests` pins the refusal), and the layer has to be one to run at the element's place
+  in paint order.
 
 The layer is `Velvet/BackdropFilter`, a shader the build step [player-builds.md](player-builds.md) describes ships.
 `BackdropFilterPlaybackTests` renders it on a `RenderTexture` panel.
