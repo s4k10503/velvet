@@ -62,7 +62,7 @@ namespace Velvet.Tests
         {
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "Npx", "ResolveDirection", "Inter", "CS",
             "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration", "Collision",
-            "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
+            "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup",
             "GetAllocatedBytesForCurrentThread", "FocusController", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "PointerDown", "Leave", "Wheel",
             "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS012",
