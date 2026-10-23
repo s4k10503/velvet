@@ -80,6 +80,16 @@ namespace Velvet.Tests
             ["StyleShadowClass.IsInsetBoxShadowClass"] = "shadow-md",
         };
 
+        // The class a family's representative needs on the group root holding the carriers, where the utility only
+        // acts on a child of such a parent: a flex order moves flex and grid items alone.
+        private static readonly Dictionary<string, string> ParentClasses = new(StringComparer.Ordinal)
+        {
+            ["StyleOrderClass.IsOrderToken"] = "flex",
+        };
+
+        private static string ParentOf(string family)
+            => ParentClasses.TryGetValue(family, out var parentClass) ? parentClass : string.Empty;
+
         private static string InContext(string family, string utility)
             => Contexts.TryGetValue(family, out var context) ? context + " " + utility : utility;
 
@@ -219,10 +229,14 @@ namespace Velvet.Tests
                 foreach (var family in families)
                 {
                     var utility = Representatives[family];
-                    var baseline = Contexts.TryGetValue(family, out var context) ? Observe(context, open) : none;
-                    var bare = Observe(InContext(family, utility), open);
-                    var gated = Observe(InContext(family, Gated(utility, prefix)), open);
-                    var shut = Observe(InContext(family, Gated(utility, prefix)), open: null);
+                    var parentClass = ParentOf(family);
+                    Contexts.TryGetValue(family, out var context);
+                    var baseline = context != null || parentClass.Length > 0
+                        ? Observe(context ?? string.Empty, open, parentClass)
+                        : none;
+                    var bare = Observe(InContext(family, utility), open, parentClass);
+                    var gated = Observe(InContext(family, Gated(utility, prefix)), open, parentClass);
+                    var shut = Observe(InContext(family, Gated(utility, prefix)), open: null, parentClass);
 
                     if (StripClasses(bare) == StripClasses(baseline))
                     {
@@ -278,7 +292,8 @@ namespace Velvet.Tests
         /// <remarks>
         /// Compared whole rather than per family, so adding a family needs no oracle written for it.
         /// </remarks>
-        private string Observe(string className, Action<VariantReachesEveryFamilyTests, VisualElement>? open)
+        private string Observe(
+            string className, Action<VariantReachesEveryFamilyTests, VisualElement>? open, string parentClass = "")
         {
             VelvetTheme.IsDark = false;
             _clock = 0.0;
@@ -294,7 +309,7 @@ namespace Velvet.Tests
                 // the spacing and paint families need an element with children, the text families need a text
                 // element, and a relational payload needs a group ancestor. All three are rendered for every
                 // family so the choice stays out of the declarations.
-                using var mounted = V.Mount(host, V.Div(className: "group @container", children: new VNode?[]
+                using var mounted = V.Mount(host, V.Div(className: ("group @container " + parentClass).TrimEnd(), children: new VNode?[]
                 {
                     V.Div(className: className,
                         children: new VNode?[] { V.Label(text: "a"), V.Label(text: "b") }),

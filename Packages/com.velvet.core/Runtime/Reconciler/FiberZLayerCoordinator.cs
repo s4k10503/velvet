@@ -250,10 +250,10 @@ namespace Velvet
 
         // Whether facts alone, whatever the siblings, move an element out of its declared slot: a z other than auto
         // and 0, or a flex order an in-flow element lays out by.
-        private static bool IsExplicit(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
+        private static bool IsExplicit(ReconcilerContext ctx, VisualElement real, StackingFacts? facts, VisualElement? parent)
             => facts is { } f
                 && ((f.Z is { } z && z != 0 && (ChildLayoutOrder.Available || IsAbsolute(ctx, real)))
-                    || (f.Order != 0 && !IsAbsolute(ctx, real)));
+                    || (f.Order != 0 && !IsAbsolute(ctx, real) && (parent == null || IsFlexOrGrid(parent))));
 
         // A zero-footprint stand-in left at a relocated element's declared slot. Carries focusable/tabIndex so it
         // can act as a same-panel Tab proxy (FiberFocusNavigator). display:None is NOT used: it excludes an element
@@ -292,7 +292,7 @@ namespace Velvet
             string[] declared, string[] resolved, bool anchored)
         {
             var facts = Record(ctx, outer, classElement, declared, resolved, anchored);
-            if (!IsExplicit(ctx, outer, facts))
+            if (!IsExplicit(ctx, outer, facts, null))
             {
                 return outer;
             }
@@ -318,7 +318,7 @@ namespace Velvet
             }
             var real = node.Real;
             Realign(ctx, parent);
-            if (!IsExplicit(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null))
+            if (!IsExplicit(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null, parent))
             {
                 parent.hierarchy.Insert(parent.hierarchy.IndexOf(placeholder), real);
                 ctx.ZLayerPlaceholders.Remove(placeholder);
@@ -332,6 +332,36 @@ namespace Velvet
             ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, parent, facts.Z, facts.Order);
             parent.hierarchy.Add(real);
             MarkPending(ctx, parent);
+        }
+
+        // A patch put newReal in the slot oldReal held, a clip-path wrapper added around it or removed from it. The
+        // placeholder, the relocation record and the facts follow, so newReal is what the bands arrange.
+        internal static void Rehome(ReconcilerContext ctx, VisualElement oldReal, VisualElement newReal)
+        {
+            if (!s_held.TryGetValue(oldReal, out var held))
+            {
+                return;
+            }
+            var anchor = AnchorOf(oldReal);
+            Hold(newReal, held.Role, held.Partner, held.Slot);
+            s_held.Remove(oldReal);
+            if (held.Slot != null)
+            {
+                Hold(held.Slot, Role.Slot, newReal);
+                ctx.ZLayerPlaceholders[held.Slot] = newReal;
+            }
+            if (anchor != null)
+            {
+                Hold(anchor, Role.Anchor, newReal);
+            }
+            if (ctx.ZLayerMembers.Remove(oldReal, out var member))
+            {
+                ctx.ZLayerMembers[newReal] = member;
+            }
+            if (ctx.StackingFacts.Remove(oldReal, out var facts))
+            {
+                ctx.StackingFacts[newReal] = facts;
+            }
         }
 
         // Patch-time entry: real (the slot's element, read through its placeholder) was patched to declared /
@@ -430,7 +460,7 @@ namespace Velvet
             {
                 return;
             }
-            var explicitly = IsExplicit(ctx, real, facts);
+            var explicitly = IsExplicit(ctx, real, facts, parent);
             if (placeholder == null)
             {
                 if (explicitly)
@@ -666,6 +696,11 @@ namespace Velvet
             parent.hierarchy.Sort((x, y) => rank[x].CompareTo(rank[y]));
         }
 
+        // Whether parent lays its children out as flex or grid items, the only ones a flex order moves in CSS. The
+        // bundled sheet realises `.grid` as a wrapping flex row, so both are told by their class.
+        private static bool IsFlexOrGrid(VisualElement parent)
+            => parent.ClassListContains("flex") || parent.ClassListContains("grid");
+
         // Whether real's own classes position it, as CSS's `position` other than static does: the absolute or
         // relative utility, or a V.Anchored element, which positions itself absolutely.
         private static bool IsPositioned(ReconcilerContext ctx, VisualElement real)
@@ -823,7 +858,7 @@ namespace Velvet
                     entry.Tracked = true;
                     entry.Z = facts.Z;
                     entry.Absolute = IsAbsolute(ctx, real);
-                    entry.Order = entry.Absolute ? 0 : facts.Order;
+                    entry.Order = entry.Absolute || !IsFlexOrGrid(parent) ? 0 : facts.Order;
                     entry.Positioned = IsPositioned(ctx, real);
                 }
             }

@@ -270,19 +270,33 @@ namespace Velvet
             var slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
             var classElement = _wrappers.ResolveWrapped(slot);
             PatchElement(classElement, oldNode, newNode);
-            var real = ReferenceEquals(slot, element) ? ResolveOuter(classElement) : slot;
+            var real = OuterOfPatched(slot, element, classElement);
             FiberZLayerCoordinator.OnPatched(_ctx, real, classElement, newNode.ClassNames,
                 ResolveGateClasses(classElement, newNode.ClassNames), newNode.Props?.Anchored != null);
+        }
+
+        // The element occupying the slot after a patch, which a clip-path wrapper added or removed by that patch
+        // changed from slot when element was a placeholder; the coordinator follows it there.
+        private VisualElement OuterOfPatched(VisualElement slot, VisualElement element, VisualElement inner)
+        {
+            var outer = ResolveOuter(inner);
+            if (!ReferenceEquals(slot, element) && !ReferenceEquals(outer, slot))
+            {
+                FiberZLayerCoordinator.Rehome(_ctx, slot, outer);
+            }
+            return outer;
         }
 
         // PatchZLayerElement's Motion counterpart. A Motion's applied classes depend on the label its patch
         // resolves, so the new side is read once the patch ran.
         private void PatchMotionSlot(VisualElement element, MotionNode oldNode, MotionNode newNode)
         {
-            var motion = _ctx.ZLayerPlaceholders.TryGetValue(element, out var real) ? real : element;
+            var slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
+            var motion = _wrappers.ResolveWrapped(slot);
             PatchMotion(motion, oldNode, newNode);
             var applied = RestingClassSet(motion, newNode.ClassNames).Merged;
-            FiberZLayerCoordinator.OnPatched(_ctx, motion, motion, applied, ResolveGateClasses(motion, applied),
+            var real = OuterOfPatched(slot, element, motion);
+            FiberZLayerCoordinator.OnPatched(_ctx, real, motion, applied, ResolveGateClasses(motion, applied),
                 newNode.Props?.Anchored != null);
         }
 

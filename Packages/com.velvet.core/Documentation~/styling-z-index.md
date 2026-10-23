@@ -90,3 +90,5 @@ relocated element belongs to the scope that declares it, wherever it paints.
   ahead of the parent's other children. In CSS it paints behind a parent that forms no stacking context.
 - **Absolutely positioned children take no flex order.** As in CSS, `order-*` on an `absolute` child changes
   nothing; its place among the positioned children is its declared one.
+- **A parent that is neither `flex` nor `grid` gives `order-*` nothing to move.** As in CSS, the order of a child of
+  such a parent is its declared one.

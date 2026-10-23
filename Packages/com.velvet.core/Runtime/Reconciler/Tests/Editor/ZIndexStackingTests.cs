@@ -42,6 +42,7 @@ namespace Velvet.Tests
         private static ToggleStore<bool> s_resortStore;
         private static ToggleStore<bool> s_typeFlipStore;
         private static ToggleStore<bool> s_signFlipStore;
+        private static ToggleStore<bool> s_clipAddedStore;
         private static ToggleStore<bool> s_moveStore;
         private static bool s_zParkZManaged;
         private static ComponentFiber s_zParkFiber;
@@ -73,6 +74,7 @@ namespace Velvet.Tests
             s_resortStore = null;
             s_typeFlipStore = null;
             s_signFlipStore = null;
+            s_clipAddedStore = null;
             s_moveStore = null;
             s_zParkZManaged = false;
             s_zParkFiber = null;
@@ -298,6 +300,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ZBandProbe.PaintOrder(root.Q<VisualElement>("parent")), Is.EqualTo("b,c,a"));
+        }
+
+        [Test]
+        public void Given_OrderClassesOnAParentThatIsNotFlex_When_Mounted_Then_TheChildrenPaintInDeclaredOrder()
+        {
+            // Arrange / Act — a flex order moves flex and grid items alone, and this parent is neither.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "a", className: "order-2"),
+                V.Div(name: "b"),
+                V.Div(name: "c", className: "order-1"),
+            }));
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(root.Q<VisualElement>("parent")), Is.EqualTo("a,b,c"));
         }
 
         [Test]
@@ -629,6 +647,40 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((inFrontBefore, Band(parent, front: false).Contains(child)), Is.EqualTo((true, true)));
+        }
+
+        [Component]
+        private static VNode ClipAddedHost()
+        {
+            var clipped = Hooks.UseStore(s_clipAddedStore, x => x);
+            return V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Div(name: "card", className: "absolute z-10 w-[10px] h-[10px]"
+                    + (clipped ? " clip-path-[circle(40%)]" : "")),
+                V.Div(name: "next"),
+            });
+        }
+
+        [Test]
+        public void Given_ARelocatedElement_When_APatchWrapsItInAClipPath_Then_TheWrapperIsWhatPaintsInTheFrontBand()
+        {
+            // Arrange
+            using var store = new ToggleStore<bool>(false);
+            s_clipAddedStore = store;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(ClipAddedHost, key: "root"));
+
+            // Act
+            store.Set(true);
+            mounted.FlushStateForTest();
+
+            // Assert — the wrapper replaced the card in the band, and the card sits inside it.
+            var wrapper = root.Q<VisualElement>("card").parent;
+            Assert.That(
+                (wrapper.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass),
+                    Band(root.Q<VisualElement>("parent"), front: true).Contains(wrapper),
+                    ReferenceEquals(wrapper.parent, root.Q<VisualElement>("parent"))),
+                Is.EqualTo((true, true, true)));
         }
 
         #endregion
