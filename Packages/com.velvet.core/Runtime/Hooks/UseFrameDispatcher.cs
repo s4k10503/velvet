@@ -11,9 +11,8 @@ namespace Velvet
     /// One dispatcher per panel: a single stable scheduled tick, hosted on the panel's own root element
     /// (never itself subject to a keyed reorder), fanning out every frame to every live
     /// <see cref="Hooks.UseFrame(System.Action{float}, int)"/> subscriber in that panel, in
-    /// <c>priority</c> order (ties broken by subscription order). Priority affects only this ordering:
-    /// Unity's own rendering is independent of this scheduler, so a higher priority does not grant the
-    /// caller any control over the render loop itself.
+    /// <c>priority</c> order (ties broken by subscription order). A positive priority also takes rendering
+    /// over from the panel's SceneViews (<see cref="TakesOverRendering"/>).
     /// </summary>
     /// <remarks>
     /// Subscribing per-PANEL rather than per-component-HOST is what makes order both deterministic and
@@ -80,6 +79,24 @@ namespace Velvet
         internal static UseFrameDispatcher GetOrCreate(IPanel panel)
         {
             return s_perPanel.GetValue(panel, static p => new UseFrameDispatcher(p));
+        }
+
+        // Whether an attached subscriber in panel holds a positive priority, which takes rendering over from
+        // the panel's SceneViews (SceneViewDriver.SyncHeldCamera).
+        internal static bool TakesOverRendering(IPanel panel)
+        {
+            if (!s_perPanel.TryGetValue(panel, out var dispatcher))
+            {
+                return false;
+            }
+            foreach (var subscription in dispatcher._subscriptions)
+            {
+                if (subscription.Active && subscription.Priority > 0)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         internal Subscription Subscribe(int priority, Action<float> callback, MotionClock? clock = null)

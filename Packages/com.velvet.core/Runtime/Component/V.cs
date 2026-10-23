@@ -926,13 +926,13 @@ namespace Velvet
 
         /// <summary>
         /// Creates a SceneView element displaying <paramref name="camera"/>'s output — the canvas-parity
-        /// element. The framework owns the RenderTexture: it is sized to the element's laid-out pixel
-        /// size (times <paramref name="resolutionScale"/>), rounded up to reuse the existing texture
+        /// element. The framework owns the RenderTexture: it is sized to the element's content box in
+        /// pixels (times <paramref name="resolutionScale"/>), rounded up to reuse the existing texture
         /// across minor resizes (preserving the element's aspect ratio), resized when the element's
         /// geometry changes,
         /// assigned to <c>camera.targetTexture</c> while mounted, and released on unmount (restoring the
-        /// camera's target only if it is still the framework's own texture). The output arrives through
-        /// the element's background image, so background utilities and rounded corners apply to it.
+        /// camera's target only if it is still the framework's own texture). The output covers the
+        /// content box, above the element's own background and clipped to its rounded corners.
         /// </summary>
         /// <param name="camera">Camera whose output the element displays. Null renders nothing (the
         /// element mounts as an empty box until a camera is supplied).</param>
@@ -994,10 +994,10 @@ namespace Velvet
 
         /// <summary>
         /// Creates a Particles element that simulates <paramref name="effect"/> in a hidden,
-        /// framework-owned host and draws the live particles as textured quads inside the element —
-        /// no camera, no world-space canvas, no render-pipeline coupling. The simulation host is
-        /// instantiated on mount (its renderer disabled; only the simulation is consumed), destroyed
-        /// on unmount, and recreated when <paramref name="effect"/> changes.
+        /// framework-owned host and draws the geometry its renderers build inside the element, with no
+        /// camera and no world-space canvas. The simulation host is instantiated on mount (its renderers
+        /// disabled; only the simulation is consumed), destroyed on unmount, and recreated when
+        /// <paramref name="effect"/> changes.
         /// </summary>
         /// <param name="effect">The source ParticleSystem (typically a prefab reference) to simulate.
         /// Null mounts an inert element until an effect is supplied.</param>
@@ -1063,6 +1063,53 @@ namespace Velvet
                 WhileTapClass = whileTapClass,
                 WhileFocusClass = whileFocusClass,
             };
+        }
+
+        /// <summary>
+        /// Creates a Particles element that plays a VFX Graph <paramref name="visualEffect"/> in a hidden,
+        /// framework-owned clone and shows what a camera under that clone renders of it, over the element's
+        /// laid-out box. The clone is instantiated on mount, destroyed on unmount, and recreated when
+        /// <paramref name="visualEffect"/> changes.
+        /// </summary>
+        /// <param name="visualEffect">The source VisualEffect (typically a prefab reference) to play.
+        /// Null mounts an inert element until an effect is supplied.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <param name="playOn">When the effect starts: on mount (default) or never (manual control).</param>
+        /// <param name="pixelsPerUnit">World-unit → element-pixel mapping, centered on the element. Must be positive.</param>
+        /// <param name="styles">Inline style overrides applied on top of USS classes.</param>
+        /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element (gesture-driven).</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element (gesture-driven).</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus (gesture-driven).</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <returns>The created <see cref="ElementNode"/> representing this particles element.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="pixelsPerUnit"/> is not positive,
+        /// or when <paramref name="playOn"/> names no member of <see cref="PlayTrigger"/>.</exception>
+        public static ElementNode Particles(
+            UnityEngine.VFX.VisualEffect? visualEffect,
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            PlayTrigger playOn = PlayTrigger.Mount,
+            float pixelsPerUnit = 100f,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
+        {
+            // The ParticleSystem factory validates and builds the node; the settings then name the VisualEffect.
+            var node = Particles((ParticleSystem?)null, className, key, name, playOn, pixelsPerUnit, styles, refCallback,
+                whileHoverClass, whileTapClass, whileFocusClass, data, aria, events);
+            node.Props!.Particles = node.Props.Particles! with { VisualEffect = visualEffect };
+            return node;
         }
 
         /// <summary>

@@ -1196,9 +1196,10 @@ namespace Velvet
         /// clock did not move invokes nothing.
         /// <paramref name="priority"/> orders callbacks within the SAME panel — lower runs earlier,
         /// equal priorities run in subscription (mount) order, and this stays true across a keyed
-        /// reorder of the host. A positive priority has no side effect beyond ordering: Unity's
-        /// rendering is independent of this scheduler, so there is no internal render call for it to
-        /// take over. The latest render's priority applies live, the same way <paramref name="onFrame"/>
+        /// reorder of the host. A positive priority also takes rendering over, as in react-three-fiber:
+        /// while the host is attached, a <see cref="V.SceneView"/> showing its camera in the same panel
+        /// holds that camera disabled, and the callback renders it with <c>Camera.Render()</c>. The
+        /// latest render's priority applies live, the same way <paramref name="onFrame"/>
         /// does — changing it does not restart the subscription or move it among same-priority siblings.
         /// </summary>
         /// <param name="onFrame">Invoked once per frame with the elapsed time in seconds (always positive).</param>

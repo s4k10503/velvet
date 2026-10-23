@@ -3096,7 +3096,7 @@ namespace Velvet
             var winner = sources.Override is { } own && !sources.UtilityImportant
                 ? own
                 : sources.Utility ?? new StyleBackground(StyleKeyword.Null);
-            SceneViewElement.WriteBackground(element, winner);
+            element.style.backgroundImage = winner;
             sources.Written = winner;
             // Resolved now rather than after the next style pass: NineSlicePercentPanelTests pins that an element
             // the panel has styled lets go of a withdrawn inline image in its resolved style at once.

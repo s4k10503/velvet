@@ -14,8 +14,8 @@ namespace Velvet.Tests
     /// a solid-color camera fills the element with that color (including the sRGB/linear round-trip
     /// this URP project renders with), and a later camera color change appears WITHOUT any Velvet
     /// re-render — the element samples the live RenderTexture, it does not copy it. A runtime panel's
-    /// scale change re-derives the texture with no geometry event, and in Play Mode the element never
-    /// renders the camera itself.
+    /// scale change re-derives the texture with no geometry event, in Play Mode the element never
+    /// renders a camera it holds itself, and a rounded element's corners clip the picture.
     /// </summary>
     internal sealed class SceneViewPlaybackTests
     {
@@ -123,6 +123,25 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(cam.targetTexture.width, Is.EqualTo(128));
+        }
+
+        // GREEN_ON_BASE(characterization): a rounded SceneView's corners clip the camera picture, as they did.
+        [UnityTest]
+        public IEnumerator Given_ARoundedSceneView_When_Rendered_Then_ItsCornersClipThePicture()
+        {
+            // Arrange
+            var cam = CreateSolidColorCamera(Color.red);
+            _host = new RenderTexturePanelHost("SceneViewPanel", 400, 300);
+            _mounted = V.Mount(_host.Root, V.SceneView(cam, className: "w-[200px] h-[150px] rounded-[40px]", name: "sv"));
+
+            // Act
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+
+            // Assert — the element's top-left pixel lies outside a 40px corner, its center inside;
+            // ReadPixels is bottom-origin.
+            var corner = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(1, 300 - 2, 1, 1))[0];
+            Assert.That((RenderTexturePixelReader.IsRedPixel(SamplePanelCenterOfElement()), RenderTexturePixelReader.IsRedPixel(corner)),
+                Is.EqualTo((true, false)));
         }
 
         // GREEN_ON_BASE(characterization): in Play Mode the element adds no render of its camera, as before.
