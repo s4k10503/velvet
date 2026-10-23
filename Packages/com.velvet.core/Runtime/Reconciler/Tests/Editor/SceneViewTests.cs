@@ -86,7 +86,7 @@ namespace Velvet.Tests
         // A case that lays the panel out again before it fires the tick runs on the fake clock and steps it past
         // the tick's interval, so its own drive fires the tick once whether or not a layout pass already ran the
         // scheduler.
-        private void UseFakeClock()
+        private void PutPanelOnFakeClock()
         {
             UseFrameFakeClockHost.Reset();
             EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
@@ -96,6 +96,24 @@ namespace Velvet.Tests
         {
             UseFrameFakeClockHost.Ms += 100;
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+        }
+
+        private int _repaints;
+
+        // Counts the element's repaints from here on, after a layout pass that takes up whatever the arrangement
+        // left dirty: on an editor panel nothing but the tick marks a live SceneView dirty once its texture is in
+        // place, so a count above zero after FireTick and a layout pass says the tick ran.
+        private void CountRepaints(VisualElement element)
+        {
+            element.generateVisualContent += _ => _repaints++;
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            _repaints = 0;
+        }
+
+        private bool TickRan()
+        {
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            return _repaints > 0;
         }
 
         // Null where the element shows no camera output.
@@ -275,7 +293,7 @@ namespace Velvet.Tests
         public void Given_APaddingShiftThatKeepsTheContentSize_When_TheTickFires_Then_TheFeedFollowsTheContentBox()
         {
             // Arrange — the content box moves 4px right at the same size, which re-derives no texture.
-            UseFakeClock();
+            PutPanelOnFakeClock();
             s_camera = CreateCamera("cam");
             MountAndLayout(V.Component(ShiftingPaddingHost, key: "root"));
             var el = _host.Root.Q<VisualElement>("sv");
@@ -798,6 +816,7 @@ namespace Velvet.Tests
             Assert.That((rt.height <= 4096, Mathf.Abs(aspect - 20f) < 0.5f), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the tick re-derives a texture whose pixel scale went stale, as it did.
         [Test]
         public void Given_AStalePixelScale_When_TheEditorRepaintTickFires_Then_TheTextureIsRederived()
         {
@@ -805,6 +824,7 @@ namespace Velvet.Tests
             // no geometry event (points are unchanged) and no props pass, so only the recurring editor
             // repaint tick can notice. Staleness is simulated by doubling the scale on the live
             // binding directly — the same derivation input a density change moves.
+            PutPanelOnFakeClock();
             var cam = CreateCamera("cam");
             MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]", name: "sv"));
             Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
@@ -813,7 +833,7 @@ namespace Velvet.Tests
             binding.Settings = new SceneViewSettings(cam, 2f);
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
             Assert.That((cam.targetTexture.width, cam.targetTexture.height), Is.EqualTo((256, 128)));
@@ -840,18 +860,20 @@ namespace Velvet.Tests
         private static bool IsRed(RenderTexture texture) =>
             RenderTexturePixelReader.IsRedPixel(RenderTexturePixelReader.ReadPixels(texture, new RectInt(0, 0, 1, 1))[0]);
 
+        // GREEN_ON_BASE(characterization): the tick renders an enabled camera into its texture, as it did.
         [Test]
         public void Given_AnEnabledCameraOutsidePlayMode_When_TheTickFires_Then_TheCameraRendersIntoTheTexture()
         {
             // Arrange — the texture starts blue, so only a render of the red-clearing camera turns it red.
             TestGraphics.IgnoreIfHeadless("a camera render");
+            PutPanelOnFakeClock();
             var cam = CreateRedCamera();
             MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]"));
             Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
             Fill(cam.targetTexture, Color.blue);
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
             Assert.That(IsRed(cam.targetTexture), Is.True);
@@ -864,7 +886,7 @@ namespace Velvet.Tests
             // Arrange — the resize re-derives the texture and re-syncs the tick, which must leave one
             // tick running rather than a second beside the first.
             TestGraphics.IgnoreIfHeadless("a camera render");
-            UseFakeClock();
+            PutPanelOnFakeClock();
             s_camera = CreateRedCamera();
             MountAndLayout(V.Component(ResizingHost, key: "root"));
             s_setFlag.Invoke(true);
@@ -896,7 +918,7 @@ namespace Velvet.Tests
         {
             // Arrange — an editor panel regenerates only what is marked dirty, and nothing but the tick
             // marks this element once its texture is in place.
-            UseFakeClock();
+            PutPanelOnFakeClock();
             var cam = CreateCamera("cam");
             MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]", name: "sv"));
             var element = _host.Root.Q<VisualElement>("sv");
@@ -913,44 +935,48 @@ namespace Velvet.Tests
             Assert.That(repaints, Is.GreaterThan(0));
         }
 
-        // GREEN_ON_BASE(characterization): the tick leaves a disabled camera's texture holding what it held before.
+        // GREEN_ON_BASE(characterization): a tick that ran leaves a disabled camera's texture as it was, as before.
         [Test]
         public void Given_ADisabledCameraOutsidePlayMode_When_TheTickFires_Then_TheCameraDoesNotRender()
         {
-            // Arrange
+            // Arrange — the repaint count says the tick ran, without which an unrendered texture proves nothing.
             TestGraphics.IgnoreIfHeadless("a camera render");
+            PutPanelOnFakeClock();
             var cam = CreateRedCamera();
-            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]"));
+            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]", name: "sv"));
             Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            CountRepaints(_host.Root.Q<VisualElement>("sv"));
             cam.enabled = false;
             Fill(cam.targetTexture, Color.blue);
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
-            Assert.That(IsRed(cam.targetTexture), Is.False);
+            Assert.That((IsRed(cam.targetTexture), TickRan()), Is.EqualTo((false, true)));
         }
 
-        // GREEN_ON_BASE(characterization): a texture user code gave the camera is never rendered into by the tick.
+        // GREEN_ON_BASE(characterization): a tick that ran leaves a texture user code gave the camera unrendered, as before.
         [Test]
         public void Given_AUserReassignedTargetOutsidePlayMode_When_TheTickFires_Then_TheCameraDoesNotRenderIntoIt()
         {
-            // Arrange
+            // Arrange — the repaint count says the tick ran, as in the disabled-camera case above.
             TestGraphics.IgnoreIfHeadless("a camera render");
+            PutPanelOnFakeClock();
             var cam = CreateRedCamera();
-            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]"));
+            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]", name: "sv"));
             Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            CountRepaints(_host.Root.Q<VisualElement>("sv"));
             var userTexture = new RenderTexture(64, 64, 24);
             _spawned.Add(userTexture);
             cam.targetTexture = userTexture;
             Fill(userTexture, Color.blue);
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            FireTick();
 
             // Assert
-            Assert.That(IsRed(userTexture), Is.False);
+            Assert.That((IsRed(userTexture), TickRan()), Is.EqualTo((false, true)));
         }
 
         [Test]
@@ -1154,7 +1180,7 @@ namespace Velvet.Tests
         // Mounts "a", then adds "b", whose explicit pass claims the shared camera last.
         private void MountSharedCamera()
         {
-            UseFakeClock();
+            PutPanelOnFakeClock();
             s_camera = CreateRedCamera();
             MountAndLayout(V.Component(SharedCameraHost, key: "root"));
             s_setFlag.Invoke(true);
