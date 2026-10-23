@@ -80,6 +80,23 @@ namespace Velvet
             Place(element, binding);
         }
 
+        // Whether element clips its content, and, where that disagrees with whether it has an overlay, queues settle once
+        // outside the paint that asks, since settling writes the hierarchy. pending is the caller's mark that a settle
+        // is queued.
+        public static bool ClipsAndSettle<T>(VisualElement element, ref bool pending, T state, Action<VisualElement, T> settle)
+        {
+            var clips = StyleCascade.ClipsOverflow(element);
+            if (clips != Has(element) && !pending)
+            {
+                pending = true;
+                Defer(element, state, settle);
+            }
+            return clips;
+        }
+
+        private static void Defer<T>(VisualElement element, T state, Action<VisualElement, T> settle)
+            => element.schedule.Execute(() => settle(element, state));
+
         // Ensures the overlay where want, else removes it, and repaints the element.
         public static void Sync(VisualElement element, bool want, Action<MeshGenerationContext, float, float> paint)
         {
@@ -94,7 +111,13 @@ namespace Velvet
             element.MarkDirtyRepaint();
         }
 
-        public static void Remove(VisualElement element)
+        public static void Remove(VisualElement element) => Remove(element, deferHierarchy: false);
+
+        // As Remove, but the overlay is hidden now and leaves the hierarchy on the host's next scheduler pass, so the
+        // host's child count does not change inside the call. The divided child's teardown takes this one.
+        public static void RemoveLater(VisualElement element) => Remove(element, deferHierarchy: true);
+
+        private static void Remove(VisualElement element, bool deferHierarchy)
         {
             if (!s_byElement.TryGetValue(element, out var binding))
             {
@@ -103,8 +126,18 @@ namespace Velvet
             element.UnregisterCallback(binding.OnGeometry);
             element.UnregisterCallback(binding.OnAttach);
             binding.StateTick?.Pause();
-            binding.Overlay.RemoveFromHierarchy();
             s_byElement.Remove(element);
+            var overlay = binding.Overlay;
+            var host = overlay.parent;
+            if (!deferHierarchy || host == null)
+            {
+                overlay.RemoveFromHierarchy();
+            }
+            else
+            {
+                overlay.style.display = DisplayStyle.None;
+                host.schedule.Execute(() => overlay.RemoveFromHierarchy());
+            }
             RingOverlay.Replace(element);
         }
 

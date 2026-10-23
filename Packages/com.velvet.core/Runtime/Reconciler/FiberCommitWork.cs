@@ -232,26 +232,28 @@ namespace Velvet
         // too, and its rows are not the range's, which is what the target comparison separates.
         private static void ShiftPortalRangesAround(ComponentFiber fiber, VisualElement? mountPoint, int delta)
         {
-            var portalState = fiber.Reconciler?.Context.PortalState;
-            if (portalState == null)
+            var table = fiber.Reconciler?.Context.PortalState;
+            if (table == null)
             {
                 return;
             }
             var owning = OwningPortalOf(fiber, mountPoint);
             var range = default(PortalSlotInfo);
-            if (owning != null && !portalState.TryGetValue(owning, out range))
+            if (owning != null && !table.TryGetValue(owning, out range))
             {
                 return;
             }
             if (ReferenceEquals(range.Target, mountPoint))
             {
-                portalState[owning!] = range with { SlotLength = range.SlotLength + delta };
-                PortalSlotTracker.ShiftRangesBehind(portalState, mountPoint, owning!, range, delta);
+                table.Stored[owning!] = range with { SlotLength = range.SlotLength + delta };
+                // The rows the component added or removed are not the ones the range was read from.
+                table.Anchor(owning!);
+                PortalSlotTracker.ShiftRangesBehind(table.Stored, mountPoint, owning!, range, delta);
                 return;
             }
             // Rows of mountPoint's own, which every range on it follows. Only an inline fiber propagates, and
             // one has a MountPoint.
-            PortalSlotTracker.ShiftRangesOn(portalState, mountPoint!, delta);
+            PortalSlotTracker.ShiftRangesOn(table.Stored, mountPoint!, delta);
         }
 
         // Follows a reconcile of a Portal target's own children, whose rows sit ahead of every range on the
@@ -262,9 +264,9 @@ namespace Velvet
         internal static void FollowOwnRows(ReconcilerContext ctx, VisualElement target, int rowsBehindBefore)
         {
             // No range left on target (the reconcile unmounted the last Portal on it) moves nothing.
-            var rowsBehindAfter = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
+            var rowsBehindAfter = PortalSlotTracker.RowsBehindRanges(ctx.PortalState.Stored, target);
             var delta = rowsBehindAfter.GetValueOrDefault(rowsBehindBefore) - rowsBehindBefore;
-            PortalSlotTracker.ShiftRangesOn(ctx.PortalState, target, delta);
+            PortalSlotTracker.ShiftRangesOn(ctx.PortalState.Stored, target, delta);
             var tenancy = ctx.ComponentRegistry.TenancyOf(target);
             if (tenancy == null)
             {
@@ -294,7 +296,7 @@ namespace Velvet
             // over and removes.
             if (ctx.PortalState.Count > 0)
             {
-                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
+                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState.Stored, target);
             }
         }
 
@@ -306,7 +308,7 @@ namespace Velvet
         {
             if (ctx.OwnRowFrames.ContainsKey(target))
             {
-                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
+                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState.Stored, target);
             }
         }
 

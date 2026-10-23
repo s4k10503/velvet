@@ -43,7 +43,8 @@ namespace Velvet
     /// routes of their own: a <c>rounded-*</c> class through the custom properties <c>_radius_declared.uss</c>
     /// restates it as, and an inline writer through <see cref="SetInline"/>, which
     /// <see cref="StyleArbitraryValueResolver.ApplyInline"/> calls in place of writing a radius slot itself. A
-    /// corner neither route declares is never held, since nothing would say when its value changed.
+    /// length other code writes to a slot is a declaration as well, found on the next refresh. A corner none of
+    /// these declares is never held, since nothing would say when its value changed.
     ///
     /// A refit a size change causes suspends the element's transitions while it writes: a new size is not a
     /// declared change, and a <c>transition-all</c> element would otherwise animate from the unfitted radius
@@ -79,7 +80,11 @@ namespace Velvet
             // What this last wrote to each corner's inline slot; null where it holds nothing.
             public readonly Length?[] Written = new Length?[CornerCount];
 
-            // Corners whose inline slot holds a value this did not write, as of the current refresh.
+            // The length other code last wrote to each corner's inline slot; null where none has, or where it
+            // has since cleared the slot.
+            public readonly Length?[] Code = new Length?[CornerCount];
+
+            // Corners whose inline slot holds a keyword, which outranks every declaration and is left alone.
             public readonly bool[] Foreign = new bool[CornerCount];
 
         }
@@ -209,12 +214,23 @@ namespace Velvet
             }
             for (var i = 0; i < CornerCount; i++)
             {
-                state.Sheet[i] = DeclaredBySheet(evt.customStyle, i);
+                state.Sheet[i] = DeclaredBySheet(element, evt.customStyle, i);
             }
             RefreshDeclared(element, state);
         }
 
-        private static Length? DeclaredBySheet(ICustomStyle customStyle, int corner)
+        // What the rules give the corner once they have been through the cascade, so a rule of the application's own
+        // that outranks a rounded-* class on one corner is the declaration there. A corner no rule gives a radius
+        // reads as 0, which declares nothing unless a class's restatement says the corner is declared.
+        private static Length? DeclaredBySheet(VisualElement element, ICustomStyle customStyle, int corner)
+        {
+            var restated = DeclaredByRestatement(customStyle, corner);
+            var cascaded = StyleCascade.Radius(element, corner);
+            var declared = cascaded != null && (cascaded.Value.value != 0f || restated != null);
+            return declared ? cascaded : restated;
+        }
+
+        private static Length? DeclaredByRestatement(ICustomStyle customStyle, int corner)
         {
             if (!customStyle.TryGetValue(s_declaredProperties[corner], out var text))
             {
@@ -239,22 +255,30 @@ namespace Velvet
         private static void RefreshDeclared(VisualElement element, State state)
             => Refresh(element, state, suspendTransitions: false);
 
-        // A value or keyword anyone else wrote into the slot outranks the class the way inline style does, so
-        // that corner counts as undeclared: it is neither fitted nor given back.
+        // A length other code wrote into the slot outranks the class the way inline style does, and is scaled as CSS
+        // scales a declared radius; a keyword there counts as undeclared, neither fitted nor given back.
         private static Length? Declared(State state, int corner)
-            => state.Foreign[corner] ? null : state.Inline[corner] ?? state.Sheet[corner];
+            => state.Foreign[corner] ? null : state.Code[corner] ?? state.Inline[corner] ?? state.Sheet[corner];
 
         private static void FindForeignValues(VisualElement element, State state)
         {
             for (var i = 0; i < CornerCount; i++)
             {
                 var slot = InlineCorner(element.style, i);
-                var foreign = slot.keyword != StyleKeyword.Null
-                    && (slot.keyword != StyleKeyword.Undefined || slot.value != state.Written[i]);
-                state.Foreign[i] = foreign;
+                var keyword = slot.keyword != StyleKeyword.Null && slot.keyword != StyleKeyword.Undefined;
+                var written = slot.keyword == StyleKeyword.Undefined && slot.value != state.Written[i];
+                state.Foreign[i] = keyword;
+                if (written)
+                {
+                    state.Code[i] = slot.value;
+                }
+                else if (keyword || slot.keyword == StyleKeyword.Null)
+                {
+                    state.Code[i] = null;
+                }
                 // A slot found empty no longer holds what this wrote, as when a layoutId projection hands back the slot it
                 // held over it (Given_AnArbitrarilyRoundedLayoutIdMotionMidTween_When_ARadiusWrittenOverItIsClearedAgain_Then_ItLandsAtItsOwnRadius).
-                if (foreign || slot.keyword == StyleKeyword.Null)
+                if (keyword || written || slot.keyword == StyleKeyword.Null)
                 {
                     state.Written[i] = null;
                 }
@@ -325,7 +349,7 @@ namespace Velvet
                 return new Length(declared.value * factor, declared.unit);
             }
             // A class radius that fits is the stylesheet's to paint.
-            return state.Inline[corner] != null ? declared : null;
+            return state.Inline[corner] != null || state.Code[corner] != null ? declared : null;
         }
 
         private static float FactorFor(VisualElement element, State state)

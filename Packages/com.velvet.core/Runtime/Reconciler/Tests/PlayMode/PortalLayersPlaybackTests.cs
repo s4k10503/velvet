@@ -135,6 +135,38 @@ namespace Velvet.Tests
             Assert.That(redPixels, Is.GreaterThan(50));
         }
 
+        [UnityTest]
+        public IEnumerator Given_AWorldSpacePanel_When_FramesRun_Then_TheHostCarriesExactlyTheColliderTheDocumentKeeps()
+        {
+            // Arrange
+            var root = CreateMainPanel(withTheme: false);
+            yield return null;
+            _mounted = V.Mount(root, V.Div(children: new VNode[]
+            {
+                V.WorldSpace(Vector3.zero, panelSize: new Vector2(400f, 400f), children: new VNode[]
+                {
+                    V.Div(name: "ws-fill", className: "w-[400px] h-[400px] bg-[#ef4444]"),
+                }),
+            }));
+
+            // Act — enough frames for the host's document to lay out and add the collider it keeps.
+            for (var frame = 0; frame < 20; frame++)
+            {
+                yield return null;
+            }
+
+            // Assert
+            GameObject host = null;
+            foreach (var doc in Resources.FindObjectsOfTypeAll<UIDocument>())
+            {
+                if (doc.rootVisualElement?.Q<VisualElement>("ws-fill") != null)
+                {
+                    host = doc.gameObject;
+                }
+            }
+            Assert.That(host != null ? host.GetComponents<BoxCollider>().Length : -1, Is.EqualTo(1));
+        }
+
         [Component]
         private static VNode TogglingOverlayHost()
         {

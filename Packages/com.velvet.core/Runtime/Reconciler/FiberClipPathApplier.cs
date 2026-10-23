@@ -103,7 +103,7 @@ namespace Velvet
         // swaps the mask — the per-binding bake cache makes a return to a previously-seen shape re-bake-free.
         internal void ReResolveClipPathLive(VisualElement element)
         {
-            if (!_ctx.ClipPathBindings.TryGetValue(element, out var binding))
+            if (!_ctx.ClipPathBindings.TryGetValue(element, out var binding) || binding.Correction)
             {
                 return;
             }
@@ -122,7 +122,7 @@ namespace Velvet
         // layout (ClipPathLayoutBox), hides overflow and carries the baked vector shape as its background — the
         // combination UIR stencil-clips descendants to.
         // Does NOT touch any parent — the caller inserts the returned wrapper.
-        private VisualElement BuildClipPathWrapper(VisualElement element, ClipPathSpec? spec)
+        private VisualElement BuildClipPathWrapper(VisualElement element, ClipPathSpec? spec, bool correction = false)
         {
             var wrapper = WrapperInfrastructure.CreatePassthroughWrapper(FiberWrapperElementAppliers.ClipPathWrapperClass);
             // overflow:hidden + vector background-image = UIR stencil mask of the subtree. A variant-only clip
@@ -131,9 +131,12 @@ namespace Velvet
             wrapper.style.overflow = spec != null ? Overflow.Hidden : Overflow.Visible;
             wrapper.Add(element); // reparents element from its current parent (if any) into the wrapper
 
-            var binding = new ClipPathBinding(wrapper) { Spec = spec, Inner = element };
-            binding.OnGeometry = _ => SyncClipPathGeometry(element, binding);
-            element.RegisterCallback(binding.OnGeometry);
+            var binding = new ClipPathBinding(wrapper) { Spec = spec, Inner = element, Correction = correction };
+            if (!correction)
+            {
+                binding.OnGeometry = _ => SyncClipPathGeometry(element, binding);
+                element.RegisterCallback(binding.OnGeometry);
+            }
 
             _ctx.ClipPathBindings[element] = binding;
             _ctx.WrapperToInnerMap[wrapper] = element;
@@ -141,24 +144,46 @@ namespace Velvet
 
             // Off-panel / pre-layout the size is unknown (NaN) and the sync no-ops; on a patch-time
             // wrap of an already-laid-out element it bakes immediately.
-            SyncClipPathGeometry(element, binding);
+            if (!correction) SyncClipPathGeometry(element, binding);
             return wrapper;
         }
 
         // Wraps an already-mounted element in place, inserting the wrapper at the element's slot.
-        private void WrapClipPathInPlace(VisualElement element, ClipPathSpec? spec)
+        private void WrapClipPathInPlace(VisualElement element, ClipPathSpec? spec, bool correction = false)
         {
             var parent = element.parent;
             if (parent == null)
             {
                 // Not in the hierarchy (defensive): build the binding but there is no slot to insert into.
-                BuildClipPathWrapper(element, spec);
+                BuildClipPathWrapper(element, spec, correction);
                 return;
             }
             var index = parent.IndexOf(element);
-            var wrapper = BuildClipPathWrapper(element, spec); // removes element from parent
+            var wrapper = BuildClipPathWrapper(element, spec, correction); // removes element from parent
             parent.Insert(index, wrapper);
         }
+
+        // The wrapper a rotated layoutId Motion inside a stretching one is drawn through, so the counter-scale
+        // MotionLayoutIdDriver writes on it sits outside the Motion's own rotate. It carries no mask, and
+        // ClipPathBinding.Correction keeps the shadow, the ring and the clip-path rules from reading it as a clip.
+        internal VisualElement WrapLayoutIdCorrection(VisualElement element)
+            => BuildClipPathWrapper(element, null, correction: true);
+
+        internal void WrapLayoutIdCorrectionInPlace(VisualElement element)
+        {
+            if (!_ctx.ClipPathBindings.ContainsKey(element)) WrapClipPathInPlace(element, null, correction: true);
+        }
+
+        internal void UnwrapLayoutIdCorrectionInPlace(VisualElement element)
+        {
+            if (_ctx.ClipPathBindings.TryGetValue(element, out var binding) && binding.Correction)
+            {
+                UnwrapClipPathInPlace(element, binding);
+            }
+        }
+
+        internal bool HasLayoutIdCorrection(VisualElement element)
+            => _ctx.ClipPathBindings.TryGetValue(element, out var binding) && binding.Correction;
 
         // Removes the clip wrapper, destroying the baked VectorImage, and restores the inner at the
         // same slot.

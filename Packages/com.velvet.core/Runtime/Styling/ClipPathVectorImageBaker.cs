@@ -328,6 +328,9 @@ namespace Velvet
         public readonly VisualElement Wrapper;
         public VisualElement Inner { get; init; } = null!;
         public ClipPathSpec? Spec;
+        // A wrapper that only carries a layoutId Motion's counter-scale (FiberClipPathApplier.WrapLayoutIdCorrection):
+        // no mask, no geometry callback, and no clip for the layers that key off one.
+        public bool Correction { get; init; }
         public EventCallback<GeometryChangedEvent> OnGeometry = null!;
         public VectorImage? Image;
 

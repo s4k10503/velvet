@@ -287,12 +287,13 @@ namespace Velvet.Tests
                 $"plainClipped={plainClipped} shadowOpen={shadowOpen} shadowClipped={shadowClipped}");
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ABorderedSkewedCaster_When_ItsOwnOverflowIsHidden_Then_ItKeepsItsBorder()
         {
             // Arrange — a clipping skewed card paints its border and the background beneath it on a sibling over
             // it (FaceBorderOverlay). A shallow angle keeps the sheared face over the sampled strip.
-            const string skew = " skew-x-[10deg]";
+            const string skew = " skew-x-[10deg] rotate-0";
             yield return MountBorderedCard("BorderedSkewOpen", skew, clip: false);
             var open = SampleBorderStrip();
 
@@ -306,11 +307,12 @@ namespace Velvet.Tests
                 $"open={open} clipped={clipped}");
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ASkewedElement_When_ItsOwnOverflowIsHidden_Then_TheShearOverhangIsLostAndTheFaceSurvives()
         {
             // Arrange
-            const string skew = BoxBase + " bg-[#ff0000] skew-x-[30deg]";
+            const string skew = BoxBase + " bg-[#ff0000] skew-x-[30deg] rotate-0";
             yield return MountBox("SkewOpen", skew, clip: false);
             var openOverhang = Count(LeftOfBox, IsRed);
 
@@ -328,8 +330,8 @@ namespace Velvet.Tests
                 $"openOverhang={openOverhang} clippedOverhang={clippedOverhang} clippedFace={clippedFace}");
         }
 
-        // GREEN_ON_BASE(characterization): the nesting styling-variants.md gives for skew-* plus a clip.
         // Move `overflow-hidden` from the inner child onto the caster and the overhang term reddens.
+        // GREEN_ON_BASE(characterization): the nesting styling-variants.md gives for skew-* plus a clip.
         [UnityTest]
         public IEnumerator Given_ASkewedElementWithAFullSizeClippingChild_When_ItRenders_Then_TheFaceKeepsItsOverhangAndTheContentIsClipped()
         {
@@ -337,7 +339,7 @@ namespace Velvet.Tests
             // its right edge: the half inside proves the content painted, the half outside proves the clip took.
             NewPanel("SkewClipChild");
             _mounted = V.Mount(_host.Root, V.Div(name: "caster",
-                className: BoxBase + " bg-[#ff0000] skew-x-[30deg]",
+                className: BoxBase + " bg-[#ff0000] skew-x-[30deg] rotate-0",
                 children: new[] { V.Div(name: "clip", className: "absolute inset-0 overflow-hidden") }));
             var caster = _host.Root.Q<VisualElement>("caster");
             var clip = _host.Root.Q<VisualElement>("clip");
@@ -371,12 +373,13 @@ namespace Velvet.Tests
                 $"box={box} inner={inner} overhang={overhang} inside={contentInside} outside={contentOutside}");
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ASkewedGradientElement_When_ItsOwnOverflowIsHidden_Then_TheShearOverhangIsLost()
         {
             // Arrange — a gradient alone is a background-image and is clipped to the box either way; the
             // skewed one is the case that becomes a generated-content quad, so it is the one at risk.
-            const string skewGradient = BoxBase + " skew-x-[30deg] bg-gradient-to-r from-[#ff0000] to-[#ff0000]";
+            const string skewGradient = BoxBase + " skew-x-[30deg] bg-gradient-to-r from-[#ff0000] to-[#ff0000] rotate-0";
             yield return MountBox("SkewGradOpen", skewGradient, clip: false);
             var openOverhang = Count(LeftOfBox, IsRed);
 
@@ -394,7 +397,7 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_ADashedBorderElement_When_ItsOwnOverflowIsHidden_Then_TheWholeOutlineIsLost()
+        public IEnumerator Given_ADashedBorderElement_When_ItsOwnOverflowIsHidden_Then_TheOutlineIsKept()
         {
             // Arrange
             const string border = BoxBase + " bg-[#000040] border-[10px] border-[#ff0000]";
@@ -402,26 +405,21 @@ namespace Velvet.Tests
             yield return MountBox("DashedOpen", dashed, clip: false);
             var openBand = Count(TopBorderBand, IsRed);
 
-            // Act — the same box clipped, then the same width and colour as a plain SOLID border, also clipped.
+            // Act — the same box clipped.
             yield return MountBox("DashedClipped", dashed, clip: true);
             var clippedControl = CountAll(IsGreen);
-            var clippedOutline = CountAll(IsRed);
-            yield return MountBox("SolidClipped", border, clip: true);
-            var clippedSolid = Count(TopBorderBand, IsRed);
+            var clippedBand = Count(TopBorderBand, IsRed);
 
-            // Assert — the dashed outline is drawn in the border band, which the padding-box clip excludes, so
-            // the element renders with NO border at all rather than a trimmed one. The solid term is what makes
-            // this a Velvet deviation rather than an engine-wide rule: UI Toolkit's own border property is not
-            // painted through generated content and survives the same clip, so one style of the same border
-            // renders and the other vanishes.
-            Assert.That((openBand > 0, clippedControl == 0, clippedOutline == 0, clippedSolid > 0),
-                Is.EqualTo((true, true, true, true)),
-                $"openBand={openBand} clippedControl={clippedControl} clippedOutline={clippedOutline} "
-                + $"clippedSolid={clippedSolid}");
+            // Assert — the clip is on, since the control child is gone, and the outline is still drawn: it lies in the
+            // border band, which the padding-box clip excludes, so it is painted on a sibling over the element
+            // (FaceBorderOverlay), so the band holds red.
+            Assert.That((openBand > 0, clippedControl == 0, clippedBand > 0),
+                Is.EqualTo((true, true, true)),
+                $"openBand={openBand} clippedControl={clippedControl} clippedBand={clippedBand}");
         }
 
         [UnityTest]
-        public IEnumerator Given_ADashedDividedChild_When_ItsOwnOverflowIsHidden_Then_TheDividerIsLost()
+        public IEnumerator Given_ADashedDividedChild_When_ItsOwnOverflowIsHidden_Then_TheDividerIsKept()
         {
             // Arrange — the divider is painted by the DIVIDED CHILD, on its own divider edge, so it is that
             // child's overflow that decides its fate rather than the list container's.
@@ -447,10 +445,9 @@ namespace Velvet.Tests
             yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
             var clippedDivider = CountAll(IsRed);
 
-            // Assert — the dashed divider sits in the child's own border band, so the same padding-box clip
-            // removes it entirely while the layout gutter it occupies stays reserved: the row keeps its gap
-            // and loses its rule.
-            Assert.That((openDivider > 0, clippedDivider), Is.EqualTo((true, 0)),
+            // Assert — the dashed divider sits in the child's own border band, which the padding-box clip excludes, so
+            // it is painted on a sibling over the child (FaceBorderOverlay) and the clipped child keeps its rule.
+            Assert.That((openDivider > 0, clippedDivider > 0), Is.EqualTo((true, true)),
                 $"openDivider={openDivider} clippedDivider={clippedDivider}");
         }
 
