@@ -391,11 +391,11 @@ namespace Velvet.Tests
             s_modifiers = new[] { DndModifiers.RestrictToHorizontalAxis };
             var item = StartPointerDrag();
 
-            // Act — (40,50) past the activation point at (20,10).
+            // Act — (50,50) past the press at (10,10).
             item.SendPointerMoveEvent(new Vector2(60, 60));
 
             // Assert
-            Assert.That(TranslateOf(item), Is.EqualTo(new[] { 40f, 0f }));
+            Assert.That(TranslateOf(item), Is.EqualTo(new[] { 50f, 0f }));
         }
 
         // A draggable left in place under a scope whose start callback mounts the preview and whose end callback
@@ -450,7 +450,8 @@ namespace Velvet.Tests
             Assert.That(Q("ghost"), Is.Not.Null);
         }
 
-        // Three 50x50 items stacked in a vertical list.
+        // Three 50x50 items stacked in a vertical list by the container's own column flow: the fixture attaches no
+        // stylesheet, so a class the stylesheet owns (absolute) would not place them.
         [Component]
         private static VNode SortableScene() => V.DndContext(
             activation: new DragActivation(Distance: 4f),
@@ -460,9 +461,9 @@ namespace Velvet.Tests
                 V.SortableContext(new[] { "a", "b", "c" }, strategy: DndSortingStrategies.VerticalList, key: "list",
                     children: new VNode[]
                     {
-                        V.Sortable("a", key: "a", name: "a", className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
-                        V.Sortable("b", key: "b", name: "b", className: "absolute left-[0px] top-[50px] w-[50px] h-[50px]"),
-                        V.Sortable("c", key: "c", name: "c", className: "absolute left-[0px] top-[100px] w-[50px] h-[50px]"),
+                        V.Sortable("a", key: "a", name: "a", className: "w-[50px] h-[50px]"),
+                        V.Sortable("b", key: "b", name: "b", className: "w-[50px] h-[50px]"),
+                        V.Sortable("c", key: "c", name: "c", className: "w-[50px] h-[50px]"),
                     }),
             });
 
@@ -503,12 +504,15 @@ namespace Velvet.Tests
             // Arrange — the press is the drag; the second move is toward the bottom and inside its 20 px zone.
             EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => s_clock);
             Mount(ScrollScene);
+            // The scroller's range is set to the 300 px the 400 px of content overflows the 100 px view by.
+            _host.Root.Q<ScrollView>("scroller").verticalScroller.highValue = 300f;
             var item = Q("item");
             item.SendPointerDownEvent(new Vector2(10, 10));
             item.SendPointerMoveEvent(new Vector2(10, 40));
             item.SendPointerMoveEvent(new Vector2(10, 95));
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 
-            // Act
+            // Act — one more scheduler run, 100 ms on from the one above.
             s_clock = 0.1d;
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 

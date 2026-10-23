@@ -508,23 +508,17 @@ namespace Velvet
 
         private static bool SameCollisions(IReadOnlyList<DndCollision> left, IReadOnlyList<DndCollision> right)
         {
-            if (left.Count != right.Count)
+            var same = left.Count == right.Count;
+            for (var i = 0; same && i < left.Count; i++)
             {
-                return false;
+                same = left[i].Id == right[i].Id && left[i].Value.Equals(right[i].Value);
             }
-            for (var i = 0; i < left.Count; i++)
-            {
-                if (left[i].Id != right[i].Id || !left[i].Value.Equals(right[i].Value))
-                {
-                    return false;
-                }
-            }
-            return true;
+            return same;
         }
 
         private void CaptureActiveSnapshot()
         {
-            _origin = _lastPointerPosition;
+            _origin = _pressPosition;
             _originRect = _source.worldBound;
             _containerRect = _source.parent?.worldBound;
             _savedTranslate = SeatedTranslate.Read(_source);
@@ -859,13 +853,8 @@ namespace Velvet
             return null;
         }
 
-        // A V.Sortable item is measured without the displacement this drag gave it, as dnd-kit measures its
-        // droppables without their transforms; otherwise an item the drag pushed aside would leave the pointer.
-        private DndDroppableRect CandidateRect(VisualElement element, DndDroppableBinding binding)
+        private DndDroppableRect CandidateRect(VisualElement element, DndDroppableBinding binding, Rect rect)
         {
-            var rect = _sortable != null && _sortable.IsMember(element)
-                ? DndSortableSession.TransformAgnosticRect(element)
-                : DndPanelSpace.RectIn(element, _source.panel!, _ctx);
             var sortable = _ctx.DraggableBindings.TryGetValue(element, out var draggable)
                 ? DndSortableSession.InfoOf(draggable.Settings)
                 : null;
@@ -877,10 +866,14 @@ namespace Velvet
             _queryBuffer.Clear();
             foreach (var (element, binding) in _ctx.DroppableBindings)
             {
-                if (IsCollisionCandidate(element, binding))
+                if (!IsCollisionCandidate(element, binding))
+                {
+                    continue;
+                }
+                if (DndPanelSpace.TryRectIn(element, _source.panel!, _ctx, out var rect))
                 {
                     ApplyDragActiveClassTo(element, binding);
-                    _queryBuffer.Add(CandidateRect(element, binding));
+                    _queryBuffer.Add(CandidateRect(element, binding, rect));
                 }
             }
             // Dictionary enumeration does not follow attach order once an entry has been removed, so the

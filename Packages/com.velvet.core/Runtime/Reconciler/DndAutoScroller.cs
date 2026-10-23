@@ -22,7 +22,6 @@ namespace Velvet
         // Signed px per interval on each axis.
         private Vector2 _velocity;
         private Vector2 _lastDelta;
-        private bool _seenDelta;
         // Whether the pointer has moved toward each edge since the drag started: x-, x+, y-, y+.
         private bool _towardLeft;
         private bool _towardRight;
@@ -84,15 +83,11 @@ namespace Velvet
 
         private void TrackIntent(Vector2 delta)
         {
-            if (_seenDelta)
-            {
-                var step = delta - _lastDelta;
-                _towardLeft |= step.x < 0f;
-                _towardRight |= step.x > 0f;
-                _towardTop |= step.y < 0f;
-                _towardBottom |= step.y > 0f;
-            }
-            _seenDelta = true;
+            var step = delta - _lastDelta;
+            _towardLeft |= step.x < 0f;
+            _towardRight |= step.x > 0f;
+            _towardTop |= step.y < 0f;
+            _towardBottom |= step.y > 0f;
             _lastDelta = delta;
         }
 

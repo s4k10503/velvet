@@ -46,11 +46,11 @@ namespace Velvet
     }
 
     /// <summary>Fired once when a press crosses its activation constraint and becomes a drag.
-    /// <see cref="Origin"/> is the pointer's panel-space position at activation.</summary>
+    /// <see cref="Origin"/> is the pointer's panel-space position at the press.</summary>
     public sealed record DragStartArgs(DraggableInfo Active, Vector2 Origin);
 
     /// <summary>Fired when the winning drop target CHANGES (including to null — leaving all targets).
-    /// <see cref="Delta"/> is the total panel-space translation since activation. <see cref="Collisions"/>
+    /// <see cref="Delta"/> is the total panel-space translation since the press. <see cref="Collisions"/>
     /// is the strategy's full ranking at that move, as dnd-kit's event carries <c>collisions</c>.</summary>
     public sealed record DragOverArgs(
         DraggableInfo Active, DroppableInfo? Over, Vector2 Delta, IReadOnlyList<DndCollision> Collisions);
@@ -106,9 +106,9 @@ namespace Velvet
     public readonly struct DndDroppableRect
     {
         public string Id { get; }
-        /// <summary>Live <c>worldBound</c> in the source's panel space — re-read every move, so mid-drag layout
-        /// shifts and scrolls are picked up automatically. A <c>V.Sortable</c> item's leaves out the translate and
-        /// scale the drag gave it.</summary>
+        /// <summary>The droppable's layout box in the source's panel space, placed by its ancestors and leaving
+        /// out the translate, scale and rotate of its own — re-read every move, so mid-drag layout shifts and
+        /// scrolls are picked up automatically.</summary>
         public Rect Rect { get; }
         public object? Data { get; }
 
@@ -135,7 +135,7 @@ namespace Velvet
 
     /// <summary>
     /// Everything a collision strategy may consider. Candidates are pre-filtered: in-scope, enabled,
-    /// attached, on the source's panel or on another screen-space runtime panel of the tree (their rects mapped
+    /// attached, on the source's panel or on another runtime panel of the tree (their rects mapped
     /// into the source's panel space), and the active draggable's own id excluded unless it is a
     /// <c>V.Sortable</c> item (any other element that is both draggable and droppable under one id never collides
     /// with itself).
@@ -226,9 +226,9 @@ namespace Velvet
 
     /// <summary>
     /// Scrolling the <c>ScrollView</c>s around the drag while the pointer nears their edges, dnd-kit's
-    /// <c>autoScroll</c>. Within <see cref="Threshold"/> (a fraction of the view's size per axis) of an edge the
-    /// view scrolls toward it, faster the closer the pointer is, at up to <see cref="Acceleration"/> px per
-    /// <see cref="IntervalMs"/>, and only in a direction the pointer has moved in since the drag started. A drag
+    /// <c>autoScroll</c>. Within <see cref="ThresholdX"/> or <see cref="ThresholdY"/> (a fraction of the view's
+    /// size per axis) of an edge the view scrolls toward it, faster the closer the pointer is, at up to
+    /// <see cref="Acceleration"/> px per <see cref="IntervalMs"/>, and only in a direction the pointer has moved in since the drag started. A drag
     /// <see cref="DndKeyboardSensor"/> drives never auto-scrolls.
     /// </summary>
     public sealed record DndAutoScroll(

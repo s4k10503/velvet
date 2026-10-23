@@ -87,7 +87,16 @@ namespace Velvet
                 : V.Portal(UILayer.Overlay, focusOrder: PanelFocusOrder.Isolated, children: new VNode?[] { positioner });
         }
 
+        // Read off the mount point of the tree's root fiber: the context's MainPanelRoot is written after the first
+        // render, which is the render that decides whether to portal.
         private static bool InEditorPanel()
-            => FiberAmbientStack.Current?.Reconciler?.Context.MainPanelRoot?.panel?.contextType == ContextType.Editor;
+        {
+            var fiber = FiberAmbientStack.Current;
+            while (fiber?.Parent != null)
+            {
+                fiber = fiber.Parent;
+            }
+            return fiber?.MountPoint?.panel?.contextType == ContextType.Editor;
+        }
     }
 }

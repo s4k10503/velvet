@@ -375,15 +375,6 @@ namespace Velvet
                     DndSortable.IndexOf(membership.Store.Items, settings.Id), membership.Store.Items)
                 : null;
 
-        // The rect collision detection reads for a member: its layout box placed by its ancestors, so the
-        // displacement this session wrote does not move it.
-        internal static Rect TransformAgnosticRect(VisualElement element)
-            => element.hierarchy.parent is { } parent ? parent.LocalToWorld(element.layout) : element.worldBound;
-
-        internal bool IsMember(VisualElement element)
-            => _drag.Context.DraggableBindings.TryGetValue(element, out var binding)
-               && ReferenceEquals(binding.Settings.Sortable?.Store, _store);
-
         internal void Update(string? overId)
         {
             var items = _store.Items;
@@ -400,7 +391,7 @@ namespace Velvet
                 var index = DndSortable.IndexOf(items, binding.Settings.Id);
                 if (index >= 0)
                 {
-                    _rects[index] = TransformAgnosticRect(element);
+                    _rects[index] = DndPanelSpace.LayoutRect(element);
                 }
             }
             foreach (var (element, binding) in members)

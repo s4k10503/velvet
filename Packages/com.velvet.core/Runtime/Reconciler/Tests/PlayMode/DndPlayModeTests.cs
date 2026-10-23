@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -18,12 +19,14 @@ namespace Velvet.Tests
     /// without clicking the child, while a sub-threshold press on it stays its click, a real drag ending
     /// on a Clickable source does NOT fire its click, and every DragOverlay positioner mounted at
     /// activation tracks the pointer on the Overlay layer panel with picking disabled, one mounted
-    /// after activation joins the drag, and a droppable on a layer panel is a drop target for a drag from the
-    /// main panel.
+    /// after activation joins the drag, a droppable on a layer panel is a drop target for a drag from the
+    /// main panel, and a droppable in a world-space panel is one for a drag from the main panel, as a droppable on
+    /// the main panel is for a drag from a world-space panel.
     /// </summary>
     internal sealed class DndPlayModeTests
     {
         private GameObject _panelGo;
+        private GameObject _cameraGo;
         private PanelSettings _settings;
         private MountedTree _mounted;
 
@@ -62,6 +65,7 @@ namespace Velvet.Tests
             _mounted?.Dispose();
             _mounted = null;
             if (_panelGo != null) Object.Destroy(_panelGo);
+            if (_cameraGo != null) Object.Destroy(_cameraGo);
             if (_settings != null) Object.Destroy(_settings);
             yield return null;
         }
@@ -142,9 +146,9 @@ namespace Velvet.Tests
             SendPointerMoveUntargeted(item.panel, new Vector2(220, 110));
             yield return null;
 
-            // Assert — delta from the activation point (20,10) is (200,100).
+            // Assert — delta from the press at (10,10) is (210,100).
             var translate = item.style.translate.value;
-            Assert.That((translate.x.value, translate.y.value), Is.EqualTo((200f, 100f)));
+            Assert.That((translate.x.value, translate.y.value), Is.EqualTo((210f, 100f)));
         }
 
         [Component]
@@ -487,13 +491,12 @@ namespace Velvet.Tests
             SendPointerMove(item, new Vector2(120, 60));
             yield return null;
 
-            // Assert — grab offset was (10,10) at the down... measured from the ACTIVATION point
-            // (20,10) against the source rect at (0,0): offset (20,10). The positioner's top-left is
-            // pointer − grabOffset = (100, 50) in the (identically-scaled) overlay panel space.
+            // Assert — the positioner sits on the source rect at (0,0) moved by the drag's translate, (110,50)
+            // from the press at (10,10), in the (identically-scaled) overlay panel space.
             var positioner = FindPositioner(
                 _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement);
             Assert.That((positioner.style.left.value.value, positioner.style.top.value.value),
-                Is.EqualTo((100f, 50f)));
+                Is.EqualTo((110f, 50f)));
         }
 
         [Component]
@@ -769,20 +772,24 @@ namespace Velvet.Tests
         private static bool s_parkedShowOverlay;
         private static ComponentFiber s_parkedFiber;
 
-        // Rows first, the overlay last, so a tiny budget parks the pass before the overlay mounts.
+        // Plain keyed rows with the overlay inside the last one, so the list's own reconcile takes the keyed path a
+        // tiny budget parks after the first row, and the overlay is reached only once the resume gets to the last.
         [Component]
         private static VNode ParkedOverlayList()
         {
             s_parkedFiber = FiberAmbientStack.Current;
-            var children = new VNode[s_parkedRowCount + 1];
+            var rows = new VNode[s_parkedRowCount];
             for (var i = 0; i < s_parkedRowCount; i++)
             {
-                children[i] = V.Label($"row-{i}");
+                var last = i == s_parkedRowCount - 1 && s_parkedShowOverlay;
+                rows[i] = V.Div(key: "row-" + i, children: last
+                    ? new VNode[]
+                    {
+                        V.DragOverlay(key: "parked", children: new VNode[] { V.Label("ghost", name: "parked-ghost") }),
+                    }
+                    : System.Array.Empty<VNode>());
             }
-            children[s_parkedRowCount] = s_parkedShowOverlay
-                ? V.DragOverlay(key: "parked", children: new VNode[] { V.Label("ghost", name: "parked-ghost") })
-                : null;
-            return V.Fragment(children: children);
+            return V.Fragment(children: rows);
         }
 
         [Component]
@@ -810,16 +817,17 @@ namespace Velvet.Tests
             s_parkedShowOverlay = true;
             s_parkedFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_parkedFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_parkedFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: the pass parked");
+            var parked = s_parkedFiber.HasPendingReconcileWorkForTest();
 
             // Act — the resume runs outside the batch drain; no frame passes and the pointer does not move.
             s_parkedFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert
+            // Assert — the parked state is folded in because it is what puts the overlay's mount on the resume.
             var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
             var style = overlayRoot.Q<Label>("parked-ghost").parent.style;
-            Assert.That((style.display.value, Mathf.Round(style.left.value.value), Mathf.Round(style.top.value.value)),
-                Is.EqualTo((DisplayStyle.Flex, 30f, 20f)));
+            Assert.That(
+                (parked, style.display.value, Mathf.Round(style.left.value.value), Mathf.Round(style.top.value.value)),
+                Is.EqualTo((true, DisplayStyle.Flex, 30f, 20f)));
         }
 
         [UnityTest]
@@ -872,6 +880,110 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_ended, Is.EqualTo(new[] { "layer-slot" }));
+        }
+
+        // The main camera looks down +z from z = -10 and shows 40 world units of height, so a world-space panel at
+        // the origin sits in the middle of the screen.
+        private void ArrangeMainCamera()
+        {
+            _cameraGo = new GameObject("DndWorldCamera") { tag = "MainCamera" };
+            var camera = _cameraGo.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 20f;
+            camera.transform.position = new Vector3(0f, 0f, -10f);
+        }
+
+        // A draggable on the main panel and a droppable filling a 10 x 5 unit world-space panel at the origin.
+        [Component]
+        private static VNode WorldSpaceDroppableScene() => V.DndContext(
+            onDragEnd: e => s_ended.Add(e.Over?.Id),
+            activation: new DragActivation(Distance: 4f),
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.Draggable("item", name: "item", className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                V.WorldSpace(Vector3.zero, panelSize: new Vector2(1000f, 500f), key: "world", children: new VNode[]
+                {
+                    V.Droppable("world-slot", key: "world-slot", className: "w-[1000px] h-[500px]"),
+                }),
+            });
+
+        // A droppable far larger than the screen on the main panel, and a draggable in the world-space panel.
+        [Component]
+        private static VNode WorldSpaceDraggableScene() => V.DndContext(
+            onDragEnd: e => s_ended.Add(e.Over?.Id),
+            activation: new DragActivation(Distance: 4f),
+            className: "w-[4000px] h-[4000px]",
+            children: new VNode[]
+            {
+                V.Droppable("main-slot", key: "main-slot", className: "w-[4000px] h-[4000px]"),
+                V.WorldSpace(Vector3.zero, panelSize: new Vector2(1000f, 500f), key: "world", children: new VNode[]
+                {
+                    V.Draggable("world-item", key: "world-item", name: "world-item", className: "w-[50px] h-[50px]"),
+                }),
+            });
+
+        private IEnumerator MountAndWaitForWorldSpace(System.Func<VNode> scene)
+        {
+            ArrangeMainCamera();
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement, V.Component(scene, key: "root"));
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.25);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ADroppableInAWorldSpacePanel_When_ADragFromTheMainPanelEndsWhereTheCameraSeesIt_Then_ItIsTheDropTarget()
+        {
+            // Arrange
+            yield return MountAndWaitForWorldSpace(WorldSpaceDroppableScene);
+            var item = Main("item");
+            var middle = item.panel.visualTree.worldBound.center;
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            SendPointerMove(item, middle);
+
+            // Act
+            SendPointerUp(item, middle);
+            yield return null;
+
+            // Assert
+            Assert.That(s_ended, Is.EqualTo(new[] { "world-slot" }));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ADroppableInAWorldSpacePanel_When_ADragFromTheMainPanelEndsAwayFromIt_Then_NothingIsTheDropTarget()
+        {
+            // Arrange
+            yield return MountAndWaitForWorldSpace(WorldSpaceDroppableScene);
+            var item = Main("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            SendPointerMove(item, new Vector2(30, 30));
+
+            // Act
+            SendPointerUp(item, new Vector2(30, 30));
+            yield return null;
+
+            // Assert
+            Assert.That(s_ended, Is.EqualTo(new string[] { null }));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ADroppableOnTheMainPanel_When_ADragFromAWorldSpacePanelEndsOverIt_Then_ItIsTheDropTarget()
+        {
+            // Arrange
+            yield return MountAndWaitForWorldSpace(WorldSpaceDraggableScene);
+            var item = _mounted.Root.Reconciler.Context.WorldSpaceBindings.Values.Single()
+                .Document.rootVisualElement.Q<VisualElement>("world-item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            SendPointerMove(item, new Vector2(30, 10));
+
+            // Act
+            SendPointerUp(item, new Vector2(30, 10));
+            yield return null;
+
+            // Assert
+            Assert.That(s_ended, Is.EqualTo(new[] { "main-slot" }));
         }
     }
 }

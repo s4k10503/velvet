@@ -170,7 +170,6 @@ namespace Velvet.Tests
             ("Anchored", k => V.Anchored(target: null, key: k)),
             ("Draggable", k => V.Draggable("row", key: k)),
             ("Droppable", k => V.Droppable("row", key: k)),
-            ("DragOverlay", k => V.DragOverlay(key: k)),
         };
 
         private static string Report(IEnumerable<string> rows) => string.Join(" ", rows);

@@ -241,8 +241,9 @@ namespace Velvet
                 {
                     binding.WarnedUnsupportedPanel = true;
                     FiberLogger.LogWarning("Dnd",
-                        "A drag overlay on another panel than its drag source needs both to be screen-space "
-                        + "runtime (Player-context) panels; hiding the overlay.");
+                        "A drag overlay on another panel than its drag source needs both to be runtime "
+                        + "(Player-context) panels, and a Camera.main when either is a world-space panel; "
+                        + "hiding the overlay.");
                 }
                 positioner.style.display = DisplayStyle.None;
                 return;

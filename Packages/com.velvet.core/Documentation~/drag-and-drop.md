@@ -79,6 +79,9 @@ untouched. A `DelaySec` greater than zero switches to hold-to-drag (dnd-kit's ei
 activation after the hold, aborted if travel exceeds `Tolerance` first. `DragActivation.None` is
 the unconstrained default, for a draggable that overrides a constrained scope.
 
+The drag's translate is measured from the press, so a constraint's travel is part of it: the source jumps by
+that travel on the first move after activation, and `DragStartArgs.Origin` is the press position.
+
 After a REAL drag, the release is swallowed before `Clickable` sees it, so a draggable button
 does not also fire `clicked` — and the press-derived styling state (`whileTap`, `active:`) is
 settled synthetically on the pressed element, the draggable and its ancestors, since the real
@@ -125,16 +128,17 @@ may return `null` or an empty array for no collision.
 
 Candidate rects are read live from the panel every move, so mid-drag layout shifts, scrolls, and
 droppables mounting/unmounting are picked up automatically — dnd-kit's `MeasuringConfiguration`
-has no equivalent because nothing is cached to configure. A `V.Sortable` item's rect leaves out the
-translate and scale the drag gave it, as dnd-kit measures its droppables without their transforms; any other
-droppable's includes its own translate.
+has no equivalent because nothing is cached to configure. A droppable's rect leaves out the translate, scale
+and rotate of its own, as dnd-kit measures its droppables without their transforms; a `V.Sortable` item's drag
+displacement is one of them, and its ancestors' transforms still apply.
 
-A droppable on another panel of the tree is a candidate when both panels are screen-space runtime panels —
-the main panel and a `V.Portal(layer:)` host, say — its rect mapped through screen space into the source's
-panel, as a DOM page's one hit-testing surface reaches a portalled droppable. A droppable in a
-`V.WorldSpace` panel is a candidate only for a drag on that same panel: the screen conversion Velvet maps
-through does not hold for a world-space panel (`FiberCrossPanelPointerRouter` records the measurement), and
-the DOM has no counterpart to it.
+A droppable on another panel of the tree is a candidate when both panels are runtime panels — the main panel
+and a `V.Portal(layer:)` host, say — its rect mapped through screen space into the source's panel, as a DOM
+page's one hit-testing surface reaches a portalled droppable. A `V.WorldSpace` panel takes part the same way,
+mapped through `Camera.main`: a drag from the main panel reaches a droppable in a world-space panel where
+that camera sees it, and a drag from a world-space panel reaches the main panel's and the layer hosts'
+droppables. With no `Camera.main`, or where the camera's ray misses the panel's plane, that droppable is not
+a candidate.
 
 ## Callbacks and state
 
@@ -237,8 +241,6 @@ from item to item.
 
 - **Multi-touch / concurrent drags** — one active drag per mounted tree (dnd-kit's `active` is
   singular too); extra pointer-downs during a session do not arm.
-- **A `V.WorldSpace` droppable** — reachable only from a drag on its own panel; see
-  [Collision detection](#collision-detection).
 - **A scaled ancestor** — the translate is panel-space, so a scaled ancestor skews tracking (a caveat
   dnd-kit shares).
 
