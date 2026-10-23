@@ -75,7 +75,7 @@ namespace Velvet
                     Blend(a.Hint, b.Hint, progress),
                     Blend(a.HintPx, b.HintPx, progress));
             }
-            return from with
+            return @from with
             {
                 AngleDeg = Mathf.LerpUnclamped(from.AngleDeg, to.AngleDeg, progress),
                 CenterX = Mathf.LerpUnclamped(from.CenterX, to.CenterX, progress),
