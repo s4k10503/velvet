@@ -2182,6 +2182,16 @@ namespace Velvet
             Reassert(element, map, slot);
         }
 
+        // A flex gap's write, which value shows while the element declares no margin of its own on slot. CSS adds
+        // a flex container's gap to its item's own margin, so while a class or a layer of the element's own writes
+        // the slot it shows that declaration's value plus gap instead, and follows the declaration as it changes.
+        internal static void HoldGap(VisualElement element, HeldSlot slot, StyleLength value, float gap)
+        {
+            var map = MapOf(element);
+            (map.Holds ??= new StyleHeldSlots()).SetGap(slot, value, gap);
+            Reassert(element, map, slot);
+        }
+
         internal static void Hold(VisualElement element, HeldSlot slot, StyleFloat value)
         {
             var map = MapOf(element);
@@ -2200,8 +2210,8 @@ namespace Velvet
         // what the previous hold left there: a mask, or the driven margin without the new gap.
         private static void Reassert(VisualElement element, LayerMap map, HeldSlot slot)
         {
-            map.Holds!.Reassert(element.style, StyleHeldSlots.Bit(slot));
-            if (map.Holds.IsDriven(slot))
+            WriteHolds(element, map, StyleHeldSlots.Bit(slot));
+            if (map.Holds!.IsDriven(slot))
             {
                 RewriteDriven(element, map, StyleLonghandSet.Of(HeldSlotGroups.LonghandOf(slot)));
             }
@@ -2611,7 +2621,7 @@ namespace Velvet
                 WriteLayered(element, slot, winner);
                 yielded |= StyleHeldSlots.Bit(slot);
             }
-            holds.Reassert(element.style, slots & ~yielded);
+            WriteHolds(element, map, slots & ~yielded);
             FitHeldWidth(element, map);
             // A dashed divider paints its color from these layers rather than from the slot it holds, so a layer
             // moving under a held color slot has to repaint the element.
@@ -2619,6 +2629,105 @@ namespace Velvet
             {
                 element.MarkDirtyRepaint();
             }
+        }
+
+        // Writes every held slot among slots back onto the element, a gap's (HoldGap) as the declaration of the
+        // element's own it adds to where one writes the slot and can be measured.
+        private static void WriteHolds(VisualElement element, LayerMap map, int slots)
+        {
+            var holds = map.Holds!;
+            var composing = holds.Composing(slots);
+            var composed = 0;
+            foreach (var slot in HeldSlotGroups.EverySlot)
+            {
+                var bit = StyleHeldSlots.Bit(slot);
+                if ((composing & bit) != 0 && TryAddToOwn(element, map, slot, holds.GapOf(slot), out var length))
+                {
+                    StyleHeldSlots.WriteLength(element.style, slot, length);
+                    composed |= bit;
+                }
+            }
+            holds.Reassert(element.style, slots & ~composed);
+        }
+
+        // The declaration of the element's own on slot plus gap: an `auto` margin stays `auto`, and the slot is not
+        // composed while the declaration cannot be measured — a percentage before the parent is laid out.
+        private static bool TryAddToOwn(VisualElement element, LayerMap map, HeldSlot slot, float gap,
+            out StyleLength length)
+        {
+            length = default;
+            if (!TryOwnLength(element, map, slot, out var own) || own.Keyword != StyleKeyword.Undefined)
+            {
+                return false;
+            }
+            if (own.Auto)
+            {
+                length = new StyleLength(StyleKeyword.Auto);
+                return true;
+            }
+            var pixels = float.NaN;
+            if (own.Expression == null)
+            {
+                pixels = Pixels(element, own);
+            }
+            else if (StyleRelativeLengths.TryResolve(element, own.Expression, RelativeLengthAxis.Width, null,
+                         out var resolved))
+            {
+                pixels = resolved.value.value;
+            }
+            if (float.IsNaN(pixels))
+            {
+                return false;
+            }
+            length = new StyleLength(pixels + gap);
+            return true;
+        }
+
+        // What the element's own declarations put on slot: the class claiming its longhand where that class
+        // outranks the winning layer, else that layer.
+        private static bool TryOwnLength(VisualElement element, LayerMap map, HeldSlot slot, out ArbitraryStyle own)
+        {
+            var layered = TryLayeredWinner(map, slot, out own, out var rank);
+            var claimant = OwnClaimant(element, map, HeldSlotGroups.LonghandOf(slot), out var claim);
+            if (claimant == null || layered && claim <= rank)
+            {
+                return layered;
+            }
+            if (TryReadStylesheetClass(StripImportant(claimant, out _), out _, out var inlineForm)
+                && TryParse(inlineForm, out var claimed))
+            {
+                own = claimed;
+                return true;
+            }
+            return layered;
+        }
+
+        // The class of the element's own claiming longhand and the priority it claims it at: the projection's
+        // answer, or, while no payload has built one, the ungated base class the stylesheets declare last.
+        private static string? OwnClaimant(VisualElement element, LayerMap map, StyleLonghand longhand, out long claim)
+        {
+            claim = long.MinValue;
+            if (map.Projection != null)
+            {
+                var claimant = map.Projection.ClaimantOf(longhand);
+                claim = map.Projection.ClaimOf(longhand);
+                return claimant;
+            }
+            string? best = null;
+            foreach (var cls in element.GetClasses())
+            {
+                if (StyleUtilityProperties.TryGet(cls, out var rule) && rule.Gate == StyleUtilityGate.None
+                    && rule.Properties.Contains(longhand)
+                    && (best == null || rule.CascadePosition > StyleSpacingPrecedence.CascadePositionOf(best)))
+                {
+                    best = cls;
+                }
+            }
+            if (best != null)
+            {
+                claim = StyleLayerPriority.Base;
+            }
+            return best;
         }
 
         private static readonly int s_colorSlots = StyleHeldSlots.Bit(HeldSlot.BorderTopColor)

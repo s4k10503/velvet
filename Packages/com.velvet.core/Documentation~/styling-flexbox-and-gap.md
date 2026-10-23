@@ -83,7 +83,7 @@ right margin, and `border-r-4` or a `border-red-500` on a divided child keeps it
 important divide width or color (`!divide-x-4`, `divide-gray-200!`) is drawn over the child's own instead,
 as the `!important` Tailwind emits for it does, unless the child's own is important too
 (`!border-r-[3px]`), which wins as its higher specificity does in CSS. A gap is not a margin in CSS and
-adds to one instead; see the residual edge cases below.
+adds to one instead; see "A gap and the margins it meets" below.
 
 ### Reversed containers (`flex-row-reverse` / `flex-col-reverse`) and `space-*-reverse`
 
@@ -159,12 +159,13 @@ Both can change outside the manipulator's own events, so it is re-applied from t
    children, so an add / remove / reorder during a reconcile pass immediately re-spaces. This is also
    the path that makes it correct in EditMode, where layout never ticks.
 2. **`GeometryChangedEvent`.** Catches child mutations driven by an *unrelated* reconcile pass at
-   runtime (e.g. a nested component re-render that adds a child under this container). Registered on
-   the attached element **and**, when it differs, on the inner box the verdict is read from (below),
-   because `GeometryChangedEvent` neither bubbles nor trickles.
+   runtime (e.g. a nested component re-render that adds a child under this container), and a direction
+   or wrap set outside the class list. Registered on the attached element, on the inner box the verdict is
+   read from (below) when it differs, and on every child the gap spaces, since `GeometryChangedEvent`
+   neither bubbles nor trickles and a direction written onto a container that keeps its size moves only
+   its children.
 3. **`AttachToPanelEvent`.** Re-resolves plain `gap-*`'s axis, and every axis's reversed-edge flip,
-   once `resolvedStyle.flexDirection` is valid — needed for the one case no class marker can cover
-   (below). Registered on the attached element only, since the inner box attaches in its subtree pass.
+   on a panel. Registered on the attached element only, since the inner box attaches in its subtree pass.
 
 **A child that leaves keeps whatever its new container wrote.** A container also clears what it wrote
 on a child that is no longer in it, so a child *reparented* elsewhere carries no leftover gap. Because
@@ -181,52 +182,45 @@ element your own code kept a reference to carries none of them when it is re-par
 
 **What a container stops spacing goes back to the child's own layers, not to nothing.** Gap, grid and
 divide write their value straight onto the child, while an arbitrary value — the child's own `ml-[2px]`
-or a container's `[&>*]:ml-[2px]` — reaches the same slot through a layer. While a gap or grid spaces a
-child its value holds, even when such a layer changes afterwards, whereas a space margin or a divider gives
-way to such a layer for as long as one is there; where a container stops — the gap is dropped,
+or a container's `[&>*]:ml-[2px]` — reaches the same slot through a layer. While a gap spaces a child it adds
+its value to such a layer's and follows the layer as it changes, a grid's value holds over it, and a space
+margin or a divider gives way to it for as long as one is there; where a container stops — the gap is dropped,
 the child leaves, an edge is abandoned, or the child is the first of a gap row or the last of a space or
 divide row and takes nothing there — the slot is given back and the child shows what its layers say there. A grid holds its
 first column's and first row's zero margins rather than giving them back. So `flex flex-row gap-x-4 [&>*]:ml-[2px]` gives its
-first child `2px` and the rest the gap, and every child `2px` once `gap-x-4` goes; and a child moving
+first child `2px` and the rest `18px`, the payload plus the gap, and every child `2px` once `gap-x-4` goes; and a child moving
 between a `[&>*]:` row and a `gap-*`, `grid-cols-*` or `divide-*` row keeps what the row it is in gave
 it, whichever of the two re-applies last.
 
 **Which element the verdict is read from: the container the children are actually in.** Both
 manipulators are attached to the element the class string is written on, but they resolve, iterate and
 read from the element that element's children are *reconciled into*. For a plain element those are the
-same. A **composite widget** redirects its children into an inner box, so a direction (or `flex-wrap`)
-class on one lays out the **widget's own** box — a `ScrollView`'s viewport and scrollers, a `Foldout`'s
-toggle above its content — and leaves the content untouched.
+same. A **composite widget** redirects its children into an inner box, and a direction or wrap utility on
+it lays that box out, as a CSS flex utility lays out the element's own children: the verdict of its
+`flex` / `flex-row(-reverse)` / `flex-col(-reverse)` and `flex-wrap` / `flex-nowrap` / `flex-wrap-reverse`
+classes, a variant's included, is written onto the inner box inline and taken back when the last of them
+leaves. So `V.ScrollView("flex flex-row-reverse gap-x-4", …)` lays its content out as a reversed row with
+the gap on the trailing edge, and `V.ScrollView("flex flex-row flex-wrap gap-4", …)` wraps its content on
+the half-margin path. The class still applies to the widget's own box as well — a `ScrollView`'s viewport
+and scrollers, a `Foldout`'s toggle above its content — which has no counterpart in a CSS element.
 
-The spacing follows the content: in `V.ScrollView("flex flex-row-reverse gap-x-4", …)` the gap stays
-on the leading edge, and in `V.ScrollView("flex flex-row gap-4", …)` a plain `gap-4` spaces
-**vertically**, the axis its content actually stacks on. The rule is keyed on the redirect itself,
-not on a list of widgets — `V.Custom<T>` mounts any `VisualElement` subclass with children. The
-engine's redirecting widgets include `ScrollView`,
-`Foldout`, `Tab`, `TabView`, `TwoPaneSplitView`, `RadioButtonGroup`, `ToggleButtonGroup` and
-`PopupWindow`; the collection views (`ListView`, `TreeView`, `MultiColumnListView`) parent nothing and
-build their rows themselves, so nothing here spaces them.
+The rule is keyed on the redirect itself, not on a list of widgets — `V.Custom<T>` mounts any
+`VisualElement` subclass with children. The engine's redirecting widgets include `ScrollView`, `Foldout`,
+`Tab`, `TabView`, `TwoPaneSplitView`, `RadioButtonGroup`, `ToggleButtonGroup` and `PopupWindow`.
 
-A class string only reaches the element it is written on, so no direction class can land on an inner box:
-unless an inline value is set on that box, its verdict comes from the `resolvedStyle` fallback below,
-over whatever the widget's own built-in USS gives it. Off-panel an inner box falls back to the
-**engine's** default (column) rather than to `.flex`'s row, which for most widgets makes the off-panel
-answer equal the on-panel one.
+With no such class on the widget, the inner box keeps the direction the widget's own stylesheet gives it,
+read from `resolvedStyle` on a panel. Off-panel that is a row for a horizontally scrolling `ScrollView` and
+a horizontal `TwoPaneSplitView`, and the engine's column for the others; a widget whose stylesheet makes
+its inner box a row or a wrap that this list does not name is read as a column and no-wrap until its first
+geometry event.
 
-**The residue, where the two disagree:** a widget whose own USS overrides the engine default, so its
-inner box is a **row** — a horizontally scrolling `ScrollView`, a `TwoPaneSplitView`, a
-`ToggleButtonGroup`, and any other whose built-in USS does the same. Only a live panel has the answer
-there; off-panel they still resolve as a column. That costs a frame: the first application runs before
-the widget attaches, writes the column edge, and moves to the row edge on the first geometry event. The
-same residue applies to `flex-wrap` on an inner box whose built-in USS wraps, and is worse there — wrap
-is the only mode that writes the container's own margin.
+**The collection views are not spaced.** `ListView`, `TreeView` and `MultiColumnListView` parent nothing
+Velvet reconciles: they build their rows and place them themselves, and a margin between two rows is not
+part of the place they give each row. Put the spacing in the row template, as padding inside each row.
 
-No **direction or wrap** utility reaches inside a composite widget to lay its content out, though the
-spacing utilities do reach the inner box's children. Nest a plain container inside the widget and put
-the direction class there when the content needs one.
-
-**Direction source: an inline `flex-direction`, else a single resolved verdict from the class list by
-USS precedence, and `resolvedStyle` only after both — on a panel included.** `flex` / `flex-row` / `flex-col` / `flex-row-reverse` /
+**Direction source: on a panel, after each layout pass, `resolvedStyle` — the cascade's own answer.
+Between layout passes, an inline `flex-direction`, else a single resolved verdict from the class list by
+USS precedence, and `resolvedStyle` only after both.** `flex` / `flex-row` / `flex-col` / `flex-row-reverse` /
 `flex-col-reverse` are all direction-bearing (`flex` sets `flex-direction: row`, same as a bare
 `flex-row`), and an element routinely carries more than one at once — the bare `flex` beside whichever
 direction utility holds the direction, and two direction utilities written at one priority.
@@ -243,25 +237,18 @@ present.
 element's gap and space through the separate grid manipulator instead — see "`flex-wrap` and `grid`"
 below.
 
-After an inline value, classes are consulted before `resolvedStyle`, even on a panel: the direction
-classes are USS-only rules with no equivalent C# inline `flex-direction` write, so
-`resolvedStyle.flexDirection` only catches up after the panel's *next* style pass, and a same-rect
-direction toggle (children reorder; the container itself never resizes) fires no `GeometryChangedEvent`
-to trigger a re-derive. A manipulator that trusted `resolvedStyle` here could converge on the *first*
-toggle and then never converge on a later toggle back, leaving a gap margin wrong indefinitely.
+Between layout passes, classes are consulted before `resolvedStyle`: the direction classes are USS-only
+rules with no equivalent C# inline `flex-direction` write, so `resolvedStyle.flexDirection` only catches
+up after the panel's *next* style pass, while the class list a patch hands the manipulator is already
+final. Once that pass has laid the element out, the `GeometryChangedEvent` it raises — on the container,
+or on a child whose place the new direction moves — reads `resolvedStyle`, so whatever the cascade
+decided stands: a custom stylesheet rule that outranks a direction class, and a `flex-direction` written
+from code outside the class list.
 
-An inline `flex-direction` is read before the classes, and a direction class outranks `flex-direction`
-set by a custom stylesheet rule on the SAME element rather than composing with it. `resolvedStyle` is
-read only as the fallback for the case neither can cover: a stylesheet-set `flex-direction` with *none*
-of the five direction/display classes present on the element at all. That fallback case still needs a
-live panel (`AttachToPanelEvent` above) and still cannot self-correct on a same-rect toggle with no
-intervening reconcile pass, since nothing would tell the manipulator to look again. The direction is read
-whenever the manipulator applies — at the container's reconcile or patch, on attach, or at a geometry
-change, among others — and writing an inline `flex-direction` does not itself re-apply the spacing. Once
-every direction/display class leaves the element, the verdict until the next `GeometryChangedEvent` is
-the inline `flex-direction`, or the engine's column when none is set, rather than a `resolvedStyle` that
-can still hold the removed class — the same rule the wrap verdict below follows. With no direction class
-AND no panel to resolve against (EditMode, pre-attach), the default is **row** — the one place this
+Once every direction/display class leaves the element, the verdict until the next `GeometryChangedEvent`
+is the inline `flex-direction`, or the engine's column when none is set, rather than a `resolvedStyle`
+that can still hold the removed class — the same rule the wrap verdict below follows. With no direction
+class AND no panel to resolve against (EditMode, pre-attach), the default is **row** — the one place this
 deliberately disagrees with the raw engine, whose own unstyled default is column (see "Without `.flex`,
 children stack vertically" above).
 
@@ -283,7 +270,8 @@ half-margins so content stays flush to the container edge. A reversed container 
 changes which edges wrap spaces, only non-wrap's single leading/trailing edge choice.
 
 Wrap is read from the same element the direction is (see "Which element the verdict is read from" above),
-and in the same shape, for the same staleness reason: an inline `flex-wrap` first, then the `flex-wrap` /
+and in the same shape, for the same staleness reason: `resolvedStyle` after a layout pass; between them an
+inline `flex-wrap` first, then the `flex-wrap` /
 `flex-nowrap` / `flex-wrap-reverse` class markers (by `_layout.uss` declaration order —
 `flex-wrap-reverse` beats `flex-wrap` beats `flex-nowrap` when more than one is present), then
 `resolvedStyle.flexWrap` whenever none of those three is present. Unlike the direction scan there is no
@@ -297,11 +285,6 @@ no-wrap when none is set, rather than a `resolvedStyle.flexWrap` that can still 
 so a fixed-size container stops writing its own negative margin on the patch that drops `flex-wrap`.
 After that event the fallback reads `resolvedStyle` again, which is how a wrap a stylesheet rule sets
 comes back.
-
-A corollary on a **composite widget**: a `flex-wrap` class wraps the widget, never its content, so the
-half-margin path is **unreachable from class strings** there. It is still reachable by anything setting
-the inner box's own `flex-wrap` (a custom stylesheet rule, a `refCallback` reaching in) and by a widget
-whose built-in USS wraps. Nest a plain container inside the widget for a wrapping gap from a class.
 
 `grid` also sets `flex-direction: row` (and `flex-wrap: wrap`) in `_layout.uss`, but a `grid` /
 `grid-cols-*` class routes an element's gap through the separate grid manipulator entirely —
@@ -323,39 +306,37 @@ here lays out equal columns only.
 V.Div(className: "flex flex-row flex-wrap gap-4", children: ...);
 ```
 
-## Residual edge cases (where the polyfill is approximate)
+## A gap and the margins it meets
 
-The common non-wrap row/column layout is **exact**; the remaining gaps are called out here and in
-`StyleGapManipulator.cs`:
+A gap is written as a margin, and CSS adds a gap to an item's own margin rather than replacing it, so
+Velvet adds the two:
 
-- **Explicit per-child margin on the gap edge.** A child with `ml-2` (or an inline `margin-left`)
-  under a `gap-x-4` row has that margin **overwritten** — the manipulator owns the margin edge(s) it
-  spaces along and rewrites the gap value there on every pass. The same property cannot
-  simultaneously *be* the gap and carry an independent child margin: composing the two would mean
-  capturing each child's pre-gap base margin once and re-deriving it on every re-apply (reconcile /
-  geometry / attach), and a re-apply reads back the already-gap-modified inline value with no way to
-  tell base from gap. Only native UITK `gap` composes the two. Workaround: use padding, an inner
-  wrapper, or a different axis when a child needs its own margin on the gap edge. A `V.Motion` animating
-  that margin is the exception: while it drives the margin, the gap is added to the driven value, as CSS
-  adds an item's margin to the gap, and so is an important margin of the child's own that outranks the
-  animation. An important margin that names no length, `ml-auto` or a `calc()` bracket, takes no gap; a
-  spacing step is read off Velvet's scale rather than `--space-*`, the limit
-  [styling-arbitrary-lengths.md](styling-arbitrary-lengths.md) gives for its rewrites. A grid adds its column and row gaps to a child's driven margin the same way, and takes the
-  driven margin out of the child's column width, so the child moves inside its column. Margins on a
-  **different** edge than the gap are preserved, so `mt-2` on a child under a non-wrap `gap-x-4` row
-  is untouched. (Under the wrap half-margin path every side a gap spaces belongs to it, so an explicit child
-  margin there is overwritten.)
-- **Wrap path overwrites the container's own margin.** The wrap half-margin path writes the
-  container's own margins to the negated halves, so an explicit container margin (e.g. `m-4` on the same
-  element that carries `flex-wrap gap-4`) is **overwritten** while a wrapping gap is active, and comes
-  back when it stops. A `V.Motion` animating the container's margin is the exception, as for a child.
-  Non-wrap containers never touch the container's own margin. Workaround: put the
-  margin on an **outer wrapper** around the wrapping gap container.
-- **Wrap outer bleed.** The wrap path's container negative margin (half of each gap) bleeds that half
-  **outward**, overlapping the container's own siblings or its parent's padding by it. The
-  half-margin trick has no way to cancel only the *inner* outer-edge halves; only native UITK `gap`
-  avoids it. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of padding
-  on the parent, or wrap the grid, if the overlap matters.
+- **A child's own margin on the gap edge.** A margin of the child's own on an edge a gap writes — a class
+  (`ml-2`), a bracket (`ml-[5px]`), a container's `[&>*]:ml-[2px]` — is added to the gap: `ml-2` on the
+  second child of a `gap-x-4` row puts `24px` before it, and follows the class as it changes. It also wins
+  over a space margin on that edge, as it does in Tailwind, and the gap adds to it there too. `ml-auto`
+  stays `auto`, so the free space still goes to it. A percentage is taken of the container's content width
+  once the container is laid out, and is the gap alone before. A spacing step is read off Velvet's scale
+  rather than `--space-*`, the limit [styling-arbitrary-lengths.md](styling-arbitrary-lengths.md) gives for
+  its rewrites. A margin a stylesheet of your own sets on the child is not seen, and the gap replaces it.
+  Under the wrap half-margin path every side a gap spaces takes its half, added the same way.
+- **A `V.Motion` animating that margin.** While it drives the margin, the gap is added to the driven value,
+  and so is an important margin of the child's own that outranks the animation. An important margin that
+  names no length, `ml-auto` or a `calc()` bracket, takes no gap there. A grid adds its column and row gaps
+  to a child's driven margin the same way, and takes the driven margin out of the child's column width, so
+  the child moves inside its column; a margin a grid's child declares otherwise is replaced by the grid's.
+- **The container's own margin under wrap.** The wrap half-margin path adds the negated halves to the
+  container's own margin, so `m-4 flex flex-wrap gap-4` still leaves `16px` between the container's
+  content and its neighbours. A `V.Motion` animating the container's margin has them added to the driven
+  value, as for a child.
+  Non-wrap containers never touch the container's own margin.
+- **Wrap outer bleed.** The wrap path's container negative margin draws the container's box — its
+  background, border and padding — half of each gap past each edge that gap spaces, overlapping its
+  siblings or its parent's padding by that much, while its content and its siblings sit where CSS puts
+  them. UI Toolkit's layout style has no gap property (`GapEngineLayoutStyleTests` fails once it gains
+  one), so the gap has to be a margin on every item, and the container's negative margin is what takes the
+  outer halves back. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of
+  padding on the parent, or wrap the container, if the overlap matters.
 
 ## Proportional splits: `grow-N` / `shrink-N` and `flex-N`
 

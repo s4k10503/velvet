@@ -40,6 +40,10 @@ namespace Velvet
         private int _driven;
         private int _masks;
 
+        // The held lengths a gap writes, which a declaration of the element's own adds to
+        // (StyleArbitraryValueResolver.HoldGap).
+        private int _composes;
+
         // An important hold is one yielding only to an important layer: an important divide's (Yield).
         private int Overridden => _driven & ~_masks & ~(_yieldMask & _importantOnlyMask);
         private StyleLength[]? _lengths;
@@ -56,6 +60,12 @@ namespace Velvet
             (_lengths ??= new StyleLength[HeldSlotGroups.SlotCount])[(int)slot] = value;
             (_gaps ??= new float[HeldSlotGroups.SlotCount])[(int)slot] = gap;
             Take(slot);
+        }
+
+        public void SetGap(HeldSlot slot, StyleLength value, float gap)
+        {
+            Set(slot, value, gap);
+            _composes |= Bit(slot);
         }
 
         public void Set(HeldSlot slot, StyleFloat value)
@@ -75,6 +85,7 @@ namespace Velvet
             _mask |= Bit(slot);
             _yieldMask &= ~Bit(slot);
             _masks &= ~Bit(slot);
+            _composes &= ~Bit(slot);
         }
 
         public void SetMask(HeldSlot slot) => _masks |= Bit(slot);
@@ -107,6 +118,11 @@ namespace Velvet
 
         public bool IsDriven(HeldSlot slot) => (_driven & Bit(slot)) != 0;
 
+        // The held slots among slots that a gap writes and nothing overrides.
+        public int Composing(int slots) => _mask & _composes & ~Overridden & slots;
+
+        public float GapOf(HeldSlot slot) => _gaps?[(int)slot] ?? 0f;
+
         // The pixels a held length carries, and the part of them a gap does not contribute: a space rule's.
         public float Length(HeldSlot slot) => _lengths?[(int)slot].value.value ?? 0f;
 
@@ -133,6 +149,9 @@ namespace Velvet
 
         public static void WriteNull(IStyle style, HeldSlot slot)
             => Write(style, slot, StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null);
+
+        public static void WriteLength(IStyle style, HeldSlot slot, StyleLength length)
+            => Write(style, slot, length, default, default);
 
         // Writes what the layer winner resolves to into slot alone, whatever else the winner's property fans
         // out to. length is the winner's length as measured on the element, for a length slot.

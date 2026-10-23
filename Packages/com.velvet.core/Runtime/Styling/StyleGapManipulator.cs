@@ -38,16 +38,15 @@ namespace Velvet
     // Child container. The manipulator is attached to the gap ELEMENT, but its children are reconciled
     // into FiberNodePatcher.GetChildContainer(element) — a composite widget's inner box, not the widget.
     // Everything naming a container names that one: the iteration, the wrap path's negative margin, and
-    // the direction / wrap verdicts (DirectionOf, IsWrap). A direction or wrap class on the widget
-    // governs the WIDGET's box, which is not the box the spaced children are in.
+    // the direction / wrap verdicts (DirectionOf, IsWrap). A direction or wrap class on the widget reaches
+    // that box inline, through StyleCompositeFlowManipulator.
     // Re-application. The spacing depends on the child set and, for a gap, the resolved direction, both of
     // which change outside this manipulator's own events. It is re-applied from three sources: (1) the
     // reconciler calls Apply right after it reconciles the container's children (the panel-independent path
-    // that also covers EditMode, where layout never ticks); (2) GeometryChangedEvent catches child add /
-    // remove / reorder driven by an unrelated reconcile pass at runtime; (3) AttachToPanelEvent re-resolves
-    // once resolvedStyle is valid, for the one case neither an inline value nor a class can cover (see
-    // StyleFlexDirectionResolver: an inline flex-direction is read first, then the five direction/display
-    // classes, even on a panel — resolvedStyle is only the fallback).
+    // that also covers EditMode, where layout never ticks); (2) GeometryChangedEvent, on the container and on
+    // each spaced child, catches a child set or a direction changed by anything else, and reads the direction
+    // and the wrap from resolvedStyle, which the layout pass that raised it has just brought up to date;
+    // (3) AttachToPanelEvent re-resolves once resolvedStyle is valid.
     // A signature (_lastSignature) makes repeated Apply calls with no relevant change — notably the
     // GeometryChanged feedback the manipulator's own margin writes provoke — into no-ops.
     // Reparent / removal. The manipulator tracks every element it wrote a margin to
@@ -71,20 +70,11 @@ namespace Velvet
     // content flush to its edge. Wrap is detected from the child container — see IsWrap. The half-margin
     // path writes layout-independent margins, so it is fully resolved (and assertable) without a layout
     // tick. Direction never changes which edges wrap spaces (always symmetric).
-    // Residual gaps versus native CSS gap (documented, not solved):
-    // An explicit per-child margin on an edge a gap writes (e.g. ml-2 on a child under a gap-x-4 row) is
-    // OVERWRITTEN — the manipulator owns the margin slots it writes each pass, where CSS adds the two. A
-    // margin-based polyfill cannot both BE the gap and preserve an explicit margin on the same edge without
-    // per-child base-margin tracking, which would be fragile against re-apply. Use padding, an inner
-    // wrapper, or a different axis when a child needs its own margin on the gap edge. Margins on an edge
-    // nothing here writes are preserved; under the wrap half-margin path all four edges belong to the gap.
-    // The wrap half-margin path writes the CHILD CONTAINER's own four margins (-gap/2),
-    // so an explicit container margin (e.g. m-4 on the same element) is OVERWRITTEN while a wrapping
-    // gap is active. Non-wrap containers never touch the container's own margin. Use an outer wrapper
-    // for a margin on a wrapping gap container.
-    // The wrap half-margin path's container negative margin (-gap/2 on all four sides)
-    // bleeds gap/2 OUTWARD, overlapping the container's own siblings or its parent's padding by
-    // gap/2. Non-wrap containers never bleed (they write no container margin).
+    // A margin of a child's own on an edge a gap writes, and of the container's own under the wrap path, is
+    // added to rather than replaced (StyleArbitraryValueResolver.HoldGap), as CSS adds a gap to an item's
+    // margin and leaves the container's alone.
+    // The wrap path's container negative margin draws the container's box half of each gap past each edge that
+    // gap spaces, where CSS draws it at them; Documentation~/styling-flexbox-and-gap.md owns why.
     internal sealed class StyleGapManipulator : Manipulator, IChildClassWatcher
     {
         private static readonly HeldSlot[] s_marginSlots =
@@ -128,6 +118,16 @@ namespace Velvet
 
         // Null unless the child container is a separate element — see ObserveChildContainer.
         private VisualElement? _observed;
+
+        // The children whose geometry this listens to — see WatchGeometry.
+        private readonly HashSet<VisualElement> _watched = new();
+
+        // Set while a GeometryChangedEvent applies: a layout pass has just run, so resolvedStyle holds the
+        // cascade's answer for the direction and the wrap — see DirectionOf.
+        private bool _settled;
+
+        // The child container's content width at the last geometry event — see OnGeometryChanged.
+        private float _lastWidth = float.NaN;
 
         // Whether the last read found a class — a flex-wrap / flex-nowrap / flex-wrap-reverse marker for the
         // wrap, one of the five direction/display classes for the direction — and whether such a class has
@@ -202,11 +202,50 @@ namespace Velvet
             Apply();
         }
 
+        // A percentage margin of a child's own that a gap adds to (StyleArbitraryValueResolver.HoldGap) is taken of
+        // the content width, so a width that moved re-applies past the signature.
         private void OnGeometryChanged(GeometryChangedEvent evt)
         {
             _directionClassLeft = false;
             _wrapClassLeft = false;
-            Apply();
+            var width = ChildContainer?.contentRect.width ?? float.NaN;
+            if (!width.Equals(_lastWidth))
+            {
+                _lastWidth = width;
+                _hasSignature = false;
+            }
+            _settled = true;
+            try
+            {
+                Apply();
+            }
+            finally
+            {
+                _settled = false;
+            }
+        }
+
+        // A direction or wrap written outside the class list on a container that keeps its size raises no event
+        // on the container, but it moves the children, so their geometry is listened to as well.
+        private void WatchGeometry(VisualElement child)
+        {
+            if (_watched.Add(child))
+            {
+                child.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            }
+        }
+
+        // Stops listening to every watched element that is not a child of container, or to all of them for none.
+        private void UnwatchLeft(VisualElement? container)
+        {
+            foreach (var child in new List<VisualElement>(_watched))
+            {
+                if (container == null || child.parent != container)
+                {
+                    _watched.Remove(child);
+                    child.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+                }
+            }
         }
 
         // The container children are reconciled into (a composite widget's inner box; else self).
@@ -235,6 +274,7 @@ namespace Velvet
 
             // Must run before _margined.Clear(): it reads the pre-clear list to find children that left.
             ResetStaleMargined(container);
+            UnwatchLeft(container);
             _margined.Clear();
 
             // Tailwind's `:last-child` counts an absolutely positioned child, so the space rule reads the raw index;
@@ -271,6 +311,7 @@ namespace Velvet
                 WriteMargins(child);
                 StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _margined.Add(child);
+                WatchGeometry(child);
             }
 
             var box = ClipPathLayoutBox.Of(container);
@@ -375,11 +416,13 @@ namespace Velvet
                     StyleArbitraryValueResolver.HandBackIfHeld(child, slot);
                     continue;
                 }
-                StyleArbitraryValueResolver.Hold(child, slot, new StyleLength(_margins[(int)slot]), _gaps[(int)slot]);
-                if (!_gapWanted[(int)slot])
+                if (_gapWanted[(int)slot])
                 {
-                    StyleArbitraryValueResolver.Yield(child, slot);
+                    StyleArbitraryValueResolver.HoldGap(child, slot, new StyleLength(_margins[(int)slot]), _gaps[(int)slot]);
+                    continue;
                 }
+                StyleArbitraryValueResolver.Hold(child, slot, new StyleLength(_margins[(int)slot]));
+                StyleArbitraryValueResolver.Yield(child, slot);
             }
         }
 
@@ -395,6 +438,7 @@ namespace Velvet
                 }
             }
             ResetAllMargined();
+            UnwatchLeft(null);
         }
 
         // Offers every tracked element that is no longer a current child of container (reparented or
@@ -444,8 +488,8 @@ namespace Velvet
                 StyleArbitraryValueResolver.HandBackIfHeld(box, end);
                 return;
             }
-            StyleArbitraryValueResolver.Hold(box, start, new StyleLength(-gap / 2f), -gap / 2f);
-            StyleArbitraryValueResolver.Hold(box, end, new StyleLength(-gap / 2f), -gap / 2f);
+            StyleArbitraryValueResolver.HoldGap(box, start, new StyleLength(-gap / 2f), -gap / 2f);
+            StyleArbitraryValueResolver.HoldGap(box, end, new StyleLength(-gap / 2f), -gap / 2f);
         }
 
         private static void HandBackMargins(VisualElement element)
@@ -496,10 +540,12 @@ namespace Velvet
             }
         }
 
-        // Read in the order inline flex-direction, then the class verdict (StyleFlexDirectionResolver), then
-        // resolvedStyle. Once every direction/display class has left the class list, the fallback is not taken
-        // until the next GeometryChangedEvent — for the reason IsWrap gives — and the verdict is Column, the
-        // direction an element carrying none of those classes lays out in.
+        // From a geometry event on a panel, resolvedStyle: the cascade's own answer, which a stylesheet rule
+        // outranking a direction class is part of. Otherwise in the order inline flex-direction, then the class
+        // verdict (StyleFlexDirectionResolver), then resolvedStyle, since a patch runs before the style pass that
+        // reads its classes. Once every direction/display class has left the class list, the fallback is not
+        // taken until the next GeometryChangedEvent — for the reason IsWrap gives — and the verdict is Column,
+        // the direction an element carrying none of those classes lays out in.
         private FlexDirection DirectionOf(VisualElement container)
         {
             var fromClass = StyleFlexDirectionResolver.FromClasses(container);
@@ -510,6 +556,10 @@ namespace Velvet
             if (hadClass && fromClass == null)
             {
                 _directionClassLeft = true;
+            }
+            if (_settled && container.panel != null)
+            {
+                return container.resolvedStyle.flexDirection;
             }
             var inline = container.style.flexDirection;
             if (inline.keyword != StyleKeyword.Null)
@@ -528,12 +578,8 @@ namespace Velvet
         }
 
         // True when the child container wraps (selects the four-side half-margin path). Read from the child
-        // container, like the direction (see StyleFlexDirectionResolver): a wrap class on a composite widget
-        // sets only the widget's own. This needs no engine-default variant for an inner box the way the
-        // direction resolve does — the fallback below is already the engine's own no-wrap. The residue is
-        // an inner box whose built-in USS wraps, which only a live panel reports; it bites harder here than
-        // for direction, since wrap is the only mode that writes the container's own margin.
-        // An inline flex-wrap is read before the markers. The flex-wrap / flex-nowrap / flex-wrap-reverse markers
+        // container, like the direction, and in the same order (DirectionOf). An inline flex-wrap is read before
+        // the markers. The flex-wrap / flex-nowrap / flex-wrap-reverse markers
         // are consulted next, in _layout.uss's
         // declaration order (flex-wrap-reverse beats flex-wrap beats flex-nowrap when more than one is
         // present). There is no further "direction class implies a default" tier: flex / flex-row(-reverse)
@@ -555,6 +601,10 @@ namespace Velvet
             if (hadMarker && marker == null)
             {
                 _wrapClassLeft = true;
+            }
+            if (_settled && container.panel != null)
+            {
+                return container.resolvedStyle.flexWrap != Wrap.NoWrap;
             }
             var inline = container.style.flexWrap;
             if (inline.keyword != StyleKeyword.Null)
@@ -579,19 +629,8 @@ namespace Velvet
 
         private static bool? WrapMarker(VisualElement container)
         {
-            if (container.ClassListContains("flex-wrap-reverse"))
-            {
-                return true;
-            }
-            if (container.ClassListContains("flex-wrap"))
-            {
-                return true;
-            }
-            if (container.ClassListContains("flex-nowrap"))
-            {
-                return false;
-            }
-            return null;
+            var wrap = StyleFlexDirectionResolver.WrapFromClasses(container);
+            return wrap == null ? null : wrap != Wrap.NoWrap;
         }
     }
 }

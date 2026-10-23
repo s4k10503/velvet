@@ -802,6 +802,7 @@ namespace Velvet
         }
 
         public Dictionary<VisualElement, StyleGapManipulator> GapManipulators { get; } = new();
+        public Dictionary<VisualElement, StyleCompositeFlowManipulator> CompositeFlowManipulators { get; } = new();
         public Dictionary<VisualElement, StyleDivideManipulator> DivideManipulators { get; } = new();
         public Dictionary<VisualElement, StyleGridManipulator> GridManipulators { get; } = new();
         // The line-breaking manipulator of each text leaf whose resolved text-wrap-style is balance or pretty

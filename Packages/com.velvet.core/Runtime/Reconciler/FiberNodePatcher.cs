@@ -2319,6 +2319,18 @@ namespace Velvet
                 => manipulator.UpdateGap(_spec);
         }
 
+        private readonly struct CompositeFlowOp : IManipulatorOp<StyleCompositeFlowManipulator>
+        {
+            public Dictionary<VisualElement, StyleCompositeFlowManipulator> Table(ReconcilerContext ctx)
+                => ctx.CompositeFlowManipulators;
+
+            public StyleCompositeFlowManipulator Create(ReconcilerContext ctx)
+                => new StyleCompositeFlowManipulator(ctx);
+
+            public void Update(StyleCompositeFlowManipulator manipulator)
+                => manipulator.Forward();
+        }
+
         private readonly struct DivideOp : IManipulatorOp<StyleDivideManipulator>
         {
             private readonly DivideSpec _spec;
@@ -3462,6 +3474,9 @@ namespace Velvet
         // load-bearing either.
         private void ApplyResolvedLayoutManipulators(VisualElement element, string[] classNames)
         {
+            // Ahead of gap, which reads the direction and wrap this writes onto the inner box.
+            Configure<CompositeFlowOp, StyleCompositeFlowManipulator>(element,
+                !ReferenceEquals(GetChildContainer(element), element), default);
             if (StyleGridClass.HasGridClass(classNames))
             {
                 ApplyGapManipulator(element, classNames, gridSuppressed: true);
