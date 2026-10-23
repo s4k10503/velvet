@@ -473,24 +473,11 @@ namespace Velvet
                 return;
             }
             var source = resolved ? s_built.ToString() : null;
-            if (consumer.StacksZ)
+            if (consumer.StacksZ || consumer.StacksOrder)
             {
                 consumer.Source = source;
                 consumer.Resolved = true;
-                if (consumer.Context != null && TryVariableZ(target, out var z))
-                {
-                    FiberZLayerCoordinator.Restack(consumer.Context, target, z);
-                }
-                return;
-            }
-            if (consumer.StacksOrder)
-            {
-                consumer.Source = source;
-                consumer.Resolved = true;
-                if (consumer.Context != null && TryVariableOrder(target, out var order))
-                {
-                    FiberZLayerCoordinator.Reorder(consumer.Context, target, order ?? 0);
-                }
+                Restack(target, consumer);
                 return;
             }
             var split = source == null ? null : Split(consumer, source);
@@ -520,6 +507,25 @@ namespace Velvet
                     declarations: Repeat(consumer.Declaration, payloads.Length));
             }
             SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
+        }
+
+        private static void Restack(VisualElement target, Consumer consumer)
+        {
+            if (consumer.Context == null)
+            {
+                return;
+            }
+            if (consumer.StacksZ)
+            {
+                if (TryVariableZ(target, out var z))
+                {
+                    FiberZLayerCoordinator.Restack(consumer.Context, target, z);
+                }
+            }
+            else if (TryVariableOrder(target, out var order))
+            {
+                FiberZLayerCoordinator.Reorder(consumer.Context, target, order ?? 0);
+            }
         }
 
         // Whether the z-* class that wins on element reads a custom property, and z the integer that resolves to,

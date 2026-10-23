@@ -61,8 +61,10 @@ where it paints:
   otherwise paint over one of them — after them.
 
 A relocated element that takes part in flex layout keeps its place in the row or column: Velvet lays it out at its
-declared slot (or at the slot its flex order gives it) whatever position it paints from. An `absolute` element lays
-out against its parent as it does unrelocated, so moving it never moves it on screen.
+declared slot (or at the slot its flex order gives it) whatever position it paints from. That takes an engine member
+([player-builds.md](player-builds.md)); where it does not resolve, an in-flow `z-*` element stays at its declared
+slot, unstacked. An `absolute` element lays out against its parent as it does unrelocated, so moving it never moves
+it on screen.
 
 The element never leaves its parent: its events bubble through the parent as they would from its slot, it inherits
 the parent's styles, and the parent's clipping applies. A reordering never detaches it from the panel either, so

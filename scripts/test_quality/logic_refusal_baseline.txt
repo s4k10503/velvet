@@ -68,7 +68,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleCompositeRejection.cs	6
 Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.Stylesheet.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.Substitution.cs	2
-Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs	18
+Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs	16
 Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleDivideManipulator.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleFamilyOrder.cs	3

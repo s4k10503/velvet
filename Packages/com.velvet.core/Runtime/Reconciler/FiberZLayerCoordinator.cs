@@ -828,24 +828,7 @@ namespace Velvet
             ZLayerHostRecord? record, List<SlotEntry> entries)
         {
             var lift = parked ? record?.Lifted ?? false : PositionedPrecedesUnpositioned(entries);
-            var layoutMovable = ChildLayoutOrder.Available;
-            foreach (var entry in entries)
-            {
-                if (entry.Detached)
-                {
-                    entry.Relocate = true;
-                    continue;
-                }
-                var stacked = entry.Tracked && (entry.Z == 0 || (entry.Z == null && entry.Positioned));
-                var wanted = entry.Tracked
-                    && ((entry.Z is { } z && z != 0) || entry.Order != 0 || (stacked && lift))
-                    // An in-flow element whose layout node cannot be kept at its slot keeps its slot.
-                    && (layoutMovable || entry.Absolute || (entry.Z == null && entry.Order != 0 && !(stacked && lift)));
-                entry.Relocate = parked ? !ReferenceEquals(entry.Slot, entry.Real) : wanted;
-                entry.Band = entry.Z is < 0 ? Role.BackReal
-                    : (entry.Z is > 0 || (stacked && lift)) ? Role.FrontReal
-                    : Role.MiddleReal;
-            }
+            Classify(entries, parked, lift);
 
             var changed = false;
             foreach (var entry in entries)
@@ -855,33 +838,13 @@ namespace Velvet
                     changed |= Convert(ctx, parent, entry);
                 }
             }
-
-            BuildDesiredOrder(parent, entries);
-            if (!InOrder(parent, s_desired))
-            {
-                s_rank.Clear();
-                for (var i = 0; i < s_desired.Count; i++)
-                {
-                    s_rank[s_desired[i]] = i;
-                }
-                parent.hierarchy.Sort(s_compareRank);
-                s_rank.Clear();
-                changed = true;
-            }
-            s_desired.Clear();
+            changed |= SortToDesiredOrder(parent, entries);
             DrainTeardownsUnder(ctx, parent);
 
-            var swapped = LayOutRelocated(parent, entries);
             record ??= new ZLayerHostRecord();
-            record.Swapped = swapped;
+            record.Swapped = LayOutRelocated(parent, entries);
             record.Lifted = lift;
-
-            var anyRelocated = false;
-            foreach (var entry in entries)
-            {
-                anyRelocated |= entry.Relocate && !entry.Detached;
-            }
-            if (anyRelocated)
+            if (AnyRelocated(entries))
             {
                 ctx.ZLayerHosts[parent] = record;
             }
@@ -893,6 +856,67 @@ namespace Velvet
             {
                 ReapplyChildWalkers(ctx, parent);
             }
+        }
+
+        private static void Classify(List<SlotEntry> entries, bool parked, bool lift)
+        {
+            var layoutMovable = ChildLayoutOrder.Available;
+            foreach (var entry in entries)
+            {
+                if (entry.Detached)
+                {
+                    entry.Relocate = true;
+                    continue;
+                }
+                var lifted = lift && entry.Tracked && (entry.Z == 0 || (entry.Z == null && entry.Positioned));
+                entry.Relocate = parked ? !ReferenceEquals(entry.Slot, entry.Real) : Wanted(entry, lifted, layoutMovable);
+                entry.Band = entry.Z is < 0 ? Role.BackReal
+                    : (entry.Z is > 0 || lifted) ? Role.FrontReal
+                    : Role.MiddleReal;
+            }
+        }
+
+        private static bool Wanted(SlotEntry entry, bool lifted, bool layoutMovable)
+            => entry.Tracked
+                && ((entry.Z is { } z && z != 0) || entry.Order != 0 || lifted)
+                // An in-flow element whose layout node cannot be kept at its slot keeps its slot.
+                && (layoutMovable || entry.Absolute || (entry.Z == null && entry.Order != 0 && !lifted));
+
+        // Sorts parent's children into the order BuildDesiredOrder gives. Returns whether any moved.
+        private static bool SortToDesiredOrder(VisualElement parent, List<SlotEntry> entries)
+        {
+            BuildDesiredOrder(parent, entries);
+            try
+            {
+                if (InOrder(parent, s_desired))
+                {
+                    return false;
+                }
+                s_rank.Clear();
+                for (var i = 0; i < s_desired.Count; i++)
+                {
+                    s_rank[s_desired[i]] = i;
+                }
+                parent.hierarchy.Sort(s_compareRank);
+                s_rank.Clear();
+                return true;
+            }
+            finally
+            {
+                s_desired.Clear();
+            }
+        }
+
+        private static bool AnyRelocated(List<SlotEntry> entries)
+        {
+            foreach (var entry in entries)
+            {
+                if (entry.Relocate && !entry.Detached)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Relocates entry's element or returns it to its slot as entry.Relocate says, and settles the box it lays out

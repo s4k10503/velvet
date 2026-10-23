@@ -17,6 +17,32 @@ namespace Velvet
         // array is that array's own order.
         public const int NoDeclaration = int.MinValue;
 
+        private static bool IsPositionUtility(string core) => core == "absolute" || core == "relative";
+
+        // A gate class just appeared on (or left) the live class list without passing through the reconciler, so
+        // the layout manipulators and paint layers those tokens gate must be re-derived here — nothing else will
+        // run until the element's next patch, which may never come (a breakpoint crossing re-renders nothing).
+        private static void SignalToggles(
+            ReconcilerContext? ctx, VisualElement control, bool gateChanged, VisualElement? changedBox, bool positionChanged)
+        {
+            if (ctx == null)
+            {
+                return;
+            }
+            if (gateChanged)
+            {
+                ctx.VariantGatedReSync?.Invoke(control);
+            }
+            if (changedBox != null)
+            {
+                ctx.VariantGatedReSync?.Invoke(changedBox);
+            }
+            if (positionChanged)
+            {
+                FiberZLayerCoordinator.OnPositionToggled(ctx, control);
+            }
+        }
+
         // Applies (when on is true) or clears each payload on target.
         // A payload containing [ that parses as an arbitrary value is applied as an inline style at
         // priority; otherwise it is projected onto the class list at that same priority. Either way the
@@ -81,7 +107,7 @@ namespace Velvet
                     continue;
                 }
                 // The condition belongs to the control and the paint to its input box (StyleInputBoxSurface).
-                positionChanged |= core == "absolute" || core == "relative";
+                positionChanged |= IsPositionUtility(core);
                 var dest = DestinationOf(ctx, control, core, on);
                 var effectivePriority = important ? StyleLayerPriority.ImportantOf(priority) : priority;
 
@@ -122,22 +148,7 @@ namespace Velvet
                 }
             }
 
-            if (gateChanged)
-            {
-                // A gate class just appeared on (or left) the live class list without passing through the
-                // reconciler, so the layout manipulators and paint layers those tokens gate must be
-                // re-derived here — nothing else will run until the element's next patch, which may never
-                // come (a breakpoint crossing re-renders nothing).
-                ctx?.VariantGatedReSync?.Invoke(control);
-            }
-            if (boxChanged)
-            {
-                ctx?.VariantGatedReSync?.Invoke(box!);
-            }
-            if (positionChanged && ctx != null)
-            {
-                FiberZLayerCoordinator.OnPositionToggled(ctx, control);
-            }
+            SignalToggles(ctx, control, gateChanged, boxChanged ? box : null, positionChanged);
 
             SilhouetteFaceStash.NotifyClassesChanged(control);
             if (box != null)
