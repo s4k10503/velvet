@@ -292,9 +292,9 @@ namespace Velvet.Tests
             store.SetLeaf("p-2");
             Drain();
 
-            // Assert
+            // Assert: the manipulator's attach/detach pair, and the pair the scope watch's scheduled item holds
             Assert.That((held - baseline, CallbackRegistryProbe.BubbleUpCallbackCount(leaf) - baseline),
-                Is.EqualTo((2, 0)));
+                Is.EqualTo((4, 0)));
         }
 
         [Test]
