@@ -566,7 +566,7 @@ namespace Velvet
             {
                 return FlexDirection.Column;
             }
-            return StyleFlexDirectionResolver.ResolveWithoutClasses(container, !ReferenceEquals(container, target));
+            return StyleFlexDirectionResolver.ResolveWithoutClasses(container);
         }
 
         // True when the child container wraps (selects the four-side half-margin path). Read from the child

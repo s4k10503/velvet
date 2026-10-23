@@ -25,7 +25,7 @@ namespace Velvet.Tests
     /// <c>gap/2</c> on all four sides of every child and <c>-gap/2</c> on all four sides of the container. This
     /// also covers a handful of hardening regressions (gap on a contentContainer-redirecting element like
     /// ScrollView must land on the reconciled content, not the element itself; the Auto-axis default with no
-    /// direction class is row, not column; the wrap container's own negative margin must survive a later
+    /// direction class is the engine's column, which the element lays out in; the wrap container's own negative margin must survive a later
     /// <c>DiffStyles</c> pass since gap is applied AFTER style diffing; a child moved out of a gap container
     /// must carry no residual gap margin; <see cref="StyleGapManipulator.Apply"/> must no-op when nothing
     /// relevant changed so the GeometryChanged feedback its own writes provoke does not re-churn), and the
@@ -1069,6 +1069,20 @@ namespace Velvet.Tests
             Assert.That(container[1].style.marginLeft.keyword, Is.EqualTo(StyleKeyword.Null), "no horizontal margin on a column gap");
         }
 
+        [Test]
+        public void Given_AGapOnAnElementWithNoDirectionClass_When_ReconciledOffPanel_Then_ItSpacesTheColumnTheElementLaysOutIn()
+        {
+            // Arrange — no flex / flex-row / flex-col, so the element is the engine's column, as on a panel.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "gap-4", children: Children(2)) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Container(scope.Root)[1].style.marginTop.value.value, Is.EqualTo(Space4));
+        }
+
         // Bug 3: the wrap container's own negative margin must survive a Color (DiffStyles) change on the
         // same element. Gap runs AFTER DiffStyles, so the manipulator's container margin write is last.
         [Test]
@@ -1482,9 +1496,7 @@ namespace Velvet.Tests
             Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
         }
 
-        // GREEN_ON_BASE(characterization): the base answers Column once every direction class has left too. What
-        // this pins is the branch's half: the call that finds the classes gone sets the window itself, so a
-        // manipulator that read them present only once still does not take the off-panel fallback, which is Row.
+        // GREEN_ON_BASE(characterization): the base answers Column once every direction class has left too.
         [Test]
         public void Given_AGapRowReadOnceWithItsDirectionClass_When_EveryDirectionClassIsRemoved_Then_TheGapMovesToTheColumnEdge()
         {

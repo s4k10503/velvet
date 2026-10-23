@@ -255,9 +255,9 @@ from code outside the class list.
 Once every direction/display class leaves the element, the verdict until the next `GeometryChangedEvent`
 is the inline `flex-direction`, or the engine's column when none is set, rather than a `resolvedStyle`
 that can still hold the removed class — the same rule the wrap verdict below follows. With no direction
-class AND no panel to resolve against (EditMode, pre-attach), the default is **row** — the one place this
-deliberately disagrees with the raw engine, whose own unstyled default is column (see "Without `.flex`,
-children stack vertically" above).
+class AND no panel to resolve against (EditMode, pre-attach), the verdict is the column the element lays
+out in (see "Without `.flex`, children stack vertically" above), as it is on a panel, so `gap-4` alone
+spaces `margin-top` before the element attaches as well as after.
 
 ## `flex-wrap` and `grid`: both axes are spaced (half-margin hybrid)
 
@@ -339,8 +339,7 @@ Velvet adds the two:
   Non-wrap containers never touch the container's own margin.
 - **Wrap outer bleed.** The wrap path's container negative margin draws the container's box — its
   background, border and padding — half of each gap past each edge that gap spaces, overlapping its
-  siblings or its parent's padding by that much, while its content and its siblings sit where CSS puts
-  them. UI Toolkit's layout style has no gap property (`FlexEngineLayoutStyleTests` fails once it gains
+  siblings or its parent's padding by that much. UI Toolkit's layout style has no gap property (`FlexEngineLayoutStyleTests` fails once it gains
   one), so the gap has to be a margin on every item, and the container's negative margin is what takes the
   outer halves back. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of
   padding on the parent, or wrap the container, if the overlap matters.

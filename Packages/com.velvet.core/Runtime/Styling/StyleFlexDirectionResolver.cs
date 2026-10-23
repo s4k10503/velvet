@@ -12,7 +12,7 @@ namespace Velvet
     // manipulator is attached to. A composite widget redirects its children into an inner box, which no class
     // of the author's reaches: a direction class on the widget reaches it as an inline value
     // (StyleCompositeFlowManipulator), and without one its verdict comes from the resolvedStyle fallback
-    // (off-panel, the widgetOwned default) below. For a plain element the two are the same element.
+    // (ResolveWithoutClasses) below. For a plain element the two are the same element.
     //
     // After an inline flex-direction, the five direction/display classes are consulted — before
     // resolvedStyle, on a panel too outside a geometry event — in the SAME precedence USS
@@ -52,9 +52,8 @@ namespace Velvet
     // classes on the element. The geometry event after the next layout pass reads resolvedStyle first
     // (StyleGapManipulator.DirectionOf), which settles a rule that outranks a direction class as well.
     //
-    // .grid also sets flex-direction: row in _layout.uss, and is deliberately NOT part of the scan: it implies
-    // Row, which is this resolver's own fallback default, so recognizing it could never produce a different
-    // answer than omitting it does.
+    // .grid also sets flex-direction: row in _layout.uss, and is deliberately NOT part of the scan: a grid class
+    // suppresses StyleGapManipulator (FiberNodePatcher.ApplyResolvedLayoutManipulators), so no gap reads it.
     internal static class StyleFlexDirectionResolver
     {
         // The class a horizontal TwoPaneSplitView puts on its content container.
@@ -105,30 +104,21 @@ namespace Velvet
             return null;
         }
 
-        // The verdict when no direction/display class is on the element. widgetOwned marks a widget's own
-        // inner box; it selects the off-panel default only.
-        public static FlexDirection ResolveWithoutClasses(VisualElement childContainer, bool widgetOwned)
+        // The verdict when no direction/display class is on the element.
+        public static FlexDirection ResolveWithoutClasses(VisualElement childContainer)
         {
             if (childContainer.panel != null)
             {
                 return childContainer.resolvedStyle.flexDirection;
             }
-            // No direction/display class and no panel. An inner box takes what the widget's own stylesheet lays
-            // it out in, which the engine marks with a class of the box's own: a row for a horizontally scrolling
-            // ScrollView and a horizontal TwoPaneSplitView, which CompositeWidgetSpacingDirectionPanelTests holds
-            // against a panel, and otherwise the engine's column. The row default below mirrors what .flex means
-            // on an element an author wrote a class on, and no class of the author's reaches an inner box.
-            if (widgetOwned)
-            {
-                return childContainer.ClassListContains(ScrollView.horizontalVariantContentUssClassName)
-                    || childContainer.ClassListContains(HorizontalSplitContentClass)
-                    ? FlexDirection.Row
-                    : FlexDirection.Column;
-            }
-            // Mirror the .flex=row default — the one place this deliberately disagrees with the raw engine,
-            // whose own default is column (see Documentation~/styling-flexbox-and-gap.md, "Without .flex,
-            // children stack vertically").
-            return FlexDirection.Row;
+            // Off a panel no stylesheet has resolved, so the element is the engine's column, but for the row a
+            // widget's stylesheet gives an inner box the engine marks with a class of the box's own: a
+            // horizontally scrolling ScrollView's and a horizontal TwoPaneSplitView's, which
+            // CompositeWidgetSpacingDirectionPanelTests holds against a panel.
+            return childContainer.ClassListContains(ScrollView.horizontalVariantContentUssClassName)
+                || childContainer.ClassListContains(HorizontalSplitContentClass)
+                ? FlexDirection.Row
+                : FlexDirection.Column;
         }
     }
 }
