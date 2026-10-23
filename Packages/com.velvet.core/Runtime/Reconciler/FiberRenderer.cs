@@ -96,6 +96,8 @@ namespace Velvet
             fiber.IsInlineMounted = true;
             fiber.MountSlotStart = slotStart;
             RenderAndReconcile(fiber, deferReconcile: true);
+            // A first render that threw mounted nothing, and its caller disposes the fiber.
+            if (fiber.RenderCount == 0) return;
             // Layout effects setup runs AFTER the DOM mutations are committed for
             // the entire subtree. Inline-mount
             // defers child CreateElement to the parent expansion, which happens AFTER MountInline
@@ -821,7 +823,7 @@ namespace Velvet
         // parent: a boundary this fiber renders has already caught whatever suspended inside it.
         internal static void SuspendPassOwner(ComponentFiber fiber)
         {
-            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
+            var boundary = ComponentBoundarySearch.FindSuspenseBoundaryAbove(fiber);
             if (boundary == null)
             {
                 SuspendWithoutBoundary(fiber);
@@ -859,6 +861,15 @@ namespace Velvet
             }
         }
 
+        private static bool HasErrorBoundaryBetween(ComponentFiber fiber, ComponentFiber boundary)
+        {
+            for (var current = fiber.Parent; current != null && !ReferenceEquals(current, boundary); current = current.Parent)
+            {
+                if (current.IsErrorBoundary) return true;
+            }
+            return false;
+        }
+
         // Commit path called by Hooks.Use (Suspense in function components) when an FiberAsyncResource resolves.
         // Uses a partial Lane scheme: step 1 (child sync RenderAndReconcile) + step 2 (boundary swap goes
         // through the Lane queue).
@@ -876,10 +887,10 @@ namespace Velvet
             }
             // A fiber a Suspense keeps offscreen records which one. Any other is searched from its parent, as React
             // takes the nearest Suspense above the component that suspended: a boundary this fiber renders itself
-            // wraps its output, never its own read.
+            // wraps its output, never its own read, and one whose fallback this fiber is in is passed over.
             var boundary = fiber.IsOffscreen
                 ? fiber.OffscreenUnder
-                : ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
+                : ComponentBoundarySearch.FindSuspenseBoundaryAbove(fiber);
             if (boundary == null)
             {
                 // What React retries is the work that suspended on this read; with none waiting on it, nothing
@@ -889,8 +900,11 @@ namespace Velvet
             }
             // A primary the boundary keeps hidden is still in the container, and the boundary's re-render diffs its
             // elements against this fiber's PreviousTree: the render below would move that past what they hold. The
-            // boundary renders this fiber instead, as SuspendPassOwner has it.
-            if (fiber.IsOffscreen && fiber.Reconciler!.Context.IsBoundaryHidingPrimary(boundary))
+            // boundary renders this fiber instead, as SuspendPassOwner has it. So it does under an error boundary
+            // below the Suspense, which React's retry reaches inside the Suspense's render: the render below would
+            // have that error boundary catch outside it, leaving the Suspense on its fallback.
+            if ((fiber.IsOffscreen && fiber.Reconciler!.Context.IsBoundaryHidingPrimary(boundary))
+                || HasErrorBoundaryBetween(fiber, boundary))
             {
                 FiberWorkLoop.RequestRenderFromHook(fiber);
                 boundary.InvalidateMemoCache();
@@ -902,8 +916,8 @@ namespace Velvet
             // the fallback→children reveal in one pass: a resolved resource schedules the boundary itself, not the
             // child. This single render handles all three resolve outcomes: a resolved child settles its
             // PreviousTree for the boundary to reuse; a faulted child's Use<T> throws a real exception that routes
-            // to the error boundary via OnRenderError; a still-pending child re-throws FiberSuspendSignal and keeps
-            // the fallback.
+            // via OnRenderError to an error boundary at or above the Suspense, since one below it took the branch
+            // above; a still-pending child re-throws FiberSuspendSignal and keeps the fallback.
             // Read before the render, which can dispose this fiber when an error boundary above it catches.
             var context = fiber.Reconciler!.Context;
             var catchesBeforeTheRender = context.NextCaughtErrorSequence;

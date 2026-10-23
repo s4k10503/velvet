@@ -281,6 +281,14 @@ namespace Velvet
             // detaches itself; detaching first would sever the chain and let the sweep recycle nodes
             // a surviving ancestor's slot still owes to a comeback render.
             catch { FiberRenderer.Dispose(fiber); throw; }
+            // A first render that threw, where a boundary outside this walk took the error rather than unwinding the
+            // walk: React discards a component whose first render threw, so it is not registered, and the hooks it
+            // ran before the throw are released.
+            if (fiber.RenderCount == 0)
+            {
+                FiberRenderer.Dispose(fiber);
+                return fiber;
+            }
             RegisterFiber(in site, identity, fiber);
             return fiber;
         }

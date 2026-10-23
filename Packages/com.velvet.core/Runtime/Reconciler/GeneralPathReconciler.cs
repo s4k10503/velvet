@@ -1087,6 +1087,7 @@ namespace Velvet
                     fiber = suspended;
                 }
                 walk.NewFibers.Add(fiber);
+                fiber.SuspenseFallbackOf = _ctx.SuspenseFallbackOwner;
                 var preCount = emittedCount;
                 if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
                 else ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
@@ -1493,7 +1494,15 @@ namespace Velvet
                         else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
                         if (suspense.Fallback != null)
                         {
-                            ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fallbackPosition);
+                            var enclosingFallbackOwner = _ctx.EnterSuspenseFallback(boundaryFiber);
+                            try
+                            {
+                                ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fallbackPosition);
+                            }
+                            finally
+                            {
+                                _ctx.LeaveSuspenseFallback(enclosingFallbackOwner);
+                            }
                         }
                     }
                     else if (primaryWasHidden)
@@ -1524,7 +1533,7 @@ namespace Velvet
             out List<SuspenseRender>? renders)
         {
             renders = null;
-            _ctx.OpenSuspensePrimary(retains);
+            _ctx.OpenSuspensePrimary(retains, _ctx.FiberStack.Current);
             bool suspended;
             try
             {

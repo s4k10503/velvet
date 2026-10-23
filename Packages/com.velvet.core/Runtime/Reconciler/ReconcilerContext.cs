@@ -1504,8 +1504,13 @@ namespace Velvet
 
         internal int SuspensePrimaryDepth => _suspensePrimaries.Count;
 
-        // Retains is whether the Suspense keeps the primary it had committed when that primary suspends again.
-        internal void OpenSuspensePrimary(bool retains) => _suspensePrimaries.Add(new SuspensePrimaryFrame(retains));
+        // Retains is whether the Suspense keeps the primary it had committed when that primary suspends again; boundary
+        // is the fiber rendering it.
+        internal void OpenSuspensePrimary(bool retains, ComponentFiber? boundary)
+        {
+            _suspensePrimaries.Add(new SuspensePrimaryFrame(retains, boundary, SuspenseFallbackOwner));
+            SuspenseFallbackOwner = null;
+        }
 
         // Returns whether the primary suspended, at its own expansion or where HoldSuspendInPrimary held it. The
         // renders the primary made come back through renders, for the caller that decides whether the Suspense
@@ -1515,9 +1520,28 @@ namespace Velvet
             var last = _suspensePrimaries.Count - 1;
             var frame = _suspensePrimaries[last];
             _suspensePrimaries.RemoveAt(last);
+            SuspenseFallbackOwner = frame.EnclosingFallbackOwner;
             renders = frame.Renders;
             return frame.Suspended;
         }
+
+        // What the walk writes into ComponentFiber.SuspenseFallbackOf: the fiber rendering the Suspense whose fallback
+        // is being expanded, or null inside a primary and outside every fallback.
+        internal ComponentFiber? SuspenseFallbackOwner { get; private set; }
+
+        // Returns the owner to hand back to LeaveSuspenseFallback. A fallback inside a primary of a Suspense the same
+        // fiber renders is that Suspense's to catch, which no search up the fibers tells apart from this one, so the
+        // owner is left null there.
+        internal ComponentFiber? EnterSuspenseFallback(ComponentFiber? boundary)
+        {
+            var enclosing = SuspenseFallbackOwner;
+            SuspenseFallbackOwner = boundary != null && !_suspensePrimaries.Exists(frame => ReferenceEquals(frame.Boundary, boundary))
+                ? boundary
+                : null;
+            return enclosing;
+        }
+
+        internal void LeaveSuspenseFallback(ComponentFiber? enclosing) => SuspenseFallbackOwner = enclosing;
 
         // Whether the Suspense walking the innermost open primary decides, once its walk ends, whether a render
         // made in it commits: only a primary that retains what it had committed has one to keep or give up, since
@@ -1559,9 +1583,16 @@ namespace Velvet
 
         private sealed class SuspensePrimaryFrame
         {
-            internal SuspensePrimaryFrame(bool retains) => Retains = retains;
+            internal SuspensePrimaryFrame(bool retains, ComponentFiber? boundary, ComponentFiber? enclosingFallbackOwner)
+            {
+                Retains = retains;
+                Boundary = boundary;
+                EnclosingFallbackOwner = enclosingFallbackOwner;
+            }
 
             internal bool Retains { get; }
+            internal ComponentFiber? Boundary { get; }
+            internal ComponentFiber? EnclosingFallbackOwner { get; }
             internal bool Suspended { get; set; }
             internal List<SuspenseRender>? Renders { get; set; }
         }
